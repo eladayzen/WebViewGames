@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Astro Tunnel</title>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="app"></div>
+
+      <div class="hud">
+        <div>
+          <div class="score" id="score">0</div>
+          <div class="best" id="best">Best: 0</div>
+        </div>
+        <div>
+          <div class="score" id="gems">0</div>
+        </div>
+      </div>
+
+      <div class="overlay" id="start-overlay">
+        <h1>Astro Tunnel</h1>
+        <p>Steer through the gaps and grab gems. Arrow keys / A D to turn left and right.</p>
+        <div class="countdown" id="countdown">5</div>
+      </div>
+
+      <div class="overlay hidden" id="gameover-overlay">
+        <h1>Crashed!</h1>
+        <p>Score: <span class="stat" id="final-score">0</span></p>
+        <button id="restart-button">Try Again</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
