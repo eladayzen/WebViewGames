@@ -20,26 +20,16 @@ export function tunnelCenterAt(z) {
   return { x, y };
 }
 
-// A handful of hand-picked color moods the tunnel cycles through over time.
-// Each entry drives EVERYTHING that changes with the mood — not just the
-// wall texture: fog, every light, obstacle hue, and decorative
-// rings/particles — so a theme change reads as one coherent environment
-// shift (see beginEnvironmentTransition in main.js) rather than
-// a single texture recoloring while everything else stays put.
-export const THEME_PALETTES = [
+// A handful of hand-picked color palettes the tunnel cycles through over
+// time (see the environment-event system below) — same panel-pattern
+// texture generator, just re-themed.
+const THEME_PALETTES = [
   {
     bg0: '#140b30',
     bg1: '#050318',
     grid: 'rgba(160, 210, 255, 0.35)',
     rivet: 'rgba(210, 235, 255, 0.55)',
     panelHues: ['rgba(90, 210, 255, 0.32)', 'rgba(255, 110, 210, 0.28)', 'rgba(255, 180, 90, 0.26)'],
-    fog: '#050318',
-    hemiSky: '#6fc8ff',
-    hemiGround: '#1a0a2e',
-    key: '#ffffff',
-    rim: '#ff5fa8',
-    ringHue: 0.53, // cyan/pink
-    particle: '#bdeeff',
   },
   {
     bg0: '#301207',
@@ -47,13 +37,6 @@ export const THEME_PALETTES = [
     grid: 'rgba(255, 180, 110, 0.35)',
     rivet: 'rgba(255, 225, 200, 0.55)',
     panelHues: ['rgba(255, 140, 60, 0.34)', 'rgba(255, 70, 70, 0.28)', 'rgba(255, 220, 120, 0.26)'],
-    fog: '#1c0805',
-    hemiSky: '#ff8a5c',
-    hemiGround: '#200502',
-    key: '#ffe4c2',
-    rim: '#ff3b3b',
-    ringHue: 0.05, // amber/red
-    particle: '#ffcf9e',
   },
   {
     bg0: '#062616',
@@ -61,15 +44,14 @@ export const THEME_PALETTES = [
     grid: 'rgba(140, 255, 195, 0.35)',
     rivet: 'rgba(210, 255, 235, 0.55)',
     panelHues: ['rgba(90, 255, 170, 0.32)', 'rgba(80, 220, 255, 0.26)', 'rgba(210, 255, 120, 0.24)'],
-    fog: '#031a10',
-    hemiSky: '#7dffc9',
-    hemiGround: '#04140b',
-    key: '#e2fff2',
-    rim: '#39ffb0',
-    ringHue: 0.38, // green/teal
-    particle: '#a8ffe0',
   },
 ];
+
+// One representative hue per theme (0-1, HSL hue), so obstacle walls can be
+// colored to match whichever theme is currently active instead of being
+// fully independent random colors — see ObstacleField.setThemeHue in
+// obstacles.js, driven from main.js whenever walls.currentTheme changes.
+export const THEME_HUE_CENTERS = [0.53, 0.05, 0.38]; // cyan/pink, amber/red, green/teal
 
 // Sci-fi hull paneling, kept deliberately simple: a few bezeled panels, some
 // lit up in the theme's colors, and sparse corner rivets. An earlier version
@@ -187,26 +169,12 @@ export function advanceTunnelTheme(walls) {
   walls.material.map = walls.themeTextures[walls.currentTheme];
 }
 
-// NOT the same spread as obstacles.js's randomWallHue (0.18) — that value
-// suits obstacles because only ~12 sparse rings are ever visible at once.
-// These are 30 tightly-packed decorative rings whose whole visual purpose
-// is a rainbow gradient receding into the distance; a narrow spread makes
-// all 30 nearly the same hue, and that many overlapping same-color unlit
-// rings stacking under bloom is what blew out into one solid bright band.
-// Keep it close to a full wheel so the rainbow survives, just recentered.
-const RING_HUE_SPREAD = 0.95;
-
-// Each ring keeps a fixed hue OFFSET from the theme's center (giving the
-// pleasing gradient-recession-into-the-distance look), but the center
-// itself is re-derived every frame from the live, currently-transitioning
-// theme hue — see scrollSpeedRings — so the whole rainbow band re-centers
-// smoothly instead of being a fixed independent rainbow deaf to theme.
-export function createSpeedRings(scene, radius, count, spacing, initialHue) {
+export function createSpeedRings(scene, radius, count, spacing) {
   const geo = new THREE.TorusGeometry(radius + 0.15, 0.06, 8, 32);
   const rings = [];
   for (let i = 0; i < count; i++) {
-    const hueOffset = (i / count - 0.5) * RING_HUE_SPREAD;
-    const color = new THREE.Color().setHSL(((initialHue + hueOffset) % 1 + 1) % 1, 0.85, 0.6);
+    const hue = (i / count) % 1;
+    const color = new THREE.Color().setHSL(hue, 0.85, 0.6);
     const mesh = new THREE.Mesh(
       geo,
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }),
@@ -214,14 +182,13 @@ export function createSpeedRings(scene, radius, count, spacing, initialHue) {
     const z = -i * spacing - spacing;
     const c = tunnelCenterAt(z);
     mesh.position.set(c.x, c.y, z);
-    mesh.userData.hueOffset = hueOffset;
     scene.add(mesh);
     rings.push(mesh);
   }
   return { rings, spacing, length: count * spacing };
 }
 
-export function scrollSpeedRings(decor, speed, playerZ, centerHue) {
+export function scrollSpeedRings(decor, speed, playerZ) {
   for (const ring of decor.rings) {
     ring.position.z += speed;
     if (ring.position.z > playerZ + 8) {
@@ -231,26 +198,16 @@ export function scrollSpeedRings(decor, speed, playerZ, centerHue) {
     ring.position.x = c.x;
     ring.position.y = c.y;
     ring.rotation.z += 0.003;
-    const hue = ((centerHue + ring.userData.hueOffset) % 1 + 1) % 1;
-    ring.material.color.setHSL(hue, 0.85, 0.6);
   }
 }
 
-// A field of glowing dust streaking past to sell forward speed, since the
-// rings/walls alone read as fairly static at a glance. Deliberately hugs
-// the tunnel's outer band (near the walls, "the sides") rather than being
-// scattered across the whole cross-section — that's what used to clutter
-// the gameplay-critical middle of the screen and read as noise. Fewer
-// particles, but concentrated where they read as energy/speed lines along
-// the tube rather than a haze in front of the obstacles.
-const PARTICLE_MIN_RADIUS_FACTOR = 0.62;
-const PARTICLE_RADIUS_SPREAD = 0.36;
-
+// A thin field of glowing dust streaking past to sell forward speed, since
+// the rings/walls alone read as fairly static at a glance.
 export function createSpeedParticles(scene, radius, count, length) {
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const r = radius * (PARTICLE_MIN_RADIUS_FACTOR + Math.random() * PARTICLE_RADIUS_SPREAD);
+    const r = radius * (0.15 + Math.random() * 0.85);
     positions[i * 3] = Math.cos(angle) * r;
     positions[i * 3 + 1] = Math.sin(angle) * r;
     positions[i * 3 + 2] = -Math.random() * length;
@@ -259,7 +216,7 @@ export function createSpeedParticles(scene, radius, count, length) {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   const material = new THREE.PointsMaterial({
     color: 0xbdeeff,
-    size: 0.13,
+    size: 0.1,
     transparent: true,
     opacity: 0.85,
     blending: THREE.AdditiveBlending,
@@ -277,7 +234,7 @@ export function scrollSpeedParticles(field, speed, playerZ) {
     if (z > playerZ + 4) {
       z -= field.length;
       const angle = Math.random() * Math.PI * 2;
-      const r = field.radius * (PARTICLE_MIN_RADIUS_FACTOR + Math.random() * PARTICLE_RADIUS_SPREAD);
+      const r = field.radius * (0.15 + Math.random() * 0.85);
       pos.setX(i, Math.cos(angle) * r);
       pos.setY(i, Math.sin(angle) * r);
     }

@@ -16,7 +16,7 @@ import {
   scrollSpeedRings,
   createSpeedParticles,
   scrollSpeedParticles,
-  THEME_PALETTES,
+  THEME_HUE_CENTERS,
 } from './tunnel.js';
 import { ObstacleField } from './obstacles.js';
 import { getMoveVector, initPointerInput } from './input.js';
@@ -40,7 +40,7 @@ const PLAYER_Z = 0;
 const BASE_SPEED = 0.112; // -30% from original prototype
 const MAX_SPEED = 0.294;
 const SPEED_RAMP = 0.00105;
-const RING_SPACING = 36; // was 32 — a bit more room throughout, easier overall
+const RING_SPACING = 32; // 2x the original gap, more time to react between rings
 const RING_COUNT = 12;
 
 // Tunnel Rush-style control: the ship sits at a FIXED distance from the
@@ -67,7 +67,6 @@ const HIT_INVULNERABILITY_SECONDS = 1.2; // grace window after taking a hit befo
 const FIRST_ENVIRONMENT_EVENT_SECONDS = 20; // first color change happens 20s in
 const ENVIRONMENT_EVENT_INTERVAL_MIN = 22; // then repeats every 22-32s after that
 const ENVIRONMENT_EVENT_INTERVAL_MAX = 32;
-const ENV_TRANSITION_SECONDS = 3; // how long fog/lights/rings/particles take to fade to the new theme
 
 const app = document.getElementById('app');
 const scoreEl = document.getElementById('score');
@@ -94,8 +93,7 @@ scene.fog = new THREE.FogExp2(0x050318, 0.026);
 const camera = new THREE.PerspectiveCamera(CAMERA_FOV, ASPECT, 0.1, 200);
 camera.position.set(0, 0, CAMERA_DISTANCE);
 
-const hemiLight = new THREE.HemisphereLight(0x6fc8ff, 0x1a0a2e, 0.7);
-scene.add(hemiLight);
+scene.add(new THREE.HemisphereLight(0x6fc8ff, 0x1a0a2e, 0.7));
 const keyLight = new THREE.PointLight(0xffffff, 1.4, 20);
 keyLight.position.set(0, 2, 5);
 scene.add(keyLight);
@@ -104,8 +102,8 @@ rimLight.position.set(0, 0, -6);
 scene.add(rimLight);
 
 const walls = createTunnelWalls(scene, 400, TUNNEL_RADIUS);
-const speedRings = createSpeedRings(scene, TUNNEL_RADIUS, 30, 6, THEME_PALETTES[0].ringHue);
-const speedParticles = createSpeedParticles(scene, TUNNEL_RADIUS * 0.95, 55, 60); // cut down further + moved to the tunnel's sides (see tunnel.js) — was cluttering the middle
+const speedRings = createSpeedRings(scene, TUNNEL_RADIUS, 30, 6);
+const speedParticles = createSpeedParticles(scene, TUNNEL_RADIUS * 0.95, 150, 60); // -40% from the original 250
 
 const ship = createShip();
 scene.add(ship);
@@ -135,7 +133,7 @@ const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.85, // strength — reverted; 1.0 combined with the wall's specular highlight near the camera produced a bad sunburst artifact
+  0.85, // strength
   0.45, // radius
   0.72, // threshold — only genuinely bright/emissive stuff blooms
 );
@@ -168,77 +166,6 @@ let lives = MAX_LIVES;
 let invulnerableUntil = 0; // in real elapsed seconds
 let nextEnvironmentEventAt = FIRST_ENVIRONMENT_EVENT_SECONDS;
 let lastSeenTheme = 0;
-
-// Full-environment color transition: fog/lights/rings/particles all ease
-// from envFrom to envTo together over ENV_TRANSITION_SECONDS whenever the
-// tunnel's theme changes — only the wall's own texture (a canvas
-// CanvasTexture reference swap) can't cross-fade and stays instant.
-// envTransitionT === 1 means idle (already fully at envTo).
-const envFrom = {
-  fog: new THREE.Color(), hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),
-  key: new THREE.Color(), rim: new THREE.Color(), particle: new THREE.Color(),
-};
-const envTo = {
-  fog: new THREE.Color(), hemiSky: new THREE.Color(), hemiGround: new THREE.Color(),
-  key: new THREE.Color(), rim: new THREE.Color(), particle: new THREE.Color(),
-};
-let envFromRingHue = THEME_PALETTES[0].ringHue;
-let envToRingHue = THEME_PALETTES[0].ringHue;
-let currentRingHue = THEME_PALETTES[0].ringHue;
-let envTransitionT = 1;
-
-// Shortest-path hue lerp (handles wraparound, e.g. 0.95 -> 0.05 goes "up"
-// through 1.0/0.0, not backwards through the whole wheel).
-function lerpHue(a, b, t) {
-  let diff = b - a;
-  diff -= Math.round(diff);
-  return ((a + diff * t) % 1 + 1) % 1;
-}
-
-function applyEnvAt(t) {
-  scene.fog.color.lerpColors(envFrom.fog, envTo.fog, t);
-  hemiLight.color.lerpColors(envFrom.hemiSky, envTo.hemiSky, t);
-  hemiLight.groundColor.lerpColors(envFrom.hemiGround, envTo.hemiGround, t);
-  keyLight.color.lerpColors(envFrom.key, envTo.key, t);
-  rimLight.color.lerpColors(envFrom.rim, envTo.rim, t);
-  speedParticles.points.material.color.lerpColors(envFrom.particle, envTo.particle, t);
-  currentRingHue = lerpHue(envFromRingHue, envToRingHue, t);
-}
-
-function beginEnvironmentTransition(target) {
-  envFrom.fog.copy(scene.fog.color);
-  envFrom.hemiSky.copy(hemiLight.color);
-  envFrom.hemiGround.copy(hemiLight.groundColor);
-  envFrom.key.copy(keyLight.color);
-  envFrom.rim.copy(rimLight.color);
-  envFrom.particle.copy(speedParticles.points.material.color);
-  envFromRingHue = currentRingHue;
-
-  envTo.fog.set(target.fog);
-  envTo.hemiSky.set(target.hemiSky);
-  envTo.hemiGround.set(target.hemiGround);
-  envTo.key.set(target.key);
-  envTo.rim.set(target.rim);
-  envTo.particle.set(target.particle);
-  envToRingHue = target.ringHue;
-
-  envTransitionT = 0;
-}
-
-// Used on (re)start — jump straight to the current theme with no fade, so a
-// fresh round never opens mid-transition from whatever the last round ended on.
-function applyEnvironmentInstant(target) {
-  envTo.fog.set(target.fog);
-  envTo.hemiSky.set(target.hemiSky);
-  envTo.hemiGround.set(target.hemiGround);
-  envTo.key.set(target.key);
-  envTo.rim.set(target.rim);
-  envTo.particle.set(target.particle);
-  envToRingHue = target.ringHue;
-  envTransitionT = 1;
-  applyEnvAt(1);
-}
-
 let best = Number(localStorage.getItem('ntt-best') || 0);
 let state = 'countdown'; // 'countdown' | 'playing' | 'gameover'
 const COUNTDOWN_SECONDS = 3;
@@ -259,8 +186,7 @@ function resetGame() {
   invulnerableUntil = 0;
   nextEnvironmentEventAt = FIRST_ENVIRONMENT_EVENT_SECONDS;
   lastSeenTheme = walls.currentTheme;
-  obstacles.setThemeHue(THEME_PALETTES[walls.currentTheme].ringHue);
-  applyEnvironmentInstant(THEME_PALETTES[walls.currentTheme]);
+  obstacles.setThemeHue(THEME_HUE_CENTERS[walls.currentTheme]);
   obstacles.reset(-30);
   updateHud();
 }
@@ -420,14 +346,12 @@ function tick() {
       },
     });
 
-    scrollSpeedRings(speedRings, speed * dt, PLAYER_Z, currentRingHue);
+    scrollSpeedRings(speedRings, speed * dt, PLAYER_Z);
     scrollSpeedParticles(speedParticles, speed * dt, PLAYER_Z);
     scrollTunnelWalls(walls, speed * dt);
 
     // Periodic "the tunnel changes color" beat. First one at 20s, then every
-    // 22-32s after that (see constants above). The wall's own texture swap
-    // is instant (unavoidable); everything else fades in over
-    // ENV_TRANSITION_SECONDS via the block below.
+    // 22-32s after that (see constants above). Instant swap, no fade/window.
     if (elapsed / 60 >= nextEnvironmentEventAt) {
       advanceTunnelTheme(walls);
       nextEnvironmentEventAt +=
@@ -439,13 +363,7 @@ function tick() {
 
   if (walls.currentTheme !== lastSeenTheme) {
     lastSeenTheme = walls.currentTheme;
-    obstacles.setThemeHue(THEME_PALETTES[lastSeenTheme].ringHue);
-    beginEnvironmentTransition(THEME_PALETTES[lastSeenTheme]);
-  }
-
-  if (envTransitionT < 1) {
-    envTransitionT = Math.min(1, envTransitionT + dt / 60 / ENV_TRANSITION_SECONDS);
-    applyEnvAt(THREE.MathUtils.smoothstep(envTransitionT, 0, 1));
+    obstacles.setThemeHue(THEME_HUE_CENTERS[lastSeenTheme]);
   }
 
   ship.position.set(player.x, player.y, PLAYER_Z);
