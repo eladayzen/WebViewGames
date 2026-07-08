@@ -4,6 +4,9 @@ dist/
 dist-ssr/
 *.local
 
+# Zip exports/backups — redundant with already-tracked source, not meant for git
+*.zip
+
 # Logs
 logs
 *.log

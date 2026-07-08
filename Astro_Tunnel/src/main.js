@@ -2,19 +2,38 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
+import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import './style.css';
 import { createShip } from './ship.js';
 import {
   createTunnelWalls,
   scrollTunnelWalls,
+  advanceTunnelTheme,
   createSpeedRings,
   scrollSpeedRings,
   createSpeedParticles,
   scrollSpeedParticles,
+  THEME_HUE_CENTERS,
 } from './tunnel.js';
 import { ObstacleField } from './obstacles.js';
 import { getMoveVector, initPointerInput } from './input.js';
+import { ParticlePool, spawnBurst } from './vfx.js';
+
+// Extra visual fidelity on top of the base bloom pass — each is cheap on a
+// desktop GPU but this is headed for an unverified mobile WebView, so keep
+// these behind flags that are trivial to flip off if real-device testing
+// shows trouble, rather than baking them in unconditionally.
+const FX = {
+  chromaticAberration: false, // pulsing RGB-split with speed read as strobing/flickering — removed
+  vignette: true,
+  speedFovKick: true,
+  screenShake: true,
+  engineTrail: true,
+  particleBursts: true,
+};
 
 const TUNNEL_RADIUS = 6;
 const PLAYER_Z = 0;
@@ -42,10 +61,18 @@ const ASPECT = 16 / 9;
 const CAMERA_FOV = 82;
 const CAMERA_DISTANCE = 8; // camera.position.z, since the play plane is z=0
 
+const MAX_LIVES = 3;
+const HIT_INVULNERABILITY_SECONDS = 1.2; // grace window after taking a hit before another can register
+
+const FIRST_ENVIRONMENT_EVENT_SECONDS = 20; // first color change happens 20s in
+const ENVIRONMENT_EVENT_INTERVAL_MIN = 22; // then repeats every 22-32s after that
+const ENVIRONMENT_EVENT_INTERVAL_MAX = 32;
+
 const app = document.getElementById('app');
 const scoreEl = document.getElementById('score');
 const bestEl = document.getElementById('best');
 const gemsEl = document.getElementById('gems');
+const livesEl = document.getElementById('lives');
 const startOverlay = document.getElementById('start-overlay');
 const countdownEl = document.getElementById('countdown');
 const gameoverOverlay = document.getElementById('gameover-overlay');
@@ -89,6 +116,19 @@ const obstacles = new ObstacleField(scene, {
   startZ: -30,
 });
 
+// One continuous-emission pool for the engine trail, one pool for crash
+// bursts, and a separate bigger-particle pool just for pickups — pickup
+// feedback needed to read as punchier than a crash, not share its size.
+const enginePool = new ParticlePool(scene, 60, 0.09);
+const burstPool = new ParticlePool(scene, 90, 0.11);
+const pickupBurstPool = new ParticlePool(scene, 150, 0.18);
+const ENGINE_COLOR = new THREE.Color(0x4fd8ff);
+const GEM_BURST_COLOR = new THREE.Color(0xffe082);
+const LIFE_BURST_COLOR = new THREE.Color(0xff3d6b);
+const CRASH_BURST_COLOR = new THREE.Color(0xff5a3c);
+let engineEmitTimer = 0;
+let shakeIntensity = 0;
+
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(
@@ -98,6 +138,23 @@ const bloomPass = new UnrealBloomPass(
   0.72, // threshold — only genuinely bright/emissive stuff blooms
 );
 composer.addPass(bloomPass);
+
+// Amount is driven by current speed each frame (see tick) so going faster
+// reads as "warping" harder, not just a static fixed distortion.
+let rgbShiftPass = null;
+if (FX.chromaticAberration) {
+  rgbShiftPass = new ShaderPass(RGBShiftShader);
+  rgbShiftPass.uniforms.amount.value = 0.0015;
+  composer.addPass(rgbShiftPass);
+}
+
+if (FX.vignette) {
+  const vignettePass = new ShaderPass(VignetteShader);
+  vignettePass.uniforms.offset.value = 1.1;
+  vignettePass.uniforms.darkness.value = 1.3;
+  composer.addPass(vignettePass);
+}
+
 composer.addPass(new OutputPass());
 
 const player = { x: 0, y: 0, angle: -Math.PI / 2, angularVel: 0 };
@@ -105,9 +162,13 @@ let speed = BASE_SPEED;
 let elapsed = 0;
 let score = 0;
 let gems = 0;
+let lives = MAX_LIVES;
+let invulnerableUntil = 0; // in real elapsed seconds
+let nextEnvironmentEventAt = FIRST_ENVIRONMENT_EVENT_SECONDS;
+let lastSeenTheme = 0;
 let best = Number(localStorage.getItem('ntt-best') || 0);
 let state = 'countdown'; // 'countdown' | 'playing' | 'gameover'
-const COUNTDOWN_SECONDS = 5;
+const COUNTDOWN_SECONDS = 3;
 let countdownRemaining = COUNTDOWN_SECONDS;
 
 bestEl.textContent = `Best: ${Math.floor(best)}`;
@@ -121,6 +182,11 @@ function resetGame() {
   elapsed = 0;
   score = 0;
   gems = 0;
+  lives = MAX_LIVES;
+  invulnerableUntil = 0;
+  nextEnvironmentEventAt = FIRST_ENVIRONMENT_EVENT_SECONDS;
+  lastSeenTheme = walls.currentTheme;
+  obstacles.setThemeHue(THEME_HUE_CENTERS[walls.currentTheme]);
   obstacles.reset(-30);
   updateHud();
 }
@@ -128,6 +194,8 @@ function resetGame() {
 function updateHud() {
   scoreEl.textContent = String(Math.floor(score));
   gemsEl.textContent = `⬥ ${gems}`;
+  livesEl.innerHTML =
+    '♥'.repeat(lives) + `<span class="lost">${'♥'.repeat(MAX_LIVES - lives)}</span>`;
 }
 
 function startGame() {
@@ -155,6 +223,40 @@ function endGame() {
   bestEl.textContent = `Best: ${Math.floor(best)}`;
   finalScoreEl.textContent = String(Math.floor(score));
   gameoverOverlay.classList.remove('hidden');
+
+  if (FX.particleBursts) {
+    spawnBurst(burstPool, player.x, player.y, PLAYER_Z, CRASH_BURST_COLOR, 50, 4.5, 0.65);
+  }
+  if (FX.screenShake) {
+    shakeIntensity = 0.55;
+  }
+}
+
+// A wall hit costs one life instead of ending the round outright — only
+// reaching zero lives finishes it. The invulnerability window stops a
+// single bad pass through a wall from chaining into multiple life losses
+// off the same or the next ring before the player can react, and doubles
+// as the duration of the ship's blink (see tick) so the flicker itself
+// communicates exactly how long the grace window lasts.
+function handleHit() {
+  const elapsedSeconds = elapsed / 60;
+  if (elapsedSeconds < invulnerableUntil) return;
+  invulnerableUntil = elapsedSeconds + HIT_INVULNERABILITY_SECONDS;
+
+  lives -= 1;
+  updateHud();
+
+  if (lives <= 0) {
+    endGame();
+    return;
+  }
+
+  if (FX.particleBursts) {
+    spawnBurst(burstPool, player.x, player.y, PLAYER_Z, CRASH_BURST_COLOR, 32, 3.5, 0.5);
+  }
+  if (FX.screenShake) {
+    shakeIntensity = 0.4;
+  }
 }
 
 document.getElementById('restart-button').addEventListener('click', startGame);
@@ -221,12 +323,26 @@ function tick() {
     player.x = Math.cos(player.angle) * RING_RADIUS;
     player.y = Math.sin(player.angle) * RING_RADIUS;
 
-    obstacles.update(speed * dt, PLAYER_Z, player.x, player.y, {
+    obstacles.update(speed * dt, PLAYER_Z, player.x, player.y, elapsed / 60, {
       onPass: () => {},
-      onCollide: endGame,
-      onGem: () => {
+      onCollide: handleHit,
+      onGem: (gx, gy, gz) => {
         gems += 1;
         score += 25;
+        if (FX.particleBursts) {
+          spawnBurst(pickupBurstPool, gx, gy, gz, GEM_BURST_COLOR, 45, 4.5, 0.55);
+        }
+      },
+      onLife: (lx, ly, lz) => {
+        if (lives < MAX_LIVES) {
+          lives += 1;
+          updateHud();
+        } else {
+          score += 15; // already topped up — small consolation bonus instead of a wasted pickup
+        }
+        if (FX.particleBursts) {
+          spawnBurst(pickupBurstPool, lx, ly, lz, LIFE_BURST_COLOR, 45, 4.5, 0.6);
+        }
       },
     });
 
@@ -234,7 +350,20 @@ function tick() {
     scrollSpeedParticles(speedParticles, speed * dt, PLAYER_Z);
     scrollTunnelWalls(walls, speed * dt);
 
+    // Periodic "the tunnel changes color" beat. First one at 20s, then every
+    // 22-32s after that (see constants above). Instant swap, no fade/window.
+    if (elapsed / 60 >= nextEnvironmentEventAt) {
+      advanceTunnelTheme(walls);
+      nextEnvironmentEventAt +=
+        ENVIRONMENT_EVENT_INTERVAL_MIN + Math.random() * (ENVIRONMENT_EVENT_INTERVAL_MAX - ENVIRONMENT_EVENT_INTERVAL_MIN);
+    }
+
     updateHud();
+  }
+
+  if (walls.currentTheme !== lastSeenTheme) {
+    lastSeenTheme = walls.currentTheme;
+    obstacles.setThemeHue(THEME_HUE_CENTERS[lastSeenTheme]);
   }
 
   ship.position.set(player.x, player.y, PLAYER_Z);
@@ -244,11 +373,67 @@ function tick() {
   // identity (no rotation).
   ship.rotation.z = player.angle + Math.PI / 2;
 
+  // Engine trail runs whenever the ship is "powered on" — countdown (idle
+  // glow) and playing — but stops the instant it crashes. Spawn particles at
+  // the engine's world position, drifting +Z (the direction that reads as
+  // "backward" here, matching the same convention as everything else
+  // scrolling forward) at roughly the tunnel's own scroll speed.
+  if (FX.engineTrail && state !== 'gameover') {
+    engineEmitTimer += dt / 60;
+    const EMIT_INTERVAL = 0.02;
+    const engineZ = ship.position.z + 0.48;
+    const trailSpeed = speed * 60;
+    while (engineEmitTimer > EMIT_INTERVAL) {
+      engineEmitTimer -= EMIT_INTERVAL;
+      const jx = (Math.random() - 0.5) * 0.06;
+      const jy = (Math.random() - 0.5) * 0.06;
+      enginePool.spawn(ship.position.x, ship.position.y, engineZ, jx, jy, trailSpeed, ENGINE_COLOR, 0.35);
+    }
+  }
+  enginePool.update(dt / 60);
+  if (FX.particleBursts) {
+    burstPool.update(dt / 60);
+    pickupBurstPool.update(dt / 60);
+  }
+
+  // Fast, obvious blink for the duration of post-hit invulnerability so the
+  // grace window is felt, not just implied by the shake.
+  const elapsedSeconds = elapsed / 60;
+  if (state === 'playing' && elapsedSeconds < invulnerableUntil) {
+    ship.visible = Math.floor(elapsedSeconds * 14) % 2 === 0;
+  } else {
+    ship.visible = true;
+  }
+
   // Camera stays close to the tube's central axis (Tunnel Rush keeps a
   // fixed forward view) with only a light parallax nudge toward the ship.
   camera.position.x = THREE.MathUtils.lerp(camera.position.x, player.x * 0.12, 0.08);
   camera.position.y = THREE.MathUtils.lerp(camera.position.y, player.y * 0.12, 0.08);
   camera.lookAt(player.x * 0.05, player.y * 0.05, PLAYER_Z - 10);
+
+  // Speed-based FOV kick: a wider field of view as speed ramps up reads as
+  // "warping faster" for free, no shader needed.
+  if (FX.speedFovKick) {
+    const speedT = (speed - BASE_SPEED) / (MAX_SPEED - BASE_SPEED);
+    const targetFov = CAMERA_FOV + speedT * 8;
+    if (Math.abs(camera.fov - targetFov) > 0.01) {
+      camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.05);
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  // Screen shake decays each frame; only non-zero right after a crash.
+  if (FX.screenShake && shakeIntensity > 0.001) {
+    camera.position.x += (Math.random() - 0.5) * shakeIntensity;
+    camera.position.y += (Math.random() - 0.5) * shakeIntensity;
+    shakeIntensity *= 0.9;
+  } else {
+    shakeIntensity = 0;
+  }
+
+  if (rgbShiftPass) {
+    rgbShiftPass.uniforms.amount.value = 0.0008 + (speed / MAX_SPEED) * 0.0025;
+  }
 
   // Light follows the ship's position directly — it swings all the way
   // around the tube, so the light needs to swing with it too.

@@ -66,6 +66,18 @@ canvas {
   margin-top: 2px;
 }
 
+.hud .lives {
+  font-size: 20px;
+  text-align: right;
+  color: #ff5a7a;
+  letter-spacing: 2px;
+  margin-bottom: 2px;
+}
+
+.hud .lives .lost {
+  opacity: 0.25;
+}
+
 .overlay {
   position: absolute;
   inset: 0;
