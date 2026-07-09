@@ -147,7 +147,9 @@ export function emitTrail(pool, x, y, z, dt) {
 // scrolled past that moment, so the tail stretches behind the craft and
 // lengthens with speed exactly like the pylons/streaks do.
 
-export function createRibbonTrail(scene, { maxPoints = 22, width = 0.55, color = 0x5fe0ff, sampleInterval = 0.02 } = {}) {
+export function createRibbonTrail(scene, {
+  maxPoints = 22, width = 0.55, color = 0x5fe0ff, sampleInterval = 0.02, opacity = 1,
+} = {}) {
   const positions = new Float32Array(maxPoints * 2 * 3);
   const colors = new Float32Array(maxPoints * 2 * 3);
   const indices = [];
@@ -219,7 +221,7 @@ export function createRibbonTrail(scene, { maxPoints = 22, width = 0.55, color =
       positions[ri * 3 + 1] = p.y;
       positions[ri * 3 + 2] = p.z - wz * halfW;
 
-      const alpha = t;
+      const alpha = t * opacity;
       colors[li * 3 + 0] = baseColor.r * alpha;
       colors[li * 3 + 1] = baseColor.g * alpha;
       colors[li * 3 + 2] = baseColor.b * alpha;

@@ -74,7 +74,7 @@ const coinField = createCoinField(scene);
 
 const burstPool = new ParticlePool(scene, 400, 0.14);
 const speedStreaks = createSpeedStreaks(scene);
-const ribbonTrail = createRibbonTrail(scene, { color: 0x5fe0ff, width: 0.55 });
+const ribbonTrail = createRibbonTrail(scene, { color: 0x5fe0ff, width: 0.85, opacity: 0.5, maxPoints: 14 });
 const cameraRig = createCameraRig(camera);
 const trailWorldPos = new THREE.Vector3();
 
