@@ -1,43 +1,43 @@
 import * as THREE from 'three';
 import { tunnelCenterAt, THEME_HUE_CENTERS } from './tunnel.js';
+import { GAME_CONFIG } from './gameConfig.js';
 
 // --- Difficulty ramp -------------------------------------------------------
 // Everything here is keyed off "elapsed run time in seconds at the moment a
 // ring is created/recycled" — each ring locks in its own difficulty for its
 // whole lifetime, so nothing changes shape while it's already on screen.
-//
-// Tune the run's opening feel by adjusting these three knobs:
-const DIFFICULTY_RAMP_SECONDS = 16; // time from round start to full difficulty
-const EASY_GAP_WIDTH = Math.PI * 1.5; // ~270 degrees open — only a small blocker
-const HARD_GAP_WIDTH = Math.PI / 2.2; // ~82 degrees open — today's full "big blocker" wall
-const EASY_SPACING_BONUS = 16; // extra world-units between rings while still easy
-const EASY_INNER_RADIUS_FACTOR = 0.78; // early obstacles are a thin band near the ship's lane, not a full wall reaching to the tunnel's center
-
-const LIFE_SPAWN_CHANCE = 0.14; // per ring, independent of gem
+// Tunables live in gameConfig.js (GAME_CONFIG.difficulty).
 
 // --- Pickups ---------------------------------------------------------------
-// Up to 3 pickups per ring, positioned as an offset (angle-fraction-through-
-// the-gap, z-offset-from-the-ring) rather than always dead-center — picked
-// randomly per ring so collectibles read as varied, not a fixed metronome.
-const MAX_PICKUP_SLOTS = 3;
-const PICKUP_COLLECT_RADIUS = 1.05; // was 0.7 — +50%, much more forgiving to grab
-const PICKUP_Z_WINDOW = 1.5; // was 1 — +50%, matches the radius bump
+// Up to maxSlots pickups per cluster, positioned as an offset (angle-
+// fraction-through-the-gap, z-offset-from-the-ring) rather than always
+// dead-center. Cluster spawn rate, spacing, and pattern shape are all
+// tunable in gameConfig.js (GAME_CONFIG.pickups).
 
-function pickupPattern() {
+function pickupPattern(gapWidth) {
+  const cfg = GAME_CONFIG.pickups;
+  const { centered, offCenter } = cfg.clusterShapeWeights;
   const r = Math.random();
-  if (r < 0.35) {
+  if (r < centered) {
     return [{ angleFrac: 0.5, zOffset: 0 }]; // centered — the classic placement, kept as one option
   }
-  if (r < 0.65) {
+  if (r < centered + offCenter) {
     return [{ angleFrac: 0.15 + Math.random() * 0.7, zOffset: 0 }]; // off-center, not always in the middle
   }
-  // a short scattered line the player sweeps through while adjusting angle
-  const startFrac = 0.12 + Math.random() * 0.2;
-  const endFrac = 0.68 + Math.random() * 0.2;
+  // A short scattered line the player sweeps through while adjusting angle.
+  // Spread is an absolute angular cap (not a fraction of gapWidth) so it
+  // stays reachable even when the gap is very wide early in a run.
+  const spreadRad = Math.min(cfg.lineMaxAngularSpread, gapWidth * 0.8);
+  const spreadFrac = spreadRad / gapWidth;
+  const jitter = (Math.random() - 0.5) * 0.1;
+  const margin = spreadFrac / 2 + 0.05;
+  const center = THREE.MathUtils.clamp(0.5 + jitter, margin, 1 - margin);
+  const startFrac = center - spreadFrac / 2;
+  const endFrac = center + spreadFrac / 2;
   return [
-    { angleFrac: startFrac, zOffset: -5 },
+    { angleFrac: startFrac, zOffset: -cfg.lineZSpan },
     { angleFrac: (startFrac + endFrac) / 2, zOffset: 0 },
-    { angleFrac: endFrac, zOffset: 5 },
+    { angleFrac: endFrac, zOffset: cfg.lineZSpan },
   ];
 }
 
@@ -77,18 +77,43 @@ function createHeartGeometry() {
   return geo;
 }
 
-function difficultyT(elapsedSeconds) {
-  return Math.min(1, Math.max(0, elapsedSeconds / DIFFICULTY_RAMP_SECONDS));
+// Walks the tier list to find which plateau `elapsedSeconds` falls in, and
+// blends into the next one only during the last `transitionSeconds` of a
+// tier's hold — see the tiers comment in gameConfig.js.
+function tierAt(elapsedSeconds) {
+  const { tiers, transitionSeconds } = GAME_CONFIG.difficulty;
+  let start = 0;
+  for (let i = 0; i < tiers.length; i++) {
+    const tier = tiers[i];
+    const next = tiers[i + 1];
+    const end = start + tier.holdSeconds;
+    if (!next || elapsedSeconds < end) {
+      if (next) {
+        const blendStart = end - transitionSeconds;
+        if (elapsedSeconds >= blendStart) {
+          const blendT = THREE.MathUtils.clamp((elapsedSeconds - blendStart) / transitionSeconds, 0, 1);
+          return {
+            gapWidth: THREE.MathUtils.lerp(tier.gapWidth, next.gapWidth, blendT),
+            innerRadiusFactor: THREE.MathUtils.lerp(tier.innerRadiusFactor, next.innerRadiusFactor, blendT),
+            spacingBonus: THREE.MathUtils.lerp(tier.spacingBonus, next.spacingBonus, blendT),
+          };
+        }
+      }
+      return tier;
+    }
+    start = end;
+  }
+  return tiers[tiers.length - 1];
 }
 
 // Every difficulty-dependent parameter a ring needs, derived from how far
 // into the run it was born.
 function difficultyParams(elapsedSeconds, ringRadius, baseSpacing) {
-  const t = difficultyT(elapsedSeconds);
+  const tier = tierAt(elapsedSeconds);
   return {
-    gapWidth: THREE.MathUtils.lerp(EASY_GAP_WIDTH, HARD_GAP_WIDTH, t),
-    innerRadius: THREE.MathUtils.lerp(ringRadius * EASY_INNER_RADIUS_FACTOR, 0, t),
-    spacing: baseSpacing + THREE.MathUtils.lerp(EASY_SPACING_BONUS, 0, t),
+    gapWidth: tier.gapWidth,
+    innerRadius: ringRadius * tier.innerRadiusFactor,
+    spacing: baseSpacing + tier.spacingBonus,
   };
 }
 
@@ -151,6 +176,9 @@ export class ObstacleField {
     this.ringRadius = ringRadius;
     this.baseSpacing = spacing;
     this.themeHue = THEME_HUE_CENTERS[0];
+    // Rings since the last spawned pickup cluster — starts high so the very
+    // first eligible ring can spawn one right away (subject to spawnChance).
+    this.ringsSincePickupCluster = GAME_CONFIG.pickups.minRingsBetweenClusters;
     this.rings = [];
     let z = startZ;
     for (let i = 0; i < count; i++) {
@@ -168,17 +196,37 @@ export class ObstacleField {
 
   createPickupSlots() {
     const slots = [];
-    for (let i = 0; i < MAX_PICKUP_SLOTS; i++) {
+    for (let i = 0; i < GAME_CONFIG.pickups.maxSlots; i++) {
       slots.push({ mesh: new THREE.Mesh(GEM_GEO, GEM_MAT), active: false, angleFrac: 0.5, zOffset: 0, z: 0 });
       this.scene.add(slots[i].mesh);
     }
     return slots;
   }
 
-  applyPickupPattern(ring) {
-    const isLife = Math.random() < LIFE_SPAWN_CHANCE;
+  // Decides whether this ring gets a pickup cluster at all, gated by both a
+  // minimum-spacing counter and a spawn chance (see gameConfig.js) — without
+  // this gate every single ring spawned a cluster, leaving zero breathing
+  // room between them.
+  applyPickupPattern(ring, elapsedNow) {
+    const cfg = GAME_CONFIG.pickups;
+    const eligible = this.ringsSincePickupCluster >= cfg.minRingsBetweenClusters;
+    const spawnsCluster = eligible && Math.random() < cfg.spawnChance;
+
+    if (!spawnsCluster) {
+      this.ringsSincePickupCluster += 1;
+      ring.pickupType = 'gem';
+      ring.pickups.forEach((slot) => {
+        slot.active = false;
+        slot.collected = false;
+        slot.mesh.visible = false;
+      });
+      return;
+    }
+
+    this.ringsSincePickupCluster = 0;
+    const isLife = elapsedNow >= cfg.lifeMinStartSeconds && Math.random() < cfg.lifeChance;
     ring.pickupType = isLife ? 'life' : 'gem';
-    const points = pickupPattern();
+    const points = pickupPattern(ring.gapWidth);
     ring.pickups.forEach((slot, i) => {
       const point = points[i];
       slot.active = Boolean(point);
@@ -237,7 +285,7 @@ export class ObstacleField {
       passed: false,
       spacing: params.spacing,
     };
-    this.applyPickupPattern(ring);
+    this.applyPickupPattern(ring, elapsedNow);
     placeWall(ring);
     placeGates(ring, this.ringRadius);
     placePickups(ring, this.ringRadius);
@@ -261,13 +309,14 @@ export class ObstacleField {
     ring.z = newZ;
     ring.passed = false;
 
-    this.applyPickupPattern(ring);
+    this.applyPickupPattern(ring, elapsedNow);
     placeWall(ring);
     placeGates(ring, this.ringRadius);
     placePickups(ring, this.ringRadius);
   }
 
   reset(startZ) {
+    this.ringsSincePickupCluster = GAME_CONFIG.pickups.minRingsBetweenClusters;
     let z = startZ;
     this.rings.forEach((ring) => {
       this.recycle(ring, z, 0);
@@ -307,7 +356,7 @@ export class ObstacleField {
         const dz = slot.z - playerZ;
         const dx = slot.mesh.position.x - playerX;
         const dy = slot.mesh.position.y - playerY;
-        if (Math.abs(dz) < PICKUP_Z_WINDOW && Math.hypot(dx, dy) < PICKUP_COLLECT_RADIUS) {
+        if (Math.abs(dz) < GAME_CONFIG.pickups.collectZWindow && Math.hypot(dx, dy) < GAME_CONFIG.pickups.collectRadius) {
           slot.collected = true;
           slot.mesh.visible = false;
           if (ring.pickupType === 'life') {
