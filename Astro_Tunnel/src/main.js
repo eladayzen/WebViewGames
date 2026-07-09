@@ -88,6 +88,12 @@ app.appendChild(renderer.domElement);
 initPointerInput(renderer.domElement);
 
 const scene = new THREE.Scene();
+// Without this, empty space (anything the tube doesn't cover) falls back to
+// the renderer's default black clear color, and bloom bleeding off the key
+// light/wall specular reads as a washed-out grey/white haze on top of it
+// instead of a deliberate color. Matches the tunnel's first color theme's
+// own deep purple (tunnel.js THEME_PALETTES[0].bg0) for consistency.
+scene.background = new THREE.Color(0x140b30);
 scene.fog = new THREE.FogExp2(0x050318, 0.026);
 
 const camera = new THREE.PerspectiveCamera(CAMERA_FOV, ASPECT, 0.1, 200);
@@ -155,7 +161,13 @@ if (FX.chromaticAberration) {
 if (FX.vignette) {
   const vignettePass = new ShaderPass(VignetteShader);
   vignettePass.uniforms.offset.value = 1.1;
-  vignettePass.uniforms.darkness.value = 1.3;
+  // VignetteShader targets vec3(1.0 - darkness) at full vignette strength,
+  // so darkness must stay in [0, 1] — anything above 1 sends that target
+  // negative, and negative color feeding the sRGB output conversion
+  // downstream produces undefined GPU output. That's what the washed-out
+  // grey/white haze across the whole frame actually was: darkness was set
+  // to 1.3, out of the shader's valid range.
+  vignettePass.uniforms.darkness.value = 1.0;
   composer.addPass(vignettePass);
 }
 

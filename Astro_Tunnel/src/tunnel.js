@@ -124,6 +124,14 @@ function createGridTexture(palette) {
   // 40 repeats over the 400-unit wall == 10 world-units per tile.
   texture.repeat.set(6, 40);
   texture.colorSpace = THREE.SRGBColorSpace;
+  // The camera sits deep inside this tube, so the wall right around it is
+  // seen at an extreme grazing angle (near-parallel to the surface).
+  // Without anisotropic filtering, the GPU's mipmapping averages that
+  // whole grazing region down to a flat grey smear instead of resolving
+  // the actual panel/grid pattern — that smear is what was reading as a
+  // stray "white/grey background". Three clamps this to the GPU's actual
+  // max automatically, so a high fixed value here is always safe.
+  texture.anisotropy = 16;
   return texture;
 }
 
