@@ -1,109 +1,140 @@
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { createBlobShadow } from './shadow.js';
 
-// Stylized toy racer: chunky rounded/beveled panels, glossy paint (real
-// specular highlights, not flat toon shading -- that's what makes these
-// read as "detailed" against a reference), big contrasting-rim wheels.
-const WHEEL_RADIUS = 0.46;
+// Simple, sharp-edged hoverboard -- flat angular deck, a diamond-cut nose,
+// a blade dorsal fin, swept-back side fins. No rounded bevels anywhere
+// (deliberately plainer than the earlier "toy car" pass): a handful of flat
+// boxes, glossy paint, no wheels -- it hovers, with a glowing thruster
+// underneath and an idle float bob.
+const HOVER_HEIGHT = 0.22;
+const HOVER_AMPLITUDE = 0.05;
+const HOVER_SPEED = 2.6;
+const THRUSTER_COLOR = 0x5fe0ff;
+
+// Self-lit a little (not just base color) so paint stays vivid against the
+// dim neon-void ambient instead of reading as a dark, muddy color under
+// low light -- this is what "much brighter" actually needed, not just more
+// saturated hex values.
+function glossy(color, extra = {}) {
+  return new THREE.MeshStandardMaterial({
+    color, roughness: 0.25, metalness: 0.15,
+    emissive: color, emissiveIntensity: 0.32,
+    ...extra,
+  });
+}
+
+function createGlowTexture(colorHex) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  const c = new THREE.Color(colorHex);
+  const rgb = `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`;
+  const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, `rgba(${rgb},0.95)`);
+  grad.addColorStop(0.55, `rgba(${rgb},0.4)`);
+  grad.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(canvas);
+}
+
+let thrusterGlowMat = null;
+function getThrusterGlowMaterial() {
+  if (!thrusterGlowMat) {
+    thrusterGlowMat = new THREE.MeshBasicMaterial({
+      map: createGlowTexture(THRUSTER_COLOR),
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+    });
+  }
+  return thrusterGlowMat;
+}
+
 const HEADLIGHT_MAT = new THREE.MeshBasicMaterial({ color: 0xfff2c0 });
 const TAILLIGHT_MAT = new THREE.MeshBasicMaterial({ color: 0xff4444 });
-const TIRE_MAT = new THREE.MeshStandardMaterial({ color: 0x1c1c20, roughness: 0.85 });
 
-function glossy(color, extra = {}) {
-  return new THREE.MeshStandardMaterial({ color, roughness: 0.28, metalness: 0.12, ...extra });
-}
-
-function createWheel(rimMat, x, y, z) {
-  const pivot = new THREE.Group();
-  pivot.position.set(x, y, z);
-  pivot.rotation.z = Math.PI / 2; // lay cylinders on their side, axis along local Y
-  const spin = new THREE.Group();
-  pivot.add(spin);
-  const tire = new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, 0.36, 14), TIRE_MAT);
-  spin.add(tire);
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_RADIUS * 0.5, WHEEL_RADIUS * 0.5, 0.38, 8), rimMat);
-  spin.add(rim);
-  return { pivot, spin };
-}
-
-// Shared primitive-built car factory -- player and traffic cars are both
-// this same shape, just different colors/detail level, so there's one
-// place to tune the silhouette.
+// Shared primitive-built hoverboard factory -- player and traffic craft are
+// both this same shape, just different colors/detail level.
 export function createCarModel({ bodyColor, accentColor = 0xff8a2f, detailed = true }) {
   const group = new THREE.Group();
   const bodyMat = glossy(bodyColor);
   const accentMat = glossy(accentColor);
-  const darkMat = glossy(0x1a1a22, { roughness: 0.5 });
+  const darkMat = glossy(0x14141a, { roughness: 0.45 });
 
-  const body = new THREE.Mesh(new RoundedBoxGeometry(1.7, 0.6, 3.1, 3, 0.25), bodyMat);
-  body.position.y = 0.56;
-  group.add(body);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.14, 2.5), bodyMat);
+  deck.position.y = 0.32;
+  group.add(deck);
 
-  const cabin = new THREE.Mesh(new RoundedBoxGeometry(1.15, 0.48, 1.5, 3, 0.2), bodyMat);
-  cabin.position.set(0, 0.98, -0.15);
-  group.add(cabin);
+  // Diamond-cut nose cap: a box rotated 45 deg pokes a sharp point out past
+  // the deck's flat front edge -- an angular tip with no cone/rounding.
+  const noseCap = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.14, 0.85), bodyMat);
+  noseCap.rotation.y = Math.PI / 4;
+  noseCap.position.set(0, 0.32, -1.68);
+  group.add(noseCap);
 
-  const grille = new THREE.Mesh(new RoundedBoxGeometry(1.0, 0.26, 0.1, 2, 0.04), darkMat);
-  grille.position.set(0, 0.5, -1.58);
-  group.add(grille);
-
-  if (detailed) {
-    const hoodScoop = new THREE.Mesh(new RoundedBoxGeometry(0.46, 0.14, 0.46, 2, 0.05), darkMat);
-    hoodScoop.position.set(0, 0.9, -1.1);
-    group.add(hoodScoop);
-
-    const spoiler = new THREE.Mesh(new RoundedBoxGeometry(1.5, 0.1, 0.32, 2, 0.05), accentMat);
-    spoiler.position.set(0, 0.96, 1.48);
-    group.add(spoiler);
-
-    const strutGeo = new RoundedBoxGeometry(0.08, 0.24, 0.08, 1, 0.02);
-    for (const x of [-0.6, 0.6]) {
-      const strut = new THREE.Mesh(strutGeo, darkMat);
-      strut.position.set(x, 0.82, 1.48);
-      group.add(strut);
-    }
-
-    const stripeGeo = new THREE.BoxGeometry(0.04, 0.1, 2.6);
-    for (const side of [-1, 1]) {
-      const stripe = new THREE.Mesh(stripeGeo, accentMat);
-      stripe.position.set(side * 0.87, 0.42, -0.05);
-      group.add(stripe);
-    }
-  }
-
-  const lightGeo = new THREE.BoxGeometry(0.28, 0.14, 0.06);
-  for (const x of [-0.6, 0.6]) {
+  const lightGeo = new THREE.BoxGeometry(0.26, 0.1, 0.06);
+  for (const x of [-0.55, 0.55]) {
     const hl = new THREE.Mesh(lightGeo, HEADLIGHT_MAT);
-    hl.position.set(x, 0.55, -1.58);
+    hl.position.set(x, 0.32, -1.55);
     group.add(hl);
     const tl = new THREE.Mesh(lightGeo, TAILLIGHT_MAT);
-    tl.position.set(x, 0.55, 1.56);
+    tl.position.set(x, 0.32, 1.2);
     group.add(tl);
   }
 
-  const wheelY = WHEEL_RADIUS - 0.05;
-  const wheelPositions = [
-    [-0.95, wheelY, -1.02], [0.95, wheelY, -1.02],
-    [-0.95, wheelY, 1.02], [0.95, wheelY, 1.02],
-  ];
-  const wheels = wheelPositions.map(([x, y, z]) => {
-    const wheel = createWheel(accentMat, x, y, z);
-    group.add(wheel.pivot);
-    return wheel;
-  });
+  if (detailed) {
+    const dorsal = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.34, 1.2), darkMat);
+    dorsal.position.set(0, 0.5, -0.15);
+    group.add(dorsal);
 
-  const shadow = createBlobShadow(2.8);
+    const finGeo = new THREE.BoxGeometry(0.06, 0.3, 0.85);
+    for (const side of [-1, 1]) {
+      const fin = new THREE.Mesh(finGeo, accentMat);
+      fin.position.set(side * 0.76, 0.4, 0.85);
+      fin.rotation.z = side * -0.3;
+      fin.rotation.y = side * 0.18;
+      group.add(fin);
+    }
+
+    // Floating blade spoiler -- no struts, reads as hover-tech rather than
+    // a mounted car part.
+    const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.06, 0.22), accentMat);
+    spoiler.position.set(0, 0.6, 1.25);
+    group.add(spoiler);
+  }
+
+  // Underside thruster glow -- static decal, not a particle system (that's
+  // the trail VFX, layered on top of this in vfx.js).
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 2.2), getThrusterGlowMaterial());
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.set(0, 0.03, 1.1);
+  group.add(glow);
+
+  const shadow = createBlobShadow(2.6);
   shadow.position.y = 0.015;
   group.add(shadow);
 
-  group.userData.wheels = wheels;
+  // World-space mount point for the trail VFX (vfx.js reads this via
+  // getWorldPosition each frame rather than duplicating the rear offset).
+  const trailAnchor = new THREE.Object3D();
+  trailAnchor.position.set(0, 0.1, 1.4);
+  group.add(trailAnchor);
+
+  group.userData.shadow = shadow;
+  group.userData.trailAnchor = trailAnchor;
+  group.userData.hoverPhase = Math.random() * Math.PI * 2;
+  group.position.y = HOVER_HEIGHT;
   return group;
 }
 
-export function spinWheels(car, speed, dt) {
-  const angularSpeed = speed / WHEEL_RADIUS;
-  for (const wheel of car.userData.wheels) {
-    wheel.spin.rotation.y += angularSpeed * dt;
-  }
+export function updateHover(car, dt) {
+  car.userData.hoverPhase += dt * HOVER_SPEED;
+  const y = HOVER_HEIGHT + Math.sin(car.userData.hoverPhase) * HOVER_AMPLITUDE;
+  car.position.y = y;
+  // Shadow is a child (so x/z stay in sync for free); cancel the parent's
+  // y-hover here so it stays pinned to the ground instead of hovering too.
+  car.userData.shadow.position.y = -y + 0.02;
 }

@@ -6,19 +6,12 @@ const ROAD_WIDTH = LANE_WIDTH * 2 + 3.4;
 const ROAD_THICKNESS = 0.5;
 const ROAD_Z = -ROAD_LENGTH / 2 + 20;
 
-function createGlowStripMaterial(colorHex, opacity) {
-  return new THREE.MeshBasicMaterial({
-    color: colorHex, transparent: true, opacity, depthWrite: false,
-    blending: THREE.AdditiveBlending, fog: false,
-  });
-}
-
-// Sci-fi racetrack: glossy magenta surface, a glowing energy line down the
-// center (not lane paint -- a single stylized strip, not traffic markings),
-// and pale rounded curb barriers along both edges.
+// Neon-void racetrack: dark glass-black surface and glowing cyan neon-tube
+// barriers along both edges -- no center line (it interfered with reading
+// traffic in the middle lane).
 export function createRoad() {
-  const topMat = new THREE.MeshStandardMaterial({ color: 0x8a2fb0, roughness: 0.35, metalness: 0.2 });
-  const sideMat = new THREE.MeshStandardMaterial({ color: 0x5a1f78, roughness: 0.6 });
+  const topMat = new THREE.MeshStandardMaterial({ color: 0x0e0f18, roughness: 0.3, metalness: 0.25 });
+  const sideMat = new THREE.MeshStandardMaterial({ color: 0x08090f, roughness: 0.6 });
   const materials = [sideMat, sideMat, topMat, sideMat, sideMat, sideMat];
 
   const road = new THREE.Mesh(
@@ -30,24 +23,8 @@ export function createRoad() {
   const group = new THREE.Group();
   group.add(road);
 
-  const coreLine = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.22, ROAD_LENGTH),
-    createGlowStripMaterial(0xff8bf0, 0.95)
-  );
-  coreLine.rotation.x = -Math.PI / 2;
-  coreLine.position.set(0, 0.015, ROAD_Z);
-  group.add(coreLine);
-
-  const softGlow = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.1, ROAD_LENGTH),
-    createGlowStripMaterial(0xd25cff, 0.22)
-  );
-  softGlow.rotation.x = -Math.PI / 2;
-  softGlow.position.set(0, 0.012, ROAD_Z);
-  group.add(softGlow);
-
-  const barrierMat = new THREE.MeshStandardMaterial({ color: 0xf0eef7, roughness: 0.4 });
-  const barrierGeo = new THREE.CapsuleGeometry(0.22, ROAD_LENGTH - 1, 4, 8);
+  const barrierGeo = new THREE.CapsuleGeometry(0.12, ROAD_LENGTH - 1, 4, 8);
+  const barrierMat = new THREE.MeshBasicMaterial({ color: 0x6ff0ff });
   for (const side of [-1, 1]) {
     const barrier = new THREE.Mesh(barrierGeo, barrierMat);
     barrier.rotation.x = Math.PI / 2;

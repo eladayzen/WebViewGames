@@ -2,8 +2,8 @@ export const LANE_WIDTH = 3.2;
 export const LANE_X = [-LANE_WIDTH, 0, LANE_WIDTH];
 export const PLAYER_Z = 0;
 
-export const BASE_SPEED = 16; // m/s
-export const MAX_SPEED = 42; // m/s
+export const BASE_SPEED = 26; // m/s
+export const MAX_SPEED = 64; // m/s
 export const SPEED_RAMP_TIME = 90; // seconds to reach max speed
 
 export const LANE_RESPONSE = 9; // exponential lane-follow rate (runner controller)
@@ -21,8 +21,8 @@ export const INVINCIBILITY_TIME = 1.2; // seconds of no-collision + blink after 
 export const DESPAWN_Z = 12; // behind camera, safe to recycle
 export const SPAWN_Z = -140; // where new objects appear (inside fog, later)
 
-export const BASE_SPAWN_GAP = 46; // meters of travel between pattern spawns
-export const MIN_SPAWN_GAP = 22;
+export const BASE_SPAWN_GAP = 72; // meters of travel between pattern spawns
+export const MIN_SPAWN_GAP = 40;
 export const SPAWN_GAP_RAMP_TIME = 90; // seconds to reach MIN_SPAWN_GAP
 
 export const TRAFFIC_COLLISION_Z = 2.4;

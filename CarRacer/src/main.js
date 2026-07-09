@@ -7,13 +7,19 @@ import { createTrafficField, spawnTraffic, updateTrafficField } from './traffic.
 import { createCoinField, spawnCoin, updateCoinField } from './coins.js';
 import { createRoad } from './road.js';
 import { createPylons, updatePylons } from './pylons.js';
-import { createSkyBackground, createClouds, createSpeedStreaks } from './sky.js';
+import { createSkyBackground } from './sky.js';
+import {
+  ParticlePool, spawnCoinBurst, spawnCrashBurst, emitTrail,
+  createSpeedStreaks, updateSpeedStreaks, createRibbonTrail,
+} from './vfx.js';
+import { createCameraRig, updateCameraRig, triggerShake } from './camera-rig.js';
+import { createPostFX, resizePostFX, updatePostFXWatchdog, renderPostFX } from './postfx.js';
 import { pickTemplate } from './patterns.js';
 import {
   LANE_X, PLAYER_Z, BASE_SPEED, MAX_SPEED, SPEED_RAMP_TIME,
   SPAWN_Z, BASE_SPAWN_GAP, MIN_SPAWN_GAP, SPAWN_GAP_RAMP_TIME,
-  TRAFFIC_COLLISION_Z, TRAFFIC_COLLISION_X, COIN_PICKUP_Z, COIN_PICKUP_X,
-  STARTING_LIVES, INVINCIBILITY_TIME,
+  TRAFFIC_COLLISION_Z, TRAFFIC_COLLISION_X, TRAFFIC_NEAR_MISS_X,
+  COIN_PICKUP_Z, COIN_PICKUP_X, STARTING_LIVES, INVINCIBILITY_TIME,
 } from './constants.js';
 
 if (document.readyState === 'loading') {
@@ -40,22 +46,20 @@ const btnLeft = document.getElementById('btnLeft');
 const btnRight = document.getElementById('btnRight');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 app.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = createSkyBackground();
-scene.fog = new THREE.Fog(0xbfe9ee, 60, 165);
+scene.fog = new THREE.Fog(0x0a0e1e, 70, 190);
 
-const camera = new THREE.PerspectiveCamera(62, ASPECT_W / ASPECT_H, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(62, ASPECT_W / ASPECT_H, 0.1, 220);
 
-const hemi = new THREE.HemisphereLight(0xffffff, 0xcf8fe0, 1.15);
+const hemi = new THREE.HemisphereLight(0x2a3a5a, 0x0a0812, 0.55);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xffffff, 0.85);
-sun.position.set(8, 14, 7);
-scene.add(sun);
-
-createClouds(scene);
-createSpeedStreaks(scene);
+const fill = new THREE.DirectionalLight(0x8fb0ff, 0.35);
+fill.position.set(4, 10, 6);
+scene.add(fill);
 
 const road = createRoad();
 scene.add(road);
@@ -67,6 +71,14 @@ scene.add(player);
 
 const trafficField = createTrafficField(scene);
 const coinField = createCoinField(scene);
+
+const burstPool = new ParticlePool(scene, 400, 0.14);
+const speedStreaks = createSpeedStreaks(scene);
+const ribbonTrail = createRibbonTrail(scene, { color: 0x5fe0ff, width: 0.55 });
+const cameraRig = createCameraRig(camera);
+const trailWorldPos = new THREE.Vector3();
+
+const postfx = createPostFX(renderer, scene, camera, window.innerWidth, window.innerHeight);
 
 initPointerInput(renderer.domElement);
 initButtonInput(btnLeft, btnRight);
@@ -83,7 +95,7 @@ function fitStageToAspect() {
   app.style.width = `${w}px`;
   app.style.height = `${h}px`;
   renderer.setSize(w, h, true);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  resizePostFX(postfx, w, h);
   camera.aspect = ASPECT_W / ASPECT_H;
   camera.updateProjectionMatrix();
 }
@@ -119,6 +131,8 @@ let lives = STARTING_LIVES;
 let invincibleTimer = 0;
 let laneIndex = 1;
 let distanceSinceSpawn = 0;
+let comboCount = 0;
+let comboTimer = 0;
 
 function resetGame() {
   state = 'playing';
@@ -129,12 +143,15 @@ function resetGame() {
   invincibleTimer = 0;
   laneIndex = 1;
   distanceSinceSpawn = 0;
+  comboCount = 0;
+  comboTimer = 0;
   setPlayerLane(player, laneIndex);
   player.position.x = LANE_X[laneIndex];
   player.rotation.z = 0;
   player.visible = true;
   for (const s of trafficField.pool) { s.active = false; s.mesh.visible = false; }
   for (const s of coinField.pool) { s.active = false; s.mesh.visible = false; }
+  ribbonTrail.reset();
   gameoverEl.classList.add('hidden');
   updateHud();
 }
@@ -169,6 +186,8 @@ function trySpawnPattern() {
 }
 
 function handleTrafficHit(slot) {
+  spawnCrashBurst(burstPool, slot.mesh.position.x, slot.mesh.position.y + 0.5, slot.mesh.position.z);
+  triggerShake(cameraRig, 0.4);
   slot.active = false;
   slot.mesh.visible = false;
   lives -= 1;
@@ -180,28 +199,42 @@ function handleTrafficHit(slot) {
   }
 }
 
-function checkCollisionsAndPickups() {
+function checkCollisionsAndPickups(dt) {
   if (invincibleTimer <= 0) {
     for (const s of trafficField.pool) {
       if (!s.active) continue;
-      if (
-        Math.abs(s.z - PLAYER_Z) < TRAFFIC_COLLISION_Z &&
-        Math.abs(LANE_X[s.laneIndex] - player.position.x) < TRAFFIC_COLLISION_X
-      ) {
+      const lateralDist = Math.abs(LANE_X[s.laneIndex] - player.position.x);
+      if (Math.abs(s.z - PLAYER_Z) < TRAFFIC_COLLISION_Z && lateralDist < TRAFFIC_COLLISION_X) {
         handleTrafficHit(s);
         break;
       }
+      if (
+        !s.nearMissChecked &&
+        Math.abs(s.z - PLAYER_Z) < TRAFFIC_COLLISION_Z &&
+        lateralDist < TRAFFIC_NEAR_MISS_X
+      ) {
+        s.nearMissChecked = true;
+        triggerShake(cameraRig, 0.06);
+      }
     }
   }
+
+  comboTimer = Math.max(comboTimer - dt, 0);
+  if (comboTimer <= 0) comboCount = 0;
+
   for (const s of coinField.pool) {
     if (!s.active) continue;
     if (
       Math.abs(s.z - PLAYER_Z) < COIN_PICKUP_Z &&
       Math.abs(LANE_X[s.laneIndex] - player.position.x) < COIN_PICKUP_X
     ) {
+      spawnCoinBurst(burstPool, s.mesh.position.x, s.mesh.position.y, s.mesh.position.z);
       s.active = false;
       s.mesh.visible = false;
       coins += 1;
+      comboCount += 1;
+      comboTimer = 0.9;
+      if (comboCount > 0 && comboCount % 5 === 0) triggerShake(cameraRig, 0.12);
     }
   }
 }
@@ -217,14 +250,6 @@ restartBtn.addEventListener('click', resetGame);
 window.addEventListener('keydown', (e) => {
   if (state === 'gameover' && (e.key === 'Enter' || e.key === ' ')) resetGame();
 });
-
-function updateCamera() {
-  const targetX = player.position.x * 0.5;
-  camera.position.x += (targetX - camera.position.x) * 0.12;
-  camera.position.y = 3.0;
-  camera.position.z = 8.0;
-  camera.lookAt(player.position.x * 0.3, 1.0, -20);
-}
 
 const clock = new THREE.Clock();
 function tick() {
@@ -242,21 +267,26 @@ function tick() {
         laneIndex = THREE.MathUtils.clamp(laneIndex + step, 0, LANE_X.length - 1);
         setPlayerLane(player, laneIndex);
       }
-      updatePlayerCarDiscrete(player, dt, speed);
+      updatePlayerCarDiscrete(player, dt);
     } else {
-      updatePlayerCarContinuous(player, getSteerHold(), dt, speed);
+      updatePlayerCarContinuous(player, getSteerHold(), dt);
     }
 
     updateTrafficField(trafficField, dt, speed);
     updateCoinField(coinField, dt, speed);
     updatePylons(pylons, dt, speed);
+    updateSpeedStreaks(speedStreaks, dt, speed);
+
+    player.userData.trailAnchor.getWorldPosition(trailWorldPos);
+    emitTrail(burstPool, trailWorldPos.x, trailWorldPos.y, trailWorldPos.z, dt);
+    ribbonTrail.update(trailWorldPos.x, trailWorldPos.y, trailWorldPos.z, dt, speed);
 
     if (distanceSinceSpawn >= currentSpawnGap()) {
       distanceSinceSpawn = 0;
       trySpawnPattern();
     }
 
-    checkCollisionsAndPickups();
+    checkCollisionsAndPickups(dt);
 
     if (invincibleTimer > 0) {
       invincibleTimer = Math.max(invincibleTimer - dt, 0);
@@ -266,8 +296,10 @@ function tick() {
     updateHud();
   }
 
-  updateCamera();
-  renderer.render(scene, camera);
+  burstPool.update(dt);
+  updateCameraRig(cameraRig, player, dt, currentSpeed());
+  updatePostFXWatchdog(postfx, dt);
+  renderPostFX(postfx, scene, camera);
   requestAnimationFrame(tick);
 }
 

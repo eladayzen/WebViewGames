@@ -1,10 +1,10 @@
 import { LANE_X, DESPAWN_Z } from './constants.js';
-import { createCarModel, spinWheels } from './car-model.js';
+import { createCarModel, updateHover } from './car-model.js';
 
-const POOL_SIZE = 12;
+const POOL_SIZE = 7;
 // Kept visually distinct from the player's blue/orange so it's always
 // obvious which car is yours at a glance.
-const BODY_COLORS = [0xd94f4f, 0xe0a838, 0x4fae5c, 0xd94fbf, 0xd9d9d9];
+const BODY_COLORS = [0xffe14d, 0x39ff8f, 0xff3fb0, 0xb453ff, 0xff5c3f];
 const ACCENT_COLOR = 0xffffff;
 
 export function createTrafficField(scene) {
@@ -42,7 +42,7 @@ export function updateTrafficField(field, dt, playerSpeed) {
     const closingSpeed = playerSpeed - slot.speed;
     slot.z += closingSpeed * dt;
     slot.mesh.position.z = slot.z;
-    spinWheels(slot.mesh, slot.speed, dt);
+    updateHover(slot.mesh, dt);
     if (slot.z > DESPAWN_Z) {
       slot.active = false;
       slot.mesh.visible = false;
