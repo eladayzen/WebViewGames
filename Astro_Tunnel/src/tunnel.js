@@ -187,30 +187,83 @@ export function createSpeedRings(scene, radius, count, spacing) {
   const rings = [];
   for (let i = 0; i < count; i++) {
     const hue = (i / count) % 1;
-    const color = new THREE.Color().setHSL(hue, 0.85, 0.6);
+    const baseColor = new THREE.Color().setHSL(hue, 0.85, 0.6);
     const mesh = new THREE.Mesh(
       geo,
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }),
+      new THREE.MeshBasicMaterial({ color: baseColor.clone(), transparent: true, opacity: 0.9 }),
     );
     const z = -i * spacing - spacing;
     const c = tunnelCenterAt(z);
     mesh.position.set(c.x, c.y, z);
     scene.add(mesh);
-    rings.push(mesh);
+    // See the "decorative ring glow" README block below for how/why only
+    // some rings glow and when.
+    rings.push({ mesh, baseColor, glows: i % RING_GLOW_EVERY_NTH === 0 });
   }
   return { rings, spacing, length: count * spacing };
 }
 
+// --- Decorative ring glow ---------------------------------------------
+// Read this before tweaking — the "when should a ring glow" behavior has
+// gone through several rounds and is still being felt out, so every knob
+// is grouped here instead of scattered through the update loop.
+//
+// HOW IT WORKS
+// - Rings originally only bloomed (via the postprocessing bloom pass)
+//   once fog happened to thin out enough as they approached the camera —
+//   but yellow/green hues read far brighter than blue/purple ones to the
+//   bloom pass's luminance check, so some hues bloomed reliably and
+//   others almost never did, regardless of distance. Rebalancing hue
+//   brightness to fix that changed how every ring looked at every
+//   distance (a bigger, worse trade-off) — so instead, glow is now an
+//   explicit, direct effect this code controls, not an emergent one.
+// - Each ring gets a fixed base color (from its hue) and a `glows` flag
+//   decided once at creation time (createSpeedRings, above) — currently
+//   every Nth ring by index. Rings without the flag stay their plain base
+//   color forever; the boost math below is skipped for them entirely.
+// - Every frame (scrollSpeedRings), for rings WITH the flag: the code
+//   measures how far the ring is from a "glow peak" — a point
+//   RING_GLOW_LAG world-units past the player's own z (positive = the
+//   ship has already passed the ring, since z increases toward and
+//   through the player as everything scrolls forward). The closer the
+//   ring is to that peak, the more its base color gets multiplied up,
+//   maxing out at RING_GLOW_BOOST right at the peak and fading back to
+//   1x (unboosted) over RING_GLOW_RANGE world-units on either side.
+//
+// QUICK KNOBS
+// - How MANY rings can ever glow: RING_GLOW_EVERY_NTH (1-in-N by index;
+//   bigger number = fewer glowing rings).
+// - WHEN the flash happens, relative to the player: RING_GLOW_LAG. Rings
+//   recycle at playerZ + 8 (see the recycle check below), which is
+//   effectively where they exit the frame near the camera — a LAG close
+//   to 8 flashes just before a ring disappears; a small/zero LAG flashes
+//   right as the player passes it; a negative LAG would flash while still
+//   approaching.
+// - HOW LONG/gradual the flash reads: RING_GLOW_RANGE (smaller = a
+//   snappier, more sudden flash; larger = a slow fade in/out).
+// - HOW BRIGHT the flash gets: RING_GLOW_BOOST (multiplier on the base
+//   color at the peak; 1 would mean no visible boost at all).
+const RING_GLOW_EVERY_NTH = 10;
+const RING_GLOW_RANGE = 4;
+const RING_GLOW_BOOST = 2.4;
+const RING_GLOW_LAG = 7;
+
 export function scrollSpeedRings(decor, speed, playerZ) {
-  for (const ring of decor.rings) {
-    ring.position.z += speed;
-    if (ring.position.z > playerZ + 8) {
-      ring.position.z -= decor.length;
+  for (const { mesh, baseColor, glows } of decor.rings) {
+    mesh.position.z += speed;
+    if (mesh.position.z > playerZ + 8) {
+      mesh.position.z -= decor.length;
     }
-    const c = tunnelCenterAt(ring.position.z);
-    ring.position.x = c.x;
-    ring.position.y = c.y;
-    ring.rotation.z += 0.003;
+    const c = tunnelCenterAt(mesh.position.z);
+    mesh.position.x = c.x;
+    mesh.position.y = c.y;
+    mesh.rotation.z += 0.003;
+
+    if (!glows) continue;
+    const dist = Math.abs(mesh.position.z - playerZ - RING_GLOW_LAG);
+    const t = THREE.MathUtils.clamp(1 - dist / RING_GLOW_RANGE, 0, 1);
+    const boost = 1 + t * t * RING_GLOW_BOOST;
+    mesh.material.color.copy(baseColor).multiplyScalar(boost);
   }
 }
 
