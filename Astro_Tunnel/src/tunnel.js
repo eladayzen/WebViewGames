@@ -170,7 +170,12 @@ export function advanceTunnelTheme(walls) {
 }
 
 export function createSpeedRings(scene, radius, count, spacing) {
-  const geo = new THREE.TorusGeometry(radius + 0.15, 0.06, 8, 32);
+  // Was radius + 0.15 — that placed it OUTSIDE the tunnel wall's own radius,
+  // which is a solid opaque surface at exactly `radius`: from inside the
+  // tube, anything beyond that radius is occluded, behind the wall, and
+  // literally never visible. Bringing it just inside the wall instead is
+  // what actually makes it render.
+  const geo = new THREE.TorusGeometry(radius - 0.3, 0.06, 8, 32);
   const rings = [];
   for (let i = 0; i < count; i++) {
     const hue = (i / count) % 1;
@@ -201,13 +206,19 @@ export function scrollSpeedRings(decor, speed, playerZ) {
   }
 }
 
-// A thin field of glowing dust streaking past to sell forward speed, since
-// the rings/walls alone read as fairly static at a glance.
+// A field of glowing dust streaking past to sell forward speed, since the
+// rings/walls alone read as fairly static at a glance. Deliberately hugs
+// the tunnel's outer band (near the walls, "the sides") rather than being
+// scattered across the whole cross-section — spread across the center is
+// what read as noisy clutter in front of the gameplay.
+const PARTICLE_MIN_RADIUS_FACTOR = 0.62;
+const PARTICLE_RADIUS_SPREAD = 0.36;
+
 export function createSpeedParticles(scene, radius, count, length) {
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const r = radius * (0.15 + Math.random() * 0.85);
+    const r = radius * (PARTICLE_MIN_RADIUS_FACTOR + Math.random() * PARTICLE_RADIUS_SPREAD);
     positions[i * 3] = Math.cos(angle) * r;
     positions[i * 3 + 1] = Math.sin(angle) * r;
     positions[i * 3 + 2] = -Math.random() * length;
@@ -216,7 +227,7 @@ export function createSpeedParticles(scene, radius, count, length) {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   const material = new THREE.PointsMaterial({
     color: 0xbdeeff,
-    size: 0.1,
+    size: 0.13,
     transparent: true,
     opacity: 0.85,
     blending: THREE.AdditiveBlending,
@@ -234,7 +245,7 @@ export function scrollSpeedParticles(field, speed, playerZ) {
     if (z > playerZ + 4) {
       z -= field.length;
       const angle = Math.random() * Math.PI * 2;
-      const r = field.radius * (0.15 + Math.random() * 0.85);
+      const r = field.radius * (PARTICLE_MIN_RADIUS_FACTOR + Math.random() * PARTICLE_RADIUS_SPREAD);
       pos.setX(i, Math.cos(angle) * r);
       pos.setY(i, Math.sin(angle) * r);
     }

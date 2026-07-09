@@ -102,8 +102,12 @@ rimLight.position.set(0, 0, -6);
 scene.add(rimLight);
 
 const walls = createTunnelWalls(scene, 400, TUNNEL_RADIUS);
-const speedRings = createSpeedRings(scene, TUNNEL_RADIUS, 30, 6);
-const speedParticles = createSpeedParticles(scene, TUNNEL_RADIUS * 0.95, 150, 60); // -40% from the original 250
+// 3 evenly-spaced decorative "beauty rings" between every obstacle ring,
+// rather than a fixed 6-unit spacing unrelated to how far apart the
+// obstacles actually are.
+const BEAUTY_RING_SPACING = RING_SPACING / 3;
+const speedRings = createSpeedRings(scene, TUNNEL_RADIUS, 24, BEAUTY_RING_SPACING);
+const speedParticles = createSpeedParticles(scene, TUNNEL_RADIUS * 0.95, 35, 60); // much less noise, moved to the tunnel's sides (see tunnel.js)
 
 const ship = createShip();
 scene.add(ship);
