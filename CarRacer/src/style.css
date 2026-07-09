@@ -1,0 +1,123 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+#app {
+  position: relative;
+  background: #111;
+  overflow: hidden;
+}
+#app canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+#app {
+  font-family: Arial, Helvetica, sans-serif;
+}
+#hud {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 18px;
+  pointer-events: none;
+  z-index: 2;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+}
+.hudLeft { display: flex; flex-direction: column; gap: 4px; }
+#lives { font-size: 20px; letter-spacing: 3px; color: #ff5566; }
+#score { font-size: 28px; font-weight: 700; }
+#coins { font-size: 22px; font-weight: 700; color: #ffd23f; }
+
+#modeToggle {
+  position: absolute;
+  top: 14px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #fff;
+  background: rgba(0,0,0,0.4);
+}
+
+#touchControls {
+  position: absolute;
+  bottom: 40px; left: 0; right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 24px;
+  z-index: 2;
+  pointer-events: none;
+}
+.dpad {
+  pointer-events: auto;
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  font-size: 24px;
+  touch-action: none;
+}
+.dpad:active { background: rgba(255,255,255,0.35); }
+#howto {
+  position: absolute;
+  bottom: 14px; left: 0; right: 0;
+  text-align: center;
+  color: rgba(255,255,255,0.6);
+  font-size: 13px;
+  letter-spacing: 1px;
+  pointer-events: none;
+  z-index: 2;
+}
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(0,0,0,0.55);
+  z-index: 3;
+}
+.overlay.hidden { display: none; }
+.overlay .title {
+  font-size: 40px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 2px;
+}
+#finalScore { color: #ffd23f; font-size: 20px; font-weight: 700; }
+.overlay button {
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 32px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #101010;
+  background: #ffd23f;
+}
