@@ -226,7 +226,10 @@ export class ObstacleField {
     this.ringsSincePickupCluster = 0;
     const isLife = elapsedNow >= cfg.lifeMinStartSeconds && Math.random() < cfg.lifeChance;
     ring.pickupType = isLife ? 'life' : 'gem';
-    const points = pickupPattern(ring.gapWidth);
+    // Life clusters are always a single heart — pickupPattern's 3-point
+    // line is gem-only. Without this, a life roll landing on that pattern
+    // would place 3 hearts in a row, when one is already plenty.
+    const points = isLife ? [{ angleFrac: 0.5, zOffset: 0 }] : pickupPattern(ring.gapWidth);
     ring.pickups.forEach((slot, i) => {
       const point = points[i];
       slot.active = Boolean(point);
