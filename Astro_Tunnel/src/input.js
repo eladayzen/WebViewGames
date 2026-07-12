@@ -63,6 +63,17 @@ export function getMoveVector() {
     x += state.pointerX;
     y -= state.pointerY;
   }
+  // GoBalance SDK: the Unity host publishes the balance board's raw analog
+  // tilt here every frame (~60Hz) whenever the game's WebGameController has
+  // forwardSteeringKeys off (this game reads the analog value directly
+  // instead of via synthetic arrow-key events — see GOBALANCE_SDK.md).
+  // Purely additive, so it composes cleanly with keyboard/pointer, and is a
+  // no-op in a normal browser where window.__gbSensor is simply undefined.
+  const sensor = window.__gbSensor;
+  if (sensor) {
+    x += sensor.x;
+    y += sensor.y;
+  }
   const len = Math.hypot(x, y);
   if (len > 1) {
     x /= len;
