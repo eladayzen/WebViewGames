@@ -15,12 +15,17 @@ export function createTrafficField(scene) {
   const pool = [];
   for (let i = 0; i < POOL_SIZE; i++) {
     const bodyColor = BODY_COLORS[i % BODY_COLORS.length];
-    const mesh = createCarModel({ bodyColor, accentColor: ACCENT_COLOR, detailed: false });
+    // Same detailed hoverboard model as the player, just recolored -- was
+    // previously a plainer variant, which is part of why they read flat.
+    const mesh = createCarModel({ bodyColor, accentColor: ACCENT_COLOR, detailed: true });
     mesh.visible = false;
     scene.add(mesh);
-    // Short, color-matched trail -- same element the player uses, just
-    // shorter, so a car reads as "approaching" as you close the distance.
-    const trail = createRibbonTrail(scene, { color: bodyColor, width: 0.6, opacity: 0.45, maxPoints: 10 });
+    // Color-matched trail -- same element the player uses. Linear taper so
+    // opacity ramps smoothly down to zero along its length, 4x the earlier
+    // short length.
+    const trail = createRibbonTrail(scene, {
+      color: bodyColor, width: 0.6, opacity: 0.5, maxPoints: 24,
+    });
     pool.push({ mesh, trail, active: false, laneIndex: 1, z: 0, speed: 0, nearMissChecked: false });
   }
   return { pool };

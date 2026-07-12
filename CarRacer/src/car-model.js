@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { createBlobShadow } from './shadow.js';
 
-// Simple, sharp-edged hoverboard -- flat angular deck, a diamond-cut nose,
-// a blade dorsal fin, swept-back side fins. No rounded bevels anywhere
+// Simple, sharp-edged hoverboard -- angular deck, a diamond-cut nose, a
+// blade dorsal fin, swept-back side fins. No rounded bevels anywhere
 // (deliberately plainer than the earlier "toy car" pass): a handful of flat
 // boxes, glossy paint, no wheels -- it hovers, with a glowing thruster
-// underneath and an idle float bob.
+// underneath and an idle float bob. The deck has real thickness (not a
+// thin plank) and every car gets a raised canopy hump -- traffic previously
+// had zero vertical detail beyond the flat deck, which read as 2D/hard to
+// see; this gives all of them a visible silhouette from behind.
 const HOVER_HEIGHT = 0.22;
 const HOVER_AMPLITUDE = 0.05;
 const HOVER_SPEED = 2.6;
@@ -64,36 +67,43 @@ export function createCarModel({ bodyColor, accentColor = 0xff8a2f, detailed = t
   const accentMat = glossy(accentColor);
   const darkMat = glossy(0x14141a, { roughness: 0.45 });
 
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.14, 2.5), bodyMat);
-  deck.position.y = 0.32;
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.42, 2.5), bodyMat);
+  deck.position.y = 0.36;
   group.add(deck);
 
   // Diamond-cut nose cap: a box rotated 45 deg pokes a sharp point out past
   // the deck's flat front edge -- an angular tip with no cone/rounding.
-  const noseCap = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.14, 0.85), bodyMat);
+  const noseCap = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.42, 0.85), bodyMat);
   noseCap.rotation.y = Math.PI / 4;
-  noseCap.position.set(0, 0.32, -1.68);
+  noseCap.position.set(0, 0.36, -1.68);
   group.add(noseCap);
 
   const lightGeo = new THREE.BoxGeometry(0.26, 0.1, 0.06);
   for (const x of [-0.55, 0.55]) {
     const hl = new THREE.Mesh(lightGeo, HEADLIGHT_MAT);
-    hl.position.set(x, 0.32, -1.55);
+    hl.position.set(x, 0.36, -1.55);
     group.add(hl);
     const tl = new THREE.Mesh(lightGeo, TAILLIGHT_MAT);
-    tl.position.set(x, 0.32, 1.2);
+    tl.position.set(x, 0.36, 1.2);
     group.add(tl);
   }
 
+  // Raised canopy hump -- on every car, detailed or not, so even the plain
+  // traffic variant has a visible top silhouette instead of reading as a
+  // flat plank from behind.
+  const hump = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.16, 0.95), accentMat);
+  hump.position.set(0, 0.65, -0.15);
+  group.add(hump);
+
   if (detailed) {
-    const dorsal = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.34, 1.2), darkMat);
-    dorsal.position.set(0, 0.5, -0.15);
+    const dorsal = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.26, 1.0), darkMat);
+    dorsal.position.set(0, 0.86, -0.15);
     group.add(dorsal);
 
     const finGeo = new THREE.BoxGeometry(0.06, 0.3, 0.85);
     for (const side of [-1, 1]) {
       const fin = new THREE.Mesh(finGeo, accentMat);
-      fin.position.set(side * 0.76, 0.4, 0.85);
+      fin.position.set(side * 0.76, 0.56, 0.85);
       fin.rotation.z = side * -0.3;
       fin.rotation.y = side * 0.18;
       group.add(fin);
@@ -102,7 +112,7 @@ export function createCarModel({ bodyColor, accentColor = 0xff8a2f, detailed = t
     // Floating blade spoiler -- no struts, reads as hover-tech rather than
     // a mounted car part.
     const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.06, 0.22), accentMat);
-    spoiler.position.set(0, 0.6, 1.25);
+    spoiler.position.set(0, 0.78, 1.25);
     group.add(spoiler);
   }
 

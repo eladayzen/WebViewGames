@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { initPointerInput, initButtonInput, pollLaneStep, getSteerHold } from './input.js';
+import { initPointerInput, initButtonInput, pollLaneStep, getSteerHold, pollSensorInput } from './input.js';
 import {
   createPlayerCar, setPlayerLane, updatePlayerCarDiscrete, updatePlayerCarContinuous,
 } from './player-car.js';
@@ -37,9 +37,9 @@ const app = document.getElementById('app');
 const scoreEl = document.getElementById('score');
 const coinsEl = document.getElementById('coins');
 const livesEl = document.getElementById('lives');
-const gameoverEl = document.getElementById('gameover');
+const gameoverEl = document.getElementById('gameover-overlay');
 const finalScoreEl = document.getElementById('finalScore');
-const restartBtn = document.getElementById('restartBtn');
+const restartBtn = document.getElementById('restart-button');
 const modeToggleBtn = document.getElementById('modeToggle');
 const howtoEl = document.getElementById('howto');
 const btnLeft = document.getElementById('btnLeft');
@@ -248,12 +248,14 @@ function triggerGameOver() {
 
 restartBtn.addEventListener('click', resetGame);
 window.addEventListener('keydown', (e) => {
-  if (state === 'gameover' && (e.key === 'Enter' || e.key === ' ')) resetGame();
+  if (state === 'gameover' && (e.code === 'Enter' || e.code === 'Space')) resetGame();
 });
 
 const clock = new THREE.Clock();
 function tick() {
   const dt = Math.min(clock.getDelta(), 1 / 30);
+
+  pollSensorInput();
 
   if (state === 'playing') {
     elapsed += dt;

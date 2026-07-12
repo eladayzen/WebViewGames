@@ -148,7 +148,7 @@ export function emitTrail(pool, x, y, z, dt) {
 // lengthens with speed exactly like the pylons/streaks do.
 
 export function createRibbonTrail(scene, {
-  maxPoints = 22, width = 0.55, color = 0x5fe0ff, sampleInterval = 0.02, opacity = 1,
+  maxPoints = 22, width = 0.55, color = 0x5fe0ff, sampleInterval = 0.02, opacity = 1, taper = 1,
 } = {}) {
   const positions = new Float32Array(maxPoints * 2 * 3);
   const colors = new Float32Array(maxPoints * 2 * 3);
@@ -211,7 +211,11 @@ export function createRibbonTrail(scene, {
       const wx = -dz;
       const wz = dx;
       const t = i / (count - 1); // 0 = oldest/tail (tapered, faded), 1 = newest/head
-      const halfW = width * 0.5 * t;
+      // taper > 1 pinches the tail off sharply instead of a smooth linear
+      // fade -- reads as a short streak that breaks away rather than a
+      // long gradient ribbon (used for the shorter traffic-car trails).
+      const shaped = taper === 1 ? t : Math.pow(t, taper);
+      const halfW = width * 0.5 * shaped;
 
       const li = i * 2, ri = i * 2 + 1;
       positions[li * 3 + 0] = p.x + wx * halfW;
@@ -221,7 +225,7 @@ export function createRibbonTrail(scene, {
       positions[ri * 3 + 1] = p.y;
       positions[ri * 3 + 2] = p.z - wz * halfW;
 
-      const alpha = t * opacity;
+      const alpha = shaped * opacity;
       colors[li * 3 + 0] = baseColor.r * alpha;
       colors[li * 3 + 1] = baseColor.g * alpha;
       colors[li * 3 + 2] = baseColor.b * alpha;

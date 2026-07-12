@@ -1,8 +1,9 @@
 // Single input funnel: every input source (keyboard, pointer/swipe, on-screen
-// buttons, and later a Unity Bluetooth-gamepad bridge) calls handleAction()
-// rather than the game reading raw events directly. All of them just set
-// booleans on one `state` object -- what differs is how gameplay code reads
-// it, and that's a property of the GAME, not the input source:
+// buttons, and the GoBalance SDK's balance board -- see GOBALANCE_SDK.md)
+// calls handleAction() rather than the game reading raw events directly.
+// All of them just set booleans on one `state` object -- what differs is how
+// gameplay code reads it, and that's a property of the GAME, not the input
+// source:
 //
 //   pollLaneStep()  -- edge-detected +-1 step, for "runner" controllers
 //                       (one press/tap = one discrete lane change).
@@ -15,9 +16,12 @@
 
 const SWIPE_THRESHOLD_PX = 50;
 
+// Keyed on e.code, not e.key: Unity's WebGameController (forwardSteeringKeys
+// mode) dispatches synthetic KeyboardEvents for the balance board's tilt,
+// and e.code is the reliable field for those (see GOBALANCE_SDK.md).
 const KEY_MAP = {
-  ArrowLeft: 'left', a: 'left', A: 'left',
-  ArrowRight: 'right', d: 'right', D: 'right',
+  ArrowLeft: 'left', KeyA: 'left',
+  ArrowRight: 'right', KeyD: 'right',
 };
 
 const state = { left: false, right: false };
@@ -30,13 +34,46 @@ export function handleAction(action, active) {
 }
 
 window.addEventListener('keydown', (e) => {
-  const action = KEY_MAP[e.key];
+  const action = KEY_MAP[e.code];
   if (action) handleAction(action, true);
 });
 window.addEventListener('keyup', (e) => {
-  const action = KEY_MAP[e.key];
+  const action = KEY_MAP[e.code];
   if (action) handleAction(action, false);
 });
+
+// GoBalance SDK analog mode (forwardSteeringKeys = false): the Unity host
+// publishes the board's raw tilt as window.__gbSensor = {x, y} every frame.
+// Routed through the same handleAction() funnel as a virtual key -- with
+// the same press/release hysteresis Unity itself uses for its own synthetic
+// key mode, for consistency -- so pollLaneStep()/getSteerHold() both pick it
+// up for free with no separate analog code path. No-op in a normal browser
+// (window.__gbSensor is simply undefined). Call once per frame.
+const SENSOR_PRESS = 0.35;
+const SENSOR_RELEASE = 0.2;
+let sensorLeftHeld = false;
+let sensorRightHeld = false;
+
+export function pollSensorInput() {
+  const sensor = window.__gbSensor;
+  if (!sensor) return;
+
+  if (!sensorLeftHeld && sensor.x < -SENSOR_PRESS) {
+    sensorLeftHeld = true;
+    handleAction('left', true);
+  } else if (sensorLeftHeld && sensor.x > -SENSOR_RELEASE) {
+    sensorLeftHeld = false;
+    handleAction('left', false);
+  }
+
+  if (!sensorRightHeld && sensor.x > SENSOR_PRESS) {
+    sensorRightHeld = true;
+    handleAction('right', true);
+  } else if (sensorRightHeld && sensor.x < SENSOR_RELEASE) {
+    sensorRightHeld = false;
+    handleAction('right', false);
+  }
+}
 
 export function initPointerInput(target) {
   let downX = null;
