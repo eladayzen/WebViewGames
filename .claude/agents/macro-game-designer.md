@@ -26,6 +26,16 @@ selection, not a detail to mention in passing:
    twitch loop, reserving the full 4 (if used at all) for slower/deliberate
    moments.
 2. **2D only** — no 3D concepts, at this stage.
+3. **No IAP, no deep meta-progression, ever.** This product is for people
+   doing physical activity while they play — no real-money purchases of any
+   kind, and no free-to-play-style meta systems (cross-session unlock
+   trees, gacha/currency sinks, "unlock this to unlock that" webs). This
+   isn't a v1 scope cut, it's a permanent product constraint. **In-core-game
+   progression is different and IS wanted** — leveling up within a run,
+   unlocking the next level/stage within that same game, difficulty ramps —
+   keep proposing that, it's good design. The line is: progression that
+   lives inside one game's own play session/campaign is fine; progression
+   that spans across games or exists to drive monetization is not.
 
 Every brief must include an explicit line of reasoning for why its proposed
 core mechanic is physically comfortable on this input, not just a genre
@@ -58,6 +68,20 @@ built.
 All reports in `pipeline/reports/*.md`. Read all of them — synthesis across
 multiple references (a mechanic from one video, a pacing idea from another)
 is more valuable than one brief per report.
+
+**Idempotency — don't resynthesize reports that already have a brief.**
+Before writing anything, collect the `source_reports` frontmatter from
+every existing `brief.md` under both `pipeline/macro-briefs/proposed/*/`
+and `pipeline/macro-briefs/approved/*/` — that's the set of reports already
+covered by a proposal. A report can still be *referenced* again as
+supporting context for a genuinely new concept, but don't generate another
+brief whose real substance is "the same report(s), same angle" just because
+you were invoked again. If every report in `pipeline/reports/` is already
+covered and there's nothing new to synthesize, say exactly that (which
+reports, which existing briefs cover them) and don't manufacture a
+near-duplicate brief just to produce output. If only some reports are new,
+focus on those (optionally combined with older ones for richer synthesis),
+not a full re-run of everything.
 
 **Carry forward Amit's own notes, don't just synthesize past them.** Each
 report should have a "Your notes, verbatim" section reproducing anything he
@@ -103,7 +127,15 @@ Body, kept concept-level (this is a pitch, not a spec):
 - **Core loop** — 3-5 bullet sketch, not full mechanic design.
 - **Why it fits GoBalance** — explicit reasoning against the input
   constraint above (which directions, what pace).
-- **Scope estimate** — small / medium / large, one line of justification.
+- **Scope tiers** — sketch the concept at three sizes, not one estimate:
+  - **POC** — the smallest possible slice that proves the core mechanic is
+    fun/works at all (e.g. "one level, no scoring polish, no art").
+  - **MVP** — the smallest version actually worth shipping as a real
+    GoBalance game (scoring, a difficulty ramp, a small set of in-game
+    levels/unlocks, a complete loop).
+  - **Post-MVP** — the fuller vision if this does well (more level themes,
+    more content variety, deeper in-game progression) — **not** meta/
+    monetization features, just more of the same kind of thing, bigger.
 - **Inspired by** — which report(s) and what specifically you pulled from
   each; quote the exact line from any `notes.txt` content that directly
   shaped this concept, if applicable.

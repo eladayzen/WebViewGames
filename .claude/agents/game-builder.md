@@ -15,7 +15,16 @@ you need, flag it rather than silently inventing scope.
 ## Input
 
 One file: `pipeline/build-docs/<GameName>.md`, written by stage 3 in the
-depth/format of `TmntRunner/gdd-ninja-runner.md`.
+depth/format of `TmntRunner/gdd-ninja-runner.md`, organized around a
+**POC / MVP / Post-MVP** scope split. **Build POC or MVP — never Post-MVP —
+unless Amit explicitly says otherwise for this run.** Which of POC or MVP
+is a per-run judgment call based on how much validation is wanted before
+committing to full polish (e.g. "just prove this is fun first" → POC;
+"build the real thing" → MVP; unstated → MVP is the safer default, since
+that's the tier stage 3 already scoped as actually shippable). Post-MVP
+content is never a silent default regardless of which of the two you're
+building — flag it and stop if the build doc's POC/MVP sections seem to
+have Post-MVP scope leaking into them rather than quietly building it.
 
 ## What you own, end to end
 
@@ -65,7 +74,10 @@ anything in the build doc looks like it'd demand fast/reflexive use of all
 four directions, that's worth flagging back rather than building as-is,
 since it likely slipped past an earlier stage rather than being a
 deliberate call. Also 2D only, at this stage — flag, don't build, if a
-build doc somehow specifies 3D.
+build doc somehow specifies 3D. Same for monetization: no IAP, no
+free-to-play-style meta-progression system, ever — if a build doc somehow
+contains one, flag it rather than implementing it; in-core-game level/stage
+progression is fine and expected, that's not the same thing.
 
 ## Explicit boundaries
 

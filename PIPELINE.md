@@ -14,7 +14,7 @@ built yet — see "Roadmap" below.
 | 2 | `macro-game-designer` | `/propose-briefs` | `pipeline/reports/*.md` | `pipeline/macro-briefs/proposed/<slug>/` (`brief.md` + 4 concept-frame images) |
 | — | *(you)* | `/approve-brief <slug>` | — | moves a brief folder `proposed/` → `approved/` |
 | 3 | `brief-writer` | `/write-brief <slug>` | `pipeline/macro-briefs/approved/<slug>/` | `pipeline/build-docs/<GameName>.md` |
-| 4 | `game-builder` | `/build-game <GameName>` | `pipeline/build-docs/<GameName>.md` | a new game folder at repo root, shipped into the SDK |
+| 4 | `game-builder` | `/build-game <GameName> [poc\|mvp\|post-mvp]` | `pipeline/build-docs/<GameName>.md` | a new game folder at repo root, shipped into the SDK |
 
 Agent definitions: `.claude/agents/*.md`. Commands: `.claude/commands/*.md`.
 
@@ -29,6 +29,22 @@ per run:
    exertion problem, not just a controls-complexity one — avoid concepts
    that need it.
 2. **2D only**, at this stage.
+3. **No IAP, no deep meta-progression, ever** — permanent, not a v1 cut.
+   The product is for people doing physical activity while they play; no
+   real-money purchases, no free-to-play-style cross-session unlock webs.
+   **In-core-game progression (leveling within a run, unlocking the next
+   level inside that game) is different and wanted** — keep proposing that.
+
+## Scope tiers: POC / MVP / Post-MVP
+
+Stages 2 and 3 both think and write in three explicit tiers rather than one
+scope estimate: **POC** (smallest slice that proves the mechanic works),
+**MVP** (smallest version worth actually shipping), and **Post-MVP** (the
+fuller vision, backlog, not committed work). Stage 3's build docs organize
+milestones under these three tiers explicitly. Stage 4 always builds
+**either POC or MVP — never Post-MVP unless explicitly asked** — which of
+the two is a per-run call (`/build-game <GameName> poc` or `mvp`), defaulting
+to MVP if you don't specify.
 
 Stage 3 additionally picks (and states) which of the SDK's two input-
 forwarding modes a game needs — digital synthetic arrow-keys vs. analog
@@ -79,6 +95,21 @@ in its report (not a paraphrase), and stage 2 is required to quote back any
 note that directly shaped a brief in that brief's "Inspired by" section —
 so your own notes are traceable through both stages, not just trusted to
 have been read.
+
+## Idempotency — nothing reprocesses old work by default
+
+Both stage 1 and stage 2 skip work that's already done, so re-running a
+command after adding one new thing doesn't rechurn everything:
+
+- **Stage 1:** a topic folder with a matching `pipeline/reports/<topic>.md`
+  already existing is skipped. The report's existence *is* the "done"
+  marker — no separate state file.
+- **Stage 2:** before writing anything, it collects `source_reports` from
+  every existing `brief.md` (in both `proposed/` and `approved/`) to find
+  which reports are already covered by a proposal. Only genuinely new/
+  uncovered reports drive new briefs by default; if everything's already
+  covered, `/propose-briefs` says so and stops rather than generating
+  near-duplicate briefs. Force a redo with `/propose-briefs redo`.
 
 ## Why videos need a preprocessing step
 
