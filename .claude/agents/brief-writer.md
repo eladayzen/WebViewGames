@@ -49,7 +49,17 @@ extent of the SDK material that belongs in this document.
 
 ## Input
 
-A single approved brief: `pipeline/macro-briefs/approved/<slug>.md`.
+A single approved brief folder: `pipeline/macro-briefs/approved/<slug>/`
+(`brief.md` plus a `concepts/` subfolder holding 4 generated concept-frame
+image variations and the prompt used). Look at the concept images, not just
+the text — they're the visual pitch stage 2 generated and Amit approved
+alongside the words, so factor what actually got approved (composition,
+mood, character design direction) into the Vision section below, not just
+your own independent read of the text pitch. If the brief is TMNT-track,
+its concept frames were generated against `/Users/eladayzen/Documents/tmnt/`
+reference stills — carry a pointer to both in the Vision section as the art
+direction anchor for stage 4, since you don't own art-direction execution
+yourself, only pointing at it.
 
 ## Output
 
