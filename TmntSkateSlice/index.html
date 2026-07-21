@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script>
+      // GoBalance SDK integration — see ../GOBALANCE_SDK.md for the full contract this depends
+      // on. Everything below is a no-op outside the Unity WebView (guarded by
+      // `if (window.Unity)` / feature checks), so it's always safe to ship, including when
+      // testing in a normal browser.
+
+      // The only channel for JS errors on-device — there's no devtools console inside the
+      // WebView, so surface them through the native bridge instead.
+      window.addEventListener('error', function (e) {
+        if (window.Unity) window.Unity.call('JS ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        if (window.Unity) window.Unity.call('JS UNHANDLED REJECTION: ' + e.reason);
+      });
+
+      // rAF shim: WKWebView treats the occluded Unity overlay as a background tab and
+      // suspends requestAnimationFrame entirely. Queue callbacks instead of scheduling them
+      // natively; Unity's WebGameController flushes the queue via window.__pumpFrames() every
+      // frame (~60Hz) regardless of tab visibility. A real native rAF loop keeps running
+      // underneath too, so a normal browser (testing outside Unity) behaves exactly as before.
+      (function () {
+        var nativeRAF = window.requestAnimationFrame.bind(window);
+        window.__rafQueue = [];
+        window.requestAnimationFrame = function (cb) { window.__rafQueue.push(cb); return window.__rafQueue.length; };
+        window.cancelAnimationFrame = function () {};
+        window.__pumpFrames = function () {
+          var q = window.__rafQueue;
+          if (!q.length) return;
+          window.__rafQueue = [];
+          var t = performance.now();
+          for (var i = 0; i < q.length; i++) {
+            try { q[i](t); }
+            catch (e) { if (window.Unity) window.Unity.call('RAF CB ERROR: ' + e.message); }
+          }
+        };
+        (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+      })();
+    </script>
+    <title>TMNT: Skate &amp; Slice</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- GoBalance SDK: native-bridge Back button. Returns to the SDK games list. -->
+    <button id="gb-back"
+      onclick="if(window.Unity)window.Unity.call('nav:back');"
+      style="position:fixed;top:12px;left:12px;z-index:9999;padding:8px 16px;border:none;
+             border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
+             font:600 15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+             -webkit-tap-highlight-color:transparent;">&#8249; Back</button>
+
+    <div id="stage">
+      <canvas id="renderCanvas"></canvas>
+
+      <div id="hud">
+        <div id="countdown-overlay" class="hidden">3</div>
+
+        <div id="lives-tray"></div>
+
+        <div id="ooze-indicator" class="hidden">
+          <span class="ooze-icon">🧪</span>
+          <div class="ooze-bar"><div id="ooze-fill"></div></div>
+        </div>
+
+        <div id="topRight">
+          <div id="score">SCORE: 0</div>
+          <div id="combo" class="hidden">COMBO x1.0</div>
+        </div>
+
+        <div id="stage-banner" class="hidden"></div>
+      </div>
+
+      <div id="gameover-overlay" class="overlay hidden">
+        <div class="title">GAME OVER</div>
+        <div id="final-score"></div>
+        <div id="final-combo"></div>
+        <button id="restart-button">RETRY</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/core/main.js"></script>
+  </body>
+</html>

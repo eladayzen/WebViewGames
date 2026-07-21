@@ -1,0 +1,7 @@
+2D side-scrolling video game key art in the hand-drawn-over-CG painterly style of the Mutant Mayhem-era TMNT movies (rough sketchy linework, textured painterly shading, warm nighttime city palette). Michelangelo, wearing his orange mask and matching orange elbow/knee wraps, is riding a skateboard sideways along a flat rooftop/alley ground strip, mid-action, swinging his nunchaku in a motion-blurred swirling arc to strike a falling pizza slice glowing with a small impact star. In the air above him: another pizza slice falling, a glowing green mutant-ooze canister with bubbling toxic liquid, and a cartoonish black bomb with a lit fuse and yellow-and-black danger stripes falling on the opposite side, clearly reading as dangerous. Background is a simple flat city rooftop at dusk with a few water towers and a soft glowing skyline, minimal depth, bright and humorous mood, no other characters. Vertical falling-item lane composition, character positioned in lower third, wide game-key-art framing.
+
+Generation settings: model=nano-banana-pro, num_images=4, aspect_ratio=16:9
+Reference images used (style/mood guidance only, from /Users/eladayzen/Documents/tmnt/):
+- Michelangelo2023.webp
+- tmnt-mutant-mayhem-character-posters_3ef5.jpg
+- Leonardo_Mutant_Mayhem.webp

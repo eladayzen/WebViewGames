@@ -1,0 +1,227 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #1a1020;
+  font-family: 'Arial Narrow', Arial, system-ui, sans-serif;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+#renderCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  color: #fff;
+}
+
+/* --- Countdown --- */
+#countdown-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: 900;
+  font-size: 96px;
+  color: #ffde50;
+  -webkit-text-stroke: 4px #2a1a00;
+  paint-order: stroke fill;
+  text-shadow: 0 0 24px rgba(255, 200, 40, 0.7);
+}
+
+#countdown-overlay.hidden {
+  display: none;
+}
+
+/* --- Top-right score / combo --- */
+#topRight {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  text-align: right;
+}
+
+#score {
+  font-weight: 900;
+  font-size: 26px;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  -webkit-text-stroke: 2px #2a1a00;
+  paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+#combo {
+  margin-top: 4px;
+  font-weight: 800;
+  font-size: 19px;
+  color: #ffde50;
+  -webkit-text-stroke: 1.5px #402800;
+  paint-order: stroke fill;
+}
+
+#combo.hidden {
+  display: none;
+}
+
+/* --- Top-left lives (offset below the SDK back button, which sits at
+   top:12px/left:12px per GOBALANCE_SDK.md's boilerplate) --- */
+#lives-tray {
+  position: absolute;
+  top: 58px;
+  left: 14px;
+  display: flex;
+  gap: 6px;
+}
+
+.life-icon {
+  font-size: 26px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+.life-icon.spent {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+
+/* --- Ooze buff indicator --- */
+#ooze-indicator {
+  position: absolute;
+  top: 100px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 30, 15, 0.6);
+  border: 2px solid rgba(140, 224, 90, 0.6);
+  border-radius: 10px;
+  padding: 4px 8px;
+  min-width: 120px;
+}
+
+#ooze-indicator.hidden {
+  display: none;
+}
+
+.ooze-icon {
+  font-size: 18px;
+}
+
+.ooze-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+#ooze-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #7ee060, #c8ff8a);
+  box-shadow: 0 0 8px rgba(140, 224, 90, 0.9);
+}
+
+/* --- Stage banner --- */
+#stage-banner {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  font-weight: 900;
+  font-size: 40px;
+  letter-spacing: 2px;
+  color: #ffffff;
+  -webkit-text-stroke: 2.5px #2a1a00;
+  paint-order: stroke fill;
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+}
+
+#stage-banner.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+#stage-banner.hidden {
+  opacity: 0;
+}
+
+/* --- Game-over overlay --- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(10, 5, 15, 0.82);
+  pointer-events: auto;
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+.overlay .title {
+  font-weight: 900;
+  font-size: 44px;
+  color: #ff5a3c;
+  letter-spacing: 2px;
+  -webkit-text-stroke: 2px #2a0a00;
+  paint-order: stroke fill;
+}
+
+#final-score {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffe066;
+}
+
+#final-combo {
+  font-size: 17px;
+  font-weight: 600;
+  color: #cfd8ff;
+}
+
+#restart-button {
+  margin-top: 10px;
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 1px;
+  padding: 14px 36px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffde50, #ffa93c);
+  color: #2a1a00;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #a86800, 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+#restart-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
