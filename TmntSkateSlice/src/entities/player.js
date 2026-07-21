@@ -1,5 +1,6 @@
-// Michelangelo (player). Skates left/right along the single ground line
-// (§4, §5.1). States: idle/skate, swing (auto-triggered on a good-item
+// Michelangelo (player). Moves left/right along the single ground line
+// (§4, §5.1), no-skateboard variant: a fast barefoot run-cycle instead of a
+// skate glide. States: idle/run, swing (auto-triggered on a good-item
 // strike), hit (bomb-hit flinch + invulnerability), plus an ooze-buff visual
 // variant layered as a code tint rather than a separate generated sprite
 // (§6 -- "a glow/tint on the swing arc while wider-arc buff is active").
@@ -17,9 +18,10 @@ import {
 const SWING_DURATION_SEC = 0.28;
 const HIT_FLINCH_DURATION_SEC = 0.5;
 
-// TEMP preview constant (quick-inserted skate-cycle check, see assets.js).
-// Fraction of play-area width traveled per cycle phase -- tune by feel.
-const SKATE_CYCLE_STEP_FRAC = 0.05;
+// Fraction of play-area width traveled per run-cycle phase -- tune by feel.
+// Smaller than the old skate-bob step since a foot-swap run reads as fast
+// only if the frames flip quickly relative to travel speed.
+const RUN_CYCLE_STEP_FRAC = 0.035;
 
 export function createPlayer() {
   return {
@@ -29,7 +31,7 @@ export function createPlayer() {
     stateTimer: 0,
     invulnTimer: 0,
     oozeBuffTimer: 0,
-    travelDistFrac: 0, // TEMP: total |dx| traveled, drives the skate-cycle preview
+    travelDistFrac: 0, // total |dx| traveled, drives the run-cycle frame pick
   };
 }
 
@@ -50,7 +52,7 @@ export function updatePlayer(player, dt, steerAxis) {
   player.xFrac = Math.max(PLAY_AREA_LEFT_FRAC, Math.min(PLAY_AREA_RIGHT_FRAC, player.xFrac));
   player.travelDistFrac += Math.abs(player.xFrac - prevX);
 
-  player.isMoving = Math.abs(steerAxis) > 0.08; // TEMP: gates the skate-cycle preview
+  player.isMoving = Math.abs(steerAxis) > 0.08; // gates the run-cycle frame swap
   if (player.isMoving) {
     player.facing = steerAxis > 0 ? 1 : -1;
   }
@@ -96,11 +98,11 @@ export function isInvulnerable(player) {
   return player.invulnTimer > 0;
 }
 
-// TEMP preview helper (quick-inserted, see assets.js) -- picks the current
-// skate-cycle frame keyed to world travel, not wall time, so it always
-// matches how fast he's actually moving: neutral-dip-neutral-rise.
-const SKATE_CYCLE_KEYS = ['mike_skate_1', 'mike_skate_2', 'mike_skate_1', 'mike_skate_3'];
-export function getSkateCycleSpriteKey(player) {
-  const phase = Math.floor(player.travelDistFrac / SKATE_CYCLE_STEP_FRAC) % SKATE_CYCLE_KEYS.length;
-  return SKATE_CYCLE_KEYS[phase];
+// Picks the current run-cycle frame keyed to world travel, not wall time, so
+// it always matches how fast he's actually moving: left-stride, tucked
+// midpoint, right-stride, tucked midpoint.
+const RUN_CYCLE_KEYS = ['mike_run_1', 'mike_run_2', 'mike_run_3', 'mike_run_2'];
+export function getRunCycleSpriteKey(player) {
+  const phase = Math.floor(player.travelDistFrac / RUN_CYCLE_STEP_FRAC) % RUN_CYCLE_KEYS.length;
+  return RUN_CYCLE_KEYS[phase];
 }

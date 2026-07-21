@@ -14,15 +14,13 @@ const MANIFEST = {
   mike_swing: new URL('../assets/mike_swing.png', import.meta.url).href,
   mike_hit: new URL('../assets/mike_hit.png', import.meta.url).href,
 
-  // TEMP: all 3 currently point at the same crouched-glide pose (Visual DNA
-  // "mikey_skate" generation, approved over the earlier side-profile set) --
-  // the bob cycle for THIS pose hasn't been built yet, so movement doesn't
-  // animate frame-to-frame yet, it's just a static crouch while moving.
-  // Board still baked into the frame; separated-board pipeline still applies
-  // once this pose is locked. See BUILD_NOTES.md.
-  mike_skate_1: new URL('../assets/mike_skate_1.png', import.meta.url).href,
-  mike_skate_2: new URL('../assets/mike_skate_2.png', import.meta.url).href,
-  mike_skate_3: new URL('../assets/mike_skate_3.png', import.meta.url).href,
+  // No-skateboard experiment (Visual DNA "mikey_skate" generation, board
+  // edited out): same crouched fighting stance/torso/nunchaku grip as
+  // mike_idle, barefoot, legs redrawn per frame for a fast run-cycle. See
+  // getRunCycleSpriteKey in entities/player.js.
+  mike_run_1: new URL('../assets/mike_run_1.png', import.meta.url).href,
+  mike_run_2: new URL('../assets/mike_run_2.png', import.meta.url).href,
+  mike_run_3: new URL('../assets/mike_run_3.png', import.meta.url).href,
 
   pizza_slice: new URL('../assets/pizza_slice.png', import.meta.url).href,
   ooze_canister: new URL('../assets/ooze_canister.png', import.meta.url).href,
