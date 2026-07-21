@@ -19,8 +19,10 @@ export function createFallingItem(type, xFrac, speedFrac) {
     rotationRad: 0,
     // Slow ambient tumble so falling items don't read as static/dull --
     // randomized direction and a little speed variance per item so a
-    // cluster doesn't spin in visible lockstep.
-    rotationSpeedRadPerSec: (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.4),
+    // cluster doesn't spin in visible lockstep. Cut ~70% from the initial
+    // pass per Amit's feedback (2026-07-21) -- that first pass read as too
+    // fast/busy.
+    rotationSpeedRadPerSec: (Math.random() < 0.5 ? -1 : 1) * (0.12 + Math.random() * 0.12),
   };
 }
 

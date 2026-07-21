@@ -9,11 +9,6 @@ import { GROUND_Y_FRAC, PLAYER_HEIGHT_FRAC, ITEM_SIZE_FRAC } from '../data/const
 import { getShakeOffsetFrac } from '../systems/juice.js';
 import { getRunCycleSpriteKey } from '../entities/player.js';
 
-const PARTICLE_COLORS = {
-  pizza: '#ffcf4d',
-  ooze: '#8CE05A',
-};
-
 // Gentle idle "breathing" pulse (no-skateboard standing pose only, not the
 // run-cycle) -- vertical-only scale from 1x to 1.08x and back over a
 // 1.3s/1.3s ease-in-out-cubic loop, pivoted at the sprite's feet (the same
@@ -197,15 +192,58 @@ function drawItems(ctx, items, w, h, images) {
   }
 }
 
+// Particle shapes read as their source material at a glance: triangular
+// wedges for shattering pizza crust, soft round blobs for ooze droplets,
+// angular diamonds for explosion debris (see spawnPizzaBreak/spawnOozeSplash/
+// spawnBombExplosion in systems/juice.js).
 function drawParticles(ctx, juice, w, h) {
   for (const p of juice.particles) {
     const alpha = Math.max(0, p.life / p.maxLife);
+    const size = h * p.sizeFrac;
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = PARTICLE_COLORS[p.color] || '#ffffff';
+    ctx.fillStyle = p.color;
+    if (p.glow) {
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = size * 1.5;
+    }
+    ctx.translate(px(p.xFrac, w), px(p.yFrac, h));
+    ctx.rotate(p.rotationRad);
+
     ctx.beginPath();
-    ctx.arc(px(p.xFrac, w), px(p.yFrac, h), h * 0.012, 0, Math.PI * 2);
+    if (p.shape === 'shard') {
+      ctx.moveTo(0, -size);
+      ctx.lineTo(size * 0.75, size * 0.6);
+      ctx.lineTo(-size * 0.75, size * 0.6);
+      ctx.closePath();
+    } else if (p.shape === 'spark') {
+      ctx.moveTo(0, -size);
+      ctx.lineTo(size * 0.4, 0);
+      ctx.lineTo(0, size);
+      ctx.lineTo(-size * 0.4, 0);
+      ctx.closePath();
+    } else {
+      ctx.arc(0, 0, size, 0, Math.PI * 2);
+    }
     ctx.fill();
+    ctx.restore();
+  }
+}
+
+// Bomb-only expanding shockwave ring (see spawnBombExplosion) -- grows from
+// the blast center and fades out over its lifetime, on top of the existing
+// screen-shake for extra impact.
+function drawRings(ctx, juice, w, h) {
+  for (const r of juice.rings) {
+    const t = Math.max(0, r.life / r.maxLife);
+    const radius = h * r.maxRadiusFrac * (1 - t);
+    ctx.save();
+    ctx.globalAlpha = t * 0.8;
+    ctx.strokeStyle = r.color;
+    ctx.lineWidth = h * 0.012 * t + h * 0.002;
+    ctx.beginPath();
+    ctx.arc(px(r.xFrac, w), px(r.yFrac, h), radius, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 }
@@ -224,6 +262,7 @@ export function renderFrame(ctx, canvas, world) {
   drawBackground(ctx, w, h, images, stage);
   drawItems(ctx, items, w, h, images);
   drawPlayer(ctx, player.xFrac, w, h, images, player);
+  drawRings(ctx, juice, w, h);
   drawParticles(ctx, juice, w, h);
 
   ctx.restore();

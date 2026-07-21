@@ -29,7 +29,7 @@ import {
   getComboMultiplier,
 } from '../systems/scoring.js';
 import { createLives, resetLives, loseLife, isDead } from '../systems/lives.js';
-import { createJuice, resetJuice, updateJuice, spawnHitBurst, triggerScreenShake } from '../systems/juice.js';
+import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
 import { OOZE_BUFF_DURATION_SEC, GROUND_Y_FRAC, PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 
@@ -80,13 +80,13 @@ async function boot() {
       item.resolved = true;
       registerPizzaHit(scoring);
       triggerSwing(player);
-      spawnHitBurst(juice, item.xFrac, item.yFrac, 'pizza');
+      spawnPizzaBreak(juice, item.xFrac, item.yFrac);
     } else if (item.type.kind === 'power-up') {
       item.resolved = true;
       registerOozeHit(scoring);
       triggerSwing(player);
       grantOozeBuff(player);
-      spawnHitBurst(juice, item.xFrac, item.yFrac, 'ooze');
+      spawnOozeSplash(juice, item.xFrac, item.yFrac);
     } else {
       // bomb
       if (!isInvulnerable(player)) {
@@ -94,6 +94,7 @@ async function boot() {
         loseLife(lives);
         triggerHit(player);
         registerComboBreak(scoring);
+        spawnBombExplosion(juice, item.xFrac, item.yFrac);
         triggerScreenShake(juice, 0.18, 0.012);
         if (isDead(lives)) {
           triggerGameOver(gs);
