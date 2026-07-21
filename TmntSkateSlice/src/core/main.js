@@ -5,7 +5,7 @@
 
 import { loadAssets } from './assets.js';
 import { setupCanvas, renderFrame } from './render.js';
-import { createGameState, updateCountdown, triggerGameOver, restartToCountdown } from './gameState.js';
+import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, togglePause } from './gameState.js';
 import { getSteerAxis } from '../input/input.js';
 import {
   createPlayer,
@@ -29,7 +29,7 @@ import {
   getComboMultiplier,
 } from '../systems/scoring.js';
 import { createLives, resetLives, loseLife, isDead } from '../systems/lives.js';
-import { createJuice, updateJuice, spawnHitBurst, triggerScreenShake } from '../systems/juice.js';
+import { createJuice, resetJuice, updateJuice, spawnHitBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
 import { OOZE_BUFF_DURATION_SEC, GROUND_Y_FRAC, PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 
@@ -56,6 +56,7 @@ async function boot() {
     resetDifficulty(difficulty);
     resetScoring(scoring);
     resetLives(lives);
+    resetJuice(juice);
     items = [];
     ui.hideGameOver();
   }
@@ -63,6 +64,12 @@ async function boot() {
   document.getElementById('restart-button').addEventListener('click', () => {
     fullReset();
     restartToCountdown(gs);
+    ui.setPaused(false);
+  });
+
+  document.getElementById('pause-button').addEventListener('click', () => {
+    togglePause(gs);
+    ui.setPaused(gs.paused);
   });
 
   // Called every frame an unresolved item overlaps Michelangelo's full
@@ -87,7 +94,7 @@ async function boot() {
         loseLife(lives);
         triggerHit(player);
         registerComboBreak(scoring);
-        triggerScreenShake(juice, 0.3, 0.02);
+        triggerScreenShake(juice, 0.18, 0.012);
         if (isDead(lives)) {
           triggerGameOver(gs);
         }
@@ -152,15 +159,20 @@ async function boot() {
 
       let stage = getStage(difficulty);
 
-      if (gs.current === 'countdown') {
-        updateCountdown(gs, dt);
-        ui.setCountdown(gs.countdownRemaining);
-      } else if (gs.current === 'running') {
-        ui.setCountdown(0);
-        stage = updateRunning(dt);
-      } else if (gs.current === 'gameover') {
-        ui.setCountdown(0);
-        ui.showGameOver(scoring.score, scoring.bestCombo);
+      // Pause freezes the whole simulation in place -- gs.current is left
+      // untouched, so resuming drops back into exactly countdown/running/
+      // gameover, whichever it was paused from (§ HUD conventions).
+      if (!gs.paused) {
+        if (gs.current === 'countdown') {
+          updateCountdown(gs, dt);
+          ui.setCountdown(gs.countdownRemaining);
+        } else if (gs.current === 'running') {
+          ui.setCountdown(0);
+          stage = updateRunning(dt);
+        } else if (gs.current === 'gameover') {
+          ui.setCountdown(0);
+          ui.showGameOver(scoring.score, scoring.bestCombo);
+        }
       }
 
       renderFrame(ctx, canvas, { images, stage, player, items, juice });

@@ -7,6 +7,7 @@
 
 import { GROUND_Y_FRAC, PLAYER_HEIGHT_FRAC, ITEM_SIZE_FRAC } from '../data/constants.js';
 import { getShakeOffsetFrac } from '../systems/juice.js';
+import { getSkateCycleSpriteKey } from '../entities/player.js';
 
 const PARTICLE_COLORS = {
   pizza: '#ffcf4d',
@@ -83,7 +84,12 @@ function drawPlayer(ctx, xFrac, w, h, images, player) {
   const y = h * GROUND_Y_FRAC;
   const size = h * PLAYER_HEIGHT_FRAC;
 
-  const spriteKey = { idle: 'mike_idle', swing: 'mike_swing', hit: 'mike_hit' }[player.state] || 'mike_idle';
+  // TEMP: skate-cycle preview overrides the idle sprite while moving (see
+  // entities/player.js getSkateCycleSpriteKey) -- swing/hit still win.
+  const spriteKey =
+    player.state === 'idle' && player.isMoving
+      ? getSkateCycleSpriteKey(player)
+      : { idle: 'mike_idle', swing: 'mike_swing', hit: 'mike_hit' }[player.state] || 'mike_idle';
   const img = images[spriteKey];
 
   ctx.save();

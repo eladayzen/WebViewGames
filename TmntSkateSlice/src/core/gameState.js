@@ -6,12 +6,20 @@
 import { COUNTDOWN_SEC } from '../data/constants.js';
 
 export function createGameState() {
-  return { current: 'countdown', countdownRemaining: COUNTDOWN_SEC };
+  return { current: 'countdown', countdownRemaining: COUNTDOWN_SEC, paused: false };
 }
 
 export function restartToCountdown(gs) {
   gs.current = 'countdown';
   gs.countdownRemaining = COUNTDOWN_SEC;
+  gs.paused = false;
+}
+
+// Pause button (§ HUD conventions, BUILD_NOTES.md) -- freezes the whole
+// simulation (countdown/running) in frame() without touching gs.current, so
+// resuming drops back into exactly the state it was paused from.
+export function togglePause(gs) {
+  gs.paused = !gs.paused;
 }
 
 export function updateCountdown(gs, dt) {

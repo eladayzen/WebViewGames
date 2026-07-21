@@ -17,6 +17,8 @@ export function createUI() {
     gameoverOverlay: document.getElementById('gameover-overlay'),
     finalScore: document.getElementById('final-score'),
     finalCombo: document.getElementById('final-combo'),
+    pauseButton: document.getElementById('pause-button'),
+    pausedBadge: document.getElementById('paused-badge'),
   };
 
   // Build the 3 life icons once.
@@ -86,6 +88,11 @@ export function createUI() {
 
     hideGameOver() {
       el.gameoverOverlay.classList.add('hidden');
+    },
+
+    setPaused(isPaused) {
+      el.pauseButton.innerHTML = isPaused ? '&#9654;' : '&#9208;'; // play : pause glyph
+      el.pausedBadge.classList.toggle('hidden', !isPaused);
     },
   };
 }

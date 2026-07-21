@@ -14,6 +14,13 @@ export function createJuice() {
   };
 }
 
+export function resetJuice(juice) {
+  juice.particles = [];
+  juice.shakeTimer = 0;
+  juice.shakeMaxTimer = 0;
+  juice.shakeMagnitudeFrac = 0;
+}
+
 export function spawnHitBurst(juice, xFrac, yFrac, color) {
   const count = 6;
   for (let i = 0; i < count; i++) {

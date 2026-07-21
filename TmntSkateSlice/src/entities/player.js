@@ -17,6 +17,10 @@ import {
 const SWING_DURATION_SEC = 0.28;
 const HIT_FLINCH_DURATION_SEC = 0.5;
 
+// TEMP preview constant (quick-inserted skate-cycle check, see assets.js).
+// Fraction of play-area width traveled per cycle phase -- tune by feel.
+const SKATE_CYCLE_STEP_FRAC = 0.05;
+
 export function createPlayer() {
   return {
     xFrac: 0.5,
@@ -25,6 +29,7 @@ export function createPlayer() {
     stateTimer: 0,
     invulnTimer: 0,
     oozeBuffTimer: 0,
+    travelDistFrac: 0, // TEMP: total |dx| traveled, drives the skate-cycle preview
   };
 }
 
@@ -35,14 +40,18 @@ export function resetPlayer(player) {
   player.stateTimer = 0;
   player.invulnTimer = 0;
   player.oozeBuffTimer = 0;
+  player.travelDistFrac = 0;
 }
 
 export function updatePlayer(player, dt, steerAxis) {
   // Continuous, proportional movement -- never a discrete step (§4).
+  const prevX = player.xFrac;
   player.xFrac += steerAxis * PLAYER_MAX_SPEED_FRAC_PER_SEC * dt;
   player.xFrac = Math.max(PLAY_AREA_LEFT_FRAC, Math.min(PLAY_AREA_RIGHT_FRAC, player.xFrac));
+  player.travelDistFrac += Math.abs(player.xFrac - prevX);
 
-  if (Math.abs(steerAxis) > 0.08) {
+  player.isMoving = Math.abs(steerAxis) > 0.08; // TEMP: gates the skate-cycle preview
+  if (player.isMoving) {
     player.facing = steerAxis > 0 ? 1 : -1;
   }
 
@@ -85,4 +94,13 @@ export function getHitHalfWidthFrac(player) {
 
 export function isInvulnerable(player) {
   return player.invulnTimer > 0;
+}
+
+// TEMP preview helper (quick-inserted, see assets.js) -- picks the current
+// skate-cycle frame keyed to world travel, not wall time, so it always
+// matches how fast he's actually moving: neutral-dip-neutral-rise.
+const SKATE_CYCLE_KEYS = ['mike_skate_1', 'mike_skate_2', 'mike_skate_1', 'mike_skate_3'];
+export function getSkateCycleSpriteKey(player) {
+  const phase = Math.floor(player.travelDistFrac / SKATE_CYCLE_STEP_FRAC) % SKATE_CYCLE_KEYS.length;
+  return SKATE_CYCLE_KEYS[phase];
 }
