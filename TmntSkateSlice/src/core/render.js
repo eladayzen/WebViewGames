@@ -14,6 +14,28 @@ const PARTICLE_COLORS = {
   ooze: '#8CE05A',
 };
 
+// Gentle idle "breathing" pulse (no-skateboard standing pose only, not the
+// run-cycle) -- vertical-only scale from 1x to 1.08x and back over a
+// 1.3s/1.3s ease-in-out-cubic loop, pivoted at the sprite's feet (the same
+// origin drawPlayer already translates to before drawing), not its center,
+// so he stretches upward from the ground rather than growing from his
+// middle.
+const IDLE_BREATH_HALF_PERIOD_SEC = 1.3;
+const IDLE_BREATH_MAX_SCALE = 1.02;
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2;
+}
+
+function getIdleBreathScale() {
+  const period = IDLE_BREATH_HALF_PERIOD_SEC * 2;
+  const t = (performance.now() / 1000) % period;
+  const triangle = t < IDLE_BREATH_HALF_PERIOD_SEC
+    ? t / IDLE_BREATH_HALF_PERIOD_SEC
+    : 1 - (t - IDLE_BREATH_HALF_PERIOD_SEC) / IDLE_BREATH_HALF_PERIOD_SEC;
+  return 1 + (IDLE_BREATH_MAX_SCALE - 1) * easeInOutCubic(triangle);
+}
+
 export function setupCanvas(canvas) {
   const ctx = canvas.getContext('2d');
 
@@ -104,8 +126,10 @@ function drawPlayer(ctx, xFrac, w, h, images, player) {
   if (img) {
     const drawH = size;
     const drawW = size * (img.width / img.height);
+    const isStandingIdle = player.state === 'idle' && !player.isMoving;
+    const breathScale = isStandingIdle ? getIdleBreathScale() : 1;
     ctx.translate(x, y);
-    ctx.scale(player.facing, 1);
+    ctx.scale(player.facing, breathScale);
     ctx.drawImage(img, -drawW / 2, -drawH, drawW, drawH);
   } else {
     drawPlayerFallback(ctx, x, y, size, player);
@@ -161,11 +185,15 @@ function drawItems(ctx, items, w, h, images) {
     const x = px(item.xFrac, w);
     const y = px(item.yFrac, h);
     const img = images[item.type.sprite];
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(item.rotationRad || 0);
     if (img) {
-      ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
+      ctx.drawImage(img, -size / 2, -size / 2, size, size);
     } else {
-      drawItemFallback(ctx, x, y, size, item.type);
+      drawItemFallback(ctx, 0, 0, size, item.type);
     }
+    ctx.restore();
   }
 }
 

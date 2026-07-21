@@ -16,12 +16,18 @@ export function createFallingItem(type, xFrac, speedFrac) {
     prevYFrac: -ITEM_SIZE_FRAC,
     speedFrac, // fraction of canvas height fallen per second
     resolved: false, // struck, or already exited off-screen and counted
+    rotationRad: 0,
+    // Slow ambient tumble so falling items don't read as static/dull --
+    // randomized direction and a little speed variance per item so a
+    // cluster doesn't spin in visible lockstep.
+    rotationSpeedRadPerSec: (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.4),
   };
 }
 
 export function updateFallingItem(item, dt) {
   item.prevYFrac = item.yFrac;
   item.yFrac += item.speedFrac * dt;
+  item.rotationRad += item.rotationSpeedRadPerSec * dt;
 }
 
 // True exactly once, the frame the item's vertical center crosses the

@@ -21,7 +21,7 @@ const HIT_FLINCH_DURATION_SEC = 0.5;
 // Fraction of play-area width traveled per run-cycle phase -- tune by feel.
 // Smaller than the old skate-bob step since a foot-swap run reads as fast
 // only if the frames flip quickly relative to travel speed.
-const RUN_CYCLE_STEP_FRAC = 0.035;
+const RUN_CYCLE_STEP_FRAC = 0.09;
 
 export function createPlayer() {
   return {
@@ -99,10 +99,11 @@ export function isInvulnerable(player) {
 }
 
 // Picks the current run-cycle frame keyed to world travel, not wall time, so
-// it always matches how fast he's actually moving: left-stride, right-stride.
-// (A tucked-midpoint third frame was tried and dropped -- it came back
-// off-model, a visibly different character/render style than the other two.
-// Revisit with a tighter generation before adding a 3rd frame back in.)
+// it always matches how fast he's actually moving: left-leg-crossing,
+// right-leg-crossing ninja cross-step (legs overlap laterally rather than
+// an open front-to-back running lunge -- direction from Amit, 2026-07-21).
+// The original wide-open-lunge frames are archived at
+// art/archive/run-cycle-wide-lunge/ in case that look is worth revisiting.
 const RUN_CYCLE_KEYS = ['mike_run_1', 'mike_run_3'];
 export function getRunCycleSpriteKey(player) {
   const phase = Math.floor(player.travelDistFrac / RUN_CYCLE_STEP_FRAC) % RUN_CYCLE_KEYS.length;
