@@ -17,9 +17,9 @@ const MANIFEST = {
   // No-skateboard experiment (Visual DNA "mikey_skate" generation, board
   // edited out): same crouched fighting stance/torso/nunchaku grip as
   // mike_idle, barefoot, legs redrawn per frame for a fast run-cycle. See
-  // getRunCycleSpriteKey in entities/player.js.
+  // getRunCycleSpriteKey in entities/player.js. (A 3rd "tucked midpoint"
+  // frame was generated and dropped -- came back off-model.)
   mike_run_1: new URL('../assets/mike_run_1.png', import.meta.url).href,
-  mike_run_2: new URL('../assets/mike_run_2.png', import.meta.url).href,
   mike_run_3: new URL('../assets/mike_run_3.png', import.meta.url).href,
 
   pizza_slice: new URL('../assets/pizza_slice.png', import.meta.url).href,
