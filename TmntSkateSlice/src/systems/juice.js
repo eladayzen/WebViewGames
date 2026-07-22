@@ -80,14 +80,14 @@ export function spawnPizzaBreak(juice, xFrac, yFrac) {
 // Colors per STYLE.md's power-up palette (glowing green -- ooze only).
 export function spawnOozeSplash(juice, xFrac, yFrac) {
   emitBurst(juice, xFrac, yFrac, {
-    count: 7,
+    count: 16,
     colors: ['#4CFF7A', '#8CE05A'],
     speedMin: 0.15,
-    speedMax: 0.3,
-    life: 0.55,
+    speedMax: 0.32,
+    life: 0.5,
     shape: 'blob',
-    sizeMin: 0.014,
-    sizeMax: 0.022,
+    sizeMin: 0.006,
+    sizeMax: 0.011,
     upBias: 0.22,
     glow: true,
   });
