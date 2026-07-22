@@ -25,6 +25,19 @@ function pickNextX(sp) {
   return x;
 }
 
+// A minority of items -- any type, pizza/ooze/bomb alike, not tied to
+// what's falling -- drop noticeably faster than the stage baseline, so the
+// falling pattern reads as more varied/interesting rather than one flat
+// wall-of-speed per stage.
+const FAST_FALL_CHANCE = 0.25;
+const FAST_FALL_MULTIPLIER = 1.6;
+
+function pickFallSpeedFrac(stage) {
+  return Math.random() < FAST_FALL_CHANCE
+    ? stage.fallSpeedFrac * FAST_FALL_MULTIPLIER
+    : stage.fallSpeedFrac;
+}
+
 // Returns a newly-spawned item, or null if it isn't time yet. Caller is
 // responsible for pushing the result into its own items array.
 export function updateSpawner(sp, dt, stage) {
@@ -34,5 +47,5 @@ export function updateSpawner(sp, dt, stage) {
   sp.timer = stage.spawnIntervalSec;
   const type = rollItemType(stage);
   const x = pickNextX(sp);
-  return createFallingItem(type, x, stage.fallSpeedFrac);
+  return createFallingItem(type, x, pickFallSpeedFrac(stage));
 }

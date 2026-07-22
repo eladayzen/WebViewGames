@@ -120,11 +120,9 @@ export function getRunCycleSpriteKey(player) {
 // Swing/hit frames are keyed to elapsed time within the state's fixed
 // duration (not travel distance -- he doesn't have to be moving to attack
 // or get hit), split evenly across however many frames each sequence has.
-// Regenerated no-skateboard against mike_idle's current proportions; a
-// wind-up frame (mike_swing_1) is still generating and will be prepended
-// here once it lands. Originals archived at
-// art/archive/hit-swing-skateboard-era/.
-const SWING_CYCLE_KEYS = ['mike_swing_2', 'mike_swing_3'];
+// Regenerated no-skateboard against mike_idle's current proportions.
+// Originals archived at art/archive/hit-swing-skateboard-era/.
+const SWING_CYCLE_KEYS = ['mike_swing_1', 'mike_swing_2', 'mike_swing_3'];
 export function getSwingCycleSpriteKey(player) {
   const elapsed = SWING_DURATION_SEC - player.stateTimer;
   const phase = Math.min(

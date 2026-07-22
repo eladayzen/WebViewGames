@@ -24,6 +24,7 @@ const MANIFEST = {
   // against the current mike_idle's proportions -- see getSwingCycleSpriteKey
   // / getHitCycleSpriteKey in entities/player.js. Original skateboard-era
   // single-frame versions archived at art/archive/hit-swing-skateboard-era/.
+  mike_swing_1: new URL('../assets/mike_swing_1.png', import.meta.url).href,
   mike_swing_2: new URL('../assets/mike_swing_2.png', import.meta.url).href,
   mike_swing_3: new URL('../assets/mike_swing_3.png', import.meta.url).href,
   mike_hit_1: new URL('../assets/mike_hit_1.png', import.meta.url).href,
