@@ -15,7 +15,13 @@ import {
   HIT_INVULNERABILITY_SEC,
 } from '../data/constants.js';
 
-const SWING_DURATION_SEC = 0.18; // faster frame rate through the 2-frame swing sequence, per feedback
+// Per-swing-frame hold time. Frames 2/3 match the walking run-cycle's
+// per-frame pace at max speed (RUN_CYCLE_STEP_FRAC /
+// PLAYER_MAX_SPEED_FRAC_PER_SEC = 0.09 / 0.9 = 0.1s/frame); frame 1
+// (windup) is deliberately quicker -- a snappier flick into the swing,
+// per feedback.
+const SWING_FRAME_DURATIONS_SEC = [0.05, 0.1, 0.1];
+const SWING_DURATION_SEC = SWING_FRAME_DURATIONS_SEC.reduce((a, b) => a + b, 0);
 const HIT_FLINCH_DURATION_SEC = 0.5;
 
 // Fraction of play-area width traveled per run-cycle phase -- tune by feel.
@@ -125,11 +131,12 @@ export function getRunCycleSpriteKey(player) {
 const SWING_CYCLE_KEYS = ['mike_swing_1', 'mike_swing_2', 'mike_swing_3'];
 export function getSwingCycleSpriteKey(player) {
   const elapsed = SWING_DURATION_SEC - player.stateTimer;
-  const phase = Math.min(
-    SWING_CYCLE_KEYS.length - 1,
-    Math.floor((elapsed / SWING_DURATION_SEC) * SWING_CYCLE_KEYS.length)
-  );
-  return SWING_CYCLE_KEYS[phase];
+  let acc = 0;
+  for (let i = 0; i < SWING_FRAME_DURATIONS_SEC.length; i++) {
+    acc += SWING_FRAME_DURATIONS_SEC[i];
+    if (elapsed < acc) return SWING_CYCLE_KEYS[i];
+  }
+  return SWING_CYCLE_KEYS[SWING_CYCLE_KEYS.length - 1];
 }
 
 const HIT_CYCLE_KEYS = ['mike_hit_1', 'mike_hit_2'];
