@@ -48,6 +48,55 @@ Returns `urls[0]` — a Kolbo CDN URL. That URL is what every subsequent
   Usable, but expect to explicitly re-prompt against the shadow, or manually
   mask it, or just prefer gpt-image-2 for anything that needs a clean cutout.
 
+### nano-banana-pro/edit vs gpt-image/1.5-image-to-image for POSE changes (tested 2026-07-21)
+
+The comparison above is for anchor/first-generation quality. For editing an
+*existing* character into a meaningfully different **pose** (not just a
+restyle), the two edit models are not interchangeable:
+
+- **`nano-banana-pro/edit`** tends to under-commit on a pose change that
+  deviates significantly from the reference -- across several attempts at
+  turning a wide open running stride into legs actually crossing (a ninja
+  cross-step), it kept returning either a near-copy of the reference pose
+  or drifted off-model (flatter shading, different face/proportions) on the
+  more dramatic ask, without ever landing the actual requested pose.
+- **`gpt-image/1.5-image-to-image`** followed the same literal pose
+  instruction correctly on the first or second try, while staying on-model
+  (same colors/linework/proportions as the reference). It was also the
+  model that succeeded at generating new poses (attack wind-up, hit flinch)
+  purely from a text description + reference image.
+
+**Practical rule:** default to `nano-banana-pro/edit` for restyles/prop
+removal/proportion fixes (small deltas from the reference), but reach for
+`gpt-image/1.5-image-to-image` when the ask is "put this character in a
+different pose" and the first attempt on `nano-banana-pro/edit` reverts to
+something close to the input instead of actually changing the pose.
+
+### Combining a good pose with corrected proportions/style (dual reference)
+
+When an existing sprite already has a great **pose** but the wrong
+**build/props** (e.g. an older, taller/thinner character generation, or one
+with a prop -- like a skateboard -- that needs removing), don't redraw the
+pose from scratch. Pass **two** `source_images`: the existing pose as the
+first, and a current on-model reference (e.g. the game's already-correct
+idle sprite) as the second, and call them out explicitly in the prompt --
+`generate_image_edit` supports referring to images by ordinal position:
+
+```
+generate_image_edit(
+  prompt: "Using the exact same character build, proportions, and style as
+           the SECOND reference image, redraw him in the exact same [pose
+           description] as the FIRST reference image. Remove/change
+           [prop/detail] ...",
+  source_images: [existing_pose_url, current_style_reference_url],
+  model: "gpt-image/1.5-image-to-image"
+)
+```
+
+This reliably grafted a correct no-prop, correct-proportions build onto an
+already-good pose in one shot, rather than needing several rounds of
+descriptive-prompt iteration to reinvent a pose that already existed.
+
 ## Style-referenced sprite generation
 
 ```
@@ -130,3 +179,10 @@ light-colored parts of the subject.
 - `list_models` responses are large (100k+ tokens for `format: "json"`) —
   grep the saved tool-result file rather than reading it whole if you need
   to re-verify a model ID or cap.
+- `upload_media` re-encodes a transparent PNG (JPEG or indexed palette),
+  which can corrupt the transparent area into a non-white/noisy color
+  instead of clean white -- breaks the "plain white background" assumption
+  the cutout/edit pipeline depends on if you re-upload an existing sprite
+  as an edit source. Fix: flatten the PNG onto a real white RGB background
+  locally first (`Image.new('RGB', size, (255,255,255)).paste(im,
+  mask=im.split()[3])` in Pillow), then upload that.

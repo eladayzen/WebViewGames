@@ -1,0 +1,7 @@
+Video game key art blending two art directions: the composition and rendering technique of a true 3D-perspective corridor (converging tunnel walls, deep receding vanishing point, tunnel curving into the distance) combined with flat, cel-shaded 2D sprite-style character and prop illustration -- like paper cutouts or trading-card art with bold clean outlines -- placed as flat billboards within that 3D space rather than fully modeled 3D geometry. A small, plucky space-courier kid in a patched orange flight suit and a glowing little rocket-pack rides a hoverboard down the center of a sparkling starlit wormhole tunnel that curves and recedes into the distance in genuine 3D perspective, banking to one side mid-dodge. Flat 2D-style obstacles float in the tunnel ahead: chunky grey asteroid rubble, a tumbling piece of space-junk crate, a spinning ringed satellite-debris hazard; a bright glowing comet-shard pickup trailing sparkle particles sits to one side. Tunnel walls are deep-space indigo and violet with streaking starlight and soft nebula color washes, strong rim lighting on the character. Wide 16:9 game key art framing, dynamic action pose, bright and adventurous mood, third-person view from just behind and above the character.
+
+Model: nano-banana-pro
+Aspect ratio: 16:9
+Num images: 4
+Reference images (composition/technique guidance only, no thematic content match needed):
+- pipeline/reports/tunnelRef.png

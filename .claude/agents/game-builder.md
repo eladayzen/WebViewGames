@@ -44,7 +44,22 @@ have Post-MVP scope leaking into them rather than quietly building it.
    per `KOLBO_ASSET_PIPELINE.md` (repo root) for the exact tool calls, model
    IDs, and the local white-key cutout fallback — Kolbo's own `removebg` is
    known broken, don't waste a cycle rediscovering that.
-3. **Ship it into the SDK exactly per `GOBALANCE_SDK.md` Phase 1, and stop
+   - Also read `KOLBO_ASSET_PIPELINE.md`'s general counterpart, the personal
+     skill at `~/.claude/skills/kolbo-mcp-basics/SKILL.md`, if anything about
+     the Kolbo call pattern is unclear from the project doc alone.
+3. **Read `WEB_MINIGAME_TECH_RETROSPECTIVE.md` and `BUILD_NOTES.md`** (repo
+   root) before starting. `BUILD_NOTES.md` especially is a **rolling draft**
+   — re-read it every time you start a build, don't rely on having read an
+   earlier version of it, since it's explicitly where new cross-game
+   conventions/decisions land before they're settled enough to fold into
+   `GOBALANCE_SDK.md`/`PIPELINE.md` proper (at which point it gets deleted —
+   if it's gone, that's expected, everything in it made it into the
+   permanent docs). `WEB_MINIGAME_TECH_RETROSPECTIVE.md` tracks a real open
+   question (2D rendering default — raw Canvas vs. PixiJS) that isn't
+   resolved yet; if you're starting a new 2D game and the retrospective's
+   "Open question for the CTO" section is still open, flag it to Amit rather
+   than silently picking a side.
+4. **Ship it into the SDK exactly per `GOBALANCE_SDK.md` Phase 1, and stop
    exactly where that doc says to stop.** Read that file in full before
    shipping anything — summary, because getting this wrong either breaks
    the game on-device or silently overwrites someone else's in-flight work

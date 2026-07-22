@@ -1,0 +1,9 @@
+Video game key art blending two art directions: the composition and rendering technique of a true 3D-perspective corridor (converging tunnel walls, deep receding vanishing point, tunnel curving into the distance) combined with the rough, painterly, hand-drawn-over-CG character and prop illustration style of the Mutant Mayhem-era TMNT movies. A teenage mutant ninja turtle wearing a red mask and red wrist wraps rides a skateboard down the center of a glowing green safe-path lane through a dark, wet, stone-and-rivet sewer tunnel that curves and recedes into the distance in genuine 3D perspective. The turtle and all obstacles/pickups (wooden crates, a spinning studded metal drum obstacle, a floating pizza slice pickup with a small sparkle) are rendered as flat, cel-shaded 2D sprite-style illustrations -- like paper cutouts or trading-card art, rough sketchy linework, textured painterly shading -- placed as flat billboards within the 3D tunnel space, NOT as fully modeled 3D geometry, deliberately contrasted against the volumetric, perspective-correct tunnel architecture around them. Moody teal-green ambient tunnel lighting, occasional graffiti tags on the wet stone walls, splashes of water at the turtle's feet. Wide 16:9 game key art framing, dynamic action pose, mid-dodge lean to one side, third-person view from just behind and above the turtle.
+
+Model: nano-banana-pro
+Aspect ratio: 16:9
+Num images: 4
+Reference images (style/technique guidance only):
+- /Users/eladayzen/Documents/tmnt/Leonardo_Mutant_Mayhem.webp
+- /Users/eladayzen/Documents/tmnt/Michelangelo2023.webp
+- pipeline/reports/tunnelRef.png (composition/technique reference for the 3D-corridor-with-flat-sprites look)

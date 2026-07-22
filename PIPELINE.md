@@ -153,3 +153,9 @@ away.
   against the actual Unity-side source.
 - `TmntRunner/gdd-ninja-runner.md` — the depth/format reference for stage
   3's output.
+- `WEB_MINIGAME_TECH_RETROSPECTIVE.md` — stage 4's accumulated engineering
+  learnings across games built so far (currently tracks an open rendering-
+  default question — raw Canvas vs. PixiJS for 2D — pending sign-off).
+- `BUILD_NOTES.md` — a **rolling draft** of new cross-game conventions,
+  re-read every build; gets folded into `GOBALANCE_SDK.md`/this doc and
+  deleted once settled, so its absence later is expected, not a regression.
