@@ -7,7 +7,7 @@
 
 import { GROUND_Y_FRAC, PLAYER_HEIGHT_FRAC, ITEM_SIZE_FRAC } from '../data/constants.js';
 import { getShakeOffsetFrac } from '../systems/juice.js';
-import { getRunCycleSpriteKey } from '../entities/player.js';
+import { getRunCycleSpriteKey, getSwingCycleSpriteKey, getHitCycleSpriteKey } from '../entities/player.js';
 
 // Gentle idle "breathing" pulse (no-skateboard standing pose only, not the
 // run-cycle) -- vertical-only scale from 1x to 1.08x and back over a
@@ -96,17 +96,25 @@ function drawPlayerFallback(ctx, x, y, size, player) {
   ctx.restore();
 }
 
-function drawPlayer(ctx, xFrac, w, h, images, player) {
+function drawPlayer(ctx, xFrac, w, h, images, player, isRunning) {
   const x = px(xFrac, w);
   const y = h * GROUND_Y_FRAC;
   const size = h * PLAYER_HEIGHT_FRAC;
 
   // Run-cycle overrides the idle sprite while moving (see entities/player.js
-  // getRunCycleSpriteKey) -- swing/hit still win.
-  const spriteKey =
-    player.state === 'idle' && player.isMoving
-      ? getRunCycleSpriteKey(player)
-      : { idle: 'mike_idle', swing: 'mike_swing', hit: 'mike_hit' }[player.state] || 'mike_idle';
+  // getRunCycleSpriteKey) -- swing/hit still win. Also requires isRunning so
+  // a stale isMoving flag can't leave him "running in place" during
+  // countdown/gameover (updatePlayer only runs during gs.current==='running').
+  // swing/hit are themselves short multi-frame sequences, keyed to elapsed
+  // state time (see getSwingCycleSpriteKey/getHitCycleSpriteKey).
+  let spriteKey = 'mike_idle';
+  if (player.state === 'swing') {
+    spriteKey = getSwingCycleSpriteKey(player);
+  } else if (player.state === 'hit') {
+    spriteKey = getHitCycleSpriteKey(player);
+  } else if (player.state === 'idle' && player.isMoving && isRunning) {
+    spriteKey = getRunCycleSpriteKey(player);
+  }
   const img = images[spriteKey];
 
   ctx.save();
@@ -251,7 +259,7 @@ function drawRings(ctx, juice, w, h) {
 export function renderFrame(ctx, canvas, world) {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
-  const { images, stage, player, items, juice } = world;
+  const { images, stage, player, items, juice, isRunning } = world;
 
   ctx.clearRect(0, 0, w, h);
 
@@ -261,7 +269,7 @@ export function renderFrame(ctx, canvas, world) {
 
   drawBackground(ctx, w, h, images, stage);
   drawItems(ctx, items, w, h, images);
-  drawPlayer(ctx, player.xFrac, w, h, images, player);
+  drawPlayer(ctx, player.xFrac, w, h, images, player, isRunning);
   drawRings(ctx, juice, w, h);
   drawParticles(ctx, juice, w, h);
 

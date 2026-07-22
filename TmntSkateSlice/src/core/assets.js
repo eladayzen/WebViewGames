@@ -11,8 +11,6 @@
 
 const MANIFEST = {
   mike_idle: new URL('../assets/mike_idle.png', import.meta.url).href,
-  mike_swing: new URL('../assets/mike_swing.png', import.meta.url).href,
-  mike_hit: new URL('../assets/mike_hit.png', import.meta.url).href,
 
   // No-skateboard experiment (Visual DNA "mikey_skate" generation, board
   // edited out): same crouched fighting stance/torso/nunchaku grip as
@@ -21,6 +19,15 @@ const MANIFEST = {
   // frame was generated and dropped -- came back off-model.)
   mike_run_1: new URL('../assets/mike_run_1.png', import.meta.url).href,
   mike_run_3: new URL('../assets/mike_run_3.png', import.meta.url).href,
+
+  // Swing (attack) and hit (flinch) sequences, regenerated no-skateboard
+  // against the current mike_idle's proportions -- see getSwingCycleSpriteKey
+  // / getHitCycleSpriteKey in entities/player.js. Original skateboard-era
+  // single-frame versions archived at art/archive/hit-swing-skateboard-era/.
+  mike_swing_2: new URL('../assets/mike_swing_2.png', import.meta.url).href,
+  mike_swing_3: new URL('../assets/mike_swing_3.png', import.meta.url).href,
+  mike_hit_1: new URL('../assets/mike_hit_1.png', import.meta.url).href,
+  mike_hit_2: new URL('../assets/mike_hit_2.png', import.meta.url).href,
 
   pizza_slice: new URL('../assets/pizza_slice.png', import.meta.url).href,
   ooze_canister: new URL('../assets/ooze_canister.png', import.meta.url).href,

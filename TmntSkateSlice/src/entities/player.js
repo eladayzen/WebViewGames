@@ -15,7 +15,7 @@ import {
   HIT_INVULNERABILITY_SEC,
 } from '../data/constants.js';
 
-const SWING_DURATION_SEC = 0.28;
+const SWING_DURATION_SEC = 0.18; // faster frame rate through the 2-frame swing sequence, per feedback
 const HIT_FLINCH_DURATION_SEC = 0.5;
 
 // Fraction of play-area width traveled per run-cycle phase -- tune by feel.
@@ -32,6 +32,7 @@ export function createPlayer() {
     invulnTimer: 0,
     oozeBuffTimer: 0,
     travelDistFrac: 0, // total |dx| traveled, drives the run-cycle frame pick
+    isMoving: false,
   };
 }
 
@@ -43,6 +44,7 @@ export function resetPlayer(player) {
   player.invulnTimer = 0;
   player.oozeBuffTimer = 0;
   player.travelDistFrac = 0;
+  player.isMoving = false;
 }
 
 export function updatePlayer(player, dt, steerAxis) {
@@ -50,9 +52,14 @@ export function updatePlayer(player, dt, steerAxis) {
   const prevX = player.xFrac;
   player.xFrac += steerAxis * PLAYER_MAX_SPEED_FRAC_PER_SEC * dt;
   player.xFrac = Math.max(PLAY_AREA_LEFT_FRAC, Math.min(PLAY_AREA_RIGHT_FRAC, player.xFrac));
-  player.travelDistFrac += Math.abs(player.xFrac - prevX);
+  const deltaXFrac = Math.abs(player.xFrac - prevX);
+  player.travelDistFrac += deltaXFrac;
 
-  player.isMoving = Math.abs(steerAxis) > 0.08; // gates the run-cycle frame swap
+  // Gates the run-cycle frame swap -- requires both meaningful input (not
+  // just deadzone noise) AND actual displacement, so holding the stick
+  // against the play-area edge (clamped, deltaXFrac === 0) correctly falls
+  // back to the idle pose instead of animating a run in place.
+  player.isMoving = Math.abs(steerAxis) > 0.08 && deltaXFrac > 0;
   if (player.isMoving) {
     player.facing = steerAxis > 0 ? 1 : -1;
   }
@@ -108,4 +115,31 @@ const RUN_CYCLE_KEYS = ['mike_run_1', 'mike_run_3'];
 export function getRunCycleSpriteKey(player) {
   const phase = Math.floor(player.travelDistFrac / RUN_CYCLE_STEP_FRAC) % RUN_CYCLE_KEYS.length;
   return RUN_CYCLE_KEYS[phase];
+}
+
+// Swing/hit frames are keyed to elapsed time within the state's fixed
+// duration (not travel distance -- he doesn't have to be moving to attack
+// or get hit), split evenly across however many frames each sequence has.
+// Regenerated no-skateboard against mike_idle's current proportions; a
+// wind-up frame (mike_swing_1) is still generating and will be prepended
+// here once it lands. Originals archived at
+// art/archive/hit-swing-skateboard-era/.
+const SWING_CYCLE_KEYS = ['mike_swing_2', 'mike_swing_3'];
+export function getSwingCycleSpriteKey(player) {
+  const elapsed = SWING_DURATION_SEC - player.stateTimer;
+  const phase = Math.min(
+    SWING_CYCLE_KEYS.length - 1,
+    Math.floor((elapsed / SWING_DURATION_SEC) * SWING_CYCLE_KEYS.length)
+  );
+  return SWING_CYCLE_KEYS[phase];
+}
+
+const HIT_CYCLE_KEYS = ['mike_hit_1', 'mike_hit_2'];
+export function getHitCycleSpriteKey(player) {
+  const elapsed = HIT_FLINCH_DURATION_SEC - player.stateTimer;
+  const phase = Math.min(
+    HIT_CYCLE_KEYS.length - 1,
+    Math.floor((elapsed / HIT_FLINCH_DURATION_SEC) * HIT_CYCLE_KEYS.length)
+  );
+  return HIT_CYCLE_KEYS[phase];
 }
