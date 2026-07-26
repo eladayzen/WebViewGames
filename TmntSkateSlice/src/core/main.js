@@ -213,7 +213,7 @@ async function boot() {
         }
       }
 
-      renderFrame(ctx, canvas, { images, stage, player, items, juice, isRunning: gs.current === 'running' });
+      renderFrame(ctx, { images, stage, player, items, juice, isRunning: gs.current === 'running' });
       window.__tssDebug = { player, items, lives, scoring, gs }; // dev-only smoke-test hook, harmless in prod
 
       requestAnimationFrame(frame);

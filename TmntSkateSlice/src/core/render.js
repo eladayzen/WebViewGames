@@ -34,10 +34,27 @@ function getIdleBreathScale() {
 export function setupCanvas(canvas) {
   const ctx = canvas.getContext('2d');
 
+  // window.innerWidth/innerHeight, not canvas.clientWidth/clientHeight --
+  // matches the proven pattern from TmntSewerSlide/Astro_Tunnel's
+  // fitStageToAspect(). Inside the actual GoBalance/Unity WebView
+  // (gree/unity-webview), Unity resizes the native WebView container after
+  // the page has already started running, and does NOT reliably fire a DOM
+  // `resize` event when it does -- so a canvas.clientWidth read can capture
+  // a stale/small pre-resize layout and never update, while renderFrame's
+  // independent per-frame clientWidth/clientHeight read (see below) DOES
+  // eventually reflect the real size. That mismatch between a stale drawing
+  // buffer and fresh draw-position math is exactly what caused the "only
+  // the upper corner renders" bug (2026-07-26) -- everything was being
+  // positioned for the full real canvas size but physically clipped to
+  // whatever tiny buffer got locked in at startup. window.innerWidth/
+  // innerHeight has no such layout dependency and is what the two confirmed
+  // -working games above already rely on.
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -257,9 +274,12 @@ function drawRings(ctx, juice, w, h) {
   }
 }
 
-export function renderFrame(ctx, canvas, world) {
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
+export function renderFrame(ctx, world) {
+  // Same source as setupCanvas's resize() above -- window.innerWidth/
+  // innerHeight, not canvas.clientWidth/clientHeight -- so the buffer size
+  // and the draw-position math can never drift apart from each other.
+  const w = window.innerWidth;
+  const h = window.innerHeight;
   const { images, stage, player, items, juice, isRunning } = world;
 
   ctx.clearRect(0, 0, w, h);
