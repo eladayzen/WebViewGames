@@ -1,0 +1,232 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #030907;
+  font-family: 'Arial Narrow', Arial, system-ui, sans-serif;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+#app canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  outline: none;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  color: #fff;
+}
+
+/* --- Countdown --- */
+#countdown-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: 900;
+  font-size: 96px;
+  color: #7dffc0;
+  -webkit-text-stroke: 4px #012014;
+  paint-order: stroke fill;
+  text-shadow: 0 0 24px rgba(80, 255, 170, 0.7);
+}
+
+#countdown-overlay.hidden {
+  display: none;
+}
+
+/* --- Top-left score / multiplier (back/pause icons live top-right -- see
+   ../BUILD_NOTES.md) --- */
+#topLeft {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  text-align: left;
+}
+
+#score {
+  font-weight: 900;
+  font-size: 26px;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  -webkit-text-stroke: 2px #012014;
+  paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+#multiplier-row {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#multiplier {
+  font-weight: 800;
+  font-size: 19px;
+  color: #ffde50;
+  -webkit-text-stroke: 1.5px #402800;
+  paint-order: stroke fill;
+}
+
+/* Depleting sliver so the no-pickup multiplier countdown reads as a visible
+   cue instead of a surprise step-down (§7 of the build doc). */
+.decay-bar {
+  width: 46px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+#decay-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ffde50, #ff9a3c);
+  transform-origin: left;
+}
+
+/* --- Top-left lives (offset below the score/multiplier block) --- */
+#lives-tray {
+  position: absolute;
+  top: 66px;
+  left: 14px;
+  display: flex;
+  gap: 6px;
+}
+
+.life-icon {
+  font-size: 24px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+.life-icon.spent {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+
+/* --- Section banner --- */
+#section-banner {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  font-weight: 900;
+  font-size: 36px;
+  letter-spacing: 2px;
+  color: #d6fff0;
+  -webkit-text-stroke: 2.5px #012014;
+  paint-order: stroke fill;
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+  white-space: nowrap;
+}
+
+#section-banner.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+#section-banner.hidden {
+  opacity: 0;
+}
+
+/* --- Paused badge --- */
+#paused-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: 900;
+  font-size: 34px;
+  letter-spacing: 3px;
+  color: #ffffff;
+  -webkit-text-stroke: 2.5px #012014;
+  paint-order: stroke fill;
+}
+
+#paused-badge.hidden {
+  display: none;
+}
+
+/* --- Game-over overlay --- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(2, 10, 8, 0.85);
+  pointer-events: auto;
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+.overlay .title {
+  font-weight: 900;
+  font-size: 40px;
+  color: #ff5a3c;
+  letter-spacing: 2px;
+  -webkit-text-stroke: 2px #2a0a00;
+  paint-order: stroke fill;
+}
+
+#final-score {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffe066;
+}
+
+#best-score {
+  font-size: 16px;
+  font-weight: 600;
+  color: #b9ffe0;
+}
+
+#restart-button {
+  margin-top: 10px;
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 1px;
+  padding: 14px 36px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #7dffc0, #26c98a);
+  color: #012014;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #0b6b47, 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+#restart-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #0b6b47, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
