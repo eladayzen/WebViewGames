@@ -140,8 +140,25 @@ function drawPlayer(ctx, xFrac, w, h, images, player, isRunning, stage) {
     ctx.globalAlpha = 0.45;
   }
   if (player.oozeBuffTimer > 0) {
-    ctx.shadowColor = 'rgba(140, 224, 90, 0.9)';
-    ctx.shadowBlur = size * 0.25;
+    // Plain translucent circles instead of ctx.shadowBlur -- shadowBlur on
+    // a full-sprite drawImage() computes a per-pixel alpha-channel blur
+    // over the whole image, every frame, for the buff's full 8s duration.
+    // That's exactly the kind of sustained per-frame cost that reads as
+    // "every now and then I get a lag" (fires whenever ooze is picked up,
+    // not constantly) -- found 2026-07-26 chasing in-WebView stutter.
+    // Concentric fading circles behind the sprite give a similar glow read
+    // for a fraction of the cost.
+    ctx.save();
+    ctx.translate(x, y - size * 0.5);
+    ctx.fillStyle = 'rgba(140, 224, 90, 0.25)';
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(140, 224, 90, 0.35)';
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   if (img) {
@@ -174,9 +191,14 @@ function drawItemFallback(ctx, x, y, size, type) {
     ctx.arc(0, size * 0.05, size * 0.09, 0, Math.PI * 2);
     ctx.fill();
   } else if (type.id === 'ooze') {
+    // No shadowBlur -- see the oozeBuff glow fix in drawPlayer for why.
+    // This fallback only draws if ooze_canister.png fails to load, but
+    // keep it cheap on the same principle.
+    ctx.fillStyle = 'rgba(126, 224, 96, 0.3)';
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.55, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = '#7ee060';
-    ctx.shadowColor = '#7ee060';
-    ctx.shadowBlur = size * 0.4;
     ctx.beginPath();
     ctx.roundRect(-size * 0.25, -size * 0.5, size * 0.5, size, size * 0.12);
     ctx.fill();
@@ -228,14 +250,24 @@ function drawParticles(ctx, juice, w, h) {
     const size = h * p.sizeFrac;
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = p.color;
-    if (p.glow) {
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur = size * 1.5;
-    }
     ctx.translate(px(p.xFrac, w), px(p.yFrac, h));
     ctx.rotate(p.rotationRad);
 
+    // Cheap glow approximation instead of ctx.shadowBlur (see drawPlayer's
+    // oozeBuff fix for why) -- a larger, more transparent circle of the
+    // same color drawn first, under the real shape. Up to 16 particles can
+    // be glowing simultaneously (a bomb explosion or ooze splash), so this
+    // adds up fast if each one is a real per-pixel blur.
+    if (p.glow) {
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = alpha * 0.35;
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = alpha;
+    }
+
+    ctx.fillStyle = p.color;
     ctx.beginPath();
     if (p.shape === 'shard') {
       ctx.moveTo(0, -size);
