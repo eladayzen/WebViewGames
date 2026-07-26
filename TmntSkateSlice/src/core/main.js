@@ -3,10 +3,11 @@
 // core/entities/systems/input/ui/data split in the build doc's §9.3
 // technical architecture.
 
-import { loadAssets } from './assets.js';
+import { loadAssets, loadAudioAssets } from './assets.js';
 import { setupCanvas, renderFrame } from './render.js';
 import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, togglePause } from './gameState.js';
 import { getSteerAxis } from '../input/input.js';
+import { createAudio, playSfx, startMusic, pauseMusic, resumeMusic, toggleMuted } from '../systems/audio.js';
 import {
   createPlayer,
   resetPlayer,
@@ -39,7 +40,7 @@ async function boot() {
   const canvas = document.getElementById('renderCanvas');
   const ctx = setupCanvas(canvas);
   const ui = createUI();
-  const images = await loadAssets();
+  const [images, sfx] = await Promise.all([loadAssets(), loadAudioAssets()]);
 
   const gs = createGameState();
   const player = createPlayer();
@@ -48,7 +49,16 @@ async function boot() {
   const scoring = createScoring();
   const lives = createLives();
   const juice = createJuice();
+  const audio = createAudio();
   let items = [];
+  let lastCountdownTick = null; // last whole-second value shown, for tick SFX
+
+  // Music plays continuously from boot through every countdown/running/
+  // restart cycle -- NOT reset in fullReset() below, deliberately: an
+  // uninterrupted ambient bed reads better than restarting the loop (or
+  // losing the mute state) every time the player hits Retry. Pause is the
+  // only thing that stops it (see pause-button handler below).
+  startMusic(audio, sfx.music_bed);
 
   function fullReset() {
     resetPlayer(player);
@@ -62,14 +72,24 @@ async function boot() {
   }
 
   document.getElementById('restart-button').addEventListener('click', () => {
+    playSfx(audio, sfx.sfx_ui_tap);
     fullReset();
     restartToCountdown(gs);
     ui.setPaused(false);
   });
 
   document.getElementById('pause-button').addEventListener('click', () => {
+    playSfx(audio, sfx.sfx_ui_tap);
     togglePause(gs);
     ui.setPaused(gs.paused);
+    if (gs.paused) pauseMusic();
+    else resumeMusic();
+  });
+
+  document.getElementById('mute-button').addEventListener('click', () => {
+    const isMuted = toggleMuted(audio);
+    ui.setMuted(isMuted);
+    playSfx(audio, sfx.sfx_ui_tap); // no-ops silently when now muted, per playSfx's own muted check
   });
 
   // Called every frame an unresolved item overlaps Michelangelo's full
@@ -78,15 +98,18 @@ async function boot() {
   function handleItemOverlap(item) {
     if (item.type.kind === 'good') {
       item.resolved = true;
-      registerPizzaHit(scoring);
+      const prevMultiplier = getComboMultiplier(scoring);
+      const newMultiplier = registerPizzaHit(scoring);
       triggerSwing(player);
       spawnPizzaBreak(juice, item.xFrac, item.yFrac);
+      playSfx(audio, newMultiplier > prevMultiplier ? sfx.sfx_combo_up : sfx.sfx_pizza_catch);
     } else if (item.type.kind === 'power-up') {
       item.resolved = true;
       registerOozeHit(scoring);
       triggerSwing(player);
       grantOozeBuff(player);
       spawnOozeSplash(juice, item.xFrac, item.yFrac);
+      playSfx(audio, sfx.sfx_ooze_catch);
     } else {
       // bomb
       if (!isInvulnerable(player)) {
@@ -96,8 +119,10 @@ async function boot() {
         registerComboBreak(scoring);
         spawnBombExplosion(juice, item.xFrac, item.yFrac);
         triggerScreenShake(juice, 0.18, 0.012);
+        playSfx(audio, sfx.sfx_bomb_hit);
         if (isDead(lives)) {
           triggerGameOver(gs);
+          playSfx(audio, sfx.sfx_game_over);
         }
       }
       // overlap while invulnerable: bomb just continues (§5.4)
@@ -109,6 +134,7 @@ async function boot() {
   function handleItemMissed(item) {
     if (item.type.kind === 'good') {
       registerComboBreak(scoring); // missed pizza (§8)
+      playSfx(audio, sfx.sfx_miss);
     }
     // missed ooze/bomb: no penalty, no combo effect (§5.4, §6)
   }
@@ -119,7 +145,10 @@ async function boot() {
 
     const advanced = updateDifficulty(difficulty, dt, scoring.score);
     const stage = getStage(difficulty);
-    if (advanced) ui.showStageBanner(stage.bannerLabel);
+    if (advanced) {
+      ui.showStageBanner(stage.bannerLabel);
+      playSfx(audio, sfx.sfx_stage_advance);
+    }
 
     const spawned = updateSpawner(spawner, dt, stage);
     if (spawned) items.push(spawned);
@@ -170,6 +199,11 @@ async function boot() {
         if (gs.current === 'countdown') {
           updateCountdown(gs, dt);
           ui.setCountdown(gs.countdownRemaining);
+          const tick = Math.ceil(gs.countdownRemaining);
+          if (tick !== lastCountdownTick) {
+            playSfx(audio, tick > 0 ? sfx.sfx_countdown_tick : sfx.sfx_countdown_go);
+            lastCountdownTick = tick;
+          }
         } else if (gs.current === 'running') {
           ui.setCountdown(0);
           stage = updateRunning(dt);

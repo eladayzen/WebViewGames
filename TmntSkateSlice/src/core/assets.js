@@ -1,13 +1,17 @@
-// Sprite manifest + loader. One entry per generated asset (game-assets-
-// enhancement skill: "one sprite = one object", nothing composite baked
-// together). Files live in ../assets/, generated via the Kolbo pipeline
-// (see KOLBO_ASSET_PIPELINE.md) against the style guide in STYLE.md.
+// Sprite + audio manifest and loaders. One entry per generated asset (game-
+// assets-enhancement skill: "one sprite = one object", nothing composite
+// baked together). Files live in ../assets/ (audio in ../assets/audio/),
+// generated via the Kolbo pipeline (see KOLBO_ASSET_PIPELINE.md) against the
+// style guide in STYLE.md.
 //
-// Loading is best-effort: a missing/not-yet-generated image resolves to
-// `null` in the returned map rather than throwing, so render.js can fall
-// back to a flat-shape placeholder draw during early development before art
-// exists, and silently upgrades the instant a real file lands at the same
-// path -- no code changes needed either side of that swap.
+// Loading is best-effort: a missing/not-yet-generated image or audio clip
+// resolves to `null` in the returned map rather than throwing, so render.js
+// falls back to a flat-shape placeholder draw (sprites) or systems/audio.js
+// silently no-ops (audio) during early development before art exists, and
+// both silently upgrade the instant a real file lands at the same path --
+// no code changes needed either side of that swap.
+
+import { loadAudioBuffer } from '../systems/audio.js';
 
 const MANIFEST = {
   mike_idle: new URL('../assets/mike_idle.png', import.meta.url).href,
@@ -53,5 +57,32 @@ export async function loadAssets() {
   const images = await Promise.all(keys.map((k) => loadOne(MANIFEST[k])));
   const map = {};
   keys.forEach((k, i) => { map[k] = images[i]; });
+  return map;
+}
+
+// --- Audio ---------------------------------------------------------------
+// Same manifest/best-effort-loader shape as sprites above, decoded via
+// systems/audio.js's loadAudioBuffer (WebAudio AudioBuffer, not an <audio>
+// element -- see that file for why). Keys map 1:1 to the discrete game
+// events in core/main.js that trigger them.
+const AUDIO_MANIFEST = {
+  sfx_pizza_catch: new URL('../assets/audio/sfx_pizza_catch.mp3', import.meta.url).href,
+  sfx_ooze_catch: new URL('../assets/audio/sfx_ooze_catch.mp3', import.meta.url).href,
+  sfx_bomb_hit: new URL('../assets/audio/sfx_bomb_hit.mp3', import.meta.url).href,
+  sfx_miss: new URL('../assets/audio/sfx_miss.mp3', import.meta.url).href,
+  sfx_combo_up: new URL('../assets/audio/sfx_combo_up.mp3', import.meta.url).href,
+  sfx_stage_advance: new URL('../assets/audio/sfx_stage_advance.mp3', import.meta.url).href,
+  sfx_game_over: new URL('../assets/audio/sfx_game_over.mp3', import.meta.url).href,
+  sfx_countdown_tick: new URL('../assets/audio/sfx_countdown_tick.mp3', import.meta.url).href,
+  sfx_countdown_go: new URL('../assets/audio/sfx_countdown_go.mp3', import.meta.url).href,
+  sfx_ui_tap: new URL('../assets/audio/sfx_ui_tap.mp3', import.meta.url).href,
+  music_bed: new URL('../assets/audio/music_bed.mp3', import.meta.url).href,
+};
+
+export async function loadAudioAssets() {
+  const keys = Object.keys(AUDIO_MANIFEST);
+  const buffers = await Promise.all(keys.map((k) => loadAudioBuffer(AUDIO_MANIFEST[k])));
+  const map = {};
+  keys.forEach((k, i) => { map[k] = buffers[i]; });
   return map;
 }
