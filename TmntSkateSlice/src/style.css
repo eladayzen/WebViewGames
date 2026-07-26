@@ -13,23 +13,19 @@ html, body {
   font-family: 'Arial Narrow', Arial, system-ui, sans-serif;
 }
 
-/* Locked to 16:9 landscape (GoBalance WebView target aspect, per Amit
-   2026-07-22) -- centered in the viewport, letterboxed on any mismatched
-   screen shape, rather than stretching to fill it. Every fraction-based
-   layout number in data/constants.js and data/stages.js was tuned against
-   this exact ratio; an unlocked/stretched canvas silently breaks that
-   calibration (this is what caused the fire-escape grounding/scale tuning
-   to keep drifting -- it was being judged against whatever arbitrary shape
-   the browser window happened to be). width/height use CSS min() to pick
-   the largest 16:9 box that fits the viewport either dimension-constrained. */
+/* REVERTED 2026-07-26 (Amit): the 16:9 CSS lock (aspect-ratio + vw/vh
+   sizing) broke the game specifically inside the actual GoBalance/Unity
+   WebView (gree/unity-webview) -- every other shipped game just stretches
+   to fill #stage with plain fixed/inset:0, and none of them have this
+   problem. vw/vh evidently don't resolve reliably against that embedded
+   WebView's real render surface the way they do in a normal desktop/mobile
+   browser tab, where this looked correct. Back to stretch-to-fill, matching
+   every other game -- see CarRacer/src/style.css's #stage for the same
+   pattern. The per-stage groundYFrac/PLAYER_HEIGHT_FRAC tuning (stages.js,
+   constants.js) is unaffected -- fraction-based, doesn't depend on this. */
 #stage {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  aspect-ratio: 16 / 9;
-  width: min(100vw, 100vh * 16 / 9);
-  height: min(100vh, 100vw * 9 / 16);
+  inset: 0;
   overflow: hidden;
 }
 
