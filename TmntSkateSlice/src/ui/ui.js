@@ -2,6 +2,18 @@
 // canvas, not drawn into the canvas itself." Score/combo/lives/ooze-buff/
 // stage-banner/countdown/game-over all live here, updated via
 // textContent/class toggles rather than re-created per frame.
+//
+// setScore/setCombo/setLives/setOozeBuff are called unconditionally every
+// single frame from updateRunning() in core/main.js (not just when their
+// value changes) -- so each one dirty-checks against the last value it
+// wrote and skips the DOM write entirely when nothing changed. Found
+// 2026-07-26 chasing an intermittent in-WebView stutter: these elements
+// carry heavy paint properties (-webkit-text-stroke, text-shadow,
+// paint-order), and forcing a style/paint recalc 60x/sec for values that
+// are mostly NOT changing (score only moves on a catch, lives change maybe
+// 3 times a whole run) is exactly the kind of per-frame DOM churn that
+// reads as "the whole game feels laggy, periodic lag" -- especially inside
+// a resource-constrained mobile WebView, not just a desktop browser tab.
 
 let bannerHideTimer = null;
 
@@ -31,21 +43,35 @@ export function createUI() {
     el.livesTray.appendChild(icon);
   }
 
+  // Last-written values, for the dirty-checks below.
+  let lastScore = null;
+  let lastComboKey = null;
+  let lastLivesRemaining = null;
+  let lastOozePct = null; // -1 sentinel for "hidden", not a real percent
+
   return {
     setScore(value) {
-      el.score.textContent = `SCORE: ${Math.floor(value)}`;
+      const floored = Math.floor(value);
+      if (floored === lastScore) return;
+      lastScore = floored;
+      el.score.textContent = `SCORE: ${floored}`;
     },
 
     setCombo(comboCount, multiplier) {
-      if (comboCount >= 2) {
+      const key = comboCount >= 2 ? multiplier.toFixed(1) : null;
+      if (key === lastComboKey) return;
+      lastComboKey = key;
+      if (key !== null) {
         el.combo.classList.remove('hidden');
-        el.combo.textContent = `COMBO x${multiplier.toFixed(1)}`;
+        el.combo.textContent = `COMBO x${key}`;
       } else {
         el.combo.classList.add('hidden');
       }
     },
 
     setLives(remaining) {
+      if (remaining === lastLivesRemaining) return;
+      lastLivesRemaining = remaining;
       const icons = el.livesTray.children;
       for (let i = 0; i < icons.length; i++) {
         icons[i].classList.toggle('spent', i >= remaining);
@@ -53,9 +79,12 @@ export function createUI() {
     },
 
     setOozeBuff(remainingFrac) {
-      if (remainingFrac > 0) {
+      const pct = remainingFrac > 0 ? Math.round(remainingFrac * 100) : -1;
+      if (pct === lastOozePct) return;
+      lastOozePct = pct;
+      if (pct >= 0) {
         el.oozeIndicator.classList.remove('hidden');
-        el.oozeFill.style.width = `${Math.round(remainingFrac * 100)}%`;
+        el.oozeFill.style.width = `${pct}%`;
       } else {
         el.oozeIndicator.classList.add('hidden');
       }

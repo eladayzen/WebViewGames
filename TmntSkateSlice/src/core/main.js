@@ -168,7 +168,13 @@ async function boot() {
         handleItemMissed(item);
       }
     }
-    items = items.filter((item) => !item.resolved && !isOffScreen(item));
+    // In-place removal, not items.filter() -- filter() allocated a brand
+    // new array every single frame regardless of whether anything actually
+    // needed removing, which is unnecessary GC churn 60x/sec (part of the
+    // same in-WebView stutter chase as ui.js's dirty-checks, 2026-07-26).
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].resolved || isOffScreen(items[i])) items.splice(i, 1);
+    }
 
     updateJuice(juice, dt);
 
