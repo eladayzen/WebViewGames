@@ -21,8 +21,7 @@
       // rAF shim: WKWebView treats the occluded Unity overlay as a background tab and
       // suspends requestAnimationFrame entirely. Queue callbacks instead of scheduling them
       // natively; Unity's WebGameController flushes the queue via window.__pumpFrames() every
-      // frame (~60Hz) regardless of tab visibility. A real native rAF loop keeps running
-      // underneath too, so a normal browser (testing outside Unity) behaves exactly as before.
+      // frame (~60Hz) regardless of tab visibility.
       (function () {
         var nativeRAF = window.requestAnimationFrame.bind(window);
         window.__rafQueue = [];
@@ -38,7 +37,21 @@
             catch (e) { if (window.Unity) window.Unity.call('RAF CB ERROR: ' + e.message); }
           }
         };
-        (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+        // Only self-drive __pumpFrames() via a real native rAF loop OUTSIDE
+        // Unity (normal browser dev/testing), where nothing else calls it.
+        // Inside the actual GoBalance WebView, window.Unity is present and
+        // WebGameController.cs's Update() loop already calls __pumpFrames()
+        // on its own single ~60Hz-capped clock (see GOBALANCE_SDK.md) --
+        // running both drivers at once means two unsynchronized clocks
+        // racing to flush the same queue, which reads as frame-pacing
+        // jitter/stutter rather than a clean 60fps. TmntSkateSlice-local
+        // change (2026-07-26, chasing a reported in-WebView lag) -- each
+        // game gets its own copy of this shim pasted into its own
+        // index.html, so this doesn't touch WebGameController.cs or any
+        // other already-shipped game.
+        if (!window.Unity) {
+          (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+        }
       })();
     </script>
     <title>TMNT: Skate &amp; Slice</title>
