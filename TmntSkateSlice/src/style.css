@@ -13,9 +13,23 @@ html, body {
   font-family: 'Arial Narrow', Arial, system-ui, sans-serif;
 }
 
+/* Locked to 16:9 landscape (GoBalance WebView target aspect, per Amit
+   2026-07-22) -- centered in the viewport, letterboxed on any mismatched
+   screen shape, rather than stretching to fill it. Every fraction-based
+   layout number in data/constants.js and data/stages.js was tuned against
+   this exact ratio; an unlocked/stretched canvas silently breaks that
+   calibration (this is what caused the fire-escape grounding/scale tuning
+   to keep drifting -- it was being judged against whatever arbitrary shape
+   the browser window happened to be). width/height use CSS min() to pick
+   the largest 16:9 box that fits the viewport either dimension-constrained. */
 #stage {
   position: fixed;
-  inset: 0;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 16 / 9;
+  width: min(100vw, 100vh * 16 / 9);
+  height: min(100vh, 100vw * 9 / 16);
   overflow: hidden;
 }
 
@@ -27,8 +41,11 @@ html, body {
   touch-action: none;
 }
 
+/* absolute, not fixed -- relative to #stage (the locked-aspect box), not
+   the raw viewport, so HUD elements stay aligned with the visible game
+   frame instead of the letterbox bars. */
 #hud {
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 10;
@@ -188,7 +205,7 @@ html, body {
 
 /* --- Game-over overlay --- */
 .overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 20;
   display: flex;

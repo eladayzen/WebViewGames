@@ -15,13 +15,24 @@
 // fallSpeedFrac is expressed as "fractions of canvas height per second" so
 // travel time (and therefore how much reaction time a falling item gives)
 // stays consistent across canvas sizes.
-
+//
+// groundYFrac is PER STAGE, not global (2026-07-22) -- each background was
+// painted at a different implied camera depth (the rooftop floor is a big
+// close-up plane; the fire-escape deck recedes behind a railing close to
+// camera; the alley recedes into a corridor), so one fixed ground line
+// can't sit right against all three. PLAYER_HEIGHT_FRAC (constants.js), by
+// contrast, is deliberately NOT per-stage -- Michelangelo is the same
+// character at the same size no matter what level he's standing in;
+// per-stage feedback about how he reads against a background is feedback
+// on that background (groundYFrac, or the art itself), never a reason to
+// resize him.
 export const STAGES = [
   {
     id: 'rooftop',
     name: 'Rooftop',
     bannerLabel: 'STAGE 1',
     bg: 'bg_rooftop',
+    groundYFrac: 0.87,
     fallSpeedFrac: 0.16,
     spawnIntervalSec: 1.4,
     bombChance: 0.20,
@@ -35,6 +46,7 @@ export const STAGES = [
     name: 'Fire Escape',
     bannerLabel: 'STAGE 2',
     bg: 'bg_fire_escape',
+    groundYFrac: 0.85,
     fallSpeedFrac: 0.21,
     spawnIntervalSec: 1.15,
     bombChance: 0.28,
@@ -47,6 +59,7 @@ export const STAGES = [
     name: 'Alley',
     bannerLabel: 'STAGE 3',
     bg: 'bg_alley',
+    groundYFrac: 0.87,
     fallSpeedFrac: 0.26,
     spawnIntervalSec: 0.95,
     bombChance: 0.35,

@@ -31,7 +31,7 @@ import {
 import { createLives, resetLives, loseLife, isDead } from '../systems/lives.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
-import { OOZE_BUFF_DURATION_SEC, GROUND_Y_FRAC, PLAYER_HEIGHT_FRAC } from '../data/constants.js';
+import { OOZE_BUFF_DURATION_SEC, PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 
 const MAX_DT = 1 / 20; // clamp so a tab-resume/frame-hitch never simulates a huge leap
 
@@ -124,15 +124,18 @@ async function boot() {
     const spawned = updateSpawner(spawner, dt, stage);
     if (spawned) items.push(spawned);
 
-    const bandTop = GROUND_Y_FRAC - PLAYER_HEIGHT_FRAC;
+    // groundYFrac is per-stage (each background's floor line differs);
+    // PLAYER_HEIGHT_FRAC stays global -- Michelangelo is always the same
+    // size (see constants.js).
+    const bandTop = stage.groundYFrac - PLAYER_HEIGHT_FRAC;
     for (const item of items) {
       if (item.resolved) continue;
       updateFallingItem(item, dt);
 
       const horizontalOverlap = Math.abs(item.xFrac - player.xFrac) <= getHitHalfWidthFrac(player);
-      if (horizontalOverlap && isWithinPlayerBand(item, bandTop, GROUND_Y_FRAC)) {
+      if (horizontalOverlap && isWithinPlayerBand(item, bandTop, stage.groundYFrac)) {
         handleItemOverlap(item);
-      } else if (!item.resolved && hasReachedStrikeBand(item, GROUND_Y_FRAC)) {
+      } else if (!item.resolved && hasReachedStrikeBand(item, stage.groundYFrac)) {
         handleItemMissed(item);
       }
     }

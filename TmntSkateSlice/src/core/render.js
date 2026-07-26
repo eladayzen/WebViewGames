@@ -5,7 +5,7 @@
 // (or fails to load) so the game is fully playable/testable before real art
 // exists, and upgrades silently the moment art lands at the same path.
 
-import { GROUND_Y_FRAC, PLAYER_HEIGHT_FRAC, ITEM_SIZE_FRAC } from '../data/constants.js';
+import { ITEM_SIZE_FRAC, PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 import { getShakeOffsetFrac } from '../systems/juice.js';
 import { getRunCycleSpriteKey, getSwingCycleSpriteKey, getHitCycleSpriteKey } from '../entities/player.js';
 
@@ -59,16 +59,17 @@ function drawBackgroundFallback(ctx, w, h, stage) {
     alley: ['#241c3c', '#8a4a3c'],
   };
   const [top, bottom] = skyColors[stage.id] || skyColors.rooftop;
-  const grad = ctx.createLinearGradient(0, 0, 0, h * GROUND_Y_FRAC);
+  const groundY = h * stage.groundYFrac;
+  const grad = ctx.createLinearGradient(0, 0, 0, groundY);
   grad.addColorStop(0, top);
   grad.addColorStop(1, bottom);
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h * GROUND_Y_FRAC);
+  ctx.fillRect(0, 0, w, groundY);
 
   ctx.fillStyle = '#3a2f2a';
-  ctx.fillRect(0, h * GROUND_Y_FRAC, w, h - h * GROUND_Y_FRAC);
+  ctx.fillRect(0, groundY, w, h - groundY);
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.fillRect(0, h * GROUND_Y_FRAC, w, h * 0.015);
+  ctx.fillRect(0, groundY, w, h * 0.015);
 }
 
 function drawBackground(ctx, w, h, images, stage) {
@@ -96,9 +97,9 @@ function drawPlayerFallback(ctx, x, y, size, player) {
   ctx.restore();
 }
 
-function drawPlayer(ctx, xFrac, w, h, images, player, isRunning) {
+function drawPlayer(ctx, xFrac, w, h, images, player, isRunning, stage) {
   const x = px(xFrac, w);
-  const y = h * GROUND_Y_FRAC;
+  const y = h * stage.groundYFrac;
   const size = h * PLAYER_HEIGHT_FRAC;
 
   // Run-cycle overrides the idle sprite while moving (see entities/player.js
@@ -269,7 +270,7 @@ export function renderFrame(ctx, canvas, world) {
 
   drawBackground(ctx, w, h, images, stage);
   drawItems(ctx, items, w, h, images);
-  drawPlayer(ctx, player.xFrac, w, h, images, player, isRunning);
+  drawPlayer(ctx, player.xFrac, w, h, images, player, isRunning, stage);
   drawRings(ctx, juice, w, h);
   drawParticles(ctx, juice, w, h);
 

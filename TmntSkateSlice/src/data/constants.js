@@ -7,16 +7,14 @@
 // --- Camera / framing (build doc §5.5) ---
 // Amit's stated preference: pull the camera back from concept-01.png's tight
 // crop -- more open sky above Michelangelo, more travel distance for falling
-// items. GROUND_Y_FRAC is where his feet/skateboard sit; PLAYER_HEIGHT_FRAC
-// is deliberately small so there's still open sky above his head.
-// GROUND_Y_FRAC is calibrated to the generated stage backgrounds' actual
-// floor line (checked against all 3: bg_rooftop's floor starts ~0.58,
-// bg_fire_escape's deck doesn't start until ~0.77 -- well below its railing
-// at ~0.57 -- and bg_alley's pavement starts ~0.37), not just an abstract
-// framing fraction -- 0.66 put the player standing on the fire-escape
-// railing instead of the floor. Re-check this against new art any time a
-// background is regenerated.
-export const GROUND_Y_FRAC = 0.87;
+// items.
+//
+// PLAYER_HEIGHT_FRAC is intentionally global, not per-stage (2026-07-22):
+// Michelangelo is the same size on every level, full stop -- per-stage
+// feedback about how he reads against a given background is feedback on
+// that background (see groundYFrac in stages.js, which IS per-stage -- each
+// background's floor line sits at a different height), never a reason to
+// resize him.
 export const PLAYER_HEIGHT_FRAC = 0.30;
 
 // --- Player movement (§4) ---
@@ -30,8 +28,8 @@ export const PLAY_AREA_RIGHT_FRAC = 0.92;
 // --- Strike band / hit tolerance (§3, §5.3, §5.4) ---
 // Michelangelo's hit region is his full sprite silhouette, not just his feet
 // -- an item overlaps him the moment it's anywhere within his head-to-feet
-// height (GROUND_Y_FRAC - PLAYER_HEIGHT_FRAC to GROUND_Y_FRAC) AND within
-// this horizontal half-width, checked every frame while it's unresolved
+// height (stage.groundYFrac - PLAYER_HEIGHT_FRAC to stage.groundYFrac)
+// AND within this horizontal half-width, checked every frame while it's unresolved
 // (see isWithinPlayerBand in entities/fallingItem.js). Base half-width of
 // Michelangelo's swing/hit tolerance, as a fraction of the play-area width.
 // The ooze buff (§5.3) widens this -- and widens it for BOTH good-item
