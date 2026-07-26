@@ -1,0 +1,134 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #14101c;
+  font-family: 'Arial Narrow', Arial, system-ui, sans-serif;
+}
+
+/* Locked to 16:9 landscape (GoBalance WebView target aspect), matching this
+   repo's other GoBalance games -- centered in the viewport, letterboxed on
+   any mismatched screen shape rather than stretching. */
+#stage {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  aspect-ratio: 16 / 9;
+  width: min(100vw, 100vh * 16 / 9);
+  height: min(100vh, 100vw * 9 / 16);
+  overflow: hidden;
+}
+
+#app, #app canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+/* absolute, not fixed -- relative to #stage, so HUD elements stay aligned
+   with the visible game frame instead of the letterbox bars. */
+#hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  color: #fff;
+}
+
+#topLeft {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  text-align: left;
+}
+
+#distance {
+  font-weight: 900;
+  font-size: 24px;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  -webkit-text-stroke: 2px #1a0a2a;
+  paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+#paused-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: 900;
+  font-size: 34px;
+  letter-spacing: 3px;
+  color: #ffffff;
+  -webkit-text-stroke: 2.5px #1a0a2a;
+  paint-order: stroke fill;
+}
+
+#paused-badge.hidden {
+  display: none;
+}
+
+/* --- Game-over overlay (GoBalance SDK DOM contract: #gameover-overlay
+   toggles this exact "hidden" class, #restart-button does the actual
+   restart -- see GOBALANCE_SDK.md) --- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(10, 5, 15, 0.82);
+  pointer-events: auto;
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+.overlay .title {
+  font-weight: 900;
+  font-size: 44px;
+  color: #ff5a3c;
+  letter-spacing: 2px;
+  -webkit-text-stroke: 2px #2a0a00;
+  paint-order: stroke fill;
+}
+
+#final-distance {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffe066;
+}
+
+#restart-button {
+  margin-top: 10px;
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 1px;
+  padding: 14px 36px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffde50, #ffa93c);
+  color: #2a1a00;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #a86800, 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+#restart-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
