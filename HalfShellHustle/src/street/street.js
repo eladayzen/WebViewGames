@@ -17,13 +17,19 @@
 //     (RepeatWrapping, sized to the texture's own aspect) to cover the
 //     building's full height without the smeared stretch of the very first
 //     pass. Only the truly-never-seen roof/floor/back faces stay a flat
-//     color, and even that now matches the facade art's own average tone
-//     (envArt.js's FACADE_BODY_COLORS) instead of an unrelated placeholder
-//     hue -- a stray glimpse should read as "this building's own wall
-//     color," not a procedural-looking flat fill.
+//     color, matched to that theme's facade average tone instead of an
+//     unrelated placeholder hue -- a stray glimpse should read as "this
+//     building's own wall color," not a procedural-looking flat fill.
 //  2. The palette itself pivoted from the build doc's original sunset-to-
 //     neon dusk vision to a bright, cheerful, semi-casual DAYLIGHT mood per
 //     direct feedback -- the dusk pass read as grim/twilight, not alive.
+//
+// THEMES (data/envArt.js's THEMES map, §5.4's per-block re-theming): every
+// piece of environment art AND the building size/spacing profile comes from
+// the active theme, so a new theme (e.g. a "central city" reskin with
+// longer/taller buildings and denser facade detail) can be built alongside
+// an existing one without touching its numbers -- createStreet(scene,
+// themeKey) picks one.
 //
 // Buildings scroll toward the camera each frame and recycle at the far end
 // (reusing CarRacer/src/pylons.js's per-slot scroll+wrap technique) -- the
@@ -37,20 +43,14 @@
 import * as THREE from 'three';
 import { LANE_WIDTH, DESPAWN_Z } from '../data/constants.js';
 import { getTexture } from '../entities/textureLoader.js';
-import { STREET_TEXTURE, FACADE_TEXTURES, FACADE_BODY_COLORS, SKYLINE_TEXTURE } from '../data/envArt.js';
+import { THEMES } from '../data/envArt.js';
 
 const STREET_LENGTH = 400;
 const STREET_Z = -STREET_LENGTH / 2 + 20; // centered around the player, same convention as CarRacer/src/road.js
 const ROAD_WIDTH = LANE_WIDTH * 3;
 const SIDEWALK_WIDTH = 3.4;
 const FULL_WIDTH = ROAD_WIDTH + SIDEWALK_WIDTH * 2;
-// The street texture's own aspect dictates the undistorted tile length --
-// forcing an arbitrary tile length would stretch/smear the art.
-const STREET_TILE_LENGTH = FULL_WIDTH * STREET_TEXTURE.aspect;
 
-// Raised from 22: packing buildings much closer together (see the gap
-// pattern below) needs more of them to still cover the same STREET_LENGTH.
-const BUILDING_COUNT_PER_SIDE = 42;
 const BUILDING_RECYCLE_Z = DESPAWN_Z; // same "safe to recycle, past the camera" bound obstacles use
 const BUILDING_BASE_X = ROAD_WIDTH / 2 + SIDEWALK_WIDTH + 1.5;
 // Sampled from street_tex.png's own sidewalk band (avg #d9caad) so the
@@ -62,31 +62,37 @@ const SIDEWALK_FILLER_COLOR = 0xd9caad;
 // it was "floating," which was the filler strip running out sideways.
 const SIDEWALK_FILLER_WIDTH = 260;
 
-// Building gaps: compressed way down per direct feedback -- the previous
-// range's MINIMUM gap is now the MAXIMUM, and buildings are sometimes almost
+// Building gaps (buildingProfile.gapMin/gapRange/*GapStride/*GapOffset):
+// compressed way down per direct feedback -- buildings are sometimes almost
 // touching. Never fully 0, though -- exactly-touching boxes z-fight/clip at
-// the shared seam, so there's always a small non-zero floor. Each side
-// cycles through 1..6 (raw units, rescaled below) on a different stride/
-// offset so left and right don't read as a mirrored or repeated motif.
-function buildGapPattern(stride, offset) {
+// the shared seam, so there's always a small non-zero floor (gapMin). Each
+// side cycles through gapMin..gapMin+gapRange-1 (raw units, rescaled below)
+// on its own stride/offset so left and right don't read as a mirrored or
+// repeated motif.
+function buildGapPattern(count, gapMin, gapRange, stride, offset) {
   const gaps = [];
-  for (let i = 0; i < BUILDING_COUNT_PER_SIDE; i++) gaps.push(1 + ((i * stride + offset) % 6));
+  for (let i = 0; i < count; i++) gaps.push(gapMin + ((i * stride + offset) % gapRange));
   return gaps;
 }
-const LEFT_GAP_PATTERN = buildGapPattern(7, 0);
-const RIGHT_GAP_PATTERN = buildGapPattern(11, 3);
 
-// Precomputes each building's {width, height, z} for one side, given its
-// gap pattern -- widths/heights keep the original per-index formulas, only
-// the spacing changes from a uniform slot to the irregular pattern above.
-function layoutBuildingSlots(side, gapPattern) {
+// Precomputes each building's {width, height, z} for one side, per the
+// active theme's buildingProfile. Raw gap units get rescaled so
+// width+gap sums to exactly STREET_LENGTH -- required for the per-building
+// recycle-by-400 wrap (updateStreet) to tile seamlessly with no seam-point
+// overlap/stretch.
+function layoutBuildingSlots(side, profile) {
+  const { count, widthCycle, heightBase, heightMod, heightSideOffset } = profile;
+  const gapPattern = buildGapPattern(
+    count, profile.gapMin, profile.gapRange,
+    side > 0 ? profile.rightGapStride : profile.leftGapStride,
+    side > 0 ? profile.rightGapOffset : profile.leftGapOffset,
+  );
+
   const widths = [];
   const heights = [];
-  for (let i = 0; i < BUILDING_COUNT_PER_SIDE; i++) {
-    widths.push(6 + (i % 3));
-    // Capped down from a ~4-story range (10-31) to ~3-story per direct
-    // feedback -- buildings were reading too tall/high-rise for this street.
-    heights.push(8 + ((i * 37 + (side > 0 ? 13 : 0)) % 10));
+  for (let i = 0; i < count; i++) {
+    widths.push(widthCycle[i % widthCycle.length]);
+    heights.push(heightBase + ((i * 37 + (side > 0 ? heightSideOffset : 0)) % heightMod));
   }
   const widthSum = widths.reduce((a, b) => a + b, 0);
   const gapSum = gapPattern.reduce((a, b) => a + b, 0);
@@ -94,7 +100,7 @@ function layoutBuildingSlots(side, gapPattern) {
 
   const slots = [];
   let cursor = STREET_Z + STREET_LENGTH / 2;
-  for (let i = 0; i < BUILDING_COUNT_PER_SIDE; i++) {
+  for (let i = 0; i < count; i++) {
     const slotSize = widths[i] + gapPattern[i] * gapScale;
     slots.push({ width: widths[i], height: heights[i], z: cursor - slotSize / 2 });
     cursor -= slotSize;
@@ -108,7 +114,6 @@ function layoutBuildingSlots(side, gapPattern) {
 // during lane changes) -- see main.js's CAMERA_FOV/ASPECT_W/H.
 const SKYLINE_Z = -195;
 const SKYLINE_WIDTH = 520;
-const SKYLINE_HEIGHT = SKYLINE_WIDTH * SKYLINE_TEXTURE.aspect;
 const SKYLINE_Y = 60;
 
 // Builds a MeshBasicMaterial that tiles `texEntry` (an envArt.js entry, with
@@ -125,11 +130,15 @@ function tiledFacadeMaterial(texEntry, faceWidth, faceHeight) {
   return new THREE.MeshBasicMaterial({ map: tex });
 }
 
-export function createStreet(scene) {
+export function createStreet(scene, themeKey = 'sunnyStreet') {
+  const theme = THEMES[themeKey];
+
   // Bright, cheerful daytime backdrop (§0/§9.1's correction plus the
   // daylight-mood pivot) -- fog color matches the skyline art's own sky tone
   // so buildings fading into the distance blend into it rather than a
-  // mismatched hue.
+  // mismatched hue. Shared across themes for now (every theme is daylight
+  // per direct confirmation) -- move into the theme data if a future theme
+  // needs its own mood.
   scene.background = new THREE.Color(0x8fc7e8);
   scene.fog = new THREE.Fog(0x9fd2ec, 70, 180);
 
@@ -138,9 +147,10 @@ export function createStreet(scene) {
   // Distant skyline matte painting -- fog-immune so it stays fully visible
   // regardless of distance, filling in "beyond the last building" instead of
   // a flat color void.
-  const skylineTex = getTexture(SKYLINE_TEXTURE.url);
+  const skylineTex = getTexture(theme.skyline.url);
   const skylineMat = new THREE.MeshBasicMaterial({ map: skylineTex, fog: false });
-  const skyline = new THREE.Mesh(new THREE.PlaneGeometry(SKYLINE_WIDTH, SKYLINE_HEIGHT), skylineMat);
+  const skylineHeight = SKYLINE_WIDTH * theme.skyline.aspect;
+  const skyline = new THREE.Mesh(new THREE.PlaneGeometry(SKYLINE_WIDTH, skylineHeight), skylineMat);
   skyline.position.set(0, SKYLINE_Y, SKYLINE_Z);
   scene.add(skyline);
 
@@ -149,10 +159,11 @@ export function createStreet(scene) {
   // tiled vertically along the direction of travel via RepeatWrapping, at
   // the texture's OWN aspect ratio so the painted crack/grime detail reads
   // undistorted instead of stretched to an arbitrary tile length.
-  const streetTexture = getTexture(STREET_TEXTURE.url);
+  const streetTexture = getTexture(theme.street.url);
+  const streetTileLength = FULL_WIDTH * theme.street.aspect;
   streetTexture.wrapS = THREE.ClampToEdgeWrapping;
   streetTexture.wrapT = THREE.RepeatWrapping;
-  streetTexture.repeat.set(1, STREET_LENGTH / STREET_TILE_LENGTH);
+  streetTexture.repeat.set(1, STREET_LENGTH / streetTileLength);
   const streetMat = new THREE.MeshBasicMaterial({ map: streetTexture });
   const streetPlane = new THREE.Mesh(new THREE.PlaneGeometry(FULL_WIDTH, STREET_LENGTH), streetMat);
   streetPlane.rotation.x = -Math.PI / 2;
@@ -160,13 +171,12 @@ export function createStreet(scene) {
   group.add(streetPlane);
 
   // Ground filler: the sidewalk texture plane above stops at FULL_WIDTH/2,
-  // short of where the building boxes actually start (buildingBaseX below) --
-  // without this, that gap showed bare background/void at ground level
-  // instead of continuous ground (direct playtest feedback: the sidewalk
-  // must always be what's visible at a building's base, never a void).
-  // Flat-colored, sampled from the sidewalk texture's own tone rather than
-  // an unrelated placeholder color, so the join reads as a continuation of
-  // the same sidewalk, not a seam.
+  // short of where the building boxes actually start -- without this, that
+  // gap showed bare background/void at ground level instead of continuous
+  // ground (direct playtest feedback: the sidewalk must always be what's
+  // visible at a building's base, never a void). Flat-colored, sampled from
+  // the sidewalk texture's own tone rather than an unrelated placeholder
+  // color, so the join reads as a continuation of the same sidewalk.
   const fillerMat = new THREE.MeshBasicMaterial({ color: SIDEWALK_FILLER_COLOR });
   for (const side of [-1, 1]) {
     const filler = new THREE.Mesh(new THREE.PlaneGeometry(SIDEWALK_FILLER_WIDTH, STREET_LENGTH), fillerMat);
@@ -194,18 +204,19 @@ export function createStreet(scene) {
   // (roof, floor, the far/back wall) stay a flat color, matched to that
   // facade's own average tone rather than an unrelated placeholder hue.
   // Each building is grouped so its z can scroll as one unit and recycle
-  // (see updateStreet below).
+  // (see updateStreet below). Width/height/gap all come from the theme's
+  // buildingProfile (data/envArt.js).
+  const profile = theme.buildingProfile;
   const buildingSlots = [];
   for (const side of [-1, 1]) {
-    const layout = layoutBuildingSlots(side, side > 0 ? RIGHT_GAP_PATTERN : LEFT_GAP_PATTERN);
-    for (let i = 0; i < BUILDING_COUNT_PER_SIDE; i++) {
+    const layout = layoutBuildingSlots(side, profile);
+    for (let i = 0; i < profile.count; i++) {
       const { width, height, z } = layout[i];
-      const depth = 8;
+      const depth = profile.depth;
       const x = side * (BUILDING_BASE_X + width / 2);
 
-      const facadeIdx = (i + (side > 0 ? 1 : 0)) % FACADE_TEXTURES.length;
-      const texEntry = FACADE_TEXTURES[facadeIdx];
-      const bodyColor = FACADE_BODY_COLORS[facadeIdx];
+      const facadeIdx = (i + (side > 0 ? 1 : 0)) % theme.facades.length;
+      const { tex: texEntry, bodyColor } = theme.facades[facadeIdx];
 
       const slotGroup = new THREE.Group();
       slotGroup.position.set(x, 0, z);
@@ -234,7 +245,7 @@ export function createStreet(scene) {
   }
 
   scene.add(group);
-  return { group, buildingSlots, streetTexture };
+  return { group, buildingSlots, streetTexture, streetTileLength };
 }
 
 // Scrolls every building slot toward the camera at the given speed, wrapping
@@ -251,5 +262,5 @@ export function updateStreet(street, dt, speed) {
     if (slot.z > BUILDING_RECYCLE_Z) slot.z -= STREET_LENGTH;
     slot.slotGroup.position.z = slot.z;
   }
-  street.streetTexture.offset.y += scroll / STREET_TILE_LENGTH;
+  street.streetTexture.offset.y += scroll / street.streetTileLength;
 }

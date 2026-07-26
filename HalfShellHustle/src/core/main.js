@@ -9,15 +9,16 @@ import '../style.css';
 import { createStreet, updateStreet } from '../street/street.js';
 import { createCameraRig, updateCameraRig } from '../street/camera-rig.js';
 import {
-  createPlayer, resetPlayer, setPlayerLane, updatePlayer,
+  createPlayer, resetPlayer, setPlayerLane, startPlayerJump, updatePlayer, getPlayerHeadAnchor,
 } from '../entities/player.js';
+import { createRibbon, resetRibbon, updateRibbon } from '../entities/ribbon.js';
 import {
   createObstaclePool, resetObstaclePool, spawnObstacle, updateObstaclePool,
 } from '../entities/obstacles.js';
 import { checkObstacleHit } from '../entities/collision.js';
 import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
-import { pollLaneStep } from '../input/input.js';
+import { pollLaneStep, pollJumpPress } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import { LANE_X, FORWARD_SPEED, ASPECT_W, ASPECT_H, CAMERA_FOV } from '../data/constants.js';
 
@@ -41,6 +42,14 @@ function boot() {
   const player = createPlayer();
   scene.add(player.sprite);
 
+  // Separate flutter-ribbon object disabled: the active run-cycle set
+  // (data/playerSprite.js) reverted to the original 4-frame art, which has
+  // the long mask-tail ribbon baked directly into the body -- rendering
+  // this too would double it up. Re-enable alongside a body set that only
+  // bakes in a short neutral knot.
+  // const ribbon = createRibbon();
+  // scene.add(ribbon.sprite);
+
   const obstacleField = createObstaclePool(scene);
   const spawnerState = createSpawnerState();
   const cameraRig = createCameraRig(camera);
@@ -50,6 +59,7 @@ function boot() {
 
   function fullReset() {
     resetPlayer(player);
+    // resetRibbon(ribbon); -- ribbon object disabled, see creation above
     resetObstaclePool(obstacleField);
     resetSpawner(spawnerState);
     distance = 0;
@@ -109,7 +119,9 @@ function boot() {
         const nextLane = THREE.MathUtils.clamp(player.targetLane + step, 0, LANE_X.length - 1);
         setPlayerLane(player, nextLane);
       }
+      if (pollJumpPress()) startPlayerJump(player);
       updatePlayer(player, dt);
+      // updateRibbon(ribbon, dt, getPlayerHeadAnchor(player)); -- disabled, see above
       updateStreet(street, dt, FORWARD_SPEED);
 
       distance += FORWARD_SPEED * dt;

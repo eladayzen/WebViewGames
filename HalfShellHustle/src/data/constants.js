@@ -19,14 +19,17 @@ export const PLAYER_Z = 0;
 // street needed to read as much faster.
 export const FORWARD_SPEED = 16; // world units/sec
 
-// --- Player lane easing (§5.2) ---
+// --- Player lane easing + jump arc (§5.2) ---
 export const LANE_RESPONSE = 10; // exponential lane-follow rate
+// Jump is back per direct feedback (no obstacle currently requires it --
+// it's just an available move again; a jump-specific pose/animation is a
+// deliberately deferred follow-up).
+export const JUMP_DURATION = 0.5; // seconds, full rise+fall
+export const JUMP_HEIGHT = 1.6;
 
 // --- Obstacle spawn/scroll/recycle (§5.3, §9.3 -- reusing CarRacer/src/
 // traffic.js's pool/spawn/recycle pattern) ---
-// Lane-blocking obstacles only -- no obstacle ever spans all 3 lanes, and
-// there is no jump mechanic (per Amit's direct POC-playtest feedback: drop
-// the 3-lane-spanning jump-obstacle entirely, not just tune it).
+// Lane-blocking obstacles only -- no obstacle ever spans all 3 lanes.
 export const SPAWN_Z = -140; // where new obstacles appear
 export const DESPAWN_Z = 12; // behind camera, safe to recycle
 export const FIRST_SPAWN_DELAY_SEC = 3; // grace period to read the scene before the first obstacle

@@ -1,16 +1,19 @@
-// Leonardo (build doc §6, §9.1, as amended by direct POC-playtest feedback):
-// POC uses a 4-frame whole-body running-cycle billboard (back view, katana
-// drawn -- see data/playerSprite.js), fixed in the center lane, snapping
-// between lanes on a discrete lane index that eases toward its target x
-// (§5.2). No jump mechanic -- the one obstacle that required it (a
-// 3-lane-spanning pipe) was dropped entirely per feedback, so there is
-// nothing left to jump for; only lane-blocking obstacles exist now. The
+// Leonardo (build doc §6, §9.1, as amended by direct playtest feedback):
+// a 6-frame whole-body running-cycle billboard (back view, katana drawn --
+// see data/playerSprite.js), fixed in the center lane, snapping between
+// lanes on a discrete lane index that eases toward its target x (§5.2).
+// Jump is back (ArrowUp, simple hop arc) per direct feedback -- no obstacle
+// currently requires it (the 3-lane-spanning pipe that originally justified
+// it was dropped), it's just an available move again; a jump-specific pose/
+// animation is a deliberately deferred follow-up, not done here. The
 // per-part cutout rig is still an MVP requirement (§2, §9.1), not built here.
 
 import * as THREE from 'three';
 import { getTexture } from './textureLoader.js';
 import { PLAYER_RUN_FRAMES, RUN_FRAME_DURATION } from '../data/playerSprite.js';
-import { LANE_X, CENTER_LANE, LANE_RESPONSE, PLAYER_Z } from '../data/constants.js';
+import {
+  LANE_X, CENTER_LANE, LANE_RESPONSE, JUMP_DURATION, JUMP_HEIGHT, PLAYER_Z,
+} from '../data/constants.js';
 
 // Sized up from the original single-frame 1.9 to read closer to
 // laneRunnerRef.png's big, close, dominant character presence (a camera/
@@ -41,6 +44,8 @@ export function createPlayer() {
     targetLane: CENTER_LANE,
     frameIndex: 0,
     frameTimer: 0,
+    jumpElapsed: null, // null = grounded
+    groundY: frameHeight(0) / 2,
   };
 }
 
@@ -49,10 +54,12 @@ export function resetPlayer(player) {
   player.targetLane = CENTER_LANE;
   player.frameIndex = 0;
   player.frameTimer = 0;
+  player.jumpElapsed = null;
   player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[0].url);
   player.sprite.scale.set(SPRITE_WIDTH, frameHeight(0), 1);
   player.sprite.position.x = LANE_X[CENTER_LANE];
-  player.sprite.position.y = frameHeight(0) / 2;
+  player.groundY = frameHeight(0) / 2;
+  player.sprite.position.y = player.groundY;
   player.sprite.material.rotation = 0;
   player.sprite.visible = true;
 }
@@ -60,6 +67,21 @@ export function resetPlayer(player) {
 export function setPlayerLane(player, laneIndex) {
   player.targetLane = laneIndex;
   player.laneIndex = laneIndex;
+}
+
+export function startPlayerJump(player) {
+  if (player.jumpElapsed === null) player.jumpElapsed = 0;
+}
+
+// Head-height anchor for cosmetic attachments (the ribbon, entities/
+// ribbon.js) that need to track the body without being part of its sprite --
+// roughly where the mask knot sits near the top of the current frame.
+export function getPlayerHeadAnchor(player) {
+  return {
+    x: player.sprite.position.x,
+    y: player.groundY + frameHeight(player.frameIndex) * 0.4,
+    z: player.sprite.position.z,
+  };
 }
 
 export function updatePlayer(player, dt) {
@@ -82,6 +104,19 @@ export function updatePlayer(player, dt) {
     player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[player.frameIndex].url);
     const h = frameHeight(player.frameIndex);
     player.sprite.scale.set(SPRITE_WIDTH, h, 1);
-    player.sprite.position.y = h / 2;
+    player.groundY = h / 2;
+  }
+
+  if (player.jumpElapsed !== null) {
+    player.jumpElapsed += dt;
+    const t = Math.min(player.jumpElapsed / JUMP_DURATION, 1);
+    const arc = Math.sin(Math.PI * t);
+    player.sprite.position.y = player.groundY + arc * JUMP_HEIGHT;
+    if (t >= 1) {
+      player.jumpElapsed = null;
+      player.sprite.position.y = player.groundY;
+    }
+  } else {
+    player.sprite.position.y = player.groundY;
   }
 }
