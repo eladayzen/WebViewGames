@@ -21,6 +21,7 @@ import { createGameState, restartToRunning, triggerGameOver } from './gameState.
 import { pollLaneStep, pollJumpPress } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import { LANE_X, FORWARD_SPEED, ASPECT_W, ASPECT_H, CAMERA_FOV } from '../data/constants.js';
+import { FRAME_LABELS } from '../data/playerSprite.js';
 
 function boot() {
   const app = document.getElementById('app');
@@ -108,6 +109,8 @@ function boot() {
   window.addEventListener('resize', fitStageToAspect);
   fitStageToAspect();
 
+  let lastDebugFrame = -1;
+
   const clock = new THREE.Clock();
   function tick() {
     requestAnimationFrame(tick);
@@ -123,6 +126,11 @@ function boot() {
       updatePlayer(player, dt);
       // updateRibbon(ribbon, dt, getPlayerHeadAnchor(player)); -- disabled, see above
       updateStreet(street, dt, FORWARD_SPEED);
+
+      if (player.frameIndex !== lastDebugFrame) {
+        lastDebugFrame = player.frameIndex;
+        hud.updateFrameDebug(`frame ${player.frameIndex}: ${FRAME_LABELS[player.frameIndex]}`);
+      }
 
       distance += FORWARD_SPEED * dt;
       hud.updateDistance(distance);

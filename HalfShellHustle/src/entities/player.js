@@ -1,5 +1,5 @@
 // Leonardo (build doc §6, §9.1, as amended by direct playtest feedback):
-// a 6-frame whole-body running-cycle billboard (back view, katana drawn --
+// a 4-frame whole-body running-cycle billboard (back view, katana drawn --
 // see data/playerSprite.js), fixed in the center lane, snapping between
 // lanes on a discrete lane index that eases toward its target x (§5.2).
 // Jump is back (ArrowUp, simple hop arc) per direct feedback -- no obstacle
@@ -10,7 +10,7 @@
 
 import * as THREE from 'three';
 import { getTexture } from './textureLoader.js';
-import { PLAYER_RUN_FRAMES, RUN_FRAME_DURATION } from '../data/playerSprite.js';
+import { PLAYER_RUN_FRAMES, PLAYER_FRAME_ASPECT, RUN_FRAME_DURATION } from '../data/playerSprite.js';
 import {
   LANE_X, CENTER_LANE, LANE_RESPONSE, JUMP_DURATION, JUMP_HEIGHT, PLAYER_Z,
 } from '../data/constants.js';
@@ -19,24 +19,26 @@ import {
 // laneRunnerRef.png's big, close, dominant character presence (a camera/
 // scale tuning change, not an art change).
 const SPRITE_WIDTH = 2.4;
+const SPRITE_HEIGHT = SPRITE_WIDTH * PLAYER_FRAME_ASPECT;
+const GROUND_Y = SPRITE_HEIGHT / 2;
 const LEAN_MAX = 0.22; // radians, cosmetic billboard roll while lane-shifting
 
-// Each run-cycle frame was alpha-cropped independently, so its aspect ratio
-// (and therefore its billboard height at a fixed width) differs slightly
-// frame to frame -- ground-anchoring position.y to half of *that frame's*
-// height every time it swaps is what keeps Leo's feet on the street instead
-// of popping up/down as the texture changes underneath a fixed-height plane.
-function frameHeight(frameIndex) {
-  return SPRITE_WIDTH * PLAYER_RUN_FRAMES[frameIndex].aspect;
-}
-
+// All 4 run-cycle frames share one fixed canvas (data/playerSprite.js) --
+// sprite size and ground position are set ONCE, not recomputed per frame
+// swap. Earlier versions recalculated both per-frame from each frame's own
+// (independently cropped) aspect ratio, which was the direct cause of two
+// bugs direct feedback flagged separately: vertical popping (every frame
+// had a different height) and the character jumping sideways on asymmetric
+// poses (every frame had a different crop-box center). A fixed canvas
+// across the whole cycle makes both bugs structurally impossible rather
+// than something to keep re-tuning.
 export function createPlayer() {
   const material = new THREE.SpriteMaterial({
     map: getTexture(PLAYER_RUN_FRAMES[0].url), transparent: true,
   });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(SPRITE_WIDTH, frameHeight(0), 1);
-  sprite.position.set(LANE_X[CENTER_LANE], frameHeight(0) / 2, PLAYER_Z);
+  sprite.scale.set(SPRITE_WIDTH, SPRITE_HEIGHT, 1);
+  sprite.position.set(LANE_X[CENTER_LANE], GROUND_Y, PLAYER_Z);
 
   return {
     sprite,
@@ -45,7 +47,6 @@ export function createPlayer() {
     frameIndex: 0,
     frameTimer: 0,
     jumpElapsed: null, // null = grounded
-    groundY: frameHeight(0) / 2,
   };
 }
 
@@ -56,10 +57,8 @@ export function resetPlayer(player) {
   player.frameTimer = 0;
   player.jumpElapsed = null;
   player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[0].url);
-  player.sprite.scale.set(SPRITE_WIDTH, frameHeight(0), 1);
   player.sprite.position.x = LANE_X[CENTER_LANE];
-  player.groundY = frameHeight(0) / 2;
-  player.sprite.position.y = player.groundY;
+  player.sprite.position.y = GROUND_Y;
   player.sprite.material.rotation = 0;
   player.sprite.visible = true;
 }
@@ -75,11 +74,11 @@ export function startPlayerJump(player) {
 
 // Head-height anchor for cosmetic attachments (the ribbon, entities/
 // ribbon.js) that need to track the body without being part of its sprite --
-// roughly where the mask knot sits near the top of the current frame.
+// roughly where the mask knot sits near the top of the frame.
 export function getPlayerHeadAnchor(player) {
   return {
     x: player.sprite.position.x,
-    y: player.groundY + frameHeight(player.frameIndex) * 0.4,
+    y: GROUND_Y + SPRITE_HEIGHT * 0.4,
     z: player.sprite.position.z,
   };
 }
@@ -98,25 +97,23 @@ export function updatePlayer(player, dt) {
   player.sprite.material.rotation += (targetLean - player.sprite.material.rotation) * 0.2;
 
   player.frameTimer += dt;
-  if (player.frameTimer >= RUN_FRAME_DURATION) {
-    player.frameTimer -= RUN_FRAME_DURATION;
+  const holdTime = RUN_FRAME_DURATION * PLAYER_RUN_FRAMES[player.frameIndex].holdUnits;
+  if (player.frameTimer >= holdTime) {
+    player.frameTimer -= holdTime;
     player.frameIndex = (player.frameIndex + 1) % PLAYER_RUN_FRAMES.length;
     player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[player.frameIndex].url);
-    const h = frameHeight(player.frameIndex);
-    player.sprite.scale.set(SPRITE_WIDTH, h, 1);
-    player.groundY = h / 2;
   }
 
   if (player.jumpElapsed !== null) {
     player.jumpElapsed += dt;
     const t = Math.min(player.jumpElapsed / JUMP_DURATION, 1);
     const arc = Math.sin(Math.PI * t);
-    player.sprite.position.y = player.groundY + arc * JUMP_HEIGHT;
+    player.sprite.position.y = GROUND_Y + arc * JUMP_HEIGHT;
     if (t >= 1) {
       player.jumpElapsed = null;
-      player.sprite.position.y = player.groundY;
+      player.sprite.position.y = GROUND_Y;
     }
   } else {
-    player.sprite.position.y = player.groundY;
+    player.sprite.position.y = GROUND_Y;
   }
 }

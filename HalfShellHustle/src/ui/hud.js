@@ -10,9 +10,15 @@ const distanceEl = document.getElementById('distance');
 const gameoverEl = document.getElementById('gameover-overlay');
 const finalDistanceEl = document.getElementById('final-distance');
 const pausedBadgeEl = document.getElementById('paused-badge');
+const frameDebugEl = document.getElementById('frame-debug');
 
 export function updateDistance(meters) {
   distanceEl.textContent = `${Math.floor(meters)}m`;
+}
+
+// TEMPORARY: see index.html's #frame-debug comment.
+export function updateFrameDebug(text) {
+  frameDebugEl.textContent = text;
 }
 
 export function showGameOver(meters) {
