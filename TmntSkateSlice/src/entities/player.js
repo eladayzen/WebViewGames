@@ -24,10 +24,18 @@ const SWING_FRAME_DURATIONS_SEC = [0.05, 0.1, 0.1];
 const SWING_DURATION_SEC = SWING_FRAME_DURATIONS_SEC.reduce((a, b) => a + b, 0);
 const HIT_FLINCH_DURATION_SEC = 0.5;
 
-// Fraction of play-area width traveled per run-cycle phase -- tune by feel.
-// Smaller than the old skate-bob step since a foot-swap run reads as fast
-// only if the frames flip quickly relative to travel speed.
-const RUN_CYCLE_STEP_FRAC = 0.09;
+// Run-cycle frame hold time, in seconds -- was "fraction of play-area width
+// traveled per phase" (RUN_CYCLE_STEP_FRAC / PLAYER_MAX_SPEED_FRAC_PER_SEC),
+// converted to a flat wall-clock duration (2026-07-26, chasing reported
+// choppy/"clipping" movement animation feel). Real analog board input is
+// noisy; distance-accumulation (Math.abs(dx) summed every frame) adds up
+// EVEN from tiny back-and-forth jitter while the player is trying to hold
+// still, since abs() never cancels out -- unlike the swing/hit cycles
+// (already time-based, and the user confirmed those feel fine by
+// contrast), a distance-keyed cycle flips frames unpredictably under noisy
+// input. Same 0.1s pace as before (0.09 / 0.9), now driven by a clean timer
+// instead.
+const RUN_CYCLE_FRAME_DURATION_SEC = 0.1;
 
 export function createPlayer() {
   return {
@@ -37,7 +45,7 @@ export function createPlayer() {
     stateTimer: 0,
     invulnTimer: 0,
     oozeBuffTimer: 0,
-    travelDistFrac: 0, // total |dx| traveled, drives the run-cycle frame pick
+    runCyclePhaseTimer: 0, // seconds spent continuously moving, drives the run-cycle frame pick
     isMoving: false,
   };
 }
@@ -49,7 +57,7 @@ export function resetPlayer(player) {
   player.stateTimer = 0;
   player.invulnTimer = 0;
   player.oozeBuffTimer = 0;
-  player.travelDistFrac = 0;
+  player.runCyclePhaseTimer = 0;
   player.isMoving = false;
 }
 
@@ -59,15 +67,24 @@ export function updatePlayer(player, dt, steerAxis) {
   player.xFrac += steerAxis * PLAYER_MAX_SPEED_FRAC_PER_SEC * dt;
   player.xFrac = Math.max(PLAY_AREA_LEFT_FRAC, Math.min(PLAY_AREA_RIGHT_FRAC, player.xFrac));
   const deltaXFrac = Math.abs(player.xFrac - prevX);
-  player.travelDistFrac += deltaXFrac;
 
   // Gates the run-cycle frame swap -- requires both meaningful input (not
   // just deadzone noise) AND actual displacement, so holding the stick
   // against the play-area edge (clamped, deltaXFrac === 0) correctly falls
-  // back to the idle pose instead of animating a run in place.
-  player.isMoving = Math.abs(steerAxis) > 0.08 && deltaXFrac > 0;
+  // back to the idle pose instead of animating a run in place. Asymmetric
+  // enter/exit thresholds (hysteresis), not one shared 0.08 -- a real
+  // analog board sensor can sit right at a single boundary and chatter
+  // in/out of "moving" every frame; splitting the thresholds kills that
+  // the same way GOBALANCE_SDK.md's own key-forwarding hysteresis does
+  // (press above 0.35, release below 0.20).
+  const wasMoving = player.isMoving;
+  const movingThreshold = wasMoving ? 0.05 : 0.12;
+  player.isMoving = Math.abs(steerAxis) > movingThreshold && deltaXFrac > 0;
   if (player.isMoving) {
     player.facing = steerAxis > 0 ? 1 : -1;
+    player.runCyclePhaseTimer += dt;
+  } else {
+    player.runCyclePhaseTimer = 0; // always start the cycle fresh next time he moves
   }
 
   if (player.stateTimer > 0) {
@@ -119,7 +136,7 @@ export function isInvulnerable(player) {
 // art/archive/run-cycle-wide-lunge/ in case that look is worth revisiting.
 const RUN_CYCLE_KEYS = ['mike_run_1', 'mike_run_3'];
 export function getRunCycleSpriteKey(player) {
-  const phase = Math.floor(player.travelDistFrac / RUN_CYCLE_STEP_FRAC) % RUN_CYCLE_KEYS.length;
+  const phase = Math.floor(player.runCyclePhaseTimer / RUN_CYCLE_FRAME_DURATION_SEC) % RUN_CYCLE_KEYS.length;
   return RUN_CYCLE_KEYS[phase];
 }
 
