@@ -26,8 +26,13 @@ import { pollLaneStep, pollJumpPress } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import {
   LANE_X, FORWARD_SPEED, ASPECT_W, ASPECT_H, CAMERA_FOV,
-  ENEMY_FIRST_SPAWN_DELAY_SEC, ENEMY_SPAWN_INTERVAL_SEC,
+  FIRST_SPAWN_DELAY_SEC, ENEMY_FIRST_SPAWN_DELAY_SEC, ENEMY_SPAWN_INTERVAL_SEC,
+  MIN_ENEMY_OBSTACLE_GAP_SEC,
 } from '../data/constants.js';
+import {
+  INTRO_WALL_ENABLED, INTRO_WALL_ENEMY_COUNT, INTRO_WALL_SPAWN_Z,
+  INTRO_NORMAL_ENEMY_DELAY_SEC, INTRO_OBSTACLE_DELAY_SEC,
+} from '../data/introSequence.js';
 import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
 import {
   ParticlePool, spawnDustPuff, spawnEnemyPoof, createSpeedStreaks, updateSpeedStreaks,
@@ -98,13 +103,38 @@ function boot() {
   let attackSequenceIndex = 0;
   let score = 0;
 
+  // Running game-clock (seconds since the current run started) purely for
+  // data/constants.js's MIN_ENEMY_OBSTACLE_GAP_SEC spacing rule below --
+  // `distance` is world units, this needs to be time to compare directly
+  // against spawn timestamps.
+  let gameTime = 0;
+  let lastObstacleSpawnTime = -Infinity;
+  let lastEnemySpawnTime = -Infinity;
+
   function fullReset() {
     resetPlayer(player);
     // resetRibbon(ribbon); -- ribbon object disabled, see creation above
     resetObstaclePool(obstacleField);
-    resetSpawner(spawnerState);
     resetEnemyPool(enemyField);
-    resetSpawner(enemySpawnerState, ENEMY_FIRST_SPAWN_DELAY_SEC);
+    gameTime = 0;
+    lastObstacleSpawnTime = -Infinity;
+    lastEnemySpawnTime = -Infinity;
+
+    if (INTRO_WALL_ENABLED) {
+      // data/introSequence.js: one enemy in EVERY lane, close and arriving
+      // fast -- an unmissable first teaching moment ("killing these is
+      // safe/good") instead of several seconds of nothing happening.
+      for (let lane = 0; lane < INTRO_WALL_ENEMY_COUNT; lane++) {
+        spawnEnemy(enemyField, null, lane, INTRO_WALL_SPAWN_Z);
+      }
+      lastEnemySpawnTime = gameTime;
+      resetSpawner(enemySpawnerState, INTRO_NORMAL_ENEMY_DELAY_SEC);
+      resetSpawner(spawnerState, INTRO_OBSTACLE_DELAY_SEC);
+    } else {
+      resetSpawner(enemySpawnerState, ENEMY_FIRST_SPAWN_DELAY_SEC);
+      resetSpawner(spawnerState, FIRST_SPAWN_DELAY_SEC);
+    }
+
     distance = 0;
     score = 0;
     attackSequenceIndex = 0;
@@ -163,6 +193,7 @@ function boot() {
     const dt = Math.min(clock.getDelta(), 1 / 30);
 
     if (!paused && gs.current === 'running') {
+      gameTime += dt;
       const step = pollLaneStep();
       if (step !== 0) {
         const nextLane = THREE.MathUtils.clamp(player.targetLane + step, 0, LANE_X.length - 1);
@@ -203,7 +234,18 @@ function boot() {
       distance += FORWARD_SPEED * dt;
       hud.updateDistance(distance);
 
-      updateSpawner(spawnerState, dt, () => spawnObstacle(obstacleField));
+      // MIN_ENEMY_OBSTACLE_GAP_SEC (constants.js): skip a spawn attempt that
+      // would land too close to the OTHER type's last spawn -- both spawn
+      // at the same fixed SPAWN_Z and scroll at the same speed, so this gap
+      // (enforced once, here, at spawn time) holds for the entity's entire
+      // lifetime. The spawner's own interval timer still resets normally
+      // either way, it just tries again next interval.
+      updateSpawner(spawnerState, dt, () => {
+        if (gameTime - lastEnemySpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
+          spawnObstacle(obstacleField);
+          lastObstacleSpawnTime = gameTime;
+        }
+      });
       updateObstaclePool(obstacleField, dt, FORWARD_SPEED);
 
       for (const slot of obstacleField.pool) {
@@ -216,7 +258,12 @@ function boot() {
       // Foot Soldier: opposite of an obstacle hit -- contact KILLS the
       // enemy (dissolve poof + score + the player's auto spin-attack)
       // instead of ending the run.
-      updateSpawner(enemySpawnerState, dt, () => spawnEnemy(enemyField), ENEMY_SPAWN_INTERVAL_SEC);
+      updateSpawner(enemySpawnerState, dt, () => {
+        if (gameTime - lastObstacleSpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
+          spawnEnemy(enemyField);
+          lastEnemySpawnTime = gameTime;
+        }
+      }, ENEMY_SPAWN_INTERVAL_SEC);
       updateEnemyPool(enemyField, dt, FORWARD_SPEED);
       const hitEnemy = checkEnemyHit(player, enemyField);
       if (hitEnemy) {

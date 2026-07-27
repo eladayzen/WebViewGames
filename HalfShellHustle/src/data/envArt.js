@@ -41,6 +41,16 @@ export const BARRICADE_TEXTURE = envTexture('barricade.png', 640, 585);
 // tuning and entities/enemy.js for how a spawned enemy uses it.
 export const FOOT_SOLDIER_TEXTURE = envTexture('foot_soldier_0.png', 784, 900);
 
+// Weapon/color variants -- same character/style/lineage as FOOT_SOLDIER_
+// TEXTURE (one edit call, seeded from that exact asset, generated together
+// as a 3-panel set for the same reason the run-cycle/attack frames are
+// batched -- avoids one variant drifting off-model), each with a clearly
+// different stance, weapon, and accent color (+ matching mask ribbon) for a
+// real feeling of variety, not just a recolor. See data/enemyTypes.js.
+export const FOOT_SOLDIER_SWORD_TEXTURE = envTexture('foot_soldier_sword.png', 476, 669);
+export const FOOT_SOLDIER_NUNCHAKU_TEXTURE = envTexture('foot_soldier_nunchaku.png', 507, 680);
+export const FOOT_SOLDIER_STAFF_TEXTURE = envTexture('foot_soldier_staff.png', 480, 697);
+
 export const THEMES = {
   // Bright, cheerful, semi-casual DAYLIGHT palette per direct playtest
   // feedback -- an explicit pivot away from the build doc's original

@@ -21,9 +21,13 @@ import {
 } from '../data/constants.js';
 import { getTexture } from './textureLoader.js';
 import { getShadowTexture } from './contactShadow.js';
-import { ENEMY_TYPES, DEFAULT_ENEMY_TYPE } from '../data/enemyTypes.js';
+import { ENEMY_TYPES } from '../data/enemyTypes.js';
 
-const POOL_SIZE = 5;
+// TEMPORARY demo bump (direct feedback: "twice as much enemies", plus
+// data/introSequence.js's 3-wide wall needs at least LANE_X.length free
+// slots at once on top of whatever's already scrolling) -- normal value
+// was 5, doubled to 10. Revert once the demo pass is done.
+const POOL_SIZE = 10;
 
 function createSlot(scene) {
   const material = new THREE.SpriteMaterial({ transparent: true });
@@ -69,33 +73,42 @@ export function resetEnemyPool(field) {
   }
 }
 
-function spawnOfType(slot, lane, typeKey) {
+function spawnOfType(slot, lane, typeKey, z) {
   const type = ENEMY_TYPES[typeKey];
   const width = type.height / type.texture.aspect;
 
   slot.active = true;
   slot.type = type;
   slot.lane = lane;
-  slot.z = SPAWN_Z;
+  slot.z = z;
   // Randomized phase so a pool's worth of enemies don't all breathe in
   // lockstep -- reads as more alive than a uniform pulse.
   slot.breatheTimer = Math.random() * type.breathePeriod;
 
   slot.sprite.material.map = getTexture(type.texture.url);
   slot.sprite.scale.set(width, type.height, 1);
-  slot.sprite.position.set(LANE_X[lane], type.height / 2, SPAWN_Z);
+  slot.sprite.position.set(LANE_X[lane], type.height / 2, z);
   slot.sprite.visible = true;
 
   slot.shadow.scale.set(type.shadowWidth, type.shadowDepth, 1);
-  slot.shadow.position.set(LANE_X[lane], slot.shadow.position.y, SPAWN_Z);
+  slot.shadow.position.set(LANE_X[lane], slot.shadow.position.y, z);
   slot.shadow.visible = true;
 }
 
-// Spawns one enemy of `typeKey` (data/enemyTypes.js) in a random lane.
-export function spawnEnemy(field, typeKey = DEFAULT_ENEMY_TYPE) {
+const ENEMY_TYPE_KEYS = Object.keys(ENEMY_TYPES);
+
+// Spawns one enemy. `typeKey` forces a specific type (data/enemyTypes.js);
+// omitted, it picks randomly among all of them -- direct feedback: seeing
+// the weapon/stance/color variety is the point, not always the same type.
+// `lane`/`z` default to random/SPAWN_Z (normal gameplay spawning) but can be
+// forced explicitly -- data/introSequence.js's start-of-run wall needs one
+// enemy in EVERY lane at the same close z, not the usual random placement.
+export function spawnEnemy(field, typeKey = null, lane = null, z = SPAWN_Z) {
   const slot = field.pool.find((s) => !s.active);
   if (!slot) return;
-  spawnOfType(slot, Math.floor(Math.random() * LANE_X.length), typeKey);
+  const key = typeKey || ENEMY_TYPE_KEYS[Math.floor(Math.random() * ENEMY_TYPE_KEYS.length)];
+  const resolvedLane = lane !== null ? lane : Math.floor(Math.random() * LANE_X.length);
+  spawnOfType(slot, resolvedLane, key, z);
 }
 
 export function updateEnemyPool(field, dt, speed) {

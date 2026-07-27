@@ -40,10 +40,26 @@ export const SPAWN_INTERVAL_SEC = 3.4; // fixed gap between spawns -- no ramp at
 // obstacle spawner so the two don't always land in the same window during
 // this first-pass tuning.
 export const ENEMY_FIRST_SPAWN_DELAY_SEC = 4.5;
-export const ENEMY_SPAWN_INTERVAL_SEC = 2.8;
+// TEMPORARY demo density bump (direct feedback: "just for demonstration,
+// add twice as much enemies") -- normal value is 2.8, halved here. Revert
+// to 2.8 once the demo pass is done; this is not a locked-in balance call.
+export const ENEMY_SPAWN_INTERVAL_SEC = 1.4;
 
 // --- Collision (§5.3, §9.3: lane-index + z-distance overlap, no physics) ---
 export const OBSTACLE_COLLISION_HALF_Z = 1.5;
+
+// --- Enemy/obstacle minimum spacing (locked-in gameplay rule, direct
+// feedback): the GoBalance lean-board controller reacts slower than a
+// phone swipe, so an enemy spawned too close to an obstacle baits the
+// player into approaching (enemies are safe/rewarding) right as an
+// obstacle arrives with no time left to lane-change away from it. Both
+// obstacles and enemies spawn at the same fixed SPAWN_Z and scroll at the
+// same FORWARD_SPEED, so their world-space gap is fixed at spawn time and
+// never changes afterward -- enforcing this at spawn time (core/main.js)
+// fully guarantees it for the entity's whole lifetime, not just near the
+// player. Time-based (not distance-based) since spawn timing is what's
+// actually compared.
+export const MIN_ENEMY_OBSTACLE_GAP_SEC = 1.5; // -> 24 world units at FORWARD_SPEED=16
 
 // --- Camera follow rig (§5.1, §9.1 -- reusing CarRacer/src/camera-rig.js's
 // FOLLOW_LERP-style easing pattern) ---
