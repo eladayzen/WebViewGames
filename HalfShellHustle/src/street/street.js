@@ -140,7 +140,12 @@ export function createStreet(scene, themeKey = 'sunnyStreet') {
   // per direct confirmation) -- move into the theme data if a future theme
   // needs its own mood.
   scene.background = new THREE.Color(0x8fc7e8);
-  scene.fog = new THREE.Fog(0x9fd2ec, 70, 180);
+  // THREE.Fog has no direct alpha/opacity control -- its blend-toward-
+  // fog-color factor is linear in 1/(far-near), so per direct feedback
+  // ("the tint's too strong, cut it by half") the span is doubled here
+  // (110 -> 220) rather than the color touched: that scales the blend
+  // factor down by exactly half at every distance, same near falloff start.
+  scene.fog = new THREE.Fog(0x9fd2ec, 70, 290);
 
   const group = new THREE.Group();
 
