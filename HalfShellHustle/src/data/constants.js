@@ -48,7 +48,10 @@ export const CAMERA_FOLLOW_LERP = 0.1;
 export const CAMERA_OFFSET_Y = 1.9;
 export const CAMERA_OFFSET_Z = 4.6;
 export const CAMERA_LOOKAHEAD_Z = -10;
-export const CAMERA_LOOKAHEAD_Y = 1.6;
+// Raised from 1.6 per direct feedback -- pushes the player (and the shrunk
+// PLAYER_SCALE in entities/player.js already helps here too) further down
+// in frame, opening up the view of the lanes ahead of him.
+export const CAMERA_LOOKAHEAD_Y = 1.85;
 export const CAMERA_FOV = 58;
 
 // --- Stage aspect (locked 16:9 letterbox, matching this repo's other

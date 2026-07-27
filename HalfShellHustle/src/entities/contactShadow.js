@@ -22,8 +22,12 @@ function createShadowTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-const BASE_WIDTH = 1.5;
-const BASE_DEPTH = 0.85;
+// Kept proportional to entities/player.js's PLAYER_SCALE (0.88) -- a
+// shadow sized for the original sprite footprint would read as oversized
+// once the character himself was dialed down.
+const PLAYER_SCALE = 0.88;
+const BASE_WIDTH = 1.5 * PLAYER_SCALE;
+const BASE_DEPTH = 0.85 * PLAYER_SCALE;
 const PULSE_DECAY = 6; // 1/sec, how fast the contact punch settles back down
 const PULSE_SCALE = 0.22;
 const AIRBORNE_SHRINK = 0.55; // fraction shrunk at jump apex

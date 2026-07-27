@@ -18,7 +18,15 @@ import {
 // Sized up from the original single-frame 1.9 to read closer to
 // laneRunnerRef.png's big, close, dominant character presence (a camera/
 // scale tuning change, not an art change).
-const SPRITE_WIDTH = 2.4;
+//
+// PLAYER_SCALE: direct feedback -- he was blocking too much of the center
+// lane, dialed back 12%. Applied here (the single source of the sprite's
+// footprint) rather than as a scale hack elsewhere, so GROUND_Y/SPRITE_HEIGHT
+// (and everything derived from them -- the head anchor, the contact shadow's
+// position, the dust-puff spawn offset) stay unified with his actual size
+// instead of drifting out of proportion with it.
+const PLAYER_SCALE = 0.88;
+const SPRITE_WIDTH = 2.4 * PLAYER_SCALE;
 const SPRITE_HEIGHT = SPRITE_WIDTH * PLAYER_FRAME_ASPECT;
 const GROUND_Y = SPRITE_HEIGHT / 2;
 const LEAN_MAX = 0.22; // radians, cosmetic billboard roll while lane-shifting

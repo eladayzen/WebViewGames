@@ -64,7 +64,7 @@ function boot() {
   // puffs fired on each foot-contact frame, and near-camera speed streaks.
   const contactShadow = createContactShadow(scene);
   const dustPool = new ParticlePool(scene, 40, 0.4, 0.14);
-  const DUST_AHEAD_OFFSET = 0.22; // spawn slightly ahead (more -Z, direction of travel) of his feet, not directly under/behind him where his own sprite covers it
+  const DUST_AHEAD_OFFSET = 0.19; // spawn slightly ahead (more -Z, direction of travel) of his feet, not directly under/behind him where his own sprite covers it -- kept proportional to entities/player.js's PLAYER_SCALE
   const speedStreaks = createSpeedStreaks(scene);
 
   let distance = 0;
@@ -169,18 +169,15 @@ function boot() {
       distance += FORWARD_SPEED * dt;
       hud.updateDistance(distance);
 
-      // TEMPORARY ANIMATION REVIEW MODE: obstacle spawning/collision
-      // disabled so the run cycle can be watched uninterrupted -- re-enable
-      // (uncomment) once the cycle is locked in.
-      // updateSpawner(spawnerState, dt, () => spawnObstacle(obstacleField));
-      // updateObstaclePool(obstacleField, dt, FORWARD_SPEED);
-      //
-      // for (const slot of obstacleField.pool) {
-      //   if (checkObstacleHit(player, slot)) {
-      //     endRun();
-      //     break;
-      //   }
-      // }
+      updateSpawner(spawnerState, dt, () => spawnObstacle(obstacleField));
+      updateObstaclePool(obstacleField, dt, FORWARD_SPEED);
+
+      for (const slot of obstacleField.pool) {
+        if (checkObstacleHit(player, slot)) {
+          endRun();
+          break;
+        }
+      }
     }
 
     // Follow the eased lane-center position, not the per-frame xOffset snap
