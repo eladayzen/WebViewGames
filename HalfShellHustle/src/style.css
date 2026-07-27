@@ -62,6 +62,20 @@ html, body {
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
 }
 
+/* TEMPORARY: bare score readout for the enemy-bump-kill experiment (no
+   real scoring system exists yet, build doc §8 -- MVP's actual score UI is
+   top-right, per concept art). Placeholder styling, smaller than distance. */
+#score {
+  font-weight: 800;
+  font-size: 16px;
+  color: #ffe98a;
+  letter-spacing: 0.5px;
+  -webkit-text-stroke: 1.5px #1a0a2a;
+  paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  margin-top: 2px;
+}
+
 #paused-badge {
   position: absolute;
   top: 50%;

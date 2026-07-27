@@ -30,6 +30,15 @@ function envTexture(file, w, h) {
 // duplicated per-theme.
 export const BARRICADE_TEXTURE = envTexture('barricade.png', 640, 585);
 
+// Foot Soldier -- new "bump-to-kill" enemy entity type (direct feedback's
+// addition, not in the original build doc): a Foot Clan grunt standing in a
+// lane, scrolled toward the camera like an obstacle, but dissolves into a
+// particle poof + awards score on player contact instead of ending the run.
+// Single idle-standing frame for this first pass, matching the barricade's
+// single-static-frame pattern -- an idle breathing-loop sequence and a
+// hit-reaction are deliberately deferred (see entities/enemy.js).
+export const FOOT_SOLDIER_TEXTURE = envTexture('foot_soldier_0.png', 784, 900);
+
 export const THEMES = {
   // Bright, cheerful, semi-casual DAYLIGHT palette per direct playtest
   // feedback -- an explicit pivot away from the build doc's original

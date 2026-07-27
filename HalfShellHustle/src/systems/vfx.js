@@ -187,6 +187,24 @@ export function spawnDustPuff(pool, x, y, z) {
   });
 }
 
+// --- Enemy dissolve poof -----------------------------------------------
+// Classic ninja "poof of smoke" on a Foot Soldier kill (entities/enemy.js) --
+// a full radial burst (no directional bias, unlike the dust puff's forward-
+// biased kick) since this replaces the whole sprite rather than marking a
+// footstep. Deliberately its own color/shape from the dust puffs (lighter,
+// more blue-grey) so it doesn't read as the same effect once the smoke-bomb
+// pickup (build doc §5.6, not built yet) exists too.
+export function spawnEnemyPoof(pool, x, y, z) {
+  pool.spawn(x, y, z, 0xaab0b8, {
+    count: 20, speed: 3.2, life: 0.5, gravity: 0.6, spread: 0.35,
+    dirSpread: Math.PI, upBias: 0.6, warmup: 0.05,
+  });
+  pool.spawn(x, y, z, 0xe4e7ea, {
+    count: 10, speed: 2.2, life: 0.4, gravity: 0.4, spread: 0.25,
+    dirSpread: Math.PI, upBias: 0.4, warmup: 0.05,
+  });
+}
+
 // --- Speed lines -----------------------------------------------------
 // Thin bright streaks rushing past close to the player toward the camera,
 // giving the run more velocity/energy -- same near-camera speed-cue

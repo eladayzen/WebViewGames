@@ -17,14 +17,20 @@ import {
 } from '../entities/obstacles.js';
 import { checkObstacleHit } from '../entities/collision.js';
 import { createContactShadow, pulseContactShadow, updateContactShadow } from '../entities/contactShadow.js';
+import {
+  createEnemyPool, resetEnemyPool, spawnEnemy, updateEnemyPool, checkEnemyHit, killEnemy,
+} from '../entities/enemy.js';
 import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
 import { pollLaneStep, pollJumpPress } from '../input/input.js';
 import * as hud from '../ui/hud.js';
-import { LANE_X, FORWARD_SPEED, ASPECT_W, ASPECT_H, CAMERA_FOV } from '../data/constants.js';
+import {
+  LANE_X, FORWARD_SPEED, ASPECT_W, ASPECT_H, CAMERA_FOV,
+  ENEMY_FIRST_SPAWN_DELAY_SEC, ENEMY_SPAWN_INTERVAL_SEC,
+} from '../data/constants.js';
 import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
 import {
-  ParticlePool, spawnDustPuff, createSpeedStreaks, updateSpeedStreaks,
+  ParticlePool, spawnDustPuff, spawnEnemyPoof, createSpeedStreaks, updateSpeedStreaks,
 } from '../systems/vfx.js';
 
 function boot() {
@@ -57,6 +63,13 @@ function boot() {
 
   const obstacleField = createObstaclePool(scene);
   const spawnerState = createSpawnerState();
+
+  // Foot Soldier "bump-to-kill" enemy (direct feedback's addition, entities/
+  // enemy.js): own pool/spawner from the barricade obstacles since a hit
+  // here KILLS the enemy and scores, it doesn't end the run.
+  const enemyField = createEnemyPool(scene);
+  const enemySpawnerState = createSpawnerState(ENEMY_FIRST_SPAWN_DELAY_SEC);
+
   const cameraRig = createCameraRig(camera);
   const gs = createGameState();
 
@@ -71,16 +84,25 @@ function boot() {
   const DUST_AHEAD_OFFSET = 0.19; // spawn slightly ahead (more -Z, direction of travel) of his feet, not directly under/behind him where his own sprite covers it -- kept proportional to entities/player.js's PLAYER_SCALE
   const DUST_FAN_RATE = 0.1; // outward left/right drift per unit of camera-ward scroll, see ParticlePool.scrollZ
   const speedStreaks = createSpeedStreaks(scene);
+  // Separate pool from dustPool -- different tuning (bigger/lighter poof
+  // burst) and keeps the two effects' particle budgets from competing.
+  const enemyPoofPool = new ParticlePool(scene, 30, 0.5, 0.6);
+  const ENEMY_KILL_SCORE = 100; // placeholder value -- no real scoring system yet (build doc §8 is MVP-only)
 
   let distance = 0;
+  let score = 0;
 
   function fullReset() {
     resetPlayer(player);
     // resetRibbon(ribbon); -- ribbon object disabled, see creation above
     resetObstaclePool(obstacleField);
     resetSpawner(spawnerState);
+    resetEnemyPool(enemyField);
+    resetSpawner(enemySpawnerState, ENEMY_FIRST_SPAWN_DELAY_SEC);
     distance = 0;
+    score = 0;
     hud.updateDistance(distance);
+    hud.updateScore(score);
   }
 
   function endRun() {
@@ -183,6 +205,20 @@ function boot() {
           break;
         }
       }
+
+      // Foot Soldier: opposite of an obstacle hit -- contact KILLS the
+      // enemy (dissolve poof + score) instead of ending the run. No
+      // auto-attack animation on the player yet, deliberately deferred.
+      updateSpawner(enemySpawnerState, dt, () => spawnEnemy(enemyField), ENEMY_SPAWN_INTERVAL_SEC);
+      updateEnemyPool(enemyField, dt, FORWARD_SPEED);
+      const hitEnemy = checkEnemyHit(player, enemyField);
+      if (hitEnemy) {
+        spawnEnemyPoof(enemyPoofPool, hitEnemy.sprite.position.x, hitEnemy.sprite.position.y, hitEnemy.sprite.position.z);
+        killEnemy(hitEnemy);
+        score += ENEMY_KILL_SCORE;
+        hud.updateScore(score);
+      }
+      enemyPoofPool.update(dt);
     }
 
     // Follow the eased lane-center position, not the per-frame xOffset snap

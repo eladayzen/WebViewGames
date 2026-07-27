@@ -35,6 +35,13 @@ export const DESPAWN_Z = 12; // behind camera, safe to recycle
 export const FIRST_SPAWN_DELAY_SEC = 3; // grace period to read the scene before the first obstacle
 export const SPAWN_INTERVAL_SEC = 3.4; // fixed gap between spawns -- no ramp at POC (§2, §5.4 is MVP-only)
 
+// --- Foot Soldier enemy spawn (entities/enemy.js) -- a new "bump-to-kill"
+// entity type, not in the original build doc. Own pace/offset from the
+// obstacle spawner so the two don't always land in the same window during
+// this first-pass tuning.
+export const ENEMY_FIRST_SPAWN_DELAY_SEC = 4.5;
+export const ENEMY_SPAWN_INTERVAL_SEC = 2.8;
+
 // --- Collision (§5.3, §9.3: lane-index + z-distance overlap, no physics) ---
 export const OBSTACLE_COLLISION_HALF_Z = 1.5;
 

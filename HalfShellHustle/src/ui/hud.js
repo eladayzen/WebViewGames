@@ -7,6 +7,7 @@
 // (BUILD_NOTES.md).
 
 const distanceEl = document.getElementById('distance');
+const scoreEl = document.getElementById('score');
 const gameoverEl = document.getElementById('gameover-overlay');
 const finalDistanceEl = document.getElementById('final-distance');
 const pausedBadgeEl = document.getElementById('paused-badge');
@@ -14,6 +15,11 @@ const frameDebugEl = document.getElementById('frame-debug');
 
 export function updateDistance(meters) {
   distanceEl.textContent = `${Math.floor(meters)}m`;
+}
+
+// TEMPORARY: see style.css's #score comment.
+export function updateScore(points) {
+  scoreEl.textContent = `${points}`;
 }
 
 // TEMPORARY: see index.html's #frame-debug comment.

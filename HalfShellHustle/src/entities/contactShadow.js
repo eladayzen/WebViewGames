@@ -22,12 +22,23 @@ function createShadowTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
+// Shared across every ground shadow in the game (the player's below, and
+// entities/enemy.js's per-Foot-Soldier shadows) so they all read as the
+// same shadow style and only one canvas/texture ever gets created.
+let cachedShadowTexture = null;
+export function getShadowTexture() {
+  if (!cachedShadowTexture) cachedShadowTexture = createShadowTexture();
+  return cachedShadowTexture;
+}
+
 // Kept proportional to entities/player.js's PLAYER_SCALE (0.88) -- a
 // shadow sized for the original sprite footprint would read as oversized
-// once the character himself was dialed down.
+// once the character himself was dialed down. Exported so entities/enemy.js
+// can size its own shadow relative to this one (currently 10% bigger, per
+// direct feedback), instead of an unrelated hardcoded number.
 const PLAYER_SCALE = 0.88;
-const BASE_WIDTH = 1.5 * PLAYER_SCALE;
-const BASE_DEPTH = 0.85 * PLAYER_SCALE;
+export const PLAYER_SHADOW_WIDTH = 1.5 * PLAYER_SCALE;
+export const PLAYER_SHADOW_DEPTH = 0.85 * PLAYER_SCALE;
 const PULSE_DECAY = 6; // 1/sec, how fast the contact punch settles back down
 const PULSE_SCALE = 0.22;
 const AIRBORNE_SHRINK = 0.55; // fraction shrunk at jump apex
@@ -35,9 +46,9 @@ const AIRBORNE_FADE = 0.6; // fraction of opacity lost at jump apex
 
 export function createContactShadow(scene) {
   const material = new THREE.MeshBasicMaterial({
-    map: createShadowTexture(), transparent: true, depthWrite: false, fog: false,
+    map: getShadowTexture(), transparent: true, depthWrite: false, fog: false,
   });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(BASE_WIDTH, BASE_DEPTH), material);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(PLAYER_SHADOW_WIDTH, PLAYER_SHADOW_DEPTH), material);
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.y = 0.015; // just above the street plane, no z-fight
   scene.add(mesh);
