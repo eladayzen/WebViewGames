@@ -53,9 +53,11 @@ export class ParticlePool {
     this.points = new THREE.Points(geometry, material);
     this.points.frustumCulled = false;
     // depthTest off (above) means this always draws over solid geometry --
-    // renderOrder makes sure it also draws AFTER the player sprite specifically
-    // (dust in front of him, per direct feedback), not just in arbitrary order.
-    this.points.renderOrder = 10;
+    // a high renderOrder makes sure it draws dead last among transparent
+    // objects too (player sprite, obstacles, speed streaks are all default
+    // renderOrder 0), so the dust is guaranteed on top of everything, not
+    // just whatever happened to be behind it by distance.
+    this.points.renderOrder = 999;
     scene.add(this.points);
   }
 
@@ -176,12 +178,12 @@ export class ParticlePool {
 // ParticlePool.spawn) and reads as an already-formed puff immediately.
 export function spawnDustPuff(pool, x, y, z) {
   pool.spawn(x, y, z, 0x7d7a75, {
-    count: 7, speed: 1.7, life: 0.35, gravity: 1.4, spread: 0.18,
-    dirY: 1, dirSpread: 1.0, upBias: 0.9, warmup: 0.07,
+    count: 16, speed: 2.1, life: 0.4, gravity: 1.4, spread: 0.22,
+    dirY: 1, dirSpread: 1.0, upBias: 1.3, warmup: 0.07,
   });
   pool.spawn(x, y, z, 0x8f8c86, {
-    count: 3, speed: 1.1, life: 0.28, gravity: 1.1, spread: 0.12,
-    dirY: 1, dirSpread: 0.8, upBias: 0.7, warmup: 0.07,
+    count: 8, speed: 1.5, life: 0.32, gravity: 1.1, spread: 0.16,
+    dirY: 1, dirSpread: 0.8, upBias: 1.0, warmup: 0.07,
   });
 }
 

@@ -63,9 +63,13 @@ function boot() {
   // Run-cycle energy VFX (experimental pass): ground contact shadow, dust
   // puffs fired on each foot-contact frame, and near-camera speed streaks.
   const contactShadow = createContactShadow(scene);
-  const dustPool = new ParticlePool(scene, 40, 0.4, 0.14);
+  // Pool sized for ~2 overlapping puffs' worth of particles (spawnDustPuff's
+  // 16+8=24 per puff) with headroom, since more volume was asked for and a
+  // too-small pool would silently start overwriting a puff's own particles
+  // mid-life via the ring-buffer cursor.
+  const dustPool = new ParticlePool(scene, 100, 0.4, 0.14);
   const DUST_AHEAD_OFFSET = 0.19; // spawn slightly ahead (more -Z, direction of travel) of his feet, not directly under/behind him where his own sprite covers it -- kept proportional to entities/player.js's PLAYER_SCALE
-  const DUST_FAN_RATE = 0.08; // outward left/right drift per unit of camera-ward scroll, see ParticlePool.scrollZ
+  const DUST_FAN_RATE = 0.1; // outward left/right drift per unit of camera-ward scroll, see ParticlePool.scrollZ
   const speedStreaks = createSpeedStreaks(scene);
 
   let distance = 0;
