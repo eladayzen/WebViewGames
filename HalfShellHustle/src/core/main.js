@@ -16,12 +16,16 @@ import {
   createObstaclePool, resetObstaclePool, spawnObstacle, updateObstaclePool,
 } from '../entities/obstacles.js';
 import { checkObstacleHit } from '../entities/collision.js';
+import { createContactShadow, pulseContactShadow, updateContactShadow } from '../entities/contactShadow.js';
 import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
 import { pollLaneStep, pollJumpPress } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import { LANE_X, FORWARD_SPEED, ASPECT_W, ASPECT_H, CAMERA_FOV } from '../data/constants.js';
 import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
+import {
+  ParticlePool, spawnDustPuff, createSpeedStreaks, updateSpeedStreaks,
+} from '../systems/vfx.js';
 
 function boot() {
   const app = document.getElementById('app');
@@ -55,6 +59,12 @@ function boot() {
   const spawnerState = createSpawnerState();
   const cameraRig = createCameraRig(camera);
   const gs = createGameState();
+
+  // Run-cycle energy VFX (experimental pass): ground contact shadow, dust
+  // puffs fired on each foot-contact frame, and near-camera speed streaks.
+  const contactShadow = createContactShadow(scene);
+  const dustPool = new ParticlePool(scene, 40, 0.4, 0.5);
+  const speedStreaks = createSpeedStreaks(scene);
 
   let distance = 0;
 
@@ -110,6 +120,7 @@ function boot() {
   fitStageToAspect();
 
   let lastDebugFrame = -1;
+  let lastContactFrame = player.frameIndex;
 
   const clock = new THREE.Clock();
   function tick() {
@@ -127,14 +138,31 @@ function boot() {
       // updateRibbon(ribbon, dt, getPlayerHeadAnchor(player)); -- disabled, see above
       updateStreet(street, dt, FORWARD_SPEED);
 
-      if (player.frameIndex !== lastDebugFrame) {
-        lastDebugFrame = player.frameIndex;
-        const { yOffset, xOffset } = PLAYER_RUN_FRAMES[player.frameIndex];
-        hud.updateFrameDebug(
-          `frame ${player.frameIndex}: ${FRAME_LABELS[player.frameIndex]} `
-          + `(yOffset ${yOffset}, xOffset ${xOffset})`,
-        );
+      // Foot-contact VFX: fires once per transition INTO a contact pose
+      // (frame 1 or 3, see data/playerSprite.js), grounded only -- a jump's
+      // contact-frame swaps shouldn't kick up dust mid-air.
+      const enteredContact = player.frameIndex !== lastContactFrame
+        && (player.frameIndex === 1 || player.frameIndex === 3)
+        && player.jumpElapsed === null;
+      lastContactFrame = player.frameIndex;
+      if (enteredContact) {
+        pulseContactShadow(contactShadow);
+        spawnDustPuff(dustPool, player.sprite.position.x, 0.05, player.sprite.position.z);
       }
+      updateContactShadow(contactShadow, player, dt);
+      dustPool.update(dt);
+      updateSpeedStreaks(speedStreaks, dt, FORWARD_SPEED);
+
+      // Frame-count HUD readout disabled -- re-enable (uncomment) if a
+      // specific frame needs calling out again during playtest feedback.
+      // if (player.frameIndex !== lastDebugFrame) {
+      //   lastDebugFrame = player.frameIndex;
+      //   const { yOffset, xOffset } = PLAYER_RUN_FRAMES[player.frameIndex];
+      //   hud.updateFrameDebug(
+      //     `frame ${player.frameIndex}: ${FRAME_LABELS[player.frameIndex]} `
+      //     + `(yOffset ${yOffset}, xOffset ${xOffset})`,
+      //   );
+      // }
 
       distance += FORWARD_SPEED * dt;
       hud.updateDistance(distance);
@@ -153,7 +181,9 @@ function boot() {
       // }
     }
 
-    updateCameraRig(cameraRig, player.sprite.position.x);
+    // Follow the eased lane-center position, not the per-frame xOffset snap
+    // -- otherwise the small foot-plant jitter reads as camera pan/tilt.
+    updateCameraRig(cameraRig, player.laneX);
     renderer.render(scene, camera);
   }
 
