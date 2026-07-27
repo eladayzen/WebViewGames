@@ -39,6 +39,13 @@ export class ParticlePool {
     this.life = new Float32Array(count);
     this.maxLife = new Float32Array(count);
     this.gravity = new Float32Array(count);
+    // Swirl (optional, default 0 -- unused by dust/streaks): an angular
+    // rate (rad/sec) each particle orbits around its own (centerX,centerZ)
+    // on top of its normal outward velocity, see spawn()'s `swirl` option
+    // and update()'s orbit step below.
+    this.swirl = new Float32Array(count);
+    this.centerX = new Float32Array(count);
+    this.centerZ = new Float32Array(count);
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
@@ -63,7 +70,7 @@ export class ParticlePool {
 
   spawn(x, y, z, colorHex, {
     count = 1, speed = 2, spread = 0.15, life = 0.4, upBias = 0, gravity = 2,
-    dirX = 0, dirY = 0, dirZ = 0, dirSpread = Math.PI, warmup = 0,
+    dirX = 0, dirY = 0, dirZ = 0, dirSpread = Math.PI, warmup = 0, swirl = 0,
   } = {}) {
     const c = new THREE.Color(colorHex);
     for (let n = 0; n < count; n++) {
@@ -97,6 +104,15 @@ export class ParticlePool {
       this.maxLife[i] = life;
       this.life[i] = life;
 
+      // swirl != 0 -> this particle orbits (x,z) [the spawn call's own
+      // origin, before the per-particle `spread` jitter above] on top of
+      // its outward velocity, see update()'s orbit step. A tiny per-
+      // particle rate variance keeps a many-particle burst from rotating
+      // as one perfectly rigid disc.
+      this.swirl[i] = swirl ? swirl * (0.85 + Math.random() * 0.3) : 0;
+      this.centerX[i] = x;
+      this.centerZ[i] = z;
+
       // Pre-warm: fast-forward the particle's OWN motion (position/velocity)
       // by `warmup` seconds right at spawn, without touching life -- so a
       // puff that's only ever seen for a couple of rendered frames still
@@ -123,6 +139,21 @@ export class ParticlePool {
       this.positions[i * 3 + 0] += this.velocities[i * 3 + 0] * dt;
       this.positions[i * 3 + 1] += this.velocities[i * 3 + 1] * dt;
       this.positions[i * 3 + 2] += this.velocities[i * 3 + 2] * dt;
+
+      // Orbit step: rotate (x,z) around this particle's own (centerX,
+      // centerZ) by swirl*dt radians, ON TOP of the outward drift just
+      // applied above -- combining outward expansion with rotation curves
+      // each particle's path into a spiral instead of a straight radial
+      // line (a no-op when swirl is 0, the default for every other effect).
+      if (this.swirl[i] !== 0) {
+        const dx = this.positions[i * 3 + 0] - this.centerX[i];
+        const dz = this.positions[i * 3 + 2] - this.centerZ[i];
+        const angle = this.swirl[i] * dt;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        this.positions[i * 3 + 0] = this.centerX[i] + dx * cos - dz * sin;
+        this.positions[i * 3 + 2] = this.centerZ[i] + dx * sin + dz * cos;
+      }
 
       this.colors[i * 3 + 0] = this.baseColors[i * 3 + 0] * t;
       this.colors[i * 3 + 1] = this.baseColors[i * 3 + 1] * t;
@@ -188,20 +219,38 @@ export function spawnDustPuff(pool, x, y, z) {
 }
 
 // --- Enemy dissolve poof -----------------------------------------------
-// Classic ninja "poof of smoke" on a Foot Soldier kill (entities/enemy.js) --
-// a full radial burst (no directional bias, unlike the dust puff's forward-
-// biased kick) since this replaces the whole sprite rather than marking a
-// footstep. Deliberately its own color/shape from the dust puffs (lighter,
-// more blue-grey) so it doesn't read as the same effect once the smoke-bomb
-// pickup (build doc §5.6, not built yet) exists too.
-export function spawnEnemyPoof(pool, x, y, z) {
-  pool.spawn(x, y, z, 0xaab0b8, {
-    count: 20, speed: 3.2, life: 0.5, gravity: 0.6, spread: 0.35,
-    dirSpread: Math.PI, upBias: 0.6, warmup: 0.05,
-  });
-  pool.spawn(x, y, z, 0xe4e7ea, {
-    count: 10, speed: 2.2, life: 0.4, gravity: 0.4, spread: 0.25,
-    dirSpread: Math.PI, upBias: 0.4, warmup: 0.05,
+// Ninja "poof of smoke" on an enemy kill (entities/enemy.js), direct
+// feedback's bigger/purple/swirling pass: instead of one burst from the
+// sprite's single center point, origins are scattered across a grid
+// spanning the sprite's actual on-screen footprint (width x height passed
+// in by the caller) -- so it reads as the WHOLE silhouette dissolving, not
+// a burst that happens to be standing where he was. Each origin's burst
+// also orbits outward (ParticlePool's `swirl` option) rather than flying
+// in straight radial lines, plus one big central burst for extra punch.
+// Color comes from the killed enemy's own type (data/enemyTypes.js's
+// poofColors), so a future differently-colored enemy type poofs its own
+// color instead of a hardcoded one here.
+const POOF_GRID_COLS = 4;
+const POOF_GRID_ROWS = 5;
+const POOF_SWIRL_RATE = 7; // rad/sec
+
+export function spawnEnemyPoof(pool, x, y, z, width, height, colors) {
+  for (let row = 0; row < POOF_GRID_ROWS; row++) {
+    for (let col = 0; col < POOF_GRID_COLS; col++) {
+      const ox = x + (col / (POOF_GRID_COLS - 1) - 0.5) * width;
+      const oy = y - height / 2 + (row / (POOF_GRID_ROWS - 1)) * height;
+      const color = colors[(row * POOF_GRID_COLS + col) % colors.length];
+      pool.spawn(ox, oy, z, color, {
+        count: 7, speed: 3.8, life: 0.6, gravity: 0.35, spread: 0.14,
+        dirSpread: Math.PI, upBias: 0.35, warmup: 0.04,
+        swirl: POOF_SWIRL_RATE * (Math.random() < 0.5 ? -1 : 1),
+      });
+    }
+  }
+  // Central punch burst, biggest/brightest of the set.
+  pool.spawn(x, y, z, colors[0], {
+    count: 40, speed: 5, life: 0.65, gravity: 0.4, spread: 0.45,
+    dirSpread: Math.PI, upBias: 0.6, warmup: 0.05, swirl: POOF_SWIRL_RATE,
   });
 }
 

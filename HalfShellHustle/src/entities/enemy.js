@@ -7,60 +7,38 @@
 // but on player lane+z overlap it's removed and dissolves into a particle
 // poof (systems/vfx.js) instead of ending the run, and awards score.
 //
-// First pass, deliberately minimal: single combat-stance sprite frame (art
-// v2 -- purple-accented armor, gripping a spiked club), no player-side
-// auto-attack/swirl animation yet -- getting spawn/scroll/collide/dissolve/
-// score working end-to-end comes first, that's explicit deferred follow-up.
-// A ground shadow and a procedural idle breathing pulse ARE in this pass.
+// Data-driven per type (data/enemyTypes.js), not hardcoded here -- size,
+// shadow dimensions, breathing amplitude/period, and poof color all come
+// from the spawned slot's resolved type config, since more enemy types
+// (different weapon, different scale, bigger monsters) are coming and each
+// needs its own numbers. Every pool slot's sprite/shadow is a plain unit
+// quad scaled at spawn time (never geometry-recreated), so any slot can
+// spawn any type on a later respawn, not just the type it first spawned.
 
 import * as THREE from 'three';
 import {
   LANE_X, SPAWN_Z, DESPAWN_Z, OBSTACLE_COLLISION_HALF_Z, PLAYER_Z,
 } from '../data/constants.js';
 import { getTexture } from './textureLoader.js';
-import { FOOT_SOLDIER_TEXTURE } from '../data/envArt.js';
-import { getShadowTexture, PLAYER_SHADOW_WIDTH, PLAYER_SHADOW_DEPTH } from './contactShadow.js';
+import { getShadowTexture } from './contactShadow.js';
+import { ENEMY_TYPES, DEFAULT_ENEMY_TYPE } from '../data/enemyTypes.js';
 
 const POOL_SIZE = 5;
 
-// The v2 combat-stance art (wide-legged, club raised to one side) has a very
-// different bounding-box aspect than a plain standing pose, so this is sized
-// by a fixed HEIGHT (roughly the player's own scale) with width following
-// the art's own aspect ratio, rather than the barricade's width-first
-// convention -- width-first would read as squat/tiny for this pose's tall
-// narrow-ish torso plus wide stance.
-const ENEMY_HEIGHT = 2.3;
-const ENEMY_WIDTH = ENEMY_HEIGHT / FOOT_SOLDIER_TEXTURE.aspect;
-const ENEMY_Y = ENEMY_HEIGHT / 2;
-
-// Ground shadow -- 10% bigger than the player's own contact shadow, per
-// direct feedback. Static (no jump/pulse behavior -- these enemies never
-// leave the ground), just tracks the sprite's x/z every frame.
-const SHADOW_SCALE = 1.1;
-const SHADOW_WIDTH = PLAYER_SHADOW_WIDTH * SHADOW_SCALE;
-const SHADOW_DEPTH = PLAYER_SHADOW_DEPTH * SHADOW_SCALE;
-
-// Procedural idle "breathing" -- a slow, eased Y-axis-only scale pulse (NOT
-// baked into the art, and not a sprite-swap animation): 1.5s to swell from
-// scale 1 to 1.04, 1.5s back down, looping. A plain cosine wave is already
-// eased in/out at both extremes (zero rate of change at the top and bottom
-// of the curve) so it needs no separate easing curve on top. Compensates
-// sprite.position.y by half the height delta so the swell grows from his
-// feet/the ground plane, not from his sprite's center pivot.
-const BREATHE_PERIOD = 3.0; // seconds, one full swell-and-settle cycle
-const BREATHE_AMPLITUDE = 0.04;
-
 function createSlot(scene) {
-  const material = new THREE.SpriteMaterial({ map: getTexture(FOOT_SOLDIER_TEXTURE.url), transparent: true });
+  const material = new THREE.SpriteMaterial({ transparent: true });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(ENEMY_WIDTH, ENEMY_HEIGHT, 1);
   sprite.visible = false;
   scene.add(sprite);
 
+  // Unit (1x1) plane, actual size applied via mesh.scale at spawn time
+  // (matches the sprite's own unit-quad-scaled-by-`scale` convention) so a
+  // respawned slot can size its shadow differently per type without
+  // recreating geometry.
   const shadowMaterial = new THREE.MeshBasicMaterial({
     map: getShadowTexture(), transparent: true, depthWrite: false, fog: false,
   });
-  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(SHADOW_WIDTH, SHADOW_DEPTH), shadowMaterial);
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), shadowMaterial);
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.015; // just above the street plane, matches contactShadow.js
   shadow.visible = false;
@@ -69,6 +47,7 @@ function createSlot(scene) {
   return {
     sprite,
     shadow,
+    type: null,
     active: false,
     lane: 1,
     z: 0,
@@ -90,24 +69,33 @@ export function resetEnemyPool(field) {
   }
 }
 
-function spawnFootSoldier(slot, lane) {
+function spawnOfType(slot, lane, typeKey) {
+  const type = ENEMY_TYPES[typeKey];
+  const width = type.height / type.texture.aspect;
+
   slot.active = true;
+  slot.type = type;
   slot.lane = lane;
   slot.z = SPAWN_Z;
   // Randomized phase so a pool's worth of enemies don't all breathe in
   // lockstep -- reads as more alive than a uniform pulse.
-  slot.breatheTimer = Math.random() * BREATHE_PERIOD;
-  slot.sprite.position.set(LANE_X[lane], ENEMY_Y, SPAWN_Z);
+  slot.breatheTimer = Math.random() * type.breathePeriod;
+
+  slot.sprite.material.map = getTexture(type.texture.url);
+  slot.sprite.scale.set(width, type.height, 1);
+  slot.sprite.position.set(LANE_X[lane], type.height / 2, SPAWN_Z);
   slot.sprite.visible = true;
+
+  slot.shadow.scale.set(type.shadowWidth, type.shadowDepth, 1);
   slot.shadow.position.set(LANE_X[lane], slot.shadow.position.y, SPAWN_Z);
   slot.shadow.visible = true;
 }
 
-// Spawns exactly one Foot Soldier in a random lane.
-export function spawnEnemy(field) {
+// Spawns one enemy of `typeKey` (data/enemyTypes.js) in a random lane.
+export function spawnEnemy(field, typeKey = DEFAULT_ENEMY_TYPE) {
   const slot = field.pool.find((s) => !s.active);
   if (!slot) return;
-  spawnFootSoldier(slot, Math.floor(Math.random() * LANE_X.length));
+  spawnOfType(slot, Math.floor(Math.random() * LANE_X.length), typeKey);
 }
 
 export function updateEnemyPool(field, dt, speed) {
@@ -124,17 +112,26 @@ export function updateEnemyPool(field, dt, speed) {
       continue;
     }
 
-    slot.breatheTimer = (slot.breatheTimer + dt) % BREATHE_PERIOD;
-    const swell = 0.5 * (1 - Math.cos((2 * Math.PI * slot.breatheTimer) / BREATHE_PERIOD)); // 0 -> 1 -> 0, eased
-    const scaleY = 1 + BREATHE_AMPLITUDE * swell;
-    slot.sprite.scale.y = ENEMY_HEIGHT * scaleY;
-    slot.sprite.position.y = ENEMY_Y + (scaleY - 1) * ENEMY_HEIGHT * 0.5;
+    const { type } = slot;
+    const baseHeight = type.height;
+    slot.breatheTimer = (slot.breatheTimer + dt) % type.breathePeriod;
+    // 0 -> 1 -> 0 over the period, eased at both ends for free (a cosine's
+    // rate of change is zero at its peak/trough) -- no separate easing
+    // curve needed on top.
+    const swell = 0.5 * (1 - Math.cos((2 * Math.PI * slot.breatheTimer) / type.breathePeriod));
+    const scaleY = 1 + type.breatheAmplitude * swell;
+    slot.sprite.scale.y = baseHeight * scaleY;
+    // Compensates position.y by half the height delta so the swell grows
+    // from his feet/the ground plane (pivots at the legs), not from the
+    // sprite's center anchor -- otherwise scaling up would sink his feet
+    // below the street by half the growth amount.
+    slot.sprite.position.y = baseHeight / 2 + (scaleY - 1) * baseHeight * 0.5;
   }
 }
 
 // Same lane-index + z-distance overlap shape as entities/collision.js's
 // checkObstacleHit, but returns the hit SLOT (not a boolean) so the caller
-// can read its position for the dissolve VFX before deactivating it.
+// can read its position/type for the dissolve VFX before deactivating it.
 export function checkEnemyHit(player, field) {
   for (const slot of field.pool) {
     if (!slot.active) continue;

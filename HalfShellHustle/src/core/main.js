@@ -86,7 +86,10 @@ function boot() {
   const speedStreaks = createSpeedStreaks(scene);
   // Separate pool from dustPool -- different tuning (bigger/lighter poof
   // burst) and keeps the two effects' particle budgets from competing.
-  const enemyPoofPool = new ParticlePool(scene, 30, 0.5, 0.6);
+  // Sized for one full kill-poof (spawnEnemyPoof's 20 origins x 7 + a 40-
+  // particle central burst = 180) with headroom for a second overlapping
+  // kill before the first burst's particles finish fading.
+  const enemyPoofPool = new ParticlePool(scene, 220, 0.5, 0.6);
   const ENEMY_KILL_SCORE = 100; // placeholder value -- no real scoring system yet (build doc §8 is MVP-only)
 
   let distance = 0;
@@ -213,7 +216,11 @@ function boot() {
       updateEnemyPool(enemyField, dt, FORWARD_SPEED);
       const hitEnemy = checkEnemyHit(player, enemyField);
       if (hitEnemy) {
-        spawnEnemyPoof(enemyPoofPool, hitEnemy.sprite.position.x, hitEnemy.sprite.position.y, hitEnemy.sprite.position.z);
+        spawnEnemyPoof(
+          enemyPoofPool,
+          hitEnemy.sprite.position.x, hitEnemy.sprite.position.y, hitEnemy.sprite.position.z,
+          hitEnemy.sprite.scale.x, hitEnemy.sprite.scale.y, hitEnemy.type.poofColors,
+        );
         killEnemy(hitEnemy);
         score += ENEMY_KILL_SCORE;
         hud.updateScore(score);

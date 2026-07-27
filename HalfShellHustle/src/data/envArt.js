@@ -34,9 +34,11 @@ export const BARRICADE_TEXTURE = envTexture('barricade.png', 640, 585);
 // addition, not in the original build doc): a Foot Clan grunt standing in a
 // lane, scrolled toward the camera like an obstacle, but dissolves into a
 // particle poof + awards score on player contact instead of ending the run.
-// Single idle-standing frame for this first pass, matching the barricade's
-// single-static-frame pattern -- an idle breathing-loop sequence and a
-// hit-reaction are deliberately deferred (see entities/enemy.js).
+// v2 art: purple-accented armor, combat stance gripping a spiked club.
+// Single static frame for this first pass -- a real idle animation sequence
+// (multiple frames) and a hit-reaction pose are deliberately deferred; see
+// data/enemyTypes.js for this type's size/shadow/breathing/poof-color
+// tuning and entities/enemy.js for how a spawned enemy uses it.
 export const FOOT_SOLDIER_TEXTURE = envTexture('foot_soldier_0.png', 784, 900);
 
 export const THEMES = {
