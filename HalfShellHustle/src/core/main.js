@@ -20,6 +20,9 @@ import { createContactShadow, pulseContactShadow, updateContactShadow } from '..
 import {
   createEnemyPool, resetEnemyPool, spawnEnemy, updateEnemyPool, checkEnemyHit, killEnemy,
 } from '../entities/enemy.js';
+import {
+  createPlatformField, resetPlatformField, spawnPlatform, updatePlatformField, triggerPlatformJump,
+} from '../entities/platform.js';
 import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
 import { pollLaneStep, pollJumpPress } from '../input/input.js';
@@ -33,6 +36,10 @@ import {
   INTRO_WALL_ENABLED, INTRO_WALL_ENEMY_COUNT, INTRO_WALL_SPAWN_Z,
   INTRO_NORMAL_ENEMY_DELAY_SEC, INTRO_OBSTACLE_DELAY_SEC,
 } from '../data/introSequence.js';
+import {
+  PLATFORM_ENABLED, PLATFORM_FIRST_DELAY_SEC, PLATFORM_INTERVAL_SEC,
+  PLATFORM_JUMP_ENTRY_ENABLED, PLATFORM_JUMP_ENTRY_CHANCE,
+} from '../data/platformSequence.js';
 import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
 import {
   ParticlePool, spawnDustPuff, spawnEnemyPoof, createSpeedStreaks, updateSpeedStreaks,
@@ -75,6 +82,12 @@ function boot() {
   const enemyField = createEnemyPool(scene);
   const enemySpawnerState = createSpawnerState(ENEMY_FIRST_SPAWN_DELAY_SEC);
 
+  // Elevated "platform stretch" height system (direct feedback's addition,
+  // data/platformSequence.js). Own spawner/timer again, same pattern as the
+  // obstacle/enemy spawners.
+  const platformField = createPlatformField(scene);
+  const platformSpawnerState = createSpawnerState(PLATFORM_FIRST_DELAY_SEC);
+
   const cameraRig = createCameraRig(camera);
   const gs = createGameState();
 
@@ -116,6 +129,8 @@ function boot() {
     // resetRibbon(ribbon); -- ribbon object disabled, see creation above
     resetObstaclePool(obstacleField);
     resetEnemyPool(enemyField);
+    resetPlatformField(platformField);
+    resetSpawner(platformSpawnerState, PLATFORM_FIRST_DELAY_SEC);
     gameTime = 0;
     lastObstacleSpawnTime = -Infinity;
     lastEnemySpawnTime = -Infinity;
@@ -156,6 +171,23 @@ function boot() {
   document.getElementById('restart-button').addEventListener('click', restart);
   window.addEventListener('keydown', (e) => {
     if (gs.current === 'gameover' && (e.code === 'Space' || e.code === 'Enter')) restart();
+  });
+
+  // TEMPORARY debug view (direct feedback: "lose all the graphics except
+  // for the player and the enemies... so I can see what's going on with
+  // the basic shapes") -- press G to toggle wireframe on every mesh
+  // material in the scene. Player/obstacles/enemies are THREE.Sprite, not
+  // Mesh, so `wireframe` doesn't apply to them at all -- they stay fully
+  // rendered while the street/buildings/platform placeholder geometry
+  // strips down to bare outlines, exactly separating "environment art" from
+  // "gameplay entities" for free.
+  let debugWireframe = false;
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyG') return;
+    debugWireframe = !debugWireframe;
+    scene.traverse((obj) => {
+      if (obj.material && 'wireframe' in obj.material) obj.material.wireframe = debugWireframe;
+    });
   });
 
   let paused = false;
@@ -199,8 +231,17 @@ function boot() {
         const nextLane = THREE.MathUtils.clamp(player.targetLane + step, 0, LANE_X.length - 1);
         setPlayerLane(player, nextLane);
       }
-      if (pollJumpPress()) startPlayerJump(player);
-      updatePlayer(player, dt);
+      if (pollJumpPress()) {
+        // data/platformSequence.js's jump-trigger platform entries reuse
+        // this same press -- a no-op unless PLAYER_Z currently falls inside
+        // an active, un-triggered jump-type entry's window (see
+        // entities/platform.js's triggerPlatformJump). The normal hop arc
+        // still fires either way, so a successful trigger reads as
+        // "jumping up onto the platform," not a silent teleport.
+        triggerPlatformJump(platformField, player.sprite.position.z);
+        startPlayerJump(player);
+      }
+      updatePlayer(player, dt, platformField);
       // updateRibbon(ribbon, dt, getPlayerHeadAnchor(player)); -- disabled, see above
       updateStreet(street, dt, FORWARD_SPEED);
 
@@ -246,10 +287,10 @@ function boot() {
           lastObstacleSpawnTime = gameTime;
         }
       });
-      updateObstaclePool(obstacleField, dt, FORWARD_SPEED);
+      updateObstaclePool(obstacleField, dt, FORWARD_SPEED, platformField);
 
       for (const slot of obstacleField.pool) {
-        if (checkObstacleHit(player, slot)) {
+        if (checkObstacleHit(player, slot, platformField)) {
           endRun();
           break;
         }
@@ -264,8 +305,8 @@ function boot() {
           lastEnemySpawnTime = gameTime;
         }
       }, ENEMY_SPAWN_INTERVAL_SEC);
-      updateEnemyPool(enemyField, dt, FORWARD_SPEED);
-      const hitEnemy = checkEnemyHit(player, enemyField);
+      updateEnemyPool(enemyField, dt, FORWARD_SPEED, platformField);
+      const hitEnemy = checkEnemyHit(player, enemyField, platformField);
       if (hitEnemy) {
         spawnEnemyPoof(
           enemyPoofPool,
@@ -279,11 +320,23 @@ function boot() {
         hud.updateScore(score);
       }
       enemyPoofPool.update(dt);
+
+      if (PLATFORM_ENABLED) {
+        updateSpawner(platformSpawnerState, dt, () => {
+          const type = PLATFORM_JUMP_ENTRY_ENABLED && Math.random() < PLATFORM_JUMP_ENTRY_CHANCE
+            ? 'jump'
+            : 'ramp';
+          spawnPlatform(platformField, type);
+        }, PLATFORM_INTERVAL_SEC);
+      }
+      updatePlatformField(platformField, dt, FORWARD_SPEED);
     }
 
     // Follow the eased lane-center position, not the per-frame xOffset snap
     // -- otherwise the small foot-plant jitter reads as camera pan/tilt.
-    updateCameraRig(cameraRig, player.laneX);
+    // elevationY rides up with the player on an elevated platform stretch
+    // (entities/platform.js) so the camera keeps the same relative framing.
+    updateCameraRig(cameraRig, player.laneX, player.elevationY);
     renderer.render(scene, camera);
   }
 

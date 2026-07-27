@@ -41,9 +41,11 @@ export const SPAWN_INTERVAL_SEC = 3.4; // fixed gap between spawns -- no ramp at
 // this first-pass tuning.
 export const ENEMY_FIRST_SPAWN_DELAY_SEC = 4.5;
 // TEMPORARY demo density bump (direct feedback: "just for demonstration,
-// add twice as much enemies") -- normal value is 2.8, halved here. Revert
-// to 2.8 once the demo pass is done; this is not a locked-in balance call.
-export const ENEMY_SPAWN_INTERVAL_SEC = 1.4;
+// add twice as much enemies") -- normal value is 2.8. Dialed back 30% from
+// the demo's 1.4 (direct feedback: fun, but a bit too much) to 2.0. Still
+// denser than the 2.8 baseline on purpose; revert to 2.8 once the demo pass
+// is done, this is not a locked-in balance call either way.
+export const ENEMY_SPAWN_INTERVAL_SEC = 2.0;
 
 // --- Collision (§5.3, §9.3: lane-index + z-distance overlap, no physics) ---
 export const OBSTACLE_COLLISION_HALF_Z = 1.5;

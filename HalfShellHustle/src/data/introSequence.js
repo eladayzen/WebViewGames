@@ -36,5 +36,5 @@ export const INTRO_NORMAL_ENEMY_DELAY_SEC = 2;
 // Obstacles don't start until this long after run start -- a pure
 // "these are safe to tackle" window before the first real dodge-or-die
 // hazard shows up, so the wall's lesson lands before it's complicated by
-// anything dangerous.
-export const INTRO_OBSTACLE_DELAY_SEC = 4;
+// anything dangerous. 4 -> 6 per direct feedback.
+export const INTRO_OBSTACLE_DELAY_SEC = 6;

@@ -16,6 +16,8 @@ import {
 import {
   LANE_X, CENTER_LANE, LANE_RESPONSE, JUMP_DURATION, JUMP_HEIGHT, PLAYER_Z,
 } from '../data/constants.js';
+import { getPlayerElevationAt } from './platform.js';
+import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
 
 // Preload every attack sequence's textures up front, at module load, rather
 // than lazily on first use. The spin (startPlayerAttack below) is a real-
@@ -81,6 +83,7 @@ export function createPlayer() {
     frameIndex: 0,
     frameTimer: 0,
     jumpElapsed: null, // null = grounded
+    elevationY: 0, // current entities/platform.js height offset, read by street/camera-rig.js
     attacking: false,
     attackSequence: null,
     attackFrameIndex: 0,
@@ -95,6 +98,7 @@ export function resetPlayer(player) {
   player.frameIndex = 0;
   player.frameTimer = 0;
   player.jumpElapsed = null;
+  player.elevationY = 0;
   player.attacking = false;
   player.attackSequence = null;
   player.attackFrameIndex = 0;
@@ -140,7 +144,13 @@ export function getPlayerHeadAnchor(player) {
   };
 }
 
-export function updatePlayer(player, dt) {
+export function updatePlayer(player, dt, platformField) {
+  // entities/platform.js's height system: the player's own elevation (not
+  // necessarily the same as the world/deck height at this z -- see that
+  // file's comment on getPlayerElevationAt vs getWorldElevationAt, the
+  // divergence being a skipped jump-type platform entry).
+  player.elevationY = getPlayerElevationAt(platformField, PLAYER_Z) * PLATFORM_HEIGHT;
+
   const targetX = LANE_X[player.targetLane];
   const prevX = player.laneX;
   const followT = 1 - Math.exp(-LANE_RESPONSE * dt);
@@ -193,14 +203,14 @@ export function updatePlayer(player, dt) {
     player.jumpElapsed += dt;
     const t = Math.min(player.jumpElapsed / JUMP_DURATION, 1);
     const arc = Math.sin(Math.PI * t);
-    player.sprite.position.y = GROUND_Y + arc * JUMP_HEIGHT;
+    player.sprite.position.y = GROUND_Y + player.elevationY + arc * JUMP_HEIGHT;
     if (t >= 1) {
       player.jumpElapsed = null;
-      player.sprite.position.y = GROUND_Y;
+      player.sprite.position.y = GROUND_Y + player.elevationY;
     }
   } else if (player.attacking) {
-    player.sprite.position.y = GROUND_Y;
+    player.sprite.position.y = GROUND_Y + player.elevationY;
   } else {
-    player.sprite.position.y = GROUND_Y + PLAYER_RUN_FRAMES[player.frameIndex].yOffset;
+    player.sprite.position.y = GROUND_Y + player.elevationY + PLAYER_RUN_FRAMES[player.frameIndex].yOffset;
   }
 }

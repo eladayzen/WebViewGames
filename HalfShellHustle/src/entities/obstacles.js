@@ -15,6 +15,8 @@ import * as THREE from 'three';
 import { LANE_X, LANE_WIDTH, SPAWN_Z, DESPAWN_Z } from '../data/constants.js';
 import { getTexture } from './textureLoader.js';
 import { BARRICADE_TEXTURE } from '../data/envArt.js';
+import { getWorldElevationAt } from './platform.js';
+import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
 
 // Sized with headroom above the theoretical concurrent-obstacle count
 // ((DESPAWN_Z - SPAWN_Z) / FORWARD_SPEED / SPAWN_INTERVAL_SEC ~= 5) so a
@@ -69,11 +71,15 @@ export function spawnObstacle(field) {
   spawnBarricade(slot, Math.floor(Math.random() * LANE_X.length));
 }
 
-export function updateObstaclePool(field, dt, speed) {
+export function updateObstaclePool(field, dt, speed, platformField) {
   for (const slot of field.pool) {
     if (!slot.active) continue;
     slot.z += speed * dt;
     slot.sprite.position.z = slot.z;
+    // Rides entities/platform.js's deck height at this obstacle's own z --
+    // a barricade spawned during an elevated stretch sits on the deck, not
+    // floating at street height.
+    slot.sprite.position.y = BARRICADE_Y + getWorldElevationAt(platformField, slot.z) * PLATFORM_HEIGHT;
 
     if (slot.z > DESPAWN_Z) {
       slot.active = false;

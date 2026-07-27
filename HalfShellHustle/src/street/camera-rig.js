@@ -16,10 +16,15 @@ export function createCameraRig(camera) {
   return { camera };
 }
 
-export function updateCameraRig(rig, playerX) {
+// elevationY (entities/platform.js's height system, default 0): rides up
+// with the player's own elevation (entities/player.js's player.elevationY)
+// so the camera stays at the same relative offset/framing whether he's on
+// the street or an elevated deck, instead of the deck appearing to sink
+// into the ground the higher he climbs.
+export function updateCameraRig(rig, playerX, elevationY = 0) {
   const { camera } = rig;
   camera.position.x += (playerX - camera.position.x) * CAMERA_FOLLOW_LERP;
-  camera.position.y = CAMERA_OFFSET_Y;
+  camera.position.y = CAMERA_OFFSET_Y + elevationY;
   camera.position.z = CAMERA_OFFSET_Z;
-  camera.lookAt(camera.position.x * 0.4, CAMERA_LOOKAHEAD_Y, CAMERA_LOOKAHEAD_Z);
+  camera.lookAt(camera.position.x * 0.4, CAMERA_LOOKAHEAD_Y + elevationY, CAMERA_LOOKAHEAD_Z);
 }

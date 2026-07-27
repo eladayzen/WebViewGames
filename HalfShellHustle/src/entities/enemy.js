@@ -22,6 +22,8 @@ import {
 import { getTexture } from './textureLoader.js';
 import { getShadowTexture } from './contactShadow.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
+import { getWorldElevationAt, getPlayerElevationAt } from './platform.js';
+import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
 
 // TEMPORARY demo bump (direct feedback: "twice as much enemies", plus
 // data/introSequence.js's 3-wide wall needs at least LANE_X.length free
@@ -111,7 +113,7 @@ export function spawnEnemy(field, typeKey = null, lane = null, z = SPAWN_Z) {
   spawnOfType(slot, resolvedLane, key, z);
 }
 
-export function updateEnemyPool(field, dt, speed) {
+export function updateEnemyPool(field, dt, speed, platformField) {
   for (const slot of field.pool) {
     if (!slot.active) continue;
     slot.z += speed * dt;
@@ -137,19 +139,29 @@ export function updateEnemyPool(field, dt, speed) {
     // Compensates position.y by half the height delta so the swell grows
     // from his feet/the ground plane (pivots at the legs), not from the
     // sprite's center anchor -- otherwise scaling up would sink his feet
-    // below the street by half the growth amount.
-    slot.sprite.position.y = baseHeight / 2 + (scaleY - 1) * baseHeight * 0.5;
+    // below the street by half the growth amount. Then rides
+    // entities/platform.js's deck height at this enemy's own z, same as
+    // obstacles.js, so an enemy spawned during an elevated stretch stands
+    // on the deck (shadow included) rather than floating at street height.
+    const elevationY = getWorldElevationAt(platformField, slot.z) * PLATFORM_HEIGHT;
+    slot.sprite.position.y = baseHeight / 2 + (scaleY - 1) * baseHeight * 0.5 + elevationY;
+    slot.shadow.position.y = 0.015 + elevationY;
   }
 }
 
 // Same lane-index + z-distance overlap shape as entities/collision.js's
-// checkObstacleHit, but returns the hit SLOT (not a boolean) so the caller
-// can read its position/type for the dissolve VFX before deactivating it.
-export function checkEnemyHit(player, field) {
+// checkObstacleHit (including the elevation-band check -- see that file's
+// comment), but returns the hit SLOT (not a boolean) so the caller can read
+// its position/type for the dissolve VFX before deactivating it.
+export function checkEnemyHit(player, field, platformField) {
   for (const slot of field.pool) {
     if (!slot.active) continue;
     if (Math.abs(slot.z - PLAYER_Z) > OBSTACLE_COLLISION_HALF_Z) continue;
-    if (slot.lane === player.laneIndex) return slot;
+    if (slot.lane !== player.laneIndex) continue;
+    const playerElevation = getPlayerElevationAt(platformField, PLAYER_Z);
+    const enemyElevation = getWorldElevationAt(platformField, slot.z);
+    if (Math.abs(playerElevation - enemyElevation) >= 0.3) continue;
+    return slot;
   }
   return null;
 }
