@@ -63,7 +63,8 @@ function boot() {
   // Run-cycle energy VFX (experimental pass): ground contact shadow, dust
   // puffs fired on each foot-contact frame, and near-camera speed streaks.
   const contactShadow = createContactShadow(scene);
-  const dustPool = new ParticlePool(scene, 40, 0.4, 0.5);
+  const dustPool = new ParticlePool(scene, 40, 0.4, 0.14);
+  const DUST_AHEAD_OFFSET = 0.22; // spawn slightly ahead (more -Z, direction of travel) of his feet, not directly under/behind him where his own sprite covers it
   const speedStreaks = createSpeedStreaks(scene);
 
   let distance = 0;
@@ -147,10 +148,11 @@ function boot() {
       lastContactFrame = player.frameIndex;
       if (enteredContact) {
         pulseContactShadow(contactShadow);
-        spawnDustPuff(dustPool, player.sprite.position.x, 0.05, player.sprite.position.z);
+        spawnDustPuff(dustPool, player.sprite.position.x, 0.05, player.sprite.position.z - DUST_AHEAD_OFFSET);
       }
       updateContactShadow(contactShadow, player, dt);
       dustPool.update(dt);
+      dustPool.scrollZ(FORWARD_SPEED * dt);
       updateSpeedStreaks(speedStreaks, dt, FORWARD_SPEED);
 
       // Frame-count HUD readout disabled -- re-enable (uncomment) if a

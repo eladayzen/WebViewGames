@@ -46,17 +46,22 @@ export class ParticlePool {
 
     const material = new THREE.PointsMaterial({
       size, map: getDotTexture(), vertexColors: true, transparent: true, opacity,
-      depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true, fog: false,
+      depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+      sizeAttenuation: true, fog: false,
     });
 
     this.points = new THREE.Points(geometry, material);
     this.points.frustumCulled = false;
+    // depthTest off (above) means this always draws over solid geometry --
+    // renderOrder makes sure it also draws AFTER the player sprite specifically
+    // (dust in front of him, per direct feedback), not just in arbitrary order.
+    this.points.renderOrder = 10;
     scene.add(this.points);
   }
 
   spawn(x, y, z, colorHex, {
     count = 1, speed = 2, spread = 0.15, life = 0.4, upBias = 0, gravity = 2,
-    dirX = 0, dirY = 0, dirZ = 0, dirSpread = Math.PI,
+    dirX = 0, dirY = 0, dirZ = 0, dirSpread = Math.PI, warmup = 0,
   } = {}) {
     const c = new THREE.Color(colorHex);
     for (let n = 0; n < count; n++) {
@@ -89,6 +94,18 @@ export class ParticlePool {
       this.gravity[i] = gravity;
       this.maxLife[i] = life;
       this.life[i] = life;
+
+      // Pre-warm: fast-forward the particle's OWN motion (position/velocity)
+      // by `warmup` seconds right at spawn, without touching life -- so a
+      // puff that's only ever seen for a couple of rendered frames still
+      // reads as an already-expanded cluster instead of a tight dot on its
+      // very first frame, while its fade timing is untouched.
+      if (warmup > 0) {
+        this.velocities[i * 3 + 1] -= this.gravity[i] * warmup;
+        this.positions[i * 3 + 0] += this.velocities[i * 3 + 0] * warmup;
+        this.positions[i * 3 + 1] += this.velocities[i * 3 + 1] * warmup;
+        this.positions[i * 3 + 2] += this.velocities[i * 3 + 2] * warmup;
+      }
     }
   }
 
@@ -114,23 +131,43 @@ export class ParticlePool {
       this.points.geometry.attributes.color.needsUpdate = true;
     }
   }
+
+  // Carries every live particle along with the world scroll (same per-frame
+  // z += speed*dt the street/buildings use, street.js's updateStreet) --
+  // this is what actually moves a puff toward the camera and out of frame,
+  // NOT the particle's own local velocity (that stays a small in-place puff:
+  // upward drift + gravity). A puff marks a fixed point on the ground; it's
+  // the world scrolling past that point, exactly like every other ground
+  // decoration, that should carry it away.
+  scrollZ(dz) {
+    for (let i = 0; i < this.count; i++) {
+      if (this.life[i] <= 0) continue;
+      this.positions[i * 3 + 2] += dz;
+    }
+    this.points.geometry.attributes.position.needsUpdate = true;
+  }
 }
 
-// Small dusty-tan puff, fired once per foot-contact frame (main.js) at the
-// planted foot's position -- biased toward +Z (dirZ), the same "toward
-// camera" direction the street/buildings scroll in (street.js), since the
-// dust marks a fixed point on the ground that the player's forward motion
-// carries the camera past, not a puff that should just sit and hang in
-// place. Short life so it reads as a quick kicked-up burst, not a lingering
-// cloud.
+// Small gray dust puff, fired once per foot-contact frame (main.js) at the
+// planted foot's position -- a small local kick (upward + gravity), NOT
+// aimed toward the camera itself. The puff marks a fixed point on the
+// ground; ParticlePool.scrollZ (called every frame in main.js, same as
+// street.js's building scroll) is what carries it toward the camera and out
+// of frame, exactly like every other ground decoration.
+//
+// warmup: at this game's frame-hold pace a puff is only actually on screen
+// for a couple of rendered frames before the next contact frame overwrites
+// it, not long enough to watch it grow from a tight dot into a puff shape --
+// so it's spawned already `warmup` seconds into its own expansion (see
+// ParticlePool.spawn) and reads as an already-formed puff immediately.
 export function spawnDustPuff(pool, x, y, z) {
-  pool.spawn(x, y, z, 0xcdb68d, {
-    count: 7, speed: 3.4, life: 0.2, gravity: 0.8, spread: 0.16,
-    dirY: 0.35, dirZ: 1, dirSpread: 0.6,
+  pool.spawn(x, y, z, 0x7d7a75, {
+    count: 7, speed: 1.7, life: 0.35, gravity: 1.4, spread: 0.18,
+    dirY: 1, dirSpread: 1.0, upBias: 0.9, warmup: 0.07,
   });
-  pool.spawn(x, y, z, 0xfff6df, {
-    count: 3, speed: 2.6, life: 0.16, gravity: 0.6, spread: 0.1,
-    dirY: 0.3, dirZ: 1, dirSpread: 0.55,
+  pool.spawn(x, y, z, 0x8f8c86, {
+    count: 3, speed: 1.1, life: 0.28, gravity: 1.1, spread: 0.12,
+    dirY: 1, dirSpread: 0.8, upBias: 0.7, warmup: 0.07,
   });
 }
 
