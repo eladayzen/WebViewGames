@@ -196,13 +196,29 @@ const ATTACK_SEQUENCE_DEFS = [
     // 3: landing -- back to the run pose, blades settling forward.
     frameCount: 4,
     // Slower than 'swirl' per direct feedback -- the bigger turn needs more
-    // time to register.
-    frameDuration: 0.12,
+    // time to register. Dialed back from 0.12 -> 0.10 (direct feedback: "a
+    // bit faster"), still slower than 'swirl's 0.0858 on purpose.
+    frameDuration: 0.10,
     // Playback order direct feedback landed on after reviewing the frames
     // slowed way down (0, 1, 2, 3 read wrong) -- generated-frame index 2
     // first, then 1, then 0, then 3. Source files/comments above still
     // describe each frame by its generated index, not its playback order.
     frameOrder: [2, 1, 0, 3],
+  },
+  {
+    key: 'lunge',
+    filePrefix: 'leo_lunge',
+    // A forward lunge-thrust rather than an in-place spin -- launches
+    // forward low with both blades pointed straight ahead as the one big
+    // dramatic peak frame, then tucks into a fast recovery roll back up
+    // into his stride.
+    // 0: wind-up -- crouching low, coiled backward, blades pulled in tight.
+    // 1: peak lunge -- launched forward and low, body stretched horizontal,
+    //    both blades held together pointed straight ahead like a spear.
+    // 2: recovery roll -- tucked into a ball, shell leading, blades in.
+    // 3: landing -- popping back up into the standard running pose.
+    frameCount: 4,
+    frameDuration: 0.0858, // same pace as 'swirl' for now
   },
 ];
 
