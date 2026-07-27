@@ -65,6 +65,7 @@ function boot() {
   const contactShadow = createContactShadow(scene);
   const dustPool = new ParticlePool(scene, 40, 0.4, 0.14);
   const DUST_AHEAD_OFFSET = 0.19; // spawn slightly ahead (more -Z, direction of travel) of his feet, not directly under/behind him where his own sprite covers it -- kept proportional to entities/player.js's PLAYER_SCALE
+  const DUST_FAN_RATE = 0.08; // outward left/right drift per unit of camera-ward scroll, see ParticlePool.scrollZ
   const speedStreaks = createSpeedStreaks(scene);
 
   let distance = 0;
@@ -152,7 +153,7 @@ function boot() {
       }
       updateContactShadow(contactShadow, player, dt);
       dustPool.update(dt);
-      dustPool.scrollZ(FORWARD_SPEED * dt);
+      dustPool.scrollZ(FORWARD_SPEED * dt, DUST_FAN_RATE);
       updateSpeedStreaks(speedStreaks, dt, FORWARD_SPEED);
 
       // Frame-count HUD readout disabled -- re-enable (uncomment) if a

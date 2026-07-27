@@ -139,10 +139,24 @@ export class ParticlePool {
   // upward drift + gravity). A puff marks a fixed point on the ground; it's
   // the world scrolling past that point, exactly like every other ground
   // decoration, that should carry it away.
-  scrollZ(dz) {
+  //
+  // fanRate (optional): direct feedback -- the road's own lane-divider
+  // lines read as splaying wider apart the closer they get to camera (plain
+  // perspective on two lines far enough apart to notice), but a dust
+  // puff's own particles are too close together and too short-lived for
+  // that natural perspective spread to read at all. So it's faked
+  // explicitly here: each particle keeps drifting further toward whichever
+  // side (left/right of its own spawn point) its initial local velocity
+  // already sent it, scaled by how much scroll progress (proximity to
+  // camera) it's made -- same divergent-fan look as the lines, sold on
+  // purpose instead of relying on unnoticeable real perspective.
+  scrollZ(dz, fanRate = 0) {
     for (let i = 0; i < this.count; i++) {
       if (this.life[i] <= 0) continue;
       this.positions[i * 3 + 2] += dz;
+      if (fanRate) {
+        this.positions[i * 3 + 0] += Math.sign(this.velocities[i * 3 + 0]) * fanRate * dz;
+      }
     }
     this.points.geometry.attributes.position.needsUpdate = true;
   }
