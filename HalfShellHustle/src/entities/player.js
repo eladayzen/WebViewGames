@@ -23,6 +23,18 @@ const SPRITE_HEIGHT = SPRITE_WIDTH * PLAYER_FRAME_ASPECT;
 const GROUND_Y = SPRITE_HEIGHT / 2;
 const LEAN_MAX = 0.22; // radians, cosmetic billboard roll while lane-shifting
 
+// Procedural bob (direct feedback: the discrete 4-sprite swap alone felt
+// jumpy -- "animate on twos" was the ask). First pass was a continuous
+// cosine wave, which direct feedback then explicitly rejected: not a
+// smoothed spline, just discrete levels -- both knee-drive frames snap to a
+// fixed lower position ("the stronger peak"), contact frames stay neutral.
+// Contact frames additionally get a small opposite-sign xOffset (planted
+// foot reads slightly forward/back of lane center). Both live per-frame in
+// data/playerSprite.js and are applied directly below with no easing, on
+// top of (not instead of) the lane-position easing, so they snap in
+// lockstep with the sprite swap itself -- already stepped by construction,
+// no separate phase/timer needed.
+//
 // All 4 run-cycle frames share one fixed canvas (data/playerSprite.js) --
 // sprite size and ground position are set ONCE, not recomputed per frame
 // swap. Earlier versions recalculated both per-frame from each frame's own
@@ -44,6 +56,7 @@ export function createPlayer() {
     sprite,
     laneIndex: CENTER_LANE,
     targetLane: CENTER_LANE,
+    laneX: LANE_X[CENTER_LANE], // eased lane-center position, BEFORE per-frame xOffset
     frameIndex: 0,
     frameTimer: 0,
     jumpElapsed: null, // null = grounded
@@ -53,6 +66,7 @@ export function createPlayer() {
 export function resetPlayer(player) {
   player.laneIndex = CENTER_LANE;
   player.targetLane = CENTER_LANE;
+  player.laneX = LANE_X[CENTER_LANE];
   player.frameIndex = 0;
   player.frameTimer = 0;
   player.jumpElapsed = null;
@@ -78,21 +92,21 @@ export function startPlayerJump(player) {
 export function getPlayerHeadAnchor(player) {
   return {
     x: player.sprite.position.x,
-    y: GROUND_Y + SPRITE_HEIGHT * 0.4,
+    y: player.sprite.position.y - GROUND_Y + SPRITE_HEIGHT * 0.4,
     z: player.sprite.position.z,
   };
 }
 
 export function updatePlayer(player, dt) {
   const targetX = LANE_X[player.targetLane];
-  const prevX = player.sprite.position.x;
+  const prevX = player.laneX;
   const followT = 1 - Math.exp(-LANE_RESPONSE * dt);
-  player.sprite.position.x += (targetX - prevX) * followT;
+  player.laneX += (targetX - prevX) * followT;
 
   // Cosmetic lean into the lane-shift direction, purely visual (never affects
   // collision) -- sells the "clean lean" feel the vision calls for (§1) even
   // with a flat billboard, no cutout rig needed for this.
-  const velocity = (player.sprite.position.x - prevX) / Math.max(dt, 1e-6);
+  const velocity = (player.laneX - prevX) / Math.max(dt, 1e-6);
   const targetLean = THREE.MathUtils.clamp(-velocity * 0.05, -LEAN_MAX, LEAN_MAX);
   player.sprite.material.rotation += (targetLean - player.sprite.material.rotation) * 0.2;
 
@@ -104,6 +118,8 @@ export function updatePlayer(player, dt) {
     player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[player.frameIndex].url);
   }
 
+  player.sprite.position.x = player.laneX + PLAYER_RUN_FRAMES[player.frameIndex].xOffset;
+
   if (player.jumpElapsed !== null) {
     player.jumpElapsed += dt;
     const t = Math.min(player.jumpElapsed / JUMP_DURATION, 1);
@@ -114,6 +130,6 @@ export function updatePlayer(player, dt) {
       player.sprite.position.y = GROUND_Y;
     }
   } else {
-    player.sprite.position.y = GROUND_Y;
+    player.sprite.position.y = GROUND_Y + PLAYER_RUN_FRAMES[player.frameIndex].yOffset;
   }
 }

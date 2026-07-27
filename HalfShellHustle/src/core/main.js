@@ -21,7 +21,7 @@ import { createGameState, restartToRunning, triggerGameOver } from './gameState.
 import { pollLaneStep, pollJumpPress } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import { LANE_X, FORWARD_SPEED, ASPECT_W, ASPECT_H, CAMERA_FOV } from '../data/constants.js';
-import { FRAME_LABELS } from '../data/playerSprite.js';
+import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
 
 function boot() {
   const app = document.getElementById('app');
@@ -129,21 +129,28 @@ function boot() {
 
       if (player.frameIndex !== lastDebugFrame) {
         lastDebugFrame = player.frameIndex;
-        hud.updateFrameDebug(`frame ${player.frameIndex}: ${FRAME_LABELS[player.frameIndex]}`);
+        const { yOffset, xOffset } = PLAYER_RUN_FRAMES[player.frameIndex];
+        hud.updateFrameDebug(
+          `frame ${player.frameIndex}: ${FRAME_LABELS[player.frameIndex]} `
+          + `(yOffset ${yOffset}, xOffset ${xOffset})`,
+        );
       }
 
       distance += FORWARD_SPEED * dt;
       hud.updateDistance(distance);
 
-      updateSpawner(spawnerState, dt, () => spawnObstacle(obstacleField));
-      updateObstaclePool(obstacleField, dt, FORWARD_SPEED);
-
-      for (const slot of obstacleField.pool) {
-        if (checkObstacleHit(player, slot)) {
-          endRun();
-          break;
-        }
-      }
+      // TEMPORARY ANIMATION REVIEW MODE: obstacle spawning/collision
+      // disabled so the run cycle can be watched uninterrupted -- re-enable
+      // (uncomment) once the cycle is locked in.
+      // updateSpawner(spawnerState, dt, () => spawnObstacle(obstacleField));
+      // updateObstaclePool(obstacleField, dt, FORWARD_SPEED);
+      //
+      // for (const slot of obstacleField.pool) {
+      //   if (checkObstacleHit(player, slot)) {
+      //     endRun();
+      //     break;
+      //   }
+      // }
     }
 
     updateCameraRig(cameraRig, player.sprite.position.x);

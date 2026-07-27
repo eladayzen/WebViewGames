@@ -103,20 +103,36 @@
 // earlier 3:1 knee-drive:contact ratio made the extreme poses linger too
 // long. Left in place as a per-frame knob (not deleted) in case uneven
 // timing is wanted again later.
+//
+// yOffset: a discrete, STEPPED per-frame vertical offset (world units) --
+// NOT a smoothed/spline bob. Direct feedback explicitly rejected a
+// continuous cosine wave in favor of a plain two-level snap, applied the
+// instant a frame becomes active in entities/player.js, not eased toward.
+// Both knee-drive frames now dip to the same lower position (the "stronger
+// peak"), contact frames stay neutral.
+//
+// xOffset: same discrete-step idea, horizontal -- the contact frames each
+// get a small opposite-sign push (the planted foot reads as slightly
+// forward/back of the lane center depending on which side is grounded)
+// instead of sitting dead-center every contact. Knee-drive frames stay
+// neutral. Added on top of the lane-position easing in entities/player.js,
+// not baked into it, so lane-changing still eases normally underneath.
 const FRAMES_RAW = [
-  { file: 'leo_run_0.png', holdUnits: 1 }, // knee-drive-right
-  { file: 'leo_run_1.png', holdUnits: 1 }, // contact-right
-  { file: 'leo_run_2.png', holdUnits: 1 }, // knee-drive-left
-  { file: 'leo_run_3.png', holdUnits: 1 }, // contact-left
+  { file: 'leo_run_0.png', holdUnits: 1, yOffset: -0.15, xOffset: 0 }, // knee-drive-right
+  { file: 'leo_run_1.png', holdUnits: 1, yOffset: 0, xOffset: 0.15 }, // contact-right
+  { file: 'leo_run_2.png', holdUnits: 1, yOffset: -0.15, xOffset: 0 }, // knee-drive-left
+  { file: 'leo_run_3.png', holdUnits: 1, yOffset: 0, xOffset: -0.15 }, // contact-left
 ];
 
 // All 4 frames share this exact canvas size (see the ONE-LINEAGE REBUILD
 // note above) -- one shared aspect ratio for the whole cycle, not per-frame.
 export const PLAYER_FRAME_ASPECT = 760 / 800;
 
-export const PLAYER_RUN_FRAMES = FRAMES_RAW.map(({ file, holdUnits }) => ({
+export const PLAYER_RUN_FRAMES = FRAMES_RAW.map(({ file, holdUnits, yOffset, xOffset }) => ({
   url: new URL(`../assets/${file}`, import.meta.url).href,
   holdUnits,
+  yOffset,
+  xOffset,
 }));
 
 // Short labels for the temporary on-screen frame-debug readout (ui/hud.js,
@@ -126,4 +142,4 @@ export const FRAME_LABELS = ['knee-drive-R', 'contact-R', 'knee-drive-L', 'conta
 
 // Seconds per hold-unit (see holdUnits above) -- one "contact" frame lasts
 // exactly this long; one "knee-drive" frame lasts 3x this.
-export const RUN_FRAME_DURATION = 0.12;
+export const RUN_FRAME_DURATION = 0.102; // 0.12 * 0.85 -- 15% faster
