@@ -143,3 +143,46 @@ export const FRAME_LABELS = ['knee-drive-R', 'contact-R', 'knee-drive-L', 'conta
 // Seconds per hold-unit (see holdUnits above) -- one "contact" frame lasts
 // exactly this long; one "knee-drive" frame lasts 3x this.
 export const RUN_FRAME_DURATION = 0.102; // 0.12 * 0.85 -- 15% faster
+
+// --- Spin attack (auto-triggered on a Foot Soldier kill, entities/enemy.js,
+// entities/player.js's startPlayerAttack) -- direct feedback's addition, not
+// in the original build doc: a super-fast in-place spin with both katana
+// swirling, heavy hand-drawn swoosh/motion-blur linework, then straight back
+// into the run cycle. One-lineage seeded from the existing contact-right run
+// frame (leo_run_1.png) via a single gpt-image/1.5-image-to-image pose edit
+// that generated all 4 frames together as one 2x2 grid (per the batch-
+// prompt-character-sprite-sets rule -- separate one-by-one edits risk a
+// frame drifting off-model), then sliced at a shared FIXED cell size with no
+// per-frame alpha-bbox crop -- same "fixed canvas, never independently
+// cropped" principle as the run cycle above (ONE-LINEAGE REBUILD), so the 4
+// frames don't jitter/drift relative to each other despite wildly different
+// motion-blur silhouette extents frame to frame.
+//   0: wind-up -- torso starting to twist, blades sweeping outward.
+//   1: mid-spin -- blades arcing in a near-full circle of motion-blur.
+//   2: continuing spin -- blur whipping around the other side.
+//   3: landing -- blades snap to a forward running-ready grip, untwisting
+//      back toward the standard back-facing running pose, loops back into
+//      the run cycle from here.
+const ATTACK_FRAMES_RAW = [
+  { file: 'leo_spin_0.png' },
+  { file: 'leo_spin_1.png' },
+  { file: 'leo_spin_2.png' },
+  { file: 'leo_spin_3.png' },
+];
+
+// Square grid cells -- notably not PLAYER_FRAME_ASPECT. entities/player.js
+// deliberately does NOT resize the billboard for this (that would reopen the
+// exact per-frame-recompute bug the run cycle's fixed canvas fixed) -- a
+// slight squash for ~0.2s under heavy motion-blur linework doesn't read.
+export const ATTACK_FRAME_ASPECT = 1;
+
+export const ATTACK_FRAMES = ATTACK_FRAMES_RAW.map(({ file }) => ({
+  url: new URL(`../assets/${file}`, import.meta.url).href,
+}));
+
+// Seconds per frame -- "super fast" per direct feedback: the whole 4-frame
+// spin should read as a quick flash of blurred sword-swirl, not a readable
+// multi-pose beat. Slowed twice from the original 0.055 per direct feedback
+// (too fast to register as playing) -- 30% to 0.0715, then another 20% to
+// 0.0858 (~0.34s total) for visibility while testing.
+export const ATTACK_FRAME_DURATION = 0.0858;

@@ -25,9 +25,9 @@ export const ENEMY_TYPES = {
     shadowWidth: 1.9,
     shadowDepth: 0.95,
     // Procedural idle breathing (Y-scale only, see entities/enemy.js) --
-    // 1 -> 1.18 and back over a 2s cycle (1s up, 1s down).
-    breatheAmplitude: 0.18,
-    breathePeriod: 2.0,
+    // 1 -> 1.14 and back over a 3.6s cycle (1.8s up, 1.8s down).
+    breatheAmplitude: 0.14,
+    breathePeriod: 3.6,
     // Kill-poof particle color family (systems/vfx.js's spawnEnemyPoof) --
     // matches this type's purple armor accent.
     poofColors: [0x9b6fd1, 0xc79bf0, 0x6a4a94],

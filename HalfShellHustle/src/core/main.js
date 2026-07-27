@@ -9,7 +9,7 @@ import '../style.css';
 import { createStreet, updateStreet } from '../street/street.js';
 import { createCameraRig, updateCameraRig } from '../street/camera-rig.js';
 import {
-  createPlayer, resetPlayer, setPlayerLane, startPlayerJump, updatePlayer, getPlayerHeadAnchor,
+  createPlayer, resetPlayer, setPlayerLane, startPlayerJump, startPlayerAttack, updatePlayer, getPlayerHeadAnchor,
 } from '../entities/player.js';
 import { createRibbon, resetRibbon, updateRibbon } from '../entities/ribbon.js';
 import {
@@ -210,8 +210,8 @@ function boot() {
       }
 
       // Foot Soldier: opposite of an obstacle hit -- contact KILLS the
-      // enemy (dissolve poof + score) instead of ending the run. No
-      // auto-attack animation on the player yet, deliberately deferred.
+      // enemy (dissolve poof + score + the player's auto spin-attack)
+      // instead of ending the run.
       updateSpawner(enemySpawnerState, dt, () => spawnEnemy(enemyField), ENEMY_SPAWN_INTERVAL_SEC);
       updateEnemyPool(enemyField, dt, FORWARD_SPEED);
       const hitEnemy = checkEnemyHit(player, enemyField);
@@ -222,6 +222,7 @@ function boot() {
           hitEnemy.sprite.scale.x, hitEnemy.sprite.scale.y, hitEnemy.type.poofColors,
         );
         killEnemy(hitEnemy);
+        startPlayerAttack(player);
         score += ENEMY_KILL_SCORE;
         hud.updateScore(score);
       }

@@ -233,24 +233,32 @@ export function spawnDustPuff(pool, x, y, z) {
 const POOF_GRID_COLS = 4;
 const POOF_GRID_ROWS = 5;
 const POOF_SWIRL_RATE = 7; // rad/sec
+// Direct feedback: read as a compact core first, THEN blow outward like an
+// explosion, rather than an already-formed wide cluster. Origins are pulled
+// in toward the center (fraction of the full width/height instead of the
+// full span), per-particle jitter (`spread`) is tight, and warmup is 0 (no
+// pre-expansion, unlike the dust puff's warmup trick) -- so frame 1 reads
+// small/centered and the burst's own speed does the visible "explode" over
+// the next couple of frames instead of it starting mid-bloom.
+const POOF_ORIGIN_SPREAD = 0.5; // fraction of the full sprite width/height the grid spans
 
 export function spawnEnemyPoof(pool, x, y, z, width, height, colors) {
   for (let row = 0; row < POOF_GRID_ROWS; row++) {
     for (let col = 0; col < POOF_GRID_COLS; col++) {
-      const ox = x + (col / (POOF_GRID_COLS - 1) - 0.5) * width;
-      const oy = y - height / 2 + (row / (POOF_GRID_ROWS - 1)) * height;
+      const ox = x + (col / (POOF_GRID_COLS - 1) - 0.5) * width * POOF_ORIGIN_SPREAD;
+      const oy = y - (height * POOF_ORIGIN_SPREAD) / 2 + (row / (POOF_GRID_ROWS - 1)) * height * POOF_ORIGIN_SPREAD;
       const color = colors[(row * POOF_GRID_COLS + col) % colors.length];
       pool.spawn(ox, oy, z, color, {
-        count: 7, speed: 3.8, life: 0.6, gravity: 0.35, spread: 0.14,
-        dirSpread: Math.PI, upBias: 0.35, warmup: 0.04,
+        count: 7, speed: 4.6, life: 0.6, gravity: 0.35, spread: 0.05,
+        dirSpread: Math.PI, upBias: 0.35, warmup: 0,
         swirl: POOF_SWIRL_RATE * (Math.random() < 0.5 ? -1 : 1),
       });
     }
   }
   // Central punch burst, biggest/brightest of the set.
   pool.spawn(x, y, z, colors[0], {
-    count: 40, speed: 5, life: 0.65, gravity: 0.4, spread: 0.45,
-    dirSpread: Math.PI, upBias: 0.6, warmup: 0.05, swirl: POOF_SWIRL_RATE,
+    count: 40, speed: 6.5, life: 0.65, gravity: 0.4, spread: 0.1,
+    dirSpread: Math.PI, upBias: 0.6, warmup: 0, swirl: POOF_SWIRL_RATE,
   });
 }
 

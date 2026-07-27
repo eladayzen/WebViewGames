@@ -10,10 +10,24 @@
 
 import * as THREE from 'three';
 import { getTexture } from './textureLoader.js';
-import { PLAYER_RUN_FRAMES, PLAYER_FRAME_ASPECT, RUN_FRAME_DURATION } from '../data/playerSprite.js';
+import {
+  PLAYER_RUN_FRAMES, PLAYER_FRAME_ASPECT, RUN_FRAME_DURATION,
+  ATTACK_FRAMES, ATTACK_FRAME_DURATION,
+} from '../data/playerSprite.js';
 import {
   LANE_X, CENTER_LANE, LANE_RESPONSE, JUMP_DURATION, JUMP_HEIGHT, PLAYER_Z,
 } from '../data/constants.js';
+
+// Preload every attack-frame texture up front, at module load, rather than
+// lazily on first use. The spin (startPlayerAttack below) is a real-time
+// timer-driven frame cycle (ATTACK_FRAME_DURATION) that does not wait for a
+// texture to finish loading -- without this, the FIRST enemy kill of a run
+// would trigger the very first getTexture() call for these 4 images (they'd
+// never have been touched before that exact moment, unlike the run-cycle
+// frames, which are already long since loaded/cached by the time any enemy
+// is in range), so the sprite would render blank/invisible for most or all
+// of that first spin while they load and decode.
+ATTACK_FRAMES.forEach((frame) => getTexture(frame.url));
 
 // Sized up from the original single-frame 1.9 to read closer to
 // laneRunnerRef.png's big, close, dominant character presence (a camera/
@@ -68,6 +82,9 @@ export function createPlayer() {
     frameIndex: 0,
     frameTimer: 0,
     jumpElapsed: null, // null = grounded
+    attacking: false,
+    attackFrameIndex: 0,
+    attackTimer: 0,
   };
 }
 
@@ -78,6 +95,9 @@ export function resetPlayer(player) {
   player.frameIndex = 0;
   player.frameTimer = 0;
   player.jumpElapsed = null;
+  player.attacking = false;
+  player.attackFrameIndex = 0;
+  player.attackTimer = 0;
   player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[0].url);
   player.sprite.position.x = LANE_X[CENTER_LANE];
   player.sprite.position.y = GROUND_Y;
@@ -92,6 +112,17 @@ export function setPlayerLane(player, laneIndex) {
 
 export function startPlayerJump(player) {
   if (player.jumpElapsed === null) player.jumpElapsed = 0;
+}
+
+// Auto-triggered on a Foot Soldier kill (core/main.js) -- never a player
+// input. Ignored if already mid-spin so two kills a frame apart don't
+// restart the sequence from frame 0 and visually stutter.
+export function startPlayerAttack(player) {
+  if (player.attacking) return;
+  player.attacking = true;
+  player.attackFrameIndex = 0;
+  player.attackTimer = 0;
+  player.sprite.material.map = getTexture(ATTACK_FRAMES[0].url);
 }
 
 // Head-height anchor for cosmetic attachments (the ribbon, entities/
@@ -118,15 +149,37 @@ export function updatePlayer(player, dt) {
   const targetLean = THREE.MathUtils.clamp(-velocity * 0.05, -LEAN_MAX, LEAN_MAX);
   player.sprite.material.rotation += (targetLean - player.sprite.material.rotation) * 0.2;
 
-  player.frameTimer += dt;
-  const holdTime = RUN_FRAME_DURATION * PLAYER_RUN_FRAMES[player.frameIndex].holdUnits;
-  if (player.frameTimer >= holdTime) {
-    player.frameTimer -= holdTime;
-    player.frameIndex = (player.frameIndex + 1) % PLAYER_RUN_FRAMES.length;
-    player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[player.frameIndex].url);
+  if (player.attacking) {
+    // Spin attack overrides the run-frame cycle entirely (own frame set/
+    // timer, no run-frame xOffset bob) but still rides the same lane-easing
+    // and jump-arc logic below -- a kill mid-jump still spins mid-air.
+    player.attackTimer += dt;
+    if (player.attackTimer >= ATTACK_FRAME_DURATION) {
+      player.attackTimer -= ATTACK_FRAME_DURATION;
+      player.attackFrameIndex += 1;
+      if (player.attackFrameIndex >= ATTACK_FRAMES.length) {
+        // Spin's done -- hand back to the run cycle from frame 0 rather
+        // than wherever it would have drifted to, a clean loop point since
+        // the last spin frame is already posed like the run frame's grip.
+        player.attacking = false;
+        player.frameIndex = 0;
+        player.frameTimer = 0;
+        player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[0].url);
+      } else {
+        player.sprite.material.map = getTexture(ATTACK_FRAMES[player.attackFrameIndex].url);
+      }
+    }
+    player.sprite.position.x = player.laneX;
+  } else {
+    player.frameTimer += dt;
+    const holdTime = RUN_FRAME_DURATION * PLAYER_RUN_FRAMES[player.frameIndex].holdUnits;
+    if (player.frameTimer >= holdTime) {
+      player.frameTimer -= holdTime;
+      player.frameIndex = (player.frameIndex + 1) % PLAYER_RUN_FRAMES.length;
+      player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[player.frameIndex].url);
+    }
+    player.sprite.position.x = player.laneX + PLAYER_RUN_FRAMES[player.frameIndex].xOffset;
   }
-
-  player.sprite.position.x = player.laneX + PLAYER_RUN_FRAMES[player.frameIndex].xOffset;
 
   if (player.jumpElapsed !== null) {
     player.jumpElapsed += dt;
@@ -137,6 +190,8 @@ export function updatePlayer(player, dt) {
       player.jumpElapsed = null;
       player.sprite.position.y = GROUND_Y;
     }
+  } else if (player.attacking) {
+    player.sprite.position.y = GROUND_Y;
   } else {
     player.sprite.position.y = GROUND_Y + PLAYER_RUN_FRAMES[player.frameIndex].yOffset;
   }
