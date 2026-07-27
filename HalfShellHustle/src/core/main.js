@@ -93,6 +93,9 @@ function boot() {
   const ENEMY_KILL_SCORE = 100; // placeholder value -- no real scoring system yet (build doc §8 is MVP-only)
 
   let distance = 0;
+  // Rotates through data/playerSprite.js's ATTACK_SEQUENCES kill to kill
+  // (not random) so back-to-back kills don't just repeat the same one.
+  let attackSequenceIndex = 0;
   let score = 0;
 
   function fullReset() {
@@ -104,6 +107,7 @@ function boot() {
     resetSpawner(enemySpawnerState, ENEMY_FIRST_SPAWN_DELAY_SEC);
     distance = 0;
     score = 0;
+    attackSequenceIndex = 0;
     hud.updateDistance(distance);
     hud.updateScore(score);
   }
@@ -222,7 +226,8 @@ function boot() {
           hitEnemy.sprite.scale.x, hitEnemy.sprite.scale.y, hitEnemy.type.poofColors,
         );
         killEnemy(hitEnemy);
-        startPlayerAttack(player);
+        startPlayerAttack(player, attackSequenceIndex);
+        attackSequenceIndex += 1;
         score += ENEMY_KILL_SCORE;
         hud.updateScore(score);
       }

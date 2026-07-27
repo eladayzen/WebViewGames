@@ -144,45 +144,75 @@ export const FRAME_LABELS = ['knee-drive-R', 'contact-R', 'knee-drive-L', 'conta
 // exactly this long; one "knee-drive" frame lasts 3x this.
 export const RUN_FRAME_DURATION = 0.102; // 0.12 * 0.85 -- 15% faster
 
-// --- Spin attack (auto-triggered on a Foot Soldier kill, entities/enemy.js,
-// entities/player.js's startPlayerAttack) -- direct feedback's addition, not
-// in the original build doc: a super-fast in-place spin with both katana
-// swirling, heavy hand-drawn swoosh/motion-blur linework, then straight back
-// into the run cycle. One-lineage seeded from the existing contact-right run
+// --- Attack sequences (auto-triggered on a Foot Soldier kill, entities/
+// enemy.js, via entities/player.js's startPlayerAttack) -- direct feedback's
+// addition, not in the original build doc: a super-fast in-place attack
+// beat with heavy hand-drawn swoosh/motion-blur linework, then straight back
+// into the run cycle. Multiple sequences rotate kill to kill (core/main.js
+// tracks the rotation index) rather than always playing the same one.
+//
+// Every sequence is one-lineage seeded from the existing contact-right run
 // frame (leo_run_1.png) via a single gpt-image/1.5-image-to-image pose edit
-// that generated all 4 frames together as one 2x2 grid (per the batch-
-// prompt-character-sprite-sets rule -- separate one-by-one edits risk a
-// frame drifting off-model), then sliced at a shared FIXED cell size with no
-// per-frame alpha-bbox crop -- same "fixed canvas, never independently
-// cropped" principle as the run cycle above (ONE-LINEAGE REBUILD), so the 4
-// frames don't jitter/drift relative to each other despite wildly different
-// motion-blur silhouette extents frame to frame.
-//   0: wind-up -- torso starting to twist, blades sweeping outward.
-//   1: mid-spin -- blades arcing in a near-full circle of motion-blur.
-//   2: continuing spin -- blur whipping around the other side.
-//   3: landing -- blades snap to a forward running-ready grip, untwisting
-//      back toward the standard back-facing running pose, loops back into
-//      the run cycle from here.
-const ATTACK_FRAMES_RAW = [
-  { file: 'leo_spin_0.png' },
-  { file: 'leo_spin_1.png' },
-  { file: 'leo_spin_2.png' },
-  { file: 'leo_spin_3.png' },
-];
-
+// that generated all 4 of ITS frames together as one 2x2 grid (per the
+// batch-prompt-character-sprite-sets rule -- separate one-by-one edits risk
+// a frame drifting off-model), then sliced at a shared FIXED cell size with
+// no per-frame alpha-bbox crop -- same "fixed canvas, never independently
+// cropped" principle as the run cycle above (ONE-LINEAGE REBUILD), so a
+// sequence's 4 frames don't jitter/drift relative to each other despite
+// wildly different motion-blur silhouette extents frame to frame.
+//
 // Square grid cells -- notably not PLAYER_FRAME_ASPECT. entities/player.js
-// deliberately does NOT resize the billboard for this (that would reopen the
-// exact per-frame-recompute bug the run cycle's fixed canvas fixed) -- a
-// slight squash for ~0.2s under heavy motion-blur linework doesn't read.
+// deliberately does NOT resize the billboard for these (that would reopen
+// the exact per-frame-recompute bug the run cycle's fixed canvas fixed) -- a
+// slight squash for a fraction of a second under heavy motion-blur linework
+// doesn't read.
 export const ATTACK_FRAME_ASPECT = 1;
 
-export const ATTACK_FRAMES = ATTACK_FRAMES_RAW.map(({ file }) => ({
-  url: new URL(`../assets/${file}`, import.meta.url).href,
-}));
+const ATTACK_SEQUENCE_DEFS = [
+  {
+    key: 'swirl',
+    filePrefix: 'leo_spin',
+    // 0: wind-up -- torso starting to twist, blades sweeping outward.
+    // 1: mid-spin -- blades arcing in a near-full circle of motion-blur.
+    // 2: continuing spin -- blur whipping around the other side.
+    // 3: landing -- blades snap to a forward running-ready grip, untwisting
+    //    back toward the standard back-facing running pose.
+    frameCount: 4,
+    // Reached via 0.055 -> 0.0715 -> 0.0858 across direct feedback (each
+    // step "too fast to register as playing").
+    frameDuration: 0.0858,
+  },
+  {
+    key: 'turn',
+    filePrefix: 'leo_turn',
+    // Bigger than 'swirl' -- a full turn-around rather than an over-the-
+    // shoulder blur, briefly showing his front.
+    // 0: starting the spin, same back view as the run pose, blades
+    //    beginning to swing out wide to both sides.
+    // 1: mid-turn -- rotated ~180 degrees, his FRONT (face/belly) visible,
+    //    blades held out wide, peak motion-blur.
+    // 2: continuing the rotation past the front, turning back toward a
+    //    rear 3/4 view, blur easing off.
+    // 3: landing -- back to the run pose, blades settling forward.
+    frameCount: 4,
+    // Slower than 'swirl' per direct feedback -- the bigger turn needs more
+    // time to register.
+    frameDuration: 0.12,
+    // Playback order direct feedback landed on after reviewing the frames
+    // slowed way down (0, 1, 2, 3 read wrong) -- generated-frame index 2
+    // first, then 1, then 0, then 3. Source files/comments above still
+    // describe each frame by its generated index, not its playback order.
+    frameOrder: [2, 1, 0, 3],
+  },
+];
 
-// Seconds per frame -- "super fast" per direct feedback: the whole 4-frame
-// spin should read as a quick flash of blurred sword-swirl, not a readable
-// multi-pose beat. Slowed twice from the original 0.055 per direct feedback
-// (too fast to register as playing) -- 30% to 0.0715, then another 20% to
-// 0.0858 (~0.34s total) for visibility while testing.
-export const ATTACK_FRAME_DURATION = 0.0858;
+export const ATTACK_SEQUENCES = ATTACK_SEQUENCE_DEFS.map((def) => {
+  const order = def.frameOrder || Array.from({ length: def.frameCount }, (_, i) => i);
+  return {
+    key: def.key,
+    frameDuration: def.frameDuration,
+    frames: order.map((i) => ({
+      url: new URL(`../assets/${def.filePrefix}_${i}.png`, import.meta.url).href,
+    })),
+  };
+});
