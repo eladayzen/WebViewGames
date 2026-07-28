@@ -50,11 +50,20 @@ const LEAN_MAX = 0.22; // radians, cosmetic billboard roll while lane-shifting
 const JUMP_TOTAL_DURATION = JUMP_RISE_DURATION + JUMP_HOLD_DURATION + JUMP_FALL_DURATION;
 
 // Ease-out quad rise (fast liftoff, decelerating into the hold), flat hold
-// at JUMP_HEIGHT, ease-in quad fall (accelerating back down, gravity-like).
-// Both eased segments meet the hold at zero vertical velocity, so the whole
-// arc is one continuous, non-jerky motion despite being 3 piecewise
-// segments. Read every frame by entities/collision.js (via player.airHeight
-// below) to decide whether a jumpable obstacle got cleared.
+// at JUMP_HEIGHT, ease-IN CUBIC fall -- direct feedback went through a
+// couple of iterations here: an ease-out fall (real velocity immediately
+// after the hold, softening into landing) tested as "feels linear," not
+// what was wanted. What's actually wanted is the opposite direction: real
+// gravity-style acceleration -- near-zero height loss per frame right as
+// the fall starts, a bit more the next frame, building up, fastest right
+// at the ground. That's ease-IN (zero velocity at u=0, everything
+// backloaded toward u=1) -- CUBIC rather than the original quadratic for a
+// more pronounced version of that same accelerating character (by the
+// halfway TIME point, quadratic has only fallen 25% of the way; cubic has
+// only fallen 12.5% -- noticeably flatter/slower-reading start, then a
+// sharper final acceleration into landing). Read every frame by
+// entities/collision.js (via player.airHeight below) to decide whether a
+// jumpable obstacle got cleared.
 function jumpArcHeight(elapsed) {
   if (elapsed < JUMP_RISE_DURATION) {
     const u = elapsed / JUMP_RISE_DURATION;
@@ -62,7 +71,7 @@ function jumpArcHeight(elapsed) {
   }
   if (elapsed < JUMP_RISE_DURATION + JUMP_HOLD_DURATION) return JUMP_HEIGHT;
   const u = Math.min((elapsed - JUMP_RISE_DURATION - JUMP_HOLD_DURATION) / JUMP_FALL_DURATION, 1);
-  return JUMP_HEIGHT * (1 - u * u);
+  return JUMP_HEIGHT * (1 - u * u * u);
 }
 
 // Procedural bob (direct feedback: the discrete 4-sprite swap alone felt

@@ -30,8 +30,14 @@ export const LANE_RESPONSE = 10; // exponential lane-follow rate
 // start falling down") -- so there's a real hover window, not just a
 // momentary peak. Total airtime nudged up too ("a bit longer").
 export const JUMP_RISE_DURATION = 0.28; // seconds, ground -> peak
-export const JUMP_HOLD_DURATION = 0.22; // seconds, flat at JUMP_HEIGHT -- the hover
-export const JUMP_FALL_DURATION = 0.28; // seconds, peak -> ground
+// Direct feedback: cut the hold in half (0.253 -> 0.1265) and hand every
+// bit of it to the fall (0.28 -> 0.4065) -- total airtime (RISE+HOLD+FALL)
+// stays exactly the same, this only shifts the balance from "hanging at
+// the top" to "the accelerating decline itself" (see entities/player.js's
+// jumpArcHeight, now an ease-in cubic fall -- more time in that phase
+// makes the accelerating character read more clearly).
+export const JUMP_HOLD_DURATION = 0.1265; // seconds, flat at JUMP_HEIGHT -- the hover
+export const JUMP_FALL_DURATION = 0.4065; // seconds, peak -> ground
 // Raised from 2.0 per direct feedback, specifically so a jump can now also
 // clear data/obstacleTypes.js's 'medium' (the original barricade, ~2.4
 // tall) -- see that file's jumpClearHeight for the margin math. Does NOT
@@ -41,6 +47,14 @@ export const JUMP_FALL_DURATION = 0.28; // seconds, peak -> ground
 // decoupled by construction, so this number has zero effect on that check
 // no matter how high it goes.
 export const JUMP_HEIGHT = 2.4;
+// Grace margin (world units) on top of a jumpable obstacle's own
+// jumpClearHeight -- direct feedback: a jump that "technically" barely
+// touched an obstacle, especially coming down out of the fall phase,
+// should still be forgiven rather than counted as a hit. Added directly to
+// player.airHeight at the clearance check (entities/collision.js), not a
+// separate timing/hysteresis system -- simplest version of "some value for
+// how forgiving this is," tune this one number to adjust it.
+export const JUMP_CLEAR_GRACE_HEIGHT = 0.3;
 
 // --- Obstacle spawn/scroll/recycle (§5.3, §9.3 -- reusing CarRacer/src/
 // traffic.js's pool/spawn/recycle pattern) ---
