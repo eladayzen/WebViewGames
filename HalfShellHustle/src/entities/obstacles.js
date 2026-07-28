@@ -26,7 +26,7 @@ import { LANE_X, SPAWN_Z, DESPAWN_Z } from '../data/constants.js';
 import { getTexture } from './textureLoader.js';
 import { OBSTACLE_TYPES } from '../data/obstacleTypes.js';
 import { LOW_OBSTACLE_ENABLED, LOW_OBSTACLE_SPAWN_CHANCE } from '../data/spawnConfig.js';
-import { isRampZoneBlocked } from './platform.js';
+import { findOpenLane } from './platform.js';
 
 // Sized with headroom above the theoretical concurrent-obstacle count
 // ((DESPAWN_Z - SPAWN_Z) / FORWARD_SPEED / OBSTACLE_SPAWN_INTERVAL_SEC ~= 6
@@ -99,20 +99,7 @@ function resolveRandomType() {
   return Math.random() < LOW_OBSTACLE_SPAWN_CHANCE ? 'low' : 'medium';
 }
 
-// Picks a random lane among those NOT overlapping an active platform's ramp
-// zone at this z (entities/platform.js's isRampZoneBlocked) -- null if
-// every lane is currently blocked, telling the caller to skip this spawn
-// attempt entirely rather than force an obstacle onto a ramp.
-function resolveOpenLane(platformField, z) {
-  const open = [];
-  for (let lane = 0; lane < LANE_X.length; lane++) {
-    if (!isRampZoneBlocked(platformField, lane, z)) open.push(lane);
-  }
-  if (open.length === 0) return null;
-  return open[Math.floor(Math.random() * open.length)];
-}
-
-// Spawns exactly one obstacle in a random (ramp-clear) lane. `typeKey`
+// Spawns exactly one obstacle in a random (footprint-clear) lane. `typeKey`
 // forces a specific type (data/obstacleTypes.js); omitted, it picks
 // randomly (weighted). `z` defaults to the far SPAWN_Z (normal gameplay
 // spawning) but can be overridden -- data/introSequence.js's run-start
@@ -124,7 +111,7 @@ function resolveOpenLane(platformField, z) {
 export function spawnObstacle(field, platformField, typeKey = null, z = SPAWN_Z) {
   const slot = field.pool.find((s) => !s.active);
   if (!slot) return;
-  const lane = resolveOpenLane(platformField, z);
+  const lane = findOpenLane(platformField, z);
   if (lane === null) return;
   const key = typeKey || resolveRandomType();
   spawnOfType(slot, lane, key, z);

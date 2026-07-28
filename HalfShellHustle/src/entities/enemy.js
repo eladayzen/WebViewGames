@@ -14,6 +14,13 @@
 // needs its own numbers. Every pool slot's sprite/shadow is a plain unit
 // quad scaled at spawn time (never geometry-recreated), so any slot can
 // spawn any type on a later respawn, not just the type it first spawned.
+//
+// Elevation-aware (entities/platform.js's per-lane height system, mirroring
+// entities/player.js's own elevationY pattern): an enemy can now genuinely
+// stand on top of a platform's deck (entities/platform.js's
+// findDeckPlacements, wired in below), riding its elevation live every
+// frame -- direct feedback: they used to always render/collide at street
+// level regardless of any platform nearby.
 
 import * as THREE from 'three';
 import {
@@ -22,13 +29,22 @@ import {
 import { getTexture } from './textureLoader.js';
 import { getShadowTexture } from './contactShadow.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
-import { isRampZoneBlocked } from './platform.js';
+import {
+  findOpenLane, findDeckPlacements, getWorldElevationAt,
+} from './platform.js';
+import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
+import { ENEMY_ON_PLATFORM_CHANCE } from '../data/spawnConfig.js';
 
 // TEMPORARY demo bump (direct feedback: "twice as much enemies", plus
 // data/introSequence.js's 3-wide wall needs at least LANE_X.length free
 // slots at once on top of whatever's already scrolling) -- normal value
 // was 5, doubled to 10. Revert once the demo pass is done.
 const POOL_SIZE = 10;
+
+// Same threshold entities/collision.js's checkObstacleHit uses for the
+// player-vs-obstacle case, kept as its own local constant here rather than
+// shared across files (matches that file's existing convention).
+const ELEVATION_MATCH_THRESHOLD = 0.3;
 
 function createSlot(scene) {
   const material = new THREE.SpriteMaterial({ transparent: true });
@@ -57,6 +73,7 @@ function createSlot(scene) {
     lane: 1,
     z: 0,
     breatheTimer: 0,
+    elevationY: 0, // current entities/platform.js height offset -- 0 at street level, see updateEnemyPool
   };
 }
 
@@ -82,6 +99,7 @@ function spawnOfType(slot, lane, typeKey, z) {
   slot.type = type;
   slot.lane = lane;
   slot.z = z;
+  slot.elevationY = 0; // recomputed for real on this same frame's updateEnemyPool pass
   // Randomized phase so a pool's worth of enemies don't all breathe in
   // lockstep -- reads as more alive than a uniform pulse.
   slot.breatheTimer = Math.random() * type.breathePeriod;
@@ -98,40 +116,50 @@ function spawnOfType(slot, lane, typeKey, z) {
 
 const ENEMY_TYPE_KEYS = Object.keys(ENEMY_TYPES);
 
-// Random lane among those NOT overlapping an active platform's ramp zone at
-// this z (entities/platform.js's isRampZoneBlocked) -- null if every lane
-// is currently blocked. Same reasoning/pairing as entities/obstacles.js's
-// resolveOpenLane: forced onto a ramp, an enemy would be an unfair/glitchy
-// "bump into me while also climbing" situation.
-function resolveOpenLane(platformField, z) {
-  const open = [];
-  for (let lane = 0; lane < LANE_X.length; lane++) {
-    if (!isRampZoneBlocked(platformField, lane, z)) open.push(lane);
-  }
-  if (open.length === 0) return null;
-  return open[Math.floor(Math.random() * open.length)];
-}
-
 // Spawns one enemy. `typeKey` forces a specific type (data/enemyTypes.js);
 // omitted, it picks randomly among all of them -- direct feedback: seeing
 // the weapon/stance/color variety is the point, not always the same type.
 // `z` defaults to SPAWN_Z (normal gameplay spawning) but can be overridden.
-// `lane` defaults to a random ramp-clear pick (skips the spawn entirely if
-// every lane is currently blocked, same as entities/obstacles.js) but can
-// be forced explicitly -- data/introSequence.js's start-of-run wall needs
-// one enemy in EVERY lane at the same close z regardless of any platform
-// (there's never one active that early), so an explicit `lane` bypasses the
-// ramp check entirely, same as it always bypassed the random pick.
+//
+// `lane` defaults to null, the normal random-pick path: first rolls
+// entities/platform.js's findDeckPlacements (direct feedback: enemies
+// should sometimes actually stand on a platform deck) -- if any platform
+// currently offers one AND the ENEMY_ON_PLATFORM_CHANCE roll succeeds, the
+// enemy spawns THERE instead (both lane and z overridden to the deck's own
+// position, claiming that platform so at most one enemy ever lands on it).
+// Otherwise falls back to the normal footprint-clear random lane at the
+// caller's own z (entities/platform.js's findOpenLane), skipping the spawn
+// entirely if every lane is currently blocked.
+//
+// An explicit `lane` bypasses ALL of the above -- data/introSequence.js's
+// start-of-run wall needs one enemy in EVERY lane at the same close z
+// regardless of any platform (there's never one active that early anyway).
 export function spawnEnemy(field, platformField, typeKey = null, lane = null, z = SPAWN_Z) {
   const slot = field.pool.find((s) => !s.active);
   if (!slot) return;
-  const resolvedLane = lane !== null ? lane : resolveOpenLane(platformField, z);
-  if (resolvedLane === null) return;
+
+  let resolvedLane = lane;
+  let resolvedZ = z;
+  if (lane === null) {
+    const deckCandidates = findDeckPlacements(platformField);
+    const onDeck = deckCandidates.length > 0 && Math.random() < ENEMY_ON_PLATFORM_CHANCE
+      ? deckCandidates[Math.floor(Math.random() * deckCandidates.length)]
+      : null;
+    if (onDeck) {
+      onDeck.claim();
+      resolvedLane = onDeck.lane;
+      resolvedZ = onDeck.z;
+    } else {
+      resolvedLane = findOpenLane(platformField, z);
+      if (resolvedLane === null) return;
+    }
+  }
+
   const key = typeKey || ENEMY_TYPE_KEYS[Math.floor(Math.random() * ENEMY_TYPE_KEYS.length)];
-  spawnOfType(slot, resolvedLane, key, z);
+  spawnOfType(slot, resolvedLane, key, resolvedZ);
 }
 
-export function updateEnemyPool(field, dt, speed) {
+export function updateEnemyPool(field, dt, speed, platformField) {
   for (const slot of field.pool) {
     if (!slot.active) continue;
     slot.z += speed * dt;
@@ -145,6 +173,13 @@ export function updateEnemyPool(field, dt, speed) {
       continue;
     }
 
+    // Rides entities/platform.js's elevation live every frame, same
+    // pattern as entities/player.js's own elevationY -- correct whether
+    // this slot ended up on a deck deliberately (spawnEnemy's
+    // findDeckPlacements branch) or just happens to be street-level (0
+    // there, a no-op).
+    slot.elevationY = getWorldElevationAt(platformField, slot.lane, slot.z) * PLATFORM_HEIGHT;
+
     const { type } = slot;
     const baseHeight = type.height;
     slot.breatheTimer = (slot.breatheTimer + dt) % type.breathePeriod;
@@ -157,22 +192,27 @@ export function updateEnemyPool(field, dt, speed) {
     // Compensates position.y by half the height delta so the swell grows
     // from his feet/the ground plane (pivots at the legs), not from the
     // sprite's center anchor -- otherwise scaling up would sink his feet
-    // below the street by half the growth amount.
-    slot.sprite.position.y = baseHeight / 2 + (scaleY - 1) * baseHeight * 0.5;
+    // below the street by half the growth amount. elevationY is a separate
+    // additive world-space offset on top (platform.js's deck height, or 0
+    // at street level) -- orthogonal to the swell/pivot math.
+    slot.sprite.position.y = baseHeight / 2 + (scaleY - 1) * baseHeight * 0.5 + slot.elevationY;
+    slot.shadow.position.y = 0.015 + slot.elevationY;
   }
 }
 
 // Same lane-index + z-distance overlap shape as entities/collision.js's
-// checkObstacleHit (including the elevation check -- see that file's
-// comment, enemies never elevate themselves either), but returns the hit
-// SLOT (not a boolean) so the caller can read its position/type for the
-// dissolve VFX before deactivating it.
+// checkObstacleHit, but elevation-COMPARED against this specific enemy's
+// own elevationY rather than assuming it's always at street level (direct
+// feedback: enemies can now stand on a platform deck) -- close enough in
+// elevation to actually be touching it, not just "player is elevated at
+// all." Returns the hit SLOT (not a boolean) so the caller can read its
+// position/type for the dissolve VFX before deactivating it.
 export function checkEnemyHit(player, field) {
   for (const slot of field.pool) {
     if (!slot.active) continue;
     if (Math.abs(slot.z - PLAYER_Z) > OBSTACLE_COLLISION_HALF_Z) continue;
     if (slot.lane !== player.laneIndex) continue;
-    if (player.elevationY >= 0.3) continue;
+    if (Math.abs(player.elevationY - slot.elevationY) >= ELEVATION_MATCH_THRESHOLD) continue;
     return slot;
   }
   return null;

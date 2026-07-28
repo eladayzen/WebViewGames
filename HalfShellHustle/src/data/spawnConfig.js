@@ -83,11 +83,27 @@ export const PLATFORM_KILL_TYPE_ENABLED = false;
 export const PLATFORM_KILL_TYPE_CHANCE = 0.35;
 
 // Direct feedback: obstacles/enemies must never spawn overlapping an active
-// platform's RAMP section (entry or exit) in the same lane -- being forced
-// to climb a ramp while also having to dodge/kill something positioned on
-// top of an incline doesn't work, visually or as a fair dodge. This pads
-// BOTH ends of a ramp span with extra room beyond its own length, so
-// there's real space to react/dodge around the whole platform, not a
-// razor-thin gap right at the ramp's edge -- see entities/platform.js's
-// isRampZoneBlocked for how it's applied.
-export const PLATFORM_RAMP_EXCLUSION_BUFFER = 5; // world units, each side
+// platform's WHOLE footprint (ramps AND the solid deck box in between) in
+// the same lane -- forced onto a ramp while also dodging/fighting
+// something doesn't work visually or as a fair dodge, and the deck is
+// opaque (a street-level sprite spawned inside it would render invisibly
+// hidden behind it). This pads BOTH ends of the whole span with extra room
+// beyond its own length, so there's real space to react/dodge around the
+// whole platform, not a razor-thin gap right at its edge -- see
+// entities/platform.js's isPlatformFootprintBlocked for how it's applied.
+export const PLATFORM_FOOTPRINT_EXCLUSION_BUFFER = 5; // world units, each side
+
+// --- Enemies on platform decks (entities/enemy.js's spawnEnemy, entities/
+// platform.js's findDeckPlacements) -- direct feedback: enemies should
+// sometimes actually stand on top of an elevated deck, not just avoid
+// platforms entirely. ---
+// How close (world z) a deck's placement window is allowed to get before
+// it's no longer offered -- keeps an enemy from popping up mid-journey
+// instead of being visible arriving from a distance like everything else.
+// Naturally excludes ramp-up-window platforms (their deck already starts
+// too close), see entities/platform.js's findDeckPlacements comment.
+export const PLATFORM_DECK_PLACEMENT_MAX_Z = -50;
+// Chance a given eligible platform ends up with one deck-placed enemy
+// (capped at exactly one per platform regardless of this value -- see
+// findDeckPlacements' deckEnemyPlaced flag).
+export const ENEMY_ON_PLATFORM_CHANCE = 0.5;

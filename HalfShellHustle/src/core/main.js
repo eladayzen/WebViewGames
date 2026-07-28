@@ -269,7 +269,12 @@ function boot() {
       lastContactFrame = player.frameIndex;
       if (enteredContact) {
         pulseContactShadow(contactShadow);
-        spawnDustPuff(dustPool, player.sprite.position.x, 0.05, player.sprite.position.z - DUST_AHEAD_OFFSET);
+        // + player.elevationY: same reasoning as entities/contactShadow.js's
+        // own elevation follow -- otherwise dust puffs on a platform deck
+        // spawned down at street level instead of at his actual feet.
+        spawnDustPuff(
+          dustPool, player.sprite.position.x, 0.05 + player.elevationY, player.sprite.position.z - DUST_AHEAD_OFFSET,
+        );
       }
       updateContactShadow(contactShadow, player, dt);
       dustPool.update(dt);
@@ -337,7 +342,7 @@ function boot() {
           lastEnemySpawnTime = gameTime;
         }
       }, ENEMY_SPAWN_INTERVAL_SEC);
-      updateEnemyPool(enemyField, dt, FORWARD_SPEED);
+      updateEnemyPool(enemyField, dt, FORWARD_SPEED, platformField);
       const hitEnemy = checkEnemyHit(player, enemyField);
       if (hitEnemy) {
         spawnEnemyPoof(

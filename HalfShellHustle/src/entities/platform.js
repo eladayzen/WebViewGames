@@ -26,7 +26,7 @@ import {
 } from '../data/constants.js';
 import { PLATFORM_HEIGHT, PLATFORM_RAMP_LENGTH, PLATFORM_DECK_LENGTH } from '../data/platformSequence.js';
 import { PLATFORM_BOX_TEXTURE, PLATFORM_RAMP_TEXTURE } from '../data/envArt.js';
-import { PLATFORM_RAMP_EXCLUSION_BUFFER } from '../data/spawnConfig.js';
+import { PLATFORM_FOOTPRINT_EXCLUSION_BUFFER, PLATFORM_DECK_PLACEMENT_MAX_Z } from '../data/spawnConfig.js';
 import { getTexture } from './textureLoader.js';
 
 const POOL_SIZE = 6;
@@ -255,15 +255,18 @@ function createSlot(scene) {
     lane: 1,
     entryStartZ: 0, // where the object/ramp begins (0 height here)
     // deckStartZ..deckEndZ is the ONLY z-range on a platform slot that any
-    // future entity-placement logic (enemies, pickups, obstacles) may ever
-    // spawn something into -- direct feedback's rule: nothing gets placed
-    // on a ramp (entryStartZ..deckStartZ, or deckEndZ..exitEndZ on the exit
-    // side), only on the flat box/deck itself. Ramps are a climbing
-    // transition, not stable stand-ground.
+    // entity-placement logic (enemies, obstacles) may ever spawn something
+    // into -- direct feedback's rule: nothing gets placed on a ramp
+    // (entryStartZ..deckStartZ, or deckEndZ..exitEndZ on the exit side),
+    // only on the flat box/deck itself. Ramps are a climbing transition,
+    // not stable stand-ground. entities/enemy.js's findDeckPlacements is
+    // the only thing that currently exercises this (obstacles still avoid
+    // the whole footprint entirely, see isPlatformFootprintBlocked).
     deckStartZ: 0, // where the flat top begins (full height from here on)
     deckEndZ: 0, // where the flat top ends
     exitEndZ: 0, // ramp-type: where the exit wedge finishes descending to 0; kill-type: === deckEndZ (still a hard step, entities/player.js's gravity handles that fall)
     cleared: false, // kill-type only: sticky once airborne-at-contact, see getPlayerElevationAt
+    deckEnemyPlaced: false, // ramp-type only: caps findDeckPlacements at one enemy per platform, see spawnEnemy's deck-placement branch
     killGroup,
     rampGroup,
   };
@@ -302,6 +305,7 @@ export function spawnPlatform(field, type, lane = null, z = SPAWN_Z) {
   slot.deckEndZ = slot.deckStartZ + PLATFORM_DECK_LENGTH;
   slot.exitEndZ = type === 'kill' ? slot.deckEndZ : slot.deckEndZ + PLATFORM_RAMP_LENGTH;
   slot.cleared = false;
+  slot.deckEnemyPlaced = false;
 
   const activeVisual = type === 'kill' ? slot.killGroup : slot.rampGroup;
   const idleVisual = type === 'kill' ? slot.rampGroup : slot.killGroup;
@@ -356,30 +360,84 @@ export function isRampSupported(field, lane, z) {
 }
 
 // Direct feedback: obstacles/enemies must never spawn overlapping an active
-// platform's RAMP section (entry OR exit) in the same lane -- being forced
-// to climb/descend a ramp while also having to dodge/kill something
-// positioned on top of an incline doesn't work, visually or as a fair
-// dodge. entities/obstacles.js and entities/enemy.js call this at their own
-// spawn time to pick a lane that's actually clear (or skip the spawn
-// attempt entirely if every lane is blocked) -- same "checked once at
-// spawn time, holds for the entity's whole lifetime" reasoning as
-// MIN_ENEMY_OBSTACLE_GAP_SEC (data/spawnConfig.js): every active entity
-// scrolls at the same FORWARD_SPEED, so once the later-spawning one's
-// relative gap is clear here, it never changes.
+// platform's footprint (ramps OR the deck in between) in the same lane --
+// two reasons stacked together: forced onto a ramp while also dodging/
+// fighting something doesn't work visually or as a fair dodge, AND the deck
+// is a solid, opaque box (y=0..PLATFORM_HEIGHT) -- a street-level sprite
+// spawned inside that same footprint would render entirely hidden behind
+// it, an invisible hazard. entities/obstacles.js and entities/enemy.js call
+// findOpenLane (below) at their own spawn time to pick a lane that's
+// actually clear (or skip the spawn attempt entirely if every lane is
+// blocked) -- same "checked once at spawn time, holds for the entity's
+// whole lifetime" reasoning as MIN_ENEMY_OBSTACLE_GAP_SEC
+// (data/spawnConfig.js): every active entity scrolls at the same
+// FORWARD_SPEED, so once the later-spawning one's relative gap is clear
+// here, it never changes.
 //
-// PLATFORM_RAMP_EXCLUSION_BUFFER (data/spawnConfig.js) pads both ends of
-// the ramp span beyond its own length, so there's real dodge room, not a
-// razor-thin gap at the ramp's actual edge. Only checks 'ramp'-type slots
-// (kill-type has no ramp span at all -- entryStartZ === deckStartZ).
-export function isRampZoneBlocked(field, lane, z) {
+// PLATFORM_FOOTPRINT_EXCLUSION_BUFFER (data/spawnConfig.js) pads both ends
+// of the WHOLE span beyond its own length, so there's real dodge room, not
+// a razor-thin gap at the platform's actual edge. Checks every active slot
+// regardless of type -- kill-type has no ramp span (entryStartZ ===
+// deckStartZ) but is still a solid box needing the same exclusion.
+export function isPlatformFootprintBlocked(field, lane, z) {
   for (const slot of field.pool) {
-    if (!slot.active || slot.lane !== lane || slot.type !== 'ramp') continue;
-    if (z >= slot.entryStartZ - PLATFORM_RAMP_EXCLUSION_BUFFER
-      && z <= slot.deckStartZ + PLATFORM_RAMP_EXCLUSION_BUFFER) return true;
-    if (z >= slot.deckEndZ - PLATFORM_RAMP_EXCLUSION_BUFFER
-      && z <= slot.exitEndZ + PLATFORM_RAMP_EXCLUSION_BUFFER) return true;
+    if (!slot.active || slot.lane !== lane) continue;
+    if (z >= slot.entryStartZ - PLATFORM_FOOTPRINT_EXCLUSION_BUFFER
+      && z <= slot.exitEndZ + PLATFORM_FOOTPRINT_EXCLUSION_BUFFER) return true;
   }
   return false;
+}
+
+// Shared by entities/obstacles.js and entities/enemy.js (both used to
+// duplicate this exact loop locally) -- a random lane among those NOT
+// currently blocked by isPlatformFootprintBlocked at this z, or null if
+// every lane is blocked (caller should skip the spawn attempt entirely).
+export function findOpenLane(field, z) {
+  const open = [];
+  for (let lane = 0; lane < LANE_X.length; lane++) {
+    if (!isPlatformFootprintBlocked(field, lane, z)) open.push(lane);
+  }
+  if (open.length === 0) return null;
+  return open[Math.floor(Math.random() * open.length)];
+}
+
+// Direct feedback: enemies should actually stand on top of an elevated
+// platform's deck sometimes, not just avoid platforms entirely. Platforms/
+// obstacles/enemies all default-spawn at the same fixed SPAWN_Z and scroll
+// at the same FORWARD_SPEED, so a deck's z-range (always entryStartZ +
+// PLATFORM_RAMP_LENGTH or later) can never reach back to SPAWN_Z itself --
+// a normal spawn can never coincidentally land on an EXISTING platform's
+// deck. This is the deliberate path that does it on purpose, used by
+// entities/enemy.js's spawnEnemy.
+//
+// Returns one candidate per eligible active ramp-type slot (kill-type
+// excluded -- no exit ramp, out of scope here), each a random z within the
+// deck's own span minus a small margin so the enemy doesn't spawn right at
+// the ramp/deck seam. Eligibility is bounded by the FARTHEST z this could
+// possibly produce (deckEndZ - margin), not deckStartZ, so a placement can
+// never land closer than PLATFORM_DECK_PLACEMENT_MAX_Z regardless of when
+// in its window the roll happens -- this also naturally excludes ramp-up-
+// window platforms (their deckStartZ already starts too close), keeping
+// that already-busy intro stretch from also gaining this mechanic.
+// `claim()` sets deckEnemyPlaced on that slot (rather than exposing the
+// slot itself) so at most one enemy ever lands on a given platform's deck,
+// no matter how many spawn attempts land inside the eligibility window.
+const DECK_PLACEMENT_MARGIN = 3; // world units, both ends
+export function findDeckPlacements(field) {
+  const candidates = [];
+  for (const slot of field.pool) {
+    if (!slot.active || slot.type !== 'ramp' || slot.deckEnemyPlaced) continue;
+    const usableStart = slot.deckStartZ + DECK_PLACEMENT_MARGIN;
+    const usableEnd = slot.deckEndZ - DECK_PLACEMENT_MARGIN;
+    if (usableEnd <= usableStart) continue;
+    if (usableEnd >= PLATFORM_DECK_PLACEMENT_MAX_Z) continue;
+    candidates.push({
+      lane: slot.lane,
+      z: usableStart + Math.random() * (usableEnd - usableStart),
+      claim: () => { slot.deckEnemyPlaced = true; },
+    });
+  }
+  return candidates;
 }
 
 // The object's actual physical height at (lane, z), ignoring any player

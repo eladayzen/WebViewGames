@@ -63,6 +63,11 @@ export function updateContactShadow(shadow, player, dt) {
   const { mesh } = shadow;
   mesh.position.x = player.sprite.position.x;
   mesh.position.z = player.sprite.position.z;
+  // Rides entities/platform.js's elevationY the same way the player's own
+  // sprite does -- otherwise the shadow stayed pinned to street level while
+  // he climbed a platform, reading as a shadow cast on the ground far below
+  // his feet instead of directly under them.
+  mesh.position.y = 0.015 + player.elevationY;
 
   shadow.pulse = Math.max(0, shadow.pulse - PULSE_DECAY * dt);
 
