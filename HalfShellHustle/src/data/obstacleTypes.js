@@ -49,7 +49,15 @@ export const OBSTACLE_TYPES = {
 
 export const DEFAULT_OBSTACLE_TYPE = 'medium';
 
+// DISABLED until further notice (direct feedback: "remove it completely,
+// we don't need it for now") -- entities/obstacles.js's resolveRandomType
+// always returns 'medium' while this is false, so 'low' never spawns.
+// Matches data/platformSequence.js's PLATFORM_KILL_TYPE_ENABLED convention:
+// the type/data stays intact for a later re-enable, only the spawn switch
+// flips off.
+export const LOW_OBSTACLE_ENABLED = false;
+
 // Type mix -- a deliberate difficulty knob (a miss ends the run), not just
 // "show variety" like data/enemyTypes.js's uniform random pick. Tuning
-// starting point, easy to retune.
+// starting point, easy to retune. Inert while LOW_OBSTACLE_ENABLED is false.
 export const LOW_OBSTACLE_SPAWN_CHANCE = 0.3;

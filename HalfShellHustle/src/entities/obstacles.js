@@ -1,11 +1,15 @@
 // Shared "lane obstacle" behavior (build doc §5.3, §6, §9.3, as amended by
 // direct POC-playtest feedback): lane-blocking obstacles, one lane wide,
-// dodged by lane-switching -- and now, for the 'low' type, jumpable too
-// (see data/obstacleTypes.js). The original 3-lane-spanning jump-obstacle
-// was dropped entirely per feedback (not tuned, removed) along with the
-// jump mechanic it existed for; jump's return (entities/player.js) is
-// unrelated to that old obstacle, driven instead by entities/platform.js's
-// kill barriers and this file's 'low' type.
+// dodged by lane-switching, and now jumpable too (see data/obstacleTypes.js).
+// The original 3-lane-spanning jump-obstacle was dropped entirely per
+// feedback (not tuned, removed) along with the jump mechanic it existed
+// for; jump's return (entities/player.js) is unrelated to that old
+// obstacle, driven instead by entities/platform.js's kill barriers and this
+// file's jumpable types.
+//
+// data/obstacleTypes.js's 'low' type exists but is currently DISABLED
+// (LOW_OBSTACLE_ENABLED) -- direct feedback, not needed for now.
+// resolveRandomType below always falls back to 'medium' while that's off.
 //
 // Data-driven per type (data/obstacleTypes.js), mirroring entities/enemy.js's
 // ENEMY_TYPES/spawnOfType pattern -- every pool slot's sprite is a plain
@@ -20,7 +24,7 @@
 import * as THREE from 'three';
 import { LANE_X, SPAWN_Z, DESPAWN_Z } from '../data/constants.js';
 import { getTexture } from './textureLoader.js';
-import { OBSTACLE_TYPES, LOW_OBSTACLE_SPAWN_CHANCE } from '../data/obstacleTypes.js';
+import { OBSTACLE_TYPES, LOW_OBSTACLE_ENABLED, LOW_OBSTACLE_SPAWN_CHANCE } from '../data/obstacleTypes.js';
 
 // Sized with headroom above the theoretical concurrent-obstacle count
 // ((DESPAWN_Z - SPAWN_Z) / FORWARD_SPEED / SPAWN_INTERVAL_SEC ~= 6 at the
@@ -87,6 +91,7 @@ function spawnOfType(slot, lane, typeKey, z) {
 }
 
 function resolveRandomType() {
+  if (!LOW_OBSTACLE_ENABLED) return 'medium';
   // Weighted, not uniform -- see data/obstacleTypes.js's
   // LOW_OBSTACLE_SPAWN_CHANCE (a difficulty knob, not just variety).
   return Math.random() < LOW_OBSTACLE_SPAWN_CHANCE ? 'low' : 'medium';

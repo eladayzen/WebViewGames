@@ -25,6 +25,8 @@ import {
   LANE_X, LANE_WIDTH, SPAWN_Z, DESPAWN_Z, PLAYER_Z, OBSTACLE_COLLISION_HALF_Z,
 } from '../data/constants.js';
 import { PLATFORM_HEIGHT, PLATFORM_RAMP_LENGTH, PLATFORM_DECK_LENGTH } from '../data/platformSequence.js';
+import { PLATFORM_BOX_TEXTURE, PLATFORM_RAMP_TEXTURE } from '../data/envArt.js';
+import { getTexture } from './textureLoader.js';
 
 const POOL_SIZE = 6;
 const PLATFORM_WIDTH = LANE_WIDTH * 0.85; // fits within one lane, matches entities/obstacles.js's barricade-width convention
@@ -35,19 +37,67 @@ const clamp01 = (t) => Math.max(0, Math.min(1, t));
 // transitions.
 const smoothstep = (t) => t * t * (3 - 2 * t);
 
-// Plain/blank placeholder material for now (direct feedback: "I don't care"
-// about art yet, real illustrated PNGs are the next pass once the shapes
-// themselves read right).
-// TEMPORARY debug color (direct feedback: "make the triangles always blue
-// so we understand what's a triangle and what's a box") -- swap back to
-// matching the box's 0xf2f2f2 once the shapes themselves are confirmed
-// working, this is purely to tell the two apart while testing.
-function createRampMaterial() {
-  return new THREE.MeshBasicMaterial({ color: 0x4a90d9, side: THREE.DoubleSide });
+// Real Kolbo-illustrated art (data/envArt.js's PLATFORM_BOX_TEXTURE /
+// PLATFORM_RAMP_TEXTURE), replacing the earlier flat-color placeholders
+// (blue ramp, near-white box, both of which read as too close in hue/
+// luminance to street.js's pale sky-blue fog/background -- direct feedback:
+// platforms were "appearing all of a sudden" instead of being visible
+// approaching from a distance). Both textures are warm/dark/saturated by
+// design specifically to stay legible against that fog at any distance.
+//
+// Tiles `texEntry` along a mesh axis whose UV runs 0..1 CLAMPED across
+// `crossSpan` (no repeat -- exactly one undistorted texture-width fits
+// there) and 0..1 REPEATED across `tiledSpan` -- same technique as
+// street.js's tiledFacadeMaterial (its building end-caps have the identical
+// U-clamped/V-tiled axis layout this needs), just factored locally here
+// since platform.js is its only caller. Used for the ramp's slope (UV
+// authored below) and the box's top face (BoxGeometry's own default UV has
+// +Y's U on the box's width axis, V on its depth/length axis -- the same
+// clamped/tiled split).
+function tiledLengthMaterial(texEntry, crossSpan, tiledSpan) {
+  const tex = getTexture(texEntry.url).clone();
+  tex.needsUpdate = true;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  const tileSpan = crossSpan * texEntry.aspect;
+  tex.repeat.set(1, tiledSpan / tileSpan);
+  return new THREE.MeshBasicMaterial({ map: tex });
 }
 
-// Kill barrier: black, distinct from both the ramp's blue and the box's
-// white, so it reads unmistakably as "this one kills you" while testing.
+// Mirrored version for the box's +X/-X side walls: BoxGeometry maps those
+// faces' U to the box's depth/length axis and V to its height axis -- the
+// tile axis is on U here instead of V, so wrapS/wrapT (and which span feeds
+// the repeat count vs. the clamp) swap accordingly.
+function tiledSideMaterial(texEntry, crossSpan, tiledSpan) {
+  const tex = getTexture(texEntry.url).clone();
+  tex.needsUpdate = true;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  const tileSpan = crossSpan / texEntry.aspect;
+  tex.repeat.set(tiledSpan / tileSpan, 1);
+  return new THREE.MeshBasicMaterial({ map: tex });
+}
+
+function createRampMaterial() {
+  // PLATFORM_WIDTH is the clamped (undistorted, no-repeat) cross axis,
+  // PLATFORM_RAMP_LENGTH the tiled axis -- matches the UV buildWedgeGeometry
+  // authors on the slope face (u: 0..1 across width, v: 0..1 low->high).
+  const mat = tiledLengthMaterial(PLATFORM_RAMP_TEXTURE, PLATFORM_WIDTH, PLATFORM_RAMP_LENGTH);
+  mat.side = THREE.DoubleSide; // unchanged from the placeholder -- see buildWedgeGeometry's winding-order history
+  return mat;
+}
+
+// Box faces that are never actually seen (bottom -- flush with the street;
+// front/back -- flush against the entry/exit wedge or the far edge) get a
+// flat color sampled from the box texture's own average tone instead of an
+// unrelated placeholder hue -- same "never a procedural-looking flat fill"
+// convention street.js's building bodyColor already established.
+const BOX_NEVER_SEEN_COLOR = 0x613318;
+
+// Kill barrier: still the flat black placeholder -- out of scope for this
+// art pass (disabled via PLATFORM_KILL_TYPE_ENABLED anyway), but kept
+// visually distinct from the now-illustrated ramp/box so it'd still read
+// unmistakably as "this one kills you" if re-enabled.
 const KILL_BARRIER_HEIGHT = 2.2; // shorter than the box -- a barrier, not another climbable deck
 const KILL_BARRIER_DEPTH = 1.0;
 function createKillBarrierMaterial() {
@@ -85,8 +135,34 @@ function buildWedgeGeometry(width, length, height) {
     0, 2, 4, // left triangular end cap
     1, 3, 5, // right triangular end cap
   ];
+  // UV, one pair per vertex (this is an indexed geometry with shared
+  // vertices, not one vertex per face-corner, so a single UV per vertex has
+  // to serve every triangle that reuses it -- see the per-vertex layout
+  // comment above). The SLOPE face (0,4,5 / 0,5,1) is the one that has to be
+  // exactly right: it uses only v0,v1,v4,v5, and their UVs below form a
+  // clean, correctly-oriented unit square on it --
+  //   v0 (0,0) ---- v1 (1,0)   <- low/ground end (z=0, y=0), v=0
+  //     |              |
+  //   v4 (0,1) ---- v5 (1,1)   <- high end (z=length, y=height, butts the box), v=1
+  // u runs 0->1 left(-w2)->right(w2) at both ends, matching createRampMaterial's
+  // clamped width axis; v runs 0->1 low->high, matching its repeated length
+  // axis -- so the texture reads bottom-to-top as ground-to-box, right-side
+  // up. v2/v3 (bottom-back/never-seen bottom+back faces, plus the two
+  // triangular end caps 0,2,4 / 1,3,5) aren't used by the slope face at all,
+  // so their UVs just need to be non-degenerate for those never/rarely-seen
+  // faces, not aesthetically tuned.
+  const uv = new Float32Array([
+    0, 0, // v0
+    1, 0, // v1
+    1, 0, // v2
+    0, 0, // v3
+    0, 1, // v4
+    1, 1, // v5
+  ]);
+
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(v, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geometry.setIndex(idx);
   geometry.computeVertexNormals();
   return geometry;
@@ -132,9 +208,20 @@ function buildPlatformGroup(hasRamp) {
   }
 
   const boxFarCursor = deckStartCursor + PLATFORM_DECK_LENGTH;
+  // BoxGeometry material-array face order: [+X, -X, +Y, -Y, +Z, -Z]. Only
+  // +Y (the walkable top deck) is a face the player actually looks at/stands
+  // on; +X/-X (the long side walls, visible at an angle from an adjacent
+  // lane) get the same crate art tiled the other way (tiledSideMaterial);
+  // -Y (bottom, flush with the street) and +Z/-Z (front/back, flush against
+  // the entry/exit wedge or the far despawn edge) are never seen and stay a
+  // flat color matched to the texture's own tone (BOX_NEVER_SEEN_COLOR),
+  // same convention as street.js's building bodyColor.
+  const boxTopMat = tiledLengthMaterial(PLATFORM_BOX_TEXTURE, PLATFORM_WIDTH, PLATFORM_DECK_LENGTH);
+  const boxSideMat = tiledSideMaterial(PLATFORM_BOX_TEXTURE, PLATFORM_HEIGHT, PLATFORM_DECK_LENGTH);
+  const boxNeverSeenMat = new THREE.MeshBasicMaterial({ color: BOX_NEVER_SEEN_COLOR });
   const box = new THREE.Mesh(
     new THREE.BoxGeometry(PLATFORM_WIDTH, PLATFORM_HEIGHT, PLATFORM_DECK_LENGTH),
-    new THREE.MeshBasicMaterial({ color: 0xf2f2f2 }),
+    [boxSideMat, boxSideMat, boxTopMat, boxNeverSeenMat, boxNeverSeenMat, boxNeverSeenMat],
   );
   box.position.set(0, PLATFORM_HEIGHT / 2, deckStartCursor + PLATFORM_DECK_LENGTH / 2);
   group.add(box);
@@ -166,6 +253,12 @@ function createSlot(scene) {
     type: 'ramp',
     lane: 1,
     entryStartZ: 0, // where the object/ramp begins (0 height here)
+    // deckStartZ..deckEndZ is the ONLY z-range on a platform slot that any
+    // future entity-placement logic (enemies, pickups, obstacles) may ever
+    // spawn something into -- direct feedback's rule: nothing gets placed
+    // on a ramp (entryStartZ..deckStartZ, or deckEndZ..exitEndZ on the exit
+    // side), only on the flat box/deck itself. Ramps are a climbing
+    // transition, not stable stand-ground.
     deckStartZ: 0, // where the flat top begins (full height from here on)
     deckEndZ: 0, // where the flat top ends
     exitEndZ: 0, // ramp-type: where the exit wedge finishes descending to 0; kill-type: === deckEndZ (still a hard step, entities/player.js's gravity handles that fall)

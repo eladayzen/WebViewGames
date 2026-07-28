@@ -15,9 +15,11 @@
 // Real 3D mesh geometry (see entities/platform.js), not billboard sprites --
 // direct feedback: needs to read correctly (vertical wall vs ramp incline)
 // from any viewing angle, which a camera-facing sprite structurally can't
-// do. Blank/plain-white (box) / black (kill barrier) / blue (ramp)
-// placeholder material for now; real illustrated PNGs (matching this game's
-// other sprites) are the next pass once the shapes themselves read right.
+// do. Box (crate wood) and ramp (hazard-striped diamond plate) now carry
+// real Kolbo-illustrated art (data/envArt.js's PLATFORM_BOX_TEXTURE/
+// PLATFORM_RAMP_TEXTURE) -- the kill barrier is still its flat black
+// placeholder, unchanged, since it's disabled (PLATFORM_KILL_TYPE_ENABLED)
+// and out of scope for this pass.
 
 export const PLATFORM_ENABLED = true;
 

@@ -30,6 +30,29 @@ function envTexture(file, w, h) {
 // duplicated per-theme.
 export const BARRICADE_TEXTURE = envTexture('barricade.png', 640, 585);
 
+// Per-lane elevated platform art (entities/platform.js) -- the box (walkable
+// deck) and ramp (incline) are gameplay props like BARRICADE_TEXTURE above,
+// not environment reskins, so they're shared across every theme too. First
+// real Kolbo art pass, replacing the flat placeholder colors (blue ramp,
+// near-white box). Two deliberate, distinct material families so the two
+// stay tellable-apart at a glance the way the old blue-vs-white split was:
+// a warm dark-brown weathered wood shipping crate for the box, a dark metal
+// diamond-plate ramp with orange/black hazard stripes for the ramp. Both
+// biased hard toward warm/dark/saturated tones on purpose -- street.js's fog
+// (0x9fd2ec) and scene.background (0x8fc7e8) are both a pale, cool sky-blue,
+// and platforms spawn far enough out (SPAWN_Z=-140) to already be
+// substantially fogged; a pale or cool-toned texture would blend into that
+// fog/sky and only "pop in" late, which is exactly what direct feedback
+// flagged against the old placeholder colors. Both PNGs are plain repeating
+// swatches (no isolated-subject/white-background cutout needed -- these are
+// tiled straight onto the mesh, see entities/platform.js's tiledLengthMaterial/
+// tiledSideMaterial) -- verified locally to tile seamlessly along their own
+// vertical axis before saving (the horizontal-plank / horizontal-stripe
+// motifs both repeat cleanly; an earlier diagonal-stripe ramp attempt was
+// discarded for showing a visible phase-mismatch seam when tiled).
+export const PLATFORM_BOX_TEXTURE = envTexture('platform_box.png', 640, 640);
+export const PLATFORM_RAMP_TEXTURE = envTexture('platform_ramp.png', 480, 640);
+
 // Foot Soldier -- new "bump-to-kill" enemy entity type (direct feedback's
 // addition, not in the original build doc): a Foot Clan grunt standing in a
 // lane, scrolled toward the camera like an obstacle, but dissolves into a
