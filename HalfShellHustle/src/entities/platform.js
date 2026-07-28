@@ -26,6 +26,7 @@ import {
 } from '../data/constants.js';
 import { PLATFORM_HEIGHT, PLATFORM_RAMP_LENGTH, PLATFORM_DECK_LENGTH } from '../data/platformSequence.js';
 import { PLATFORM_BOX_TEXTURE, PLATFORM_RAMP_TEXTURE } from '../data/envArt.js';
+import { PLATFORM_RAMP_EXCLUSION_BUFFER } from '../data/spawnConfig.js';
 import { getTexture } from './textureLoader.js';
 
 const POOL_SIZE = 6;
@@ -352,6 +353,33 @@ function findSlotAt(field, lane, z) {
 export function isRampSupported(field, lane, z) {
   const slot = findSlotAt(field, lane, z);
   return !!slot && slot.type === 'ramp';
+}
+
+// Direct feedback: obstacles/enemies must never spawn overlapping an active
+// platform's RAMP section (entry OR exit) in the same lane -- being forced
+// to climb/descend a ramp while also having to dodge/kill something
+// positioned on top of an incline doesn't work, visually or as a fair
+// dodge. entities/obstacles.js and entities/enemy.js call this at their own
+// spawn time to pick a lane that's actually clear (or skip the spawn
+// attempt entirely if every lane is blocked) -- same "checked once at
+// spawn time, holds for the entity's whole lifetime" reasoning as
+// MIN_ENEMY_OBSTACLE_GAP_SEC (data/spawnConfig.js): every active entity
+// scrolls at the same FORWARD_SPEED, so once the later-spawning one's
+// relative gap is clear here, it never changes.
+//
+// PLATFORM_RAMP_EXCLUSION_BUFFER (data/spawnConfig.js) pads both ends of
+// the ramp span beyond its own length, so there's real dodge room, not a
+// razor-thin gap at the ramp's actual edge. Only checks 'ramp'-type slots
+// (kill-type has no ramp span at all -- entryStartZ === deckStartZ).
+export function isRampZoneBlocked(field, lane, z) {
+  for (const slot of field.pool) {
+    if (!slot.active || slot.lane !== lane || slot.type !== 'ramp') continue;
+    if (z >= slot.entryStartZ - PLATFORM_RAMP_EXCLUSION_BUFFER
+      && z <= slot.deckStartZ + PLATFORM_RAMP_EXCLUSION_BUFFER) return true;
+    if (z >= slot.deckEndZ - PLATFORM_RAMP_EXCLUSION_BUFFER
+      && z <= slot.exitEndZ + PLATFORM_RAMP_EXCLUSION_BUFFER) return true;
+  }
+  return false;
 }
 
 // The object's actual physical height at (lane, z), ignoring any player

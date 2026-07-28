@@ -14,8 +14,8 @@
 import { LANE_X } from './constants.js';
 
 // Toggle the whole onboarding wall on/off -- ON by default. Off falls back
-// to the old plain delayed-spawn behavior (constants.js's
-// FIRST_SPAWN_DELAY_SEC / ENEMY_FIRST_SPAWN_DELAY_SEC).
+// to the old plain delayed-spawn behavior (data/spawnConfig.js's
+// OBSTACLE_FIRST_SPAWN_DELAY_SEC / ENEMY_FIRST_SPAWN_DELAY_SEC).
 export const INTRO_WALL_ENABLED = true;
 
 // One enemy per lane -- tied to the actual lane count so it can never spawn

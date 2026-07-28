@@ -22,6 +22,7 @@ import {
 import { getTexture } from './textureLoader.js';
 import { getShadowTexture } from './contactShadow.js';
 import { ENEMY_TYPES } from '../data/enemyTypes.js';
+import { isRampZoneBlocked } from './platform.js';
 
 // TEMPORARY demo bump (direct feedback: "twice as much enemies", plus
 // data/introSequence.js's 3-wide wall needs at least LANE_X.length free
@@ -97,17 +98,36 @@ function spawnOfType(slot, lane, typeKey, z) {
 
 const ENEMY_TYPE_KEYS = Object.keys(ENEMY_TYPES);
 
+// Random lane among those NOT overlapping an active platform's ramp zone at
+// this z (entities/platform.js's isRampZoneBlocked) -- null if every lane
+// is currently blocked. Same reasoning/pairing as entities/obstacles.js's
+// resolveOpenLane: forced onto a ramp, an enemy would be an unfair/glitchy
+// "bump into me while also climbing" situation.
+function resolveOpenLane(platformField, z) {
+  const open = [];
+  for (let lane = 0; lane < LANE_X.length; lane++) {
+    if (!isRampZoneBlocked(platformField, lane, z)) open.push(lane);
+  }
+  if (open.length === 0) return null;
+  return open[Math.floor(Math.random() * open.length)];
+}
+
 // Spawns one enemy. `typeKey` forces a specific type (data/enemyTypes.js);
 // omitted, it picks randomly among all of them -- direct feedback: seeing
 // the weapon/stance/color variety is the point, not always the same type.
-// `lane`/`z` default to random/SPAWN_Z (normal gameplay spawning) but can be
-// forced explicitly -- data/introSequence.js's start-of-run wall needs one
-// enemy in EVERY lane at the same close z, not the usual random placement.
-export function spawnEnemy(field, typeKey = null, lane = null, z = SPAWN_Z) {
+// `z` defaults to SPAWN_Z (normal gameplay spawning) but can be overridden.
+// `lane` defaults to a random ramp-clear pick (skips the spawn entirely if
+// every lane is currently blocked, same as entities/obstacles.js) but can
+// be forced explicitly -- data/introSequence.js's start-of-run wall needs
+// one enemy in EVERY lane at the same close z regardless of any platform
+// (there's never one active that early), so an explicit `lane` bypasses the
+// ramp check entirely, same as it always bypassed the random pick.
+export function spawnEnemy(field, platformField, typeKey = null, lane = null, z = SPAWN_Z) {
   const slot = field.pool.find((s) => !s.active);
   if (!slot) return;
+  const resolvedLane = lane !== null ? lane : resolveOpenLane(platformField, z);
+  if (resolvedLane === null) return;
   const key = typeKey || ENEMY_TYPE_KEYS[Math.floor(Math.random() * ENEMY_TYPE_KEYS.length)];
-  const resolvedLane = lane !== null ? lane : Math.floor(Math.random() * LANE_X.length);
   spawnOfType(slot, resolvedLane, key, z);
 }
 

@@ -35,25 +35,13 @@ export const PLATFORM_RAMP_LENGTH = 10;
 // than one dominant full-street structure.
 export const PLATFORM_DECK_LENGTH = 30;
 
-// Spawn pacing -- own timer, like every other spawner in this game. Lane is
-// picked at random per spawn (entities/platform.js's spawnPlatform).
-// First delay pulled in from 10 -> 7 (direct feedback: platforms should
-// also be something to engage with soon after run start, same as the
-// intro wall and the obstacle/enemy ramp-up window -- data/
-// introSequence.js's INTRO_RAMP_UP_DURATION_SEC/INTRO_RAMP_UP_SPAWN_Z cover
-// the close-spawn half of that, this just makes sure the first attempt
-// actually falls inside that window instead of firing after it's closed).
-export const PLATFORM_FIRST_DELAY_SEC = 7;
-export const PLATFORM_INTERVAL_SEC = 6;
-
-// Type mix -- direct feedback's "switch," since the kill-type's jump is
-// harder to time on a lean-board than a swipe and should stay a rare spice,
-// not the main way up. Off falls back to every spawn being a ramp.
-// DISABLED until further notice (direct feedback, trying an all-ramp pass:
-// every box gets a ramp on both sides instead) -- PLATFORM_KILL_TYPE_CHANCE
-// is left as-is, just inert while this is false.
-export const PLATFORM_KILL_TYPE_ENABLED = false;
-export const PLATFORM_KILL_TYPE_CHANCE = 0.35;
+// Spawn pacing (first delay, interval, kill-type mix chance) and the
+// entities/obstacles.js|enemy.js ramp-exclusion buffer all moved to
+// data/spawnConfig.js -- the single place for every spawn-frequency knob
+// in the game. Lane is still picked at random per spawn
+// (entities/platform.js's spawnPlatform); PLATFORM_HEIGHT/RAMP_LENGTH/
+// DECK_LENGTH/FALL_GRAVITY below are shape/physics, not frequency, so they
+// stay here next to the geometry/collision code that uses them.
 
 // Falling off a platform edge (walking off the end, or stepping sideways
 // into a lower/empty lane) -- direct feedback: this used to be a smoothstep

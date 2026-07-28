@@ -31,18 +31,18 @@ import { pollLaneStep, pollJumpPress } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import {
   LANE_X, FORWARD_SPEED, ASPECT_W, ASPECT_H, CAMERA_FOV,
-  FIRST_SPAWN_DELAY_SEC, ENEMY_FIRST_SPAWN_DELAY_SEC, ENEMY_SPAWN_INTERVAL_SEC,
-  MIN_ENEMY_OBSTACLE_GAP_SEC,
 } from '../data/constants.js';
 import {
   INTRO_WALL_ENABLED, INTRO_WALL_ENEMY_COUNT, INTRO_WALL_SPAWN_Z,
   INTRO_NORMAL_ENEMY_DELAY_SEC, INTRO_OBSTACLE_DELAY_SEC,
   INTRO_RAMP_UP_DURATION_SEC, INTRO_RAMP_UP_SPAWN_Z,
 } from '../data/introSequence.js';
+import { PLATFORM_ENABLED } from '../data/platformSequence.js';
 import {
-  PLATFORM_ENABLED, PLATFORM_FIRST_DELAY_SEC, PLATFORM_INTERVAL_SEC,
+  OBSTACLE_FIRST_SPAWN_DELAY_SEC, ENEMY_FIRST_SPAWN_DELAY_SEC, ENEMY_SPAWN_INTERVAL_SEC,
+  MIN_ENEMY_OBSTACLE_GAP_SEC, PLATFORM_FIRST_SPAWN_DELAY_SEC, PLATFORM_SPAWN_INTERVAL_SEC,
   PLATFORM_KILL_TYPE_ENABLED, PLATFORM_KILL_TYPE_CHANCE,
-} from '../data/platformSequence.js';
+} from '../data/spawnConfig.js';
 import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
 import {
   ParticlePool, spawnDustPuff, spawnEnemyPoof, createSpeedStreaks, updateSpeedStreaks,
@@ -90,7 +90,7 @@ function boot() {
   // (a black barrier: jump it or it's a hit, same as a barricade) or
   // 'ramp' (automatic, forced, no way through it except up).
   const platformField = createPlatformField(scene);
-  const platformSpawnerState = createSpawnerState(PLATFORM_FIRST_DELAY_SEC);
+  const platformSpawnerState = createSpawnerState(PLATFORM_FIRST_SPAWN_DELAY_SEC);
 
   const cameraRig = createCameraRig(camera);
   const gs = createGameState();
@@ -134,7 +134,7 @@ function boot() {
     resetObstaclePool(obstacleField);
     resetEnemyPool(enemyField);
     resetPlatformField(platformField);
-    resetSpawner(platformSpawnerState, PLATFORM_FIRST_DELAY_SEC);
+    resetSpawner(platformSpawnerState, PLATFORM_FIRST_SPAWN_DELAY_SEC);
     gameTime = 0;
     lastObstacleSpawnTime = -Infinity;
     lastEnemySpawnTime = -Infinity;
@@ -144,14 +144,14 @@ function boot() {
       // fast -- an unmissable first teaching moment ("killing these is
       // safe/good") instead of several seconds of nothing happening.
       for (let lane = 0; lane < INTRO_WALL_ENEMY_COUNT; lane++) {
-        spawnEnemy(enemyField, null, lane, INTRO_WALL_SPAWN_Z);
+        spawnEnemy(enemyField, platformField, null, lane, INTRO_WALL_SPAWN_Z);
       }
       lastEnemySpawnTime = gameTime;
       resetSpawner(enemySpawnerState, INTRO_NORMAL_ENEMY_DELAY_SEC);
       resetSpawner(spawnerState, INTRO_OBSTACLE_DELAY_SEC);
     } else {
       resetSpawner(enemySpawnerState, ENEMY_FIRST_SPAWN_DELAY_SEC);
-      resetSpawner(spawnerState, FIRST_SPAWN_DELAY_SEC);
+      resetSpawner(spawnerState, OBSTACLE_FIRST_SPAWN_DELAY_SEC);
     }
 
     distance = 0;
@@ -301,7 +301,10 @@ function boot() {
           // data/introSequence.js: spawn close instead of at the far
           // SPAWN_Z while the pipeline is still filling, so the run-start
           // stretch doesn't sit empty for one full ~9s far-travel time.
-          spawnObstacle(obstacleField, null, gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined);
+          spawnObstacle(
+            obstacleField, platformField, null,
+            gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined,
+          );
           lastObstacleSpawnTime = gameTime;
         }
       });
@@ -327,7 +330,10 @@ function boot() {
       updateSpawner(enemySpawnerState, dt, () => {
         if (gameTime - lastObstacleSpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
           // Same ramp-up close-spawn treatment as the obstacle spawner above.
-          spawnEnemy(enemyField, null, null, gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined);
+          spawnEnemy(
+            enemyField, platformField, null, null,
+            gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined,
+          );
           lastEnemySpawnTime = gameTime;
         }
       }, ENEMY_SPAWN_INTERVAL_SEC);
@@ -357,7 +363,7 @@ function boot() {
             platformField, type, null,
             gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined,
           );
-        }, PLATFORM_INTERVAL_SEC);
+        }, PLATFORM_SPAWN_INTERVAL_SEC);
       }
       updatePlatformField(platformField, dt, FORWARD_SPEED);
     }

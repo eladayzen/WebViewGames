@@ -24,14 +24,16 @@
 import * as THREE from 'three';
 import { LANE_X, SPAWN_Z, DESPAWN_Z } from '../data/constants.js';
 import { getTexture } from './textureLoader.js';
-import { OBSTACLE_TYPES, LOW_OBSTACLE_ENABLED, LOW_OBSTACLE_SPAWN_CHANCE } from '../data/obstacleTypes.js';
+import { OBSTACLE_TYPES } from '../data/obstacleTypes.js';
+import { LOW_OBSTACLE_ENABLED, LOW_OBSTACLE_SPAWN_CHANCE } from '../data/spawnConfig.js';
+import { isRampZoneBlocked } from './platform.js';
 
 // Sized with headroom above the theoretical concurrent-obstacle count
-// ((DESPAWN_Z - SPAWN_Z) / FORWARD_SPEED / SPAWN_INTERVAL_SEC ~= 6 at the
-// current SPAWN_INTERVAL_SEC=1.6) so a spawn is never silently dropped for
-// lack of a free pooled slot. Bumped from 7 alongside the SPAWN_INTERVAL_SEC
-// difficulty increase, same reasoning entities/enemy.js's own POOL_SIZE
-// bump used.
+// ((DESPAWN_Z - SPAWN_Z) / FORWARD_SPEED / OBSTACLE_SPAWN_INTERVAL_SEC ~= 6
+// at the current OBSTACLE_SPAWN_INTERVAL_SEC=1.6, data/spawnConfig.js) so a
+// spawn is never silently dropped for lack of a free pooled slot. Bumped
+// from 7 alongside that difficulty increase, same reasoning entities/
+// enemy.js's own POOL_SIZE bump used.
 const POOL_SIZE = 10;
 
 function createSlot(scene) {
@@ -92,22 +94,39 @@ function spawnOfType(slot, lane, typeKey, z) {
 
 function resolveRandomType() {
   if (!LOW_OBSTACLE_ENABLED) return 'medium';
-  // Weighted, not uniform -- see data/obstacleTypes.js's
+  // Weighted, not uniform -- see data/spawnConfig.js's
   // LOW_OBSTACLE_SPAWN_CHANCE (a difficulty knob, not just variety).
   return Math.random() < LOW_OBSTACLE_SPAWN_CHANCE ? 'low' : 'medium';
 }
 
-// Spawns exactly one obstacle in a random lane. `typeKey` forces a specific
-// type (data/obstacleTypes.js); omitted, it picks randomly (weighted). `z`
-// defaults to the far SPAWN_Z (normal gameplay spawning) but can be
-// overridden -- data/introSequence.js's run-start ramp-up window needs
-// obstacles to spawn closer than usual so they don't take their full ~9s
-// travel time to arrive while the spawn pipeline is still empty.
-export function spawnObstacle(field, typeKey = null, z = SPAWN_Z) {
+// Picks a random lane among those NOT overlapping an active platform's ramp
+// zone at this z (entities/platform.js's isRampZoneBlocked) -- null if
+// every lane is currently blocked, telling the caller to skip this spawn
+// attempt entirely rather than force an obstacle onto a ramp.
+function resolveOpenLane(platformField, z) {
+  const open = [];
+  for (let lane = 0; lane < LANE_X.length; lane++) {
+    if (!isRampZoneBlocked(platformField, lane, z)) open.push(lane);
+  }
+  if (open.length === 0) return null;
+  return open[Math.floor(Math.random() * open.length)];
+}
+
+// Spawns exactly one obstacle in a random (ramp-clear) lane. `typeKey`
+// forces a specific type (data/obstacleTypes.js); omitted, it picks
+// randomly (weighted). `z` defaults to the far SPAWN_Z (normal gameplay
+// spawning) but can be overridden -- data/introSequence.js's run-start
+// ramp-up window needs obstacles to spawn closer than usual so they don't
+// take their full ~9s travel time to arrive while the spawn pipeline is
+// still empty. Silently skips (no free lane, or no free pool slot) rather
+// than forcing a spawn -- the spawner's own timer just tries again next
+// interval, same as data/spawnConfig.js's MIN_ENEMY_OBSTACLE_GAP_SEC skip.
+export function spawnObstacle(field, platformField, typeKey = null, z = SPAWN_Z) {
   const slot = field.pool.find((s) => !s.active);
   if (!slot) return;
+  const lane = resolveOpenLane(platformField, z);
+  if (lane === null) return;
   const key = typeKey || resolveRandomType();
-  const lane = Math.floor(Math.random() * LANE_X.length);
   spawnOfType(slot, lane, key, z);
 }
 
