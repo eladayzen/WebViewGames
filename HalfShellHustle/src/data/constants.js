@@ -32,7 +32,15 @@ export const LANE_RESPONSE = 10; // exponential lane-follow rate
 export const JUMP_RISE_DURATION = 0.28; // seconds, ground -> peak
 export const JUMP_HOLD_DURATION = 0.22; // seconds, flat at JUMP_HEIGHT -- the hover
 export const JUMP_FALL_DURATION = 0.28; // seconds, peak -> ground
-export const JUMP_HEIGHT = 2.0;
+// Raised from 2.0 per direct feedback, specifically so a jump can now also
+// clear data/obstacleTypes.js's 'medium' (the original barricade, ~2.4
+// tall) -- see that file's jumpClearHeight for the margin math. Does NOT
+// let a jump grant platform elevation via a mid-air lane-switch:
+// isPlatformLaneBlocked (entities/platform.js) is only ever compared
+// against player.elevationY, never player.airHeight -- the two are fully
+// decoupled by construction, so this number has zero effect on that check
+// no matter how high it goes.
+export const JUMP_HEIGHT = 2.4;
 
 // --- Obstacle spawn/scroll/recycle (§5.3, §9.3 -- reusing CarRacer/src/
 // traffic.js's pool/spawn/recycle pattern) ---

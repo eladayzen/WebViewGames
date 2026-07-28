@@ -2,15 +2,15 @@
 // project's data/enemyTypes.js convention: entities/obstacles.js reads
 // everything about a spawned obstacle's look/size/jump-clearance from here.
 //
-// 'medium' is the original, unchanged barricade -- unjumpable by design
-// (its ~2.4-unit height exceeds JUMP_HEIGHT's 2.0-unit peak, so it never
-// fit under the jump even now that jump timing is load-bearing for entities/
-// platform.js's kill barriers). 'low' is new: a shorter, jumpable hazard --
-// real Kolbo art not done yet, so it uses this repo's plain-flat-color
-// placeholder convention (entities/platform.js's ramp/kill-barrier/box).
-// Still a billboard THREE.Sprite like every other obstacle, unlike
-// platform.js's real 3D geometry -- that needed to read from every camera
-// angle (a climbable structure); obstacles don't.
+// 'medium' is the original barricade -- visuals/size unchanged, but now
+// jumpable too (direct feedback, once JUMP_HEIGHT was raised to 2.4
+// specifically for this) with a tighter margin than 'low', since it's the
+// taller/harder one. 'low' is shorter and easier -- real Kolbo art not done
+// yet, so it uses this repo's plain-flat-color placeholder convention
+// (entities/platform.js's ramp/kill-barrier/box). Still a billboard
+// THREE.Sprite like every other obstacle, unlike platform.js's real 3D
+// geometry -- that needed to read from every camera angle (a climbable
+// structure); obstacles don't.
 
 import { LANE_WIDTH } from './constants.js';
 import { BARRICADE_TEXTURE } from './envArt.js';
@@ -18,21 +18,25 @@ import { BARRICADE_TEXTURE } from './envArt.js';
 const OBSTACLE_WIDTH = LANE_WIDTH * 0.82; // shared lane-fit ratio, both types
 
 export const OBSTACLE_TYPES = {
+  // jumpClearHeight = 2.0: entities/collision.js's checkObstacleHit fires
+  // for a continuous ~0.19s window (2 * OBSTACLE_COLLISION_HALF_Z /
+  // FORWARD_SPEED) as this passes the player, and player.airHeight must
+  // stay >= this for the whole window. With entities/player.js's rise/hold/
+  // fall arc (JUMP_HEIGHT 2.4), airHeight stays >= 2.0 for a continuous
+  // ~0.45s stretch spanning the hold -- ~2.4x the required window, tighter
+  // than 'low' on purpose (the taller/harder one) but still forgiving of a
+  // roughly-timed jump, not frame-perfect.
   medium: {
     texture: BARRICADE_TEXTURE,
     color: null,
     width: OBSTACLE_WIDTH,
     height: OBSTACLE_WIDTH * BARRICADE_TEXTURE.aspect, // ~2.4, unchanged
-    jumpable: false,
-    jumpClearHeight: Infinity, // never read (jumpable is false), kept for shape-consistency with 'low'
+    jumpable: true,
+    jumpClearHeight: 2.0,
   },
-  // jumpClearHeight = 1.5: entities/collision.js's checkObstacleHit fires
-  // for a continuous ~0.19s window (2 * OBSTACLE_COLLISION_HALF_Z /
-  // FORWARD_SPEED) as this passes the player, and player.airHeight must
-  // stay >= this for the whole window. With entities/player.js's rise/hold/
-  // fall arc (JUMP_HEIGHT 2.0), airHeight stays >= 1.5 for a continuous
-  // ~0.50s stretch spanning the hold -- ~2.7x the required window, so a
-  // reasonably-timed jump (not frame-perfect) clears it reliably.
+  // jumpClearHeight = 1.5: same window math as medium above, but against
+  // JUMP_HEIGHT=2.4 this holds for a continuous ~0.56s stretch -- ~3x the
+  // required window, deliberately more forgiving than medium.
   low: {
     texture: null,
     color: 0x53c26b, // placeholder flat color -- no real art yet
