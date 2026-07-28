@@ -232,3 +232,89 @@ export const ATTACK_SEQUENCES = ATTACK_SEQUENCE_DEFS.map((def) => {
     })),
   };
 });
+
+// --- Jump frame (art only -- not wired into core/main.js's frame-debug
+// HUD; entities/player.js reads PLAYER_JUMP_FRAMES[PLAYER_JUMP_FRAMES.length
+// - 1], so this single-entry array is picked up automatically). The game
+// code was simplified to no longer need a 3-frame launch/ascent/peak
+// progression -- direct feedback: just ONE static pose, held for the
+// ENTIRE jump (rise, hold, and fall alike), not just peak hang-time. So
+// PLAYER_JUMP_FRAMES shrank from 3 entries to 1. This section's history
+// below (three prior passes) is kept for lineage/context even though only
+// the final pose ships now.
+//
+// PASS 1 (3-frame launch/mid-ascent/peak progression, symmetric forward-V
+// blade grip): one-lineage seeded from leo_run_1.png (primary, camera
+// angle/build/style) + leo_lunge_1.png (secondary, "blades held forward"
+// grip concept only) via a 2x2-grid generate_image_edit
+// (gpt-image/1.5-image-to-image). First attempt merged both blades into
+// one hand (other arm missing); one follow-up edit restored a second
+// visible arm/hand. Shipped as art/originals/leo_jump_grid.png.
+//
+// PASS 2 (BLADE-ORIENTATION FIX): direct feedback rejected the symmetric
+// forward-V as reading like a jumping-jack/balance pose, not an attack.
+// Pushed blades forward/down and roughly parallel instead -- adapting
+// leo_lunge_1.png's forward-parallel grip. Overwrote the same
+// leo_jump_grid.png (two chained edits, same merged-hand bug hit and
+// fixed again).
+//
+// PASS 3 (this one -- single held pose, NEW composite lineage, not another
+// edit off leo_jump_grid.png): direct feedback gave much more specific
+// correction after PASS 2 drifted the camera into a 3/4 angle with blades
+// swept to one side and symmetric hanging legs -- all rejected. Rather than
+// editing the increasingly-drifted grid lineage again, this pose was
+// generated fresh from TWO existing shipped run-cycle/attack frames as dual
+// source_images (gpt-image/1.5-image-to-image, per KOLBO_ASSET_PIPELINE.md's
+// guidance for a meaningful pose change):
+//   - leo_run_0.png (knee-drive-right) as the PRIMARY reference, called out
+//     explicitly as the literal source of truth for BOTH the camera angle
+//     (straight-on back view, shell flat-on, no rotation -- the #1 thing
+//     the prior pass got wrong) AND the leg pose (one knee driven up,
+//     trailing leg extended low -- an asymmetric jump-appropriate leg
+//     silhouette that already existed in the run cycle, not reinvented).
+//   - leo_lunge_1.png (peak lunge) as a SECONDARY reference for the
+//     "blades held close together near the body" grip idea only --
+//     explicitly prompted to ignore its horizontal dive body angle.
+// Generated 3 candidates in one call (not committing to the first result,
+// per this pass's own risk of repeating the camera-angle drift) and
+// visually checked each against leo_run_0.png's body/shell angle before
+// picking one. Two of the three drifted the sword-cross up above/behind
+// the head (arms spread wide, closer to the rejected "swept to one side"
+// failure mode); the third had the swords crossed close to the body but
+// too high, near the neck rather than the chest. ONE follow-up
+// generate_image_edit, chained off that third candidate (not back off the
+// original dual-reference call), asked only to lower the arm/blade-cross
+// point down to chest height while explicitly preserving the camera angle
+// and leg pose -- landed the final pose: swords crossed in an X directly
+// in front of his chest, forearms/grips tucked close to and overlapping
+// his own torso silhouette, only the blade tips extending past his
+// shoulders (not the full blade length out in open space).
+//
+// FIXED CANVAS, matching PLAYER_FRAME_ASPECT exactly (not a new constant):
+// background-keyed locally the same way as KOLBO_ASSET_PIPELINE.md's
+// white-key cutout (near-white threshold 245, feather from 225), cropped to
+// its own alpha bbox (only one frame this time -- no sibling frames to keep
+// canvas-aligned against, so a per-frame bbox crop doesn't reopen the
+// run-cycle's multi-frame centroid-drift bug), then scaled by a single
+// factor to a content height of 695px -- chosen to match leo_run_0.png's
+// own alpha-bbox content height (728-33=695) so the character reads at the
+// same on-screen scale as the run cycle -- and placed onto a fresh 800x760
+// canvas with its bbox horizontally centered on the canvas's horizontal
+// center (x=400, the same convention the prior jump-frame pass used) and a
+// 33px top margin (matching leo_run_0.png's own top margin). The result is
+// visibly narrower than leo_run_0.png's bbox (blades point up/in rather
+// than out to the sides) -- expected and correct, not a bug: it's the
+// direct visual signature of "tucked in close to the body" instead of the
+// old wide flying-V silhouette.
+//
+// Archived: art/originals/leo_jump_pose_source.png (the raw chosen
+// generation before local background-key/scale/placement). The old
+// leo_jump_grid.png (PASS 1/2 lineage) was deleted, not kept, along with
+// the discarded PASS-3 candidates that didn't make the cut -- this file's
+// existing convention of not keeping superseded iterations. art/final/
+// mirrors what shipped to src/assets/.
+export const PLAYER_JUMP_FRAMES = [
+  { file: 'leo_jump_0.png' }, // single held pose -- launch, hold, AND descent
+].map(({ file }) => ({
+  url: new URL(`../assets/${file}`, import.meta.url).href,
+}));

@@ -91,7 +91,11 @@ export const PLATFORM_KILL_TYPE_CHANCE = 0.35;
 // beyond its own length, so there's real space to react/dodge around the
 // whole platform, not a razor-thin gap right at its edge -- see
 // entities/platform.js's isPlatformFootprintBlocked for how it's applied.
-export const PLATFORM_FOOTPRINT_EXCLUSION_BUFFER = 5; // world units, each side
+// Raised from 5 per direct feedback -- still "a bit difficult" to get onto
+// a ramp when an obstacle landed close by in the same lane just ahead of
+// it; 10 (~0.625s reaction room at FORWARD_SPEED=16) roughly matches
+// MIN_ENEMY_OBSTACLE_GAP_SEC's own reaction-time scale above.
+export const PLATFORM_FOOTPRINT_EXCLUSION_BUFFER = 10; // world units, each side
 
 // --- Enemies on platform decks (entities/enemy.js's spawnEnemy, entities/
 // platform.js's findDeckPlacements) -- direct feedback: enemies should
