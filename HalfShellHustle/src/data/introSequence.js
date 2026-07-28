@@ -38,3 +38,15 @@ export const INTRO_NORMAL_ENEMY_DELAY_SEC = 2;
 // hazard shows up, so the wall's lesson lands before it's complicated by
 // anything dangerous. 4 -> 6 per direct feedback.
 export const INTRO_OBSTACLE_DELAY_SEC = 6;
+
+// Direct feedback: even with the wall itself arriving fast, everything
+// AFTER it (normal-paced enemies/obstacles) was still spawning at the far
+// SPAWN_Z (-140) -- so the wall cleared in ~2s, then the player waited
+// another 5-10s for the first normal spawn to finish that ~9s trip in,
+// since nothing else was yet in flight to fill the gap. During this
+// window (measured from run start), obstacle/enemy spawns use
+// RAMP_UP_SPAWN_Z instead of the normal far SPAWN_Z -- same spawn timers/
+// cadence as always, just close enough to arrive quickly, so the pipe
+// fills immediately instead of sitting empty for one full far-travel time.
+export const INTRO_RAMP_UP_DURATION_SEC = 12;
+export const INTRO_RAMP_UP_SPAWN_Z = -50; // ~3.1s to arrive at FORWARD_SPEED=16, vs SPAWN_Z's ~8.75s

@@ -16,8 +16,8 @@ import {
 import {
   LANE_X, CENTER_LANE, LANE_RESPONSE, JUMP_DURATION, JUMP_HEIGHT, PLAYER_Z,
 } from '../data/constants.js';
-import { getPlayerElevationAt } from './platform.js';
-import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
+import { getPlayerElevationAt, isRampSupported } from './platform.js';
+import { PLATFORM_HEIGHT, PLATFORM_FALL_GRAVITY } from '../data/platformSequence.js';
 
 // Preload every attack sequence's textures up front, at module load, rather
 // than lazily on first use. The spin (startPlayerAttack below) is a real-
@@ -84,6 +84,7 @@ export function createPlayer() {
     frameTimer: 0,
     jumpElapsed: null, // null = grounded
     elevationY: 0, // current entities/platform.js height offset, read by street/camera-rig.js
+    elevationVelocity: 0, // world units/sec, only used while gravity-falling (negative)
     attacking: false,
     attackSequence: null,
     attackFrameIndex: 0,
@@ -99,6 +100,7 @@ export function resetPlayer(player) {
   player.frameTimer = 0;
   player.jumpElapsed = null;
   player.elevationY = 0;
+  player.elevationVelocity = 0;
   player.attacking = false;
   player.attackSequence = null;
   player.attackFrameIndex = 0;
@@ -145,11 +147,39 @@ export function getPlayerHeadAnchor(player) {
 }
 
 export function updatePlayer(player, dt, platformField) {
-  // entities/platform.js's height system: the player's own elevation (not
-  // necessarily the same as the world/deck height at this z -- see that
-  // file's comment on getPlayerElevationAt vs getWorldElevationAt, the
-  // divergence being a skipped jump-type platform entry).
-  player.elevationY = getPlayerElevationAt(platformField, PLAYER_Z) * PLATFORM_HEIGHT;
+  // entities/platform.js's per-lane height system: `target` is where he
+  // SHOULD be right now, ignoring momentum -- either mid-scripted-climb
+  // (rising smoothly toward a ramp/wall's top, see getPlayerElevationAt)
+  // or the flat height of whatever he's standing on (which steps straight
+  // to 0 once he's past a platform's end or been blocked into a lane with
+  // nothing there).
+  //
+  // Rising toward `target` is always a direct, scripted assignment --
+  // climbing a ramp/wall is meant to read as a controlled, eased motion,
+  // not physics. Direct feedback is what falling toward it should be:
+  // dropping below `target` (walked off an edge, fell through a blocked
+  // lane-switch) now integrates real gravity over TIME instead of the
+  // smoothstep-over-distance ease it used to be, which read as an elevator
+  // ride down rather than a fall.
+  const target = getPlayerElevationAt(
+    platformField, player.laneIndex, player.sprite.position.z, player.jumpElapsed !== null,
+  ) * PLATFORM_HEIGHT;
+  // Direct/scripted whenever rising OR riding a ramp-type's own surface
+  // (entry wedge, deck, or its now-mirrored exit wedge) -- a ramp's descent
+  // is a controlled climb-down, not a fall. Real gravity only kicks in when
+  // truly unsupported: stepped off the side into an empty/lower lane, or
+  // past a kill-type's deckEndZ (no exit ramp there).
+  if (target >= player.elevationY || isRampSupported(platformField, player.laneIndex, player.sprite.position.z)) {
+    player.elevationY = target;
+    player.elevationVelocity = 0;
+  } else {
+    player.elevationVelocity -= PLATFORM_FALL_GRAVITY * dt;
+    player.elevationY += player.elevationVelocity * dt;
+    if (player.elevationY <= target) {
+      player.elevationY = target;
+      player.elevationVelocity = 0;
+    }
+  }
 
   const targetX = LANE_X[player.targetLane];
   const prevX = player.laneX;

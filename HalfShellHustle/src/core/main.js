@@ -9,7 +9,8 @@ import '../style.css';
 import { createStreet, updateStreet } from '../street/street.js';
 import { createCameraRig, updateCameraRig } from '../street/camera-rig.js';
 import {
-  createPlayer, resetPlayer, setPlayerLane, startPlayerJump, startPlayerAttack, updatePlayer, getPlayerHeadAnchor,
+  createPlayer, resetPlayer, setPlayerLane, startPlayerJump, startPlayerAttack, updatePlayer,
+  getPlayerHeadAnchor,
 } from '../entities/player.js';
 import { createRibbon, resetRibbon, updateRibbon } from '../entities/ribbon.js';
 import {
@@ -21,7 +22,8 @@ import {
   createEnemyPool, resetEnemyPool, spawnEnemy, updateEnemyPool, checkEnemyHit, killEnemy,
 } from '../entities/enemy.js';
 import {
-  createPlatformField, resetPlatformField, spawnPlatform, updatePlatformField, triggerPlatformJump,
+  createPlatformField, resetPlatformField, spawnPlatform, updatePlatformField,
+  checkPlatformKillBarrierHit, getPlayerElevationAt, isPlatformLaneBlocked,
 } from '../entities/platform.js';
 import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
@@ -35,10 +37,11 @@ import {
 import {
   INTRO_WALL_ENABLED, INTRO_WALL_ENEMY_COUNT, INTRO_WALL_SPAWN_Z,
   INTRO_NORMAL_ENEMY_DELAY_SEC, INTRO_OBSTACLE_DELAY_SEC,
+  INTRO_RAMP_UP_DURATION_SEC, INTRO_RAMP_UP_SPAWN_Z,
 } from '../data/introSequence.js';
 import {
   PLATFORM_ENABLED, PLATFORM_FIRST_DELAY_SEC, PLATFORM_INTERVAL_SEC,
-  PLATFORM_JUMP_ENTRY_ENABLED, PLATFORM_JUMP_ENTRY_CHANCE,
+  PLATFORM_KILL_TYPE_ENABLED, PLATFORM_KILL_TYPE_CHANCE,
 } from '../data/platformSequence.js';
 import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
 import {
@@ -82,9 +85,10 @@ function boot() {
   const enemyField = createEnemyPool(scene);
   const enemySpawnerState = createSpawnerState(ENEMY_FIRST_SPAWN_DELAY_SEC);
 
-  // Elevated "platform stretch" height system (direct feedback's addition,
-  // data/platformSequence.js). Own spawner/timer again, same pattern as the
-  // obstacle/enemy spawners.
+  // Per-lane elevated platform (direct feedback's height system, data/
+  // platformSequence.js): a solid, collidable object per lane -- 'kill'
+  // (a black barrier: jump it or it's a hit, same as a barricade) or
+  // 'ramp' (automatic, forced, no way through it except up).
   const platformField = createPlatformField(scene);
   const platformSpawnerState = createSpawnerState(PLATFORM_FIRST_DELAY_SEC);
 
@@ -229,16 +233,27 @@ function boot() {
       const step = pollLaneStep();
       if (step !== 0) {
         const nextLane = THREE.MathUtils.clamp(player.targetLane + step, 0, LANE_X.length - 1);
-        setPlayerLane(player, nextLane);
+        // Direct feedback: switching into a lane with an active platform
+        // taller than his current elevation used to just teleport him on
+        // top of it -- an unearned climb, not a step/hop. Refused outright
+        // here rather than ending the run, since "blocked, not allowed to
+        // go" (his own words) is a softer, less punishing read than a hit;
+        // walking across two adjacent same-height decks stays allowed (the
+        // height gap there is ~0, under isPlatformLaneBlocked's threshold),
+        // and stepping into a LOWER/empty lane is still free -- that's the
+        // legitimate "fall off the edge" case, handled by updatePlayer's
+        // gravity once he's there.
+        if (!isPlatformLaneBlocked(platformField, nextLane, player.sprite.position.z, player.elevationY)) {
+          setPlayerLane(player, nextLane);
+        }
       }
       if (pollJumpPress()) {
-        // data/platformSequence.js's jump-trigger platform entries reuse
-        // this same press -- a no-op unless PLAYER_Z currently falls inside
-        // an active, un-triggered jump-type entry's window (see
-        // entities/platform.js's triggerPlatformJump). The normal hop arc
-        // still fires either way, so a successful trigger reads as
-        // "jumping up onto the platform," not a silent teleport.
-        triggerPlatformJump(platformField, player.sprite.position.z);
+        // Plain physical hop, nothing platform-specific about the press
+        // itself -- direct feedback: no separate trigger mechanic. Whether
+        // it clears a kill barrier is purely a function of being airborne
+        // (jumpElapsed !== null) at the moment of contact, read directly by
+        // entities/player.js's updatePlayer and checkPlatformKillBarrierHit
+        // below.
         startPlayerJump(player);
       }
       updatePlayer(player, dt, platformField);
@@ -283,17 +298,27 @@ function boot() {
       // either way, it just tries again next interval.
       updateSpawner(spawnerState, dt, () => {
         if (gameTime - lastEnemySpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
-          spawnObstacle(obstacleField);
+          // data/introSequence.js: spawn close instead of at the far
+          // SPAWN_Z while the pipeline is still filling, so the run-start
+          // stretch doesn't sit empty for one full ~9s far-travel time.
+          spawnObstacle(obstacleField, gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined);
           lastObstacleSpawnTime = gameTime;
         }
       });
-      updateObstaclePool(obstacleField, dt, FORWARD_SPEED, platformField);
+      updateObstaclePool(obstacleField, dt, FORWARD_SPEED);
 
       for (const slot of obstacleField.pool) {
-        if (checkObstacleHit(player, slot, platformField)) {
+        if (checkObstacleHit(player, slot)) {
           endRun();
           break;
         }
+      }
+
+      // Kill-barrier platform, missed -- same consequence as an obstacle
+      // hit (entities/platform.js's checkPlatformKillBarrierHit is a plain
+      // physical jump-or-die check: grounded at contact -> dead).
+      if (checkPlatformKillBarrierHit(player, platformField, player.jumpElapsed === null)) {
+        endRun();
       }
 
       // Foot Soldier: opposite of an obstacle hit -- contact KILLS the
@@ -301,12 +326,13 @@ function boot() {
       // instead of ending the run.
       updateSpawner(enemySpawnerState, dt, () => {
         if (gameTime - lastObstacleSpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
-          spawnEnemy(enemyField);
+          // Same ramp-up close-spawn treatment as the obstacle spawner above.
+          spawnEnemy(enemyField, null, null, gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined);
           lastEnemySpawnTime = gameTime;
         }
       }, ENEMY_SPAWN_INTERVAL_SEC);
-      updateEnemyPool(enemyField, dt, FORWARD_SPEED, platformField);
-      const hitEnemy = checkEnemyHit(player, enemyField, platformField);
+      updateEnemyPool(enemyField, dt, FORWARD_SPEED);
+      const hitEnemy = checkEnemyHit(player, enemyField);
       if (hitEnemy) {
         spawnEnemyPoof(
           enemyPoofPool,
@@ -323,10 +349,14 @@ function boot() {
 
       if (PLATFORM_ENABLED) {
         updateSpawner(platformSpawnerState, dt, () => {
-          const type = PLATFORM_JUMP_ENTRY_ENABLED && Math.random() < PLATFORM_JUMP_ENTRY_CHANCE
-            ? 'jump'
+          const type = PLATFORM_KILL_TYPE_ENABLED && Math.random() < PLATFORM_KILL_TYPE_CHANCE
+            ? 'kill'
             : 'ramp';
-          spawnPlatform(platformField, type);
+          // Same ramp-up close-spawn treatment as obstacles/enemies above.
+          spawnPlatform(
+            platformField, type, null,
+            gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined,
+          );
         }, PLATFORM_INTERVAL_SEC);
       }
       updatePlatformField(platformField, dt, FORWARD_SPEED);
@@ -337,6 +367,17 @@ function boot() {
     // elevationY rides up with the player on an elevated platform stretch
     // (entities/platform.js) so the camera keeps the same relative framing.
     updateCameraRig(cameraRig, player.laneX, player.elevationY);
+
+    // TEMPORARY debug readout (index.html's #elevation-debug) -- live
+    // numbers, kept from the earlier diagnosis pass. Display-only, no
+    // gameplay effect.
+    hud.updateElevationDebug(
+      `lane ${player.laneIndex}  elevY ${player.elevationY.toFixed(2)}  fallV ${player.elevationVelocity.toFixed(2)}\n`
+      + `sprite.y ${player.sprite.position.y.toFixed(2)}  scale ${player.sprite.scale.x.toFixed(2)}x${player.sprite.scale.y.toFixed(2)}\n`
+      + `camera.y ${camera.position.y.toFixed(2)}  camera.z ${camera.position.z.toFixed(2)}\n`
+      + `jump ${player.jumpElapsed === null ? 'no' : player.jumpElapsed.toFixed(2)}  playerElev ${getPlayerElevationAt(platformField, player.laneIndex, player.sprite.position.z, player.jumpElapsed !== null).toFixed(2)}`,
+    );
+
     renderer.render(scene, camera);
   }
 

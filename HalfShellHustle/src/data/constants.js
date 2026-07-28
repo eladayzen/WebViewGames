@@ -21,11 +21,13 @@ export const FORWARD_SPEED = 16; // world units/sec
 
 // --- Player lane easing + jump arc (§5.2) ---
 export const LANE_RESPONSE = 10; // exponential lane-follow rate
-// Jump is back per direct feedback (no obstacle currently requires it --
-// it's just an available move again; a jump-specific pose/animation is a
-// deliberately deferred follow-up).
-export const JUMP_DURATION = 0.5; // seconds, full rise+fall
-export const JUMP_HEIGHT = 1.6;
+// Jump is back per direct feedback -- and now load-bearing again: clearing
+// entities/platform.js's kill-barrier type depends on actually being
+// airborne (jumpElapsed !== null) at contact, a purely physical timing
+// check, no separate trigger mechanic. Sized up from 0.5s/1.6 (direct
+// feedback: "a bit higher and a bit longer") once that became true.
+export const JUMP_DURATION = 0.65; // seconds, full rise+fall
+export const JUMP_HEIGHT = 2.0;
 
 // --- Obstacle spawn/scroll/recycle (§5.3, §9.3 -- reusing CarRacer/src/
 // traffic.js's pool/spawn/recycle pattern) ---

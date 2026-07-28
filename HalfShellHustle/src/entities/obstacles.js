@@ -15,8 +15,6 @@ import * as THREE from 'three';
 import { LANE_X, LANE_WIDTH, SPAWN_Z, DESPAWN_Z } from '../data/constants.js';
 import { getTexture } from './textureLoader.js';
 import { BARRICADE_TEXTURE } from '../data/envArt.js';
-import { getWorldElevationAt } from './platform.js';
-import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
 
 // Sized with headroom above the theoretical concurrent-obstacle count
 // ((DESPAWN_Z - SPAWN_Z) / FORWARD_SPEED / SPAWN_INTERVAL_SEC ~= 5) so a
@@ -56,30 +54,30 @@ export function resetObstaclePool(field) {
   }
 }
 
-function spawnBarricade(slot, lane) {
+function spawnBarricade(slot, lane, z) {
   slot.active = true;
   slot.lane = lane;
-  slot.z = SPAWN_Z;
-  slot.sprite.position.set(LANE_X[lane], BARRICADE_Y, SPAWN_Z);
+  slot.z = z;
+  slot.sprite.position.set(LANE_X[lane], BARRICADE_Y, z);
   slot.sprite.visible = true;
 }
 
-// Spawns exactly one barricade in a random lane.
-export function spawnObstacle(field) {
+// Spawns exactly one barricade in a random lane. `z` defaults to the far
+// SPAWN_Z (normal gameplay spawning) but can be overridden --
+// data/introSequence.js's run-start ramp-up window needs obstacles to spawn
+// closer than usual so they don't take their full ~9s travel time to
+// arrive while the spawn pipeline is still empty.
+export function spawnObstacle(field, z = SPAWN_Z) {
   const slot = field.pool.find((s) => !s.active);
   if (!slot) return;
-  spawnBarricade(slot, Math.floor(Math.random() * LANE_X.length));
+  spawnBarricade(slot, Math.floor(Math.random() * LANE_X.length), z);
 }
 
-export function updateObstaclePool(field, dt, speed, platformField) {
+export function updateObstaclePool(field, dt, speed) {
   for (const slot of field.pool) {
     if (!slot.active) continue;
     slot.z += speed * dt;
     slot.sprite.position.z = slot.z;
-    // Rides entities/platform.js's deck height at this obstacle's own z --
-    // a barricade spawned during an elevated stretch sits on the deck, not
-    // floating at street height.
-    slot.sprite.position.y = BARRICADE_Y + getWorldElevationAt(platformField, slot.z) * PLATFORM_HEIGHT;
 
     if (slot.z > DESPAWN_Z) {
       slot.active = false;
