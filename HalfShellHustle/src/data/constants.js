@@ -21,12 +21,17 @@ export const FORWARD_SPEED = 16; // world units/sec
 
 // --- Player lane easing + jump arc (§5.2) ---
 export const LANE_RESPONSE = 10; // exponential lane-follow rate
-// Jump is back per direct feedback -- and now load-bearing again: clearing
-// entities/platform.js's kill-barrier type depends on actually being
-// airborne (jumpElapsed !== null) at contact, a purely physical timing
-// check, no separate trigger mechanic. Sized up from 0.5s/1.6 (direct
-// feedback: "a bit higher and a bit longer") once that became true.
-export const JUMP_DURATION = 0.65; // seconds, full rise+fall
+// Jump is back per direct feedback -- and load-bearing: clearing entities/
+// platform.js's kill-barrier type depends on being airborne at contact, and
+// entities/obstacles.js's 'low' type depends on being HIGH ENOUGH at
+// contact (see data/obstacleTypes.js). Reshaped from one symmetric sine arc
+// into 3 phases -- eased rise, flat hold at JUMP_HEIGHT, eased fall (direct
+// feedback: "I will stay a little bit more near the maximum point before I
+// start falling down") -- so there's a real hover window, not just a
+// momentary peak. Total airtime nudged up too ("a bit longer").
+export const JUMP_RISE_DURATION = 0.28; // seconds, ground -> peak
+export const JUMP_HOLD_DURATION = 0.22; // seconds, flat at JUMP_HEIGHT -- the hover
+export const JUMP_FALL_DURATION = 0.28; // seconds, peak -> ground
 export const JUMP_HEIGHT = 2.0;
 
 // --- Obstacle spawn/scroll/recycle (§5.3, §9.3 -- reusing CarRacer/src/
@@ -35,7 +40,14 @@ export const JUMP_HEIGHT = 2.0;
 export const SPAWN_Z = -140; // where new obstacles appear
 export const DESPAWN_Z = 12; // behind camera, safe to recycle
 export const FIRST_SPAWN_DELAY_SEC = 3; // grace period to read the scene before the first obstacle
-export const SPAWN_INTERVAL_SEC = 3.4; // fixed gap between spawns -- no ramp at POC (§2, §5.4 is MVP-only)
+// Main obstacle-density/difficulty knob (both entities/obstacles.js types,
+// medium AND low, spawn off this one timer -- data/obstacleTypes.js's
+// LOW_OBSTACLE_SPAWN_CHANCE only controls the MIX between them, not the
+// overall rate). Direct feedback: "much more" -- dropped from the original
+// 3.4 to a real density increase. Still subject to
+// MIN_ENEMY_OBSTACLE_GAP_SEC below, so the effective average interval is a
+// bit higher than this in practice.
+export const SPAWN_INTERVAL_SEC = 1.6;
 
 // --- Foot Soldier enemy spawn (entities/enemy.js) -- a new "bump-to-kill"
 // entity type, not in the original build doc. Own pace/offset from the

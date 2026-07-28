@@ -6,7 +6,7 @@
 // impact rather than a static disc.
 
 import * as THREE from 'three';
-import { JUMP_DURATION } from '../data/constants.js';
+import { JUMP_HEIGHT } from '../data/constants.js';
 
 function createShadowTexture() {
   const canvas = document.createElement('canvas');
@@ -66,11 +66,11 @@ export function updateContactShadow(shadow, player, dt) {
 
   shadow.pulse = Math.max(0, shadow.pulse - PULSE_DECAY * dt);
 
-  let airT = 0;
-  if (player.jumpElapsed !== null) {
-    const t = Math.min(player.jumpElapsed / JUMP_DURATION, 1);
-    airT = Math.sin(Math.PI * t); // 0 grounded -> 1 apex -> 0 grounded, mirrors the jump arc
-  }
+  // 0 grounded -> 1 through the jump's hold phase -> 0 grounded, mirrors
+  // entities/player.js's actual arc height directly (rather than
+  // re-deriving a second copy of the arc math) -- also correctly holds the
+  // shrink/fade for the whole hover, not just a one-frame peak.
+  const airT = player.airHeight / JUMP_HEIGHT;
 
   const scale = (1 - airT * AIRBORNE_SHRINK) * (1 + shadow.pulse * PULSE_SCALE);
   mesh.scale.set(scale, scale, 1);

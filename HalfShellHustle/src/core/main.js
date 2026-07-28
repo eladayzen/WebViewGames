@@ -301,7 +301,7 @@ function boot() {
           // data/introSequence.js: spawn close instead of at the far
           // SPAWN_Z while the pipeline is still filling, so the run-start
           // stretch doesn't sit empty for one full ~9s far-travel time.
-          spawnObstacle(obstacleField, gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined);
+          spawnObstacle(obstacleField, null, gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined);
           lastObstacleSpawnTime = gameTime;
         }
       });

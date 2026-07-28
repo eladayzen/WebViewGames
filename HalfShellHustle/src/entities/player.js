@@ -14,7 +14,8 @@ import {
   PLAYER_RUN_FRAMES, PLAYER_FRAME_ASPECT, RUN_FRAME_DURATION, ATTACK_SEQUENCES,
 } from '../data/playerSprite.js';
 import {
-  LANE_X, CENTER_LANE, LANE_RESPONSE, JUMP_DURATION, JUMP_HEIGHT, PLAYER_Z,
+  LANE_X, CENTER_LANE, LANE_RESPONSE, JUMP_RISE_DURATION, JUMP_HOLD_DURATION, JUMP_FALL_DURATION, JUMP_HEIGHT,
+  PLAYER_Z,
 } from '../data/constants.js';
 import { getPlayerElevationAt, isRampSupported } from './platform.js';
 import { PLATFORM_HEIGHT, PLATFORM_FALL_GRAVITY } from '../data/platformSequence.js';
@@ -45,6 +46,24 @@ const SPRITE_WIDTH = 2.4 * PLAYER_SCALE;
 const SPRITE_HEIGHT = SPRITE_WIDTH * PLAYER_FRAME_ASPECT;
 const GROUND_Y = SPRITE_HEIGHT / 2;
 const LEAN_MAX = 0.22; // radians, cosmetic billboard roll while lane-shifting
+
+const JUMP_TOTAL_DURATION = JUMP_RISE_DURATION + JUMP_HOLD_DURATION + JUMP_FALL_DURATION;
+
+// Ease-out quad rise (fast liftoff, decelerating into the hold), flat hold
+// at JUMP_HEIGHT, ease-in quad fall (accelerating back down, gravity-like).
+// Both eased segments meet the hold at zero vertical velocity, so the whole
+// arc is one continuous, non-jerky motion despite being 3 piecewise
+// segments. Read every frame by entities/collision.js (via player.airHeight
+// below) to decide whether a jumpable obstacle got cleared.
+function jumpArcHeight(elapsed) {
+  if (elapsed < JUMP_RISE_DURATION) {
+    const u = elapsed / JUMP_RISE_DURATION;
+    return JUMP_HEIGHT * (1 - (1 - u) * (1 - u));
+  }
+  if (elapsed < JUMP_RISE_DURATION + JUMP_HOLD_DURATION) return JUMP_HEIGHT;
+  const u = Math.min((elapsed - JUMP_RISE_DURATION - JUMP_HOLD_DURATION) / JUMP_FALL_DURATION, 1);
+  return JUMP_HEIGHT * (1 - u * u);
+}
 
 // Procedural bob (direct feedback: the discrete 4-sprite swap alone felt
 // jumpy -- "animate on twos" was the ask). First pass was a continuous
@@ -83,6 +102,7 @@ export function createPlayer() {
     frameIndex: 0,
     frameTimer: 0,
     jumpElapsed: null, // null = grounded
+    airHeight: 0, // current jump-arc height above ground (world units), independent of elevationY -- 0 when not jumping, read by entities/collision.js for jump-clearable obstacles
     elevationY: 0, // current entities/platform.js height offset, read by street/camera-rig.js
     elevationVelocity: 0, // world units/sec, only used while gravity-falling (negative)
     attacking: false,
@@ -99,6 +119,7 @@ export function resetPlayer(player) {
   player.frameIndex = 0;
   player.frameTimer = 0;
   player.jumpElapsed = null;
+  player.airHeight = 0;
   player.elevationY = 0;
   player.elevationVelocity = 0;
   player.attacking = false;
@@ -231,16 +252,19 @@ export function updatePlayer(player, dt, platformField) {
 
   if (player.jumpElapsed !== null) {
     player.jumpElapsed += dt;
-    const t = Math.min(player.jumpElapsed / JUMP_DURATION, 1);
-    const arc = Math.sin(Math.PI * t);
-    player.sprite.position.y = GROUND_Y + player.elevationY + arc * JUMP_HEIGHT;
-    if (t >= 1) {
+    if (player.jumpElapsed >= JUMP_TOTAL_DURATION) {
       player.jumpElapsed = null;
+      player.airHeight = 0;
       player.sprite.position.y = GROUND_Y + player.elevationY;
+    } else {
+      player.airHeight = jumpArcHeight(player.jumpElapsed);
+      player.sprite.position.y = GROUND_Y + player.elevationY + player.airHeight;
     }
   } else if (player.attacking) {
+    player.airHeight = 0;
     player.sprite.position.y = GROUND_Y + player.elevationY;
   } else {
+    player.airHeight = 0;
     player.sprite.position.y = GROUND_Y + player.elevationY + PLAYER_RUN_FRAMES[player.frameIndex].yOffset;
   }
 }

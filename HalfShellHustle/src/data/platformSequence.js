@@ -58,6 +58,7 @@ export const PLATFORM_KILL_TYPE_CHANCE = 0.35;
 // eased over distance, which read as a translate/elevator-ride down, not a
 // fall. Real gravity now (entities/player.js integrates this over TIME, not
 // distance): a fall from the full PLATFORM_HEIGHT takes ~0.6s to land,
-// matching JUMP_DURATION's (0.5s) order of magnitude so the two motions
-// feel like they belong to the same character.
+// matching the jump's own ~0.78s total airtime (constants.js's
+// JUMP_RISE_DURATION/JUMP_HOLD_DURATION/JUMP_FALL_DURATION) in order of
+// magnitude so the two motions feel like they belong to the same character.
 export const PLATFORM_FALL_GRAVITY = 20; // world units/sec^2
