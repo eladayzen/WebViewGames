@@ -87,8 +87,6 @@ export function createUI() {
   // "N/8" count below. Color-coded via --box-color.
   const boxIconUrl = new URL('../assets/pizza_box.png', import.meta.url).href;
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const RING_R = 47;
-  const RING_C = 2 * Math.PI * RING_R; // circumference in the 100-unit viewBox
   el.boxTray = document.getElementById('box-tray');
   el.boxChips = {};
   for (const c of BOX_COLORS) {
@@ -109,35 +107,38 @@ export function createUI() {
     fillImg.alt = '';
     fillImg.style.setProperty('--fill', '0');
 
-    const svg = document.createElementNS(SVGNS, 'svg'); // depleting timer ring
+    // Rounded-square outer shape: a low-opacity black background (bg+track
+    // rect) with the depleting timer as a stroke around its perimeter (arc
+    // rect, pathLength-normalized to 100 so the offset math is perimeter-
+    // independent).
+    const svg = document.createElementNS(SVGNS, 'svg');
     svg.setAttribute('viewBox', '0 0 100 100');
     svg.classList.add('box-ring');
-    const track = document.createElementNS(SVGNS, 'circle');
-    track.setAttribute('cx', '50');
-    track.setAttribute('cy', '50');
-    track.setAttribute('r', String(RING_R));
-    track.classList.add('ring-track');
-    const arc = document.createElementNS(SVGNS, 'circle');
-    arc.setAttribute('cx', '50');
-    arc.setAttribute('cy', '50');
-    arc.setAttribute('r', String(RING_R));
+    const RECT = { x: '5', y: '5', width: '90', height: '90', rx: '20', ry: '20' };
+    const bg = document.createElementNS(SVGNS, 'rect');
+    for (const k in RECT) bg.setAttribute(k, RECT[k]);
+    bg.classList.add('ring-bg');
+    const arc = document.createElementNS(SVGNS, 'rect');
+    for (const k in RECT) arc.setAttribute(k, RECT[k]);
     arc.classList.add('ring-arc');
-    arc.style.strokeDasharray = RING_C.toFixed(2);
+    arc.setAttribute('pathLength', '100');
+    arc.style.strokeDasharray = '100';
     arc.style.strokeDashoffset = '0';
-    svg.appendChild(track);
+    svg.appendChild(bg);
     svg.appendChild(arc);
 
-    graphic.appendChild(ghost);
-    graphic.appendChild(fillImg);
-    graphic.appendChild(svg);
-
-    const count = document.createElement('span');
+    const count = document.createElement('span'); // now INSIDE the square
     count.className = 'box-count';
 
+    // z-order: bg/ring behind, faded box, revealed box, count on top.
+    graphic.appendChild(svg);
+    graphic.appendChild(ghost);
+    graphic.appendChild(fillImg);
+    graphic.appendChild(count);
+
     chip.appendChild(graphic);
-    chip.appendChild(count);
     el.boxTray.appendChild(chip);
-    el.boxChips[c.id] = { chip, fillImg, arc, count, ringC: RING_C };
+    el.boxChips[c.id] = { chip, fillImg, arc, count };
   }
 
   // Box-completion celebration popup (see showBoxComplete). Icon is the same
@@ -201,9 +202,9 @@ export function createUI() {
           chip.count.textContent = `${b.progress}/${c.requiredCount}`;
           // radial reveal of the full box (0..1 of a full turn)
           chip.fillImg.style.setProperty('--fill', (b.progress / c.requiredCount).toFixed(3));
-          // timer ring depletes: dashoffset 0 (full) -> circumference (empty)
+          // timer stroke depletes around the rounded square (pathLength 100)
           const frac = Math.max(0, Math.min(1, b.timerRemaining / c.timerSec));
-          chip.arc.style.strokeDashoffset = (chip.ringC * (1 - frac)).toFixed(1);
+          chip.arc.style.strokeDashoffset = (100 * (1 - frac)).toFixed(1);
         } else {
           chip.chip.classList.add('hidden');
         }

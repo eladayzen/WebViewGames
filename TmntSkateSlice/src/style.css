@@ -166,11 +166,12 @@ html, body {
 }
 
 /* --- Pizza-box collection chips (redesign 2026-07-30) -- a LARGE vertical
-   stack on the left. Each chip: a big pizza-box graphic where a full-opacity
-   copy is revealed RADIALLY (conic mask) over a faded "empty" copy as slices
-   are caught, wrapped by a depleting timer STROKE RING, with the "N/8" count
-   below. Color-coded via --box-color set in ui.js. (Fixed px like the rest
-   of the HUD -- WebView-size scaling is a separate, deferred concern.) --- */
+   stack on the left. Outer shape is a rounded-SQUARE low-opacity black panel
+   whose perimeter STROKE is the depleting timer. Inside: a faded pizza-box
+   copy (70% opacity) with a full-opacity copy revealed RADIALLY (conic mask)
+   as slices are caught, plus the "N/8" count. Color-coded via --box-color
+   set in ui.js. (Fixed px like the rest of the HUD -- WebView-size scaling is
+   a separate, deferred concern.) --- */
 #box-tray {
   position: absolute;
   top: 150px;
@@ -184,7 +185,6 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
 }
 
 .box-chip.hidden {
@@ -197,19 +197,46 @@ html, body {
   height: 96px;
 }
 
+/* The rounded-square SVG: bg (black panel) + faint outline, and the
+   depleting timer arc, sit behind the box images. */
+.box-ring {
+  position: absolute;
+  inset: 0;
+  width: 96px;
+  height: 96px;
+  overflow: visible;
+}
+
+.ring-bg {
+  fill: rgba(0, 0, 0, 0.5);
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 3;
+}
+
+.ring-arc {
+  fill: none;
+  stroke: var(--box-color, #fff);
+  stroke-width: 5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.25s linear;
+  filter: drop-shadow(0 0 3px var(--box-color, #fff));
+}
+
 .box-ghost,
 .box-fill {
   position: absolute;
-  inset: 0;
-  width: 74px;
-  height: 74px;
-  margin: auto;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 64px;
+  height: 64px;
   object-fit: contain;
   pointer-events: none;
 }
 
 .box-ghost {
-  opacity: 0.25;
+  opacity: 0.7; /* faded "empty" box (per feedback -- was 0.25) */
+  filter: grayscale(0.5);
 }
 
 .box-fill {
@@ -221,37 +248,17 @@ html, body {
   filter: drop-shadow(0 0 5px var(--box-color, #fff));
 }
 
-.box-ring {
-  position: absolute;
-  inset: 0;
-  width: 96px;
-  height: 96px;
-  overflow: visible;
-}
-
-.ring-track {
-  fill: none;
-  stroke: rgba(0, 0, 0, 0.42);
-  stroke-width: 5;
-}
-
-.ring-arc {
-  fill: none;
-  stroke: var(--box-color, #fff);
-  stroke-width: 6;
-  stroke-linecap: round;
-  transform: rotate(-90deg);
-  transform-origin: 50% 50%;
-  transition: stroke-dashoffset 0.25s linear;
-  filter: drop-shadow(0 0 3px var(--box-color, #fff));
-}
-
+/* Count now INSIDE the square, bottom-center. */
 .box-count {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
   font-weight: 900;
   font-size: 16px;
   color: #fff;
   letter-spacing: 0.5px;
-  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.6);
+  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.7);
   paint-order: stroke fill;
   font-variant-numeric: tabular-nums;
 }
