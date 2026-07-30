@@ -7,15 +7,13 @@ dist-ssr/
 # Zip exports/backups — redundant with already-tracked source, not meant for git
 *.zip
 
-# Raw gameplay-reference videos dropped for the pipeline's video-analyst stage —
-# throwaway input material (already distilled into pipeline/reports/*.md), not
-# meant for git history. Some of these run into the hundreds of MB, which
-# GitHub hard-rejects outright above 100MB per file.
-pipeline/videos-inbox/**/*.mp4
-pipeline/videos-inbox/**/*.mov
-pipeline/videos-inbox/**/*.webm
-pipeline/videos-inbox/**/*.avi
-pipeline/videos-inbox/**/*.mkv
+# Raw gameplay-reference material dropped for the pipeline's video-analyst
+# stage — throwaway input (already distilled into pipeline/reports/*.md),
+# never meant for git history. Whole folder, not just video extensions
+# (some videos run into the hundreds of MB, which GitHub hard-rejects
+# outright above 100MB per file) -- notes/README files dropped in here are
+# working scratch too, not meant to be tracked.
+pipeline/videos-inbox/
 
 # Logs
 logs
