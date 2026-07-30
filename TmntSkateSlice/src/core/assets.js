@@ -72,10 +72,9 @@ export async function loadAssets() {
 // element -- see that file for why). Keys map 1:1 to the discrete game
 // events in core/main.js that trigger them.
 const AUDIO_MANIFEST = {
-  sfx_pizza_catch: new URL('../assets/audio/sfx_pizza_catch.mp3', import.meta.url).href,
+  sfx_pizza_splash: new URL('../assets/audio/sfx_pizza_splash.mp3', import.meta.url).href,
   sfx_ooze_catch: new URL('../assets/audio/sfx_ooze_catch.mp3', import.meta.url).href,
   sfx_bomb_hit: new URL('../assets/audio/sfx_bomb_hit.mp3', import.meta.url).href,
-  sfx_miss: new URL('../assets/audio/sfx_miss.mp3', import.meta.url).href,
   sfx_combo_up: new URL('../assets/audio/sfx_combo_up.mp3', import.meta.url).href,
   sfx_stage_advance: new URL('../assets/audio/sfx_stage_advance.mp3', import.meta.url).href,
   sfx_game_over: new URL('../assets/audio/sfx_game_over.mp3', import.meta.url).href,

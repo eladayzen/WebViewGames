@@ -119,7 +119,10 @@ async function boot() {
       const newMultiplier = registerPizzaHit(scoring);
       triggerSwing(player);
       spawnPizzaBreak(juice, item.xFrac, item.yFrac);
-      playSfx(audio, newMultiplier > prevMultiplier ? sfx.sfx_combo_up : sfx.sfx_pizza_catch);
+      // Small splash on EVERY pizza hit (plain or box-variant); the rising
+      // combo chime layers on top only when the multiplier ticks up.
+      playSfx(audio, sfx.sfx_pizza_splash);
+      if (newMultiplier > prevMultiplier) playSfx(audio, sfx.sfx_combo_up);
       // Box-colored slice: feed its collection box. registerBoxCatch resets
       // the box and returns its bonus/hex on the completing catch, else null.
       if (item.type.boxColor) {
@@ -195,8 +198,8 @@ async function boot() {
   // line without ever having been caught above -- the "missed" path (§8).
   function handleItemMissed(item) {
     if (item.type.kind === 'good') {
-      registerComboBreak(scoring); // missed pizza (§8)
-      playSfx(audio, sfx.sfx_miss);
+      registerComboBreak(scoring); // missed pizza (§8) -- no sound (removed the
+      // "disappointment" miss cue per feedback 2026-07-30); combo still breaks.
     }
     // missed ooze/bomb: no penalty, no combo effect (§5.4, §6)
   }
