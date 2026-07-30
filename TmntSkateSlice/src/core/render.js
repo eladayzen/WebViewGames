@@ -163,9 +163,9 @@ function drawItemFallback(ctx, x, y, size, type) {
   ctx.save();
   ctx.translate(x, y);
   if (type.id === 'pizza') {
-    // Box-color variants tint the crust by their color (fallback only --
-    // real sprites carry the color once loaded); plain pizza stays gold.
-    ctx.fillStyle = type.boxColor ? BOX_COLOR_BY_ID[type.boxColor].hex : '#e8b25c';
+    // All pizza (plain + box variants) uses the same gold slice here -- the
+    // box color is conveyed by the outer glow in drawItems, not the slice.
+    ctx.fillStyle = '#e8b25c';
     ctx.beginPath();
     ctx.moveTo(0, -size / 2);
     ctx.lineTo(size / 2, size / 2);
@@ -208,6 +208,29 @@ function drawItems(ctx, items, w, h, images) {
     if (item.resolved) continue;
     const x = px(item.xFrac, w);
     const y = px(item.yFrac, h);
+
+    // Colored outer glow for box-variant slices (every box EXCEPT 'regular')
+    // -- signals which collection box the slice feeds without recoloring the
+    // pizza itself (recolored art read poorly; feedback 2026-07-30). Cheap
+    // translucent concentric circles (deliberately NOT ctx.shadowBlur, per
+    // this build's perf history), drawn unrotated behind the tumbling slice.
+    const bc = item.type.boxColor;
+    if (bc && bc !== 'regular') {
+      const hex = BOX_COLOR_BY_ID[bc].hex;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = hex;
+      ctx.globalAlpha = 0.26;
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 0.74, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 0.56, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     const img = images[item.type.sprite];
     ctx.save();
     ctx.translate(x, y);

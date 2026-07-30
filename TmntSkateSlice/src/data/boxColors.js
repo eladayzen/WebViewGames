@@ -1,28 +1,32 @@
-// Pizza-box collection color variants (Part 1 of the progression update,
-// 2026-07-30). Each color is an independent "box" the player fills by
-// catching matching-color pizza slices before its timer runs out, for a
-// flat completion bonus. Data-only table (mirrors data/stages.js's
-// per-entity convention) so rarity/timing/value tuning is a data edit, not
-// a logic change -- the behavior lives in systems/boxes.js.
+// Pizza-box collection tracks (progression update, 2026-07-30; revised per
+// playtest feedback). Each box is filled by catching pizza slices "of" that
+// box and completed for a flat bonus before its timer runs out.
 //
-// Colors deliberately avoid green (reserved for the ooze power-up per
-// STYLE.md's semantic-color rule) and amber/yellow (bomb-only). Rarity and
-// bonus are graded so which color to chase is a real risk/reward call: blue
-// is the common/low-value box, red the rare/high-value one. requiredCount
-// is the same (8) for all three so the mental model ("I need 8") stays
-// simple; the tension is rarity + the timer, not a moving target.
+// REGULAR is the bread-and-butter box, filled by ordinary gold pizza (the
+// common drop) so the core catch loop is rewarding on its own. BLUE/PURPLE/
+// RED are rarer, higher-value variant boxes filled by the matching
+// glowing-slice variants (see render.js -- the variant slices are the SAME
+// pizza art with a colored outer glow, NOT recolored sprites). Colors avoid
+// green (ooze-reserved per STYLE.md) and amber/yellow (bomb-only).
 //
-// baseSpawnWeight = spawn chance while the box is INACTIVE (a deliberately
-// rare "opportunity" drop). activeSpawnWeight = the boosted chance while the
-// box is running, so committing to a box measurably improves the odds of
-// finishing it in time instead of being pure luck (see rollItemType in
-// data/itemTypes.js, which reads the live box state). All numbers are
-// first-pass/directional -- tune against real on-device feel.
+// Only the 3 colored variants spawn as distinct falling items, so only they
+// carry baseSpawnWeight/activeSpawnWeight (base = chance while the box is
+// inactive; active = boosted chance while it's running, so committing to a
+// box improves the odds of finishing in time -- see rollItemType). REGULAR
+// has no spawn weights: it's fed by plain pizza, which is the spawn
+// remainder. All numbers are first-pass/directional -- tune against feel.
 export const BOX_COLORS = [
+  {
+    id: 'regular',
+    label: 'Pizza',
+    hex: '#E8A23C',
+    requiredCount: 8,
+    timerSec: 30,
+    bonusScore: 100,
+  },
   {
     id: 'blue',
     label: 'Blue',
-    sprite: 'pizza_slice_blue',
     hex: '#3B8FE8',
     requiredCount: 8,
     timerSec: 30,
@@ -33,7 +37,6 @@ export const BOX_COLORS = [
   {
     id: 'purple',
     label: 'Purple',
-    sprite: 'pizza_slice_purple',
     hex: '#9B5DE5',
     requiredCount: 8,
     timerSec: 30,
@@ -44,7 +47,6 @@ export const BOX_COLORS = [
   {
     id: 'red',
     label: 'Red',
-    sprite: 'pizza_slice_red',
     hex: '#E5325B',
     requiredCount: 8,
     timerSec: 30,
@@ -53,5 +55,9 @@ export const BOX_COLORS = [
     activeSpawnWeight: 0.10,
   },
 ];
+
+// The subset that spawns as its own glowing pizza variant (blue/purple/red).
+// Regular is excluded -- it's fed by plain pizza (the spawn remainder).
+export const SPAWNABLE_BOX_COLORS = BOX_COLORS.filter((c) => c.baseSpawnWeight != null);
 
 export const BOX_COLOR_BY_ID = Object.fromEntries(BOX_COLORS.map((c) => [c.id, c]));

@@ -157,11 +157,12 @@ html, body {
 }
 
 /* --- Pizza-box collection chips (progression update) -- a horizontal row
-   below the ooze indicator, one compact chip per active color. Each chip is
-   tinted by its color via the --box-color custom property set in ui.js. --- */
+   below the ooze indicator, one compact chip per active box. Each chip: a
+   pizza-box icon + a count + a depleting timer bar, color-coded to the box
+   via the --box-color custom property set in ui.js. --- */
 #box-tray {
   position: absolute;
-  top: 148px;
+  top: 146px;
   left: 14px;
   display: flex;
   gap: 8px;
@@ -169,26 +170,38 @@ html, body {
 
 .box-chip {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  background: rgba(15, 15, 30, 0.6);
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 15, 30, 0.62);
   border: 2px solid var(--box-color, #fff);
-  border-radius: 8px;
-  padding: 3px 8px;
-  min-width: 48px;
+  border-radius: 9px;
+  padding: 4px 8px 4px 4px;
 }
 
 .box-chip.hidden {
   display: none;
 }
 
+.box-icon {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 4px var(--box-color, #fff));
+}
+
+.box-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 40px;
+}
+
 .box-count {
   font-weight: 900;
-  font-size: 16px;
+  font-size: 15px;
   color: #fff;
-  text-align: center;
   letter-spacing: 0.5px;
-  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.5);
+  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.55);
   paint-order: stroke fill;
   font-variant-numeric: tabular-nums;
 }

@@ -45,15 +45,26 @@ export function createUI() {
     el.livesTray.appendChild(icon);
   }
 
-  // Build one collection-box chip per color once (hidden until active),
-  // driven from data/boxColors.js so adding a color is a data change. Each
-  // chip: a count ("3/8") over a depleting timer bar, tinted by the color.
+  // Build one collection-box chip per box once (hidden until active), driven
+  // from data/boxColors.js so adding a box is a data change. Each chip shows
+  // a pizza-box icon + a count ("3/8") + a depleting timer bar, color-coded
+  // to the box via --box-color (feedback 2026-07-30: the box art makes it
+  // read as "filling a pizza box," not just a counter).
+  const boxIconUrl = new URL('../assets/pizza_box.png', import.meta.url).href;
   el.boxTray = document.getElementById('box-tray');
   el.boxChips = {};
   for (const c of BOX_COLORS) {
     const chip = document.createElement('div');
     chip.className = 'box-chip hidden';
     chip.style.setProperty('--box-color', c.hex);
+
+    const icon = document.createElement('img');
+    icon.className = 'box-icon';
+    icon.src = boxIconUrl;
+    icon.alt = '';
+
+    const body = document.createElement('div');
+    body.className = 'box-body';
     const count = document.createElement('span');
     count.className = 'box-count';
     const bar = document.createElement('div');
@@ -61,8 +72,11 @@ export function createUI() {
     const fill = document.createElement('div');
     fill.className = 'box-timer-fill';
     bar.appendChild(fill);
-    chip.appendChild(count);
-    chip.appendChild(bar);
+    body.appendChild(count);
+    body.appendChild(bar);
+
+    chip.appendChild(icon);
+    chip.appendChild(body);
     el.boxTray.appendChild(chip);
     el.boxChips[c.id] = { chip, count, fill };
   }
