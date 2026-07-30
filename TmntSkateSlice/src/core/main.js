@@ -42,7 +42,14 @@ import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash,
 import { createUI } from '../ui/ui.js';
 import { PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 
-const MAX_DT = 1 / 20; // clamp so a tab-resume/frame-hitch never simulates a huge leap
+// Clamp so a tab-resume/frame-hitch never simulates a huge leap. Raised
+// 1/20 -> 1/10 (2026-07-30): the old 1/20 meant any frame slower than 20fps
+// advanced only 1/20s of game time regardless of real elapsed -- i.e. the
+// game ran in SLOW MOTION below 20fps, the likely "super super slow" feel on
+// a lower-fps Android device. 1/10 keeps real-time down to 10fps while still
+// guarding against a multi-second resume leap. Pre-existing clamp, not a
+// this-session addition, but it's the actual low-fps slowdown mechanism.
+const MAX_DT = 1 / 10;
 
 async function boot() {
   const canvas = document.getElementById('renderCanvas');
