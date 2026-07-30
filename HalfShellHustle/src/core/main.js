@@ -39,9 +39,11 @@ import {
   createLivesState, resetLivesState, tryHit, isInvulnerable,
 } from '../systems/lives.js';
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
-import { pollLaneStep, pollJumpPress } from '../input/input.js';
+import {
+  updateSteering, pollLaneStep, getLaneTarget, pollJumpPress,
+} from '../input/input.js';
 import * as hud from '../ui/hud.js';
-import { initSensitivityControl } from '../ui/sensitivity.js';
+import { initSteeringPanel } from '../ui/steeringPanel.js';
 import {
   LANE_X, CENTER_LANE, ASPECT_W, ASPECT_H, CAMERA_FOV, LIVES_START,
 } from '../data/constants.js';
@@ -161,6 +163,10 @@ function boot() {
   // Seconds of red damage-flash left (see index.html's #damage-flash for why
   // this is a timer rather than a one-frame toggle).
   let damageFlashTimer = 0;
+  // See the blocked-lane branch in tick(): absolute steering retries a refused
+  // move every frame, so the lurch needs a floor on how often it can re-fire.
+  let blockedNudgeCooldown = 0;
+  const BLOCKED_NUDGE_REPEAT_SEC = 0.45;
   // Recomputed every frame from gameTime (systems/speed.js). Held here rather
   // than recomputed at each of the eight places that need it, so every pool
   // is provably scrolling at the same rate on any given frame.
@@ -234,6 +240,7 @@ function boot() {
     setPlayerVisible(player, true);
     setContactShadowVisible(contactShadow, true);
     damageFlashTimer = 0;
+    blockedNudgeCooldown = 0;
     damageFlashEl.style.opacity = '0';
     gameTime = 0;
     lastObstacleSpawnTime = -Infinity;
@@ -337,11 +344,11 @@ function boot() {
     hud.setPausedBadge(paused);
   });
 
-  // GoBalance board sensitivity (ui/sensitivity.js). Also re-sends the stored
-  // value to the Unity host right here at boot -- the host's threshold is a
-  // scene field that resets on every scene load, so a saved preference that
-  // isn't re-sent does nothing. No-op in a normal browser.
-  initSensitivityControl();
+  // Board steering panel (ui/steeringPanel.js): steering mode + every tilt
+  // threshold, tunable live. Also re-sends the stored host sensitivity at boot
+  // -- that threshold is a scene field which resets on every scene load, so a
+  // saved preference that isn't re-sent does nothing. No-op in a browser.
+  initSteeringPanel();
 
   // Heart tray built once from the CURRENT cap -- not from
   // LIVES_MAX_SUPPORTED, which is only a documented ceiling; a tray sized to
@@ -388,7 +395,22 @@ function boot() {
       // entities/platform.js and data/spawnConfig.js only hold because no
       // pool ever scrolls at its own rate.
       currentSpeed = speedAt(gameTime);
-      const step = pollLaneStep();
+      if (blockedNudgeCooldown > 0) blockedNudgeCooldown = Math.max(0, blockedNudgeCooldown - dt);
+      updateSteering();
+
+      // ABSOLUTE steering (input/input.js): the board reports a TARGET lane
+      // rather than a step, so close the gap one lane at a time. Stepping
+      // instead of jumping straight to the target is what keeps the
+      // platform-block check meaningful on every lane crossed -- a two-lane
+      // sweep with something parked in the middle lane correctly stops at the
+      // obstruction rather than teleporting past it. One step per frame is
+      // effectively instant to the eye anyway; the lane easing renders it as a
+      // single smooth sweep.
+      const laneTarget = getLaneTarget();
+      const step = laneTarget === null
+        ? pollLaneStep()
+        : Math.sign(laneTarget - player.targetLane);
+
       if (step !== 0) {
         const desiredLane = player.targetLane + step;
         // Off the edge of the road entirely -- no lane to move into. Do
@@ -409,8 +431,17 @@ function boot() {
           // gravity once he's there.
           if (isPlatformLaneBlocked(platformField, desiredLane, player.sprite.position.z, player.elevationY)) {
             // Refused by a platform/ramp -- lurch that way and spring back, so
-            // the press visibly registered rather than looking dropped.
-            triggerBlockedNudge(player, step);
+            // the input visibly registered rather than looking dropped.
+            //
+            // Rate-limited because absolute mode re-attempts the SAME move
+            // every frame for as long as the lean is held (which is the right
+            // behaviour -- it means you slot in automatically the moment the
+            // platform passes). Without this the lurch would re-trigger
+            // continuously and read as a vibration rather than a bump.
+            if (blockedNudgeCooldown <= 0) {
+              triggerBlockedNudge(player, step);
+              blockedNudgeCooldown = BLOCKED_NUDGE_REPEAT_SEC;
+            }
           } else {
             setPlayerLane(player, desiredLane);
           }

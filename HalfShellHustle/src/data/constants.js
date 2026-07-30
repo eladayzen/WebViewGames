@@ -63,6 +63,51 @@ export const MAGNET_EASE_RATE = 6;
 // --- Player lane easing + jump arc (§5.2) ---
 export const LANE_RESPONSE = 10; // exponential lane-follow rate
 
+// --- Board steering modes (input/input.js, tuned live via ui/steeringPanel.js) ---
+// Two ways to read the balance board, switchable at runtime so they can be
+// A/B'd on the actual hardware:
+//
+//   'stepped'  -- the SDK's own digital mode. Unity converts tilt into
+//                 synthetic ArrowLeft/Right presses and each press is ONE lane
+//                 step. Tilt is a GESTURE: to cross two lanes you tilt, return,
+//                 and tilt again. Needs forwardSteeringKeys = true on the scene.
+//
+//   'absolute' -- direct feedback's idea, and a much better fit for a 3-lane
+//                 game: the board's tilt range is split into three zones that
+//                 map ONE-TO-ONE onto the three lanes, so where you physically
+//                 stand IS your lane. Standing left targets lane 0 from
+//                 anywhere -- including crossing two lanes at once. Reads the
+//                 raw analog value (window.__gbSensor) instead of keys, so it
+//                 needs forwardSteeringKeys = FALSE on the scene.
+//
+// Default is 'stepped' deliberately: it works with the scene exactly as
+// shipped, so nothing regresses if the Inspector flag is never flipped.
+export const STEERING_STEPPED = 'stepped';
+export const STEERING_ABSOLUTE = 'absolute';
+export const STEERING_MODES = [STEERING_STEPPED, STEERING_ABSOLUTE];
+export const DEFAULT_STEERING_MODE = STEERING_STEPPED;
+
+// Zone edge: |tilt.x| past this leaves the centre lane's zone. 0.35 matches the
+// SDK's own pressThreshold, so 'absolute' starts out as responsive as
+// 'stepped' was.
+export const LANE_ZONE_THRESHOLD = 0.35;
+// Hysteresis on that edge -- you must come back this much INSIDE the boundary
+// before the zone flips back, which is what stops a lean parked right on a
+// threshold from flapping between two lanes. Same purpose as the SDK's
+// press/release gap (0.35/0.20, i.e. a 0.15 gap).
+export const LANE_ZONE_HYSTERESIS = 0.12;
+
+// Jump, in 'absolute' mode only. Board-jump normally arrives as a synthetic
+// ArrowUp, but forwardVerticalAxis is nested INSIDE forwardSteeringKeys in
+// WebGameController -- so the moment a scene goes analog for absolute
+// steering, ArrowUp stops being dispatched entirely and the game has to read
+// tilt.y itself. Higher than the lane threshold on purpose: forward/back is
+// the ergonomically harder axis on this board, so it wants a deliberate lean,
+// and a low threshold would fire jumps from the postural noise of a
+// left/right weight shift.
+export const JUMP_TILT_THRESHOLD = 0.45;
+export const JUMP_TILT_HYSTERESIS = 0.15;
+
 // --- Blocked-lane nudge (entities/player.js's triggerBlockedNudge) ---
 // Direct feedback: when a lane change is REFUSED because a platform/ramp is
 // in the way, the input currently vanishes silently and reads as the game
