@@ -262,6 +262,28 @@ export function spawnEnemyPoof(pool, x, y, z, width, height, colors) {
   });
 }
 
+// --- Coin collect sparkle ---------------------------------------------
+// Small bright outward twinkle on picking up a coin (entities/coins.js),
+// tinted to the collected coin's own type color (data/coinTypes.js) the same
+// way spawnEnemyPoof takes its colors from the killed enemy's type.
+//
+// Deliberately much smaller/shorter than the enemy poof: a row of coins is
+// collected in rapid succession (~0.16s apart), so this needs to read as a
+// quick per-coin spark rather than a burst that visually merges into one
+// cloud. Near-zero gravity keeps it feeling weightless/magical instead of
+// like kicked-up debris.
+//
+// Runs on its OWN ParticlePool, not the enemy-poof one -- ParticlePool fixes
+// point size and opacity per POOL (constructor args), not per spawn, so a
+// small bright spark is simply unreachable by tuning options on a pool built
+// for big soft smoke.
+export function spawnCoinSparkle(pool, x, y, z, color) {
+  pool.spawn(x, y, z, color, {
+    count: 12, speed: 2.8, life: 0.34, gravity: 0.5, spread: 0.12,
+    dirSpread: Math.PI, upBias: 0.7, warmup: 0,
+  });
+}
+
 // --- Speed lines -----------------------------------------------------
 // Thin bright streaks rushing past close to the player toward the camera,
 // giving the run more velocity/energy -- same near-camera speed-cue

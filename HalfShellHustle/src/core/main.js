@@ -25,6 +25,9 @@ import {
   createPlatformField, resetPlatformField, spawnPlatform, updatePlatformField,
   checkPlatformKillBarrierHit, isPlatformLaneBlocked,
 } from '../entities/platform.js';
+import {
+  createCoinPool, resetCoinPool, spawnCoinCluster, updateCoinPool, collectCoins, despawnCoin,
+} from '../entities/coins.js';
 import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
 import { pollLaneStep, pollJumpPress } from '../input/input.js';
@@ -42,10 +45,12 @@ import {
   OBSTACLE_FIRST_SPAWN_DELAY_SEC, ENEMY_FIRST_SPAWN_DELAY_SEC, ENEMY_SPAWN_INTERVAL_SEC,
   MIN_ENEMY_OBSTACLE_GAP_SEC, PLATFORM_FIRST_SPAWN_DELAY_SEC, PLATFORM_SPAWN_INTERVAL_SEC,
   PLATFORM_KILL_TYPE_ENABLED, PLATFORM_KILL_TYPE_CHANCE,
+  COIN_FIRST_SPAWN_DELAY_SEC, COIN_CLUSTER_SPAWN_INTERVAL_SEC,
 } from '../data/spawnConfig.js';
 import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
 import {
-  ParticlePool, spawnDustPuff, spawnEnemyPoof, createSpeedStreaks, updateSpeedStreaks,
+  ParticlePool, spawnDustPuff, spawnEnemyPoof, spawnCoinSparkle,
+  createSpeedStreaks, updateSpeedStreaks,
 } from '../systems/vfx.js';
 
 function boot() {
@@ -92,6 +97,13 @@ function boot() {
   const platformField = createPlatformField(scene);
   const platformSpawnerState = createSpawnerState(PLATFORM_FIRST_SPAWN_DELAY_SEC);
 
+  // Coin collectibles (direct feedback's addition, entities/coins.js): the
+  // only purely-positive pickup besides bumping an enemy. Own pool/spawner,
+  // and each tick spawns a whole CLUSTER (a row/arc/ramp-trail), not one
+  // coin -- see spawnCoinCluster.
+  const coinField = createCoinPool(scene);
+  const coinSpawnerState = createSpawnerState(COIN_FIRST_SPAWN_DELAY_SEC);
+
   const cameraRig = createCameraRig(camera);
   const gs = createGameState();
 
@@ -112,6 +124,14 @@ function boot() {
   // particle central burst = 180) with headroom for a second overlapping
   // kill before the first burst's particles finish fading.
   const enemyPoofPool = new ParticlePool(scene, 220, 0.5, 0.6);
+  // Third pool, again for a structural reason rather than just tuning:
+  // ParticlePool fixes point size and opacity in its CONSTRUCTOR, not per
+  // spawn() call, so a coin's small bright spark can't be produced by either
+  // pool above no matter what options are passed. Sized from the actual
+  // worst case: 12 particles per sparkle (systems/vfx.js's
+  // spawnCoinSparkle), row coins arriving ~0.16s apart against a ~0.34s
+  // life = ~3 overlapping = ~36 live, so 80 is comfortable headroom.
+  const coinSparklePool = new ParticlePool(scene, 80, 0.28, 0.85);
   const ENEMY_KILL_SCORE = 100; // placeholder value -- no real scoring system yet (build doc §8 is MVP-only)
 
   let distance = 0;
@@ -119,6 +139,9 @@ function boot() {
   // (not random) so back-to-back kills don't just repeat the same one.
   let attackSequenceIndex = 0;
   let score = 0;
+  // Deliberately NOT folded into `score` (which is enemy kills) -- coins are
+  // their own resource with their own HUD counter, see index.html's #coins.
+  let coinsCollected = 0;
 
   // Running game-clock (seconds since the current run started) purely for
   // data/constants.js's MIN_ENEMY_OBSTACLE_GAP_SEC spacing rule below --
@@ -135,6 +158,8 @@ function boot() {
     resetEnemyPool(enemyField);
     resetPlatformField(platformField);
     resetSpawner(platformSpawnerState, PLATFORM_FIRST_SPAWN_DELAY_SEC);
+    resetCoinPool(coinField);
+    resetSpawner(coinSpawnerState, COIN_FIRST_SPAWN_DELAY_SEC);
     gameTime = 0;
     lastObstacleSpawnTime = -Infinity;
     lastEnemySpawnTime = -Infinity;
@@ -156,14 +181,16 @@ function boot() {
 
     distance = 0;
     score = 0;
+    coinsCollected = 0;
     attackSequenceIndex = 0;
     hud.updateDistance(distance);
     hud.updateScore(score);
+    hud.updateCoins(coinsCollected);
   }
 
   function endRun() {
     triggerGameOver(gs);
-    hud.showGameOver(distance);
+    hud.showGameOver(distance, coinsCollected);
   }
 
   function restart() {
@@ -371,6 +398,36 @@ function boot() {
         }, PLATFORM_SPAWN_INTERVAL_SEC);
       }
       updatePlatformField(platformField, dt, FORWARD_SPEED);
+
+      // Coins: purely positive, so nothing here can end the run. Placed
+      // AFTER the platform section on purpose -- a coin cluster's placement
+      // queries live platform geometry (ramp spans to climb, footprints the
+      // jump-arc pattern must avoid), so platforms should already have
+      // scrolled this frame before that's asked.
+      //
+      // No data/introSequence.js ramp-up close-spawn treatment, unlike every
+      // spawner above: that closes an empty-pipeline FAIRNESS gap, and
+      // missing a coin costs the player nothing. See data/spawnConfig.js.
+      updateSpawner(coinSpawnerState, dt, () => {
+        spawnCoinCluster(coinField, platformField, obstacleField);
+      }, COIN_CLUSTER_SPAWN_INTERVAL_SEC);
+      // Must run BEFORE collectCoins -- it's what resolves each coin's live
+      // surface height for this frame (same ordering reason updateEnemyPool
+      // precedes checkEnemyHit above).
+      updateCoinPool(coinField, dt, FORWARD_SPEED, platformField);
+      const collected = collectCoins(player, coinField, platformField);
+      for (const slot of collected) {
+        spawnCoinSparkle(
+          coinSparklePool,
+          slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
+          slot.type.color,
+        );
+        coinsCollected += slot.type.value;
+        despawnCoin(slot);
+      }
+      // One HUD write per frame regardless of how many coins landed at once.
+      if (collected.length > 0) hud.updateCoins(coinsCollected);
+      coinSparklePool.update(dt);
     }
 
     // Follow the eased lane-center position, not the per-frame xOffset snap

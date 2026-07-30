@@ -78,6 +78,11 @@
         <div id="topLeft">
           <div id="distance">0m</div>
           <div id="score">0</div>
+          <!-- Coins collected -- its own counter, deliberately NOT summed
+               into #score (which is enemy kills): coins are a distinct
+               resource, kept separate so they can become real currency
+               later instead of just inflating the kill score. -->
+          <div id="coins">&#10022; 0</div>
         </div>
 
         <div id="paused-badge" class="hidden">PAUSED</div>

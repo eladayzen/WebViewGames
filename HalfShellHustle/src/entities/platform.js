@@ -267,6 +267,7 @@ function createSlot(scene) {
     exitEndZ: 0, // ramp-type: where the exit wedge finishes descending to 0; kill-type: === deckEndZ (still a hard step, entities/player.js's gravity handles that fall)
     cleared: false, // kill-type only: sticky once airborne-at-contact, see getPlayerElevationAt
     deckEnemyPlaced: false, // ramp-type only: caps findDeckPlacements at one enemy per platform, see spawnEnemy's deck-placement branch
+    rampCoinsPlaced: false, // ramp-type only: caps findActiveRampSpans at one coin trail per platform -- separate from deckEnemyPlaced on purpose, a deck enemy and ramp coins can coexist
     killGroup,
     rampGroup,
   };
@@ -306,6 +307,7 @@ export function spawnPlatform(field, type, lane = null, z = SPAWN_Z) {
   slot.exitEndZ = type === 'kill' ? slot.deckEndZ : slot.deckEndZ + PLATFORM_RAMP_LENGTH;
   slot.cleared = false;
   slot.deckEnemyPlaced = false;
+  slot.rampCoinsPlaced = false;
 
   const activeVisual = type === 'kill' ? slot.killGroup : slot.rampGroup;
   const idleVisual = type === 'kill' ? slot.rampGroup : slot.killGroup;
@@ -438,6 +440,54 @@ export function findDeckPlacements(field) {
     });
   }
   return candidates;
+}
+
+// Every currently-placeable RAMP WEDGE span (entry and exit both) across
+// active ramp-type platforms -- used by entities/coins.js to lay a coin
+// trail up/down a slope. Direct feedback explicitly wants collectibles
+// "climbing on ramps"; note this is a deliberate carve-out from the
+// otherwise-standing rule that nothing gets PLACED on a ramp (an enemy or
+// obstacle standing on an incline reads wrong -- a floating coin doesn't,
+// and a player on a ramp is carried up it automatically, so ramp coins need
+// no jump at all).
+//
+// A separate function rather than a generalization of findDeckPlacements
+// above: that returns a single random POINT plus an enemy-specific claim,
+// this returns a SPAN and covers both wedges -- parameterizing both
+// differences would make each caller harder to read, not easier.
+//
+// Guards mirror findDeckPlacements' reasoning:
+//  - Eligibility is bounded on each span's NEAR end (its larger z, the edge
+//    that reaches the player first), so the answer can't depend on when
+//    inside its window the caller happens to roll -- same
+//    PLATFORM_DECK_PLACEMENT_MAX_Z "must still be far enough away to be
+//    seen arriving, not pop in mid-journey" rule.
+//  - claim() sets its OWN rampCoinsPlaced flag (not deckEnemyPlaced) so at
+//    most one coin trail lands per platform, while still allowing a
+//    deck-placed enemy on the same platform -- those two are perfectly
+//    compatible and shouldn't block each other. Both wedges of one platform
+//    share the flag, so claiming either consumes the whole platform.
+//
+// Kill-type slots are excluded (as everywhere else here): they have no
+// wedge at all -- entryStartZ === deckStartZ, a hard vertical step -- so a
+// coin crossing that z would teleport 3.5 units rather than ride a slope.
+// Inert while PLATFORM_KILL_TYPE_ENABLED is false, noted so it isn't
+// rediscovered as a bug later.
+export function findActiveRampSpans(field) {
+  const spans = [];
+  for (const slot of field.pool) {
+    if (!slot.active || slot.type !== 'ramp' || slot.rampCoinsPlaced) continue;
+    const claim = () => { slot.rampCoinsPlaced = true; };
+    const wedges = [
+      [slot.entryStartZ, slot.deckStartZ], // climbing up
+      [slot.deckEndZ, slot.exitEndZ], // climbing down
+    ];
+    for (const [startZ, endZ] of wedges) {
+      if (endZ >= PLATFORM_DECK_PLACEMENT_MAX_Z) continue; // near end already too close
+      spans.push({ lane: slot.lane, startZ, endZ, claim });
+    }
+  }
+  return spans;
 }
 
 // The object's actual physical height at (lane, z), ignoring any player

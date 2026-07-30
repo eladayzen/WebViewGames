@@ -48,6 +48,14 @@ const SPRITE_HEIGHT = SPRITE_WIDTH * PLAYER_FRAME_ASPECT;
 const GROUND_Y = SPRITE_HEIGHT / 2;
 const LEAN_MAX = 0.22; // radians, cosmetic billboard roll while lane-shifting
 
+// How far above his own feet the player can reach to grab something --
+// entities/coins.js treats [airHeight, airHeight + this] as his vertical
+// body span for collection. Exported (rather than re-declaring a magic
+// number over there) so it stays tied to his ACTUAL sprite size if
+// PLAYER_SCALE is ever retuned again -- same reasoning as
+// entities/contactShadow.js exporting PLAYER_SHADOW_WIDTH for enemy.js.
+export const PLAYER_COLLECT_REACH = SPRITE_HEIGHT;
+
 const JUMP_TOTAL_DURATION = JUMP_RISE_DURATION + JUMP_HOLD_DURATION + JUMP_FALL_DURATION;
 
 // Ease-out quad rise (fast liftoff, decelerating into the hold), flat hold
@@ -73,6 +81,29 @@ function jumpArcHeight(elapsed) {
   if (elapsed < JUMP_RISE_DURATION + JUMP_HOLD_DURATION) return JUMP_HEIGHT;
   const u = Math.min((elapsed - JUMP_RISE_DURATION - JUMP_HOLD_DURATION) / JUMP_FALL_DURATION, 1);
   return JUMP_HEIGHT * (1 - u * u * u);
+}
+
+// Samples the jump arc above at fractions (0..1) of its TOTAL airtime,
+// returning [{ elapsed, height }] -- the seconds into the jump and the
+// height he'd actually be at then.
+//
+// Exists so entities/coins.js can lay a coin arc out along the player's
+// REAL trajectory (a coin at `elapsed * FORWARD_SPEED` further away is
+// reached exactly `elapsed` seconds later, since coins and the player close
+// on each other at that fixed speed -- so an arc laid out this way lines up
+// perfectly under a jump pressed as its first coin arrives).
+//
+// Deliberately a purpose-built sampler rather than exporting jumpArcHeight
+// and JUMP_TOTAL_DURATION raw: callers then know nothing about the jump's
+// internal phase structure and CANNOT drift out of sync with it, which
+// matters because this curve's shape and timing have been retuned
+// repeatedly. Returns `elapsed` (not a world dz) to keep scroll speed --
+// not this file's concern -- out of it.
+export function sampleJumpArc(fractions) {
+  return fractions.map((f) => {
+    const elapsed = f * JUMP_TOTAL_DURATION;
+    return { elapsed, height: jumpArcHeight(elapsed) };
+  });
 }
 
 // Procedural bob (direct feedback: the discrete 4-sprite swap alone felt
