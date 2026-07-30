@@ -75,8 +75,10 @@ below is this repo's half of a contract that file already defines.
 2. **New game only:**
    - Create a scene under `Assets/Games/<GameName>/`.
    - Add a `WebGameController` component to a GameObject in it; set `folderName` to the
-     `StreamingAssets` subfolder name, and decide `forwardSteeringKeys` (digital synthetic
-     keys vs. analog `window.__gbSensor` — see below).
+     `StreamingAssets` subfolder name, decide `forwardSteeringKeys` (digital synthetic keys vs.
+     analog `window.__gbSensor` — see below), and — if the game uses `ArrowUp`/`ArrowDown` for
+     anything — tick `forwardVerticalAxis`, which is **off by default** and silently drops those
+     keys entirely when unticked.
    - Add the scene to `File > Build Settings`.
    - Open `GoBalanceSDK/Scenes/GamesList`, select `GameLauncher`, add a row (button label +
      scene name).
@@ -104,19 +106,30 @@ Every frame, the host:
   `forwardSteeringKeys` checkbox on the scene's `WebGameController` component (set by the
   project owner in Phase 2, but the game's own code determines which mode it's compatible
   with):
-  - **`forwardSteeringKeys = true` (default):** synthetic `ArrowLeft`/`ArrowRight` (and
-    optionally `ArrowUp`/`ArrowDown`) `keydown`/`keyup` `KeyboardEvent`s are dispatched on
-    `window`, with hysteresis (press above 0.35 tilt, release below 0.20) so it doesn't
-    chatter at the threshold. **An unmodified game that already listens for real arrow-key
-    events (keyed on `e.code`, not `e.key`) needs zero code changes** — that's the whole point
-    of this mode.
-  - **`forwardSteeringKeys = false`:** no synthetic keys. Instead, the raw analog value is
-    published as `window.__gbSensor = {x, y}` every frame (~60Hz), and the game must read it
-    itself. Use this when you want smooth analog steering instead of a discrete on/off key
-    press. **Astro Tunnel uses this mode.**
+  - **`forwardSteeringKeys = true` (default):** synthetic `ArrowLeft`/`ArrowRight`
+    `keydown`/`keyup` `KeyboardEvent`s are dispatched on `window`, with hysteresis (press above
+    0.35 tilt, release below 0.20) so it doesn't chatter at the threshold. **An unmodified game
+    that already listens for real arrow-key events (keyed on `e.code`, not `e.key`) needs zero
+    code changes** — that's the whole point of this mode.
+  - **`forwardVerticalAxis`** (separate checkbox, **`false` by default**) additionally forwards
+    `tilt.y` as `ArrowUp`/`ArrowDown`. Off means those keys are **never dispatched at all** —
+    so a game that uses `ArrowUp` for anything (a jump, say) is simply dead on the board until
+    this is ticked, with no error to explain why. Only `TurtleRunner` and `HalfShellHustle`
+    have it on; every other shipped scene leaves it off, so cloning one of those as a scene
+    template silently inherits the wrong value. Nested under `forwardSteeringKeys` — it does
+    nothing in analog mode.
+  - **`forwardSteeringKeys = false`:** no synthetic keys are dispatched. The game reads the
+    analog value itself. Use this when you want smooth analog steering instead of a discrete
+    on/off key press. **Astro Tunnel and TmntSkateSlice use this mode.**
+  - **`window.__gbSensor = {x, y}` is published unconditionally**, every pump (~60Hz), in
+    *both* modes — it is **not** gated on `forwardSteeringKeys`. Only the synthetic key
+    dispatch is. So "analog mode" really means "keys off", not "sensor on".
   - Never build a game that does both — reading `__gbSensor` while `forwardSteeringKeys` is
-    also on double-applies the input and the game over-steers. Pick one and tell the project
-    owner which mode the game needs for Phase 2.
+    also on double-applies the input and the game over-steers. Note the previous point is what
+    makes this a live hazard rather than a theoretical one: because the value is always
+    present, a game in digital mode that reads it gets double input, and nothing on the Unity
+    side prevents that. Pick one and tell the project owner which mode the game needs for
+    Phase 2.
 - Calls `window.__pumpFrames && window.__pumpFrames()`. This one is easy to miss: **WKWebView
   suspends real `requestAnimationFrame` for a WebView that's occluded by Unity's own overlay**,
   so without a shim the game's render loop simply stops. The page must queue `rAF` callbacks
@@ -143,9 +156,15 @@ The page, in turn, is expected to:
 project owner can set in the Inspector — so touchiness is tunable per game without touching
 code:
 
+The full `Sensor → steering` Inspector block is exactly four fields:
+
 - `pressThreshold` (default `0.35`) — tilt ratio at which a direction key presses.
 - `releaseThreshold` (default `0.20`) — tilt at which it releases. Kept *below* press on
   purpose; that gap is the hysteresis that stops the key chattering at the boundary.
+- `forwardVerticalAxis` (default `false`) — see above. Not a sensitivity knob, but it lives in
+  this block and is the one most likely to be missed, because forgetting it produces a dead
+  input rather than a wrong one.
+- `forwardSteeringKeys` (default `true`) — digital vs analog, see above.
 
 On top of that, a game can retune it **live at runtime** over the same `Unity.call` bridge:
 
@@ -170,7 +189,9 @@ Notes that matter in practice:
 - **One pair of thresholds covers both axes.** There's no separate vertical threshold, so a
   game using `ArrowUp` for an action (jump) can't make that axis more forgiving without also
   making left/right lane changes twitchier. Worth knowing before treating sensitivity as the fix
-  for an uncomfortable forward-lean action.
+  for an uncomfortable forward-lean action — and note that forward/back lean is the
+  ergonomically harder axis on the board to begin with, so an action bound to it is worth
+  play-testing early regardless of threshold.
 - Anything sent that isn't `nav:back` or `gb:sensitivity:<n>` is simply logged by the host as a
   message — which is what makes the JS-error bridge above work.
 
@@ -294,6 +315,14 @@ on `e.code`, Unity's synthetic key events just work with no game code changes at
 - **`e.key` vs `e.code`.** Unity's synthetic events set `code` (e.g. `'ArrowLeft'`), not a
   physical `key` value that varies by keyboard layout. A game listening on `e.key` won't react
   to them.
+- **`ArrowUp`/`ArrowDown` are off by default.** `forwardVerticalAxis` is `false` on the
+  component, so a game that binds an action to `ArrowUp` works perfectly on a keyboard and does
+  nothing at all on the board. There's no warning — the keys are simply never dispatched. Check
+  this whenever a game uses more than left/right, and don't assume a scene cloned from another
+  game has it right (most shipped scenes have it off).
+- **`__gbSensor` exists in digital mode too.** It's published every pump regardless of
+  `forwardSteeringKeys`, so a digital-mode game that reads it will double-apply the tilt. The
+  flag guards key dispatch, not the sensor value.
 
 ## Why this doc exists
 
