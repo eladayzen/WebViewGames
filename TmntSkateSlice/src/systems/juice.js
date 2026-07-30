@@ -120,6 +120,34 @@ export function spawnBombExplosion(juice, xFrac, yFrac) {
   });
 }
 
+// Pizza-box completion celebration (progression update, 2026-07-30). A
+// burst of the box's own color plus white sparkles, and an expanding ring
+// in the box color -- deliberately glow:false (18 shard particles), since
+// shadowBlur-glow particles are a known in-WebView perf risk this build has
+// already chased once; box completions can fire mid-catch-streak.
+export function spawnBoxComplete(juice, xFrac, yFrac, hex) {
+  emitBurst(juice, xFrac, yFrac, {
+    count: 18,
+    colors: [hex, '#ffffff', hex],
+    speedMin: 0.25,
+    speedMax: 0.5,
+    life: 0.6,
+    shape: 'shard',
+    sizeMin: 0.01,
+    sizeMax: 0.018,
+    upBias: 0.2,
+    glow: false,
+  });
+  juice.rings.push({
+    xFrac,
+    yFrac,
+    life: 0.4,
+    maxLife: 0.4,
+    maxRadiusFrac: 0.18,
+    color: hex,
+  });
+}
+
 export function triggerScreenShake(juice, durationSec, magnitudeFrac) {
   juice.shakeTimer = durationSec;
   juice.shakeMaxTimer = durationSec;

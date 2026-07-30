@@ -8,6 +8,7 @@
 import { ITEM_SIZE_FRAC, PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 import { getShakeOffsetFrac } from '../systems/juice.js';
 import { getRunCycleSpriteKey, getSwingCycleSpriteKey, getHitCycleSpriteKey } from '../entities/player.js';
+import { BOX_COLOR_BY_ID } from '../data/boxColors.js';
 
 // Gentle idle "breathing" pulse (no-skateboard standing pose only, not the
 // run-cycle) -- vertical-only scale from 1x to 1.08x and back over a
@@ -162,7 +163,9 @@ function drawItemFallback(ctx, x, y, size, type) {
   ctx.save();
   ctx.translate(x, y);
   if (type.id === 'pizza') {
-    ctx.fillStyle = '#e8b25c';
+    // Box-color variants tint the crust by their color (fallback only --
+    // real sprites carry the color once loaded); plain pizza stays gold.
+    ctx.fillStyle = type.boxColor ? BOX_COLOR_BY_ID[type.boxColor].hex : '#e8b25c';
     ctx.beginPath();
     ctx.moveTo(0, -size / 2);
     ctx.lineTo(size / 2, size / 2);

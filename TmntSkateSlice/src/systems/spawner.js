@@ -39,13 +39,16 @@ function pickFallSpeedFrac(stage) {
 }
 
 // Returns a newly-spawned item, or null if it isn't time yet. Caller is
-// responsible for pushing the result into its own items array.
-export function updateSpawner(sp, dt, stage) {
+// responsible for pushing the result into its own items array. `boxes` (the
+// live collection-box state) is threaded through to rollItemType so
+// box-colored pizza variants can spawn more often while their box is active
+// (see data/itemTypes.js / systems/boxes.js).
+export function updateSpawner(sp, dt, stage, boxes) {
   sp.timer -= dt;
   if (sp.timer > 0) return null;
 
   sp.timer = stage.spawnIntervalSec;
-  const type = rollItemType(stage);
+  const type = rollItemType(stage, boxes);
   const x = pickNextX(sp);
   return createFallingItem(type, x, pickFallSpeedFrac(stage));
 }

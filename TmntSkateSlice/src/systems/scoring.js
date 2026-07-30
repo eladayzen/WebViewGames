@@ -52,3 +52,11 @@ export function registerComboBreak(s) {
 export function getComboMultiplier(s) {
   return currentMultiplier(s);
 }
+
+// Flat bonus for completing a pizza collection box (progression update,
+// 2026-07-30). Deliberately NOT multiplied by the combo multiplier -- box
+// completion is its own achievement-style reward, independent of the
+// per-catch streak system, which is unchanged.
+export function registerBoxComplete(s, bonusScore) {
+  s.score += bonusScore;
+}

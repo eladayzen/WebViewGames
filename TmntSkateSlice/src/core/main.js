@@ -20,6 +20,7 @@ import {
 } from '../entities/player.js';
 import { updateFallingItem, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
 import { createSpawner, resetSpawner, updateSpawner } from '../systems/spawner.js';
+import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../systems/boxes.js';
 import { createDifficulty, resetDifficulty, updateDifficulty, getStage } from '../systems/difficulty.js';
 import {
   createScoring,
@@ -27,10 +28,11 @@ import {
   registerPizzaHit,
   registerOozeHit,
   registerComboBreak,
+  registerBoxComplete,
   getComboMultiplier,
 } from '../systems/scoring.js';
 import { createLives, resetLives, loseLife, isDead } from '../systems/lives.js';
-import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, triggerScreenShake } from '../systems/juice.js';
+import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
 import { OOZE_BUFF_DURATION_SEC, PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 
@@ -49,6 +51,7 @@ async function boot() {
   const scoring = createScoring();
   const lives = createLives();
   const juice = createJuice();
+  const boxes = createBoxes();
   const audio = createAudio();
   let items = [];
   let lastCountdownTick = null; // last whole-second value shown, for tick SFX
@@ -67,6 +70,7 @@ async function boot() {
     resetScoring(scoring);
     resetLives(lives);
     resetJuice(juice);
+    resetBoxes(boxes);
     items = [];
     ui.hideGameOver();
   }
@@ -103,6 +107,16 @@ async function boot() {
       triggerSwing(player);
       spawnPizzaBreak(juice, item.xFrac, item.yFrac);
       playSfx(audio, newMultiplier > prevMultiplier ? sfx.sfx_combo_up : sfx.sfx_pizza_catch);
+      // Box-colored slice: feed its collection box. registerBoxCatch resets
+      // the box and returns its bonus/hex on the completing catch, else null.
+      if (item.type.boxColor) {
+        const done = registerBoxCatch(boxes, item.type.boxColor);
+        if (done) {
+          registerBoxComplete(scoring, done.bonusScore);
+          spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
+          playSfx(audio, sfx.sfx_box_complete);
+        }
+      }
     } else if (item.type.kind === 'power-up') {
       item.resolved = true;
       registerOozeHit(scoring);
@@ -150,7 +164,7 @@ async function boot() {
       playSfx(audio, sfx.sfx_stage_advance);
     }
 
-    const spawned = updateSpawner(spawner, dt, stage);
+    const spawned = updateSpawner(spawner, dt, stage, boxes);
     if (spawned) items.push(spawned);
 
     // groundYFrac is per-stage (each background's floor line differs);
@@ -177,11 +191,16 @@ async function boot() {
     }
 
     updateJuice(juice, dt);
+    // AFTER the catch loop (see systems/boxes.js): a catch that completes a
+    // box this frame is already handled above, so this only expires boxes
+    // that got no completing catch -- completion always wins the tie.
+    updateBoxes(boxes, dt);
 
     ui.setScore(scoring.score);
     ui.setCombo(scoring.comboCount, getComboMultiplier(scoring));
     ui.setLives(lives.remaining);
     ui.setOozeBuff(player.oozeBuffTimer / OOZE_BUFF_DURATION_SEC);
+    ui.setBoxes(boxes);
 
     return stage;
   }

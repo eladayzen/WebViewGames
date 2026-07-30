@@ -35,6 +35,11 @@ const MANIFEST = {
   mike_hit_2: new URL('../assets/mike_hit_2.png', import.meta.url).href,
 
   pizza_slice: new URL('../assets/pizza_slice.png', import.meta.url).href,
+  // Box-collection color variants (progression update, 2026-07-30) --
+  // local hue-shifts of pizza_slice.png, same silhouette, differ by color.
+  pizza_slice_blue: new URL('../assets/pizza_slice_blue.png', import.meta.url).href,
+  pizza_slice_purple: new URL('../assets/pizza_slice_purple.png', import.meta.url).href,
+  pizza_slice_red: new URL('../assets/pizza_slice_red.png', import.meta.url).href,
   ooze_canister: new URL('../assets/ooze_canister.png', import.meta.url).href,
   bomb: new URL('../assets/bomb.png', import.meta.url).href,
 
@@ -76,6 +81,7 @@ const AUDIO_MANIFEST = {
   sfx_countdown_tick: new URL('../assets/audio/sfx_countdown_tick.mp3', import.meta.url).href,
   sfx_countdown_go: new URL('../assets/audio/sfx_countdown_go.mp3', import.meta.url).href,
   sfx_ui_tap: new URL('../assets/audio/sfx_ui_tap.mp3', import.meta.url).href,
+  sfx_box_complete: new URL('../assets/audio/sfx_box_complete.mp3', import.meta.url).href,
   music_bed: new URL('../assets/audio/music_bed.mp3', import.meta.url).href,
 };
 

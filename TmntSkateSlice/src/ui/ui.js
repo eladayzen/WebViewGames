@@ -15,6 +15,8 @@
 // reads as "the whole game feels laggy, periodic lag" -- especially inside
 // a resource-constrained mobile WebView, not just a desktop browser tab.
 
+import { BOX_COLORS } from '../data/boxColors.js';
+
 let bannerHideTimer = null;
 
 export function createUI() {
@@ -43,13 +45,56 @@ export function createUI() {
     el.livesTray.appendChild(icon);
   }
 
+  // Build one collection-box chip per color once (hidden until active),
+  // driven from data/boxColors.js so adding a color is a data change. Each
+  // chip: a count ("3/8") over a depleting timer bar, tinted by the color.
+  el.boxTray = document.getElementById('box-tray');
+  el.boxChips = {};
+  for (const c of BOX_COLORS) {
+    const chip = document.createElement('div');
+    chip.className = 'box-chip hidden';
+    chip.style.setProperty('--box-color', c.hex);
+    const count = document.createElement('span');
+    count.className = 'box-count';
+    const bar = document.createElement('div');
+    bar.className = 'box-timer-bar';
+    const fill = document.createElement('div');
+    fill.className = 'box-timer-fill';
+    bar.appendChild(fill);
+    chip.appendChild(count);
+    chip.appendChild(bar);
+    el.boxTray.appendChild(chip);
+    el.boxChips[c.id] = { chip, count, fill };
+  }
+
   // Last-written values, for the dirty-checks below.
   let lastScore = null;
   let lastComboKey = null;
   let lastLivesRemaining = null;
   let lastOozePct = null; // -1 sentinel for "hidden", not a real percent
+  const lastBoxKeys = {}; // per-color last-written key, for the box dirty-check
 
   return {
+    setBoxes(boxes) {
+      for (const c of BOX_COLORS) {
+        const b = boxes[c.id];
+        const chip = el.boxChips[c.id];
+        // Key changes on progress or a whole-second timer tick, so the DOM
+        // (and the timer-bar width) updates ~once/sec, not every frame --
+        // same dirty-check discipline as every other setter here.
+        const key = b.active ? `${b.progress}:${Math.ceil(b.timerRemaining)}` : 'off';
+        if (key === lastBoxKeys[c.id]) continue;
+        lastBoxKeys[c.id] = key;
+        if (b.active) {
+          chip.chip.classList.remove('hidden');
+          chip.count.textContent = `${b.progress}/${c.requiredCount}`;
+          chip.fill.style.width = `${Math.max(0, (b.timerRemaining / c.timerSec) * 100)}%`;
+        } else {
+          chip.chip.classList.add('hidden');
+        }
+      }
+    },
+
     setScore(value) {
       const floored = Math.floor(value);
       if (floored === lastScore) return;

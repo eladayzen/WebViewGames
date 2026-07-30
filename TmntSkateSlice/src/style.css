@@ -156,6 +156,57 @@ html, body {
   box-shadow: 0 0 8px rgba(140, 224, 90, 0.9);
 }
 
+/* --- Pizza-box collection chips (progression update) -- a horizontal row
+   below the ooze indicator, one compact chip per active color. Each chip is
+   tinted by its color via the --box-color custom property set in ui.js. --- */
+#box-tray {
+  position: absolute;
+  top: 148px;
+  left: 14px;
+  display: flex;
+  gap: 8px;
+}
+
+.box-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: rgba(15, 15, 30, 0.6);
+  border: 2px solid var(--box-color, #fff);
+  border-radius: 8px;
+  padding: 3px 8px;
+  min-width: 48px;
+}
+
+.box-chip.hidden {
+  display: none;
+}
+
+.box-count {
+  font-weight: 900;
+  font-size: 16px;
+  color: #fff;
+  text-align: center;
+  letter-spacing: 0.5px;
+  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.5);
+  paint-order: stroke fill;
+  font-variant-numeric: tabular-nums;
+}
+
+.box-timer-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.box-timer-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--box-color, #fff);
+  transform-origin: left;
+}
+
 /* --- Paused badge --- */
 #paused-badge {
   position: absolute;
