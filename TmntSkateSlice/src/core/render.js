@@ -181,6 +181,33 @@ function drawPlayer(ctx, xFrac, w, h, images, player, isRunning, stage) {
     ctx.stroke();
     ctx.restore();
   }
+
+  // Magnet aura (special abilities, 2026-07-30) -- a pink magnetic field
+  // around the player while the magnet buff is active: a faint constant glow
+  // plus rings that CONTRACT inward and fade, reading as "pulling things in."
+  // Distinct from the shield's solid green bubble. Cheap -- no shadowBlur.
+  if (player.magnetBuffTimer > 0) {
+    const cx = x;
+    const cy = y - size * 0.5;
+    const t = performance.now() / 1000;
+    ctx.save();
+    ctx.fillStyle = '#F84FA0';
+    ctx.globalAlpha = 0.12;
+    ctx.beginPath();
+    ctx.arc(cx, cy, size * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#FF7AC4';
+    ctx.lineWidth = size * 0.028;
+    for (let i = 0; i < 3; i++) {
+      const phase = (t * 0.9 + i / 3) % 1; // 0 (outer) -> 1 (inner)
+      const rr = size * (0.78 - 0.52 * phase);
+      ctx.globalAlpha = 0.55 * Math.sin(phase * Math.PI); // fade in/out at the ends
+      ctx.beginPath();
+      ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
 
 function drawItemFallback(ctx, x, y, size, type) {
