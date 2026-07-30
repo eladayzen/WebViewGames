@@ -217,6 +217,40 @@ html, body {
   background: rgba(255, 255, 255, 0.3);
 }
 
+/* Key legend at the top of the panel. */
+.sp-keyhint {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  opacity: 0.55;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* The row the two-key menu is currently on. Has to be unmistakable at a glance
+   from across a room, since inside Unity this highlight is the ONLY feedback
+   about what Space is about to change (see steeringPanel.js's header). */
+.sp-sel {
+  position: relative;
+  background: rgba(120, 200, 255, 0.18);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(150, 220, 255, 0.55);
+}
+
+.sp-row.sp-sel {
+  margin-left: -5px;
+  margin-right: -5px;
+  padding: 2px 5px;
+}
+
+/* Selection wins over the mode-dimming below -- a dimmed row is still
+   selectable, and it would be baffling for the highlight to vanish onto a row
+   you can't see. */
+.sp-sel.sp-dim {
+  opacity: 1;
+}
+
 /* A control that belongs to the OTHER steering mode. Dimmed rather than hidden
    so the panel keeps a constant height -- a panel that reflows as you change
    modes is miserable to poke at while standing on a board -- and so it stays

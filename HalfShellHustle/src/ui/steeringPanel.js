@@ -8,16 +8,24 @@
 // persisted, and adjustable mid-run -- the board is the only place any of this
 // can honestly be judged, and you can't edit a Unity field while standing on it.
 //
-// Rows are built in JS rather than written into index.html so adding a tunable
-// is a one-line change here (same reasoning as ui/hud.js's initLivesTray).
+// DRIVEN BY TWO KEYS, not just touch. Inside the Unity WebView there is no
+// pointer at all: WebGameController forwards exactly Space and Enter (plus the
+// synthetic steering arrows) and never forwards a click -- the single hardcoded
+// `.click()` it does issue targets #restart-button and only while the game-over
+// overlay is up. So in the Editor every button here is unreachable, and the
+// arrows are no help either: absolute mode runs with forwardSteeringKeys OFF,
+// which means no arrows are dispatched at all in exactly the mode most worth
+// tuning. Space + Enter is therefore the entire available input surface, and
+// the row model below is shared by both it and the touch buttons so the two can
+// never drift apart.
 //
 // WHO OWNS WHAT: input/input.js owns the actual steering values and logic; this
 // file only renders controls and pushes changes into it. The one exception is
-// SENSITIVITY, which tunes thresholds that live on the Unity side and is
-// therefore sent over the gb:sensitivity bridge instead -- see its row below.
+// SENSITIVITY, which tunes thresholds living on the Unity side and so goes over
+// the gb:sensitivity bridge instead -- see its row below.
 
 import {
-  STEERING_MODES, STEERING_STEPPED, STEERING_ABSOLUTE, DEFAULT_STEERING_MODE,
+  STEERING_MODES, STEERING_ABSOLUTE, DEFAULT_STEERING_MODE,
   LANE_ZONE_THRESHOLD, LANE_ZONE_HYSTERESIS, JUMP_TILT_THRESHOLD,
 } from '../data/constants.js';
 import {
@@ -29,7 +37,7 @@ const STORAGE_KEY = 'hsh:steering';
 
 // 55 maps to pressThreshold ~= 0.3525, within a rounding error of the SDK's own
 // stock 0.35 -- so a fresh install feels exactly as it did before this panel
-// existed, and nothing changes until someone deliberately moves a slider.
+// existed, and nothing changes until someone deliberately moves a value.
 const DEFAULT_SENSITIVITY = 55;
 
 const state = {
@@ -73,7 +81,6 @@ function pushSensitivity() {
   if (window.Unity) window.Unity.call(`gb:sensitivity:${Math.round(state.sensitivity)}`);
 }
 
-// Everything the panel knows, applied to the systems that actually use it.
 function applyAll() {
   setSteeringMode(state.mode);
   setLaneZoneThreshold(state.laneZone);
@@ -82,64 +89,146 @@ function applyAll() {
   pushSensitivity();
 }
 
-// One -/value/+ row. `fmt` keeps the readout narrow enough not to reflow the
-// panel as digits change.
-function addStepperRow(panel, { label, key, min, max, step, fmt, note, mode }) {
-  const row = document.createElement('div');
-  row.className = 'sp-row';
-  if (mode) row.dataset.mode = mode;
+// --- Row model -----------------------------------------------------------
+// One list, consumed by BOTH the touch buttons and the two-key menu, so a row
+// can never behave differently depending on how it was reached.
+const rows = [];
+let selected = 0;
+let panelEl = null;
+
+function commit() {
+  applyAll();
+  save();
+  rows.forEach((r) => r.refresh());
+  refreshRelevance();
+}
+
+// Stepping WRAPS at the top rather than clamping: with only two keys there is
+// no "decrease", so wrapping is the sole way back down to a lower value.
+function stepValue(row, dir) {
+  const { key, min, max, step } = row;
+  let next = state[key] + dir * step;
+  if (next > max + 1e-9) next = min;
+  else if (next < min - 1e-9) next = max;
+  // Float steps accumulate error (0.35 + 0.05 * 3 !== 0.50); snap to the step's
+  // own precision so the readout and the stored value stay honest.
+  state[key] = Math.round(next / step) * step;
+  commit();
+}
+
+function addStepper({ label, key, min, max, step, fmt, note, mode }) {
+  const el = document.createElement('div');
+  el.className = 'sp-row';
+  if (mode) el.dataset.mode = mode;
 
   const name = document.createElement('span');
   name.className = 'sp-label';
   name.textContent = label;
-
   const down = document.createElement('button');
   down.type = 'button';
   down.innerHTML = '&minus;';
-
   const value = document.createElement('span');
   value.className = 'sp-value';
-
   const up = document.createElement('button');
   up.type = 'button';
   up.textContent = '+';
 
-  const render = () => { value.textContent = fmt(state[key]); };
-  const nudge = (dir) => {
-    const next = Math.min(max, Math.max(min, state[key] + dir * step));
-    // Float steps accumulate error (0.35 + 0.01 * 3 !== 0.38); round to the
-    // step's own precision so the readout and the stored value stay honest.
-    state[key] = Math.round(next / step) * step;
-    render();
-    applyAll();
-    save();
+  const row = {
+    el, key, min, max, step, mode,
+    refresh: () => { value.textContent = fmt(state[key]); },
+    activate: () => stepValue(row, 1),
   };
-  down.addEventListener('click', () => nudge(-1));
-  up.addEventListener('click', () => nudge(1));
+  down.addEventListener('click', () => stepValue(row, -1));
+  up.addEventListener('click', () => stepValue(row, 1));
 
-  row.append(name, down, value, up);
-  panel.appendChild(row);
+  el.append(name, down, value, up);
+  panelEl.appendChild(el);
   if (note) {
     const hint = document.createElement('div');
     hint.className = 'sp-note';
     hint.textContent = note;
     if (mode) hint.dataset.mode = mode;
-    panel.appendChild(hint);
+    panelEl.appendChild(hint);
   }
-  render();
+  rows.push(row);
 }
 
-// Rows that only matter in one mode are dimmed rather than hidden, so the panel
-// never changes height (a shifting panel is miserable to poke at on a board) and
-// so it stays obvious that the other mode has its own knobs.
-function markRelevance(panel) {
+function addChoice({ label, note, values, get, set }) {
+  const el = document.createElement('div');
+  el.className = 'sp-row';
+  const name = document.createElement('span');
+  name.className = 'sp-label';
+  name.textContent = label;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'sp-mode';
+
+  const row = {
+    el,
+    refresh: () => { button.textContent = get(); },
+    activate: () => {
+      set(values[(values.indexOf(get()) + 1) % values.length]);
+      commit();
+    },
+  };
+  button.addEventListener('click', row.activate);
+
+  el.append(name, button);
+  panelEl.appendChild(el);
+  if (note) {
+    const hint = document.createElement('div');
+    hint.className = 'sp-note';
+    hint.textContent = note;
+    panelEl.appendChild(hint);
+  }
+  rows.push(row);
+}
+
+function addAction({ label, run }) {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'sp-wide';
+  el.textContent = label;
+  const row = {
+    el,
+    refresh: () => {},
+    activate: () => {
+      const msg = run();
+      if (!msg) return;
+      // Confirm in place: with no other feedback channel there's otherwise no
+      // way to tell whether the press did anything.
+      el.textContent = msg;
+      window.setTimeout(() => { el.textContent = label; }, 1200);
+    },
+  };
+  el.addEventListener('click', row.activate);
+  panelEl.appendChild(el);
+  rows.push(row);
+}
+
+// Rows belonging to the OTHER steering mode are dimmed, never hidden: a panel
+// that reflows as you change modes is miserable to poke at while standing on a
+// board, and dimming keeps it visible that the other mode has its own knobs.
+function refreshRelevance() {
   const absolute = state.mode === STEERING_ABSOLUTE;
-  panel.querySelectorAll('[data-mode="absolute"]').forEach((el) => {
+  panelEl.querySelectorAll('[data-mode="absolute"]').forEach((el) => {
     el.classList.toggle('sp-dim', !absolute);
   });
-  panel.querySelectorAll('[data-mode="stepped"]').forEach((el) => {
+  panelEl.querySelectorAll('[data-mode="stepped"]').forEach((el) => {
     el.classList.toggle('sp-dim', absolute);
   });
+}
+
+function refreshSelection() {
+  rows.forEach((r, i) => r.el.classList.toggle('sp-sel', i === selected));
+}
+
+function setPanelOpen(open) {
+  panelEl.classList.toggle('hidden', !open);
+  if (open) {
+    selected = 0;
+    refreshSelection();
+  }
 }
 
 export function initSteeringPanel() {
@@ -147,41 +236,30 @@ export function initSteeringPanel() {
   applyAll();
 
   const button = document.getElementById('steering-button');
-  const panel = document.getElementById('steering-panel');
-  if (!button || !panel) return;
+  panelEl = document.getElementById('steering-panel');
+  if (!button || !panelEl) return;
 
-  button.addEventListener('click', () => panel.classList.toggle('hidden'));
+  button.addEventListener('click', () => setPanelOpen(panelEl.classList.contains('hidden')));
 
-  // --- mode ---
-  const modeRow = document.createElement('div');
-  modeRow.className = 'sp-row';
-  const modeLabel = document.createElement('span');
-  modeLabel.className = 'sp-label';
-  modeLabel.textContent = 'MODE';
-  const modeButton = document.createElement('button');
-  modeButton.type = 'button';
-  modeButton.className = 'sp-mode';
-  const renderMode = () => { modeButton.textContent = state.mode; };
-  modeButton.addEventListener('click', () => {
-    const i = STEERING_MODES.indexOf(state.mode);
-    state.mode = STEERING_MODES[(i + 1) % STEERING_MODES.length];
-    renderMode();
-    markRelevance(panel);
-    applyAll();
-    save();
+  // The key scheme is not discoverable, and inside Unity it's the only way to
+  // drive this at all -- so it's stated on the panel rather than left to be
+  // remembered.
+  const keyHint = document.createElement('div');
+  keyHint.className = 'sp-keyhint';
+  keyHint.textContent = 'ENTER = next row   SPACE = change';
+  panelEl.appendChild(keyHint);
+
+  addChoice({
+    label: 'MODE',
+    values: STEERING_MODES,
+    get: () => state.mode,
+    set: (v) => { state.mode = v; },
+    // Says the quiet part out loud: the mode is only HALF a game-side choice.
+    // Absolute reads the analog sensor, which the host only leaves uncontested
+    // when the scene's forwardSteeringKeys is off.
+    note: 'absolute needs forwardSteeringKeys = OFF on the scene',
   });
-  modeRow.append(modeLabel, modeButton);
-  panel.appendChild(modeRow);
-  const modeNote = document.createElement('div');
-  modeNote.className = 'sp-note';
-  // Says the quiet part out loud, because the mode is only HALF a game-side
-  // choice: absolute reads the analog sensor, which the host only leaves
-  // uncontested when the scene's forwardSteeringKeys is off.
-  modeNote.textContent = 'absolute needs forwardSteeringKeys = OFF on the scene';
-  panel.appendChild(modeNote);
-
-  // --- absolute-mode tunables ---
-  addStepperRow(panel, {
+  addStepper({
     label: 'LANE ZONE',
     key: 'laneZone',
     mode: 'absolute',
@@ -191,7 +269,7 @@ export function initSteeringPanel() {
     fmt: (v) => v.toFixed(2),
     note: 'lean past this to leave the centre lane',
   });
-  addStepperRow(panel, {
+  addStepper({
     label: 'HYSTERESIS',
     key: 'hysteresis',
     mode: 'absolute',
@@ -201,7 +279,7 @@ export function initSteeringPanel() {
     fmt: (v) => v.toFixed(2),
     note: 'stops a lean parked on the edge flapping between lanes',
   });
-  addStepperRow(panel, {
+  addStepper({
     label: 'JUMP TILT',
     key: 'jumpTilt',
     mode: 'absolute',
@@ -209,11 +287,9 @@ export function initSteeringPanel() {
     max: 0.95,
     step: 0.05,
     fmt: (v) => v.toFixed(2),
-    note: 'forward lean to jump (analog mode only sends no ArrowUp)',
+    note: 'forward lean to jump (analog mode sends no ArrowUp)',
   });
-
-  // --- stepped-mode tunable (lives on the Unity side) ---
-  addStepperRow(panel, {
+  addStepper({
     label: 'SENSITIVITY',
     key: 'sensitivity',
     mode: 'stepped',
@@ -223,23 +299,48 @@ export function initSteeringPanel() {
     fmt: (v) => `${Math.round(v)}`,
     note: 'stepped mode only -- tunes the HOST thresholds',
   });
-
-  // --- recentre ---
-  const recenterButton = document.createElement('button');
-  recenterButton.type = 'button';
-  recenterButton.className = 'sp-wide';
-  recenterButton.textContent = 'RECENTRE BOARD';
-  recenterButton.addEventListener('click', () => {
-    const ok = recenterBoard();
-    // Absolute mode makes a drifted neutral much more punishing than stepped
-    // mode does -- there it only biases a gesture, here it parks you in the
-    // wrong lane permanently. Confirming in-place matters because there's no
-    // other way to tell whether the press did anything.
-    recenterButton.textContent = ok ? 'CENTRED ✓' : 'NO SENSOR (BROWSER)';
-    window.setTimeout(() => { recenterButton.textContent = 'RECENTRE BOARD'; }, 1200);
+  addAction({
+    label: 'RECENTRE BOARD',
+    run: () => (recenterBoard() ? 'CENTRED ✓' : 'NO SENSOR (BROWSER)'),
   });
-  panel.appendChild(recenterButton);
+  addAction({
+    label: 'CLOSE',
+    // Reachable by key as well as touch -- with the gear unclickable in the
+    // Editor, this is the only way back out of the menu there.
+    run: () => { setPanelOpen(false); return null; },
+  });
 
-  renderMode();
-  markRelevance(panel);
+  rows.forEach((r) => r.refresh());
+  refreshRelevance();
+  refreshSelection();
+
+  // ENTER moves the selection, SPACE acts on it. These are the only two keys
+  // the Unity host forwards (see this file's header), so they have to carry the
+  // whole menu between them -- hence no "decrease": steppers wrap instead.
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Enter' && e.code !== 'Space') return;
+    // Both keys mean RESTART on the game-over screen (core/main.js listens for
+    // them, and the host separately synth-clicks #restart-button there). Never
+    // shadow that.
+    const gameover = document.getElementById('gameover-overlay');
+    if (gameover && !gameover.classList.contains('hidden')) return;
+
+    if (panelEl.classList.contains('hidden')) {
+      // Closed: only Enter opens it. Space stays inert so it can't be opened by
+      // accident, and because the gear itself can't be clicked in the Editor
+      // this is the sole way in there.
+      if (e.code !== 'Enter') return;
+      e.preventDefault();
+      setPanelOpen(true);
+      return;
+    }
+
+    e.preventDefault();
+    if (e.code === 'Enter') {
+      selected = (selected + 1) % rows.length;
+      refreshSelection();
+    } else {
+      rows[selected].activate();
+    }
+  });
 }
