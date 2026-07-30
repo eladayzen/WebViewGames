@@ -50,6 +50,10 @@ import { PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 // guarding against a multi-second resume leap. Pre-existing clamp, not a
 // this-session addition, but it's the actual low-fps slowdown mechanism.
 const MAX_DT = 1 / 10;
+// Wave pickup: seconds between each bomb's detonation, so they pop one after
+// another in a quick popcorn ripple rather than all at once (feedback
+// 2026-07-30) -- reads clearly as "this clears every bomb on screen".
+const WAVE_DETONATE_STAGGER_SEC = 0.07;
 
 async function boot() {
   const canvas = document.getElementById('renderCanvas');
@@ -155,14 +159,17 @@ async function boot() {
       } else if (effect === 'magnet') {
         grantMagnetBuff(player);
       } else if (effect === 'wave') {
-        // Instant screen-clear: every bomb currently falling DETONATES where
-        // it is (mid-air), so you actually see them go off (feedback
-        // 2026-07-30) -- not a silent vanish. Plus the sweeping wave VFX from
-        // the pickup itself and a solid shake. No score (pure utility).
+        // Screen-clear: every bomb on screen detonates, but STAGGERED -- each
+        // is flagged `doomed` with an increasing delay so they pop one after
+        // another in a quick popcorn ripple (the detonation + removal happens
+        // in the item loop below, keeping each bomb visible until its turn).
+        // Doomed bombs freeze and can no longer hurt the player.
+        let bombIdx = 0;
         for (const other of items) {
-          if (!other.resolved && other.type.kind === 'hazard') {
-            other.resolved = true;
-            spawnBombExplosion(juice, other.xFrac, other.yFrac);
+          if (!other.resolved && !other.doomed && other.type.kind === 'hazard') {
+            other.doomed = true;
+            other.detonateTimer = bombIdx * WAVE_DETONATE_STAGGER_SEC;
+            bombIdx += 1;
           }
         }
         spawnWaveClear(juice, item.xFrac, item.yFrac);
@@ -224,6 +231,18 @@ async function boot() {
     const bandTop = stage.groundYFrac - PLAYER_HEIGHT_FRAC;
     for (const item of items) {
       if (item.resolved) continue;
+      // Doomed bombs (wave pickup): frozen in place, counting down to a
+      // staggered pop -- they don't fall, can't hurt the player, and detonate
+      // when their timer elapses. A soft per-bomb pop sells the popcorn.
+      if (item.doomed) {
+        item.detonateTimer -= dt;
+        if (item.detonateTimer <= 0) {
+          item.resolved = true;
+          spawnBombExplosion(juice, item.xFrac, item.yFrac);
+          playSfx(audio, sfx.sfx_bomb_hit, 0.3);
+        }
+        continue;
+      }
       updateFallingItem(item, dt);
       // Magnet buff: pull good items horizontally toward the player (only
       // kind:'good', never bombs/pickups). Separate pass so updateFallingItem
