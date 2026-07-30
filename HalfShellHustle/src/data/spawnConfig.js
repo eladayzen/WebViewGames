@@ -46,7 +46,7 @@ export const ENEMY_SPAWN_INTERVAL_SEC = 2.0;
 // enemy spawned too close to an obstacle baits the player into approaching
 // (enemies are safe/rewarding) right as an obstacle arrives with no time
 // left to lane-change away from it. Obstacles/enemies/platforms all spawn
-// at the same fixed SPAWN_Z and scroll at the same FORWARD_SPEED, so any
+// at the same fixed SPAWN_Z and scroll at the same speed as each other, so any
 // gap enforced once at spawn time (core/main.js) holds for the entity's
 // entire lifetime, never just near the player -- same reasoning behind
 // every knob in this section. ---
@@ -64,14 +64,31 @@ export const ENEMY_SPAWN_INTERVAL_SEC = 2.0;
 // enemies"). Pulled down to restore a healthy window on both sides
 // (~1.0s/1.6s for obstacles, ~1.4s/2.0s for enemies) -- re-check this same
 // math any time either spawn interval changes again.
-export const MIN_ENEMY_OBSTACLE_GAP_SEC = 0.6; // -> 9.6 world units at FORWARD_SPEED=16
+//
+// SPEED-RAMP CAVEAT: this is a gap in SECONDS enforced at spawn time, and it
+// is no longer preserved exactly for the entity's whole lifetime the way the
+// section header above claims. Both entities still hold a FIXED z-separation
+// forever (that part is untouched -- everything scrolls at one speed), but the
+// seconds that separation represents shrinks as the world speeds up: a 0.6s
+// spawn gap laid down at SPEED_START delivers ~0.53s by the time it reaches
+// the player. Capped at ~11% erosion (worst at t=0) and exactly 0.6s again
+// once the ramp tops out. Deliberately NOT "fixed" by converting to a
+// distance gap against SPEED_MAX -- that would mean an 0.857s effective gap
+// at the start speed, leaving only ~0.74s of open window in the 1.6s obstacle
+// interval, i.e. re-creating the exact choke described above.
+export const MIN_ENEMY_OBSTACLE_GAP_SEC = 0.6; // -> ~6.0 world units at SPEED_START, ~8.6 at SPEED_MAX
 
 // --- Elevated platforms (entities/platform.js, data/platformSequence.js) ---
-// 7 -> 4 so this spawner's first arrival (delay + the ~8.75s far-travel =
-// ~12.75s) picks up right where data/introSequence.js's seeded platform
-// stops (~6.8s + one 6s interval), instead of leaving the 11.6s platform
-// gap direct feedback ran into.
-export const PLATFORM_FIRST_SPAWN_DELAY_SEC = 4;
+// 4 -> 0, forced by the speed ramp. Travel from SPAWN_Z at the run's starting
+// speed takes ~13.1s (vs ~8.75s before), so a 4s delay pushed the first live
+// platform's arrival to ~16.7s. That is PAST the ~13.1s ceiling on what
+// data/introSequence.js's pre-seeding can reach (a seed authored later than
+// that would have to spawn beyond SPAWN_Z), so unlike every other spawner
+// this hole could not be closed with more seeds -- it had to move here. At 0
+// the first live platform arrives ~13.1s, exactly one interval after the
+// seeded one, which is the cadence. Leaving this at 4 would have re-opened
+// the same 11.6s platform gap introSequence.js documents fighting.
+export const PLATFORM_FIRST_SPAWN_DELAY_SEC = 0;
 export const PLATFORM_SPAWN_INTERVAL_SEC = 6;
 
 // Type mix -- since the kill-type's jump is harder to time on a lean-board
@@ -94,7 +111,7 @@ export const PLATFORM_KILL_TYPE_CHANCE = 0.35;
 // entities/platform.js's isPlatformFootprintBlocked for how it's applied.
 // Raised from 5 per direct feedback -- still "a bit difficult" to get onto
 // a ramp when an obstacle landed close by in the same lane just ahead of
-// it; 10 (~0.625s reaction room at FORWARD_SPEED=16) roughly matches
+// it; 10 (~1.0s reaction room at SPEED_START, ~0.7s at SPEED_MAX) roughly matches
 // MIN_ENEMY_OBSTACLE_GAP_SEC's own reaction-time scale above.
 export const PLATFORM_FOOTPRINT_EXCLUSION_BUFFER = 10; // world units, each side
 
@@ -118,23 +135,27 @@ export const ENEMY_ON_PLATFORM_CHANCE = 0.5;
 // (rows / jump-arcs / ramp trails) rather than scattered singles. ---
 //
 // Pool sizing, derived the same way entities/obstacles.js documents its
-// own: travel time is (DESPAWN_Z - SPAWN_Z) / FORWARD_SPEED =
-// (12 - -140) / 16 = 9.5s, so ~ceil(9.5 / COIN_CLUSTER_SPAWN_INTERVAL_SEC)
+// own: travel time is (DESPAWN_Z - SPAWN_Z) / speed =
+// 152 / speed, i.e. ~15.0s at SPEED_START, so ~ceil(15.0 / COIN_CLUSTER_SPAWN_INTERVAL_SEC)
 // clusters are in flight at once, x the largest cluster size. At 3s and 5
 // coins that's ~25, so 30 leaves headroom for a spawn landing just before
 // an old cluster clears. NOTE this number has TWO moving inputs (the
 // interval AND the max cluster size) -- re-derive if either changes, or
 // clusters start getting silently skipped for lack of free slots.
-export const COIN_POOL_SIZE = 30;
+// 30 -> 40 for the speed ramp: the SLOWER start is the sizing case, since a
+// slot stays occupied longer the slower the world scrolls (~15.0s at
+// SPEED_START vs ~10.6s at SPEED_MAX). reserveAndPlace is all-or-nothing, so
+// falling short doesn't drop one coin -- it silently drops a whole cluster.
+export const COIN_POOL_SIZE = 40;
 
 // Was 9, on the theory that coins should arrive after the crowded intro --
 // which backfired badly: coins never got the old close-spawn treatment, so
-// 9s of delay PLUS the full ~8.75s far-travel meant the first coin didn't
-// reach the player until ~17.8s (direct feedback: "currently none gold
-// coins" in the opening stretch). Now near-zero, since
-// data/introSequence.js seeds the opening coins directly and this just
-// needs to continue their cadence: 0.7 + 8.75 = ~9.45s first arrival,
-// right after the last seeded cluster at ~6.4s + one 3s interval.
+// 9s of delay PLUS the full far-travel meant the first coin didn't reach the
+// player until ~17.8s (direct feedback: "currently none gold coins" in the
+// opening stretch). Now near-zero, since data/introSequence.js seeds the
+// opening coins directly and this just continues their cadence -- at the
+// ramp's starting speed 0.7 + ~13.0s travel = ~13.7s first live arrival,
+// picking up after the last seeded cluster (12.4s).
 export const COIN_FIRST_SPAWN_DELAY_SEC = 0.7;
 // One CLUSTER per interval (3-5 coins), not one coin.
 export const COIN_CLUSTER_SPAWN_INTERVAL_SEC = 3;

@@ -104,7 +104,21 @@
                resource, kept separate so they can become real currency
                later instead of just inflating the kill score. -->
           <div id="coins">&#10022; 0</div>
+          <!-- Lives. Populated by ui/hud.js's initLivesTray from the live cap
+               (data/constants.js's LIVES_START), NOT hardcoded here, so a
+               future extra-heart upgrade needs no markup change. A flow child
+               of #topLeft on purpose -- no absolute offset to re-tune if the
+               counters above it change size. -->
+          <div id="lives-tray"></div>
         </div>
+
+        <!-- Damage flash. Inside #hud (z-index 10) on purpose: that keeps it
+             UNDER .overlay (z-index 20) so it can never tint the game-over
+             screen, and under the chrome buttons (9999). Driven by a timer in
+             core/main.js rather than a one-frame class toggle -- with the rAF
+             queue shim in <head> being pumped from two places, a single frame
+             is not guaranteed to reach a composite at all. -->
+        <div id="damage-flash"></div>
 
         <div id="paused-badge" class="hidden">PAUSED</div>
 

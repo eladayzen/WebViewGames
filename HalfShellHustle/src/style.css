@@ -76,6 +76,42 @@ html, body {
   margin-top: 2px;
 }
 
+/* Lives tray -- a flow child of #topLeft (see index.html), so it stacks under
+   the counters with no magic offset to re-tune. Built in JS by
+   ui/hud.js's initLivesTray. */
+#lives-tray {
+  display: flex;
+  gap: 5px;
+  margin-top: 3px;
+}
+
+.life-icon {
+  font-size: 20px;
+  color: #ff5566;
+  line-height: 1;
+  -webkit-text-stroke: 1.5px #2a0a12;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  transition: opacity 0.18s, filter 0.18s;
+}
+
+/* A life already lost -- greyed rather than removed, so the tray never
+   changes width and the total stays readable at a glance. */
+.life-icon.spent {
+  opacity: 0.22;
+  filter: grayscale(1);
+}
+
+/* Damage flash -- opacity is driven per-frame from core/main.js's
+   damageFlashTimer; see index.html for why it isn't a one-frame toggle. */
+#damage-flash {
+  position: absolute;
+  inset: 0;
+  background: #ff2a2a;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* --- Board sensitivity panel (src/ui/sensitivity.js) ---
    Sits under its gear button in the top-right chrome row. Deliberately does
    NOT pause the game -- the whole point is feeling the difference while

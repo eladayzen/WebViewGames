@@ -1,7 +1,7 @@
 // Run-start onboarding pacing -- direct feedback: the old plain spawn-delay
 // setup left 5-10+ real seconds of dead time before the player had anything
 // to react to (obstacles/enemies spawn far upstream at SPAWN_Z, which alone
-// takes ~9s of pure scroll-in travel at FORWARD_SPEED=16, on top of their
+// takes ~13s of pure scroll-in travel at the ramp's starting speed, on top of their
 // own first-spawn delay timer). Replaced with an immediate, unmissable
 // "enemy wall" teaching moment instead of silence: one enemy in EVERY lane,
 // spawned close enough to reach fast, so "killing an enemy is safe/good, not
@@ -24,9 +24,12 @@ export const INTRO_WALL_ENEMY_COUNT = LANE_X.length;
 
 // How far upstream the wall spawns -- deliberately much closer than the
 // normal SPAWN_Z (-140, which is where the old ~9s dead-travel-time came
-// from). world units / FORWARD_SPEED (16) = seconds until it reaches the
-// player, i.e. -26 -> ~1.6s -- enough to be readable as "it's arriving",
-// not an instant ambush, but nowhere near the old 5-10s wait.
+// from). This one is a raw z rather than an arrival time like the
+// INTRO_SEED_* lists below, so the speed ramp shifts when it lands: -26
+// arrives ~2.6s in at the starting speed (it was ~1.6s at the old fixed 16).
+// Still readable as "it's arriving" rather than an instant ambush, and if
+// anything the extra beat helps -- but it's why this number no longer matches
+// its own old comment.
 export const INTRO_WALL_SPAWN_Z = -26;
 
 // After the wall, normal enemy spawning (entities/enemy.js's spawnEnemy,
@@ -41,7 +44,16 @@ export const INTRO_NORMAL_ENEMY_DELAY_SEC = 1.0;
 // landed before anything dangerous); the seeded obstacles below now cover
 // that stretch instead, and they're placed to arrive AFTER the wall, so the
 // teaching order is preserved without a dead gap.
-export const INTRO_OBSTACLE_DELAY_SEC = 1.5;
+//
+// 1.5 -> 1.8 to stop the FIRST attempt being wasted. The intro wall sets
+// lastEnemySpawnTime = 0 and the enemy spawner fires at 1.0s, so a 1.5s
+// obstacle attempt was only 0.5s behind it -- inside
+// MIN_ENEMY_OBSTACLE_GAP_SEC (0.6), hence rejected, and the retry 1.6s later
+// landed 0.1s after the NEXT enemy and was rejected too. First obstacle
+// actually spawned at 4.7s. At 1.8 the gap is 0.8s and it fires immediately.
+// (Pre-existing, not caused by the speed ramp -- but the ramp's longer travel
+// time turned a ~3.9s hole into a ~7.7s one, which is what surfaced it.)
+export const INTRO_OBSTACLE_DELAY_SEC = 1.8;
 
 // --- Pre-seeded pipeline -----------------------------------------------
 // Replaces the previous "ramp-up window" approach, which spawned things at
@@ -68,26 +80,45 @@ export const INTRO_OBSTACLE_DELAY_SEC = 1.5;
 // nothing can pop in because there is no "before" for it to appear out of.
 //
 // Values are ARRIVAL TIMES (seconds after run start); core/main.js converts
-// each to a spawn z via -t * FORWARD_SPEED. Easier to reason about than raw
-// z, since the whole point is controlling when the player meets each thing.
+// each to a spawn z via systems/speed.js's distanceTraveledBy(t) -- the
+// integral of the speed ramp, NOT t * a fixed speed. That's what makes these
+// authored times still mean exactly what they say now that the world starts
+// slower and accelerates.
+//
+// HARD CEILING ~13.1s: a seed is placed at -distanceTraveledBy(t), and the
+// world only covers 140 units (SPAWN_Z) in the first ~13.1s at the ramp's
+// starting speed. Author a seed later than that and it spawns FURTHER out
+// than the live pipeline's own horizon. So this list can't be extended
+// indefinitely to cover a late-arriving spawner -- that has to be fixed on
+// the spawner's first-delay instead (which is exactly why
+// PLATFORM_FIRST_SPAWN_DELAY_SEC had to drop to 0).
 export const INTRO_SEED_ENABLED = true;
 
 // Obstacle and enemy arrivals are deliberately interleaved so no pair lands
 // within data/spawnConfig.js's MIN_ENEMY_OBSTACLE_GAP_SEC (0.6s) of each
 // other -- that rule is enforced at SPAWN time for live spawns, which can't
 // help here (every seed spawns at t=0), so the spacing has to be baked into
-// these lists by hand instead.
-export const INTRO_SEED_OBSTACLE_ARRIVALS = [4.2, 6.0, 7.8, 9.6];
+// these lists by hand instead. Check BOTH lists together when editing either.
+//
+// Extended out to ~13s for the speed ramp: the slower start pushes every
+// spawner's first live arrival later (obstacles from ~10.3s to ~14.7s), so
+// the seeds have to cover more of the opening than they used to or a hole
+// opens up right where the seeded intro hands off.
+export const INTRO_SEED_OBSTACLE_ARRIVALS = [4.2, 6.0, 7.8, 9.6, 11.4, 12.9];
 // A few more than the pure interval would give -- direct feedback asked for
-// "a bit more enemies in that first part." The 3-wide wall at ~1.6s lands
+// "a bit more enemies in that first part." The 3-wide wall at ~2.6s lands
 // before all of these.
-export const INTRO_SEED_ENEMY_ARRIVALS = [3.0, 5.0, 8.6];
+// 12.2 rather than 12.5: against the 12.9 obstacle above, 12.5 would be only
+// 0.4s apart -- inside the 0.6s rule.
+export const INTRO_SEED_ENEMY_ARRIVALS = [3.0, 5.0, 8.6, 10.6, 12.2];
 // One platform on the way in from the very first frame -- direct feedback:
 // platforms were barely showing up at all early (one arrival at ~10s, then
-// nothing until ~22s).
+// nothing until ~22s). core/main.js passes an explicit lane for each entry,
+// since spawnPlatform otherwise picks at random with no mutual exclusion and
+// two seeds could stack in the same lane.
 export const INTRO_SEED_PLATFORM_ARRIVALS = [6.8];
 // Direct feedback: "let's have some coins there in the start." Coins used to
 // be the worst offender -- they never got the old close-spawn treatment, so
-// their 9s first-delay plus the full 8.75s travel meant the first coin
-// reached the player at ~17.8s.
-export const INTRO_SEED_COIN_ARRIVALS = [3.4, 6.4];
+// their 9s first-delay plus the full travel meant the first coin reached the
+// player at ~17.8s.
+export const INTRO_SEED_COIN_ARRIVALS = [3.4, 6.4, 9.4, 12.4];

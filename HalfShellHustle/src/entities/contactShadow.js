@@ -59,6 +59,20 @@ export function pulseContactShadow(shadow) {
   shadow.pulse = 1;
 }
 
+// The shadow must blink in lockstep with the player during post-hit
+// invulnerability -- a shadow left on the street under a blinked-out
+// character reads as a bug. Exposed here rather than having core/main.js poke
+// `shadow.mesh.visible` directly, keeping the mesh an implementation detail of
+// this file (same reasoning as pulseContactShadow above).
+//
+// Note this is deliberately NOT owned by entities/player.js the way
+// TmntSewerSlide's equivalent is -- there, the player object owns its own
+// shadow; here the shadow is a separate object created and held by
+// core/main.js, so main.js is the only place that has both.
+export function setContactShadowVisible(shadow, visible) {
+  shadow.mesh.visible = visible;
+}
+
 export function updateContactShadow(shadow, player, dt) {
   const { mesh } = shadow;
   mesh.position.x = player.sprite.position.x;

@@ -20,7 +20,8 @@ const OBSTACLE_WIDTH = LANE_WIDTH * 0.82; // shared lane-fit ratio, both types
 export const OBSTACLE_TYPES = {
   // jumpClearHeight = 2.0: entities/collision.js's checkObstacleHit fires
   // for a continuous ~0.19s window (2 * OBSTACLE_COLLISION_HALF_Z /
-  // FORWARD_SPEED) as this passes the player, and player.airHeight must
+  // the current scroll speed) as this passes the player -- so it's WIDER at
+  // the speed ramp's slower start and narrows as the run speeds up. player.airHeight must
   // stay >= this for the whole window. With entities/player.js's rise/hold/
   // fall arc (JUMP_HEIGHT 2.4), airHeight stays >= 2.0 for a continuous
   // ~0.45s stretch spanning the hold -- ~2.4x the required window, tighter

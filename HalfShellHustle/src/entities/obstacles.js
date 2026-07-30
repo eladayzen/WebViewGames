@@ -28,13 +28,15 @@ import { OBSTACLE_TYPES } from '../data/obstacleTypes.js';
 import { LOW_OBSTACLE_ENABLED, LOW_OBSTACLE_SPAWN_CHANCE } from '../data/spawnConfig.js';
 import { findOpenLane } from './platform.js';
 
-// Sized with headroom above the theoretical concurrent-obstacle count
-// ((DESPAWN_Z - SPAWN_Z) / FORWARD_SPEED / OBSTACLE_SPAWN_INTERVAL_SEC ~= 6
-// at the current OBSTACLE_SPAWN_INTERVAL_SEC=1.6, data/spawnConfig.js) so a
-// spawn is never silently dropped for lack of a free pooled slot. Bumped
-// from 7 alongside that difficulty increase, same reasoning entities/
-// enemy.js's own POOL_SIZE bump used.
-const POOL_SIZE = 10;
+// Sized with headroom above the theoretical concurrent-obstacle count. That
+// count is set by how long an entity LIVES -- (DESPAWN_Z - SPAWN_Z) / speed --
+// so the SLOWER end of the speed ramp is the sizing case, not the faster end:
+// at SPEED_START a slot is occupied ~14.1s instead of ~10.6s at SPEED_MAX,
+// which is ~8.8 concurrent at OBSTACLE_SPAWN_INTERVAL_SEC=1.6, plus the
+// data/introSequence.js seeds still in flight early on. 10 -> 14 restores the
+// ~1.6x headroom the pre-ramp value had; without it a spawn gets silently
+// dropped for lack of a free slot.
+const POOL_SIZE = 14;
 
 function createSlot(scene) {
   const material = new THREE.SpriteMaterial({ transparent: true });

@@ -373,7 +373,7 @@ export function isRampSupported(field, lane, z) {
 // blocked) -- same "checked once at spawn time, holds for the entity's
 // whole lifetime" reasoning as MIN_ENEMY_OBSTACLE_GAP_SEC
 // (data/spawnConfig.js): every active entity scrolls at the same
-// FORWARD_SPEED, so once the later-spawning one's relative gap is clear
+// speed as each other, so once the later-spawning one's relative gap is clear
 // here, it never changes.
 //
 // PLATFORM_FOOTPRINT_EXCLUSION_BUFFER (data/spawnConfig.js) pads both ends
@@ -406,7 +406,7 @@ export function findOpenLane(field, z) {
 // Direct feedback: enemies should actually stand on top of an elevated
 // platform's deck sometimes, not just avoid platforms entirely. Platforms/
 // obstacles/enemies all default-spawn at the same fixed SPAWN_Z and scroll
-// at the same FORWARD_SPEED, so a deck's z-range (always entryStartZ +
+// at the same speed, so a deck's z-range (always entryStartZ +
 // PLATFORM_RAMP_LENGTH or later) can never reach back to SPAWN_Z itself --
 // a normal spawn can never coincidentally land on an EXISTING platform's
 // deck. This is the deliberate path that does it on purpose, used by
@@ -566,12 +566,30 @@ export function isPlatformLaneBlocked(field, lane, z, currentElevation) {
 // checkObstacleHit uses for a barricade -- direct feedback previously
 // caught this firing 2+ seconds early when it instead spanned the whole
 // object.
+// Returns the HIT SLOT (or null), not a boolean -- the caller needs the slot
+// because a SURVIVED hit has to mark it cleared. Now that a barrier costs a
+// life instead of ending the run, surviving one otherwise leaves the player
+// grounded (getPlayerElevationAt returns 0 for a kill-type until `cleared`
+// latches, and that only latches on a jump) while the platform's own 30-unit
+// opaque deck box scrolls straight over him -- he'd be rendered completely
+// hidden inside a solid crate for several seconds. Latching `cleared` on
+// survival reads as "the hit knocked you up onto the deck", which is both
+// coherent and reuses machinery that already exists for the jump case.
+//
+// Inert today (PLATFORM_KILL_TYPE_ENABLED is false) but this would be a
+// nasty latent bug the moment anyone flips that flag.
 export function checkPlatformKillBarrierHit(player, field, grounded) {
-  if (!grounded) return false;
+  if (!grounded) return null;
   for (const slot of field.pool) {
     if (!slot.active || slot.type !== 'kill' || slot.lane !== player.laneIndex) continue;
     if (Math.abs(slot.entryStartZ - PLAYER_Z) > OBSTACLE_COLLISION_HALF_Z) continue;
-    return true;
+    return slot;
   }
-  return false;
+  return null;
+}
+
+// Called by core/main.js when a kill-barrier hit was survived (a life lost
+// rather than the run ending) -- see checkPlatformKillBarrierHit's note.
+export function markPlatformCleared(slot) {
+  slot.cleared = true;
 }

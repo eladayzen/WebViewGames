@@ -38,8 +38,14 @@ import { ENEMY_ON_PLATFORM_CHANCE } from '../data/spawnConfig.js';
 // TEMPORARY demo bump (direct feedback: "twice as much enemies", plus
 // data/introSequence.js's 3-wide wall needs at least LANE_X.length free
 // slots at once on top of whatever's already scrolling) -- normal value
-// was 5, doubled to 10. Revert once the demo pass is done.
-const POOL_SIZE = 10;
+// was 5, doubled to 10, then 14 for the speed ramp.
+//
+// 14, not 10, because the ramp's slower start keeps every slot occupied
+// ~14.1s instead of ~9.5s -- ~7.1 concurrent at a 2.0s interval, and the peak
+// is worse than the average: around t=1-2.5s the 3 intro-wall enemies haven't
+// cleared yet while all the seeded ones are already in flight, which was 9 of
+// the old 10 slots.
+const POOL_SIZE = 14;
 
 // Same threshold entities/collision.js's checkObstacleHit uses for the
 // player-vs-obstacle case, kept as its own local constant here rather than

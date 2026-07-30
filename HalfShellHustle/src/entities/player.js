@@ -15,7 +15,7 @@ import {
 } from '../data/playerSprite.js';
 import {
   LANE_X, CENTER_LANE, LANE_RESPONSE, JUMP_RISE_DURATION, JUMP_HOLD_DURATION, JUMP_FALL_DURATION, JUMP_HEIGHT,
-  PLAYER_Z,
+  PLAYER_Z, MAGNET_DURATION_SEC,
 } from '../data/constants.js';
 import { getPlayerElevationAt, isRampSupported } from './platform.js';
 import { PLATFORM_HEIGHT, PLATFORM_FALL_GRAVITY } from '../data/platformSequence.js';
@@ -88,7 +88,7 @@ function jumpArcHeight(elapsed) {
 // height he'd actually be at then.
 //
 // Exists so entities/coins.js can lay a coin arc out along the player's
-// REAL trajectory (a coin at `elapsed * FORWARD_SPEED` further away is
+// REAL trajectory (a coin at `elapsed * speed` further away is
 // reached exactly `elapsed` seconds later, since coins and the player close
 // on each other at that fixed speed -- so an arc laid out this way lines up
 // perfectly under a jump pressed as its first coin arrives).
@@ -144,6 +144,7 @@ export function createPlayer() {
     frameTimer: 0,
     jumpElapsed: null, // null = grounded
     jumpFrameIndex: -1, // which data/playerSprite.js PLAYER_JUMP_FRAMES entry is currently showing, -1 = none yet (forces the first assignment on takeoff)
+    magnetTimer: 0, // seconds of coin-magnet left; see grantMagnet/isMagnetActive below
     airHeight: 0, // current jump-arc height above ground (world units), independent of elevationY -- 0 when not jumping, read by entities/collision.js for jump-clearable obstacles
     elevationY: 0, // current entities/platform.js height offset, read by street/camera-rig.js
     elevationVelocity: 0, // world units/sec, only used while gravity-falling (negative)
@@ -162,6 +163,7 @@ export function resetPlayer(player) {
   player.frameTimer = 0;
   player.jumpElapsed = null;
   player.jumpFrameIndex = -1;
+  player.magnetTimer = 0;
   player.airHeight = 0;
   player.elevationY = 0;
   player.elevationVelocity = 0;
@@ -179,6 +181,32 @@ export function resetPlayer(player) {
 export function setPlayerLane(player, laneIndex) {
   player.targetLane = laneIndex;
   player.laneIndex = laneIndex;
+}
+
+// Single point of control for the sprite's visibility, so the post-hit
+// invulnerability blink (core/main.js) has one obvious place to go through
+// rather than reaching into `player.sprite` from the game loop. The contact
+// shadow blinks alongside it, but lives in core/main.js's hands -- see
+// entities/contactShadow.js's setContactShadowVisible.
+export function setPlayerVisible(player, visible) {
+  player.sprite.visible = visible;
+}
+
+// --- Timed abilities ---------------------------------------------------
+// Buffs run as PARALLEL TIMERS, deliberately independent of the jump/attack
+// state machine above -- same separation TmntSkateSlice's player uses, so a
+// buff can never interfere with (or be cancelled by) a pose change.
+//
+// SCAFFOLDING: nothing grants this yet. There is no magnet pickup entity --
+// only the ability itself, so adding the pickup later is purely additive.
+// entities/coins.js's applyMagnetPull is the effect; core/main.js runs it as
+// its own pass while isMagnetActive() holds.
+export function grantMagnet(player) {
+  player.magnetTimer = MAGNET_DURATION_SEC;
+}
+
+export function isMagnetActive(player) {
+  return player.magnetTimer > 0;
 }
 
 export function startPlayerJump(player) {
@@ -215,6 +243,10 @@ export function getPlayerHeadAnchor(player) {
 }
 
 export function updatePlayer(player, dt, platformField) {
+  // Ability timers tick down here, in one place, independent of every pose/
+  // state branch below (see grantMagnet's note on parallel timers).
+  if (player.magnetTimer > 0) player.magnetTimer = Math.max(0, player.magnetTimer - dt);
+
   // entities/platform.js's per-lane height system: `target` is where he
   // SHOULD be right now, ignoring momentum -- either mid-scripted-climb
   // (rising smoothly toward a ramp/wall's top, see getPlayerElevationAt)

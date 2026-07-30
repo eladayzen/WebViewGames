@@ -7,34 +7,43 @@ import * as THREE from 'three';
 import '../style.css';
 
 import { createStreet, updateStreet } from '../street/street.js';
-import { createCameraRig, updateCameraRig } from '../street/camera-rig.js';
+import {
+  createCameraRig, updateCameraRig, resetCameraRig, triggerCameraShake,
+} from '../street/camera-rig.js';
 import {
   createPlayer, resetPlayer, setPlayerLane, startPlayerJump, startPlayerAttack, updatePlayer,
-  getPlayerHeadAnchor,
+  getPlayerHeadAnchor, setPlayerVisible, grantMagnet, isMagnetActive,
 } from '../entities/player.js';
 import { createRibbon, resetRibbon, updateRibbon } from '../entities/ribbon.js';
 import {
   createObstaclePool, resetObstaclePool, spawnObstacle, updateObstaclePool,
 } from '../entities/obstacles.js';
 import { checkObstacleHit } from '../entities/collision.js';
-import { createContactShadow, pulseContactShadow, updateContactShadow } from '../entities/contactShadow.js';
+import {
+  createContactShadow, pulseContactShadow, updateContactShadow, setContactShadowVisible,
+} from '../entities/contactShadow.js';
 import {
   createEnemyPool, resetEnemyPool, spawnEnemy, updateEnemyPool, checkEnemyHit, killEnemy,
 } from '../entities/enemy.js';
 import {
   createPlatformField, resetPlatformField, spawnPlatform, updatePlatformField,
-  checkPlatformKillBarrierHit, isPlatformLaneBlocked,
+  checkPlatformKillBarrierHit, markPlatformCleared, isPlatformLaneBlocked,
 } from '../entities/platform.js';
 import {
   createCoinPool, resetCoinPool, spawnCoinCluster, updateCoinPool, collectCoins, despawnCoin,
+  applyMagnetPull,
 } from '../entities/coins.js';
 import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
+import { speedAt, distanceTraveledBy } from '../systems/speed.js';
+import {
+  createLivesState, resetLivesState, tryHit, isInvulnerable,
+} from '../systems/lives.js';
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
 import { pollLaneStep, pollJumpPress } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import { initSensitivityControl } from '../ui/sensitivity.js';
 import {
-  LANE_X, FORWARD_SPEED, ASPECT_W, ASPECT_H, CAMERA_FOV,
+  LANE_X, CENTER_LANE, ASPECT_W, ASPECT_H, CAMERA_FOV, LIVES_START,
 } from '../data/constants.js';
 import {
   INTRO_WALL_ENABLED, INTRO_WALL_ENEMY_COUNT, INTRO_WALL_SPAWN_Z,
@@ -109,6 +118,11 @@ function boot() {
   const cameraRig = createCameraRig(camera);
   const gs = createGameState();
 
+  // Lives (systems/lives.js): an obstacle now costs one life instead of
+  // ending the run outright, with a brief invulnerability window after each
+  // hit -- that window is required for correctness, not polish; see lives.js.
+  const livesState = createLivesState();
+
   // Run-cycle energy VFX (experimental pass): ground contact shadow, dust
   // puffs fired on each foot-contact frame, and near-camera speed streaks.
   const contactShadow = createContactShadow(scene);
@@ -144,6 +158,17 @@ function boot() {
   // Deliberately NOT folded into `score` (which is enemy kills) -- coins are
   // their own resource with their own HUD counter, see index.html's #coins.
   let coinsCollected = 0;
+  // Seconds of red damage-flash left (see index.html's #damage-flash for why
+  // this is a timer rather than a one-frame toggle).
+  let damageFlashTimer = 0;
+  // Recomputed every frame from gameTime (systems/speed.js). Held here rather
+  // than recomputed at each of the eight places that need it, so every pool
+  // is provably scrolling at the same rate on any given frame.
+  let currentSpeed = speedAt(0);
+  const DAMAGE_FLASH_DURATION_SEC = 0.14;
+  const DAMAGE_FLASH_PEAK_OPACITY = 0.42;
+  const DAMAGE_SHAKE_INTENSITY = 0.4; // same magnitude CarRacer uses for a crash
+  const damageFlashEl = document.getElementById('damage-flash');
 
   // Running game-clock (seconds since the current run started) purely for
   // data/constants.js's MIN_ENEMY_OBSTACLE_GAP_SEC spacing rule below --
@@ -158,9 +183,15 @@ function boot() {
   );
 
   // Pre-places entities already in flight at staggered distances, so the run
-  // OPENS with a populated pipeline instead of waiting one full ~8.75s
-  // far-travel for the first spawn to arrive (data/introSequence.js's
-  // INTRO_SEED_* lists carry the reasoning and the arrival times).
+  // OPENS with a populated pipeline instead of waiting a full far-travel for
+  // the first live spawn to arrive (data/introSequence.js's INTRO_SEED_* lists
+  // carry the reasoning and the arrival times).
+  //
+  // seedZ inverts the SPEED RAMP, not a fixed speed: a seed meant to arrive at
+  // t must be placed exactly as far out as the world will actually scroll in
+  // those t seconds, which is systems/speed.js's distanceTraveledBy (the
+  // integral of the ramp). Using a flat `t * speed` here would make every
+  // authored arrival time land late, progressively worse for later entries.
   //
   // Order matters, and gives correct mutual avoidance for free: platforms
   // first, then obstacles/enemies (which refuse lanes blocked by a platform
@@ -168,11 +199,13 @@ function boot() {
   // Seeding in any other order would let a later seed land on top of an
   // earlier one.
   function seedPipeline() {
-    const seedZ = (arrivalSec) => -arrivalSec * FORWARD_SPEED;
+    const seedZ = (arrivalSec) => -distanceTraveledBy(arrivalSec);
     if (PLATFORM_ENABLED) {
-      for (const t of INTRO_SEED_PLATFORM_ARRIVALS) {
-        spawnPlatform(platformField, rollPlatformType(), null, seedZ(t));
-      }
+      // Explicit, distinct lanes: spawnPlatform otherwise picks at random with
+      // no mutual-exclusion check, so two seeds could stack in one lane.
+      INTRO_SEED_PLATFORM_ARRIVALS.forEach((t, i) => {
+        spawnPlatform(platformField, rollPlatformType(), (CENTER_LANE + i) % LANE_X.length, seedZ(t));
+      });
     }
     for (const t of INTRO_SEED_OBSTACLE_ARRIVALS) {
       spawnObstacle(obstacleField, platformField, null, seedZ(t));
@@ -181,7 +214,7 @@ function boot() {
       spawnEnemy(enemyField, platformField, null, null, seedZ(t));
     }
     for (const t of INTRO_SEED_COIN_ARRIVALS) {
-      spawnCoinCluster(coinField, platformField, obstacleField, seedZ(t));
+      spawnCoinCluster(coinField, platformField, obstacleField, 0, seedZ(t));
     }
   }
 
@@ -194,6 +227,14 @@ function boot() {
     resetSpawner(platformSpawnerState, PLATFORM_FIRST_SPAWN_DELAY_SEC);
     resetCoinPool(coinField);
     resetSpawner(coinSpawnerState, COIN_FIRST_SPAWN_DELAY_SEC);
+    resetLivesState(livesState);
+    // Clears any death shake still decaying and snaps the camera back to
+    // centre, so a quick retry doesn't inherit the previous run's jolt.
+    resetCameraRig(cameraRig);
+    setPlayerVisible(player, true);
+    setContactShadowVisible(contactShadow, true);
+    damageFlashTimer = 0;
+    damageFlashEl.style.opacity = '0';
     gameTime = 0;
     lastObstacleSpawnTime = -Infinity;
     lastEnemySpawnTime = -Infinity;
@@ -224,11 +265,40 @@ function boot() {
     hud.updateDistance(distance);
     hud.updateScore(score);
     hud.updateCoins(coinsCollected);
+    hud.updateLives(livesState.lives);
   }
 
   function endRun() {
     triggerGameOver(gs);
+    // The blink lives inside tick()'s running guard, so once the state flips
+    // it stops being recomputed -- without this the sprite (and its shadow)
+    // can freeze mid-blink and sit INVISIBLE on the game-over screen.
+    setPlayerVisible(player, true);
+    setContactShadowVisible(contactShadow, true);
     hud.showGameOver(distance, coinsCollected);
+  }
+
+  // One life lost, with the feedback that sells it: a camera jolt, a red
+  // screen flash, and the blink driven by the invulnerability window in
+  // tick() below. Returns whether the hit was fatal, so a caller can skip
+  // its own follow-up work when the run just ended.
+  //
+  // tryHit is the gate for whether damage lands at all -- but every caller
+  // here already checks isInvulnerable before looping, so a `false` return
+  // means something got past that check and is worth not double-reporting.
+  function takeDamage() {
+    const result = tryHit(livesState, gameTime);
+    if (!result.hit) return false;
+
+    hud.updateLives(livesState.lives);
+    triggerCameraShake(cameraRig, DAMAGE_SHAKE_INTENSITY);
+    damageFlashTimer = DAMAGE_FLASH_DURATION_SEC;
+
+    if (result.dead) {
+      endRun();
+      return true;
+    }
+    return false;
   }
 
   function restart() {
@@ -273,6 +343,18 @@ function boot() {
   // isn't re-sent does nothing. No-op in a normal browser.
   initSensitivityControl();
 
+  // Heart tray built once from the CURRENT cap -- not from
+  // LIVES_MAX_SUPPORTED, which is only a documented ceiling; a tray sized to
+  // that would render pre-greyed hearts (see ui/hud.js's initLivesTray).
+  hud.initLivesTray(LIVES_START);
+
+  // Debug: grant the magnet ability (entities/player.js). SCAFFOLDING -- there
+  // is no magnet pickup entity yet, so this is currently the only way to see
+  // the coin-pull at all. Remove once a real pickup grants it.
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyM') grantMagnet(player);
+  });
+
   function fitStageToAspect() {
     const winW = window.innerWidth;
     const winH = window.innerHeight;
@@ -301,6 +383,11 @@ function boot() {
 
     if (!paused && gs.current === 'running') {
       gameTime += dt;
+      // ONE speed for the whole world this frame (systems/speed.js). Every
+      // pool below gets this exact value -- the spacing guarantees in
+      // entities/platform.js and data/spawnConfig.js only hold because no
+      // pool ever scrolls at its own rate.
+      currentSpeed = speedAt(gameTime);
       const step = pollLaneStep();
       if (step !== 0) {
         const nextLane = THREE.MathUtils.clamp(player.targetLane + step, 0, LANE_X.length - 1);
@@ -329,7 +416,7 @@ function boot() {
       }
       updatePlayer(player, dt, platformField);
       // updateRibbon(ribbon, dt, getPlayerHeadAnchor(player)); -- disabled, see above
-      updateStreet(street, dt, FORWARD_SPEED);
+      updateStreet(street, dt, currentSpeed);
 
       // Foot-contact VFX: fires once per transition INTO a contact pose
       // (frame 1 or 3, see data/playerSprite.js), grounded only -- a jump's
@@ -347,10 +434,28 @@ function boot() {
           dustPool, player.sprite.position.x, 0.05 + player.elevationY, player.sprite.position.z - DUST_AHEAD_OFFSET,
         );
       }
+      // Post-hit blink -- fast enough to read as "intangible right now", and
+      // recomputed from scratch every frame (with an explicit visible-true
+      // branch) so it can never latch the sprite hidden. The contact shadow
+      // blinks with him; a shadow left on the street under a blinked-out
+      // character reads as a bug.
+      const blinkedOut = isInvulnerable(livesState, gameTime)
+        && Math.floor(gameTime * 14) % 2 !== 0;
+      setPlayerVisible(player, !blinkedOut);
+      setContactShadowVisible(contactShadow, !blinkedOut);
+
+      // Red damage flash, decayed on the run clock so it freezes under pause
+      // like every other timed effect here.
+      if (damageFlashTimer > 0) {
+        damageFlashTimer = Math.max(0, damageFlashTimer - dt);
+        const t = damageFlashTimer / DAMAGE_FLASH_DURATION_SEC;
+        damageFlashEl.style.opacity = `${t * DAMAGE_FLASH_PEAK_OPACITY}`;
+      }
+
       updateContactShadow(contactShadow, player, dt);
       dustPool.update(dt);
-      dustPool.scrollZ(FORWARD_SPEED * dt, DUST_FAN_RATE);
-      updateSpeedStreaks(speedStreaks, dt, FORWARD_SPEED);
+      dustPool.scrollZ(currentSpeed * dt, DUST_FAN_RATE);
+      updateSpeedStreaks(speedStreaks, dt, currentSpeed);
 
       // Frame-count HUD readout disabled -- re-enable (uncomment) if a
       // specific frame needs calling out again during playtest feedback.
@@ -363,7 +468,11 @@ function boot() {
       //   );
       // }
 
-      distance += FORWARD_SPEED * dt;
+      // Assignment, not accumulation: systems/speed.js's closed form is the
+      // single source of truth for "how far have we come", shared with the
+      // spawn-seeding and coin-arc math. An Euler sum here would slowly
+      // disagree with them for no benefit.
+      distance = distanceTraveledBy(gameTime);
       hud.updateDistance(distance);
 
       // MIN_ENEMY_OBSTACLE_GAP_SEC (constants.js): skip a spawn attempt that
@@ -381,20 +490,35 @@ function boot() {
           lastObstacleSpawnTime = gameTime;
         }
       });
-      updateObstaclePool(obstacleField, dt, FORWARD_SPEED);
+      updateObstaclePool(obstacleField, dt, currentSpeed);
 
-      for (const slot of obstacleField.pool) {
-        if (checkObstacleHit(player, slot)) {
-          endRun();
-          break;
+      // An obstacle costs ONE life rather than ending the run. The whole loop
+      // is gated on the invulnerability window (rather than testing it per
+      // hit, matching CarRacer's rig) because a barricade's collision window
+      // spans many frames -- without this a single obstacle would drain every
+      // life in one pass. See systems/lives.js.
+      if (!isInvulnerable(livesState, gameTime)) {
+        for (const slot of obstacleField.pool) {
+          if (checkObstacleHit(player, slot)) {
+            takeDamage();
+            break;
+          }
         }
       }
 
-      // Kill-barrier platform, missed -- same consequence as an obstacle
-      // hit (entities/platform.js's checkPlatformKillBarrierHit is a plain
-      // physical jump-or-die check: grounded at contact -> dead).
-      if (checkPlatformKillBarrierHit(player, platformField, player.jumpElapsed === null)) {
-        endRun();
+      // Kill-barrier platform, missed -- same consequence as an obstacle hit.
+      // Returns the slot (not a bool) so a SURVIVED hit can mark it cleared:
+      // otherwise the player stays at street level while the platform's opaque
+      // deck box scrolls over him, hiding him inside it for seconds. See
+      // entities/platform.js's checkPlatformKillBarrierHit.
+      if (!isInvulnerable(livesState, gameTime)) {
+        const barrierSlot = checkPlatformKillBarrierHit(
+          player, platformField, player.jumpElapsed === null,
+        );
+        if (barrierSlot) {
+          const fatal = takeDamage();
+          if (!fatal) markPlatformCleared(barrierSlot);
+        }
       }
 
       // Foot Soldier: opposite of an obstacle hit -- contact KILLS the
@@ -406,7 +530,7 @@ function boot() {
           lastEnemySpawnTime = gameTime;
         }
       }, ENEMY_SPAWN_INTERVAL_SEC);
-      updateEnemyPool(enemyField, dt, FORWARD_SPEED, platformField);
+      updateEnemyPool(enemyField, dt, currentSpeed, platformField);
       const hitEnemy = checkEnemyHit(player, enemyField);
       if (hitEnemy) {
         spawnEnemyPoof(
@@ -427,7 +551,7 @@ function boot() {
           spawnPlatform(platformField, rollPlatformType());
         }, PLATFORM_SPAWN_INTERVAL_SEC);
       }
-      updatePlatformField(platformField, dt, FORWARD_SPEED);
+      updatePlatformField(platformField, dt, currentSpeed);
 
       // Coins: purely positive, so nothing here can end the run. Placed
       // AFTER the platform section on purpose -- a coin cluster's placement
@@ -439,12 +563,18 @@ function boot() {
       // spawner above: that closes an empty-pipeline FAIRNESS gap, and
       // missing a coin costs the player nothing. See data/spawnConfig.js.
       updateSpawner(coinSpawnerState, dt, () => {
-        spawnCoinCluster(coinField, platformField, obstacleField);
+        spawnCoinCluster(coinField, platformField, obstacleField, gameTime);
       }, COIN_CLUSTER_SPAWN_INTERVAL_SEC);
       // Must run BEFORE collectCoins -- it's what resolves each coin's live
       // surface height for this frame (same ordering reason updateEnemyPool
       // precedes checkEnemyHit above).
-      updateCoinPool(coinField, dt, FORWARD_SPEED, platformField);
+      updateCoinPool(coinField, dt, currentSpeed, platformField);
+      // Magnet: its own pass, strictly AFTER updateCoinPool (so its x/y writes
+      // aren't overwritten by the pool's surface-follow) and BEFORE
+      // collectCoins (so the pull strength collection reads is current this
+      // frame). Called unconditionally -- when the buff is down it eases each
+      // coin's pull back to zero and returns it to its own lane.
+      applyMagnetPull(coinField, player, dt, isMagnetActive(player));
       const collected = collectCoins(player, coinField, platformField);
       for (const slot of collected) {
         spawnCoinSparkle(
@@ -464,7 +594,11 @@ function boot() {
     // -- otherwise the small foot-plant jitter reads as camera pan/tilt.
     // elevationY rides up with the player on an elevated platform stretch
     // (entities/platform.js) so the camera keeps the same relative framing.
-    updateCameraRig(cameraRig, player.laneX, player.elevationY);
+    // dt only drives the shake. Passing 0 while paused freezes the decay AND
+    // skips applying jitter, so a paused screen sits still instead of
+    // vibrating forever. Deliberately NOT gated on gs.current: the death shake
+    // should play out across the game-over screen.
+    updateCameraRig(cameraRig, player.laneX, player.elevationY, paused ? 0 : dt);
 
     renderer.render(scene, camera);
   }

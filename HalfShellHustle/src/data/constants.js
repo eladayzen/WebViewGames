@@ -12,12 +12,53 @@ export const LANE_X = [-LANE_WIDTH, 0, LANE_WIDTH];
 export const CENTER_LANE = 1;
 export const PLAYER_Z = 0;
 
-// --- Forward speed (§5.1: never player-controlled; §11: overall pace stays
-// deliberately slower than the native genre's tempo, at every tier -- this
-// is a fixed constant since POC has no difficulty ramp, §2) ---
-// Bumped from the original 9 per direct playtest feedback -- obstacles/
-// street needed to read as much faster.
-export const FORWARD_SPEED = 16; // world units/sec
+// --- Forward speed (§5.1: never player-controlled) ---
+// No longer a constant: direct feedback turned the old fixed 16 into a RAMP.
+// The previously-shipped 16 became the ceiling minus 10% (SPEED_MAX), and a
+// run now starts 30% below that ceiling and climbs, to ease a new player in.
+// systems/speed.js owns the curve; core/main.js reads one speed per frame and
+// hands the same value to every pool.
+//
+// NOTE the ramp changes reaction time, NOT encounter density: spawn intervals
+// are in seconds (systems/spawner.js), so the number of hazards per second is
+// identical at every point on the ramp -- only the window to react to each
+// one tightens (~0.30s -> ~0.21s). And since SPEED_MAX is below the old 16,
+// the game is permanently ~10% gentler past the ramp than it used to be.
+export const SPEED_MAX = 14.4; // world units/sec -- the old shipped 16, minus 10%
+export const SPEED_START = 10.08; // 30% below SPEED_MAX
+export const SPEED_RAMP_DURATION_SEC = 45; // seconds from SPEED_START to SPEED_MAX
+
+// --- Lives (systems/lives.js) ---
+// Direct feedback: an obstacle costs a life instead of ending the run.
+export const LIVES_START = 3;
+// Ceiling a health PICKUP may top you up to. Same as LIVES_START for now --
+// pickups restore, they don't extend.
+export const LIVES_SOFTCAP = 3;
+// Hard ceiling the system and HUD are built to handle, for a future
+// "extra heart" upgrade. NOT the tray size -- ui/hud.js builds the tray from
+// the live cap, because rendering 5 slots while holding 3 lives would show
+// two pre-greyed hearts and read as "you already lost two."
+export const LIVES_MAX_SUPPORTED = 5;
+// Grace window after a hit. See systems/lives.js for why this is required for
+// correctness (a single obstacle would otherwise drain every life in one
+// pass) and why 1.2s stays safe at every point on the speed ramp.
+export const HIT_INVULNERABILITY_SEC = 1.2;
+
+// --- Timed magnet ability (entities/player.js, entities/coins.js) ---
+// SCAFFOLDING ONLY: the ability works, but nothing grants it yet -- there is
+// no magnet pickup entity. Press M to test (core/main.js debug key).
+export const MAGNET_DURATION_SEC = 7;
+// How far ahead in z a coin starts being pulled. In world units, so it
+// self-scales agreeably with the speed ramp: at a slower speed a coin spends
+// longer inside this range, giving the pull more time to work.
+export const MAGNET_RANGE_Z = 26;
+// Pull strength 0..1 at which a coin is treated as collectible regardless of
+// lane and reach -- see entities/coins.js's collectCoins.
+export const MAGNET_COLLECT_PULL_THRESHOLD = 0.45;
+// How fast a coin's pull eases toward its target strength (1/sec). Eased
+// rather than snapped so gaining or losing the buff mid-flight doesn't
+// teleport coins sideways.
+export const MAGNET_EASE_RATE = 6;
 
 // --- Player lane easing + jump arc (§5.2) ---
 export const LANE_RESPONSE = 10; // exponential lane-follow rate

@@ -22,8 +22,10 @@
 
 import * as THREE from 'three';
 import {
-  LANE_X, SPAWN_Z, DESPAWN_Z, PLAYER_Z, FORWARD_SPEED,
+  LANE_X, SPAWN_Z, DESPAWN_Z, PLAYER_Z,
+  MAGNET_RANGE_Z, MAGNET_COLLECT_PULL_THRESHOLD, MAGNET_EASE_RATE,
 } from '../data/constants.js';
+import { distanceTraveledBy, speedAfterTraveling } from '../systems/speed.js';
 import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
 import { COIN_TYPES, DEFAULT_COIN_TYPE } from '../data/coinTypes.js';
 import {
@@ -117,6 +119,10 @@ function createSlot(scene) {
     z: 0,
     baseHeight: 0,
     pulseTimer: 0,
+    // 0..1 magnet influence, recomputed every frame by applyMagnetPull (0
+    // whenever the ability is inactive). Kept OFF slot.lane on purpose -- see
+    // applyMagnetPull's note.
+    magnetPull: 0,
   };
 }
 
@@ -146,6 +152,7 @@ function placeCoin(slot, lane, z, baseHeight, typeKey, pulsePhase) {
   slot.z = z;
   slot.baseHeight = baseHeight;
   slot.pulseTimer = pulsePhase % COIN_PULSE_PERIOD;
+  slot.magnetPull = 0;
   slot.sprite.material.color.setHex(type.color);
   slot.sprite.scale.set(type.size, type.size, 1);
   // y is corrected against the live surface on this same frame's
@@ -210,6 +217,12 @@ export function updateCoinPool(field, dt, speed, platformField) {
 // mid-jump player legitimately flies OVER a chest-height row and gets
 // nothing -- standard for the genre, and the same fact that makes the arc
 // pattern's jump-only middle coins work at all.
+// A sufficiently magnetized coin (applyMagnetPull below) BYPASSES both the
+// lane test and the reach test. That's not a shortcut around the rules -- it
+// is what a magnet IS: it overrides "you must be in this lane" and "it must
+// be at your height". A magnet that visibly yanks a coin to your chest and
+// then still refuses to collect it would be the wrong behaviour. The z window
+// still applies either way; the coin is never pulled forward in z.
 export function collectCoins(player, field, platformField) {
   const collected = [];
   const surfaceY = getWorldElevationAt(platformField, player.laneIndex, PLAYER_Z) * PLATFORM_HEIGHT;
@@ -219,12 +232,68 @@ export function collectCoins(player, field, platformField) {
   const reachHigh = player.airHeight + PLAYER_COLLECT_REACH + COIN_REACH_GRACE;
   for (const slot of field.pool) {
     if (!slot.active) continue;
-    if (slot.lane !== player.laneIndex) continue;
     if (Math.abs(slot.z - PLAYER_Z) > COIN_COLLECT_HALF_Z) continue;
-    if (slot.baseHeight < reachLow || slot.baseHeight > reachHigh) continue;
+    const magnetized = slot.magnetPull >= MAGNET_COLLECT_PULL_THRESHOLD;
+    if (!magnetized && slot.lane !== player.laneIndex) continue;
+    if (!magnetized && (slot.baseHeight < reachLow || slot.baseHeight > reachHigh)) continue;
     collected.push(slot);
   }
   return collected;
+}
+
+// Timed magnet ability (entities/player.js's grantMagnet/isMagnetActive) --
+// pulls nearby coins toward the player visually and, past
+// MAGNET_COLLECT_PULL_THRESHOLD, makes them collectible regardless of lane or
+// height (see collectCoins above).
+//
+// Runs as its OWN pass from core/main.js, strictly between updateCoinPool and
+// collectCoins: after, so its x/y writes aren't overwritten by the pool's own
+// surface-follow; before, so the pull strength collection reads is current on
+// the same frame. Same separate-pass shape TmntSkateSlice uses for its magnet.
+//
+// WHY THIS DOESN'T TOUCH slot.lane, which would be the obvious way to make a
+// pulled coin collectible: `lane` is also the key for the coin's surface-height
+// query in updateCoinPool (getWorldElevationAt(platformField, slot.lane, ...)).
+// Reassigning it would snap the coin's surface term by up to a full
+// PLATFORM_HEIGHT in one frame the moment the player's lane has a deck under
+// it -- and it's irreversible: if the buff expires or the player moves away,
+// the coin is stranded in a lane it was never authored in. So `lane` stays
+// immutable authored data, and a separate 0..1 `magnetPull` scalar carries the
+// influence. Fully reversible, no surface discontinuity.
+//
+// Called every frame regardless of whether the buff is up -- `active: false`
+// eases the pull back to 0 and returns each coin to its own lane, which is
+// what makes losing the buff mid-flight look deliberate instead of leaving
+// coins hanging off-lane.
+export function applyMagnetPull(field, player, dt, active) {
+  // The centre of the player's collectible band, in world y. Reuses his own
+  // elevationY (already resolved this frame) rather than re-querying the
+  // surface -- see collectCoins' note on why those two aren't interchangeable.
+  const pullTargetY = player.elevationY + player.airHeight + PLAYER_COLLECT_REACH / 2;
+  const ease = Math.min(1, MAGNET_EASE_RATE * dt);
+
+  for (const slot of field.pool) {
+    if (!slot.active) continue;
+
+    let target = 0;
+    if (active) {
+      const dz = Math.abs(slot.z - PLAYER_Z);
+      if (dz < MAGNET_RANGE_Z) target = 1 - dz / MAGNET_RANGE_Z;
+    }
+    slot.magnetPull += (target - slot.magnetPull) * ease;
+    if (slot.magnetPull < 0.002) slot.magnetPull = 0;
+
+    const laneX = LANE_X[slot.lane];
+    if (slot.magnetPull > 0) {
+      // player.laneX, NOT sprite.position.x -- the latter carries the
+      // per-frame foot-plant xOffset bob, which would make every pulled coin
+      // jitter in sympathy with his stride.
+      slot.sprite.position.x = laneX + (player.laneX - laneX) * slot.magnetPull;
+      slot.sprite.position.y += (pullTargetY - slot.sprite.position.y) * slot.magnetPull;
+    } else {
+      slot.sprite.position.x = laneX;
+    }
+  }
 }
 
 // --- Cluster placement -------------------------------------------------
@@ -306,19 +375,30 @@ function buildRow(lane, anchorZ) {
 }
 
 // The arc: a coin `elapsed` seconds' worth of travel FURTHER away
-// (anchorZ - elapsed * FORWARD_SPEED, minus because larger z arrives
-// sooner) is reached exactly `elapsed` after the first one -- so sampling
-// the player's own jump curve at matching times makes the shape line up
-// under a real jump pressed as coin 0 arrives.
+// (anchorZ - elapsed * speed, minus because larger z arrives sooner) is
+// reached exactly `elapsed` after the first one -- so sampling the player's
+// own jump curve at matching times makes the shape line up under a real jump
+// pressed as coin 0 arrives.
+//
+// WHICH speed is the subtle part. This converts a TIME into a DISTANCE, and
+// the conversion is only right if the speed used here equals the speed the
+// player is travelling at when he actually jumps over it -- which, on a speed
+// ramp, is NOT the speed right now at spawn time. The cluster spawns ~140
+// units out and takes >10s to arrive, and the world is faster by then, so
+// laying it out at today's speed makes the arc arrive compressed in time and
+// the player over-jumps it. So: work out how far the world will have scrolled
+// in total by the time this cluster reaches the player, and ask
+// systems/speed.js what the speed is at that point.
 //
 // + COIN_BASE_HEIGHT is load-bearing, not decoration: without it a grounded
 // player's body span already reaches 4 of the 5 arc coins and the jump is
 // pointless (measured). With it, only the two endpoint coins stay
 // collectible on foot.
-function buildArc(lane, anchorZ) {
+function buildArc(lane, anchorZ, gameTime) {
+  const arrivalSpeed = speedAfterTraveling(distanceTraveledBy(gameTime) + Math.abs(anchorZ));
   return sampleJumpArc(COIN_ARC_SAMPLE_FRACTIONS).map((sample) => ({
     lane,
-    z: anchorZ - sample.elapsed * FORWARD_SPEED,
+    z: anchorZ - sample.elapsed * arrivalSpeed,
     baseHeight: COIN_BASE_HEIGHT + sample.height,
   }));
 }
@@ -349,7 +429,7 @@ function buildRampClimb(span) {
 //
 // Silently places nothing if no lane/span works or the pool is too full --
 // the spawner's own timer just tries again next interval.
-export function spawnCoinCluster(field, platformField, obstacleField, anchorZ = SPAWN_Z) {
+export function spawnCoinCluster(field, platformField, obstacleField, gameTime, anchorZ = SPAWN_Z) {
   const typeKey = resolveClusterType();
   const roll = Math.random();
 
@@ -371,7 +451,7 @@ export function spawnCoinCluster(field, platformField, obstacleField, anchorZ = 
 
   const isArc = roll >= COIN_PATTERN_ROW_WEIGHT && roll < COIN_PATTERN_ROW_WEIGHT + COIN_PATTERN_ARC_WEIGHT;
   if (isArc) {
-    const placements = buildArc(0, anchorZ); // lane filled in below
+    const placements = buildArc(0, anchorZ, gameTime); // lane filled in below
     const farZ = placements[placements.length - 1].z;
     const lane = pickClusterLane(platformField, obstacleField, farZ, anchorZ, true);
     if (lane === null) return;
