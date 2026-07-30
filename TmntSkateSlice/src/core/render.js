@@ -240,25 +240,30 @@ function drawItems(ctx, items, w, h, images) {
     const x = px(item.xFrac, w);
     const y = px(item.yFrac, h);
 
-    // Colored outer glow for box-variant slices (every box EXCEPT 'regular')
-    // -- signals which collection box the slice feeds without recoloring the
-    // pizza itself (recolored art read poorly; feedback 2026-07-30). Cheap
-    // translucent concentric circles (deliberately NOT ctx.shadowBlur, per
-    // this build's perf history), drawn unrotated behind the tumbling slice.
+    // Animated "pumping" highlight for box-variant slices (every box EXCEPT
+    // 'regular') -- signals which collection box the slice feeds without
+    // recoloring the pizza. A stroked OUTLINE ring whose radius/width/alpha
+    // pulse over time (feedback 2026-07-30: the earlier flat glow read as low
+    // production), plus a faint fill. Per-item phase offset (item.id) so a
+    // cluster doesn't pulse in lockstep. Cheap -- no ctx.shadowBlur.
     const bc = item.type.boxColor;
     if (bc && bc !== 'regular') {
       const hex = BOX_COLOR_BY_ID[bc].hex;
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200 + (item.id || 0) * 1.7);
+      const r = size * (0.58 + 0.12 * pulse);
       ctx.save();
       ctx.translate(x, y);
       ctx.fillStyle = hex;
-      ctx.globalAlpha = 0.26;
+      ctx.globalAlpha = 0.12 + 0.1 * pulse;
       ctx.beginPath();
-      ctx.arc(0, 0, size * 0.74, 0, Math.PI * 2);
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = hex;
+      ctx.globalAlpha = 0.55 + 0.35 * pulse;
+      ctx.lineWidth = size * (0.05 + 0.025 * pulse);
       ctx.beginPath();
-      ctx.arc(0, 0, size * 0.56, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.restore();
     }
 

@@ -113,6 +113,17 @@
         <div id="stage-banner" class="hidden"></div>
 
         <div id="paused-badge" class="hidden">PAUSED</div>
+
+        <!-- Box-completion celebration (progression update) -- a quick
+             foreground pop: box icon + "<COLOR> BOX!" + the bonus points.
+             Populated + animation-restarted in ui.js on each completion. -->
+        <div id="box-complete-popup" class="hidden">
+          <img id="bcp-icon" class="bcp-icon" src="" alt="" />
+          <div class="bcp-text">
+            <div id="bcp-title" class="bcp-title">PIZZA BOX!</div>
+            <div id="bcp-bonus" class="bcp-bonus">+0</div>
+          </div>
+        </div>
       </div>
 
       <div id="gameover-overlay" class="overlay hidden">

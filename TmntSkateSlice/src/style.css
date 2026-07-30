@@ -229,6 +229,86 @@ html, body {
   transform-origin: left;
 }
 
+/* --- Box-completion celebration popup (progression update) -- a quick
+   foreground pop when a box completes: box icon (bounces) + "<COLOR> BOX!"
+   (box color) + "+<bonus>" (gold), scales in, holds, floats up and fades.
+   Animation is restarted per completion in ui.js (remove class -> reflow ->
+   re-add). pointer-events:none so it never eats input. --- */
+#box-complete-popup {
+  position: absolute;
+  top: 32%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  z-index: 30;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+#box-complete-popup.hidden {
+  display: none;
+}
+
+.bcp-animate {
+  animation: bcp-pop 1.4s ease-out forwards;
+}
+
+@keyframes bcp-pop {
+  0%   { transform: translate(-50%, -50%) scale(0.3);  opacity: 0; }
+  12%  { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  22%  { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+  65%  { transform: translate(-50%, -55%) scale(1);    opacity: 1; }
+  100% { transform: translate(-50%, -95%) scale(0.95); opacity: 0; }
+}
+
+.bcp-icon {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px var(--bcp-color, #fff));
+}
+
+.bcp-animate .bcp-icon {
+  animation: bcp-icon-bounce 0.6s ease-out;
+}
+
+@keyframes bcp-icon-bounce {
+  0%   { transform: scale(0.5) rotate(-12deg); }
+  40%  { transform: scale(1.2) rotate(8deg); }
+  70%  { transform: scale(0.95) rotate(-3deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+.bcp-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.bcp-title {
+  font-weight: 900;
+  font-size: 30px;
+  letter-spacing: 1px;
+  color: var(--bcp-color, #fff);
+  -webkit-text-stroke: 3px #2a1a00;
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+}
+
+.bcp-bonus {
+  font-weight: 900;
+  font-size: 34px;
+  color: #ffe066;
+  -webkit-text-stroke: 3px #4a2a00;
+  paint-order: stroke fill;
+  text-shadow: 0 0 14px rgba(255, 210, 80, 0.8);
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- Paused badge --- */
 #paused-badge {
   position: absolute;

@@ -115,6 +115,14 @@ export function createUI() {
     el.boxChips[c.id] = { chip, count, fill };
   }
 
+  // Box-completion celebration popup (see showBoxComplete). Icon is the same
+  // pizza-box art, set once.
+  el.boxCompletePopup = document.getElementById('box-complete-popup');
+  el.bcpTitle = document.getElementById('bcp-title');
+  el.bcpBonus = document.getElementById('bcp-bonus');
+  const bcpIcon = document.getElementById('bcp-icon');
+  bcpIcon.src = boxIconUrl;
+
   // Last-written values, for the dirty-checks below.
   let lastScore = null;
   let lastComboKey = null;
@@ -123,6 +131,19 @@ export function createUI() {
   const lastBuffKeys = {}; // per-buff last-written key
 
   return {
+    // Quick foreground celebration when a box completes: color-coded title +
+    // bonus points + a bouncing box icon. Restarts the CSS animation each
+    // call (remove class -> reflow -> re-add) so rapid completions replay.
+    showBoxComplete(label, bonus, hex) {
+      el.boxCompletePopup.style.setProperty('--bcp-color', hex);
+      el.bcpTitle.textContent = `${label.toUpperCase()} BOX!`;
+      el.bcpBonus.textContent = `+${bonus}`;
+      el.boxCompletePopup.classList.remove('hidden');
+      el.boxCompletePopup.classList.remove('bcp-animate');
+      void el.boxCompletePopup.offsetWidth; // force reflow to restart the animation
+      el.boxCompletePopup.classList.add('bcp-animate');
+    },
+
     setBuffs(player) {
       for (const b of BUFF_CONFIGS) {
         const t = player[b.timerField];

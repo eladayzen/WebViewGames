@@ -121,6 +121,7 @@ async function boot() {
           registerBoxComplete(scoring, done.bonusScore);
           spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
           playSfx(audio, sfx.sfx_box_complete);
+          ui.showBoxComplete(done.label, done.bonusScore, done.hex);
         }
       }
       // Ooze buff active: an extra cyan sparkle on every catch, so the buff
