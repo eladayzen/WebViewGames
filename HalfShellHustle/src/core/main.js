@@ -12,7 +12,7 @@ import {
 } from '../street/camera-rig.js';
 import {
   createPlayer, resetPlayer, setPlayerLane, startPlayerJump, startPlayerAttack, updatePlayer,
-  getPlayerHeadAnchor, setPlayerVisible, grantMagnet, isMagnetActive,
+  getPlayerHeadAnchor, setPlayerVisible, grantMagnet, isMagnetActive, triggerBlockedNudge,
 } from '../entities/player.js';
 import { createRibbon, resetRibbon, updateRibbon } from '../entities/ribbon.js';
 import {
@@ -390,19 +390,30 @@ function boot() {
       currentSpeed = speedAt(gameTime);
       const step = pollLaneStep();
       if (step !== 0) {
-        const nextLane = THREE.MathUtils.clamp(player.targetLane + step, 0, LANE_X.length - 1);
-        // Direct feedback: switching into a lane with an active platform
-        // taller than his current elevation used to just teleport him on
-        // top of it -- an unearned climb, not a step/hop. Refused outright
-        // here rather than ending the run, since "blocked, not allowed to
-        // go" (his own words) is a softer, less punishing read than a hit;
-        // walking across two adjacent same-height decks stays allowed (the
-        // height gap there is ~0, under isPlatformLaneBlocked's threshold),
-        // and stepping into a LOWER/empty lane is still free -- that's the
-        // legitimate "fall off the edge" case, handled by updatePlayer's
-        // gravity once he's there.
-        if (!isPlatformLaneBlocked(platformField, nextLane, player.sprite.position.z, player.elevationY)) {
-          setPlayerLane(player, nextLane);
+        const desiredLane = player.targetLane + step;
+        // Off the edge of the road entirely -- no lane to move into. Do
+        // NOTHING, deliberately: direct feedback singled this case out as the
+        // one that should stay silent. The player can see he's in the
+        // outermost lane, so a refusal there needs no explanation, whereas a
+        // refusal caused by a platform is genuinely ambiguous.
+        if (desiredLane >= 0 && desiredLane <= LANE_X.length - 1) {
+          // Direct feedback: switching into a lane with an active platform
+          // taller than his current elevation used to just teleport him on
+          // top of it -- an unearned climb, not a step/hop. Refused outright
+          // here rather than ending the run, since "blocked, not allowed to
+          // go" (his own words) is a softer, less punishing read than a hit;
+          // walking across two adjacent same-height decks stays allowed (the
+          // height gap there is ~0, under isPlatformLaneBlocked's threshold),
+          // and stepping into a LOWER/empty lane is still free -- that's the
+          // legitimate "fall off the edge" case, handled by updatePlayer's
+          // gravity once he's there.
+          if (isPlatformLaneBlocked(platformField, desiredLane, player.sprite.position.z, player.elevationY)) {
+            // Refused by a platform/ramp -- lurch that way and spring back, so
+            // the press visibly registered rather than looking dropped.
+            triggerBlockedNudge(player, step);
+          } else {
+            setPlayerLane(player, desiredLane);
+          }
         }
       }
       if (pollJumpPress()) {

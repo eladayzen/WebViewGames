@@ -16,6 +16,7 @@ import {
 import {
   LANE_X, CENTER_LANE, LANE_RESPONSE, JUMP_RISE_DURATION, JUMP_HOLD_DURATION, JUMP_FALL_DURATION, JUMP_HEIGHT,
   PLAYER_Z, MAGNET_DURATION_SEC,
+  BLOCKED_NUDGE_DISTANCE, BLOCKED_NUDGE_DECAY, BLOCKED_NUDGE_LEAN,
 } from '../data/constants.js';
 import { getPlayerElevationAt, isRampSupported } from './platform.js';
 import { PLATFORM_HEIGHT, PLATFORM_FALL_GRAVITY } from '../data/platformSequence.js';
@@ -145,6 +146,9 @@ export function createPlayer() {
     jumpElapsed: null, // null = grounded
     jumpFrameIndex: -1, // which data/playerSprite.js PLAYER_JUMP_FRAMES entry is currently showing, -1 = none yet (forces the first assignment on takeoff)
     magnetTimer: 0, // seconds of coin-magnet left; see grantMagnet/isMagnetActive below
+    // Signed world-unit lurch from a REFUSED lane change, springing back to 0.
+    // Kept separate from laneX on purpose -- see triggerBlockedNudge.
+    nudgeOffset: 0,
     airHeight: 0, // current jump-arc height above ground (world units), independent of elevationY -- 0 when not jumping, read by entities/collision.js for jump-clearable obstacles
     elevationY: 0, // current entities/platform.js height offset, read by street/camera-rig.js
     elevationVelocity: 0, // world units/sec, only used while gravity-falling (negative)
@@ -164,6 +168,7 @@ export function resetPlayer(player) {
   player.jumpElapsed = null;
   player.jumpFrameIndex = -1;
   player.magnetTimer = 0;
+  player.nudgeOffset = 0;
   player.airHeight = 0;
   player.elevationY = 0;
   player.elevationVelocity = 0;
@@ -190,6 +195,23 @@ export function setPlayerLane(player, laneIndex) {
 // entities/contactShadow.js's setContactShadowVisible.
 export function setPlayerVisible(player, visible) {
   player.sprite.visible = visible;
+}
+
+// Acknowledges a lane change that was REFUSED because a platform or ramp is
+// occupying the destination (core/main.js gates this on
+// isPlatformLaneBlocked). `step` is the direction the player asked for, -1 or
+// +1. Overwrites rather than accumulates, so mashing into a wall keeps
+// producing the same single lurch instead of drifting further out each press.
+//
+// The lurch is held OFF player.laneX deliberately. laneX is an integrator --
+// updatePlayer eases it toward the target lane by reading its own previous
+// value -- so folding a displacement into it would make the lane-follow treat
+// the lurched position as his real position and ease back FROM there, leaving
+// a permanent drift after every blocked press. (Exactly the feedback bug
+// street/camera-rig.js documents for its own shake, same shape.) Adding it as
+// a separate render-time offset keeps the lane logic untouched.
+export function triggerBlockedNudge(player, step) {
+  player.nudgeOffset = step * BLOCKED_NUDGE_DISTANCE;
 }
 
 // --- Timed abilities ---------------------------------------------------
@@ -286,11 +308,26 @@ export function updatePlayer(player, dt, platformField) {
   const followT = 1 - Math.exp(-LANE_RESPONSE * dt);
   player.laneX += (targetX - prevX) * followT;
 
+  // Blocked-lane lurch springs back toward 0. Exponential (not linear) so it
+  // leaves fast and settles softly, reading as a rebound off something solid.
+  if (player.nudgeOffset !== 0) {
+    player.nudgeOffset *= Math.exp(-BLOCKED_NUDGE_DECAY * dt);
+    if (Math.abs(player.nudgeOffset) < 0.002) player.nudgeOffset = 0;
+  }
+
   // Cosmetic lean into the lane-shift direction, purely visual (never affects
   // collision) -- sells the "clean lean" feel the vision calls for (§1) even
   // with a flat billboard, no cutout rig needed for this.
+  //
+  // The nudge contributes its OWN lean term rather than going through
+  // `velocity`: the lurch never touches laneX (see triggerBlockedNudge), so
+  // the velocity above can't see it. Same sign convention -- displacement to
+  // the right tilts the same way moving right does -- and since it's driven by
+  // the decaying offset, the tilt unwinds with the lurch for free.
   const velocity = (player.laneX - prevX) / Math.max(dt, 1e-6);
-  const targetLean = THREE.MathUtils.clamp(-velocity * 0.05, -LEAN_MAX, LEAN_MAX);
+  const targetLean = THREE.MathUtils.clamp(
+    -velocity * 0.05 - player.nudgeOffset * BLOCKED_NUDGE_LEAN, -LEAN_MAX, LEAN_MAX,
+  );
   player.sprite.material.rotation += (targetLean - player.sprite.material.rotation) * 0.2;
 
   if (player.jumpElapsed !== null) {
@@ -315,7 +352,7 @@ export function updatePlayer(player, dt, platformField) {
       player.jumpFrameIndex = jumpFrameIndex;
       player.sprite.material.map = getTexture(PLAYER_JUMP_FRAMES[jumpFrameIndex].url);
     }
-    player.sprite.position.x = player.laneX;
+    player.sprite.position.x = player.laneX + player.nudgeOffset;
   } else if (player.attacking) {
     // The attack sequence overrides the run-frame cycle entirely (own frame
     // set/timer, no run-frame xOffset bob).
@@ -338,7 +375,7 @@ export function updatePlayer(player, dt, platformField) {
         player.sprite.material.map = getTexture(frames[player.attackFrameIndex].url);
       }
     }
-    player.sprite.position.x = player.laneX;
+    player.sprite.position.x = player.laneX + player.nudgeOffset;
   } else {
     player.frameTimer += dt;
     const holdTime = RUN_FRAME_DURATION * PLAYER_RUN_FRAMES[player.frameIndex].holdUnits;
@@ -347,7 +384,8 @@ export function updatePlayer(player, dt, platformField) {
       player.frameIndex = (player.frameIndex + 1) % PLAYER_RUN_FRAMES.length;
       player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[player.frameIndex].url);
     }
-    player.sprite.position.x = player.laneX + PLAYER_RUN_FRAMES[player.frameIndex].xOffset;
+    player.sprite.position.x = player.laneX + player.nudgeOffset
+      + PLAYER_RUN_FRAMES[player.frameIndex].xOffset;
   }
 
   if (player.jumpElapsed !== null) {

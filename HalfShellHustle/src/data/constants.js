@@ -62,6 +62,19 @@ export const MAGNET_EASE_RATE = 6;
 
 // --- Player lane easing + jump arc (§5.2) ---
 export const LANE_RESPONSE = 10; // exponential lane-follow rate
+
+// --- Blocked-lane nudge (entities/player.js's triggerBlockedNudge) ---
+// Direct feedback: when a lane change is REFUSED because a platform/ramp is
+// in the way, the input currently vanishes silently and reads as the game
+// missing the press. A small lurch that direction, springing straight back,
+// acknowledges the input while still clearly denying the move.
+//
+// Deliberately NOT applied when there's simply no lane to move into (already
+// in the outermost lane) -- that's a boundary the player can see, so it needs
+// no explanation; only a BLOCKED move is ambiguous.
+export const BLOCKED_NUDGE_DISTANCE = 0.34; // world units, ~10% of LANE_WIDTH -- a lurch, not a step
+export const BLOCKED_NUDGE_DECAY = 13; // 1/sec, exponential spring back (mostly home in ~0.2s)
+export const BLOCKED_NUDGE_LEAN = 0.5; // radians of body tilt per world unit of lurch
 // Jump is back per direct feedback -- and load-bearing: clearing entities/
 // platform.js's kill-barrier type depends on being airborne at contact, and
 // entities/obstacles.js's 'low' type depends on being HIGH ENOUGH at
