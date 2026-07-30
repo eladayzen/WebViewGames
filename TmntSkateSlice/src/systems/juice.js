@@ -81,7 +81,7 @@ export function spawnPizzaBreak(juice, xFrac, yFrac) {
 export function spawnOozeSplash(juice, xFrac, yFrac) {
   emitBurst(juice, xFrac, yFrac, {
     count: 16,
-    colors: ['#4CFF7A', '#8CE05A'],
+    colors: ['#1FC8D8', '#6FE8F0'],
     speedMin: 0.15,
     speedMax: 0.32,
     life: 0.5,
@@ -145,6 +145,65 @@ export function spawnBoxComplete(juice, xFrac, yFrac, hex) {
     maxLife: 0.4,
     maxRadiusFrac: 0.18,
     color: hex,
+  });
+}
+
+// Shield block (special abilities, 2026-07-30) -- fires when a shielded
+// player absorbs a bomb. Bright green spark burst + a ring, no shadowBlur.
+// Reads as a satisfying deflect, not a hit.
+export function spawnShieldBlock(juice, xFrac, yFrac) {
+  emitBurst(juice, xFrac, yFrac, {
+    count: 12,
+    colors: ['#4CE05A', '#B6FFC0', '#ffffff'],
+    speedMin: 0.2,
+    speedMax: 0.45,
+    life: 0.4,
+    shape: 'spark',
+    sizeMin: 0.01,
+    sizeMax: 0.018,
+    upBias: 0.15,
+    glow: false,
+  });
+  juice.rings.push({ xFrac, yFrac, life: 0.3, maxLife: 0.3, maxRadiusFrac: 0.13, color: '#4CE05A' });
+}
+
+// Wave clear (special abilities) -- fires on catching the wave pickup, which
+// instantly destroys every bomb on screen. A big orange spark burst plus two
+// concentric expanding rings from the player for a screen-clear read. Capped
+// (one burst regardless of how many bombs were cleared).
+export function spawnWaveClear(juice, xFrac, yFrac) {
+  emitBurst(juice, xFrac, yFrac, {
+    count: 20,
+    colors: ['#FF8A2E', '#FFC15A', '#ffffff'],
+    speedMin: 0.35,
+    speedMax: 0.7,
+    life: 0.5,
+    shape: 'spark',
+    sizeMin: 0.008,
+    sizeMax: 0.018,
+    upBias: 0.1,
+    glow: false,
+  });
+  juice.rings.push({ xFrac, yFrac, life: 0.45, maxLife: 0.45, maxRadiusFrac: 0.5, color: '#FF8A2E' });
+  juice.rings.push({ xFrac, yFrac, life: 0.35, maxLife: 0.35, maxRadiusFrac: 0.32, color: '#FFC15A' });
+}
+
+// Small generic colored sparkle -- power-up catch confirmation, and the
+// per-catch "ooze still active" cue (see the good-catch branch in
+// core/main.js). Deliberately tiny + glow:false: it can fire on every catch
+// during a buff window, the highest-catch-rate moment, so it must stay cheap.
+export function spawnPickupSparkle(juice, xFrac, yFrac, hex) {
+  emitBurst(juice, xFrac, yFrac, {
+    count: 7,
+    colors: [hex, '#ffffff'],
+    speedMin: 0.15,
+    speedMax: 0.35,
+    life: 0.4,
+    shape: 'circle',
+    sizeMin: 0.006,
+    sizeMax: 0.012,
+    upBias: 0.2,
+    glow: false,
   });
 }
 

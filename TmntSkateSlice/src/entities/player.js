@@ -1,9 +1,9 @@
 // Michelangelo (player). Moves left/right along the single ground line
 // (§4, §5.1), no-skateboard variant: a fast barefoot run-cycle instead of a
 // skate glide. States: idle/run, swing (auto-triggered on a good-item
-// strike), hit (bomb-hit flinch + invulnerability), plus an ooze-buff visual
-// variant layered as a code tint rather than a separate generated sprite
-// (§6 -- "a glow/tint on the swing arc while wider-arc buff is active").
+// strike), hit (bomb-hit flinch + invulnerability), block (shielded bomb
+// brace). Buffs run as parallel timers independent of state: ooze (wider
+// hit-tolerance), shield (blocks bomb hits), magnet (pulls good items in).
 
 import {
   PLAYER_MAX_SPEED_FRAC_PER_SEC,
@@ -12,6 +12,8 @@ import {
   BASE_HIT_HALF_WIDTH_FRAC,
   OOZE_HIT_HALF_WIDTH_FRAC,
   OOZE_BUFF_DURATION_SEC,
+  SHIELD_BUFF_DURATION_SEC,
+  MAGNET_BUFF_DURATION_SEC,
   HIT_INVULNERABILITY_SEC,
 } from '../data/constants.js';
 
@@ -23,6 +25,9 @@ import {
 const SWING_FRAME_DURATIONS_SEC = [0.05, 0.1, 0.1];
 const SWING_DURATION_SEC = SWING_FRAME_DURATIONS_SEC.reduce((a, b) => a + b, 0);
 const HIT_FLINCH_DURATION_SEC = 0.5;
+// Transient defensive-brace pose shown when a shielded player blocks a bomb
+// (the shield BUFF itself is a separate persistent timer -- see below).
+const BLOCK_FLINCH_DURATION_SEC = 0.45;
 
 // Run-cycle frame hold time, in seconds -- was "fraction of play-area width
 // traveled per phase" (RUN_CYCLE_STEP_FRAC / PLAYER_MAX_SPEED_FRAC_PER_SEC),
@@ -41,10 +46,12 @@ export function createPlayer() {
   return {
     xFrac: 0.5,
     facing: 1, // 1 = right, -1 = left
-    state: 'idle', // idle | swing | hit
+    state: 'idle', // idle | swing | hit | block
     stateTimer: 0,
     invulnTimer: 0,
     oozeBuffTimer: 0,
+    shieldBuffTimer: 0,
+    magnetBuffTimer: 0,
     runCyclePhaseTimer: 0, // seconds spent continuously moving, drives the run-cycle frame pick
     isMoving: false,
   };
@@ -57,6 +64,8 @@ export function resetPlayer(player) {
   player.stateTimer = 0;
   player.invulnTimer = 0;
   player.oozeBuffTimer = 0;
+  player.shieldBuffTimer = 0;
+  player.magnetBuffTimer = 0;
   player.runCyclePhaseTimer = 0;
   player.isMoving = false;
 }
@@ -97,6 +106,8 @@ export function updatePlayer(player, dt, steerAxis) {
 
   if (player.invulnTimer > 0) player.invulnTimer -= dt;
   if (player.oozeBuffTimer > 0) player.oozeBuffTimer = Math.max(0, player.oozeBuffTimer - dt);
+  if (player.shieldBuffTimer > 0) player.shieldBuffTimer = Math.max(0, player.shieldBuffTimer - dt);
+  if (player.magnetBuffTimer > 0) player.magnetBuffTimer = Math.max(0, player.magnetBuffTimer - dt);
 }
 
 // Auto-triggered swing reaction to a successful good-item strike (§3) --
@@ -118,6 +129,36 @@ export function grantOozeBuff(player) {
 
 export function isOozeBuffed(player) {
   return player.oozeBuffTimer > 0;
+}
+
+// Shield: a persistent buff (independent of `state`) that blocks bomb hits
+// for its full duration, regardless of how many bombs it absorbs. Each block
+// also plays the transient 'block' brace pose (see triggerBlock).
+export function grantShieldBuff(player) {
+  player.shieldBuffTimer = SHIELD_BUFF_DURATION_SEC;
+}
+
+export function isShielded(player) {
+  return player.shieldBuffTimer > 0;
+}
+
+// Magnet: while active, good items within range drift toward the player
+// (applyMagnetPull in entities/fallingItem.js, driven from core/main.js).
+export function grantMagnetBuff(player) {
+  player.magnetBuffTimer = MAGNET_BUFF_DURATION_SEC;
+}
+
+export function isMagnetBuffed(player) {
+  return player.magnetBuffTimer > 0;
+}
+
+// Transient defensive-brace pose, played when a shielded player blocks a
+// bomb. Same state-machine mechanism as swing/hit (generic stateTimer ->
+// idle in updatePlayer); does NOT grant invulnerability -- the shield buff
+// already negates the damage, this is purely the visual reaction.
+export function triggerBlock(player) {
+  player.state = 'block';
+  player.stateTimer = BLOCK_FLINCH_DURATION_SEC;
 }
 
 export function getHitHalfWidthFrac(player) {
@@ -164,4 +205,13 @@ export function getHitCycleSpriteKey(player) {
     Math.floor((elapsed / HIT_FLINCH_DURATION_SEC) * HIT_CYCLE_KEYS.length)
   );
   return HIT_CYCLE_KEYS[phase];
+}
+
+// Block (shield brace) pose. TEMPORARY: reuses mike_swing_1 (the coiled
+// nunchaku-up windup, which reads reasonably as a defensive guard) as a
+// stand-in -- the dedicated block frame got repeatedly flagged by Kolbo's
+// safety filter this session (transient). Swap in a real 'mike_block' frame
+// once generated; only this one return changes.
+export function getBlockCycleSpriteKey(player) {
+  return 'mike_swing_1';
 }

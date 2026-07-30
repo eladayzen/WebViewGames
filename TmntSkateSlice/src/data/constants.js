@@ -39,6 +39,16 @@ export const BASE_HIT_HALF_WIDTH_FRAC = 0.075;
 export const OOZE_HIT_HALF_WIDTH_FRAC = 0.12;
 export const OOZE_BUFF_DURATION_SEC = 8; // within the doc's 6-10s range
 
+// --- Special abilities (progression update, 2026-07-30) ---
+// Shield: while active, bomb overlaps are blocked (no life lost) -- see the
+// bomb branch in core/main.js. Magnet: while active, good items within the
+// pull radius drift horizontally toward the player each frame (applyMagnetPull
+// in entities/fallingItem.js). Durations tunable; all first-pass/directional.
+export const SHIELD_BUFF_DURATION_SEC = 7;
+export const MAGNET_BUFF_DURATION_SEC = 7;
+export const MAGNET_PULL_RADIUS_FRAC = 0.45;          // horizontal reach, fraction of play width
+export const MAGNET_PULL_SPEED_FRAC_PER_SEC = 0.55;   // how fast pulled items slide toward the player
+
 // --- Falling items ---
 export const ITEM_SIZE_FRAC = 0.075; // width/height of a falling item sprite, as a fraction of canvas height
 export const ITEM_MIN_X_FRAC = PLAY_AREA_LEFT_FRAC + 0.02;

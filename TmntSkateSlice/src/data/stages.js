@@ -36,8 +36,8 @@ export const STAGES = [
     fallSpeedFrac: 0.16,
     spawnIntervalSec: 1.4,
     bombChance: 0.20,
-    oozeChance: 0.05,
-    // pizzaChance is implicit: 1 - bombChance - oozeChance
+    powerUpChance: 0.12,
+    // pizzaChance is implicit: 1 - bombChance - powerUpChance - box-variant weights
     advanceScore: 150,
     advanceTimeSec: 45,
   },
@@ -50,7 +50,7 @@ export const STAGES = [
     fallSpeedFrac: 0.21,
     spawnIntervalSec: 1.15,
     bombChance: 0.28,
-    oozeChance: 0.06,
+    powerUpChance: 0.13,
     advanceScore: 400,
     advanceTimeSec: 100,
   },
@@ -63,7 +63,7 @@ export const STAGES = [
     fallSpeedFrac: 0.26,
     spawnIntervalSec: 0.95,
     bombChance: 0.35,
-    oozeChance: 0.07,
+    powerUpChance: 0.14,
     // Last stage: holds here. Denser late-game ramping beyond this is
     // explicitly Post-MVP scope (§2, §10) -- not built here.
     advanceScore: Infinity,

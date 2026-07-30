@@ -17,7 +17,6 @@ export const ITEM_TYPES = {
   PIZZA_BLUE: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'blue' },
   PIZZA_PURPLE: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'purple' },
   PIZZA_RED: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'red' },
-  OOZE: { id: 'ooze', sprite: 'ooze_canister', kind: 'power-up' },
   BOMB: { id: 'bomb', sprite: 'bomb', kind: 'hazard' },
 };
 
@@ -29,6 +28,7 @@ const PIZZA_VARIANT_BY_COLOR = {
 
 import { SPAWNABLE_BOX_COLORS } from './boxColors.js';
 import { getEffectiveSpawnWeight } from '../systems/boxes.js';
+import { pickPowerUp } from './powerUps.js';
 
 // Picks a weighted item type given the current stage's odds and the live
 // box state. Cumulative-threshold roll: bomb -> ooze -> each SPAWNABLE box
@@ -40,8 +40,8 @@ export function rollItemType(stage, boxes) {
   const r = Math.random();
   let acc = stage.bombChance;
   if (r < acc) return ITEM_TYPES.BOMB;
-  acc += stage.oozeChance;
-  if (r < acc) return ITEM_TYPES.OOZE;
+  acc += stage.powerUpChance;
+  if (r < acc) return pickPowerUp();
   for (const c of SPAWNABLE_BOX_COLORS) {
     acc += getEffectiveSpawnWeight(boxes, c.id);
     if (r < acc) return PIZZA_VARIANT_BY_COLOR[c.id];

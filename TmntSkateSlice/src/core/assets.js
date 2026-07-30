@@ -38,6 +38,12 @@ const MANIFEST = {
   ooze_canister: new URL('../assets/ooze_canister.png', import.meta.url).href,
   bomb: new URL('../assets/bomb.png', import.meta.url).href,
 
+  // Special-ability pickups (progression update, 2026-07-30). ooze_canister
+  // above is recolored green->cyan; these 3 are new icons.
+  powerup_shield: new URL('../assets/powerup_shield.png', import.meta.url).href,
+  powerup_wave: new URL('../assets/powerup_wave.png', import.meta.url).href,
+  powerup_magnet: new URL('../assets/powerup_magnet.png', import.meta.url).href,
+
   bg_rooftop: new URL('../assets/bg_rooftop.png', import.meta.url).href,
   bg_fire_escape: new URL('../assets/bg_fire_escape.png', import.meta.url).href,
   bg_alley: new URL('../assets/bg_alley.png', import.meta.url).href,
@@ -77,6 +83,8 @@ const AUDIO_MANIFEST = {
   sfx_countdown_go: new URL('../assets/audio/sfx_countdown_go.mp3', import.meta.url).href,
   sfx_ui_tap: new URL('../assets/audio/sfx_ui_tap.mp3', import.meta.url).href,
   sfx_box_complete: new URL('../assets/audio/sfx_box_complete.mp3', import.meta.url).href,
+  sfx_shield_block: new URL('../assets/audio/sfx_shield_block.mp3', import.meta.url).href,
+  sfx_wave_clear: new URL('../assets/audio/sfx_wave_clear.mp3', import.meta.url).href,
   music_bed: new URL('../assets/audio/music_bed.mp3', import.meta.url).href,
 };
 

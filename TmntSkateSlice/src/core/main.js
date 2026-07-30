@@ -14,11 +14,17 @@ import {
   updatePlayer,
   triggerSwing,
   triggerHit,
+  triggerBlock,
   grantOozeBuff,
+  grantShieldBuff,
+  grantMagnetBuff,
+  isOozeBuffed,
+  isShielded,
+  isMagnetBuffed,
   getHitHalfWidthFrac,
   isInvulnerable,
 } from '../entities/player.js';
-import { updateFallingItem, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
+import { updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
 import { createSpawner, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../systems/boxes.js';
 import { createDifficulty, resetDifficulty, updateDifficulty, getStage } from '../systems/difficulty.js';
@@ -32,9 +38,9 @@ import {
   getComboMultiplier,
 } from '../systems/scoring.js';
 import { createLives, resetLives, loseLife, isDead } from '../systems/lives.js';
-import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, triggerScreenShake } from '../systems/juice.js';
+import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
-import { OOZE_BUFF_DURATION_SEC, PLAYER_HEIGHT_FRAC } from '../data/constants.js';
+import { PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 
 const MAX_DT = 1 / 20; // clamp so a tab-resume/frame-hitch never simulates a huge leap
 
@@ -56,12 +62,12 @@ async function boot() {
   let items = [];
   let lastCountdownTick = null; // last whole-second value shown, for tick SFX
 
-  // Music plays continuously from boot through every countdown/running/
-  // restart cycle -- NOT reset in fullReset() below, deliberately: an
-  // uninterrupted ambient bed reads better than restarting the loop (or
-  // losing the mute state) every time the player hits Retry. Pause is the
-  // only thing that stops it (see pause-button handler below).
-  startMusic(audio, sfx.music_bed);
+  // Background music defaults OFF for now (per request 2026-07-30) -- SFX
+  // still play. Flip MUSIC_ON to re-enable the ambient bed (it loops
+  // continuously across countdown/running/restart; pause is the only thing
+  // that stops it -- see the pause-button handler below).
+  const MUSIC_ON = false;
+  if (MUSIC_ON) startMusic(audio, sfx.music_bed);
 
   function fullReset() {
     resetPlayer(player);
@@ -117,16 +123,45 @@ async function boot() {
           playSfx(audio, sfx.sfx_box_complete);
         }
       }
+      // Ooze buff active: an extra cyan sparkle on every catch, so the buff
+      // reads as continuously "on" (feedback 2026-07-30), beyond the HUD bar.
+      // Small + glow:false so it stays cheap during a catch streak.
+      if (isOozeBuffed(player)) {
+        spawnPickupSparkle(juice, item.xFrac, item.yFrac, '#1FC8D8');
+      }
     } else if (item.type.kind === 'power-up') {
       item.resolved = true;
-      registerOozeHit(scoring);
       triggerSwing(player);
-      grantOozeBuff(player);
-      spawnOozeSplash(juice, item.xFrac, item.yFrac);
-      playSfx(audio, sfx.sfx_ooze_catch);
+      playSfx(audio, sfx.sfx_ooze_catch); // shared "power-up caught" cue for all pickups
+      spawnPickupSparkle(juice, item.xFrac, item.yFrac, item.type.hex);
+      const effect = item.type.effect;
+      if (effect === 'ooze') {
+        registerOozeHit(scoring);
+        grantOozeBuff(player);
+        spawnOozeSplash(juice, item.xFrac, item.yFrac);
+      } else if (effect === 'shield') {
+        grantShieldBuff(player);
+      } else if (effect === 'magnet') {
+        grantMagnetBuff(player);
+      } else if (effect === 'wave') {
+        // Instant screen-clear: destroy every bomb currently falling, with a
+        // single capped wave VFX (not one burst per bomb) + shake. No score.
+        for (const other of items) {
+          if (!other.resolved && other.type.kind === 'hazard') other.resolved = true;
+        }
+        spawnWaveClear(juice, item.xFrac, item.yFrac);
+        triggerScreenShake(juice, 0.15, 0.008);
+        playSfx(audio, sfx.sfx_wave_clear);
+      }
     } else {
       // bomb
-      if (!isInvulnerable(player)) {
+      if (isShielded(player)) {
+        // Shielded: block it -- no life lost, no combo break, no game over.
+        item.resolved = true;
+        triggerBlock(player);
+        spawnShieldBlock(juice, item.xFrac, item.yFrac);
+        playSfx(audio, sfx.sfx_shield_block);
+      } else if (!isInvulnerable(player)) {
         item.resolved = true;
         loseLife(lives);
         triggerHit(player);
@@ -139,7 +174,7 @@ async function boot() {
           playSfx(audio, sfx.sfx_game_over);
         }
       }
-      // overlap while invulnerable: bomb just continues (§5.4)
+      // overlap while invulnerable (and not shielded): bomb just continues (§5.4)
     }
   }
 
@@ -174,6 +209,12 @@ async function boot() {
     for (const item of items) {
       if (item.resolved) continue;
       updateFallingItem(item, dt);
+      // Magnet buff: pull good items horizontally toward the player (only
+      // kind:'good', never bombs/pickups). Separate pass so updateFallingItem
+      // keeps its "straight down" invariant; applyMagnetPull self-clamps x.
+      if (isMagnetBuffed(player) && item.type.kind === 'good') {
+        applyMagnetPull(item, player.xFrac, dt);
+      }
 
       const horizontalOverlap = Math.abs(item.xFrac - player.xFrac) <= getHitHalfWidthFrac(player);
       if (horizontalOverlap && isWithinPlayerBand(item, bandTop, stage.groundYFrac)) {
@@ -199,7 +240,7 @@ async function boot() {
     ui.setScore(scoring.score);
     ui.setCombo(scoring.comboCount, getComboMultiplier(scoring));
     ui.setLives(lives.remaining);
-    ui.setOozeBuff(player.oozeBuffTimer / OOZE_BUFF_DURATION_SEC);
+    ui.setBuffs(player);
     ui.setBoxes(boxes);
 
     return stage;

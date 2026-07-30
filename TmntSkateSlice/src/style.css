@@ -118,42 +118,51 @@ html, body {
   filter: grayscale(1);
 }
 
-/* --- Ooze buff indicator --- */
-#ooze-indicator {
+/* --- Active-buff chips (ooze/shield/magnet) -- a horizontal row below the
+   lives, one compact icon + depleting-duration-bar chip per active buff,
+   color-coded via the --buff-color custom property set in ui.js. --- */
+#buff-tray {
   position: absolute;
-  top: 108px;
+  top: 102px;
   left: 14px;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(15, 30, 15, 0.6);
-  border: 2px solid rgba(140, 224, 90, 0.6);
-  border-radius: 10px;
-  padding: 4px 8px;
-  min-width: 120px;
+  gap: 8px;
 }
 
-#ooze-indicator.hidden {
+.buff-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(15, 15, 30, 0.62);
+  border: 2px solid var(--buff-color, #fff);
+  border-radius: 9px;
+  padding: 3px 8px 3px 4px;
+}
+
+.buff-chip.hidden {
   display: none;
 }
 
-.ooze-icon {
-  font-size: 18px;
+.buff-icon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 4px var(--buff-color, #fff));
 }
 
-.ooze-bar {
-  flex: 1;
-  height: 8px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.35);
+.buff-bar {
+  width: 34px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
   overflow: hidden;
 }
 
-#ooze-fill {
+.buff-fill {
   height: 100%;
   width: 100%;
-  background: linear-gradient(90deg, #7ee060, #c8ff8a);
-  box-shadow: 0 0 8px rgba(140, 224, 90, 0.9);
+  background: var(--buff-color, #fff);
+  transform-origin: left;
 }
 
 /* --- Pizza-box collection chips (progression update) -- a horizontal row

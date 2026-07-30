@@ -7,7 +7,7 @@
 
 import { ITEM_SIZE_FRAC, PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 import { getShakeOffsetFrac } from '../systems/juice.js';
-import { getRunCycleSpriteKey, getSwingCycleSpriteKey, getHitCycleSpriteKey } from '../entities/player.js';
+import { getRunCycleSpriteKey, getSwingCycleSpriteKey, getHitCycleSpriteKey, getBlockCycleSpriteKey } from '../entities/player.js';
 import { BOX_COLOR_BY_ID } from '../data/boxColors.js';
 
 // Gentle idle "breathing" pulse (no-skateboard standing pose only, not the
@@ -131,6 +131,8 @@ function drawPlayer(ctx, xFrac, w, h, images, player, isRunning, stage) {
     spriteKey = getSwingCycleSpriteKey(player);
   } else if (player.state === 'hit') {
     spriteKey = getHitCycleSpriteKey(player);
+  } else if (player.state === 'block') {
+    spriteKey = getBlockCycleSpriteKey(player);
   } else if (player.state === 'idle' && player.isMoving && isRunning) {
     spriteKey = getRunCycleSpriteKey(player);
   }
@@ -141,7 +143,7 @@ function drawPlayer(ctx, xFrac, w, h, images, player, isRunning, stage) {
     ctx.globalAlpha = 0.45;
   }
   if (player.oozeBuffTimer > 0) {
-    ctx.shadowColor = 'rgba(140, 224, 90, 0.9)';
+    ctx.shadowColor = 'rgba(31, 200, 216, 0.9)'; // cyan (ooze recolored off green)
     ctx.shadowBlur = size * 0.25;
   }
 
@@ -157,6 +159,28 @@ function drawPlayer(ctx, xFrac, w, h, images, player, isRunning, stage) {
     drawPlayerFallback(ctx, x, y, size, player);
   }
   ctx.restore();
+
+  // Shield bubble aura (special abilities, 2026-07-30) -- a translucent
+  // green sphere + rim around the player while shielded, so the defensive
+  // state reads at a glance beyond the HUD chip.
+  if (player.shieldBuffTimer > 0) {
+    const cx = x;
+    const cy = y - size * 0.5;
+    const r = size * 0.62;
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = '#4CE05A';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = '#8CFF98';
+    ctx.lineWidth = size * 0.03;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function drawItemFallback(ctx, x, y, size, type) {
@@ -176,12 +200,19 @@ function drawItemFallback(ctx, x, y, size, type) {
     ctx.beginPath();
     ctx.arc(0, size * 0.05, size * 0.09, 0, Math.PI * 2);
     ctx.fill();
-  } else if (type.id === 'ooze') {
-    ctx.fillStyle = '#7ee060';
-    ctx.shadowColor = '#7ee060';
-    ctx.shadowBlur = size * 0.4;
+  } else if (type.kind === 'power-up') {
+    // Generic power-up fallback (ooze/shield/wave/magnet) -- a glowing
+    // circle in the pickup's own color. Real icon art normally covers this.
+    const hex = type.hex || '#1FC8D8';
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = hex;
     ctx.beginPath();
-    ctx.roundRect(-size * 0.25, -size * 0.5, size * 0.5, size, size * 0.12);
+    ctx.arc(0, 0, size * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = hex;
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.3, 0, Math.PI * 2);
     ctx.fill();
   } else {
     ctx.fillStyle = '#1a1a1a';

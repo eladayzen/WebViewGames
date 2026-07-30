@@ -3,7 +3,13 @@
 // ooze, and bombs are all just a `type` tag + sprite over this one shape --
 // see data/itemTypes.js.
 
-import { ITEM_SIZE_FRAC } from '../data/constants.js';
+import {
+  ITEM_SIZE_FRAC,
+  PLAY_AREA_LEFT_FRAC,
+  PLAY_AREA_RIGHT_FRAC,
+  MAGNET_PULL_RADIUS_FRAC,
+  MAGNET_PULL_SPEED_FRAC_PER_SEC,
+} from '../data/constants.js';
 
 let nextId = 1;
 
@@ -52,4 +58,20 @@ export function isWithinPlayerBand(item, bandTopFrac, bandBottomFrac) {
 
 export function isOffScreen(item) {
   return item.yFrac > 1.1;
+}
+
+// Magnet buff (progression update, 2026-07-30): slide a good item
+// horizontally toward the player, capped per frame, only if it's within
+// pull range. This is the FIRST thing that ever moves an item in x -- the
+// "falls straight down, no horizontal drift" invariant holds for every
+// other item/frame -- so it self-clamps to the play area (nothing else
+// clamps item x). Called as a separate pass from core/main.js's
+// updateRunning right after updateFallingItem, for kind:'good' items only
+// while the magnet buff is active (never bombs/pickups).
+export function applyMagnetPull(item, targetXFrac, dt) {
+  const dx = targetXFrac - item.xFrac;
+  if (Math.abs(dx) > MAGNET_PULL_RADIUS_FRAC) return; // out of reach
+  const maxStep = MAGNET_PULL_SPEED_FRAC_PER_SEC * dt;
+  item.xFrac += Math.abs(dx) <= maxStep ? dx : Math.sign(dx) * maxStep;
+  item.xFrac = Math.max(PLAY_AREA_LEFT_FRAC, Math.min(PLAY_AREA_RIGHT_FRAC, item.xFrac));
 }
