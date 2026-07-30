@@ -1,0 +1,519 @@
+// The rider layer -- the ONLY thing that differs between render modes.
+//
+// This is the whole point of the harness. Every mode exposes an identical
+// interface and sits under an identical transform hierarchy, so main.js never
+// branches on mode and switching mid-run is an honest A/B/C rather than three
+// different prototypes.
+//
+//   MODE A 'sprite' -- a plane that always faces the camera (the
+//     HalfShellHustle method). Cheap and always readable from behind. Kept as
+//     the control to measure the 3D modes against.
+//
+//   MODE B 'model' -- the raw Kolbo/Meshy mesh. UNRIGGED (verified skins:0,
+//     animations:0 -- see KOLBO_ASSET_PIPELINE.md), so it cannot deform limbs.
+//     Animated only by whole-body transforms. Textured, but frozen.
+//
+//   MODE C 'rigged' -- the same character after Mixamo auto-rigging, with real
+//     SKELETAL animation from Mixamo clips. This is the mode that should win:
+//     it's the only one with actual limb motion.
+//
+// Why mode C needs re-texturing in code: Mixamo returns the rigged mesh with
+// every material and texture STRIPPED (verified Texture:0, Material:0, Video:0
+// on all four exports). That is exactly why the reference build's character
+// reads as bland grey plastic. Mixamo does preserve UVs, so we re-apply the
+// PBR maps we already extracted from the Meshy GLB and the character comes back
+// fully textured -- which should put us ahead of the reference on looks while
+// matching it on animation.
+//
+// Transform hierarchy shared by all modes:
+//   root  (world position + yaw to face down-road)
+//     └ tilt  (carve roll + tuck pitch)
+//         └ visual (sprite plane | static mesh | rigged mesh)
+
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import riderSpriteUrl from '../assets/rider_sprite.png?url';
+import riderModelUrl from '../assets/rider.glb?url';
+import riggedUrl from '../assets/rig/rider_rigged.fbx?url';
+import clipIdleUrl from '../assets/rig/clip_idle.fbx?url';
+import clipPushUrl from '../assets/rig/clip_push.fbx?url';
+import baseColorUrl from '../assets/rig/rider_basecolor.jpg?url';
+import normalUrl from '../assets/rig/rider_normal.jpg?url';
+import metalRoughUrl from '../assets/rig/rider_metalrough.jpg?url';
+
+const RIDER_HEIGHT = 1.85;
+const BOARD_Y = 0.10;
+// The foot BONE sits at the ankle, not the sole, so the board can't just be
+// placed at the bone height. MEASURED, not guessed: sampling all 93,843 skinned
+// vertices through applyBoneTransform() put the true sole 0.2263 world units
+// below the lower ankle bone on this rig. Add half the deck thickness (0.04) so
+// the sole rests ON the top face instead of sinking into it.
+//
+// An earlier guess of 0.115 buried the feet ~8cm inside the deck -- which is
+// exactly the kind of thing that looks "roughly fine" standing still and then
+// reads as a visible gap the moment the rider carves or jumps.
+// Board size relative to the deck geometry authored below. Amit: the board read
+// far too big next to the kid -- 60% of the original.
+const BOARD_SCALE = 0.6;
+
+// Authored deck half-thickness (BoxGeometry height 0.08 / 2), before scaling.
+const DECK_HALF_THICKNESS = 0.04 * BOARD_SCALE;
+
+// Drop from the STANDING foot's ankle bone to the sole, solved by measurement.
+//
+// Define gap = (true animated sole of the standing foot) - (deck top face), so
+// gap > 0 means floating. The gap moves exactly 1:1 with the total drop, which
+// two samples pinned: drop 0.2913 -> +0.080, drop 0.3713 -> +0.160. That solved
+// a total drop of 0.2113 against a deck whose top sat 0.04 above the board
+// centre -- so the ankle->sole part alone is 0.2113 - 0.04 = 0.1713.
+//
+// Keeping the two terms separate matters: rescaling the board changes the deck
+// half-thickness, and the planting has to follow automatically instead of
+// silently drifting.
+//
+// "True sole" is not a guess -- it came from sampling all 93,843 skinned
+// vertices through applyBoneTransform() in the live animated pose, not from the
+// bind-pose bounding box (which is a T-pose, nowhere near a skate stance).
+const ANKLE_TO_SOLE = 0.1713;
+const BOARD_DROP = ANKLE_TO_SOLE + DECK_HALF_THICKNESS;
+
+const _fa = new THREE.Vector3();
+const _fb = new THREE.Vector3();
+const _mid = new THREE.Vector3();
+
+/**
+ * Mixamo's "in place" clips still carry a Hips position track, and the second
+ * clip (the leg-push) genuinely translates forward. Our game owns forward motion
+ * entirely (road distance `s`), so any root translation in the clip fights it.
+ *
+ * Two separate problems, two separate fixes:
+ *
+ *  1. HORIZONTAL DRIFT -- pin the Hips X and Z to their first keyframe. This is
+ *     what stops the push clip walking the rider off the board.
+ *
+ *  2. VERTICAL OFFSET -- the Hips Y in the clip is an ABSOLUTE value in the
+ *     rig's own space, and it does NOT necessarily match the skeleton's bind
+ *     position. Applying it raw stacked ~1 unit on top of the bind offset and
+ *     left the rider hovering above the deck. So rather than dropping the track
+ *     (which would kill the body's vertical bob) we REBASE it: shift the whole Y
+ *     curve so its first keyframe equals the bone's bind Y. Bob preserved,
+ *     offset gone.
+ *
+ * @param {THREE.AnimationClip} clip
+ * @param {THREE.Object3D} rigRoot the skinned rig, used to look up bind pose
+ */
+function stripRootMotion(clip, rigRoot) {
+  let fixed = 0;
+  for (const track of clip.tracks) {
+    if (!/\.position$/.test(track.name)) continue;
+    const nodeName = THREE.PropertyBinding.parseTrackName(track.name).nodeName;
+    if (!/Hips$/.test(nodeName)) continue;
+
+    const bone = rigRoot.getObjectByName(nodeName);
+    const v = track.values;
+    const x0 = v[0];
+    const z0 = v[2];
+    // Rebase Y against the bind pose if we can find the bone; if we can't, fall
+    // back to rebasing against the track's own first frame (still removes the
+    // drift, just keeps whatever constant offset the clip had).
+    const bindY = bone ? bone.position.y : v[1];
+    const dy = bindY - v[1];
+
+    for (let i = 0; i < v.length; i += 3) {
+      v[i] = x0; // X pinned
+      v[i + 1] += dy; // Y rebased to bind, bob intact
+      v[i + 2] = z0; // Z pinned -- the forward drift
+    }
+    fixed++;
+  }
+  return fixed;
+}
+
+export function createRider(scene, camera) {
+  const root = new THREE.Group();
+  const tilt = new THREE.Group();
+  root.add(tilt);
+  scene.add(root);
+
+  // --- the board, shared by ALL modes -------------------------------------
+  // Identical across modes so it never confounds the comparison, and it
+  // demonstrates the build doc's §9.1 rule that things the rider physically
+  // rides on are real geometry, not billboards.
+  const board = new THREE.Group();
+  const deckMat = new THREE.MeshBasicMaterial({ color: 0x3b2f28 });
+  const wheelMat = new THREE.MeshBasicMaterial({ color: 0xe8d9c0 });
+  board.add(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.08, 2.15), deckMat));
+  for (const dx of [-0.26, 0.26]) {
+    for (const dz of [-0.72, 0.72]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.1, 8), wheelMat);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(dx, -0.11, dz);
+      board.add(w);
+    }
+  }
+  board.scale.setScalar(BOARD_SCALE);
+  board.position.y = BOARD_Y;
+  tilt.add(board);
+
+  // --- mode A: flat sprite -------------------------------------------------
+  const texLoader = new THREE.TextureLoader();
+  const spriteTex = texLoader.load(riderSpriteUrl);
+  spriteTex.colorSpace = THREE.SRGBColorSpace;
+  const spriteMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(RIDER_HEIGHT * (254 / 512), RIDER_HEIGHT),
+    new THREE.MeshBasicMaterial({
+      map: spriteTex, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide,
+    }),
+  );
+  spriteMesh.position.y = RIDER_HEIGHT * 0.5 + BOARD_Y;
+  spriteMesh.visible = false;
+  tilt.add(spriteMesh);
+
+  // --- shared: normalize any loaded character to a known size/origin -------
+  // Meshy has no guaranteed scale; Mixamo exports at 100x (centimetres). Fitting
+  // by bounding box handles both without magic numbers that break whenever a
+  // model is regenerated.
+  function fitToRider(obj, faceAwayFromCamera, label = '') {
+    const box = new THREE.Box3().setFromObject(obj);
+    if (label && window.Unity === undefined) {
+      const sz = new THREE.Vector3();
+      box.getSize(sz);
+      console.info(`[fit] ${label}: size=(${sz.x.toFixed(2)}, ${sz.y.toFixed(2)}, `
+        + `${sz.z.toFixed(2)}) minY=${box.min.y.toFixed(2)} maxY=${box.max.y.toFixed(2)}`);
+    }
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    const scale = RIDER_HEIGHT / (size.y || 1);
+    obj.scale.setScalar(scale);
+    obj.position.set(
+      -center.x * scale,
+      -box.min.y * scale + BOARD_Y,
+      -center.z * scale,
+    );
+    // Generated from a FRONT view, so the character faces +Z; the road runs
+    // toward -Z, and the camera sits behind at +Z.
+    if (faceAwayFromCamera) obj.rotation.y = Math.PI;
+    return scale;
+  }
+
+  // --- mode B: static 3D model ---------------------------------------------
+  const modelHolder = new THREE.Group();
+  modelHolder.visible = false;
+  tilt.add(modelHolder);
+  let modelLoaded = false;
+  const staticOriginalMats = new Map();
+
+  // --- mode C: rigged + animated -------------------------------------------
+  const rigHolder = new THREE.Group();
+  rigHolder.visible = false;
+  tilt.add(rigHolder);
+  let rigLoaded = false;
+  let mixer = null;
+  const actions = {};
+  let currentClip = null;
+  const rigLitMats = [];
+  const rigUnlitMats = [];
+  let rigMeshes = [];
+  // Foot bones, cached so the board can be pinned to them every frame.
+  let footL = null;
+  let footR = null;
+  // Push is an OCCASIONAL ONE-SHOT layered over idle by weight (see update()).
+  let pushing = false;
+  let pushTimer = 2.5 + Math.random() * 2.5;
+  let pushWeight = 0; // 0 = pure idle, 1 = pure push
+  let pushDuration = 0;
+
+  function loadRigTextures() {
+    const base = texLoader.load(baseColorUrl);
+    base.colorSpace = THREE.SRGBColorSpace;
+    const normal = texLoader.load(normalUrl);
+    const mr = texLoader.load(metalRoughUrl);
+    // Mixamo strips materials but PRESERVES UVs, so the maps extracted from the
+    // Meshy GLB still line up on the rigged mesh. This is the step that stops
+    // the rigged character looking like the reference's grey plastic.
+    //
+    // Do NOT set flipY = false here. That is the glTF convention; FBXLoader
+    // produces UVs that want three's DEFAULT flipY = true, and forcing false
+    // scrambles the mapping into confetti.
+    return { base, normal, mr };
+  }
+
+  const ready = Promise.all([
+    // mode B
+    new Promise((resolve) => {
+      new GLTFLoader().load(riderModelUrl, (gltf) => {
+        const obj = gltf.scene;
+        fitToRider(obj, true, 'static');
+        obj.traverse((n) => {
+          if (n.isMesh) {
+            n.frustumCulled = false;
+            staticOriginalMats.set(n, n.material);
+          }
+        });
+        modelHolder.add(obj);
+        modelLoaded = true;
+        applyMode();
+        resolve();
+      }, undefined, () => resolve());
+    }),
+
+    // mode C
+    new Promise((resolve) => {
+      new FBXLoader().load(riggedUrl, (obj) => {
+        const { base, normal, mr } = loadRigTextures();
+        obj.traverse((n) => {
+          if (!n.isMesh) return;
+          n.frustumCulled = false;
+          rigMeshes.push(n);
+          const lit = new THREE.MeshStandardMaterial({
+            map: base, normalMap: normal, metalnessMap: mr, roughnessMap: mr,
+            metalness: 0.35, roughness: 0.75,
+          });
+          const unlit = new THREE.MeshBasicMaterial({ map: base });
+          rigLitMats.push(lit);
+          rigUnlitMats.push(unlit);
+          n.material = unlit;
+        });
+
+        fitToRider(obj, true, 'rigged');
+        rigHolder.add(obj);
+
+        mixer = new THREE.AnimationMixer(obj);
+
+        const loadClip = (url, name) => new Promise((res) => {
+          new FBXLoader().load(url, (anim) => {
+            const clip = anim.animations[0];
+            if (clip) {
+              const n = stripRootMotion(clip, obj);
+              clip.name = name;
+              const action = mixer.clipAction(clip);
+              action.setLoop(THREE.LoopRepeat);
+              actions[name] = action;
+              if (window.Unity === undefined) {
+                console.info(`[rig] clip "${name}": ${clip.duration.toFixed(2)}s, `
+                  + `${clip.tracks.length} tracks, root-motion tracks pinned: ${n}`);
+              }
+            }
+            res();
+          }, undefined, () => res());
+        });
+
+        obj.traverse((n) => {
+          if (!n.isBone) return;
+          if (!footL && /LeftFoot$/.test(n.name)) footL = n;
+          if (!footR && /RightFoot$/.test(n.name)) footR = n;
+        });
+
+        Promise.all([
+          loadClip(clipIdleUrl, 'idle'),
+          loadClip(clipPushUrl, 'push'),
+        ]).then(() => {
+          rigLoaded = true;
+
+          // BOTH actions play permanently and loop; their WEIGHTS are what we
+          // drive (see update()). This is deliberate, and it fixes a real bug:
+          // the previous version used LoopOnce + crossFade + the mixer's
+          // 'finished' event, and when the one-shot ended its weight dropped to
+          // zero while idle was still faded out. With total weight at zero the
+          // mixer falls back to the BIND POSE -- which for this rig is the
+          // T-pose, so the kid flashed into a star shape mid-ride.
+          //
+          // Manual weights that always sum to 1 make that impossible by
+          // construction, rather than relying on event timing to line up.
+          for (const key of ['idle', 'push']) {
+            const a = actions[key];
+            if (!a) continue;
+            a.setLoop(THREE.LoopRepeat, Infinity);
+            a.enabled = true;
+            a.play();
+          }
+          if (actions.idle) actions.idle.setEffectiveWeight(1);
+          if (actions.push) {
+            actions.push.setEffectiveWeight(0);
+            pushDuration = actions.push.getClip().duration;
+          }
+
+          applyMode();
+          resolve();
+        });
+      }, undefined, () => resolve());
+    }),
+  ]);
+
+  /** Begin one push. No-op if one is already running. */
+  function triggerPush() {
+    if (!actions.push || pushing) return;
+    pushing = true;
+    actions.push.time = 0; // restart the clip from its first frame
+  }
+
+  let mode = 'sprite';
+  let lit = false;
+
+  function applyMode() {
+    spriteMesh.visible = mode === 'sprite';
+    modelHolder.visible = mode === 'model' && modelLoaded;
+    rigHolder.visible = mode === 'rigged' && rigLoaded;
+    applyLighting();
+  }
+
+  function applyLighting() {
+    // Mode B: swap between the GLB's own PBR materials and an unlit view of the
+    // same textures. The build doc claims unlit is correct for illustrated
+    // surfaces (§9.1); for a PBR character that's genuinely untested, and this
+    // toggle is how it gets checked rather than assumed.
+    if (modelLoaded) {
+      modelHolder.traverse((n) => {
+        if (!n.isMesh) return;
+        const orig = staticOriginalMats.get(n);
+        if (!orig) return;
+        if (lit) {
+          n.material = orig;
+        } else {
+          if (!n.userData.unlitMat) {
+            n.userData.unlitMat = new THREE.MeshBasicMaterial({
+              map: orig.map || null,
+              color: orig.color ? orig.color.clone() : 0xffffff,
+            });
+          }
+          n.material = n.userData.unlitMat;
+        }
+      });
+    }
+    if (rigLoaded) {
+      rigMeshes.forEach((n, i) => {
+        n.material = lit ? rigLitMats[i] : rigUnlitMats[i];
+      });
+    }
+  }
+
+  return {
+    root,
+    ready,
+
+    setMode(next) {
+      mode = next;
+      applyMode();
+    },
+
+    setLit(next) {
+      lit = next;
+      applyLighting();
+    },
+
+    get modelAvailable() { return modelLoaded; },
+    get rigAvailable() { return rigLoaded; },
+    get clipNames() { return Object.keys(actions); },
+
+    /**
+     * @param {{pos:THREE.Vector3, yaw:number, carve:number, tucking:number,
+     *          airActive:boolean}} s
+     * @param {number} dt
+     */
+    update(s, dt) {
+      root.position.copy(s.pos);
+      root.rotation.y = s.yaw;
+
+      // Carve roll: the body banks into the turn. Identical signal in all modes.
+      const roll = -s.carve * 0.42;
+      tilt.rotation.z = roll;
+      // Tuck pitch. Note this is emergent from holding a straight line -- there
+      // is no forward-lean input anywhere in this game (build doc §0).
+      tilt.rotation.x = s.tucking * 0.30;
+
+      // NO whole-body flip rotation, per Amit's direction -- the character does
+      // not re-angle itself. Real motion is skeletal (mode C), not the whole
+      // body spun as a rigid object.
+
+      if (mode === 'sprite') {
+        // Billboard, then re-apply roll so the sprite still leans.
+        spriteMesh.quaternion.copy(camera.quaternion);
+        spriteMesh.rotateZ(roll * 0.5);
+      }
+
+      if (mode === 'rigged' && mixer) {
+        // PUSH IS OCCASIONAL, NOT CONTINUOUS. Looping it made the kid look like
+        // he was kick-pushing nonstop. A real rider pushes once in a while and
+        // otherwise just rides, so: fire it on a randomised few-second timer,
+        // and NEVER while airborne -- you can't push off a road that isn't
+        // under your foot.
+        if (!s.airActive && !pushing) {
+          pushTimer -= dt;
+          if (pushTimer <= 0) {
+            triggerPush();
+            pushTimer = 4.5 + Math.random() * 4.5;
+          }
+        }
+
+        // Drive the idle<->push blend by hand. The clip is left running the whole
+        // time; only its weight moves, and idle always takes up the remainder, so
+        // the summed weight is permanently 1 and the bind-pose/T-pose fallback
+        // can never be reached.
+        const FADE = 0.22; // seconds to blend either way
+        if (pushing) {
+          // Start unwinding before the clip loops around, so the blend out is
+          // finished by the time it would repeat.
+          const nearEnd = pushDuration > 0
+            && actions.push.time >= pushDuration - FADE;
+          pushWeight = Math.min(1, pushWeight + dt / FADE);
+          if (nearEnd) pushing = false;
+        } else {
+          pushWeight = Math.max(0, pushWeight - dt / FADE);
+        }
+        if (actions.push) actions.push.setEffectiveWeight(pushWeight);
+        if (actions.idle) actions.idle.setEffectiveWeight(1 - pushWeight);
+
+        mixer.update(dt);
+
+        // PIN THE BOARD TO THE FEET. Previously the board sat at a fixed height
+        // and the rider was placed by his BIND-pose bounding box, so in an
+        // animated pose his soles floated off the deck -- most visible mid-jump
+        // and through carves. Deriving the board's position from the actual foot
+        // bones each frame means the gap cannot exist in any pose.
+        if (footL && footR) {
+          footL.getWorldPosition(_fa);
+          footR.getWorldPosition(_fb);
+          tilt.worldToLocal(_fa);
+          tilt.worldToLocal(_fb);
+          // Height comes from the HIGHER foot, which is the one still standing on
+          // the deck. This matters specifically because of the push animation:
+          // during a push one foot leaves the board and reaches down to the road,
+          // so following the LOWER foot dragged the board down to the tarmac and
+          // left the standing foot visibly hovering (measured up to +6cm --
+          // exactly the gap that showed up while riding).
+          //
+          // While both feet are on the deck the two are within a few mm, so this
+          // costs nothing in the normal case.
+          //
+          // X/Z stay the midpoint so the deck sits centred under the stance --
+          // except during a push, where the reaching foot would drag it sideways,
+          // so the standing foot alone drives that too.
+          const spread = Math.abs(_fa.y - _fb.y);
+          // While a push is in progress the board must NOT be re-derived: the
+          // standing foot is planted on a board that isn't moving, and the other
+          // foot is off it entirely. Re-solving mid-push (including during the
+          // crossfade in and out) made the deck twitch by a few cm. So the board
+          // only tracks the feet while both are actually on it, and holds its
+          // last good local position otherwise.
+          //
+          // Threshold is deliberately loose (0.08, not 0.12) so the crossfade
+          // frames either side of the push are caught too.
+          if (spread <= 0.08) {
+            const standing = _fa.y >= _fb.y ? _fa : _fb;
+            board.position.set(
+              (_fa.x + _fb.x) * 0.5,
+              standing.y - BOARD_DROP,
+              (_fa.z + _fb.z) * 0.5,
+            );
+          }
+        }
+      } else {
+        // Other modes keep the board at its neutral spot under the rider.
+        board.position.set(0, BOARD_Y, 0);
+      }
+    },
+  };
+}

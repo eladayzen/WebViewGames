@@ -1,0 +1,66 @@
+Model: nano-banana-pro
+aspect_ratio: 16:9
+num_images: 4
+reference_images: none (general track -- no licensed style anchor needed;
+the "flat 2D sprite inside real 3D depth" technique is described directly
+in the prompt, matching how corgi-express-dash's concepts were produced)
+
+NOTE: generated before this brief's input-model rewrite and triple-A-camera
+direction landed. The frames capture setting, palette, camera height, HUD
+placement and the flat-sprite-in-3D look correctly, but do not show the
+trick-swing camera. See PASS 2 at the bottom of this file for that.
+
+=== PASS 1 -- default riding camera (concept-01..04) ===
+
+Video game key art blending two techniques: a real 3D-perspective downhill
+road environment -- a wide two-lane coastal ridge road plunging steeply
+away from the camera, guardrails and telephone poles converging toward a
+golden-hour vanishing point, a glittering ocean and a small sunlit downtown
+visible far below at the bottom of the hill -- rendered with flat,
+illustrated 2D textures on every surface, combined with flat cel-shaded 2D
+cutout-style character and prop illustration with bold clean black outlines
+and bright saturated color blocks, placed within that 3D space rather than
+modeled as solid 3D geometry. In the center of frame, seen from directly
+behind and slightly above, a teenage skater in an oversized hoodie, helmet
+and knee pads bombs the hill on a longboard, caught mid-carve leaning hard
+into a turn across the road with one arm swept out for balance, the board
+tilted up on its edge, cartoon speed-lines and a small dust scuff trailing
+behind the wheels. To one side of the road ahead, a bright orange traffic
+cone and a cracked pothole; to the other side, a wooden kicker ramp and a
+low metal grind rail sitting invitingly off the main line. In the top-left
+corner of the frame, a stylized glowing "SPEED WOBBLE" meter HUD bar sits
+partially filled; top-right shows a small speed-and-score HUD readout.
+Warm, saturated late-afternoon golden-hour palette -- long warm shadows
+across the tarmac, glowing amber haze over the ocean, palm trees and
+hillside houses along the roadside -- bright and alive, absolutely not dark
+or moody twilight. Wide 16:9 game key art framing, dynamic action pose,
+third-person view from just behind and above the skater.
+
+=== PASS 2 -- trick camera (concept-05/06-trick-camera) ===
+
+Model: gpt-image/1.5-image-to-image  (per KOLBO_ASSET_PIPELINE.md: genuine
+pose/camera changes belong on this model, not nano-banana-pro/edit)
+aspect_ratio: 16:9
+num_images: 2
+source_images: [concept-01's Kolbo URL]  -- single source, so character
+design / linework / palette / world / HUD carry over on-model instead of
+being reinvented.
+
+Using the exact same art style, character design, color palette and world
+as the source image -- same teenage skater in helmet, knee pads and hoodie,
+same bold clean black outlines, flat cel-shaded color blocks, same warm
+saturated golden-hour coastal ridge road with palm trees, telephone poles,
+guardrails, glittering ocean and sunlit downtown far below -- redraw the
+scene as a dramatic MID-AIR TRICK moment with the camera swung off the
+skater's back. The skater has launched off a wooden kicker ramp and is high
+in the air over the road, rotating through an inverted backflip, the
+longboard held to their feet, body arched, one hand gripping the deck in a
+grab. The camera has broken from its usual straight-behind-the-rider
+position and swung around to a low, wide, dynamic three-quarter angle from
+below and slightly to the side, looking up at the airborne skater with the
+plunging road, guardrails and glowing ocean horizon sweeping through the
+background behind them -- an action-movie hero shot. Heavy cartoon
+speed-lines, a spiral of motion-blur arcs tracing the rotation, dust kicked
+off the ramp lip below. Keep the HUD: a stylized glowing "SPEED WOBBLE"
+meter bar top-left, a speed-and-score readout top-right. Wide 16:9 game key
+art framing, bright and alive, absolutely not dark or moody.

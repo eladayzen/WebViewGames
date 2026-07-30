@@ -166,6 +166,57 @@ light-colored parts of the subject.
 5. Sprite lands trimmed, transparent, ≤512px — ready to drop into the
    game's art folder per the skill's per-game manifest.
 
+## 3D model generation (`generate_3d`) — tested 2026-07-30
+
+Tested for `hillbomb-sunset-ridge`, which wants real 3D characters rather
+than sprite sequences. Findings are from actual generations, not docs.
+
+**It works, and it returns real FBX.** One call returns **GLB, FBX, OBJ and
+USDZ** URLs. Verified the FBX is a genuine binary FBX (`Kaydara FBX Binary`
+header, version 7400), not a renamed OBJ.
+
+**Textures are auto-generated PBR with auto-UVs — the hard part is solved
+for you.** Output carries a full material set: `baseColorTexture`,
+`normalTexture`, `metallicRoughnessTexture` (+ `emissiveTexture` on v6). You
+do **not** hand-author a character texture and try to UV-map it yourself,
+which was the concern that prompted this test. `texture_prompt` steers the
+material look in words; `enable_pbr: true` gets the full map set.
+
+**THE CRITICAL LIMITATION: there is no rig.** Both test models came back
+`skins: 0, animations: 0`, and the FBX contains zero `Deformer`/`Skin`/
+`Cluster`/`AnimationStack` nodes. **`enable_tpose: true` controls the
+*pose*, not the skeleton** — it gets you a T-posed statue, not an
+animatable character. Anything needing limb deformation (a run cycle, a
+skate push, arm swing) needs rigging elsewhere: Mixamo's auto-rigger accepts
+exactly this output (T-posed FBX/OBJ) and returns a rigged+animated FBX, but
+it's a manual browser step, not automatable from here.
+
+**Model comparison (same character, same prompts):**
+
+| | `meshy/v6-preview/image-to-3d` (single) | `meshy/v5/multi-image-to-3d` (3 views) |
+|---|---|---|
+| Quality | **Clean face, correct helmet, correct colors** | Mushy face, teal bleeding onto the helmet, smeared hair/helmet boundary |
+| Tris / verts | 31,174 / 29,976 | 31,050 / 18,917 |
+| GLB size | 13 MB | 8.5 MB |
+| Cost | 150 credits | 150 credits |
+
+**Counterintuitive result: single-image v6 beat three-view v5 clearly.** More
+views did not mean better reconstruction — v5 blended the three views into
+mush. Default to **`meshy/v6-preview/image-to-3d` with one clean front
+view**, and don't assume a multi-view sheet is an upgrade. (Trellis was not
+tested here — Amit reports it worked poorly for him previously.)
+
+**Both outputs are far too heavy to ship as-is** (8.5–13 MB, textures are
+multi-MB JPEGs). A WebView game needs decimation + texture downscale before
+these go anywhere near a build — budget that as a required step, not
+optional polish.
+
+**Best input:** a clean, single-subject, plain-white-background character
+render, generated with `gpt-image-2` at `quality: "high"`. A 3-view
+turnaround sheet is useful for *art direction* and for slicing a clean front
+view out of, even though feeding all three views to multi-image mode was the
+worse path.
+
 ## Known gotchas
 
 - `source_images` / `reference_images` on Kolbo image tools require URLs.

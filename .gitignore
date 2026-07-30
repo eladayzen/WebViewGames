@@ -15,6 +15,24 @@ dist-ssr/
 # working scratch too, not meant to be tracked.
 pipeline/videos-inbox/
 
+# Concept-frame images generated for macro briefs — large (several MB each,
+# ~80MB across the briefs so far) and fully regenerable: each concepts/
+# folder keeps its prompt.txt, which is the actual recipe. The brief.md and
+# prompt.txt stay tracked; only the rendered output is ignored.
+pipeline/macro-briefs/**/concepts/*.png
+pipeline/macro-briefs/**/concepts/*.jpg
+pipeline/macro-briefs/**/concepts/*.jpeg
+pipeline/macro-briefs/**/concepts/*.webp
+
+# Mixamo rigging staging assets — the T-posed mesh uploaded to Mixamo's
+# auto-rigger plus its source renders (~23MB). One-shot inputs: the rigged
+# output that the game actually loads lives in src/assets/rig/, and each
+# folder's README.md records the exact recipe (gpt-image-2 strict-T-pose
+# render -> meshy/v6-preview/image-to-3d), so these are reproducible rather
+# than precious. The README itself stays tracked.
+*/art/mixamo-upload/*
+!*/art/mixamo-upload/README.md
+
 # Logs
 logs
 *.log
