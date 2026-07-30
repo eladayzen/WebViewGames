@@ -12,7 +12,6 @@ const gameoverEl = document.getElementById('gameover-overlay');
 const finalDistanceEl = document.getElementById('final-distance');
 const pausedBadgeEl = document.getElementById('paused-badge');
 const frameDebugEl = document.getElementById('frame-debug');
-const elevationDebugEl = document.getElementById('elevation-debug');
 
 export function updateDistance(meters) {
   distanceEl.textContent = `${Math.floor(meters)}m`;
@@ -26,11 +25,6 @@ export function updateScore(points) {
 // TEMPORARY: see index.html's #frame-debug comment.
 export function updateFrameDebug(text) {
   frameDebugEl.textContent = text;
-}
-
-// TEMPORARY: see index.html's #elevation-debug comment.
-export function updateElevationDebug(text) {
-  elevationDebugEl.textContent = text;
 }
 
 export function showGameOver(meters) {

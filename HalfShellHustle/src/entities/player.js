@@ -49,8 +49,6 @@ const GROUND_Y = SPRITE_HEIGHT / 2;
 const LEAN_MAX = 0.22; // radians, cosmetic billboard roll while lane-shifting
 
 const JUMP_TOTAL_DURATION = JUMP_RISE_DURATION + JUMP_HOLD_DURATION + JUMP_FALL_DURATION;
-// See the jump-pose EXPERIMENT comment in updatePlayer's jump branch below.
-const JUMP_POSE_RUN_FRAME_INDEX = 1; // contact-right
 
 // Ease-out quad rise (fast liftoff, decelerating into the hold), flat hold
 // at JUMP_HEIGHT, ease-IN CUBIC fall -- direct feedback went through a
@@ -234,21 +232,25 @@ export function updatePlayer(player, dt, platformField) {
 
   if (player.jumpElapsed !== null) {
     // Jump pose overrides the run cycle entirely (own frame set, no run-
-    // frame xOffset bob) -- just ONE held pose for the whole jump (rise,
-    // hold, AND fall alike), no per-phase frame cycling. EXPERIMENT (direct
-    // feedback): reusing an existing run-cycle frame instead of data/
-    // playerSprite.js's dedicated PLAYER_JUMP_FRAMES -- tried knee-drive
-    // (index 0) first, now trying the OTHER kind, contact-right (index 1).
-    // Swap back to PLAYER_JUMP_FRAMES (still imported/preloaded above,
-    // untouched) if the custom art wins out. Landing hands back to the run
-    // cycle exactly where frameIndex/frameTimer were left (frozen, not
-    // reset, since neither advances in this branch) -- reads as running
-    // pausing for the jump and picking back up, not restarting.
-    // startPlayerAttack no-ops while this branch is active (see its own
-    // comment) -- this pose is what a mid-air kill shows.
-    if (player.jumpFrameIndex !== JUMP_POSE_RUN_FRAME_INDEX) {
-      player.jumpFrameIndex = JUMP_POSE_RUN_FRAME_INDEX;
-      player.sprite.material.map = getTexture(PLAYER_RUN_FRAMES[JUMP_POSE_RUN_FRAME_INDEX].url);
+    // frame xOffset bob) -- data/playerSprite.js's PLAYER_JUMP_FRAMES plays
+    // through once during the rise (a launch-off sequence: squeeze-down,
+    // launching-up, then the main held pose), sliced evenly across
+    // JUMP_RISE_DURATION; the LAST frame (the main pose) then just stays
+    // showing for the rest of the jump (hold AND, for now, the fall too).
+    // Landing hands back to the run cycle exactly where frameIndex/
+    // frameTimer were left (frozen, not reset, since neither advances in
+    // this branch) -- reads as running pausing for the jump and picking
+    // back up, not restarting. startPlayerAttack no-ops while this branch
+    // is active (see its own comment) -- this pose is what a mid-air kill
+    // shows.
+    const riseT = Math.min(player.jumpElapsed / JUMP_RISE_DURATION, 1);
+    const jumpFrameIndex = Math.min(
+      Math.floor(riseT * PLAYER_JUMP_FRAMES.length),
+      PLAYER_JUMP_FRAMES.length - 1,
+    );
+    if (jumpFrameIndex !== player.jumpFrameIndex) {
+      player.jumpFrameIndex = jumpFrameIndex;
+      player.sprite.material.map = getTexture(PLAYER_JUMP_FRAMES[jumpFrameIndex].url);
     }
     player.sprite.position.x = player.laneX;
   } else if (player.attacking) {

@@ -233,15 +233,17 @@ export const ATTACK_SEQUENCES = ATTACK_SEQUENCE_DEFS.map((def) => {
   };
 });
 
-// --- Jump frame (art only -- not wired into core/main.js's frame-debug
-// HUD; entities/player.js reads PLAYER_JUMP_FRAMES[PLAYER_JUMP_FRAMES.length
-// - 1], so this single-entry array is picked up automatically). The game
-// code was simplified to no longer need a 3-frame launch/ascent/peak
-// progression -- direct feedback: just ONE static pose, held for the
-// ENTIRE jump (rise, hold, and fall alike), not just peak hang-time. So
-// PLAYER_JUMP_FRAMES shrank from 3 entries to 1. This section's history
-// below (three prior passes) is kept for lineage/context even though only
-// the final pose ships now.
+// --- Jump frames (art only -- not wired into core/main.js's frame-debug
+// HUD). entities/player.js plays PLAYER_JUMP_FRAMES once, evenly sliced
+// across JUMP_RISE_DURATION, then holds the LAST entry for the rest of the
+// jump (hold and fall). After PASS 3 below shipped, the game code was
+// briefly simplified to show only ONE static pose for the entire jump
+// (PLAYER_JUMP_FRAMES shrank to 1 entry, no art regenerated for it) --
+// direct feedback has since reversed that and asked for a real 3-frame
+// launch progression again, this time with much more specific per-frame
+// direction than PASS 1/2 got (PASS 4 below). player.js's 3-frame
+// rise-slice logic was restored to match. This section's full history is
+// kept for lineage/context even though only PASS 4's 3 frames ship now.
 //
 // PASS 1 (3-frame launch/mid-ascent/peak progression, symmetric forward-V
 // blade grip): one-lineage seeded from leo_run_1.png (primary, camera
@@ -307,14 +309,85 @@ export const ATTACK_SEQUENCES = ATTACK_SEQUENCE_DEFS.map((def) => {
 // direct visual signature of "tucked in close to the body" instead of the
 // old wide flying-V silhouette.
 //
-// Archived: art/originals/leo_jump_pose_source.png (the raw chosen
-// generation before local background-key/scale/placement). The old
-// leo_jump_grid.png (PASS 1/2 lineage) was deleted, not kept, along with
-// the discarded PASS-3 candidates that didn't make the cut -- this file's
-// existing convention of not keeping superseded iterations. art/final/
-// mirrors what shipped to src/assets/.
+// Archived (superseded by PASS 4 below, deleted along with everything else
+// PASS 3 produced per this file's no-accumulation convention):
+// art/originals/leo_jump_pose_source.png.
+//
+// PASS 4 (this one -- real 3-frame progression again, much more precise
+// direct feedback than PASS 1/2 got): direct feedback gave an exact,
+// per-frame breakdown this time -- squeeze-down, launching-up, then a main
+// pose described as "basically close to [leo_run_1.png, the contact-right
+// run frame] but the back should be a bit more stretched, ... heads a
+// little bit up like looking up, but the arms should be in front hidden by
+// the torso and shield, ... crossed but most of them hidden ... showing a
+// little bit from the sides of the head." A real change of direction from
+// PASS 3's approach (which built the main pose off leo_run_0's knee-drive
+// leg pose): this time leo_run_1's CONTACT leg stance is the explicit base
+// for frame 2, kept "essentially as-is."
+//
+// ONE-LINEAGE, single call: rather than PASS 3's dual-reference-plus-
+// chained-edit process, all 3 frames were generated together in ONE
+// gpt-image/1.5-image-to-image call (per the batch-prompt-character-
+// sprite-sets rule) as three side-by-side panels in a single 3:2-aspect
+// image, with leo_run_1.png as the SOLE source_image (flattened onto a
+// real white RGB background first, per KOLBO_ASSET_PIPELINE.md's
+// upload_media gotcha -- re-uploading an RGBA PNG as-is risks the
+// transparent area re-encoding into a non-white noisy fill). The prompt
+// called out leo_run_1's exact pose/build/style as the reference for all
+// three panels' camera angle, described panel 3 (main pose) with the
+// direct-feedback language above, and explicitly required the swords to
+// stay MOSTLY HIDDEN behind the torso/shell with only small blade-tip
+// hints near the head -- not the large visible crossed-blade shape PASS 3
+// ended up with. Landed on the first attempt: no follow-up edit was
+// needed, unlike every prior pass.
+//
+// PLACEMENT -- shared-anchor method, NOT independent per-frame content-
+// bbox scaling (that's the "anchor drift" bug documented at length above
+// in the run-cycle notes: an asymmetric/varying-height pose's bbox center
+// doesn't line up with a sibling frame's the same way, so naively scaling
+// each frame to a fixed content HEIGHT would erase the real height
+// difference between a crouch and an extended launch, or shift the
+// character sideways). Instead, each of the 3 panels was locally
+// white-keyed (KOLBO_ASSET_PIPELINE.md's threshold-245/feather-225
+// cutout), then placed using two anchors that are physically stable across
+// a launch progression -- unlike the full-body bbox, which isn't:
+//   - HEADBAND WIDTH as the scale anchor: the blue headband is present,
+//     roughly constant-sized, and easy to isolate by color in all 3 poses
+//     (unlike full-character-height, which SHOULD differ -- crouched is
+//     shorter, launching is taller, that's the point). Each frame was
+//     scaled so its own headband width matches leo_run_0/1's headband
+//     width in their shared 800x760 canvas (96px) -- confirmed beforehand
+//     that all 3 raw panels already had near-identical headband widths
+//     (111-114px in source-panel space), i.e. the single generation call
+//     already held character scale consistent on its own; per-frame scale
+//     was still computed independently off each frame's own measurement
+//     rather than one shared number, since normalizing head size is the
+//     goal, not blindly reusing one frame's factor.
+//   - HEADBAND-CENTER X as the horizontal anchor (same "top-band centroid"
+//     principle as the run cycle's shell-centroid alignment above, just
+//     using the headband specifically since it's a tighter, more reliably
+//     detectable landmark than a generic top-45%-of-bbox region) -- each
+//     frame's headband center was placed at the shared canvas center,
+//     x=400.
+//   - GROUND LINE at canvas y=728 for every frame's bbox BOTTOM -- matches
+//     leo_run_0.png/leo_run_1.png/the old leo_jump_0.png's own content
+//     bottom exactly, so a foot-plant reads at the same height turn to
+//     turn instead of popping vertically on the swap.
+// Net effect: all 3 frames share one 800x760 canvas, one horizontal
+// anchor, and one ground line, while still legitimately growing taller
+// frame to frame as the launch extends -- the crouch is visibly shortest,
+// frame 2 visibly tallest, exactly as a real launch should read, without
+// any of it coming from inconsistent/independent cropping.
+//
+// Archived: art/originals/leo_jump_grid.png (the raw 3-panel generation
+// before per-panel white-key/scale/placement, matching the existing
+// leo_spin_grid.png / leo_turn_grid.png / leo_lunge_grid.png naming
+// convention for a batch source). art/final/ mirrors what shipped to
+// src/assets/.
 export const PLAYER_JUMP_FRAMES = [
-  { file: 'leo_jump_0.png' }, // single held pose -- launch, hold, AND descent
+  { file: 'leo_jump_0.png' }, // squeeze-down
+  { file: 'leo_jump_1.png' }, // launching-up
+  { file: 'leo_jump_2.png' }, // main pose -- holds for the rest of the jump
 ].map(({ file }) => ({
   url: new URL(`../assets/${file}`, import.meta.url).href,
 }));

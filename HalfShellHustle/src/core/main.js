@@ -23,7 +23,7 @@ import {
 } from '../entities/enemy.js';
 import {
   createPlatformField, resetPlatformField, spawnPlatform, updatePlatformField,
-  checkPlatformKillBarrierHit, getPlayerElevationAt, isPlatformLaneBlocked,
+  checkPlatformKillBarrierHit, isPlatformLaneBlocked,
 } from '../entities/platform.js';
 import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
@@ -378,16 +378,6 @@ function boot() {
     // elevationY rides up with the player on an elevated platform stretch
     // (entities/platform.js) so the camera keeps the same relative framing.
     updateCameraRig(cameraRig, player.laneX, player.elevationY);
-
-    // TEMPORARY debug readout (index.html's #elevation-debug) -- live
-    // numbers, kept from the earlier diagnosis pass. Display-only, no
-    // gameplay effect.
-    hud.updateElevationDebug(
-      `lane ${player.laneIndex}  elevY ${player.elevationY.toFixed(2)}  fallV ${player.elevationVelocity.toFixed(2)}\n`
-      + `sprite.y ${player.sprite.position.y.toFixed(2)}  scale ${player.sprite.scale.x.toFixed(2)}x${player.sprite.scale.y.toFixed(2)}\n`
-      + `camera.y ${camera.position.y.toFixed(2)}  camera.z ${camera.position.z.toFixed(2)}\n`
-      + `jump ${player.jumpElapsed === null ? 'no' : player.jumpElapsed.toFixed(2)}  playerElev ${getPlayerElevationAt(platformField, player.laneIndex, player.sprite.position.z, player.jumpElapsed !== null).toFixed(2)}`,
-    );
 
     renderer.render(scene, camera);
   }
