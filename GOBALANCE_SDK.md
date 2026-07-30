@@ -137,6 +137,43 @@ The page, in turn, is expected to:
   `if (window.Unity)` and no-ops cleanly in a normal browser.
 - Provide a Back button wired to `window.Unity.call('nav:back')`.
 
+## Board sensitivity ("touchiness") — optional, digital mode only
+
+`WebGameController` exposes the steering hysteresis as two **serialized, per-scene** fields the
+project owner can set in the Inspector — so touchiness is tunable per game without touching
+code:
+
+- `pressThreshold` (default `0.35`) — tilt ratio at which a direction key presses.
+- `releaseThreshold` (default `0.20`) — tilt at which it releases. Kept *below* press on
+  purpose; that gap is the hysteresis that stops the key chattering at the boundary.
+
+On top of that, a game can retune it **live at runtime** over the same `Unity.call` bridge:
+
+```js
+window.Unity.call('gb:sensitivity:' + percent); // percent = 0..100
+```
+
+Unity maps that to `pressThreshold = lerp(0.60, 0.15, percent/100)` and
+`releaseThreshold = pressThreshold * 0.6` (so the hysteresis gap stays proportional). **Higher
+percent = reacts to a smaller lean = twitchier.** `55` reproduces the stock `0.35` almost
+exactly, which makes it the natural default for a game adding this without wanting to change
+how it currently feels.
+
+Notes that matter in practice:
+
+- **Only affects `forwardSteeringKeys = true` (digital) games.** The thresholds exist purely to
+  turn analog tilt into on/off key presses. In analog mode the game gets the raw value via
+  `__gbSensor` and would do its own scaling.
+- **The value is not persisted by Unity.** `pressThreshold` is a scene field, so it resets to
+  the Inspector value every time the scene loads. A game offering a sensitivity setting must
+  therefore **re-send its stored value on page load**, not only when the user changes it.
+- **One pair of thresholds covers both axes.** There's no separate vertical threshold, so a
+  game using `ArrowUp` for an action (jump) can't make that axis more forgiving without also
+  making left/right lane changes twitchier. Worth knowing before treating sensitivity as the fix
+  for an uncomfortable forward-lean action.
+- Anything sent that isn't `nav:back` or `gb:sensitivity:<n>` is simply logged by the host as a
+  message — which is what makes the JS-error bridge above work.
+
 ## Build config requirements
 
 Vite's default output already satisfies this — a game only needs custom config for reasons

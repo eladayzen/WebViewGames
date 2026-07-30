@@ -32,6 +32,7 @@ import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spaw
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
 import { pollLaneStep, pollJumpPress } from '../input/input.js';
 import * as hud from '../ui/hud.js';
+import { initSensitivityControl } from '../ui/sensitivity.js';
 import {
   LANE_X, FORWARD_SPEED, ASPECT_W, ASPECT_H, CAMERA_FOV,
 } from '../data/constants.js';
@@ -265,6 +266,12 @@ function boot() {
     pauseButton.innerHTML = paused ? '&#9654;' : '&#9208;';
     hud.setPausedBadge(paused);
   });
+
+  // GoBalance board sensitivity (ui/sensitivity.js). Also re-sends the stored
+  // value to the Unity host right here at boot -- the host's threshold is a
+  // scene field that resets on every scene load, so a saved preference that
+  // isn't re-sent does nothing. No-op in a normal browser.
+  initSensitivityControl();
 
   function fitStageToAspect() {
     const winW = window.innerWidth;

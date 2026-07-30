@@ -70,6 +70,27 @@
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&#9208;</button>
 
+      <!-- Board sensitivity ("touchiness") -- GoBalance SDK's steering
+           hysteresis, tunable live from in-game so it can be dialled in ON
+           the board during a real run (see src/ui/sensitivity.js and
+           GOBALANCE_SDK.md's "Board sensitivity" section). Sits left of
+           Pause, same top-right chrome row. -->
+      <button id="sensitivity-button" title="Board sensitivity"
+        style="position:absolute;top:12px;right:108px;z-index:9999;width:38px;height:38px;border:none;
+               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
+               font:600 17px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               line-height:1;display:flex;align-items:center;justify-content:center;
+               -webkit-tap-highlight-color:transparent;">&#9881;</button>
+      <div id="sensitivity-panel" class="hidden">
+        <div class="sensitivity-label">BOARD SENSITIVITY</div>
+        <div class="sensitivity-row">
+          <button id="sensitivity-down" type="button">&minus;</button>
+          <span id="sensitivity-value">55</span>
+          <button id="sensitivity-up" type="button">+</button>
+        </div>
+        <div class="sensitivity-hint">higher = reacts to a smaller lean</div>
+      </div>
+
       <div id="hud">
         <!-- POC has no CHASE meter / score UI (build doc §2, §7) -- this bare
              distance readout is the doc's explicitly-allowed optional stand-in
