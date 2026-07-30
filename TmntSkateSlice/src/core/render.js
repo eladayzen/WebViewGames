@@ -192,16 +192,16 @@ function drawPlayer(ctx, xFrac, w, h, images, player, isRunning, stage) {
     const t = performance.now() / 1000;
     ctx.save();
     ctx.fillStyle = '#F84FA0';
-    ctx.globalAlpha = 0.12;
+    ctx.globalAlpha = 0.08;
     ctx.beginPath();
-    ctx.arc(cx, cy, size * 0.7, 0, Math.PI * 2);
+    ctx.arc(cx, cy, size * 0.55, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#FF7AC4';
-    ctx.lineWidth = size * 0.028;
+    ctx.lineWidth = size * 0.025;
     for (let i = 0; i < 3; i++) {
-      const phase = (t * 0.9 + i / 3) % 1; // 0 (outer) -> 1 (inner)
-      const rr = size * (0.78 - 0.52 * phase);
-      ctx.globalAlpha = 0.55 * Math.sin(phase * Math.PI); // fade in/out at the ends
+      const phase = (t * 0.5 + i / 3) % 1; // 0 (outer) -> 1 (inner); slower cycle
+      const rr = size * (0.6 - 0.42 * phase);
+      ctx.globalAlpha = 0.35 * Math.sin(phase * Math.PI); // fade in/out at the ends
       ctx.beginPath();
       ctx.arc(cx, cy, rr, 0, Math.PI * 2);
       ctx.stroke();
