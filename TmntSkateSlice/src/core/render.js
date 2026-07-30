@@ -233,45 +233,82 @@ function drawItemFallback(ctx, x, y, size, type) {
   ctx.restore();
 }
 
+// hex "#rrggbb" -> "rgba(r,g,b,a)" for gradient stops.
+function hexToRgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+// Cached solid-color silhouette of a sprite (the sprite's alpha shape filled
+// with `hex`), used to draw a colored contour that hugs the sprite's actual
+// outline. Built once per color via an offscreen canvas + 'source-in'
+// composite. All box-variant pizzas share one sprite, so keying by color is
+// enough (3 entries).
+const _silhouetteCache = new Map();
+function getTintedSilhouette(img, hex) {
+  if (!img) return null;
+  let c = _silhouetteCache.get(hex);
+  if (!c) {
+    c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const cx = c.getContext('2d');
+    cx.drawImage(img, 0, 0);
+    cx.globalCompositeOperation = 'source-in';
+    cx.fillStyle = hex;
+    cx.fillRect(0, 0, c.width, c.height);
+    _silhouetteCache.set(hex, c);
+  }
+  return c;
+}
+
 function drawItems(ctx, items, w, h, images) {
   const size = h * ITEM_SIZE_FRAC;
+  const now = performance.now();
   for (const item of items) {
     if (item.resolved) continue;
     const x = px(item.xFrac, w);
     const y = px(item.yFrac, h);
-
-    // Animated "pumping" highlight for box-variant slices (every box EXCEPT
-    // 'regular') -- signals which collection box the slice feeds without
-    // recoloring the pizza. A stroked OUTLINE ring whose radius/width/alpha
-    // pulse over time (feedback 2026-07-30: the earlier flat glow read as low
-    // production), plus a faint fill. Per-item phase offset (item.id) so a
-    // cluster doesn't pulse in lockstep. Cheap -- no ctx.shadowBlur.
     const bc = item.type.boxColor;
-    if (bc && bc !== 'regular') {
-      const hex = BOX_COLOR_BY_ID[bc].hex;
-      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200 + (item.id || 0) * 1.7);
-      const r = size * (0.58 + 0.12 * pulse);
+    const isVariant = bc && bc !== 'regular';
+    const hex = isVariant ? BOX_COLOR_BY_ID[bc].hex : null;
+    const pulse = isVariant ? 0.5 + 0.5 * Math.sin(now / 300 + (item.id || 0) * 1.7) : 0;
+    const img = images[item.type.sprite];
+
+    // Box-variant highlight (every box EXCEPT 'regular'): a SOFT pulsing glow
+    // (radial gradient, no hard ring) plus a colored CONTOUR that hugs the
+    // slice's actual silhouette (feedback 2026-07-30). No ctx.shadowBlur.
+    if (isVariant) {
+      const gr = size * (0.72 + 0.16 * pulse);
+      const grad = ctx.createRadialGradient(x, y, size * 0.15, x, y, gr);
+      grad.addColorStop(0, hexToRgba(hex, 0.34 + 0.22 * pulse));
+      grad.addColorStop(0.6, hexToRgba(hex, 0.13 + 0.09 * pulse));
+      grad.addColorStop(1, hexToRgba(hex, 0));
       ctx.save();
-      ctx.translate(x, y);
-      ctx.fillStyle = hex;
-      ctx.globalAlpha = 0.12 + 0.1 * pulse;
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.arc(x, y, gr, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = hex;
-      ctx.globalAlpha = 0.55 + 0.35 * pulse;
-      ctx.lineWidth = size * (0.05 + 0.025 * pulse);
-      ctx.beginPath();
-      ctx.arc(0, 0, r, 0, Math.PI * 2);
-      ctx.stroke();
       ctx.restore();
     }
 
-    const img = images[item.type.sprite];
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(item.rotationRad || 0);
     if (img) {
+      // Contour outline: the tinted silhouette drawn offset in a ring behind
+      // the real slice, so a colored rim traces the pizza's shape. Rim
+      // thickness breathes with the same pulse.
+      if (isVariant) {
+        const sil = getTintedSilhouette(img, hex);
+        if (sil) {
+          const o = size * (0.045 + 0.02 * pulse);
+          for (let a = 0; a < 8; a++) {
+            const ang = (a / 8) * Math.PI * 2;
+            ctx.drawImage(sil, -size / 2 + Math.cos(ang) * o, -size / 2 + Math.sin(ang) * o, size, size);
+          }
+        }
+      }
       ctx.drawImage(img, -size / 2, -size / 2, size, size);
     } else {
       drawItemFallback(ctx, 0, 0, size, item.type);
