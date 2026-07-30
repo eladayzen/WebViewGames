@@ -165,68 +165,95 @@ html, body {
   transform-origin: left;
 }
 
-/* --- Pizza-box collection chips (progression update) -- a horizontal row
-   below the ooze indicator, one compact chip per active box. Each chip: a
-   pizza-box icon + a count + a depleting timer bar, color-coded to the box
-   via the --box-color custom property set in ui.js. --- */
+/* --- Pizza-box collection chips (redesign 2026-07-30) -- a LARGE vertical
+   stack on the left. Each chip: a big pizza-box graphic where a full-opacity
+   copy is revealed RADIALLY (conic mask) over a faded "empty" copy as slices
+   are caught, wrapped by a depleting timer STROKE RING, with the "N/8" count
+   below. Color-coded via --box-color set in ui.js. (Fixed px like the rest
+   of the HUD -- WebView-size scaling is a separate, deferred concern.) --- */
 #box-tray {
   position: absolute;
-  top: 146px;
+  top: 150px;
   left: 14px;
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .box-chip {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  background: rgba(15, 15, 30, 0.62);
-  border: 2px solid var(--box-color, #fff);
-  border-radius: 9px;
-  padding: 4px 8px 4px 4px;
+  gap: 3px;
 }
 
 .box-chip.hidden {
   display: none;
 }
 
-.box-icon {
-  width: 30px;
-  height: 30px;
-  object-fit: contain;
-  filter: drop-shadow(0 0 4px var(--box-color, #fff));
+.box-graphic {
+  position: relative;
+  width: 96px;
+  height: 96px;
 }
 
-.box-body {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 40px;
+.box-ghost,
+.box-fill {
+  position: absolute;
+  inset: 0;
+  width: 74px;
+  height: 74px;
+  margin: auto;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.box-ghost {
+  opacity: 0.25;
+}
+
+.box-fill {
+  opacity: 1;
+  /* radial reveal: a hard-edged pie from the top (12 o'clock), growing
+     clockwise proportional to --fill (0..1) set per progress in ui.js. */
+  -webkit-mask-image: conic-gradient(from -90deg, #000 calc(var(--fill, 0) * 360deg), transparent calc(var(--fill, 0) * 360deg));
+  mask-image: conic-gradient(from -90deg, #000 calc(var(--fill, 0) * 360deg), transparent calc(var(--fill, 0) * 360deg));
+  filter: drop-shadow(0 0 5px var(--box-color, #fff));
+}
+
+.box-ring {
+  position: absolute;
+  inset: 0;
+  width: 96px;
+  height: 96px;
+  overflow: visible;
+}
+
+.ring-track {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.42);
+  stroke-width: 5;
+}
+
+.ring-arc {
+  fill: none;
+  stroke: var(--box-color, #fff);
+  stroke-width: 6;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dashoffset 0.25s linear;
+  filter: drop-shadow(0 0 3px var(--box-color, #fff));
 }
 
 .box-count {
   font-weight: 900;
-  font-size: 15px;
+  font-size: 16px;
   color: #fff;
   letter-spacing: 0.5px;
-  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.55);
+  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.6);
   paint-order: stroke fill;
   font-variant-numeric: tabular-nums;
-}
-
-.box-timer-bar {
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.4);
-  overflow: hidden;
-}
-
-.box-timer-fill {
-  height: 100%;
-  width: 100%;
-  background: var(--box-color, #fff);
-  transform-origin: left;
 }
 
 /* --- Box-completion celebration popup (progression update) -- a quick

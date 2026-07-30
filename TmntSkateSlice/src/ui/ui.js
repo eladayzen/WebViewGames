@@ -79,12 +79,16 @@ export function createUI() {
     el.buffChips[b.key] = { chip, fill };
   }
 
-  // Build one collection-box chip per box once (hidden until active), driven
-  // from data/boxColors.js so adding a box is a data change. Each chip shows
-  // a pizza-box icon + a count ("3/8") + a depleting timer bar, color-coded
-  // to the box via --box-color (the box art makes it read as "filling a
-  // pizza box," not just a counter).
+  // Build one large collection-box chip per box once (hidden until active),
+  // driven from data/boxColors.js. Each chip (redesign 2026-07-30): a big
+  // pizza-box graphic where a full-opacity copy is REVEALED RADIALLY over a
+  // faded "empty" copy as slices are caught (a conic mask -- non-text
+  // progress feedback), wrapped by a depleting timer STROKE RING, with the
+  // "N/8" count below. Color-coded via --box-color.
   const boxIconUrl = new URL('../assets/pizza_box.png', import.meta.url).href;
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const RING_R = 47;
+  const RING_C = 2 * Math.PI * RING_R; // circumference in the 100-unit viewBox
   el.boxTray = document.getElementById('box-tray');
   el.boxChips = {};
   for (const c of BOX_COLORS) {
@@ -92,27 +96,48 @@ export function createUI() {
     chip.className = 'box-chip hidden';
     chip.style.setProperty('--box-color', c.hex);
 
-    const icon = document.createElement('img');
-    icon.className = 'box-icon';
-    icon.src = boxIconUrl;
-    icon.alt = '';
+    const graphic = document.createElement('div');
+    graphic.className = 'box-graphic';
 
-    const body = document.createElement('div');
-    body.className = 'box-body';
+    const ghost = document.createElement('img'); // faded "empty" box behind
+    ghost.className = 'box-ghost';
+    ghost.src = boxIconUrl;
+    ghost.alt = '';
+    const fillImg = document.createElement('img'); // full box, radially revealed
+    fillImg.className = 'box-fill';
+    fillImg.src = boxIconUrl;
+    fillImg.alt = '';
+    fillImg.style.setProperty('--fill', '0');
+
+    const svg = document.createElementNS(SVGNS, 'svg'); // depleting timer ring
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.classList.add('box-ring');
+    const track = document.createElementNS(SVGNS, 'circle');
+    track.setAttribute('cx', '50');
+    track.setAttribute('cy', '50');
+    track.setAttribute('r', String(RING_R));
+    track.classList.add('ring-track');
+    const arc = document.createElementNS(SVGNS, 'circle');
+    arc.setAttribute('cx', '50');
+    arc.setAttribute('cy', '50');
+    arc.setAttribute('r', String(RING_R));
+    arc.classList.add('ring-arc');
+    arc.style.strokeDasharray = RING_C.toFixed(2);
+    arc.style.strokeDashoffset = '0';
+    svg.appendChild(track);
+    svg.appendChild(arc);
+
+    graphic.appendChild(ghost);
+    graphic.appendChild(fillImg);
+    graphic.appendChild(svg);
+
     const count = document.createElement('span');
     count.className = 'box-count';
-    const bar = document.createElement('div');
-    bar.className = 'box-timer-bar';
-    const fill = document.createElement('div');
-    fill.className = 'box-timer-fill';
-    bar.appendChild(fill);
-    body.appendChild(count);
-    body.appendChild(bar);
 
-    chip.appendChild(icon);
-    chip.appendChild(body);
+    chip.appendChild(graphic);
+    chip.appendChild(count);
     el.boxTray.appendChild(chip);
-    el.boxChips[c.id] = { chip, count, fill };
+    el.boxChips[c.id] = { chip, fillImg, arc, count, ringC: RING_C };
   }
 
   // Box-completion celebration popup (see showBoxComplete). Icon is the same
@@ -166,15 +191,19 @@ export function createUI() {
       for (const c of BOX_COLORS) {
         const b = boxes[c.id];
         const chip = el.boxChips[c.id];
-        // Key changes on progress or a whole-second timer tick, so the DOM
-        // (and the timer-bar width) updates ~once/sec, not every frame.
-        const key = b.active ? `${b.progress}:${Math.ceil(b.timerRemaining)}` : 'off';
+        // Key updates ~2x/sec (for the depleting ring) + instantly on a
+        // progress change -- still dirty-checked (no per-frame DOM write).
+        const key = b.active ? `${b.progress}:${Math.ceil(b.timerRemaining * 2)}` : 'off';
         if (key === lastBoxKeys[c.id]) continue;
         lastBoxKeys[c.id] = key;
         if (b.active) {
           chip.chip.classList.remove('hidden');
           chip.count.textContent = `${b.progress}/${c.requiredCount}`;
-          chip.fill.style.width = `${Math.max(0, (b.timerRemaining / c.timerSec) * 100)}%`;
+          // radial reveal of the full box (0..1 of a full turn)
+          chip.fillImg.style.setProperty('--fill', (b.progress / c.requiredCount).toFixed(3));
+          // timer ring depletes: dashoffset 0 (full) -> circumference (empty)
+          const frac = Math.max(0, Math.min(1, b.timerRemaining / c.timerSec));
+          chip.arc.style.strokeDashoffset = (chip.ringC * (1 - frac)).toFixed(1);
         } else {
           chip.chip.classList.add('hidden');
         }
