@@ -38,7 +38,8 @@ import {
 import {
   INTRO_WALL_ENABLED, INTRO_WALL_ENEMY_COUNT, INTRO_WALL_SPAWN_Z,
   INTRO_NORMAL_ENEMY_DELAY_SEC, INTRO_OBSTACLE_DELAY_SEC,
-  INTRO_RAMP_UP_DURATION_SEC, INTRO_RAMP_UP_SPAWN_Z,
+  INTRO_SEED_ENABLED, INTRO_SEED_OBSTACLE_ARRIVALS, INTRO_SEED_ENEMY_ARRIVALS,
+  INTRO_SEED_PLATFORM_ARRIVALS, INTRO_SEED_COIN_ARRIVALS,
 } from '../data/introSequence.js';
 import { PLATFORM_ENABLED } from '../data/platformSequence.js';
 import {
@@ -151,6 +152,38 @@ function boot() {
   let lastObstacleSpawnTime = -Infinity;
   let lastEnemySpawnTime = -Infinity;
 
+  const rollPlatformType = () => (
+    PLATFORM_KILL_TYPE_ENABLED && Math.random() < PLATFORM_KILL_TYPE_CHANCE ? 'kill' : 'ramp'
+  );
+
+  // Pre-places entities already in flight at staggered distances, so the run
+  // OPENS with a populated pipeline instead of waiting one full ~8.75s
+  // far-travel for the first spawn to arrive (data/introSequence.js's
+  // INTRO_SEED_* lists carry the reasoning and the arrival times).
+  //
+  // Order matters, and gives correct mutual avoidance for free: platforms
+  // first, then obstacles/enemies (which refuse lanes blocked by a platform
+  // footprint), then coins (which refuse lanes with a nearby obstacle).
+  // Seeding in any other order would let a later seed land on top of an
+  // earlier one.
+  function seedPipeline() {
+    const seedZ = (arrivalSec) => -arrivalSec * FORWARD_SPEED;
+    if (PLATFORM_ENABLED) {
+      for (const t of INTRO_SEED_PLATFORM_ARRIVALS) {
+        spawnPlatform(platformField, rollPlatformType(), null, seedZ(t));
+      }
+    }
+    for (const t of INTRO_SEED_OBSTACLE_ARRIVALS) {
+      spawnObstacle(obstacleField, platformField, null, seedZ(t));
+    }
+    for (const t of INTRO_SEED_ENEMY_ARRIVALS) {
+      spawnEnemy(enemyField, platformField, null, null, seedZ(t));
+    }
+    for (const t of INTRO_SEED_COIN_ARRIVALS) {
+      spawnCoinCluster(coinField, platformField, obstacleField, seedZ(t));
+    }
+  }
+
   function fullReset() {
     resetPlayer(player);
     // resetRibbon(ribbon); -- ribbon object disabled, see creation above
@@ -178,6 +211,10 @@ function boot() {
       resetSpawner(enemySpawnerState, ENEMY_FIRST_SPAWN_DELAY_SEC);
       resetSpawner(spawnerState, OBSTACLE_FIRST_SPAWN_DELAY_SEC);
     }
+
+    // After the wall (so the wall's enemies are already placed and the
+    // seeded ones stagger in behind them, preserving the teaching order).
+    if (INTRO_SEED_ENABLED) seedPipeline();
 
     distance = 0;
     score = 0;
@@ -333,10 +370,7 @@ function boot() {
           // data/introSequence.js: spawn close instead of at the far
           // SPAWN_Z while the pipeline is still filling, so the run-start
           // stretch doesn't sit empty for one full ~9s far-travel time.
-          spawnObstacle(
-            obstacleField, platformField, null,
-            gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined,
-          );
+          spawnObstacle(obstacleField, platformField);
           lastObstacleSpawnTime = gameTime;
         }
       });
@@ -361,11 +395,7 @@ function boot() {
       // instead of ending the run.
       updateSpawner(enemySpawnerState, dt, () => {
         if (gameTime - lastObstacleSpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
-          // Same ramp-up close-spawn treatment as the obstacle spawner above.
-          spawnEnemy(
-            enemyField, platformField, null, null,
-            gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined,
-          );
+          spawnEnemy(enemyField, platformField);
           lastEnemySpawnTime = gameTime;
         }
       }, ENEMY_SPAWN_INTERVAL_SEC);
@@ -387,14 +417,7 @@ function boot() {
 
       if (PLATFORM_ENABLED) {
         updateSpawner(platformSpawnerState, dt, () => {
-          const type = PLATFORM_KILL_TYPE_ENABLED && Math.random() < PLATFORM_KILL_TYPE_CHANCE
-            ? 'kill'
-            : 'ramp';
-          // Same ramp-up close-spawn treatment as obstacles/enemies above.
-          spawnPlatform(
-            platformField, type, null,
-            gameTime < INTRO_RAMP_UP_DURATION_SEC ? INTRO_RAMP_UP_SPAWN_Z : undefined,
-          );
+          spawnPlatform(platformField, rollPlatformType());
         }, PLATFORM_SPAWN_INTERVAL_SEC);
       }
       updatePlatformField(platformField, dt, FORWARD_SPEED);

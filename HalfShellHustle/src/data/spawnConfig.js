@@ -67,10 +67,11 @@ export const ENEMY_SPAWN_INTERVAL_SEC = 2.0;
 export const MIN_ENEMY_OBSTACLE_GAP_SEC = 0.6; // -> 9.6 world units at FORWARD_SPEED=16
 
 // --- Elevated platforms (entities/platform.js, data/platformSequence.js) ---
-// First delay pulled in so platforms are also something to engage with
-// soon after run start, same as the intro wall and the obstacle/enemy
-// ramp-up window (data/introSequence.js).
-export const PLATFORM_FIRST_SPAWN_DELAY_SEC = 7;
+// 7 -> 4 so this spawner's first arrival (delay + the ~8.75s far-travel =
+// ~12.75s) picks up right where data/introSequence.js's seeded platform
+// stops (~6.8s + one 6s interval), instead of leaving the 11.6s platform
+// gap direct feedback ran into.
+export const PLATFORM_FIRST_SPAWN_DELAY_SEC = 4;
 export const PLATFORM_SPAWN_INTERVAL_SEC = 6;
 
 // Type mix -- since the kill-type's jump is harder to time on a lean-board
@@ -126,12 +127,15 @@ export const ENEMY_ON_PLATFORM_CHANCE = 0.5;
 // clusters start getting silently skipped for lack of free slots.
 export const COIN_POOL_SIZE = 30;
 
-// Deliberately later than every other spawner's first delay: the run's
-// first ~12s are already crowded (intro enemy wall at ~1.6s, normal
-// enemies 2s, obstacles 6s, platforms 7s, all close-spawned via
-// data/introSequence.js's ramp-up window). Coins arriving after that read
-// as a distinct new element instead of noise inside the teaching moment.
-export const COIN_FIRST_SPAWN_DELAY_SEC = 9;
+// Was 9, on the theory that coins should arrive after the crowded intro --
+// which backfired badly: coins never got the old close-spawn treatment, so
+// 9s of delay PLUS the full ~8.75s far-travel meant the first coin didn't
+// reach the player until ~17.8s (direct feedback: "currently none gold
+// coins" in the opening stretch). Now near-zero, since
+// data/introSequence.js seeds the opening coins directly and this just
+// needs to continue their cadence: 0.7 + 8.75 = ~9.45s first arrival,
+// right after the last seeded cluster at ~6.4s + one 3s interval.
+export const COIN_FIRST_SPAWN_DELAY_SEC = 0.7;
 // One CLUSTER per interval (3-5 coins), not one coin.
 export const COIN_CLUSTER_SPAWN_INTERVAL_SEC = 3;
 
