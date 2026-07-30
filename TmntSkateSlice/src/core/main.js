@@ -144,13 +144,18 @@ async function boot() {
       } else if (effect === 'magnet') {
         grantMagnetBuff(player);
       } else if (effect === 'wave') {
-        // Instant screen-clear: destroy every bomb currently falling, with a
-        // single capped wave VFX (not one burst per bomb) + shake. No score.
+        // Instant screen-clear: every bomb currently falling DETONATES where
+        // it is (mid-air), so you actually see them go off (feedback
+        // 2026-07-30) -- not a silent vanish. Plus the sweeping wave VFX from
+        // the pickup itself and a solid shake. No score (pure utility).
         for (const other of items) {
-          if (!other.resolved && other.type.kind === 'hazard') other.resolved = true;
+          if (!other.resolved && other.type.kind === 'hazard') {
+            other.resolved = true;
+            spawnBombExplosion(juice, other.xFrac, other.yFrac);
+          }
         }
         spawnWaveClear(juice, item.xFrac, item.yFrac);
-        triggerScreenShake(juice, 0.15, 0.008);
+        triggerScreenShake(juice, 0.28, 0.016);
         playSfx(audio, sfx.sfx_wave_clear);
       }
     } else {
@@ -167,7 +172,7 @@ async function boot() {
         triggerHit(player);
         registerComboBreak(scoring);
         spawnBombExplosion(juice, item.xFrac, item.yFrac);
-        triggerScreenShake(juice, 0.18, 0.012);
+        triggerScreenShake(juice, 0.26, 0.018);
         playSfx(audio, sfx.sfx_bomb_hit);
         if (isDead(lives)) {
           triggerGameOver(gs);

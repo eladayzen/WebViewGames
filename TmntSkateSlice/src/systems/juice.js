@@ -98,26 +98,24 @@ export function spawnOozeSplash(juice, xFrac, yFrac) {
 // plus an expanding shockwave ring for extra impact on top of the existing
 // screen-shake (see triggerHit call site in core/main.js).
 export function spawnBombExplosion(juice, xFrac, yFrac) {
+  // Bigger, punchier than the original (feedback 2026-07-30), and glow:false
+  // so the wave pickup can detonate several bombs at once without stacking
+  // shadowBlur (the known in-WebView perf risk). Size/spread/rings carry the
+  // "stronger" read instead of glow.
   emitBurst(juice, xFrac, yFrac, {
-    count: 14,
-    colors: ['#1B1B1F', '#F2C230', '#FF7A2E'],
-    speedMin: 0.3,
-    speedMax: 0.55,
-    life: 0.45,
+    count: 24,
+    colors: ['#1B1B1F', '#F2C230', '#FF7A2E', '#FFD26A'],
+    speedMin: 0.4,
+    speedMax: 0.8,
+    life: 0.55,
     shape: 'spark',
-    sizeMin: 0.01,
-    sizeMax: 0.02,
-    upBias: 0.2,
-    glow: true,
+    sizeMin: 0.013,
+    sizeMax: 0.028,
+    upBias: 0.22,
+    glow: false,
   });
-  juice.rings.push({
-    xFrac,
-    yFrac,
-    life: 0.3,
-    maxLife: 0.3,
-    maxRadiusFrac: 0.14,
-    color: '#FF7A2E',
-  });
+  juice.rings.push({ xFrac, yFrac, life: 0.36, maxLife: 0.36, maxRadiusFrac: 0.24, color: '#FF7A2E' });
+  juice.rings.push({ xFrac, yFrac, life: 0.28, maxLife: 0.28, maxRadiusFrac: 0.15, color: '#FFD26A' });
 }
 
 // Pizza-box completion celebration (progression update, 2026-07-30). A

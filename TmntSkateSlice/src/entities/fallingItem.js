@@ -8,7 +8,8 @@ import {
   PLAY_AREA_LEFT_FRAC,
   PLAY_AREA_RIGHT_FRAC,
   MAGNET_PULL_RADIUS_FRAC,
-  MAGNET_PULL_SPEED_FRAC_PER_SEC,
+  MAGNET_PULL_RATE_PER_SEC,
+  MAGNET_PULL_MAX_SPEED_FRAC_PER_SEC,
 } from '../data/constants.js';
 
 let nextId = 1;
@@ -71,7 +72,18 @@ export function isOffScreen(item) {
 export function applyMagnetPull(item, targetXFrac, dt) {
   const dx = targetXFrac - item.xFrac;
   if (Math.abs(dx) > MAGNET_PULL_RADIUS_FRAC) return; // out of reach
-  const maxStep = MAGNET_PULL_SPEED_FRAC_PER_SEC * dt;
-  item.xFrac += Math.abs(dx) <= maxStep ? dx : Math.sign(dx) * maxStep;
+  // Gentle, gradual follow: proportional to distance (eases toward the
+  // player, never snaps past) AND ramped by how far the item has fallen --
+  // barely pulls while it's up high, increasingly follows as it descends
+  // ("starts slower, then you see it happening"), then hard-capped so even a
+  // far item drifts rather than yanking across. yFrac runs ~-0.075 (spawn)
+  // to ~0.85 (strike band); fallFactor reaches full by 60% down.
+  const fallFactor = Math.max(0, Math.min(1, item.yFrac / 0.6));
+  let step = dx * MAGNET_PULL_RATE_PER_SEC * fallFactor * dt;
+  const maxStep = MAGNET_PULL_MAX_SPEED_FRAC_PER_SEC * dt;
+  if (step > maxStep) step = maxStep;
+  else if (step < -maxStep) step = -maxStep;
+  if (Math.abs(step) > Math.abs(dx)) step = dx; // never overshoot the target
+  item.xFrac += step;
   item.xFrac = Math.max(PLAY_AREA_LEFT_FRAC, Math.min(PLAY_AREA_RIGHT_FRAC, item.xFrac));
 }

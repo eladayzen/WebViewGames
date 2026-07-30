@@ -46,8 +46,14 @@ export const OOZE_BUFF_DURATION_SEC = 8; // within the doc's 6-10s range
 // in entities/fallingItem.js). Durations tunable; all first-pass/directional.
 export const SHIELD_BUFF_DURATION_SEC = 7;
 export const MAGNET_BUFF_DURATION_SEC = 7;
-export const MAGNET_PULL_RADIUS_FRAC = 0.45;          // horizontal reach, fraction of play width
-export const MAGNET_PULL_SPEED_FRAC_PER_SEC = 0.55;   // how fast pulled items slide toward the player
+export const MAGNET_PULL_RADIUS_FRAC = 0.5;            // horizontal reach, fraction of play width
+// Gradual pull (revised 2026-07-30 -- the old flat 0.55/s constant snapped
+// pizzas overhead in ~1s). Pull is proportional to distance (eases toward
+// the player, never snaps past), ramped by how far the item has fallen
+// (barely pulls up high, more as it descends), then capped so nothing yanks
+// across. See applyMagnetPull in entities/fallingItem.js.
+export const MAGNET_PULL_RATE_PER_SEC = 2.5;          // proportional follow rate (before fall-ramp + cap)
+export const MAGNET_PULL_MAX_SPEED_FRAC_PER_SEC = 0.3; // hard cap on per-second horizontal drift
 
 // --- Falling items ---
 export const ITEM_SIZE_FRAC = 0.075; // width/height of a falling item sprite, as a fraction of canvas height
