@@ -76,6 +76,7 @@ import {
   PLATFORM_KILL_TYPE_ENABLED, PLATFORM_KILL_TYPE_CHANCE,
   COIN_FIRST_SPAWN_DELAY_SEC, COIN_CLUSTER_SPAWN_INTERVAL_SEC,
   OBSTACLE_SPAWN_INTERVAL_SEC, EASE_IN_DURATION_SEC, LEVEL_RESTART_EASE_IN_DURATION_SEC,
+  LEVEL_RESTART_PLATFORM_FIRST_DELAY_SEC,
   PICKUP_FIRST_SPAWN_DELAY_SEC, PICKUP_SPAWN_INTERVAL_SEC,
   PICKUP_MAGNET_SPAWN_CHANCE, PICKUP_LIFE_SPAWN_CHANCE,
 } from '../data/spawnConfig.js';
@@ -295,7 +296,13 @@ function boot() {
     resetObstaclePool(obstacleField);
     resetEnemyPool(enemyField);
     resetPlatformField(platformField);
-    resetSpawner(platformSpawnerState, PLATFORM_FIRST_SPAWN_DELAY_SEC);
+    // A run start uses 0 (forced by the seeding horizon -- see spawnConfig.js);
+    // a LEVEL start must not, or the immediate live platform lands on top of
+    // the seeded one, which at level-2 speed is a ~19-unit interpenetration.
+    resetSpawner(
+      platformSpawnerState,
+      isFirstLevel ? PLATFORM_FIRST_SPAWN_DELAY_SEC : LEVEL_RESTART_PLATFORM_FIRST_DELAY_SEC,
+    );
     resetCoinPool(coinField);
     resetSpawner(coinSpawnerState, COIN_FIRST_SPAWN_DELAY_SEC);
     resetPickupPool(pickupField);

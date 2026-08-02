@@ -23,29 +23,20 @@
 // To retune: edit the list. To add a tier: add a number. To change how the
 // open-ended tail behaves: edit TIER_STEP_AFTER_LAST. Nothing else to touch.
 //
-// ⚠ TEMPORARY TEST VALUES IN EFFECT ⚠ -------------------------------------
-// The live numbers below are DELIBERATELY tiny so a level transition can be
-// reached in a few seconds of play instead of a few minutes. Requested
-// explicitly for testing: "let's drop the needed values really down, 50, 100,
-// 150... those are just temporary values for me to test faster and then we
-// will bring it back to original values."
-//
-// THE REAL VALUES, TO RESTORE WHEN TESTING IS DONE:
-//
-//     export const TIER_THRESHOLDS = [300, 900, 1500];
-//     export const TIER_STEP_AFTER_LAST = 1500;
-//
-// Those are the balanced set (tier 4 at 3000, tier 5 at 4500, ...). Copy those
-// two lines over the two below and delete this block -- nothing else in the
-// game needs touching, which is the whole point of this file.
-// -------------------------------------------------------------------------
-export const TIER_THRESHOLDS = [50, 100, 150]; // TEMP -- real: [300, 900, 1500]
+// (A temporary 50/100/150 set was in effect for a while so level transitions
+// could be reached in seconds while the transition itself was being built and
+// tested. These are the real values, restored.)
+export const TIER_THRESHOLDS = [300, 900, 1500];
 
 // Every tier past the end of that list needs this many more points than the
-// one before it, forever -- so with the real values tier 4 lands at 3000,
-// tier 5 at 4500, and so on. This exists because a run has no maximum: without
-// it the last authored threshold would be a wall the bar sits pinned against.
-export const TIER_STEP_AFTER_LAST = 150; // TEMP -- real: 1500
+// one before it, forever -- so tier 4 lands at 3000, tier 5 at 4500, and so on.
+// This exists because a run has no maximum: without it the last authored
+// threshold would be a wall the bar sits pinned against.
+export const TIER_STEP_AFTER_LAST = 1500;
+
+// FAST-TEST VALUES, if a level transition needs reaching quickly again:
+//     export const TIER_THRESHOLDS = [50, 100, 150];
+//     export const TIER_STEP_AFTER_LAST = 150;
 
 // Shown in the bar. Purely cosmetic; the count of names does NOT limit how many
 // tiers exist -- past the end it falls back to "TIER n" (see

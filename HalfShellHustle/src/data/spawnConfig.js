@@ -145,6 +145,31 @@ export const MIN_ENEMY_OBSTACLE_GAP_SEC = 0.6; // -> ~6.0 world units at SPEED_S
 export const PLATFORM_FIRST_SPAWN_DELAY_SEC = 0;
 export const PLATFORM_SPAWN_INTERVAL_SEC = 6;
 
+// Minimum clear z between two platforms IN THE SAME LANE, on top of their own
+// 50-unit length. Enforced in entities/platform.js's spawnPlatform, which
+// previously had no overlap check at all -- it took the first free pool slot
+// and placed it, so nothing stopped two platforms interpenetrating.
+//
+// That went unnoticed for a long time because ordinary spawning never collides:
+// at 6s intervals platforms are 60-86 units apart depending on speed,
+// comfortably clear of 50. It only surfaced once a SEEDED platform and a live
+// one could coexist at a level restart (see the delay below) -- which is
+// exactly why the guard belongs here rather than trusting the arithmetic to
+// stay lucky.
+export const PLATFORM_MIN_SAME_LANE_GAP = 12; // world units
+
+// PLATFORM_FIRST_SPAWN_DELAY_SEC is 0 for a RUN start (see its note above --
+// forced by the seeding horizon). A LEVEL restart has the opposite problem:
+// speed carries over, so the world is near SPEED_MAX and the 7.6s platform seed
+// lands at z=-109 instead of the -71 the same seed reaches from a standing
+// start -- right on top of the live platform a 0s delay fires at z=-140.
+// Measured: a 19-unit interpenetration on a level-2 transition.
+//
+// 3s clears it with room to spare (the seed has scrolled on to -66 by then, a
+// 24-unit gap) and still puts the first live platform one comfortable interval
+// behind the seeded one.
+export const LEVEL_RESTART_PLATFORM_FIRST_DELAY_SEC = 3;
+
 // Type mix -- since the kill-type's jump is harder to time on a lean-board
 // than a swipe and should stay a rare spice, not the main way up. Off falls
 // back to every spawn being a ramp. DISABLED until further notice (direct

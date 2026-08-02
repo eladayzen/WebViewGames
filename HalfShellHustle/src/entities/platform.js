@@ -26,7 +26,10 @@ import {
 } from '../data/constants.js';
 import { PLATFORM_HEIGHT, PLATFORM_RAMP_LENGTH, PLATFORM_DECK_LENGTH } from '../data/platformSequence.js';
 import { PLATFORM_BOX_TEXTURE, PLATFORM_RAMP_TEXTURE } from '../data/envArt.js';
-import { PLATFORM_FOOTPRINT_EXCLUSION_BUFFER, PLATFORM_DECK_PLACEMENT_MAX_Z } from '../data/spawnConfig.js';
+import {
+  PLATFORM_FOOTPRINT_EXCLUSION_BUFFER, PLATFORM_DECK_PLACEMENT_MAX_Z,
+  PLATFORM_MIN_SAME_LANE_GAP,
+} from '../data/spawnConfig.js';
 import { getTexture } from './textureLoader.js';
 
 const POOL_SIZE = 6;
@@ -292,11 +295,55 @@ export function resetPlatformField(field) {
 // data/introSequence.js ramp-up treatment as entities/obstacles.js and
 // entities/enemy.js, so platforms also become something to engage with
 // soon after run start instead of only ever arriving via a ~9s far-travel.
+// The z span a platform of this type would occupy at `z`. Mirrors the deck/ramp
+// arithmetic in spawnPlatform rather than duplicating the numbers -- a 'kill'
+// platform has no exit ramp, so the two types are not the same length.
+function spanFor(type, z) {
+  const deckStart = type === 'kill' ? z : z + PLATFORM_RAMP_LENGTH;
+  const deckEnd = deckStart + PLATFORM_DECK_LENGTH;
+  return { start: z, end: type === 'kill' ? deckEnd : deckEnd + PLATFORM_RAMP_LENGTH };
+}
+
+// Is this lane clear for a platform of `type` at `z`?
+//
+// SAME-LANE ONLY, deliberately: two platforms in DIFFERENT lanes overlapping in
+// z is legitimate (parallel routes to choose between), while two in the SAME
+// lane physically interpenetrate -- which is the reported bug this exists to
+// stop. spawnPlatform previously had no overlap check of any kind; it took the
+// first free pool slot and placed it.
+function laneHasRoom(field, lane, type, z) {
+  const span = spanFor(type, z);
+  for (const slot of field.pool) {
+    if (!slot.active || slot.lane !== lane) continue;
+    if (span.start < slot.exitEndZ + PLATFORM_MIN_SAME_LANE_GAP
+      && span.end + PLATFORM_MIN_SAME_LANE_GAP > slot.entryStartZ) return false;
+  }
+  return true;
+}
+
 export function spawnPlatform(field, type, lane = null, z = SPAWN_Z) {
   const slot = field.pool.find((s) => !s.active);
   if (!slot) return;
 
-  const resolvedLane = lane !== null ? lane : Math.floor(Math.random() * LANE_X.length);
+  // An EXPLICIT lane (data/introSequence.js's seeds) is honoured or refused --
+  // silently relocating a hand-authored placement would be worse than skipping
+  // it. A RANDOM lane tries all three in shuffled order, so a blocked lane
+  // costs a different lane rather than the whole spawn.
+  let resolvedLane;
+  if (lane !== null) {
+    if (!laneHasRoom(field, lane, type, z)) return;
+    resolvedLane = lane;
+  } else {
+    const lanes = [];
+    for (let i = 0; i < LANE_X.length; i++) lanes.push(i);
+    for (let i = lanes.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [lanes[i], lanes[j]] = [lanes[j], lanes[i]];
+    }
+    resolvedLane = lanes.find((l) => laneHasRoom(field, l, type, z));
+    // Every lane occupied -- skip, same as the no-free-slot case above.
+    if (resolvedLane === undefined) return;
+  }
 
   slot.active = true;
   slot.type = type;
