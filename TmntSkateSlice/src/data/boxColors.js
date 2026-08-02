@@ -16,14 +16,15 @@
 // has no spawn weights: it's fed by plain pizza, which is the spawn
 // remainder. All numbers are first-pass/directional -- tune against feel.
 //
-// COMPLETION REWARDS (2026-08-02): completing a box now auto-grants a booster
-// (and the top box an extra life) -- see `reward` below and rollBoxReward().
-// `reward.boosters` is a weighted pick of exactly ONE effect (weights are
-// relative, not percentages); `reward.grantLife` adds a heart on top. The
-// effects map to the same grant logic as the falling shield/wave/magnet
-// pickups in core/main.js ('wave' is the "blow up" that clears every bomb).
-// Higher tiers unlock more/better options and the top tier a life -- a real
-// escalating payoff for the rarer, harder boxes.
+// COMPLETION REWARDS (2026-08-02, revised): completing a box auto-grants
+// pickups scaled by box difficulty -- `reward.boosterCount` DISTINCT boosters
+// (magnet / shield / 'wave' blow-up), plus `reward.grantLife` for a heart.
+// Regular gives 1, Blue 2, Purple all 3, Red an extra life ONLY (no pickups).
+// rollBoxReward picks the distinct set (pickDistinctBoosters); main.js grants
+// them + fires the celebration. Same grant path as the falling pickups and the
+// bomb-kill set.
+import { pickDistinctBoosters } from './powerUps.js';
+
 export const BOX_COLORS = [
   {
     id: 'regular',
@@ -32,8 +33,8 @@ export const BOX_COLORS = [
     requiredCount: 8,
     timerSec: 156, // +30% for easier completion (2026-08-02), was 120
     bonusScore: 100,
-    // Common box: magnet or shield, 2:1 (~66% magnet / ~33% shield).
-    reward: { boosters: [['magnet', 2], ['shield', 1]], grantLife: false },
+    // Common box: 1 random pickup (any of magnet/shield/blow-up, never life).
+    reward: { boosterCount: 1, grantLife: false },
   },
   {
     id: 'blue',
@@ -44,8 +45,8 @@ export const BOX_COLORS = [
     bonusScore: 150,
     baseSpawnWeight: 0.05,
     activeSpawnWeight: 0.16,
-    // Shield or "blow up" (wave), 50/50.
-    reward: { boosters: [['shield', 1], ['wave', 1]], grantLife: false },
+    // 2 different pickups.
+    reward: { boosterCount: 2, grantLife: false },
   },
   {
     id: 'purple',
@@ -56,8 +57,8 @@ export const BOX_COLORS = [
     bonusScore: 220,
     baseSpawnWeight: 0.035,
     activeSpawnWeight: 0.13,
-    // One of shield / wave / magnet, roughly even.
-    reward: { boosters: [['shield', 1], ['wave', 1], ['magnet', 1]], grantLife: false },
+    // All 3 different pickups.
+    reward: { boosterCount: 3, grantLife: false },
   },
   {
     id: 'red',
@@ -68,8 +69,8 @@ export const BOX_COLORS = [
     bonusScore: 320,
     baseSpawnWeight: 0.02,
     activeSpawnWeight: 0.10,
-    // Top box: one of the three boosters AND an extra life.
-    reward: { boosters: [['shield', 1], ['wave', 1], ['magnet', 1]], grantLife: true },
+    // Top box: an extra life ONLY (no pickups).
+    reward: { boosterCount: 0, grantLife: true },
   },
 ];
 
@@ -79,19 +80,12 @@ export const SPAWNABLE_BOX_COLORS = BOX_COLORS.filter((c) => c.baseSpawnWeight !
 
 export const BOX_COLOR_BY_ID = Object.fromEntries(BOX_COLORS.map((c) => [c.id, c]));
 
-// Roll a completion reward for the given box color: weighted-pick one booster
-// effect from its table, plus whether it also grants a life. Called by
+// Roll a completion reward for the given box color: a set of DISTINCT booster
+// effects (count per box) plus whether it also grants a life. Called by
 // core/main.js the frame a box completes; main.js does the actual granting.
 export function rollBoxReward(colorId) {
   const cfg = BOX_COLOR_BY_ID[colorId];
-  const table = (cfg && cfg.reward && cfg.reward.boosters) || [];
+  const count = (cfg && cfg.reward && cfg.reward.boosterCount) || 0;
   const grantLife = !!(cfg && cfg.reward && cfg.reward.grantLife);
-  const total = table.reduce((sum, [, w]) => sum + w, 0);
-  let r = Math.random() * total;
-  let effect = table.length ? table[0][0] : null;
-  for (const [eff, w] of table) {
-    r -= w;
-    if (r < 0) { effect = eff; break; }
-  }
-  return { effect, grantLife };
+  return { effects: pickDistinctBoosters(count), grantLife };
 }

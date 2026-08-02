@@ -44,3 +44,15 @@ export function pickPowerUp() {
   }
   return SPAWNABLE_POWER_UPS[0];
 }
+
+// Pick n DISTINCT booster effects (no duplicates) from the spawnable pool
+// (shield/wave/magnet -- excludes disabled ooze). Used by box-completion and
+// bomb-kill rewards. n >= pool size returns the whole pool; n <= 0 returns [].
+export function pickDistinctBoosters(n) {
+  const pool = SPAWNABLE_POWER_UPS.map((p) => p.effect);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.max(0, Math.min(n, pool.length)));
+}

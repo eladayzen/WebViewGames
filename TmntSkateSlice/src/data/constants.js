@@ -76,6 +76,9 @@ export const COMBO_STEP = 3; // every N consecutive pizza hits bumps the multipl
 export const COMBO_MULTIPLIER_STEP = 0.5;
 export const COMBO_MULTIPLIER_MAX = 3.0;
 
+// Floating "+N" retro score popups: how long each rises and fades (2026-08-02).
+export const SCORE_POPUP_TTL_SEC = 1.75;
+
 // --- Lives (§5.4, §8) ---
 export const STARTING_LIVES = 3;
 // Lives can grow past the starting 3 (the red box's completion reward grants an

@@ -14,6 +14,7 @@
 // a resource-constrained mobile WebView.
 
 import { BOX_COLORS } from '../data/boxColors.js';
+import { BOMB_KILL_SET } from '../data/bombKills.js';
 import { OOZE_BUFF_DURATION_SEC, SHIELD_BUFF_DURATION_SEC, MAGNET_BUFF_DURATION_SEC, MAX_LIVES } from '../data/constants.js';
 
 // Active-buff chips (ooze/shield/magnet). Static icon URLs -- Vite only
@@ -34,6 +35,8 @@ const BOX_ICON_URLS = {
   blue: new URL('../assets/pizza_box_blue.png', import.meta.url).href,
   purple: new URL('../assets/pizza_box_purple.png', import.meta.url).href,
   red: new URL('../assets/pizza_box_red.png', import.meta.url).href,
+  // The bomb-kill set reuses the box-completion celebration with a bomb icon.
+  bombsquad: new URL('../assets/bomb.png', import.meta.url).href,
 };
 
 // Booster reveal art/labels for the box-completion popup, keyed by the reward
@@ -172,6 +175,50 @@ export function createUI() {
     el.boxChips[c.id] = { chip, fillImg, arc, count };
   }
 
+  // Bomb-kill set chip (2026-08-02) -- same visual language as the box chips
+  // (bomb icon revealed radially as kills accumulate + "N/8" count) but with NO
+  // timer ring (the set has no timer). Hidden until the first kill.
+  {
+    const chip = document.createElement('div');
+    chip.className = 'box-chip hidden';
+    chip.style.setProperty('--box-color', BOMB_KILL_SET.hex);
+
+    const graphic = document.createElement('div');
+    graphic.className = 'box-graphic';
+
+    const bombUrl = new URL('../assets/bomb.png', import.meta.url).href;
+    const ghost = document.createElement('img');
+    ghost.className = 'box-ghost';
+    ghost.src = bombUrl;
+    ghost.alt = '';
+    const fillImg = document.createElement('img');
+    fillImg.className = 'box-fill';
+    fillImg.src = bombUrl;
+    fillImg.alt = '';
+    fillImg.style.setProperty('--fill', '0');
+
+    // Rounded-square panel (bg only -- no depleting timer arc).
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.classList.add('box-ring');
+    const bg = document.createElementNS(SVGNS, 'rect');
+    const RECT = { x: '5', y: '5', width: '90', height: '90', rx: '20', ry: '20' };
+    for (const k in RECT) bg.setAttribute(k, RECT[k]);
+    bg.classList.add('ring-bg');
+    svg.appendChild(bg);
+
+    const count = document.createElement('span');
+    count.className = 'box-count';
+
+    graphic.appendChild(svg);
+    graphic.appendChild(ghost);
+    graphic.appendChild(fillImg);
+    graphic.appendChild(count);
+    chip.appendChild(graphic);
+    el.boxTray.appendChild(chip);
+    el.bombChip = { chip, fillImg, count };
+  }
+
   // Box-completion celebrations (see showBoxComplete). A small pool of popup
   // instances lives in the centered tray so up to MAX_BOX_POPUPS can show at
   // once (near-simultaneous completions mustn't cut each other off). Each has
@@ -197,15 +244,24 @@ export function createUI() {
     textWrap.appendChild(title);
     textWrap.appendChild(bonus);
 
+    // Up to 3 earned-booster slots (icon + label), shown side by side; a box
+    // reveals 1-3 of them, the bomb-kill set reveals 2.
     const reward = document.createElement('div');
     reward.className = 'bcp-reward hidden';
-    const rewardIcon = document.createElement('img');
-    rewardIcon.className = 'bcp-reward-icon';
-    rewardIcon.alt = '';
-    const rewardLabel = document.createElement('span');
-    rewardLabel.className = 'bcp-reward-label';
-    reward.appendChild(rewardIcon);
-    reward.appendChild(rewardLabel);
+    const rewardItems = [];
+    for (let k = 0; k < 3; k++) {
+      const rItem = document.createElement('div');
+      rItem.className = 'bcp-reward-item hidden';
+      const rIcon = document.createElement('img');
+      rIcon.className = 'bcp-reward-icon';
+      rIcon.alt = '';
+      const rLabel = document.createElement('span');
+      rLabel.className = 'bcp-reward-label';
+      rItem.appendChild(rIcon);
+      rItem.appendChild(rLabel);
+      reward.appendChild(rItem);
+      rewardItems.push({ item: rItem, icon: rIcon, label: rLabel });
+    }
 
     const life = document.createElement('div');
     life.className = 'bcp-life hidden';
@@ -217,7 +273,7 @@ export function createUI() {
     root.appendChild(life);
     el.bcTray.appendChild(root);
 
-    el.bcPopups.push({ root, icon, title, bonus, reward, rewardIcon, rewardLabel, life, active: false, hideTimer: null });
+    el.bcPopups.push({ root, icon, title, bonus, reward, rewardItems, life, active: false, hideTimer: null });
   }
   let activeBoxPopups = []; // live popups, newest first
 
@@ -240,6 +296,7 @@ export function createUI() {
   let lastLivesRemaining = null;
   const lastBoxKeys = {}; // per-box last-written key
   const lastBuffKeys = {}; // per-buff last-written key
+  let lastBombKillKey = null; // bomb-kill chip last-written key
 
   return {
     // Foreground celebration when a box completes: color-coded title + bonus +
@@ -261,15 +318,19 @@ export function createUI() {
       slot.icon.src = BOX_ICON_URLS[id] || BOX_ICON_URLS.regular;
       slot.title.textContent = `${label.toUpperCase()} BOX!`;
       slot.bonus.textContent = `+${bonus}`;
-      const info = reward && reward.effect ? BOOSTER_INFO[reward.effect] : null;
-      if (info) {
-        slot.reward.style.setProperty('--bcp-reward-color', info.hex);
-        slot.rewardIcon.src = info.url;
-        slot.rewardLabel.textContent = info.label;
-        slot.reward.classList.remove('hidden');
-      } else {
-        slot.reward.classList.add('hidden');
-      }
+      const effects = (reward && reward.effects) || [];
+      slot.rewardItems.forEach((ri, k) => {
+        const info = k < effects.length ? BOOSTER_INFO[effects[k]] : null;
+        if (info) {
+          ri.item.style.setProperty('--bcp-reward-color', info.hex);
+          ri.icon.src = info.url;
+          ri.label.textContent = info.label;
+          ri.item.classList.remove('hidden');
+        } else {
+          ri.item.classList.add('hidden');
+        }
+      });
+      slot.reward.classList.toggle('hidden', effects.length === 0);
       slot.life.classList.toggle('hidden', !(reward && reward.grantLife));
 
       // Mark live (newest first) + restart its animation.
@@ -330,6 +391,22 @@ export function createUI() {
         } else {
           chip.chip.classList.add('hidden');
         }
+      }
+    },
+
+    // Bomb-kill chip: shown once you've killed at least one bomb, radial reveal
+    // + "N/8" count. No timer. Dirty-checked like the other per-frame setters.
+    setBombKills(bombKills) {
+      const active = bombKills.progress > 0;
+      const key = active ? String(bombKills.progress) : 'off';
+      if (key === lastBombKillKey) return;
+      lastBombKillKey = key;
+      if (active) {
+        el.bombChip.chip.classList.remove('hidden');
+        el.bombChip.count.textContent = `${bombKills.progress}/${BOMB_KILL_SET.requiredCount}`;
+        el.bombChip.fillImg.style.setProperty('--fill', (bombKills.progress / BOMB_KILL_SET.requiredCount).toFixed(3));
+      } else {
+        el.bombChip.chip.classList.add('hidden');
       }
     },
 

@@ -27,7 +27,9 @@ import {
 import { updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
 import { createSpawner, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../systems/boxes.js';
+import { createBombKills, resetBombKills, registerBombKill } from '../systems/bombKills.js';
 import { rollBoxReward } from '../data/boxColors.js';
+import { BOMB_KILL_SET } from '../data/bombKills.js';
 import { createDifficulty, resetDifficulty, updateDifficulty, getStage } from '../systems/difficulty.js';
 import {
   createScoring,
@@ -36,10 +38,11 @@ import {
   registerOozeHit,
   registerComboBreak,
   registerBoxComplete,
+  registerBombKillScore,
   getComboMultiplier,
 } from '../systems/scoring.js';
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
-import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, triggerScreenShake } from '../systems/juice.js';
+import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
 import { PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 
@@ -70,6 +73,7 @@ async function boot() {
   const lives = createLives();
   const juice = createJuice();
   const boxes = createBoxes();
+  const bombKills = createBombKills();
   const audio = createAudio();
   let items = [];
   let lastCountdownTick = null; // last whole-second value shown, for tick SFX
@@ -89,6 +93,7 @@ async function boot() {
     resetLives(lives);
     resetJuice(juice);
     resetBoxes(boxes);
+    resetBombKills(bombKills);
     items = [];
     ui.hideGameOver();
   }
@@ -138,6 +143,25 @@ async function boot() {
     }
   }
 
+  // A bomb destroyed by a player action WITHOUT costing a life (shield block,
+  // blow-up, later ooze projectiles) -- 2026-08-02. Awards points + a "+N"
+  // popup and fills the bomb-kill set; completing the set fires the same
+  // celebration as a box (bomb icon + "BOMB SQUAD!" + 2 boosters) and grants
+  // them. Call this from every such destruction site; NEVER when a bomb hurt
+  // the player.
+  function killBomb(item) {
+    registerBombKillScore(scoring, BOMB_KILL_SET.killScore);
+    spawnScorePopup(juice, item.xFrac, item.yFrac, `+${BOMB_KILL_SET.killScore}`, BOMB_KILL_SET.hex);
+    const done = registerBombKill(bombKills);
+    if (done) {
+      registerBoxComplete(scoring, done.bonusScore);
+      for (const effect of done.effects) grantBooster(effect, item.xFrac, item.yFrac);
+      spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
+      playSfx(audio, sfx.sfx_box_complete);
+      ui.showBoxComplete(done.label, done.bonusScore, done.hex, done.id, { effects: done.effects, grantLife: false });
+    }
+  }
+
   // Called every frame an unresolved item overlaps Michelangelo's full
   // head-to-feet hit band (§6) -- this is the "catch" path, and can fire
   // anywhere along his body, not just when an item reaches his feet.
@@ -145,9 +169,13 @@ async function boot() {
     if (item.type.kind === 'good') {
       item.resolved = true;
       const prevMultiplier = getComboMultiplier(scoring);
+      const scoreBefore = scoring.score;
       const newMultiplier = registerPizzaHit(scoring);
+      const gained = scoring.score - scoreBefore; // actual points (base x combo)
       triggerSwing(player);
       spawnPizzaBreak(juice, item.xFrac, item.yFrac);
+      // Retro "+N" popup at the slice, showing exactly what the catch was worth.
+      spawnScorePopup(juice, item.xFrac, item.yFrac, `+${gained}`, '#ffe066');
       // Small splash on EVERY pizza hit (plain or box-variant); the rising
       // combo chime layers on top only when the multiplier ticks up.
       playSfx(audio, sfx.sfx_pizza_splash);
@@ -157,11 +185,12 @@ async function boot() {
       if (item.type.boxColor) {
         const done = registerBoxCatch(boxes, item.type.boxColor);
         if (done) {
-          // Auto-reward (2026-08-02): each box grants a booster; the top (red)
-          // box also grants an extra life. Odds per box in data/boxColors.js.
-          // Rolled BEFORE the popup so it can show what you earned, big.
+          // Auto-reward (2026-08-02): each box grants N distinct boosters
+          // (regular 1, blue 2, purple 3); the top (red) box grants an extra
+          // life only. Counts per box in data/boxColors.js. Rolled BEFORE the
+          // popup so it can show what you earned, big.
           const reward = rollBoxReward(done.id);
-          if (reward.effect) grantBooster(reward.effect, item.xFrac, item.yFrac);
+          for (const effect of reward.effects) grantBooster(effect, item.xFrac, item.yFrac);
           if (reward.grantLife) gainLife(lives);
           registerBoxComplete(scoring, done.bonusScore);
           spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
@@ -196,10 +225,12 @@ async function boot() {
       // bomb
       if (isShielded(player)) {
         // Shielded: block it -- no life lost, no combo break, no game over.
+        // Counts as a bomb kill (destroyed by a player action, unharmed).
         item.resolved = true;
         triggerBlock(player);
         spawnShieldBlock(juice, item.xFrac, item.yFrac);
         playSfx(audio, sfx.sfx_shield_block);
+        killBomb(item);
       } else if (!isInvulnerable(player)) {
         item.resolved = true;
         loseLife(lives);
@@ -256,6 +287,7 @@ async function boot() {
           item.resolved = true;
           spawnBombExplosion(juice, item.xFrac, item.yFrac);
           playSfx(audio, sfx.sfx_bomb_hit, 0.3);
+          killBomb(item); // blow-up destroyed it -- counts as a bomb kill
         }
         continue;
       }
@@ -293,6 +325,7 @@ async function boot() {
     ui.setLives(lives.remaining, lives.capacity);
     ui.setBuffs(player);
     ui.setBoxes(boxes);
+    ui.setBombKills(bombKills);
 
     return stage;
   }

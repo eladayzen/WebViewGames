@@ -60,3 +60,10 @@ export function getComboMultiplier(s) {
 export function registerBoxComplete(s, bonusScore) {
   s.score += bonusScore;
 }
+
+// Flat points for killing a bomb (shield block / blow-up / later ooze), 2026-
+// 08-02. Not combo-multiplied -- defensive play is its own reward track (the
+// bomb-kill set), independent of the pizza catch streak.
+export function registerBombKillScore(s, points) {
+  s.score += points;
+}

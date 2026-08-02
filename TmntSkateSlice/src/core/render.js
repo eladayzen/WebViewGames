@@ -410,6 +410,30 @@ function drawRings(ctx, juice, w, h) {
   }
 }
 
+// Retro floating "+N" score popups: bold stroked canvas text that pops in,
+// holds, then fades over the last ~40% of its life while drifting upward.
+function drawFloaters(ctx, juice, w, h) {
+  for (const f of juice.floaters) {
+    const t = Math.max(0, f.life / f.maxLife); // 1 -> 0
+    const alpha = Math.min(1, t / 0.4); // full until the last 40%, then fade out
+    const scale = 1 + 0.35 * Math.max(0, (t - 0.82) / 0.18); // quick pop-in overshoot
+    const fontPx = Math.round(h * 0.04 * scale);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `900 ${fontPx}px "Arial Narrow", Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = Math.max(2, fontPx * 0.14);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillStyle = f.color;
+    const x = px(f.xFrac, w);
+    const y = px(f.yFrac, h);
+    ctx.strokeText(f.text, x, y);
+    ctx.fillText(f.text, x, y);
+    ctx.restore();
+  }
+}
+
 export function renderFrame(ctx, world) {
   // Same source as setupCanvas's resize() above -- window.innerWidth/
   // innerHeight, not canvas.clientWidth/clientHeight -- so the buffer size
@@ -429,6 +453,7 @@ export function renderFrame(ctx, world) {
   drawPlayer(ctx, player.xFrac, w, h, images, player, isRunning, stage);
   drawRings(ctx, juice, w, h);
   drawParticles(ctx, juice, w, h);
+  drawFloaters(ctx, juice, w, h);
 
   ctx.restore();
 }

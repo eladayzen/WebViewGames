@@ -3,12 +3,16 @@
 // mechanically deep"). Plain primitives, no particle-system library, per
 // the technical architecture note in §9.1.
 
+import { SCORE_POPUP_TTL_SEC } from '../data/constants.js';
+
 const GRAVITY_FRAC_PER_SEC2 = 1.6;
+const FLOATER_RISE_FRAC_PER_SEC = 0.11; // how fast a "+N" popup drifts upward
 
 export function createJuice() {
   return {
     particles: [], // { xFrac, yFrac, vxFrac, vyFrac, life, maxLife, color, shape, sizeFrac, rotationRad, rotationSpeedRadPerSec, glow }
     rings: [], // { xFrac, yFrac, life, maxLife, maxRadiusFrac, color } -- bomb shockwave only
+    floaters: [], // { xFrac, yFrac, text, color, life, maxLife } -- retro "+N" score popups
     shakeTimer: 0,
     shakeMaxTimer: 0,
     shakeMagnitudeFrac: 0,
@@ -18,9 +22,23 @@ export function createJuice() {
 export function resetJuice(juice) {
   juice.particles = [];
   juice.rings = [];
+  juice.floaters = [];
   juice.shakeTimer = 0;
   juice.shakeMaxTimer = 0;
   juice.shakeMagnitudeFrac = 0;
+}
+
+// Retro floating score popup ("+10", "+25", ...) at a world position -- rises
+// and fades over SCORE_POPUP_TTL_SEC (drawn as canvas text in render.js).
+export function spawnScorePopup(juice, xFrac, yFrac, text, color = '#ffe066') {
+  juice.floaters.push({
+    xFrac,
+    yFrac,
+    text,
+    color,
+    life: SCORE_POPUP_TTL_SEC,
+    maxLife: SCORE_POPUP_TTL_SEC,
+  });
 }
 
 // Shared radial-burst-plus-gravity emitter -- pizza/ooze/bomb effects are
@@ -225,6 +243,13 @@ export function updateJuice(juice, dt) {
   for (let i = juice.rings.length - 1; i >= 0; i--) {
     juice.rings[i].life -= dt;
     if (juice.rings[i].life <= 0) juice.rings.splice(i, 1);
+  }
+
+  for (let i = juice.floaters.length - 1; i >= 0; i--) {
+    const f = juice.floaters[i];
+    f.yFrac -= FLOATER_RISE_FRAC_PER_SEC * dt; // drift upward
+    f.life -= dt;
+    if (f.life <= 0) juice.floaters.splice(i, 1);
   }
 
   if (juice.shakeTimer > 0) juice.shakeTimer = Math.max(0, juice.shakeTimer - dt);
