@@ -42,15 +42,14 @@ export const STAGES = [
     // learning curve; later stages lower this as skill ramps up.
     powerUpChance: 0.16,
     // pizzaChance is implicit: 1 - bombChance - powerUpChance - box-variant weights
-    // Level advancement is now SCORE-ONLY (2026-08-02): advanceTimeSec is
-    // Infinity so a level changes at exactly its score threshold, never on a
-    // timer. Cumulative thresholds grow by a rising increment ("in between"
-    // linear and exponential -- arithmetic increments, quadratic total):
-    //   L1->L2 1000 (+1000) | L2->L3 3000 (+2000) | L3->L4 6000 (+3000)
-    //   | L4->L5 10000 (+4000) | ...
+    // Level advancement is SCORE-ONLY (2026-08-02): advanceTimeSec is Infinity
+    // so a level changes at exactly its score threshold, never on a timer.
+    // Cumulative thresholds; the per-level increment grows by 500 from L3 on:
+    //   L1->L2 500 | L2->L3 3000 | L3->L4 4500 (+1500) | L4->L5 6500 (+2000)
+    //   | L5->L6 9000 (+2500) | ... (+500 each level)
     // Only 2 transitions exist today (3 stages); the rest is the pattern for
     // any future stages.
-    advanceScore: 1000,
+    advanceScore: 500,
     advanceTimeSec: Infinity,
   },
   {
@@ -63,7 +62,7 @@ export const STAGES = [
     spawnIntervalSec: 1.15,
     bombChance: 0.28,
     powerUpChance: 0.13,
-    advanceScore: 3000, // cumulative (+2000 over L1->L2's 1000), see stage 1 note
+    advanceScore: 3000, // kept; cumulative (+2500 over L1->L2's 500), see stage 1 note
     advanceTimeSec: Infinity, // score-only advancement
   },
   {
