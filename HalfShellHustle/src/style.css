@@ -198,62 +198,6 @@ html, body {
   100% { opacity: 0; }
 }
 
-/* --- Tier-up announcement ---
-   Placeholder for the environment change these tiers exist to trigger, so for
-   now it carries the whole reward on its own. pointer-events none, and it sits
-   under the game-over overlay (z-index 20) so it can never cover a retry. */
-#tier-up {
-  position: absolute;
-  /* 34% -> 21%. At 34% this card sat exactly on the horizon line, which is
-     where obstacles and enemies first become visible -- a 2-second celebration
-     there can hide an approaching hazard and cost the player a life for
-     doing well. Raised into the empty sky band between the points HUD and the
-     horizon, where it covers nothing that can kill you. */
-  top: 21%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 16;
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.6vmin;
-}
-
-#tier-up.hidden {
-  display: none;
-}
-
-#tier-up-kicker {
-  font-weight: 800;
-  font-size: 2.4vmin;
-  letter-spacing: 0.7vmin;
-  color: #ffd98a;
-  -webkit-text-stroke: 0.34vmin #2a1400;
-  paint-order: stroke fill;
-}
-
-#tier-up-name {
-  font-weight: 900;
-  font-size: 6.2vmin;
-  letter-spacing: 0.3vmin;
-  color: #fff6c8;
-  -webkit-text-stroke: 0.85vmin #2a1400;
-  paint-order: stroke fill;
-  text-shadow: 0 0 3vmin rgba(255, 200, 70, 0.9);
-}
-
-.tier-up-play {
-  animation: tier-up-pop 2.1s ease-out forwards;
-}
-
-@keyframes tier-up-pop {
-  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
-  10%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
-  18%  { transform: translate(-50%, -50%) scale(1); }
-  72%  { opacity: 1; transform: translate(-50%, -55%) scale(1); }
-  100% { opacity: 0; transform: translate(-50%, -70%) scale(0.95); }
-}
 
 /* Fires when a flying label LANDS, never on the underlying tally changing --
    that's what makes the counter feel struck rather than merely updated. */
@@ -556,4 +500,62 @@ html, body {
 #restart-button:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Level-complete transition (core/main.js's level flow) ---
+   Reuses .overlay for the full-screen dim + centering, so it sits at the same
+   z-index (20) and behaves identically to the game-over screen. It carries no
+   button on purpose: the countdown advances it, and a stray tappable control
+   here could be hit by the host's restart auto-click logic. */
+#lc-title {
+  font-weight: 900;
+  font-size: 7.5vmin;
+  letter-spacing: 0.6vmin;
+  color: #ffe066;
+  -webkit-text-stroke: 0.9vmin #2a1400;
+  paint-order: stroke fill;
+  text-shadow: 0 0 3.5vmin rgba(255, 200, 60, 0.7);
+}
+
+#lc-next {
+  margin-top: 1vmin;
+  font-weight: 900;
+  font-size: 5.4vmin;
+  letter-spacing: 0.35vmin;
+  color: #fff6c8;
+  -webkit-text-stroke: 0.62vmin #2a1400;
+  paint-order: stroke fill;
+}
+
+#lc-ready {
+  font-weight: 800;
+  font-size: 2.6vmin;
+  letter-spacing: 0.9vmin;
+  color: #ffd98a;
+  opacity: 0.85;
+  -webkit-text-stroke: 0.34vmin #2a1400;
+  paint-order: stroke fill;
+}
+
+/* Re-animated per tick from JS (class removed, reflow, re-added) so each
+   number lands with its own beat rather than the digits just swapping. */
+#lc-countdown {
+  margin-top: 1.6vmin;
+  font-weight: 900;
+  font-size: 13vmin;
+  line-height: 1;
+  color: #ffffff;
+  -webkit-text-stroke: 1.1vmin #2a1400;
+  paint-order: stroke fill;
+  font-variant-numeric: tabular-nums;
+}
+
+.lc-tick {
+  animation: lc-tick 0.5s ease-out;
+}
+
+@keyframes lc-tick {
+  0%   { transform: scale(1.5); opacity: 0.25; }
+  35%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }

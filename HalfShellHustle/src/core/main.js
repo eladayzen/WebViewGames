@@ -47,32 +47,35 @@ import {
   refreshPointsFlyTarget,
 } from '../ui/pointsFly.js';
 import { progressAt } from '../systems/progression.js';
-import { speedAt, distanceTraveledBy } from '../systems/speed.js';
+import { speedAt, distanceTraveledBy, seedDistanceAt } from '../systems/speed.js';
 import {
   createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
 } from '../systems/lives.js';
-import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
+import { createGameState, restartToRunning, triggerGameOver, triggerLevelComplete } from './gameState.js';
 import {
   updateSteering, pollLaneStep, getLaneTarget, pollJumpPress,
 } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import { initSteeringPanel } from '../ui/steeringPanel.js';
 import {
-  LANE_X, CENTER_LANE, ASPECT_W, ASPECT_H, CAMERA_FOV, LIVES_START, LIVES_SOFTCAP,
+  LANE_X, CENTER_LANE, ASPECT_W, ASPECT_H, CAMERA_FOV, LIVES_START, LIVES_SOFTCAP, SPAWN_Z,
 } from '../data/constants.js';
 import {
   INTRO_WALL_ENABLED, INTRO_WALL_ENEMY_COUNT, INTRO_WALL_SPAWN_Z,
   INTRO_NORMAL_ENEMY_DELAY_SEC, INTRO_OBSTACLE_DELAY_SEC,
   INTRO_SEED_ENABLED, INTRO_SEED_OBSTACLE_ARRIVALS, INTRO_SEED_ENEMY_ARRIVALS,
   INTRO_SEED_PLATFORM_ARRIVALS, INTRO_SEED_COIN_ARRIVALS,
+  LEVEL_RESTART_SEED_OBSTACLE_ARRIVALS, LEVEL_RESTART_SEED_ENEMY_ARRIVALS,
+  LEVEL_RESTART_SEED_PLATFORM_ARRIVALS, LEVEL_RESTART_SEED_COIN_ARRIVALS,
 } from '../data/introSequence.js';
+import { LEVEL_COUNTDOWN_SECONDS } from '../data/progression.js';
 import { PLATFORM_ENABLED } from '../data/platformSequence.js';
 import {
   OBSTACLE_FIRST_SPAWN_DELAY_SEC, ENEMY_FIRST_SPAWN_DELAY_SEC, ENEMY_SPAWN_INTERVAL_SEC,
   MIN_ENEMY_OBSTACLE_GAP_SEC, PLATFORM_FIRST_SPAWN_DELAY_SEC, PLATFORM_SPAWN_INTERVAL_SEC,
   PLATFORM_KILL_TYPE_ENABLED, PLATFORM_KILL_TYPE_CHANCE,
   COIN_FIRST_SPAWN_DELAY_SEC, COIN_CLUSTER_SPAWN_INTERVAL_SEC,
-  OBSTACLE_SPAWN_INTERVAL_SEC,
+  OBSTACLE_SPAWN_INTERVAL_SEC, EASE_IN_DURATION_SEC, LEVEL_RESTART_EASE_IN_DURATION_SEC,
   PICKUP_FIRST_SPAWN_DELAY_SEC, PICKUP_SPAWN_INTERVAL_SEC,
   PICKUP_MAGNET_SPAWN_CHANCE, PICKUP_LIFE_SPAWN_CHANCE,
 } from '../data/spawnConfig.js';
@@ -204,6 +207,15 @@ function boot() {
   let lastObstacleSpawnTime = -Infinity;
   let lastEnemySpawnTime = -Infinity;
 
+  // --- Level state. A level ends when a tier threshold is crossed; the world
+  // restarts while points, tier, lives AND the run clock (hence speed) all
+  // carry over. `levelStartTime` is the gameTime that level began at, and it's
+  // what makes the grace ramp and the seed placement level-relative instead of
+  // run-relative -- both would otherwise behave as if the run were still young.
+  let levelIndex = 1;
+  let levelStartTime = 0;
+  let levelCountdown = 0;
+
   const rollPlatformType = () => (
     PLATFORM_KILL_TYPE_ENABLED && Math.random() < PLATFORM_KILL_TYPE_CHANCE ? 'kill' : 'ramp'
   );
@@ -224,29 +236,62 @@ function boot() {
   // footprint), then coins (which refuse lanes with a nearby obstacle).
   // Seeding in any other order would let a later seed land on top of an
   // earlier one.
-  function seedPipeline() {
-    const seedZ = (arrivalSec) => -distanceTraveledBy(arrivalSec);
+  function seedPipeline(isFirstLevel) {
+    // Placement is measured from THIS LEVEL's start, not the run's. Speed
+    // carries across levels, so by level 2 the world is at or near SPEED_MAX
+    // and covers far more ground per second than a standing start -- using the
+    // run-start formula would place every seed far too close and they'd all
+    // arrive early and bunched. See systems/speed.js's seedDistanceAt.
+    //
+    // Returns null past the spawn horizon rather than placing the entity
+    // beyond SPAWN_Z, outside the live pipeline's own reach. That guard earns
+    // its keep at level 2+: the faster world shrinks the seedable window from
+    // ~13.1s to ~9.7s, so an entry that was fine at run start can fall off the
+    // end here. Skipping is right -- a missing seed is a small gap, a
+    // mis-placed one arrives from nowhere.
+    const seedZ = (arrivalSec) => {
+      const d = seedDistanceAt(levelStartTime, arrivalSec);
+      return d > Math.abs(SPAWN_Z) ? null : -d;
+    };
+
+    // Level 1 gets the full teaching intro; later levels get the sparser set
+    // (data/introSequence.js) -- the player already knows what an enemy is.
+    const obstacles = isFirstLevel ? INTRO_SEED_OBSTACLE_ARRIVALS : LEVEL_RESTART_SEED_OBSTACLE_ARRIVALS;
+    const enemies = isFirstLevel ? INTRO_SEED_ENEMY_ARRIVALS : LEVEL_RESTART_SEED_ENEMY_ARRIVALS;
+    const platforms = isFirstLevel ? INTRO_SEED_PLATFORM_ARRIVALS : LEVEL_RESTART_SEED_PLATFORM_ARRIVALS;
+    const coins = isFirstLevel ? INTRO_SEED_COIN_ARRIVALS : LEVEL_RESTART_SEED_COIN_ARRIVALS;
+
     if (PLATFORM_ENABLED) {
       // Explicit, distinct lanes: spawnPlatform otherwise picks at random with
       // no mutual-exclusion check, so two seeds could stack in one lane.
-      INTRO_SEED_PLATFORM_ARRIVALS.forEach((t, i) => {
-        spawnPlatform(platformField, rollPlatformType(), (CENTER_LANE + i) % LANE_X.length, seedZ(t));
+      platforms.forEach((t, i) => {
+        const z = seedZ(t);
+        if (z !== null) spawnPlatform(platformField, rollPlatformType(), (CENTER_LANE + i) % LANE_X.length, z);
       });
     }
-    for (const t of INTRO_SEED_OBSTACLE_ARRIVALS) {
-      spawnObstacle(obstacleField, platformField, null, seedZ(t));
+    for (const t of obstacles) {
+      const z = seedZ(t);
+      if (z !== null) spawnObstacle(obstacleField, platformField, null, z);
     }
-    for (const t of INTRO_SEED_ENEMY_ARRIVALS) {
-      spawnEnemy(enemyField, platformField, null, null, seedZ(t));
+    for (const t of enemies) {
+      const z = seedZ(t);
+      if (z !== null) spawnEnemy(enemyField, platformField, null, null, z);
     }
-    for (const t of INTRO_SEED_COIN_ARRIVALS) {
-      spawnCoinCluster(coinField, platformField, obstacleField, 0, seedZ(t));
+    for (const t of coins) {
+      const z = seedZ(t);
+      if (z !== null) spawnCoinCluster(coinField, platformField, obstacleField, gameTime, z);
     }
   }
 
-  function fullReset() {
+  // Rebuilds the WORLD for a level: entities, spawners, player, camera. Does
+  // NOT touch anything the player has earned (points, tier, lives) or the run
+  // clock -- so speed carries across a level transition exactly as asked.
+  //
+  // fullReset() below adds the session wipe on top for a brand-new run. Keeping
+  // the two apart is the whole reason a level transition is cheap: this is the
+  // only half a new level needs.
+  function resetLevelWorld(isFirstLevel) {
     resetPlayer(player);
-    // resetRibbon(ribbon); -- ribbon object disabled, see creation above
     resetObstaclePool(obstacleField);
     resetEnemyPool(enemyField);
     resetPlatformField(platformField);
@@ -255,7 +300,6 @@ function boot() {
     resetSpawner(coinSpawnerState, COIN_FIRST_SPAWN_DELAY_SEC);
     resetPickupPool(pickupField);
     resetSpawner(pickupSpawnerState, PICKUP_FIRST_SPAWN_DELAY_SEC);
-    resetLivesState(livesState);
     // Clears any death shake still decaying and snaps the camera back to
     // centre, so a quick retry doesn't inherit the previous run's jolt.
     resetCameraRig(cameraRig);
@@ -264,11 +308,16 @@ function boot() {
     damageFlashTimer = 0;
     blockedNudgeCooldown = 0;
     damageFlashEl.style.opacity = '0';
-    gameTime = 0;
     lastObstacleSpawnTime = -Infinity;
     lastEnemySpawnTime = -Infinity;
 
-    if (INTRO_WALL_ENABLED) {
+    // Stamped BEFORE seeding: seedPipeline measures every arrival from it.
+    levelStartTime = gameTime;
+
+    // The teaching wall is a run-start device only -- direct feedback: "we
+    // don't need the seeded intro" on a level change. Later levels lean on the
+    // sparser seed lists plus the grace ramp instead.
+    if (INTRO_WALL_ENABLED && isFirstLevel) {
       // data/introSequence.js: one enemy in EVERY lane, close and arriving
       // fast -- an unmissable first teaching moment ("killing these is
       // safe/good") instead of several seconds of nothing happening.
@@ -283,12 +332,17 @@ function boot() {
       resetSpawner(spawnerState, OBSTACLE_FIRST_SPAWN_DELAY_SEC);
     }
 
-    // After the wall (so the wall's enemies are already placed and the
-    // seeded ones stagger in behind them, preserving the teaching order).
-    if (INTRO_SEED_ENABLED) seedPipeline();
+    if (INTRO_SEED_ENABLED) seedPipeline(isFirstLevel);
+  }
 
+  // A brand-new run: everything above, plus the session wipe.
+  function fullReset() {
+    gameTime = 0;
     distance = 0;
     attackSequenceIndex = 0;
+    levelIndex = 1;
+    levelCountdown = 0;
+    resetLivesState(livesState);
     resetScoreState(score);
     clearPointsFly();
     // Before updatePoints, so the bar snaps to empty without animating
@@ -296,6 +350,37 @@ function boot() {
     hud.resetProgressUI();
     hud.updatePoints(score.displayed);
     hud.updateLives(livesState.lives);
+    resetLevelWorld(true);
+  }
+
+  // --- Level transition ---------------------------------------------------
+  // Entered when a landing points label pushes the score past a tier
+  // threshold. The world freezes (gs.current gates the whole of tick's update
+  // block), the overlay announces what's next, and a countdown runs before the
+  // next level is built.
+  function beginLevelComplete(nextTier) {
+    triggerLevelComplete(gs);
+    // Credit anything still in the air. Without this the transition would
+    // display a total lower than the one that triggered it, and those points
+    // would then land during the NEXT level.
+    settleScore(score);
+    clearPointsFly();
+    hud.updatePoints(score.displayed);
+    levelCountdown = LEVEL_COUNTDOWN_SECONDS;
+    hud.setLevelCountdown(LEVEL_COUNTDOWN_SECONDS);
+    hud.showLevelComplete(nextTier);
+  }
+
+  // THE ENVIRONMENT SWAP HOOK. data/progression.js's LEVEL_SWAPS_ENVIRONMENT is
+  // false and street.js is left alone deliberately -- the transition is being
+  // felt and tuned first. When a second theme has art, rebuilding the street
+  // belongs here: it is the one moment the screen is fully covered, so the
+  // teardown/rebuild cost is invisible.
+  function startNextLevel() {
+    hud.hideLevelComplete();
+    levelIndex += 1;
+    resetLevelWorld(false);
+    restartToRunning(gs);
   }
 
   function endRun() {
@@ -394,9 +479,11 @@ function boot() {
       creditDisplayed(score, points);
       hud.updatePoints(score.displayed, true);
       const after = progressAt(score.displayed).tier;
-      // Loops rather than compares: a single big award can cross more than one
-      // threshold, and the player should see the tier they actually landed in.
-      if (after > before) hud.showTierUp(after);
+      // Compares tier NUMBERS rather than testing one boundary: a single award
+      // can cross more than one threshold, and the level should end on the tier
+      // actually reached. Guarded on state so a label landing during an
+      // already-running transition can't re-enter it.
+      if (after > before && gs.current === 'running') beginLevelComplete(after);
     },
   );
 
@@ -440,6 +527,17 @@ function boot() {
   function tick() {
     requestAnimationFrame(tick);
     const dt = Math.min(clock.getDelta(), 1 / 30);
+
+    // Level-complete countdown. Runs on dt like every other timed effect here,
+    // so pausing genuinely holds it rather than letting it expire behind the
+    // pause screen.
+    if (!paused && gs.current === 'levelcomplete') {
+      levelCountdown -= dt;
+      // ceil, floored at 1: the display should read "1" for the whole final
+      // second rather than flashing a 0 nobody is meant to see.
+      hud.setLevelCountdown(Math.max(1, Math.ceil(levelCountdown)));
+      if (levelCountdown <= 0) startNextLevel();
+    }
 
     if (!paused && gs.current === 'running') {
       gameTime += dt;
@@ -589,8 +687,14 @@ function boot() {
       //   2. updateSpawner only reads `interval` on the frame it actually
       //      fires, so recomputing it every frame is free -- each gap is set by
       //      the difficulty at the moment that gap begins.
+      // Level-relative, not run-relative: a fresh level re-arms the grace ramp
+      // (over the shorter LEVEL_RESTART window, since the player is already
+      // warmed up) instead of opening at whatever pace the run had climbed to.
+      const easeDuration = levelIndex === 1
+        ? EASE_IN_DURATION_SEC
+        : LEVEL_RESTART_EASE_IN_DURATION_SEC;
       const obstacleInterval = OBSTACLE_SPAWN_INTERVAL_SEC
-        * hazardSpacingMultiplierAt(spawnArrivalTime(gameTime));
+        * hazardSpacingMultiplierAt(spawnArrivalTime(gameTime) - levelStartTime, easeDuration);
       updateSpawner(spawnerState, dt, () => {
         if (gameTime - lastEnemySpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
           // data/introSequence.js: spawn close instead of at the far

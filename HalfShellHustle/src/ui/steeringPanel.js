@@ -324,6 +324,12 @@ export function initSteeringPanel() {
     // shadow that.
     const gameover = document.getElementById('gameover-overlay');
     if (gameover && !gameover.classList.contains('hidden')) return;
+    // Same during a level transition: that screen is a countdown the player
+    // just watches, and popping a tuning panel over it -- which they'd then be
+    // left holding when the next level starts under them -- is the last thing
+    // wanted there.
+    const levelComplete = document.getElementById('level-complete');
+    if (levelComplete && !levelComplete.classList.contains('hidden')) return;
 
     if (panelEl.classList.contains('hidden')) {
       // Closed: only Enter opens it. Space stays inert so it can't be opened by

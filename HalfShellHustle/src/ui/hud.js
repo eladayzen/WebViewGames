@@ -18,8 +18,9 @@ const pointsHudEl = document.getElementById('points-hud');
 const tierBarEl = document.getElementById('tier-bar');
 const tierFillEl = document.getElementById('tier-fill');
 const tierLabelEl = document.getElementById('tier-label');
-const tierUpEl = document.getElementById('tier-up');
-const tierUpNameEl = document.getElementById('tier-up-name');
+const lcEl = document.getElementById('level-complete');
+const lcNextEl = document.getElementById('lc-next');
+const lcCountdownEl = document.getElementById('lc-countdown');
 const livesTrayEl = document.getElementById('lives-tray');
 const gameoverEl = document.getElementById('gameover-overlay');
 const finalPointsEl = document.getElementById('final-points');
@@ -41,7 +42,7 @@ let lastTargetText = null;
 let lastTierText = null;
 let lastFillPct = -1;
 let lastLives = null;
-let tierUpTimer = null;
+let lastCountdownShown = null;
 
 // Fires the counter's punch animation. Restarting a CSS animation needs the
 // class removed, a reflow forced, then re-added -- without the reflow the
@@ -95,32 +96,43 @@ export function updatePoints(points, punch = false) {
   }
 }
 
-// Fired by core/main.js when a landing label pushes the score past a
-// threshold. This is the placeholder for the environment change these tiers
-// exist to trigger (data/progression.js) -- right now it's the entire reward.
-export function showTierUp(tier) {
-  tierUpNameEl.textContent = tierName(tier);
-  tierUpEl.classList.remove('hidden', 'tier-up-play');
-  void tierUpEl.offsetWidth; // restart the animation on back-to-back tiers
-  tierUpEl.classList.add('tier-up-play');
-
+// --- Level transition ----------------------------------------------------
+// The floating "TIER COMPLETE" card that used to live here is gone: reaching a
+// tier now ends the level outright, and the full-screen overlay below says the
+// same thing better. All that survives is the bar's own sweep, which reads for
+// the instant before the overlay covers it.
+export function showLevelComplete(nextTier) {
   tierBarEl.classList.remove('tier-bar-celebrate');
   void tierBarEl.offsetWidth;
   tierBarEl.classList.add('tier-bar-celebrate');
 
-  // forwards-filled animations hold their last keyframe, so the element has to
-  // be hidden explicitly or it stays in the layout at opacity 0.
-  if (tierUpTimer) window.clearTimeout(tierUpTimer);
-  tierUpTimer = window.setTimeout(() => tierUpEl.classList.add('hidden'), 2100);
+  lcNextEl.textContent = `NEXT: ${tierName(nextTier)}`;
+  lastCountdownShown = null;
+  lcEl.classList.remove('hidden');
+}
+
+// Re-triggers the pop animation per whole second so each number lands with its
+// own beat instead of the digits silently swapping. Dirty-checked because the
+// caller ticks this every frame.
+export function setLevelCountdown(seconds) {
+  if (seconds === lastCountdownShown) return;
+  lastCountdownShown = seconds;
+  lcCountdownEl.textContent = `${seconds}`;
+  lcCountdownEl.classList.remove('lc-tick');
+  void lcCountdownEl.offsetWidth;
+  lcCountdownEl.classList.add('lc-tick');
+}
+
+export function hideLevelComplete() {
+  lcEl.classList.add('hidden');
+  tierBarEl.classList.remove('tier-bar-celebrate');
 }
 
 // A fresh run starts at tier 1 with an empty bar -- and the fill must be reset
 // WITHOUT its transition, or the bar visibly drains backwards from wherever the
 // last run ended.
 export function resetProgressUI() {
-  if (tierUpTimer) window.clearTimeout(tierUpTimer);
-  tierUpEl.classList.add('hidden');
-  tierUpEl.classList.remove('tier-up-play');
+  lcEl.classList.add('hidden');
   tierBarEl.classList.remove('tier-bar-celebrate');
   const prev = tierFillEl.style.transition;
   tierFillEl.style.transition = 'none';

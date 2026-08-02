@@ -85,10 +85,6 @@
       <div id="steering-panel" class="hidden"></div>
 
       <div id="hud">
-        <!-- POC has no CHASE meter / score UI (build doc §2, §7) -- this bare
-             distance readout is the doc's explicitly-allowed optional stand-in
-             ("a bare static distance counter can stand in if a HUD number is
-             wanted for testing"). -->
         <!-- POINTS: the single headline number, upper centre. Direct feedback
              replaced three competing top-left readouts (distance / kill score /
              coin count) with one merged total -- "those values summed up into
@@ -115,15 +111,6 @@
             <div id="tier-label">TIER 1</div>
           </div>
         </div>
-        <!-- Tier-up announcement. Placeholder for the environment change these
-             tiers are meant to trigger (data/progression.js) -- for now it is
-             the whole reward, so it deliberately owns the centre of the screen
-             for a moment. -->
-        <div id="tier-up" class="hidden">
-          <div id="tier-up-kicker">TIER COMPLETE</div>
-          <div id="tier-up-name">DOWNTOWN</div>
-        </div>
-
         <div id="topLeft">
           <!-- Lives. Populated by ui/hud.js's initLivesTray from the live cap
                (data/constants.js's LIVES_START), NOT hardcoded here, so a
@@ -149,6 +136,17 @@
              border-radius:8px;font:600 15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
              white-space:nowrap;"></div>
 
+      </div>
+
+      <!-- Level-complete transition. NOT the SDK's #gameover-overlay -- that id
+           is contractual (the host watches it and synth-clicks #restart-button
+           inside it), so this is a separate element with its own id and no
+           button, and the host will correctly ignore it. -->
+      <div id="level-complete" class="overlay hidden">
+        <div id="lc-title">LEVEL COMPLETE</div>
+        <div id="lc-next">NEXT: DOWNTOWN</div>
+        <div id="lc-ready">GET READY</div>
+        <div id="lc-countdown">5</div>
       </div>
 
       <div id="gameover-overlay" class="overlay hidden">

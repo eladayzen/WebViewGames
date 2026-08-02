@@ -80,3 +80,19 @@ export function timeToTravel(distance) {
   }
   return (speedAfterTraveling(distance) - SPEED_START) / (2 * RAMP_A);
 }
+
+// How far ahead to place something NOW so that it reaches the player
+// `arrivalSec` from now, given the run is currently `fromGameTime` seconds old.
+//
+// The `fromGameTime` term is what makes this correct across a level transition:
+// speed carries over, so a level-2 seed is laid down while the world is already
+// at or near SPEED_MAX and covers far more ground per second than a run-start
+// seed does. Using distanceTraveledBy(arrivalSec) directly -- which assumes a
+// standing start -- would place every level-2 seed far too close and they would
+// all arrive early, bunched.
+//
+// Reduces exactly to distanceTraveledBy(arrivalSec) when fromGameTime is 0,
+// which is why run-start seeding is unchanged.
+export function seedDistanceAt(fromGameTime, arrivalSec) {
+  return distanceTraveledBy(fromGameTime + arrivalSec) - distanceTraveledBy(fromGameTime);
+}

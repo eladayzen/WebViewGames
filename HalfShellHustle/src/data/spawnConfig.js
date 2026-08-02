@@ -50,6 +50,18 @@
 export const EASE_IN_DURATION_SEC = 60;
 export const EASE_IN_HAZARD_SPACING_MULTIPLIER = 2.1;
 
+// The same easing, re-armed at the start of every LEVEL after the first, but
+// over a much shorter window -- direct feedback asked for "a grace of like 10
+// to 20 seconds to pick up to maximum pace" on entering a new level. Shorter
+// than the run-start ramp above on purpose: a player entering level 2 is warmed
+// up and mid-run, and only needs a moment to re-read the road, not the full
+// on-boarding a cold start gets.
+//
+// Note this is measured in seconds since THAT LEVEL began, not since the run
+// began -- see systems/difficulty.js. Without that distinction the ramp would
+// already be long expired by level 2, since the run clock keeps counting.
+export const LEVEL_RESTART_EASE_IN_DURATION_SEC = 15;
+
 // --- Obstacles (entities/obstacles.js) ---
 export const OBSTACLE_FIRST_SPAWN_DELAY_SEC = 3; // grace period to read the scene before the first obstacle
 // Main obstacle-density/difficulty knob (both medium AND low spawn off this

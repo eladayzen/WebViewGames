@@ -144,3 +144,23 @@ export const INTRO_SEED_PLATFORM_ARRIVALS = [6.8];
 // their 9s first-delay plus the full travel meant the first coin reached the
 // player at ~17.8s.
 export const INTRO_SEED_COIN_ARRIVALS = [3.4, 6.4, 9.4, 12.4];
+
+// --- Level restart (core/main.js's startNextLevel) ------------------------
+// A level transition is NOT a run start, so it does not reuse the lists above.
+// No teaching wall (the player has already learned what an enemy is), and
+// sparser hazards -- direct feedback: "we don't need the seeded intro, but we
+// do need a bit more disperse placing of elements, mainly of barriers, so you
+// don't come out insane into the new level."
+//
+// THE HORIZON IS TIGHTER HERE THAN AT RUN START, and that's the constraint that
+// sets these numbers. Seeds are placed at the distance the world will actually
+// scroll before they arrive, and speed CARRIES OVER across levels -- so by
+// level 2 the world is at or near SPEED_MAX and covers the 140-unit spawn
+// horizon in ~9.7s, not the ~13.1s available from a standing start. Anything
+// authored past that would have to spawn beyond SPAWN_Z; core/main.js skips
+// those rather than placing them wrong, so an over-long entry here silently
+// goes missing. Keep every value comfortably under 9.5.
+export const LEVEL_RESTART_SEED_OBSTACLE_ARRIVALS = [5.4, 9.0];
+export const LEVEL_RESTART_SEED_ENEMY_ARRIVALS = [2.8, 6.8];
+export const LEVEL_RESTART_SEED_COIN_ARRIVALS = [3.4, 6.2, 9.2];
+export const LEVEL_RESTART_SEED_PLATFORM_ARRIVALS = [7.6];
