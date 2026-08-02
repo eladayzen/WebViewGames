@@ -14,7 +14,7 @@
 // a resource-constrained mobile WebView.
 
 import { BOX_COLORS } from '../data/boxColors.js';
-import { OOZE_BUFF_DURATION_SEC, SHIELD_BUFF_DURATION_SEC, MAGNET_BUFF_DURATION_SEC } from '../data/constants.js';
+import { OOZE_BUFF_DURATION_SEC, SHIELD_BUFF_DURATION_SEC, MAGNET_BUFF_DURATION_SEC, MAX_LIVES } from '../data/constants.js';
 
 // Active-buff chips (ooze/shield/magnet). Static icon URLs -- Vite only
 // bundles new URL(import.meta.url) with a literal path, not a template.
@@ -58,9 +58,11 @@ export function createUI() {
     muteButton: document.getElementById('mute-button'),
   };
 
-  // Build the 3 life icons once.
+  // Build MAX_LIVES life-icon slots once. Only the first `capacity` are shown
+  // (the rest hidden) and the first `remaining` are full vs. spent -- see
+  // setLives. Capacity can grow past the starting 3 via the red-box reward.
   el.livesTray.innerHTML = '';
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < MAX_LIVES; i++) {
     const icon = document.createElement('div');
     icon.className = 'life-icon';
     icon.textContent = '🐢';
@@ -244,12 +246,16 @@ export function createUI() {
       }
     },
 
-    setLives(remaining) {
-      if (remaining === lastLivesRemaining) return;
-      lastLivesRemaining = remaining;
+    setLives(remaining, capacity = 3) {
+      const key = `${remaining}:${capacity}`;
+      if (key === lastLivesRemaining) return;
+      lastLivesRemaining = key;
       const icons = el.livesTray.children;
       for (let i = 0; i < icons.length; i++) {
-        icons[i].classList.toggle('spent', i >= remaining);
+        // hidden beyond current capacity; within it, full up to `remaining`,
+        // spent (grayed) for the lost hearts in between.
+        icons[i].classList.toggle('life-hidden', i >= capacity);
+        icons[i].classList.toggle('spent', i < capacity && i >= remaining);
       }
     },
 

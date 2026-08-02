@@ -45,6 +45,9 @@ export const OOZE_BUFF_DURATION_SEC = 8; // within the doc's 6-10s range
 // pull radius drift horizontally toward the player each frame (applyMagnetPull
 // in entities/fallingItem.js). Durations tunable; all first-pass/directional.
 export const SHIELD_BUFF_DURATION_SEC = 7;
+// The shield bubble blinks (faster as it runs out) during its final seconds so
+// the player can see it's about to expire (2026-08-02). See drawPlayer.
+export const SHIELD_WARN_SEC = 2.5;
 export const MAGNET_BUFF_DURATION_SEC = 7;
 export const MAGNET_PULL_RADIUS_FRAC = 0.5;            // horizontal reach, fraction of play width
 // Gradual pull (revised 2026-07-30 -- the old flat 0.55/s constant snapped
@@ -75,6 +78,10 @@ export const COMBO_MULTIPLIER_MAX = 3.0;
 
 // --- Lives (§5.4, §8) ---
 export const STARTING_LIVES = 3;
+// Lives can grow past the starting 3 (the red box's completion reward grants an
+// extra heart, 2026-08-02) up to this cap. The HUD shows one heart slot per
+// point of current capacity.
+export const MAX_LIVES = 5;
 export const HIT_INVULNERABILITY_SEC = 1.2;
 
 // --- Countdown ---

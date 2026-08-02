@@ -27,6 +27,7 @@ import {
 import { updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
 import { createSpawner, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../systems/boxes.js';
+import { rollBoxReward } from '../data/boxColors.js';
 import { createDifficulty, resetDifficulty, updateDifficulty, getStage } from '../systems/difficulty.js';
 import {
   createScoring,
@@ -37,7 +38,7 @@ import {
   registerBoxComplete,
   getComboMultiplier,
 } from '../systems/scoring.js';
-import { createLives, resetLives, loseLife, isDead } from '../systems/lives.js';
+import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
 import { PLAYER_HEIGHT_FRAC } from '../data/constants.js';
@@ -113,6 +114,30 @@ async function boot() {
     playSfx(audio, sfx.sfx_ui_tap); // no-ops silently when now muted, per playSfx's own muted check
   });
 
+  // Apply a booster effect (shield / magnet / wave "blow up"), from either a
+  // caught falling pickup OR a box-completion reward (2026-08-02). xFrac/yFrac
+  // is the effect's VFX origin. Wave clears every bomb on screen with the same
+  // staggered "popcorn" detonation the wave pickup uses.
+  function grantBooster(effect, xFrac, yFrac) {
+    if (effect === 'shield') {
+      grantShieldBuff(player);
+    } else if (effect === 'magnet') {
+      grantMagnetBuff(player);
+    } else if (effect === 'wave') {
+      let bombIdx = 0;
+      for (const other of items) {
+        if (!other.resolved && !other.doomed && other.type.kind === 'hazard') {
+          other.doomed = true;
+          other.detonateTimer = bombIdx * WAVE_DETONATE_STAGGER_SEC;
+          bombIdx += 1;
+        }
+      }
+      spawnWaveClear(juice, xFrac, yFrac);
+      triggerScreenShake(juice, 0.28, 0.016);
+      playSfx(audio, sfx.sfx_wave_clear);
+    }
+  }
+
   // Called every frame an unresolved item overlaps Michelangelo's full
   // head-to-feet hit band (§6) -- this is the "catch" path, and can fire
   // anywhere along his body, not just when an item reaches his feet.
@@ -136,6 +161,11 @@ async function boot() {
           spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
           playSfx(audio, sfx.sfx_box_complete);
           ui.showBoxComplete(done.label, done.bonusScore, done.hex, done.id);
+          // Auto-reward (2026-08-02): each box grants a booster; the top (red)
+          // box also grants an extra life. Odds per box in data/boxColors.js.
+          const reward = rollBoxReward(done.id);
+          if (reward.effect) grantBooster(reward.effect, item.xFrac, item.yFrac);
+          if (reward.grantLife) gainLife(lives);
         }
       }
       // Ooze buff active: an extra cyan sparkle on every catch, so the buff
@@ -151,30 +181,15 @@ async function boot() {
       spawnPickupSparkle(juice, item.xFrac, item.yFrac, item.type.hex);
       const effect = item.type.effect;
       if (effect === 'ooze') {
+        // Ooze is disabled (powerUps.js weight 0) so this never fires today;
+        // kept for easy re-enable. Every other pickup routes to grantBooster.
         registerOozeHit(scoring);
         grantOozeBuff(player);
         spawnOozeSplash(juice, item.xFrac, item.yFrac);
-      } else if (effect === 'shield') {
-        grantShieldBuff(player);
-      } else if (effect === 'magnet') {
-        grantMagnetBuff(player);
-      } else if (effect === 'wave') {
-        // Screen-clear: every bomb on screen detonates, but STAGGERED -- each
-        // is flagged `doomed` with an increasing delay so they pop one after
-        // another in a quick popcorn ripple (the detonation + removal happens
-        // in the item loop below, keeping each bomb visible until its turn).
-        // Doomed bombs freeze and can no longer hurt the player.
-        let bombIdx = 0;
-        for (const other of items) {
-          if (!other.resolved && !other.doomed && other.type.kind === 'hazard') {
-            other.doomed = true;
-            other.detonateTimer = bombIdx * WAVE_DETONATE_STAGGER_SEC;
-            bombIdx += 1;
-          }
-        }
-        spawnWaveClear(juice, item.xFrac, item.yFrac);
-        triggerScreenShake(juice, 0.28, 0.016);
-        playSfx(audio, sfx.sfx_wave_clear);
+      } else {
+        // shield / magnet / wave -- wave's staggered "popcorn" bomb clear lives
+        // in grantBooster (shared with box-completion rewards).
+        grantBooster(effect, item.xFrac, item.yFrac);
       }
     } else {
       // bomb
@@ -274,7 +289,7 @@ async function boot() {
 
     ui.setScore(scoring.score);
     ui.setCombo(scoring.comboCount, getComboMultiplier(scoring));
-    ui.setLives(lives.remaining);
+    ui.setLives(lives.remaining, lives.capacity);
     ui.setBuffs(player);
     ui.setBoxes(boxes);
 
