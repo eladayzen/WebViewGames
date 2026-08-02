@@ -24,6 +24,7 @@ import * as THREE from 'three';
 import {
   LANE_X, SPAWN_Z, DESPAWN_Z, PLAYER_Z,
   MAGNET_RANGE_Z, MAGNET_COLLECT_PULL_THRESHOLD, MAGNET_EASE_RATE,
+  MAGNET_LATCH_THRESHOLD, MAGNET_PULL_ACCELERATION_POWER,
 } from '../data/constants.js';
 import { distanceTraveledBy, speedAfterTraveling } from '../systems/speed.js';
 import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
@@ -119,10 +120,12 @@ function createSlot(scene) {
     z: 0,
     baseHeight: 0,
     pulseTimer: 0,
-    // 0..1 magnet influence, recomputed every frame by applyMagnetPull (0
-    // whenever the ability is inactive). Kept OFF slot.lane on purpose -- see
-    // applyMagnetPull's note.
-    magnetPull: 0,
+    // Magnet state, all recomputed by applyMagnetPull -- and deliberately kept
+    // OFF slot.lane, which stays immutable authored data (see that function's
+    // note on why reassigning it would break the surface query).
+    magnetPull: 0,       // raw 0..1 grip from z-proximity
+    magnetInfluence: 0,  // that grip eased -- the only thing that MOVES the coin
+    magnetLatched: false, // committed: pull may never fall again
   };
 }
 
@@ -153,6 +156,8 @@ function placeCoin(slot, lane, z, baseHeight, typeKey, pulsePhase) {
   slot.baseHeight = baseHeight;
   slot.pulseTimer = pulsePhase % COIN_PULSE_PERIOD;
   slot.magnetPull = 0;
+  slot.magnetInfluence = 0;
+  slot.magnetLatched = false;
   slot.sprite.material.color.setHex(type.color);
   slot.sprite.scale.set(type.size, type.size, 1);
   // y is corrected against the live surface on this same frame's
@@ -233,7 +238,7 @@ export function collectCoins(player, field, platformField) {
   for (const slot of field.pool) {
     if (!slot.active) continue;
     if (Math.abs(slot.z - PLAYER_Z) > COIN_COLLECT_HALF_Z) continue;
-    const magnetized = slot.magnetPull >= MAGNET_COLLECT_PULL_THRESHOLD;
+    const magnetized = slot.magnetInfluence >= MAGNET_COLLECT_PULL_THRESHOLD;
     if (!magnetized && slot.lane !== player.laneIndex) continue;
     if (!magnetized && (slot.baseHeight < reachLow || slot.baseHeight > reachHigh)) continue;
     collected.push(slot);
@@ -261,10 +266,24 @@ export function collectCoins(player, field, platformField) {
 // immutable authored data, and a separate 0..1 `magnetPull` scalar carries the
 // influence. Fully reversible, no surface discontinuity.
 //
-// Called every frame regardless of whether the buff is up -- `active: false`
-// eases the pull back to 0 and returns each coin to its own lane, which is
-// what makes losing the buff mid-flight look deliberate instead of leaving
-// coins hanging off-lane.
+// Called every frame regardless of whether the buff is up. An UNCOMMITTED coin
+// (one the field only just started to bend) eases back to its own lane when the
+// buff drops; a COMMITTED one never does -- see MAGNET_LATCH_THRESHOLD.
+//
+// TWO SEPARATE NUMBERS, and keeping them apart is what makes both behaviours
+// possible:
+//
+//   slot.magnetPull      -- raw 0..1 grip, driven by z-proximity. Rises
+//                           linearly as the coin closes in. Monotonic once
+//                           committed.
+//   slot.magnetInfluence -- that grip run through an ease-in curve, and the
+//                           only thing that ever moves a coin or decides
+//                           whether it's collectible.
+//
+// Direct feedback drove both: coins used to be dragged back to their lane the
+// instant the buff lapsed ("it should keep on moving until it gets to me"), and
+// they used to travel at a flat rate because the raw grip WAS the displacement
+// ("it should have some kind of acceleration").
 export function applyMagnetPull(field, player, dt, active) {
   // The centre of the player's collectible band, in world y. Reuses his own
   // elevationY (already resolved this frame) rather than re-querying the
@@ -275,21 +294,42 @@ export function applyMagnetPull(field, player, dt, active) {
   for (const slot of field.pool) {
     if (!slot.active) continue;
 
-    let target = 0;
-    if (active) {
-      const dz = Math.abs(slot.z - PLAYER_Z);
-      if (dz < MAGNET_RANGE_Z) target = 1 - dz / MAGNET_RANGE_Z;
-    }
+    // Proximity grip, independent of the buff -- a committed coin keeps reading
+    // it after the buff is gone, which is what lets it carry on closing under
+    // its own momentum instead of freezing at whatever value it lapsed on.
+    const dz = Math.abs(slot.z - PLAYER_Z);
+    const proximity = dz < MAGNET_RANGE_Z ? 1 - dz / MAGNET_RANGE_Z : 0;
+    let target = active ? proximity : 0;
+
+    // THE COMMITMENT. Not "hold the pull steady" but "never let it fall": the
+    // coin carries on along the exact curve it was already following, because
+    // proximity keeps climbing as the world scrolls it toward the player. That's
+    // why an expiring buff is now invisible -- nothing about the coin's motion
+    // changes at the moment it lapses. Freezing the pull instead would stall the
+    // coin part-way across; snapping it to 1 would make it lurch.
+    if (slot.magnetLatched) target = Math.max(target, proximity, slot.magnetPull);
+
     slot.magnetPull += (target - slot.magnetPull) * ease;
-    if (slot.magnetPull < 0.002) slot.magnetPull = 0;
+    if (!slot.magnetLatched && slot.magnetPull < 0.002) slot.magnetPull = 0;
+    if (slot.magnetPull >= MAGNET_LATCH_THRESHOLD) slot.magnetLatched = true;
+
+    // Ease-in: displacement is the grip CURVED, so the coin creeps out of its
+    // lane and then rushes the last stretch. Since the grip rises linearly with
+    // time, a power of 2 makes displacement go as t^2 -- literally constant
+    // acceleration, not a curve that merely looks like one.
+    slot.magnetInfluence = slot.magnetPull ** MAGNET_PULL_ACCELERATION_POWER;
 
     const laneX = LANE_X[slot.lane];
-    if (slot.magnetPull > 0) {
+    if (slot.magnetInfluence > 0) {
       // player.laneX, NOT sprite.position.x -- the latter carries the
       // per-frame foot-plant xOffset bob, which would make every pulled coin
       // jitter in sympathy with his stride.
-      slot.sprite.position.x = laneX + (player.laneX - laneX) * slot.magnetPull;
-      slot.sprite.position.y += (pullTargetY - slot.sprite.position.y) * slot.magnetPull;
+      slot.sprite.position.x = laneX + (player.laneX - laneX) * slot.magnetInfluence;
+      // updateCoinPool re-resolved this to the surface height earlier THIS
+      // frame, so it's a clean lerp from the coin's own resting height rather
+      // than an accumulating chase of a moving target.
+      const restY = slot.sprite.position.y;
+      slot.sprite.position.y = restY + (pullTargetY - restY) * slot.magnetInfluence;
     } else {
       slot.sprite.position.x = laneX;
     }

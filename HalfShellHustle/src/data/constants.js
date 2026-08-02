@@ -55,13 +55,45 @@ export const MAGNET_DURATION_SEC = 7;
 // self-scales agreeably with the speed ramp: at a slower speed a coin spends
 // longer inside this range, giving the pull more time to work.
 export const MAGNET_RANGE_Z = 26;
-// Pull strength 0..1 at which a coin is treated as collectible regardless of
-// lane and reach -- see entities/coins.js's collectCoins.
+// How far across the gap to the player a coin must be before it counts as
+// collectible regardless of lane and reach -- see entities/coins.js's
+// collectCoins. Measured on the EASED influence (the coin's actual visible
+// progress), not the raw pull, so it means what it says: 0.45 = "at least
+// 45% of the way there". Rarely the binding constraint in practice -- a coin
+// is ~92% of the way across by the time the z window opens.
 export const MAGNET_COLLECT_PULL_THRESHOLD = 0.45;
 // How fast a coin's pull eases toward its target strength (1/sec). Eased
-// rather than snapped so gaining or losing the buff mid-flight doesn't
-// teleport coins sideways.
+// rather than snapped so gaining the buff mid-flight doesn't teleport coins
+// sideways.
 export const MAGNET_EASE_RATE = 6;
+
+// Direct feedback: "once a coin started moving towards the player because of
+// the magnet, it should keep on moving until it gets to me." Past this much
+// raw pull a coin is COMMITTED -- its pull can never fall again, so the buff
+// expiring underneath it no longer drags it home to its lane (which is what
+// it used to do, at MAGNET_EASE_RATE, and read as an instant snap-back).
+//
+// Tuned against the threshold of VISIBILITY, not a round number. Once the curve
+// below is applied, 0.15 of raw pull is 2.2% of the way across a lane gap --
+// 0.07 world units, a tenth of a coin's own width, which is not perceptible.
+// So anything the player can actually SEE move is already committed, which is
+// what the feedback asks for. (0.25 was measured first and rejected: it let a
+// coin drift a visible quarter-of-a-coin-width and still snap home.)
+//
+// Set to 0 to commit every coin the field ever brushes; set above 1 to disable
+// committing entirely and restore the old snap-back.
+export const MAGNET_LATCH_THRESHOLD = 0.15;
+
+// Direct feedback: "the movement right now feels really linear. It should have
+// some kind of easing, like an acceleration."
+//
+// Raw pull rises LINEARLY with time (it's driven by how close the coin is, and
+// the world scrolls at a constant rate over any short window), so raising it to
+// a power is what turns linear drift into acceleration. At exactly 2 the
+// displacement goes as t^2 -- which is constant acceleration, precisely the
+// "starts slow, rushes home" read being asked for. Higher = a longer creep and
+// a more violent snap at the end; 1 restores the old linear motion.
+export const MAGNET_PULL_ACCELERATION_POWER = 2;
 
 // --- Player lane easing + jump arc (§5.2) ---
 export const LANE_RESPONSE = 10; // exponential lane-follow rate
