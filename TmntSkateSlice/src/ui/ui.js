@@ -84,7 +84,7 @@ export function createUI() {
   for (let i = 0; i < MAX_LIVES; i++) {
     const icon = document.createElement('div');
     icon.className = 'life-icon';
-    icon.textContent = '🐢';
+    icon.textContent = '❤️';
     el.livesTray.appendChild(icon);
   }
 
@@ -265,7 +265,7 @@ export function createUI() {
 
     const life = document.createElement('div');
     life.className = 'bcp-life hidden';
-    life.textContent = '🐢 +1 LIFE';
+    life.textContent = '❤️ +1 LIFE';
 
     root.appendChild(icon);
     root.appendChild(textWrap);
