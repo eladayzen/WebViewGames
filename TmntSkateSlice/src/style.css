@@ -118,6 +118,12 @@ html, body {
   filter: grayscale(1);
 }
 
+/* Heart slots beyond the player's current capacity aren't shown at all (only
+   earned/earnable hearts appear). Capacity grows via the red-box reward. */
+.life-icon.life-hidden {
+  display: none;
+}
+
 /* --- Active-buff chips (ooze/shield/magnet) -- a horizontal row below the
    lives, one compact icon + depleting-duration-bar chip per active buff,
    color-coded via the --buff-color custom property set in ui.js. --- */

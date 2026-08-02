@@ -105,18 +105,23 @@ export const INTRO_SEED_ENABLED = true;
 // the seeds have to cover more of the opening than they used to or a hole
 // opens up right where the seeded intro hands off.
 //
-// THINNED 6 -> 3, and the first one pushed from 4.2s to 5.2s. Direct feedback:
-// the opening was too punishing ("you can find yourself losing lives really
-// fast"). This list IS the player's first ~13 seconds -- the live spawner's
-// very first obstacle doesn't arrive until ~14.7s -- so no amount of easing on
-// the live spawner could have fixed the opening on its own; these are placed by
-// hand and answer to nothing but this comment.
+// THINNED 6 -> 3 -> 2, and the first one pushed 4.2 -> 5.2 -> 5.8s. Direct
+// feedback, twice: the opening was too punishing, then still "a bit too much
+// of those" after the first pass.
 //
-// The ~3.2s spacing here is deliberately matched to what
-// data/spawnConfig.js's EASE_IN_* dial produces at these arrival times
-// (~3.1-2.9s), so the seeded opening and the live pipeline hand off at the same
-// density instead of stepping. If you retune that dial hard, re-space these.
-export const INTRO_SEED_OBSTACLE_ARRIVALS = [5.2, 8.4, 11.5];
+// THIS LIST IS THE WHOLE PROBLEM, AND THE EASE-IN DIAL CANNOT TOUCH IT. The
+// live spawner's very first obstacle doesn't reach the player until ~14.7s, so
+// everything before that is exactly these entries -- measured: turning
+// data/spawnConfig.js's EASE_IN_* dial off entirely changes the count in the
+// player's first 15 seconds by zero. Any complaint about how the game OPENS is
+// answered here; that dial only shapes what comes after. Worth knowing before
+// reaching for the dial again.
+//
+// Two obstacles in the opening ~13s, 5.4s apart -- roughly a third of the
+// settled rate. The opening stays busy, just not lethal: the 3-wide enemy wall
+// (~2.6s), four more enemies, four coin clusters and a platform all still land
+// in that same stretch. Sparser hazards, same amount to do.
+export const INTRO_SEED_OBSTACLE_ARRIVALS = [5.8, 11.2];
 // NOT thinned, unlike the obstacles above -- deliberately. Enemies are
 // rewarding to hit, so they're what keeps the (now much sparser) opening
 // interesting rather than empty. Same reasoning as the ease-in dial applying to
@@ -125,8 +130,8 @@ export const INTRO_SEED_OBSTACLE_ARRIVALS = [5.2, 8.4, 11.5];
 // Re-spaced only to keep every cross-pair with the obstacle list above at least
 // MIN_ENEMY_OBSTACLE_GAP_SEC (0.6s) apart -- that rule is enforced at SPAWN
 // time for live spawns, which can't help here (every seed spawns at t=0), so it
-// has to be checked by hand. Closest cross-pair now is 12.8 against the 11.5
-// obstacle: 1.3s. Comfortable.
+// has to be checked by hand. Closest cross-pair now is 6.6 against the 5.8
+// obstacle: 0.8s. (Checked by simulation, not by eye -- see the commit.)
 export const INTRO_SEED_ENEMY_ARRIVALS = [3.0, 6.6, 10.0, 12.8];
 // One platform on the way in from the very first frame -- direct feedback:
 // platforms were barely showing up at all early (one arrival at ~10s, then

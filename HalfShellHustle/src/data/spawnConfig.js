@@ -40,7 +40,14 @@
 // The hand-authored opening in data/introSequence.js is spaced to match this
 // curve -- if you change these numbers a lot, re-check that its seeded arrival
 // times still line up, since those are placed by hand rather than by this ramp.
-export const EASE_IN_DURATION_SEC = 35;
+// 35 -> 60 ("use less of it in the first minute... then gradually pick up the
+// pace"). The MULTIPLIER was already delivering the requested ~50% cut at the
+// instant a run starts -- x2.1 spacing is 52% fewer obstacles per second -- so
+// it is deliberately unchanged. What was wrong was how fast that cut decayed:
+// over a 35s ramp it was already down to a 35% cut by 15s and gone entirely by
+// 35s, which is why the early game still read as busy despite the dial. Now
+// half the obstacles at t=0, still ~30% fewer at the 40s mark, normal at 60s.
+export const EASE_IN_DURATION_SEC = 60;
 export const EASE_IN_HAZARD_SPACING_MULTIPLIER = 2.1;
 
 // --- Obstacles (entities/obstacles.js) ---

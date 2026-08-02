@@ -5,7 +5,7 @@
 // (or fails to load) so the game is fully playable/testable before real art
 // exists, and upgrades silently the moment art lands at the same path.
 
-import { ITEM_SIZE_FRAC, PLAYER_HEIGHT_FRAC } from '../data/constants.js';
+import { ITEM_SIZE_FRAC, PLAYER_HEIGHT_FRAC, SHIELD_WARN_SEC } from '../data/constants.js';
 import { getShakeOffsetFrac } from '../systems/juice.js';
 import { getRunCycleSpriteKey, getSwingCycleSpriteKey, getHitCycleSpriteKey, getBlockCycleSpriteKey } from '../entities/player.js';
 import { BOX_COLOR_BY_ID } from '../data/boxColors.js';
@@ -167,13 +167,23 @@ function drawPlayer(ctx, xFrac, w, h, images, player, isRunning, stage) {
     const cx = x;
     const cy = y - size * 0.5;
     const r = size * 0.62;
+    // Blink during the final SHIELD_WARN_SEC so the player sees it's about to
+    // expire: the pulse gets both faster and deeper the closer it is to 0.
+    let flicker = 1;
+    if (player.shieldBuffTimer < SHIELD_WARN_SEC) {
+      const urgency = 1 - player.shieldBuffTimer / SHIELD_WARN_SEC; // 0 -> 1 as it runs out
+      const rate = 7 + urgency * 12; // faster blink near the end
+      const wave = 0.5 + 0.5 * Math.sin((performance.now() / 1000) * rate); // 0..1
+      const depth = 0.4 + 0.5 * urgency; // dip depth: gentle early, near-full blink at the end
+      flicker = 1 - depth * (1 - wave);
+    }
     ctx.save();
-    ctx.globalAlpha = 0.16;
+    ctx.globalAlpha = 0.16 * flicker;
     ctx.fillStyle = '#4CE05A';
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.5 * flicker;
     ctx.strokeStyle = '#8CFF98';
     ctx.lineWidth = size * 0.03;
     ctx.beginPath();
