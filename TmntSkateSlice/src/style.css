@@ -171,20 +171,24 @@ html, body {
   transform-origin: left;
 }
 
-/* --- Pizza-box collection chips (redesign 2026-07-30) -- a LARGE vertical
-   stack on the left. Outer shape is a rounded-SQUARE low-opacity black panel
-   whose perimeter STROKE is the depleting timer. Inside: a faded pizza-box
-   copy (70% opacity) with a full-opacity copy revealed RADIALLY (conic mask)
-   as slices are caught, plus the "N/8" count. Color-coded via --box-color
-   set in ui.js. (Fixed px like the rest of the HUD -- WebView-size scaling is
-   a separate, deferred concern.) --- */
+/* --- Pizza-box collection chips (relocated + shrunk 2026-08-02) -- a COMPACT
+   horizontal row centered along the BOTTOM, below the character: on the left
+   they covered him and a 3rd/4th chip ran off-screen. Halved in size (96->48).
+   Outer shape is a rounded-SQUARE low-opacity black panel whose perimeter
+   STROKE is the depleting timer (boxes only; the bomb-kill chip has none).
+   Inside: a faded pizza-box copy (70% opacity) with a full-opacity copy
+   revealed RADIALLY (conic mask) as slices are caught, plus the "N/8" count.
+   Color-coded via --box-color set in ui.js. --- */
 #box-tray {
   position: absolute;
-  top: 150px;
-  left: 14px;
+  bottom: 8px;
+  left: 0;
+  right: 0;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 8px;
 }
 
 .box-chip {
@@ -199,8 +203,8 @@ html, body {
 
 .box-graphic {
   position: relative;
-  width: 96px;
-  height: 96px;
+  width: 48px;
+  height: 48px;
 }
 
 /* The rounded-square SVG: bg (black panel) + faint outline, and the
@@ -208,8 +212,8 @@ html, body {
 .box-ring {
   position: absolute;
   inset: 0;
-  width: 96px;
-  height: 96px;
+  width: 48px;
+  height: 48px;
   overflow: visible;
 }
 
@@ -231,11 +235,11 @@ html, body {
 .box-ghost,
 .box-fill {
   position: absolute;
-  top: 10px;
+  top: 5px;
   left: 50%;
   transform: translateX(-50%);
-  width: 64px;
-  height: 64px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
   pointer-events: none;
 }
@@ -258,13 +262,13 @@ html, body {
 .box-count {
   position: absolute;
   left: 50%;
-  bottom: 8px;
+  bottom: 2px;
   transform: translateX(-50%);
   font-weight: 900;
-  font-size: 16px;
+  font-size: 11px;
   color: #fff;
-  letter-spacing: 0.5px;
-  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.7);
+  letter-spacing: 0.3px;
+  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.7);
   paint-order: stroke fill;
   font-variant-numeric: tabular-nums;
 }
