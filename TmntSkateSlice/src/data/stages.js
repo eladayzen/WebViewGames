@@ -42,12 +42,16 @@ export const STAGES = [
     // learning curve; later stages lower this as skill ramps up.
     powerUpChance: 0.16,
     // pizzaChance is implicit: 1 - bombChance - powerUpChance - box-variant weights
-    // ~4x later background change (2026-08-02, was 150 / 45s). Both the score
-    // AND time trigger are scaled -- advancement is score-OR-time (see
-    // difficulty.js), so raising only the score would let the timer still flip
-    // the background at the old mark.
-    advanceScore: 600,
-    advanceTimeSec: 180,
+    // Level advancement is now SCORE-ONLY (2026-08-02): advanceTimeSec is
+    // Infinity so a level changes at exactly its score threshold, never on a
+    // timer. Cumulative thresholds grow by a rising increment ("in between"
+    // linear and exponential -- arithmetic increments, quadratic total):
+    //   L1->L2 1000 (+1000) | L2->L3 3000 (+2000) | L3->L4 6000 (+3000)
+    //   | L4->L5 10000 (+4000) | ...
+    // Only 2 transitions exist today (3 stages); the rest is the pattern for
+    // any future stages.
+    advanceScore: 1000,
+    advanceTimeSec: Infinity,
   },
   {
     id: 'fire-escape',
@@ -59,8 +63,8 @@ export const STAGES = [
     spawnIntervalSec: 1.15,
     bombChance: 0.28,
     powerUpChance: 0.13,
-    advanceScore: 1600, // ~4x later (was 400), see stage 1 note
-    advanceTimeSec: 400, // ~4x later (was 100)
+    advanceScore: 3000, // cumulative (+2000 over L1->L2's 1000), see stage 1 note
+    advanceTimeSec: Infinity, // score-only advancement
   },
   {
     id: 'alley',
