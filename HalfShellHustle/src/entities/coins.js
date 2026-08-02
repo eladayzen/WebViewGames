@@ -29,6 +29,7 @@ import {
 import { distanceTraveledBy, speedAfterTraveling } from '../systems/speed.js';
 import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
 import { COIN_TYPES, DEFAULT_COIN_TYPE } from '../data/coinTypes.js';
+import { getTexture } from './textureLoader.js';
 import {
   getWorldElevationAt, isPlatformFootprintBlocked, findActiveRampSpans,
 } from './platform.js';
@@ -52,62 +53,29 @@ const COIN_COLLECT_HALF_Z = 1.1;
 // own copies -- "is the player standing on the same surface as this thing".
 const ELEVATION_MATCH_THRESHOLD = 0.3;
 
-// Soft radial glow, built once and shared -- same cached-canvas-texture
-// recipe as entities/contactShadow.js's getShadowTexture (and
-// systems/vfx.js's dot texture), NOT entities/textureLoader.js's getTexture
-// (that's URL-keyed, for real art files).
+// ART: real Kolbo-painted textures per type (data/coinTypes.js -> envArt.js),
+// loaded through the shared URL-keyed cache in entities/textureLoader.js like
+// every other real art file in the game. This REPLACED a procedurally-drawn
+// radial-gradient glow blob -- direct feedback: "they're just like HTML
+// spheres... I want them to be good looking 2D hand-drawn art, like in the
+// language of the characters."
 //
-// GRAYSCALE on purpose: each coin's own SpriteMaterial tints this via
-// material.color (data/coinTypes.js), so one texture serves every type and
-// adding a type needs no new art. The brightness ramp is what reads as
-// "glowing"; the DARK outer ring is what keeps it readable -- see the
-// blending note on createSlot below.
-function createCoinTexture() {
-  const size = 64;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  const r = size / 2;
-  const grad = ctx.createRadialGradient(r, r, 0, r, r, r);
-  grad.addColorStop(0, 'rgba(255,255,255,1)'); // hot core
-  grad.addColorStop(0.34, 'rgba(245,245,245,1)');
-  grad.addColorStop(0.60, 'rgba(190,190,190,1)'); // body
-  grad.addColorStop(0.80, 'rgba(70,70,70,1)'); // dark rim -- the contrast that survives any background
-  grad.addColorStop(0.92, 'rgba(45,45,45,0.6)');
-  grad.addColorStop(1, 'rgba(45,45,45,0)');
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.arc(r, r, r, 0, Math.PI * 2);
-  ctx.fill();
-  return new THREE.CanvasTexture(canvas);
-}
-
-let cachedCoinTexture = null;
-function getCoinTexture() {
-  if (!cachedCoinTexture) cachedCoinTexture = createCoinTexture();
-  return cachedCoinTexture;
-}
-
-// NOTE on blending -- deliberately NORMAL, not additive, despite additive
-// being the obvious choice for a "glow". street.js's fog and background are
-// both pale sky-blue (0x9fd2ec / 0x8fc7e8), and an arc-peak coin sits high
-// enough to be silhouetted against exactly that: additive gold on pale blue
-// saturates straight to white, losing the coin's color identity precisely
-// where it's most visible, and making a gold 'common' indistinguishable
-// from a cyan 'bonus'. This project has already been burned by this same
-// class of problem once (see entities/platform.js's note on its flat
-// placeholder colors vanishing into the sky). A dark rim + normal blending
-// reads as a glowing coin against any background, at one draw call.
+// Consequences of that swap, both deliberate:
+//   - material.color is never touched now. It MULTIPLIES the texture, so the
+//     old per-type tint would muddy painted art; the two types differ by being
+//     different pictures instead.
+//   - the sprite is scaled to the ART'S OWN ASPECT (width, width * aspect)
+//     rather than as a square, so the taller bonus stack isn't squashed. Same
+//     convention data/obstacleTypes.js already uses for the barricade.
 //
-// fog: false for the same reason everything soft here sets it -- a coin at
-// SPAWN_Z is ~34% fogged toward pale blue otherwise, and coins need to be
-// legible arriving from a distance. depthWrite off (it's a soft transparent
-// sprite) but depthTest ON, unlike systems/vfx.js's ParticlePool -- a coin
-// behind a platform's solid box should be correctly hidden by it.
+// fog: false is kept from the glow version, for the same reason -- a coin at
+// SPAWN_Z would otherwise be ~34% washed toward street.js's pale blue fog, and
+// coins need to be legible arriving from a distance. depthWrite off (soft
+// transparent edges) but depthTest ON, so a coin behind a platform's solid box
+// is correctly hidden by it.
 function createSlot(scene) {
   const material = new THREE.SpriteMaterial({
-    map: getCoinTexture(), transparent: true, depthWrite: false, fog: false,
+    transparent: true, depthWrite: false, fog: false,
   });
   const sprite = new THREE.Sprite(material);
   sprite.visible = false;
@@ -158,8 +126,9 @@ function placeCoin(slot, lane, z, baseHeight, typeKey, pulsePhase) {
   slot.magnetPull = 0;
   slot.magnetInfluence = 0;
   slot.magnetLatched = false;
-  slot.sprite.material.color.setHex(type.color);
-  slot.sprite.scale.set(type.size, type.size, 1);
+  slot.sprite.material.map = getTexture(type.texture.url);
+  slot.sprite.material.needsUpdate = true;
+  slot.sprite.scale.set(type.width, type.width * type.texture.aspect, 1);
   // y is corrected against the live surface on this same frame's
   // updateCoinPool pass -- baseHeight alone is only right over flat street.
   slot.sprite.position.set(LANE_X[lane], baseHeight, z);
@@ -186,8 +155,8 @@ export function updateCoinPool(field, dt, speed, platformField) {
     // free (a cosine's rate of change is zero at its peak/trough).
     slot.pulseTimer = (slot.pulseTimer + dt) % COIN_PULSE_PERIOD;
     const swell = 0.5 * (1 - Math.cos((2 * Math.PI * slot.pulseTimer) / COIN_PULSE_PERIOD));
-    const scale = slot.type.size * (1 + COIN_PULSE_SCALE_AMPLITUDE * swell);
-    slot.sprite.scale.set(scale, scale, 1);
+    const w = slot.type.width * (1 + COIN_PULSE_SCALE_AMPLITUDE * swell);
+    slot.sprite.scale.set(w, w * slot.type.texture.aspect, 1);
     slot.sprite.material.opacity = COIN_PULSE_OPACITY_MIN + (1 - COIN_PULSE_OPACITY_MIN) * swell;
   }
 }

@@ -647,7 +647,7 @@ function boot() {
         spawnCoinSparkle(
           coinSparklePool,
           slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
-          slot.type.color,
+          slot.type.sparkleColor,
         );
         coinsCollected += slot.type.value;
         despawnCoin(slot);

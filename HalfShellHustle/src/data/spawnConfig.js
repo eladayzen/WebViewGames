@@ -271,7 +271,12 @@ export const COIN_BONUS_TYPE_CHANCE = 0.18;
 // travelling wave down the chain, reading as one connected trail).
 export const COIN_PULSE_PERIOD = 1.1; // seconds
 export const COIN_PULSE_SCALE_AMPLITUDE = 0.16; // fraction of size added at peak
-export const COIN_PULSE_OPACITY_MIN = 0.72; // dimmest point of the cycle
+// 0.72 -> 0.93 with the move to real painted art. That dip was tuned to make a
+// soft radial GLOW breathe, where fading is the whole effect; on a solid inked
+// coin the same dip reads as the sprite going semi-transparent and flickering.
+// The scale swell above now carries the "alive" cue on its own, and this is
+// just a faint sheen on top.
+export const COIN_PULSE_OPACITY_MIN = 0.93; // dimmest point of the cycle
 export const COIN_PULSE_PHASE_STEP = 0.16; // seconds of phase offset per coin index
 
 // Lane-scoped obstacle clearance: a coin cluster must not spawn in a lane

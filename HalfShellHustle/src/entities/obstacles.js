@@ -24,6 +24,7 @@
 import * as THREE from 'three';
 import { LANE_X, SPAWN_Z, DESPAWN_Z } from '../data/constants.js';
 import { getTexture } from './textureLoader.js';
+import { getShadowTexture } from './contactShadow.js';
 import { OBSTACLE_TYPES } from '../data/obstacleTypes.js';
 import { LOW_OBSTACLE_ENABLED, LOW_OBSTACLE_SPAWN_CHANCE } from '../data/spawnConfig.js';
 import { findOpenLane } from './platform.js';
@@ -43,8 +44,24 @@ function createSlot(scene) {
   const sprite = new THREE.Sprite(material);
   sprite.visible = false;
   scene.add(sprite);
+
+  // Contact shadow, built exactly like entities/enemy.js's: a unit (1x1) plane
+  // whose real size is applied via mesh.scale at spawn time, so a recycled slot
+  // can size its shadow for a different type without recreating geometry. Same
+  // shared texture as the player's and the enemies' (contactShadow.js), so
+  // every grounded thing in the game casts the same style of shadow.
+  const shadowMaterial = new THREE.MeshBasicMaterial({
+    map: getShadowTexture(), transparent: true, depthWrite: false, fog: false,
+  });
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), shadowMaterial);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.015; // just above the street plane, matches contactShadow.js
+  shadow.visible = false;
+  scene.add(shadow);
+
   return {
     sprite,
+    shadow,
     type: null,
     active: false,
     lane: 1,
@@ -62,6 +79,7 @@ export function resetObstaclePool(field) {
   for (const slot of field.pool) {
     slot.active = false;
     slot.sprite.visible = false;
+    slot.shadow.visible = false;
   }
 }
 
@@ -92,6 +110,15 @@ function spawnOfType(slot, lane, typeKey, z) {
   slot.sprite.scale.set(type.width, type.height, 1);
   slot.sprite.position.set(LANE_X[lane], type.height / 2, z);
   slot.sprite.visible = true;
+
+  // No elevation term anywhere in this file, unlike enemy.js's: spawnObstacle
+  // picks its lane via findOpenLane, which refuses any lane with a platform
+  // footprint, so an obstacle is ALWAYS at street level. If that ever changes,
+  // this and the sprite's y both need platform.js's elevation the way
+  // updateEnemyPool does it.
+  slot.shadow.scale.set(type.shadowWidth, type.shadowDepth, 1);
+  slot.shadow.position.set(LANE_X[lane], slot.shadow.position.y, z);
+  slot.shadow.visible = true;
 }
 
 function resolveRandomType() {
@@ -124,10 +151,12 @@ export function updateObstaclePool(field, dt, speed) {
     if (!slot.active) continue;
     slot.z += speed * dt;
     slot.sprite.position.z = slot.z;
+    slot.shadow.position.z = slot.z;
 
     if (slot.z > DESPAWN_Z) {
       slot.active = false;
       slot.sprite.visible = false;
+      slot.shadow.visible = false;
     }
   }
 }

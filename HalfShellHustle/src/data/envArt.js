@@ -30,6 +30,23 @@ function envTexture(file, w, h) {
 // duplicated per-theme.
 export const BARRICADE_TEXTURE = envTexture('barricade.png', 640, 585);
 
+// Coin collectibles (data/coinTypes.js) -- real Kolbo art, replacing the
+// procedurally-drawn radial-gradient glow blobs the first pass used. Direct
+// feedback: "they're just like HTML spheres... I want them to be good looking
+// 2D hand-drawn art, like in the language of the characters." Painted in the
+// same bold-ink-outline, cel-shaded, brush-textured style as Leo and the
+// barricade, and generated as ONE sheet then split, so the two can't drift
+// apart stylistically.
+//
+// The two types are now different OBJECTS, not one object in two colours. That
+// was the other half of the same feedback -- "I don't know what's the
+// difference between the gold and the blue coins" -- and a hue swap was never
+// going to answer it: a single coin vs a STACK of coins topped with a gem reads
+// as "worth more" instantly and at any distance, with no legend to learn.
+// Gameplay-props like BARRICADE_TEXTURE above, so shared across every theme.
+export const COIN_COMMON_TEXTURE = envTexture('coin_common.png', 506, 512);
+export const COIN_BONUS_TEXTURE = envTexture('coin_bonus.png', 395, 512);
+
 // Per-lane elevated platform art (entities/platform.js) -- the box (walkable
 // deck) and ramp (incline) are gameplay props like BARRICADE_TEXTURE above,
 // not environment reskins, so they're shared across every theme too. First
