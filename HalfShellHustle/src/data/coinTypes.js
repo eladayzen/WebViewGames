@@ -14,14 +14,17 @@
 // bonus a stack of coins topped with a gem, which was rejected in favour of
 // something simpler -- "let's just take the exact same gold and do it like in a
 // gem style render." So the bonus is now literally the same coin, cut from
-// translucent amber crystal instead of struck from gold.
+// translucent crystal instead of struck from gold.
 //
-// That is a deliberate trade, worth knowing before touching these numbers: the
-// two now share a silhouette AND a colour family, so the cues carrying the
-// difference are MATERIAL (faceted/translucent/sparkling vs solid metal) and
-// SIZE. Both are weaker at distance than the shape contrast they replaced,
-// which is exactly why `width` below stays meaningfully larger for the bonus --
-// it is now doing real work, not just flourish.
+// That first gem pass kept the crystal gold, which was a mistake and was called
+// out as one: "the blue coins need to look more different than the gold coins...
+// the base needs to be like blue or green or pink." With a shared silhouette AND
+// a shared colour family, the only cues left were material and size, and neither
+// survives distance. So the crystal is now vivid sapphire while the RIM stays
+// gold -- unmistakably different, still obviously the same currency.
+//
+// Colour separation now does the heavy lifting, so `width` below is ordinary
+// emphasis rather than the load-bearing cue it briefly had to be.
 //
 // The old grayscale-glow-plus-material.color trick is gone for a second reason
 // too: material.color MULTIPLIES the whole texture, so tinting real painted art
@@ -48,16 +51,14 @@ export const COIN_TYPES = {
     sparkleColor: 0xffc93f,
   },
   // Worth 5, and rarer (COIN_BONUS_TYPE_CHANCE in data/spawnConfig.js).
-  // Same coin, cut from amber crystal. 1.32x rather than the common coin's
-  // width -- nudged up from 1.24 when the design lost its distinct silhouette,
-  // since size is now one of only two cues separating the two types.
+  // Same coin, cut from sapphire crystal with the gold rim kept.
   bonus: {
     value: 5,
     texture: COIN_BONUS_TEXTURE,
     width: COMMON_WIDTH * 1.32,
-    // Brighter, whiter amber than the common coin's flat gold, so the collect
-    // burst still reads as the richer one.
-    sparkleColor: 0xffe89a,
+    // Bright aqua, matching the crystal rather than the rim -- the burst should
+    // say "that was the blue one", which is the whole point of the recolour.
+    sparkleColor: 0x5fe0ff,
   },
 };
 

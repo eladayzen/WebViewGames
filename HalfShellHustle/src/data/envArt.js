@@ -41,12 +41,26 @@ export const BARRICADE_TEXTURE = envTexture('barricade.png', 640, 585);
 // Gameplay props like BARRICADE_TEXTURE above, so shared across every theme.
 export const COIN_COMMON_TEXTURE = envTexture('coin_common.png', 506, 512);
 // The bonus coin is the SAME coin as above -- same silhouette, same rim, same
-// turtle-shell emblem -- re-rendered as translucent faceted amber crystal
-// rather than solid gold metal. Direct feedback, replacing a first attempt
-// that made it a stack of coins with a gem on top: "let's just take the exact
-// same gold and do it like in a gem style render." Produced by EDITING the
-// gold coin above rather than drawing a new one, so the two genuinely are the
-// same object in two materials.
+// turtle-shell emblem -- re-rendered as a faceted crystal rather than solid
+// gold metal, and in a completely different colour. Direct feedback arrived in
+// two passes: first "let's just take the exact same gold and do it like in a
+// gem style render", then, once that shipped in amber, "the blue coins need to
+// look more different than the gold coins... the base needs to be like blue or
+// green or pink."
+//
+// That second note was right and the amber version was a genuine mistake:
+// keeping the gem gold left MATERIAL and SIZE as the only cues, and neither
+// survives distance. The crystal centre is now vivid sapphire while the RIM
+// stays gold -- which is what lets it read as unmistakably different without
+// ceasing to look like the same currency. Checked by compositing gold/blue/green
+// at near/mid/far sizes over the three backgrounds a coin is actually seen
+// against (pale sky, grey road, red brick): the gold rim is load-bearing, it is
+// what keeps the blue legible against street.js's pale blue sky.
+//
+// A vivid emerald cut of the same coin is kept at art/final/
+// coin_bonus_green_alt.png -- swapping is one file copy plus the sparkleColor
+// hex in data/coinTypes.js. It measured marginally stronger against the sky and
+// the red brick; blue was chosen as the stated preference.
 export const COIN_BONUS_TEXTURE = envTexture('coin_bonus.png', 512, 512);
 
 // Ability pickups (data/pickupTypes.js). Real Kolbo art in the same inked,
