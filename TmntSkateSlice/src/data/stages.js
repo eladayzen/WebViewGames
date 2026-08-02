@@ -42,8 +42,12 @@ export const STAGES = [
     // learning curve; later stages lower this as skill ramps up.
     powerUpChance: 0.16,
     // pizzaChance is implicit: 1 - bombChance - powerUpChance - box-variant weights
-    advanceScore: 150,
-    advanceTimeSec: 45,
+    // ~4x later background change (2026-08-02, was 150 / 45s). Both the score
+    // AND time trigger are scaled -- advancement is score-OR-time (see
+    // difficulty.js), so raising only the score would let the timer still flip
+    // the background at the old mark.
+    advanceScore: 600,
+    advanceTimeSec: 180,
   },
   {
     id: 'fire-escape',
@@ -55,8 +59,8 @@ export const STAGES = [
     spawnIntervalSec: 1.15,
     bombChance: 0.28,
     powerUpChance: 0.13,
-    advanceScore: 400,
-    advanceTimeSec: 100,
+    advanceScore: 1600, // ~4x later (was 400), see stage 1 note
+    advanceTimeSec: 400, // ~4x later (was 100)
   },
   {
     id: 'alley',
