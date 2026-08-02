@@ -35,6 +35,15 @@ const BOX_ICON_URLS = {
   purple: new URL('../assets/pizza_box_purple.png', import.meta.url).href,
   red: new URL('../assets/pizza_box_red.png', import.meta.url).href,
 };
+
+// Booster reveal art/labels for the box-completion popup, keyed by the reward
+// effect (see data/boxColors.js). The earned booster is shown BIG below the
+// bonus so it reads as the important payoff (2026-08-02). 'wave' = "blow up".
+const BOOSTER_INFO = {
+  shield: { url: new URL('../assets/powerup_shield.png', import.meta.url).href, label: 'SHIELD', hex: '#4CE05A' },
+  magnet: { url: new URL('../assets/powerup_magnet.png', import.meta.url).href, label: 'MAGNET', hex: '#F84FA0' },
+  wave: { url: new URL('../assets/powerup_wave.png', import.meta.url).href, label: 'BLOW UP', hex: '#FF8A2E' },
+};
 const BUFF_CONFIGS = [
   { key: 'ooze', timerField: 'oozeBuffTimer', maxSec: OOZE_BUFF_DURATION_SEC, hex: '#1FC8D8' },
   { key: 'shield', timerField: 'shieldBuffTimer', maxSec: SHIELD_BUFF_DURATION_SEC, hex: '#4CE05A' },
@@ -163,6 +172,10 @@ export function createUI() {
   el.bcpBonus = document.getElementById('bcp-bonus');
   el.bcpIcon = document.getElementById('bcp-icon');
   el.bcpIcon.src = BOX_ICON_URLS.regular;
+  el.bcpReward = document.getElementById('bcp-reward');
+  el.bcpRewardIcon = document.getElementById('bcp-reward-icon');
+  el.bcpRewardLabel = document.getElementById('bcp-reward-label');
+  el.bcpLife = document.getElementById('bcp-life');
 
   // Last-written values, for the dirty-checks below.
   let lastScore = null;
@@ -173,13 +186,27 @@ export function createUI() {
 
   return {
     // Quick foreground celebration when a box completes: color-coded title +
-    // bonus points + a bouncing box icon. Restarts the CSS animation each
+    // bonus points + a bouncing box icon, then a BIG reveal of the booster you
+    // earned (+ "+1 LIFE" for the red box). Restarts the CSS animation each
     // call (remove class -> reflow -> re-add) so rapid completions replay.
-    showBoxComplete(label, bonus, hex, id) {
+    showBoxComplete(label, bonus, hex, id, reward) {
       el.boxCompletePopup.style.setProperty('--bcp-color', hex);
       el.bcpIcon.src = BOX_ICON_URLS[id] || BOX_ICON_URLS.regular;
       el.bcpTitle.textContent = `${label.toUpperCase()} BOX!`;
       el.bcpBonus.textContent = `+${bonus}`;
+
+      // Earned-booster reveal (big, below the bonus). reward = { effect, grantLife }.
+      const info = reward && reward.effect ? BOOSTER_INFO[reward.effect] : null;
+      if (info) {
+        el.bcpReward.style.setProperty('--bcp-reward-color', info.hex);
+        el.bcpRewardIcon.src = info.url;
+        el.bcpRewardLabel.textContent = info.label;
+        el.bcpReward.classList.remove('hidden');
+      } else {
+        el.bcpReward.classList.add('hidden');
+      }
+      el.bcpLife.classList.toggle('hidden', !(reward && reward.grantLife));
+
       el.boxCompletePopup.classList.remove('hidden');
       el.boxCompletePopup.classList.remove('bcp-animate');
       void el.boxCompletePopup.offsetWidth; // force reflow to restart the animation

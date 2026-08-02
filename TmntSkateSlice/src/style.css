@@ -405,6 +405,73 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- Earned-booster reveal (2026-08-02) -- the big payoff shown below the
+   bonus: a large booster icon + its name, in the booster's color, revealed
+   with a short delayed pop so it reads as "...and you got THIS!". Made large
+   on purpose (icon bigger than the title text) since the booster is the
+   important reward. Red also shows a "+1 LIFE" line under it. --- */
+.bcp-reward {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.bcp-reward.hidden {
+  display: none;
+}
+
+.bcp-reward-icon {
+  width: 92px;
+  height: 92px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 18px var(--bcp-reward-color, #fff)) drop-shadow(0 4px 7px rgba(0, 0, 0, 0.5));
+}
+
+.bcp-reward-label {
+  font-weight: 900;
+  font-size: 46px;
+  letter-spacing: 1px;
+  color: var(--bcp-reward-color, #fff);
+  -webkit-text-stroke: 4px #2a1a00;
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.4), 0 0 20px var(--bcp-reward-color, #fff);
+  white-space: nowrap;
+}
+
+.bcp-life {
+  margin-top: 4px;
+  font-weight: 900;
+  font-size: 34px;
+  letter-spacing: 1px;
+  color: #ff5a6e;
+  -webkit-text-stroke: 3px #3a0a12;
+  paint-order: stroke fill;
+  text-shadow: 0 0 16px rgba(255, 90, 110, 0.9);
+  white-space: nowrap;
+}
+
+.bcp-life.hidden {
+  display: none;
+}
+
+/* Delayed pop so the reward appears just after the box/bonus land. `both`
+   keeps it invisible during the delay and settled at the end. */
+.bcp-animate .bcp-reward {
+  animation: bcp-reward-in 0.5s ease-out 0.4s both;
+}
+
+.bcp-animate .bcp-life {
+  animation: bcp-reward-in 0.5s ease-out 0.62s both;
+}
+
+@keyframes bcp-reward-in {
+  0%   { opacity: 0; transform: scale(0.5); }
+  60%  { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
 /* --- Paused badge --- */
 #paused-badge {
   position: absolute;

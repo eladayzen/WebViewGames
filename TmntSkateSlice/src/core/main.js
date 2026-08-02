@@ -157,15 +157,16 @@ async function boot() {
       if (item.type.boxColor) {
         const done = registerBoxCatch(boxes, item.type.boxColor);
         if (done) {
-          registerBoxComplete(scoring, done.bonusScore);
-          spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
-          playSfx(audio, sfx.sfx_box_complete);
-          ui.showBoxComplete(done.label, done.bonusScore, done.hex, done.id);
           // Auto-reward (2026-08-02): each box grants a booster; the top (red)
           // box also grants an extra life. Odds per box in data/boxColors.js.
+          // Rolled BEFORE the popup so it can show what you earned, big.
           const reward = rollBoxReward(done.id);
           if (reward.effect) grantBooster(reward.effect, item.xFrac, item.yFrac);
           if (reward.grantLife) gainLife(lives);
+          registerBoxComplete(scoring, done.bonusScore);
+          spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
+          playSfx(audio, sfx.sfx_box_complete);
+          ui.showBoxComplete(done.label, done.bonusScore, done.hex, done.id, reward);
         }
       }
       // Ooze buff active: an extra cyan sparkle on every catch, so the buff
