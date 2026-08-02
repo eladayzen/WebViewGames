@@ -47,59 +47,142 @@ html, body {
 
 #topLeft {
   position: absolute;
-  top: 14px;
-  left: 14px;
+  top: 18px;
+  left: 20px;
   text-align: left;
 }
 
-#distance {
-  font-weight: 900;
-  font-size: 24px;
-  color: #ffffff;
-  letter-spacing: 0.5px;
-  -webkit-text-stroke: 2px #1a0a2a;
-  paint-order: stroke fill;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
-}
-
-/* TEMPORARY: bare score readout for the enemy-bump-kill experiment (no
-   real scoring system exists yet, build doc §8 -- MVP's actual score UI is
-   top-right, per concept art). Placeholder styling, smaller than distance. */
-#score {
-  font-weight: 800;
-  font-size: 16px;
-  color: #ffe98a;
-  letter-spacing: 0.5px;
-  -webkit-text-stroke: 1.5px #1a0a2a;
-  paint-order: stroke fill;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
-  margin-top: 2px;
-}
-
-/* Lives tray -- a flow child of #topLeft (see index.html), so it stacks under
-   the counters with no magic offset to re-tune. Built in JS by
-   ui/hud.js's initLivesTray. */
+/* Lives tray -- built in JS by ui/hud.js's initLivesTray. Scaled up with the
+   rest of the HUD (direct feedback wanted it bigger), and in vmin for the same
+   reason the points counter is: the real viewing distance is a player standing
+   on a board in front of a large screen, not a laptop at desk range. */
 #lives-tray {
   display: flex;
-  gap: 5px;
-  margin-top: 3px;
+  gap: 0.9vmin;
 }
 
 .life-icon {
-  font-size: 20px;
+  font-size: 4.4vmin;
   color: #ff5566;
   line-height: 1;
-  -webkit-text-stroke: 1.5px #2a0a12;
+  -webkit-text-stroke: 0.42vmin #2a0a12;
   paint-order: stroke fill;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 0.25vmin 0.4vmin rgba(0, 0, 0, 0.5));
   transition: opacity 0.18s, filter 0.18s;
 }
 
-/* A life already lost -- greyed rather than removed, so the tray never
-   changes width and the total stays readable at a glance. */
+/* A life already lost -- greyed rather than removed, so the tray never changes
+   width and the total stays readable at a glance. */
 .life-icon.spent {
   opacity: 0.22;
   filter: grayscale(1);
+}
+
+/* --- POINTS: the headline readout (ui/hud.js) ---
+   Upper centre, deliberately large. Direct feedback asked for a bigger, better
+   HUD using "the upper center and the left center", with the distance meter
+   gone and points carrying the screen. A lane runner is read straight down the
+   middle, so this sits where the eye already is instead of competing for a
+   corner. Sized in vmin, not px: this ships into a WebView whose pixel size we
+   don't control, and a 34px counter that reads fine on a laptop is unreadable
+   on a TV across a room -- which is the actual viewing distance here, since the
+   player is standing on a balance board.
+   pointer-events stay off (inherited from #hud) so it can never eat input. */
+#points-hud {
+  position: absolute;
+  top: 2.2vmin;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  /* The flying labels land on the middle of #points-value, so this element's
+     own transform origin matters -- punching from the top keeps the number's
+     centre (the flight target) from lurching mid-animation. */
+  transform-origin: 50% 0%;
+}
+
+#points-value {
+  font-weight: 900;
+  font-size: 9.5vmin;
+  letter-spacing: 1px;
+  color: #ffe066;
+  -webkit-text-stroke: 0.85vmin #2a1400;
+  paint-order: stroke fill;
+  text-shadow: 0 0.5vmin 0 rgba(0, 0, 0, 0.45), 0 0 2.4vmin rgba(255, 200, 60, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Small caption under the number -- without it a bare figure at this size is
+   ambiguous (distance? coins? combo?), and the whole reason the three old
+   counters merged was to stop the player having to work that out. */
+#points-label {
+  margin-top: 0.5vmin;
+  font-weight: 800;
+  font-size: 1.9vmin;
+  letter-spacing: 0.45vmin;
+  color: #ffd98a;
+  opacity: 0.75;
+  -webkit-text-stroke: 0.28vmin #2a1400;
+  paint-order: stroke fill;
+}
+
+/* Fires when a flying label LANDS, never on the underlying tally changing --
+   that's what makes the counter feel struck rather than merely updated. */
+.points-punch {
+  animation: points-punch 0.26s ease-out;
+}
+
+@keyframes points-punch {
+  0%   { transform: translateX(-50%) scale(1); }
+  35%  { transform: translateX(-50%) scale(1.16); }
+  100% { transform: translateX(-50%) scale(1); }
+}
+
+/* --- Flying "+N" labels (ui/pointsFly.js) ---
+   Positioned entirely from JS via `transform`, so `left/top` stay at 0 and the
+   per-frame write only ever touches transform + opacity -- both compositor-only
+   properties, which keeps this off the same repaint path that makes stroked
+   text expensive in this WebView. Centring is part of the JS transform string
+   (translate(-50%,-50%)), so it stays exact for any number of digits. */
+.points-fly {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform, opacity;
+  pointer-events: none;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  paint-order: stroke fill;
+  font-variant-numeric: tabular-nums;
+  z-index: 15;
+}
+
+/* An enemy kill is worth 15x a common coin, so it reads hotter and bigger
+   before the number itself is even parsed. */
+.points-fly--enemy {
+  font-size: 4.6vmin;
+  color: #fff2a8;
+  -webkit-text-stroke: 0.6vmin #6a1f00;
+  text-shadow: 0 0 2vmin rgba(255, 170, 60, 0.9);
+}
+
+.points-fly--coin {
+  font-size: 3.1vmin;
+  color: #ffe9a8;
+  -webkit-text-stroke: 0.45vmin #4a2a00;
+  text-shadow: 0 0 1.4vmin rgba(255, 200, 80, 0.8);
+}
+
+/* Bonus (sapphire) coins carry their own colour all the way through, so the
+   +3 is traceable back to the thing that produced it. */
+.points-fly--bonus {
+  font-size: 3.6vmin;
+  color: #d6f6ff;
+  -webkit-text-stroke: 0.5vmin #06384a;
+  text-shadow: 0 0 1.8vmin rgba(95, 224, 255, 0.95);
 }
 
 /* Damage flash -- opacity is driven per-frame from core/main.js's
@@ -259,20 +342,6 @@ html, body {
   opacity: 0.28;
 }
 
-/* Coin counter -- mirrors #score's treatment with its own gold accent so
-   the two read as different resources at a glance (#hud only sets
-   `color: #fff`, so without this it would render as unstyled 16px text). */
-#coins {
-  font-weight: 800;
-  font-size: 18px;
-  color: #ffc93f;
-  letter-spacing: 0.5px;
-  -webkit-text-stroke: 1.5px #1a0a2a;
-  paint-order: stroke fill;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
-  margin-top: 2px;
-}
-
 #paused-badge {
   position: absolute;
   top: 50%;
@@ -319,10 +388,23 @@ html, body {
   paint-order: stroke fill;
 }
 
-#final-distance {
-  font-size: 22px;
-  font-weight: 700;
+#final-points {
+  font-weight: 900;
+  font-size: 12vmin;
+  line-height: 1;
   color: #ffe066;
+  -webkit-text-stroke: 1vmin #2a1400;
+  paint-order: stroke fill;
+  text-shadow: 0 0 3vmin rgba(255, 200, 60, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+#final-breakdown {
+  font-size: 2.4vmin;
+  font-weight: 700;
+  letter-spacing: 0.15vmin;
+  color: #ffd98a;
+  opacity: 0.85;
 }
 
 #restart-button {

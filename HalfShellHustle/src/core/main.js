@@ -38,6 +38,14 @@ import {
 } from '../entities/pickups.js';
 import { spawnArrivalTime, hazardSpacingMultiplierAt } from '../systems/difficulty.js';
 import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
+import {
+  createScoreState, resetScoreState, awardEnemyKill, awardCoin,
+  creditDisplayed, settleScore,
+} from '../systems/scoring.js';
+import {
+  initPointsFly, spawnPointsFly, updatePointsFly, clearPointsFly,
+  refreshPointsFlyTarget,
+} from '../ui/pointsFly.js';
 import { speedAt, distanceTraveledBy } from '../systems/speed.js';
 import {
   createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
@@ -68,6 +76,7 @@ import {
   PICKUP_MAGNET_SPAWN_CHANCE, PICKUP_LIFE_SPAWN_CHANCE,
 } from '../data/spawnConfig.js';
 import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
+import { COIN_TYPES } from '../data/coinTypes.js';
 import {
   ParticlePool, spawnDustPuff, spawnEnemyPoof, spawnCoinSparkle,
   createSpeedStreaks, updateSpeedStreaks,
@@ -159,16 +168,17 @@ function boot() {
   // spawnCoinSparkle), row coins arriving ~0.16s apart against a ~0.34s
   // life = ~3 overlapping = ~36 live, so 80 is comfortable headroom.
   const coinSparklePool = new ParticlePool(scene, 80, 0.28, 0.85);
-  const ENEMY_KILL_SCORE = 100; // placeholder value -- no real scoring system yet (build doc §8 is MVP-only)
+
+  // ONE merged total now (systems/scoring.js). The old separate `score`
+  // (enemy kills) and `coinsCollected` counters are gone from the HUD --
+  // direct feedback wanted every source summed into a single points value --
+  // but their per-source tallies live on inside this state for the recap.
+  const score = createScoreState();
 
   let distance = 0;
   // Rotates through data/playerSprite.js's ATTACK_SEQUENCES kill to kill
   // (not random) so back-to-back kills don't just repeat the same one.
   let attackSequenceIndex = 0;
-  let score = 0;
-  // Deliberately NOT folded into `score` (which is enemy kills) -- coins are
-  // their own resource with their own HUD counter, see index.html's #coins.
-  let coinsCollected = 0;
   // Seconds of red damage-flash left (see index.html's #damage-flash for why
   // this is a timer rather than a one-frame toggle).
   let damageFlashTimer = 0;
@@ -277,12 +287,10 @@ function boot() {
     if (INTRO_SEED_ENABLED) seedPipeline();
 
     distance = 0;
-    score = 0;
-    coinsCollected = 0;
     attackSequenceIndex = 0;
-    hud.updateDistance(distance);
-    hud.updateScore(score);
-    hud.updateCoins(coinsCollected);
+    resetScoreState(score);
+    clearPointsFly();
+    hud.updatePoints(score.displayed);
     hud.updateLives(livesState.lives);
   }
 
@@ -293,7 +301,12 @@ function boot() {
     // can freeze mid-blink and sit INVISIBLE on the game-over screen.
     setPlayerVisible(player, true);
     setContactShadowVisible(contactShadow, true);
-    hud.showGameOver(distance, coinsCollected);
+    // Anything still mid-flight is credited immediately -- a label that never
+    // landed must not cost the player points on the recap.
+    settleScore(score);
+    clearPointsFly();
+    hud.updatePoints(score.displayed);
+    hud.showGameOver(score, distance);
   }
 
   // One life lost, with the feedback that sells it: a camera jolt, a red
@@ -361,6 +374,16 @@ function boot() {
   // saved preference that isn't re-sent does nothing. No-op in a browser.
   initSteeringPanel();
 
+  // Flying "+N" labels (ui/pointsFly.js). The counter element is the flight
+  // TARGET, so it must already exist and be laid out -- hence init here, after
+  // fitStageToAspect has sized #stage, not at module scope.
+  initPointsFly(
+    stage, document.getElementById('hud'), document.getElementById('points-value'),
+    // A label landing is the ONLY thing that moves the visible number, and it
+    // punches the counter as it lands. See systems/scoring.js.
+    (points) => { creditDisplayed(score, points); hud.updatePoints(score.displayed, true); },
+  );
+
   // Heart tray built once from the CURRENT cap -- not from
   // LIVES_MAX_SUPPORTED, which is only a documented ceiling; a tray sized to
   // that would render pre-greyed hearts (see ui/hud.js's initLivesTray).
@@ -387,6 +410,9 @@ function boot() {
     renderer.setSize(width, height);
     camera.aspect = ASPECT_W / ASPECT_H;
     camera.updateProjectionMatrix();
+    // The points counter just moved with the stage -- labels in flight aim at a
+    // cached pixel position, so it has to be re-measured or they land wide.
+    refreshPointsFlyTarget();
   }
   window.addEventListener('resize', fitStageToAspect);
   fitStageToAspect();
@@ -525,8 +551,9 @@ function boot() {
       // single source of truth for "how far have we come", shared with the
       // spawn-seeding and coin-arc math. An Euler sum here would slowly
       // disagree with them for no benefit.
+      // Still tracked (the game-over recap shows it) but no longer on the HUD
+      // -- direct feedback: "we can hide the distance meter."
       distance = distanceTraveledBy(gameTime);
-      hud.updateDistance(distance);
 
       // MIN_ENEMY_OBSTACLE_GAP_SEC (constants.js): skip a spawn attempt that
       // would land too close to the OTHER type's last spawn -- both spawn
@@ -605,11 +632,15 @@ function boot() {
           hitEnemy.sprite.position.x, hitEnemy.sprite.position.y, hitEnemy.sprite.position.z,
           hitEnemy.sprite.scale.x, hitEnemy.sprite.scale.y, hitEnemy.type.poofColors,
         );
+        // Read the position BEFORE killEnemy hides the sprite -- the label
+        // has to launch from where the kill visibly happened.
+        const killX = hitEnemy.sprite.position.x;
+        const killY = hitEnemy.sprite.position.y;
+        const killZ = hitEnemy.sprite.position.z;
         killEnemy(hitEnemy);
         startPlayerAttack(player, attackSequenceIndex);
         attackSequenceIndex += 1;
-        score += ENEMY_KILL_SCORE;
-        hud.updateScore(score);
+        spawnPointsFly(killX, killY, killZ, camera, awardEnemyKill(score), 'enemy');
       }
       enemyPoofPool.update(dt);
 
@@ -649,11 +680,13 @@ function boot() {
           slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
           slot.type.sparkleColor,
         );
-        coinsCollected += slot.type.value;
+        spawnPointsFly(
+          slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
+          camera, awardCoin(score, slot.type),
+          slot.type === COIN_TYPES.bonus ? 'bonus' : 'coin',
+        );
         despawnCoin(slot);
       }
-      // One HUD write per frame regardless of how many coins landed at once.
-      if (collected.length > 0) hud.updateCoins(coinsCollected);
       coinSparklePool.update(dt);
 
       // Ability pickups (entities/pickups.js). ONE attempt per interval that
@@ -711,6 +744,13 @@ function boot() {
     // skips applying jitter, so a paused screen sits still instead of
     // vibrating forever. Deliberately NOT gated on gs.current: the death shake
     // should play out across the game-over screen.
+    // Outside the running guard so labels keep animating regardless of game
+    // state, and frozen by pause like every other timed effect here. endRun
+    // settles and clears them explicitly, so nothing is left hanging over the
+    // game-over screen (which would sit behind it anyway -- overlay z-index 20
+    // vs label 15).
+    if (!paused) updatePointsFly(dt);
+
     updateCameraRig(cameraRig, player.laneX, player.elevationY, paused ? 0 : dt);
 
     renderer.render(scene, camera);

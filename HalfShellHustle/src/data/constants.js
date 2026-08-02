@@ -28,6 +28,29 @@ export const SPEED_MAX = 14.4; // world units/sec -- the old shipped 16, minus 1
 export const SPEED_START = 10.08; // 30% below SPEED_MAX
 export const SPEED_RAMP_DURATION_SEC = 45; // seconds from SPEED_START to SPEED_MAX
 
+// --- Points (systems/scoring.js, ui/pointsFly.js) ---
+// Direct feedback: every source of reward now feeds ONE headline number, and
+// these are its exchange rates. A Foot Soldier is worth 15 -- fifteen common
+// coins -- which is deliberate: killing one costs a lane change and a bit of
+// nerve, and it should visibly out-earn running through a coin row.
+// (Landed at 15 after 20 and 10 were both floated.)
+export const POINTS_PER_ENEMY = 15;
+// Coin values live with the rest of each coin type in data/coinTypes.js:
+// common = 1, bonus = 3.
+
+// Flying "+N" label timing (ui/pointsFly.js). POP says where, HOLD says how
+// much, TRAVEL says where it went -- the HOLD is the beat most score popups
+// skip, and it's why they read as noise instead of information.
+export const POINTS_FLY_POP_SEC = 0.22;
+export const POINTS_FLY_HOLD_SEC = 0.3;
+export const POINTS_FLY_TRAVEL_SEC = 0.44;
+export const POINTS_FLY_RISE_PX = 26; // how far it lifts off the spawn point during pop
+export const POINTS_FLY_END_SCALE = 0.5; // shrinks as it flies, so arrival reads as "absorbed"
+// A coin row can land 3-5 labels within a few frames, and enemies/pickups
+// overlap that. 20 covers a worst-case burst with headroom; past it the oldest
+// in flight is recycled (and credited early) rather than dropped.
+export const POINTS_FLY_POOL_SIZE = 20;
+
 // --- Lives (systems/lives.js) ---
 // Direct feedback: an obstacle costs a life instead of ending the run.
 // 3 -> 5 ("we will start with 5 hearts, not 3"), part of the same

@@ -89,19 +89,24 @@
              distance readout is the doc's explicitly-allowed optional stand-in
              ("a bare static distance counter can stand in if a HUD number is
              wanted for testing"). -->
+        <!-- POINTS: the single headline number, upper centre. Direct feedback
+             replaced three competing top-left readouts (distance / kill score /
+             coin count) with one merged total -- "those values summed up into
+             one main points value" -- and moved it where the eye already is,
+             since a lane runner is read down the middle of the screen.
+             The distance meter is gone entirely, also per that feedback; the
+             value is still tracked and still shown on the game-over recap.
+             #points-value is the flight target for ui/pointsFly.js's labels,
+             so it must stay a distinct element that can be measured. -->
+        <div id="points-hud">
+          <div id="points-value">0</div>
+          <div id="points-label">POINTS</div>
+        </div>
+
         <div id="topLeft">
-          <div id="distance">0m</div>
-          <div id="score">0</div>
-          <!-- Coins collected -- its own counter, deliberately NOT summed
-               into #score (which is enemy kills): coins are a distinct
-               resource, kept separate so they can become real currency
-               later instead of just inflating the kill score. -->
-          <div id="coins">&#10022; 0</div>
           <!-- Lives. Populated by ui/hud.js's initLivesTray from the live cap
                (data/constants.js's LIVES_START), NOT hardcoded here, so a
-               future extra-heart upgrade needs no markup change. A flow child
-               of #topLeft on purpose -- no absolute offset to re-tune if the
-               counters above it change size. -->
+               future extra-heart upgrade needs no markup change. -->
           <div id="lives-tray"></div>
         </div>
 
@@ -127,7 +132,11 @@
 
       <div id="gameover-overlay" class="overlay hidden">
         <div class="title">HIT!</div>
-        <div id="final-distance"></div>
+        <!-- Final points get the hero treatment; the per-source breakdown the
+             merged counter hides during play (kills / coins / distance) is
+             spelled out here instead, which is the natural place for it. -->
+        <div id="final-points">0</div>
+        <div id="final-breakdown"></div>
         <button id="restart-button">RETRY</button>
       </div>
     </div>

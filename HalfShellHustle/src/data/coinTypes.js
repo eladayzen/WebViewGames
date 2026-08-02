@@ -42,7 +42,10 @@ const COMMON_WIDTH = 0.85;
 
 export const COIN_TYPES = {
   common: {
-    value: 1,
+    // POINTS, feeding the single headline counter (systems/scoring.js). Was
+    // `value` when coins had their own separate HUD tally; renamed with the
+    // merge so there is no ambiguity about which number it feeds.
+    points: 1,
     texture: COIN_COMMON_TEXTURE,
     width: COMMON_WIDTH,
     // Collect-sparkle tint ONLY (systems/vfx.js's spawnCoinSparkle) -- no
@@ -50,10 +53,13 @@ export const COIN_TYPES = {
     // as coming off the coin itself.
     sparkleColor: 0xffc93f,
   },
-  // Worth 5, and rarer (COIN_BONUS_TYPE_CHANCE in data/spawnConfig.js).
-  // Same coin, cut from sapphire crystal with the gold rim kept.
+  // Rarer (COIN_BONUS_TYPE_CHANCE in data/spawnConfig.js). Same coin, cut from
+  // sapphire crystal with the gold rim kept.
   bonus: {
-    value: 5,
+    // 3, not the 5 this was worth as a standalone coin count -- direct
+    // feedback set the exchange rates for the merged counter: "another coin
+    // would be one point and blue coins would be three points."
+    points: 3,
     texture: COIN_BONUS_TEXTURE,
     width: COMMON_WIDTH * 1.32,
     // Bright aqua, matching the crystal rather than the rim -- the burst should
