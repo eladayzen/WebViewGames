@@ -81,6 +81,11 @@ const BOARD_DROP = ANKLE_TO_SOLE + DECK_HALF_THICKNESS;
 const _fa = new THREE.Vector3();
 const _fb = new THREE.Vector3();
 const _mid = new THREE.Vector3();
+const _fwd = new THREE.Vector3();
+const _rup = new THREE.Vector3();
+const _rx = new THREE.Vector3();
+const _rz = new THREE.Vector3();
+const _rbasis = new THREE.Matrix4();
 
 /**
  * Mixamo's "in place" clips still carry a Hips position track, and the second
@@ -415,7 +420,19 @@ export function createRider(scene, camera) {
      */
     update(s, dt) {
       root.position.copy(s.pos);
-      root.rotation.y = s.yaw;
+      // Stand the rider ON the trough surface: forward along the trough, up
+      // along the surface normal. Built as an explicit basis so a rolled or
+      // banked wall plants them properly instead of leaving them world-upright.
+      if (s.surfaceUp && s.forward) {
+        // Local +Z points BACKWARD along the trough: the character art faces its
+        // own -Z (see the rotation.y = PI in the loaders), so this leaves it
+        // facing down the trough.
+        _rz.copy(s.forward).negate();
+        _rup.copy(s.surfaceUp);
+        _rx.crossVectors(_rup, _rz).normalize();
+        _rbasis.makeBasis(_rx, _rup, _rz);
+        root.quaternion.setFromRotationMatrix(_rbasis);
+      }
 
       // Carve roll: the body banks into the turn. Identical signal in all modes.
       const roll = -s.carve * 0.42;

@@ -34,11 +34,15 @@ export function createCameraRig(camera) {
   const look = new THREE.Vector3();
   let started = false;
   let landDip = 0;
+  let shakeT = 0;
 
   const _desired = new THREE.Vector3();
   const _lookTarget = new THREE.Vector3();
-  const _fwd = new THREE.Vector3();
+  const _back = new THREE.Vector3();
   const _right = new THREE.Vector3();
+  const _up = new THREE.Vector3();
+  const camUp = new THREE.Vector3(0, 1, 0);
+  const _WORLD_UP = new THREE.Vector3(0, 1, 0);
 
   return {
     /** Small vertical compression on landing. Kept -- it's a settle, not a swing. */
@@ -52,18 +56,22 @@ export function createCameraRig(camera) {
     },
 
     update(s, dt) {
+      shakeT += dt;
       const speedN = Math.min(1, s.speed / SPEED_REF);
 
-      _fwd.set(Math.sin(s.yaw), 0, Math.cos(s.yaw));
-      _right.set(_fwd.z, 0, -_fwd.x);
+      // Orthonormal basis from the trough itself: forward along the tangent,
+      // up along the surface normal. `_back` is what the camera sits along.
+      _up.copy(s.surfaceUp);
+      _back.copy(s.forward).negate();
+      _right.crossVectors(_up, _back).normalize();
 
       const back = CAM_BACK + CAM_PULLBACK * speedN;
 
       // Behind + above + a fixed over-the-shoulder offset. No orbit term at all.
       _desired.copy(s.pos)
-        .addScaledVector(_fwd, back)
-        .addScaledVector(_right, CAM_SHOULDER);
-      _desired.y += CAM_HEIGHT - landDip * 0.35;
+        .addScaledVector(_back, back)
+        .addScaledVector(_right, CAM_SHOULDER)
+        .addScaledVector(_up, CAM_HEIGHT - landDip * 0.35);
 
       if (!started) {
         pos.copy(_desired);
@@ -79,12 +87,25 @@ export function createCameraRig(camera) {
       // Aim down-road, slightly above the rider's feet. Horizon stays level:
       // no roll is applied after lookAt, unlike the previous rig.
       _lookTarget.copy(s.pos)
-        .addScaledVector(_fwd, -CAM_LOOK_AHEAD)
-        .addScaledVector(_right, CAM_SHOULDER * 0.5);
-      _lookTarget.y += CAM_LOOK_HEIGHT;
+        .addScaledVector(s.forward, CAM_LOOK_AHEAD)
+        .addScaledVector(_right, CAM_SHOULDER * 0.5)
+        .addScaledVector(_up, CAM_LOOK_HEIGHT);
 
       look.lerp(_lookTarget, 1 - Math.exp(-9 * dt));
+      // Ease the camera's own up toward the surface normal rather than snapping,
+      // so a roll reads as a smooth bank instead of a flick.
+      camUp.lerp(_up, 1 - Math.exp(-4.5 * dt)).normalize();
+      camera.up.copy(camUp);
       camera.lookAt(look);
+
+      // Wobble shake: the fail state has to be felt in the WORLD, not just read
+      // off the HUD bar (build doc §7.2). Amplitude ramps with the meter, and
+      // it's applied after lookAt so it perturbs the aim rather than the rig.
+      if (s.shake > 0) {
+        const k = s.shake * 0.035;
+        camera.rotateZ((Math.sin(shakeT * 61) + Math.sin(shakeT * 27)) * k);
+        camera.rotateX(Math.sin(shakeT * 43) * k * 0.6);
+      }
 
       const fov = FOV_BASE + (FOV_AT_SPEED - FOV_BASE) * speedN;
       if (Math.abs(camera.fov - fov) > 0.01) {

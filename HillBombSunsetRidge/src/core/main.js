@@ -17,15 +17,21 @@
 import * as THREE from 'three';
 import {
   GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_DWELL, START_SPEED,
-  LATERAL_SPEED, TURN_LOSS, SPEED_REF, ROAD_HALF_WIDTH,
+  SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
+  THETA_MAX, THETA_GRAVITY, THETA_CARVE_TORQUE, THETA_DAMP, HEIGHT_EXCHANGE,
+  TROUGH_RADIUS,
   AIR_DURATION, AIR_HEIGHT,
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
 } from '../data/constants.js';
 import { initInput, readInput, forcePop } from '../input/input.js';
-import { createRoad, toWorld, centerline } from '../road/road.js';
+import { createTrough, toWorld, surfaceUp, heightAt, frameAt, makeFrame } from '../world/trough.js';
 import { createRider } from '../entities/rider.js';
 import { createCameraRig } from '../camera/cameraRig.js';
 import { createLobby } from '../ui/lobby.js';
+import { createProps } from '../entities/props.js';
+import { createScoring } from '../systems/scoring.js';
+import { createHud } from '../ui/hud.js';
+import { CONTROLS, setControlPreset } from '../data/controlPresets.js';
 
 // --- renderer / scene -------------------------------------------------------
 const app = document.getElementById('app');
@@ -65,20 +71,30 @@ sun.position.set(-30, 60, 20);
 scene.add(sun);
 
 // --- world ------------------------------------------------------------------
-const road = createRoad(scene);
+const trough = createTrough(scene);
+const props = createProps(scene);
+const scoring = createScoring();
+const hud = createHud();
 const rider = createRider(scene, camera);
 const rig = createCameraRig(camera);
 
 // --- run state --------------------------------------------------------------
 const state = {
-  s: 0, // distance down the road
-  u: 0, // lateral offset from centerline
+  s: 0, // distance down the trough
+  theta: 0, // angle around the cross-section; 0 = the floor, +-THETA_MAX = the lip
+  thetaVel: 0,
+  height: 0, // R*(1-cos theta) -- how far up the wall, drives speed exchange
   speed: START_SPEED,
   carve: 0,
   neutralTime: 0,
   tucking: 0,
   airActive: false,
   airT: 0,
+  airPower: 1,
+  airPoints: 0,
+  grind: null, // the prop being ground, if any
+  grindTime: 0,
+  grindPoints: 0,
 };
 
 let swingScale = 1;
@@ -89,18 +105,31 @@ let autoTrickTimer = 0;
 const _pos = new THREE.Vector3();
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
+const _up = new THREE.Vector3();
+const _fwd = new THREE.Vector3();
+const _frame = makeFrame();
 
 function reset() {
   state.s = 0;
-  state.u = 0;
+  state.theta = 0;
+  state.thetaVel = 0;
+  state.height = 0;
   state.speed = START_SPEED;
   state.carve = 0;
   state.neutralTime = 0;
   state.tucking = 0;
   state.airActive = false;
   state.airT = 0;
+  state.airPower = 1;
+  state.airPoints = 0;
+  state.grind = null;
+  state.grindTime = 0;
+  state.grindPoints = 0;
   autoTrickTimer = 0;
   rig.reset();
+  props.reset();
+  scoring.reset();
+  props.update(0);
 }
 
 // --- lobby ------------------------------------------------------------------
@@ -109,9 +138,10 @@ const lobby = createLobby(
     rider.setMode(config.mode);
     const lit = config.lighting === 'lit';
     rider.setLit(lit);
-    road.setLit(lit);
+    trough.setLit(lit);
     swingScale = config.swing === 'full' ? 1 : config.swing === 'half' ? 0.45 : 0;
     autoTrick = config.autotrick === 'on';
+    setControlPreset(config.controls);
     renderer.setPixelRatio(
       config.texres === '1024' ? Math.min(window.devicePixelRatio, 2)
         : config.texres === '512' ? 1 : 0.6,
@@ -125,8 +155,6 @@ const lobby = createLobby(
 );
 
 // --- HUD --------------------------------------------------------------------
-const speedReadout = document.getElementById('speed-readout');
-const perfReadout = document.getElementById('perf-readout');
 let fpsAccum = 0;
 let fpsFrames = 0;
 let fpsTimer = 0;
@@ -141,7 +169,16 @@ function frame() {
 
   if (running && !lobby.isOpen()) {
     const { carve, pop } = readInput();
-    state.carve = carve;
+
+    // SOFT tilt response (see constants.js). Two stages:
+    //   1. shape it   -- |carve|^CARVE_CURVE, sign kept. Flattens the region
+    //      around neutral so small involuntary stance wobble barely steers,
+    //      while a committed lean still reaches full authority.
+    //   2. ease it    -- exponential approach rather than applying instantly,
+    //      which also smooths everything downstream, since the camera roll,
+    //      the speed scrub and the body lean all read this same value.
+    const shaped = Math.sign(carve) * Math.pow(Math.abs(carve), CARVE_CURVE);
+    state.carve += (shaped - state.carve) * (1 - Math.exp(-CARVE_SMOOTH * dt));
 
     // Auto-trick keeps a hands-free loop running so the camera swing can be
     // watched repeatedly without holding an input.
@@ -150,20 +187,6 @@ function frame() {
       if (autoTrickTimer <= 0 && !state.airActive) {
         forcePop();
         autoTrickTimer = 3.2;
-      }
-    }
-
-    // --- trick window ---
-    if (pop && !state.airActive) {
-      state.airActive = true;
-      state.airT = 0;
-    }
-    if (state.airActive) {
-      state.airT += dt / AIR_DURATION;
-      if (state.airT >= 1) {
-        state.airActive = false;
-        state.airT = 0;
-        rig.onLand();
       }
     }
 
@@ -182,41 +205,100 @@ function frame() {
       GRADE_ACCEL
       + TUCK_BONUS * state.tucking
       - DRAG * state.speed * state.speed
-      - CARVE_SCRUB * absCarve * state.speed;
+      - CONTROLS.carveScrub * absCarve * state.speed;
     state.speed = Math.max(2, state.speed + accel * dt);
-
     state.s += state.speed * dt;
 
-    // --- lateral motion: turn authority drops as speed rises ---
-    const speedN = Math.min(1, state.speed / SPEED_REF);
-    const authority = 1 - TURN_LOSS * speedN;
-    state.u += state.carve * LATERAL_SPEED * authority * dt;
-    state.u = Math.max(-ROAD_HALF_WIDTH, Math.min(ROAD_HALF_WIDTH, state.u));
+    // --- theta: the pendulum around the trough (the core of the redesign) ---
+    // Carve is a TORQUE driving the rider up the wall; gravity pulls back toward
+    // the floor. Neutral input therefore settles in the trough, so the restful
+    // posture stays the fast one -- the design's central inversion, preserved.
+    //
+    // Suspended while grinding: you're committed to the rail's line.
+    if (!state.grind) {
+      const R = TROUGH_RADIUS;
+      // CUSHIONED LIP, not a dead stop. Slamming theta to THETA_MAX and zeroing
+      // the velocity is what read as "I just get blocked by the side". Instead
+      // the wall stiffens as you approach the rim -- a transition steepening
+      // toward vert, which is what a real half-pipe does -- so running out of
+      // wall feels like the wall pushing back rather than hitting a barrier.
+      const over = Math.abs(state.theta) - THETA_MAX * 0.82;
+      const lipPush = over > 0
+        ? -Math.sign(state.theta) * over * over * 46
+        : 0;
+      const thetaAcc =
+        state.carve * CONTROLS.carveTorque
+        - (THETA_GRAVITY / R) * Math.sin(state.theta)
+        - CONTROLS.damp * state.thetaVel
+        + lipPush;
+      state.thetaVel += thetaAcc * dt;
+      state.theta += state.thetaVel * dt;
+      // Absolute backstop, well past where the cushion has already taken over.
+      const hardLimit = THETA_MAX * 1.04;
+      if (state.theta > hardLimit) { state.theta = hardLimit; state.thetaVel = Math.min(0, state.thetaVel); }
+      if (state.theta < -hardLimit) { state.theta = -hardLimit; state.thetaVel = Math.max(0, state.thetaVel); }
+    }
 
-    road.update(state.s);
+    // --- height <-> speed exchange -------------------------------------
+    // Climbing the wall costs speed, dropping gives it back, exactly:
+    //   v^2 -= 2*g*dh
+    // Energy-based rather than a fudge, so pumping (dropping while already
+    // descending) emerges on its own and wall-surfing is genuinely slow.
+    const newHeight = heightAt(state.s, state.theta);
+    const dh = newHeight - state.height;
+    state.height = newHeight;
+    const v2 = Math.max(4, state.speed * state.speed - 2 * CONTROLS.heightExchange * dh);
+    state.speed = Math.sqrt(v2);
+
+    // --- score / wobble -------------------------------------------------
+    scoring.update(dt, state.speed, state.carve, !!state.grind);
+    if (scoring.state.lastEvent) {
+      const e = scoring.state.lastEvent;
+      hud.popup(e.text, e.points);
+      scoring.state.lastEvent = null;
+    }
+    if (scoring.state.dead) {
+      hud.banner('WIPEOUT');
+      reset();
+    }
+
+    trough.update(state.s, _pos);
   }
 
   // --- place the rider ---
-  toWorld(state.s, state.u, _pos);
+  toWorld(state.s, state.theta, _pos);
   if (state.airActive) {
-    _pos.y += Math.sin(state.airT * Math.PI) * AIR_HEIGHT;
+    // Air is along the SURFACE NORMAL now, not world-up -- so a launch off a
+    // rolled section throws you away from the wall you left, which is what
+    // makes a corkscrew readable rather than arbitrary.
+    surfaceUp(state.s, state.theta, _up);
+    _pos.addScaledVector(_up, Math.sin(state.airT * Math.PI) * AIR_HEIGHT);
   }
 
-  // Yaw from the local road tangent so the rider faces down-road through curves.
-  centerline(state.s - 1, _a);
-  centerline(state.s + 1, _b);
-  const yaw = Math.atan2(_a.x - _b.x, _a.z - _b.z);
+  // Forward is the trough's actual TANGENT, not a yaw-derived horizontal vector.
+  // Mixing a world-horizontal forward with a rolled surface normal gives a
+  // skewed basis -- which is exactly how the camera ended up outside the trough
+  // looking in.
+  const f = frameAt(state.s, _frame);
+  _fwd.copy(f.tangent);
+  surfaceUp(state.s, state.theta, _up);
 
   const view = {
     pos: _pos,
-    yaw,
     carve: state.carve,
     speed: state.speed,
     tucking: state.tucking,
     airActive: state.airActive,
     airT: state.airT,
     swing: swingScale,
+    theta: state.theta,
+    surfaceUp: _up,
+    forward: _fwd,
   };
+
+  // Camera shake ramps with the wobble meter, so the fail state is FELT coming
+  // for a couple of seconds rather than sprung (build doc §5.3's warning ramp).
+  view.shake = Math.max(0, (scoring.state.wobble - 55) / 45);
 
   rider.update(view, dt);
   rig.update(view, dt);
@@ -228,13 +310,18 @@ function frame() {
   fpsFrames++;
   fpsTimer += dt;
   if (fpsTimer > 0.25) {
-    const fps = fpsFrames / fpsAccum;
-    perfReadout.textContent = `${fps.toFixed(0)} fps · ${(state.speed).toFixed(0)} u/s`;
+    hud.fps(fpsFrames / fpsAccum, state.speed);
     fpsAccum = 0;
     fpsFrames = 0;
     fpsTimer = 0;
   }
-  speedReadout.textContent = `${Math.round(state.speed * 2.6)} km/h`;
+  hud.update(dt, {
+    speed: state.speed,
+    score: scoring.state.score,
+    wobble: scoring.state.wobble,
+    chain: scoring.state.chain,
+    chainTimer: scoring.state.chainTimer,
+  });
 }
 
 // Debug handle for the render lab. Lets a console (or an automated check) read
@@ -243,7 +330,7 @@ function frame() {
 window.__lab = { scene, camera, rider, state, THREE };
 
 // Road needs one build before the first frame so nothing pops in.
-road.update(0);
+trough.update(0, new THREE.Vector3());
 rider.ready.then(() => {
   if (!rider.modelAvailable) {
     document.querySelector('[data-mode="model"] small').textContent =

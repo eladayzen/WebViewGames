@@ -61,9 +61,19 @@
       <div id="hud">
         <div id="topLeft">
           <div id="mode-readout">MODE A — SPRITE</div>
-          <div id="speed-readout">0 km/h</div>
+          <div id="wobble-bar"><div id="wobble-fill"></div></div>
+          <div id="wobble-label">SPEED WOBBLE</div>
           <div id="perf-readout">-- fps</div>
         </div>
+
+        <div id="topRight">
+          <div id="score-readout">0</div>
+          <div id="speed-readout">0 km/h</div>
+          <div id="chain-readout"></div>
+        </div>
+
+        <div id="popups"></div>
+        <div id="trick-banner"></div>
         <div id="hint">
           lean / <b>&larr; &rarr;</b> carve &nbsp;·&nbsp; <b>&uarr;</b> or <b>space</b> trick &nbsp;·&nbsp; <b>L</b> lab
         </div>
@@ -93,6 +103,18 @@
                 <small>Loading…</small>
               </button>
             </div>
+          </div>
+
+          <div class="group">
+            <label>Control feel</label>
+            <select id="controls-select">
+              <option value="loose">Loose — fast, reaches the lip</option>
+              <option value="planted">Planted — heavier, settles mid-wall</option>
+            </select>
+            <p class="hintline">
+              Switchable mid-run — press <b>L</b> any time. Loose is livelier in
+              the middle; Planted never slams the rim.
+            </p>
           </div>
 
           <div class="group">

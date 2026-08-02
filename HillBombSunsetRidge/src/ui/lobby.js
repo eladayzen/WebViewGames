@@ -18,6 +18,7 @@ export function createLobby(onChange, onStart) {
   const startButton = document.getElementById('start-button');
   const labButton = document.getElementById('lab-button');
   const modeReadout = document.getElementById('mode-readout');
+  const controlsSelect = document.getElementById('controls-select');
 
   // URL overrides make the harness deterministically testable -- e.g.
   // ?mode=model&ride=1&autotrick=on drops straight into a hands-free mode-B run.
@@ -31,6 +32,7 @@ export function createLobby(onChange, onStart) {
     swing: q.get('swing') || 'full',
     texres: q.get('texres') || '1024',
     autotrick: q.get('autotrick') === 'on' ? 'on' : 'off',
+    controls: q.get('controls') === 'planted' ? 'planted' : 'loose',
   };
   // Keep the toggle cycles in sync with any URL overrides so the lobby's
   // displayed value matches what's actually running.
@@ -52,6 +54,14 @@ export function createLobby(onChange, onStart) {
       model: 'MODE B — 3D MODEL (STATIC)',
       rigged: 'MODE C — RIGGED + ANIMATED',
     }[config.mode] || config.mode;
+  }
+
+  if (controlsSelect) {
+    controlsSelect.value = config.controls;
+    controlsSelect.addEventListener('change', () => {
+      config.controls = controlsSelect.value;
+      onChange(config); // takes effect immediately, no restart
+    });
   }
 
   modeButtons.forEach((b) => {
