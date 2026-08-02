@@ -30,7 +30,7 @@ export const BOX_COLORS = [
     label: 'Pizza',
     hex: '#E8A23C',
     requiredCount: 8,
-    timerSec: 120,
+    timerSec: 156, // +30% for easier completion (2026-08-02), was 120
     bonusScore: 100,
     // Common box: magnet or shield, 2:1 (~66% magnet / ~33% shield).
     reward: { boosters: [['magnet', 2], ['shield', 1]], grantLife: false },
@@ -40,7 +40,7 @@ export const BOX_COLORS = [
     label: 'Blue',
     hex: '#3B8FE8',
     requiredCount: 8,
-    timerSec: 60,
+    timerSec: 78, // +30% for easier completion (2026-08-02), was 60
     bonusScore: 150,
     baseSpawnWeight: 0.05,
     activeSpawnWeight: 0.16,
@@ -52,7 +52,7 @@ export const BOX_COLORS = [
     label: 'Purple',
     hex: '#9B5DE5',
     requiredCount: 8,
-    timerSec: 60,
+    timerSec: 78, // +30% for easier completion (2026-08-02), was 60
     bonusScore: 220,
     baseSpawnWeight: 0.035,
     activeSpawnWeight: 0.13,
@@ -64,7 +64,7 @@ export const BOX_COLORS = [
     label: 'Red',
     hex: '#E5325B',
     requiredCount: 8,
-    timerSec: 60,
+    timerSec: 78, // +30% for easier completion (2026-08-02), was 60
     bonusScore: 320,
     baseSpawnWeight: 0.02,
     activeSpawnWeight: 0.10,
