@@ -269,18 +269,29 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Box-completion celebration popup (progression update) -- a quick
-   foreground pop when a box completes: box icon (bounces) + "<COLOR> BOX!"
-   (box color) + "+<bonus>" (gold), scales in, holds, floats up and fades.
-   Animation is restarted per completion in ui.js (remove class -> reflow ->
-   re-add). pointer-events:none so it never eats input. --- */
-#box-complete-popup {
+/* --- Box-completion celebrations (progression update) -- a quick foreground
+   pop when a box completes: box icon (bounces) + "<COLOR> BOX!" (box color) +
+   "+<bonus>" (gold) + the earned booster, scales in, holds, floats up, fades.
+   Up to 3 show AT ONCE so near-simultaneous completions don't cut each other
+   off (2026-08-02): the tray is a horizontal row centered on screen, and each
+   popup's left-to-right slot (`order`) is set in ui.js -- newest on the left
+   with two, newest in the center with three. Animation restarted per
+   completion in ui.js. pointer-events:none so it never eats input. --- */
+#box-complete-tray {
   position: absolute;
-  top: 34%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(1);
+  top: 22%;
+  left: 0;
+  right: 0;
   z-index: 30;
   pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 28px;
+}
+
+.box-complete-popup {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -288,9 +299,9 @@ html, body {
 }
 
 /* Celebratory shockwave ring behind the popup -- expands + fades once on each
-   completion (bigger/"looks better" pass 2026-08-02). z-index:-1 keeps it
-   behind the icon/text within the popup's own stacking context. */
-#box-complete-popup::before {
+   completion. z-index:-1 keeps it behind the icon/text within the popup's own
+   stacking context. */
+.box-complete-popup::before {
   content: '';
   position: absolute;
   top: 64px;
@@ -315,7 +326,7 @@ html, body {
 }
 
 /* Soft persistent color halo behind the icon, fades in/out over the hold. */
-#box-complete-popup::after {
+.box-complete-popup::after {
   content: '';
   position: absolute;
   top: 64px;
@@ -340,7 +351,7 @@ html, body {
   100% { opacity: 0; }
 }
 
-#box-complete-popup.hidden {
+.box-complete-popup.hidden {
   display: none;
 }
 
@@ -351,12 +362,14 @@ html, body {
   animation: bcp-pop 2.9s ease-out forwards;
 }
 
+/* No -50%/-50% centering anymore -- the tray (flexbox) positions each popup;
+   this just scales in and floats up in place (translateY, % of own height). */
 @keyframes bcp-pop {
-  0%   { transform: translate(-50%, -50%) scale(0.3);  opacity: 0; }
-  12%  { transform: translate(-50%, -50%) scale(1.18); opacity: 1; } /* ~0.35s pop-in overshoot */
-  19%  { transform: translate(-50%, -50%) scale(1);    opacity: 1; } /* ~0.55s settle */
-  83%  { transform: translate(-50%, -55%) scale(1);    opacity: 1; } /* ~2.4s -- long hold */
-  100% { transform: translate(-50%, -95%) scale(0.95); opacity: 0; } /* 2.9s float up + fade */
+  0%   { transform: translateY(0)    scale(0.3);  opacity: 0; }
+  12%  { transform: translateY(0)    scale(1.18); opacity: 1; } /* ~0.35s pop-in overshoot */
+  19%  { transform: translateY(0)    scale(1);    opacity: 1; } /* ~0.55s settle */
+  83%  { transform: translateY(-6%)  scale(1);    opacity: 1; } /* ~2.4s -- long hold */
+  100% { transform: translateY(-40%) scale(0.95); opacity: 0; } /* 2.9s float up + fade */
 }
 
 .bcp-icon {

@@ -110,23 +110,12 @@
 
         <div id="paused-badge" class="hidden">PAUSED</div>
 
-        <!-- Box-completion celebration (progression update) -- a quick
-             foreground pop: box icon + "<COLOR> BOX!" + the bonus points, then
-             a BIG reveal of the booster you earned (+ "+1 LIFE" for the red
-             box). Populated + animation-restarted in ui.js on each completion. -->
-        <div id="box-complete-popup" class="hidden">
-          <img id="bcp-icon" class="bcp-icon" src="" alt="" />
-          <div class="bcp-text">
-            <div id="bcp-title" class="bcp-title">PIZZA BOX!</div>
-            <div id="bcp-bonus" class="bcp-bonus">+0</div>
-          </div>
-          <!-- Earned-booster reveal: large icon + label, shown below the bonus. -->
-          <div id="bcp-reward" class="bcp-reward hidden">
-            <img id="bcp-reward-icon" class="bcp-reward-icon" src="" alt="" />
-            <span id="bcp-reward-label" class="bcp-reward-label"></span>
-          </div>
-          <div id="bcp-life" class="bcp-life hidden">🐢 +1 LIFE</div>
-        </div>
+        <!-- Box-completion celebrations. Each: box icon + "<COLOR> BOX!" + the
+             bonus, then a BIG reveal of the booster you earned (+ "+1 LIFE" for
+             the red box). Up to 3 can show AT ONCE, side by side and centered as
+             a group, so two boxes finishing close together don't cut each other
+             off. The popup instances + layout are built/managed in ui.js. -->
+        <div id="box-complete-tray"></div>
       </div>
 
       <div id="gameover-overlay" class="overlay hidden">

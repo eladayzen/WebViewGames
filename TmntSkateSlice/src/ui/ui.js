@@ -44,6 +44,13 @@ const BOOSTER_INFO = {
   magnet: { url: new URL('../assets/powerup_magnet.png', import.meta.url).href, label: 'MAGNET', hex: '#F84FA0' },
   wave: { url: new URL('../assets/powerup_wave.png', import.meta.url).href, label: 'BLOW UP', hex: '#FF8A2E' },
 };
+
+// Up to this many box-completion celebrations can show at once so two boxes
+// finishing close together don't cut each other off (2026-08-02). Must match
+// the bcp-pop total duration in style.css so a slot frees exactly when its
+// popup finishes fading.
+const MAX_BOX_POPUPS = 3;
+const BCP_ANIM_MS = 2900;
 const BUFF_CONFIGS = [
   { key: 'ooze', timerField: 'oozeBuffTimer', maxSec: OOZE_BUFF_DURATION_SEC, hex: '#1FC8D8' },
   { key: 'shield', timerField: 'shieldBuffTimer', maxSec: SHIELD_BUFF_DURATION_SEC, hex: '#4CE05A' },
@@ -165,17 +172,67 @@ export function createUI() {
     el.boxChips[c.id] = { chip, fillImg, arc, count };
   }
 
-  // Box-completion celebration popup (see showBoxComplete). Icon swaps to the
-  // completed set's tinted box art per completion; default to the regular box.
-  el.boxCompletePopup = document.getElementById('box-complete-popup');
-  el.bcpTitle = document.getElementById('bcp-title');
-  el.bcpBonus = document.getElementById('bcp-bonus');
-  el.bcpIcon = document.getElementById('bcp-icon');
-  el.bcpIcon.src = BOX_ICON_URLS.regular;
-  el.bcpReward = document.getElementById('bcp-reward');
-  el.bcpRewardIcon = document.getElementById('bcp-reward-icon');
-  el.bcpRewardLabel = document.getElementById('bcp-reward-label');
-  el.bcpLife = document.getElementById('bcp-life');
+  // Box-completion celebrations (see showBoxComplete). A small pool of popup
+  // instances lives in the centered tray so up to MAX_BOX_POPUPS can show at
+  // once (near-simultaneous completions mustn't cut each other off). Each has
+  // the full structure: box icon + title + bonus + big earned-booster reveal +
+  // "+1 LIFE". activeBoxPopups tracks the live ones newest-first.
+  el.bcTray = document.getElementById('box-complete-tray');
+  el.bcPopups = [];
+  for (let i = 0; i < MAX_BOX_POPUPS; i++) {
+    const root = document.createElement('div');
+    root.className = 'box-complete-popup hidden';
+
+    const icon = document.createElement('img');
+    icon.className = 'bcp-icon';
+    icon.src = BOX_ICON_URLS.regular;
+    icon.alt = '';
+
+    const textWrap = document.createElement('div');
+    textWrap.className = 'bcp-text';
+    const title = document.createElement('div');
+    title.className = 'bcp-title';
+    const bonus = document.createElement('div');
+    bonus.className = 'bcp-bonus';
+    textWrap.appendChild(title);
+    textWrap.appendChild(bonus);
+
+    const reward = document.createElement('div');
+    reward.className = 'bcp-reward hidden';
+    const rewardIcon = document.createElement('img');
+    rewardIcon.className = 'bcp-reward-icon';
+    rewardIcon.alt = '';
+    const rewardLabel = document.createElement('span');
+    rewardLabel.className = 'bcp-reward-label';
+    reward.appendChild(rewardIcon);
+    reward.appendChild(rewardLabel);
+
+    const life = document.createElement('div');
+    life.className = 'bcp-life hidden';
+    life.textContent = '🐢 +1 LIFE';
+
+    root.appendChild(icon);
+    root.appendChild(textWrap);
+    root.appendChild(reward);
+    root.appendChild(life);
+    el.bcTray.appendChild(root);
+
+    el.bcPopups.push({ root, icon, title, bonus, reward, rewardIcon, rewardLabel, life, active: false, hideTimer: null });
+  }
+  let activeBoxPopups = []; // live popups, newest first
+
+  // Assign each live popup its left-to-right slot via flex `order`: with 1 it's
+  // centered; with 2 the newest is on the LEFT; with 3 the newest is in the
+  // CENTER, and the two older ones keep their outer sides so none jump sideways
+  // when a 3rd appears.
+  function layoutBoxPopups() {
+    const n = activeBoxPopups.length;
+    activeBoxPopups.forEach((p, recency) => {
+      // recency 0 = newest. order runs left(0) -> right(n-1).
+      const order = n >= 3 ? [1, 0, 2][recency] : recency;
+      p.root.style.order = String(order);
+    });
+  }
 
   // Last-written values, for the dirty-checks below.
   let lastScore = null;
@@ -185,32 +242,54 @@ export function createUI() {
   const lastBuffKeys = {}; // per-buff last-written key
 
   return {
-    // Quick foreground celebration when a box completes: color-coded title +
-    // bonus points + a bouncing box icon, then a BIG reveal of the booster you
-    // earned (+ "+1 LIFE" for the red box). Restarts the CSS animation each
-    // call (remove class -> reflow -> re-add) so rapid completions replay.
+    // Foreground celebration when a box completes: color-coded title + bonus +
+    // a bouncing box icon, then a BIG reveal of the booster you earned (+ "+1
+    // LIFE" for the red box). Up to MAX_BOX_POPUPS play at once, side by side
+    // and centered, so near-simultaneous completions don't cut each other off.
     showBoxComplete(label, bonus, hex, id, reward) {
-      el.boxCompletePopup.style.setProperty('--bcp-color', hex);
-      el.bcpIcon.src = BOX_ICON_URLS[id] || BOX_ICON_URLS.regular;
-      el.bcpTitle.textContent = `${label.toUpperCase()} BOX!`;
-      el.bcpBonus.textContent = `+${bonus}`;
+      // A free pool slot, or recycle the OLDEST live one if all are busy -- a
+      // 4th completion still shows (replacing the oldest), never the newest.
+      let slot = el.bcPopups.find((p) => !p.active);
+      if (!slot) {
+        slot = activeBoxPopups[activeBoxPopups.length - 1];
+        activeBoxPopups = activeBoxPopups.filter((p) => p !== slot);
+        if (slot.hideTimer) clearTimeout(slot.hideTimer);
+      }
 
-      // Earned-booster reveal (big, below the bonus). reward = { effect, grantLife }.
+      // Populate.
+      slot.root.style.setProperty('--bcp-color', hex);
+      slot.icon.src = BOX_ICON_URLS[id] || BOX_ICON_URLS.regular;
+      slot.title.textContent = `${label.toUpperCase()} BOX!`;
+      slot.bonus.textContent = `+${bonus}`;
       const info = reward && reward.effect ? BOOSTER_INFO[reward.effect] : null;
       if (info) {
-        el.bcpReward.style.setProperty('--bcp-reward-color', info.hex);
-        el.bcpRewardIcon.src = info.url;
-        el.bcpRewardLabel.textContent = info.label;
-        el.bcpReward.classList.remove('hidden');
+        slot.reward.style.setProperty('--bcp-reward-color', info.hex);
+        slot.rewardIcon.src = info.url;
+        slot.rewardLabel.textContent = info.label;
+        slot.reward.classList.remove('hidden');
       } else {
-        el.bcpReward.classList.add('hidden');
+        slot.reward.classList.add('hidden');
       }
-      el.bcpLife.classList.toggle('hidden', !(reward && reward.grantLife));
+      slot.life.classList.toggle('hidden', !(reward && reward.grantLife));
 
-      el.boxCompletePopup.classList.remove('hidden');
-      el.boxCompletePopup.classList.remove('bcp-animate');
-      void el.boxCompletePopup.offsetWidth; // force reflow to restart the animation
-      el.boxCompletePopup.classList.add('bcp-animate');
+      // Mark live (newest first) + restart its animation.
+      slot.active = true;
+      activeBoxPopups.unshift(slot);
+      slot.root.classList.remove('hidden');
+      slot.root.classList.remove('bcp-animate');
+      void slot.root.offsetWidth; // force reflow to restart the animation
+      slot.root.classList.add('bcp-animate');
+
+      slot.hideTimer = setTimeout(() => {
+        slot.active = false;
+        slot.hideTimer = null;
+        slot.root.classList.add('hidden');
+        slot.root.classList.remove('bcp-animate');
+        activeBoxPopups = activeBoxPopups.filter((p) => p !== slot);
+        layoutBoxPopups();
+      }, BCP_ANIM_MS);
+
+      layoutBoxPopups();
     },
 
     setBuffs(player) {
