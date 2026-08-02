@@ -99,8 +99,29 @@
              #points-value is the flight target for ui/pointsFly.js's labels,
              so it must stay a distinct element that can be measured. -->
         <div id="points-hud">
-          <div id="points-value">0</div>
-          <div id="points-label">POINTS</div>
+          <div id="points-row">
+            <div id="points-value">0</div>
+            <div id="points-target">/ 300</div>
+          </div>
+          <!-- XP-style bar toward the next tier. Tier name sits INSIDE the bar
+               rather than on its own line: the numbers above already say how
+               far there is to go, so the bar's own space is better spent
+               naming the thing being worked toward than repeating a figure.
+               #tier-flash is a separate full-bar overlay purely for the
+               tier-up sweep, so the celebration can't disturb the fill. -->
+          <div id="tier-bar">
+            <div id="tier-fill"></div>
+            <div id="tier-flash"></div>
+            <div id="tier-label">TIER 1</div>
+          </div>
+        </div>
+        <!-- Tier-up announcement. Placeholder for the environment change these
+             tiers are meant to trigger (data/progression.js) -- for now it is
+             the whole reward, so it deliberately owns the centre of the screen
+             for a moment. -->
+        <div id="tier-up" class="hidden">
+          <div id="tier-up-kicker">TIER COMPLETE</div>
+          <div id="tier-up-name">DOWNTOWN</div>
         </div>
 
         <div id="topLeft">

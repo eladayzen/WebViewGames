@@ -46,6 +46,7 @@ import {
   initPointsFly, spawnPointsFly, updatePointsFly, clearPointsFly,
   refreshPointsFlyTarget,
 } from '../ui/pointsFly.js';
+import { progressAt } from '../systems/progression.js';
 import { speedAt, distanceTraveledBy } from '../systems/speed.js';
 import {
   createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
@@ -290,6 +291,9 @@ function boot() {
     attackSequenceIndex = 0;
     resetScoreState(score);
     clearPointsFly();
+    // Before updatePoints, so the bar snaps to empty without animating
+    // backwards from wherever the previous run ended.
+    hud.resetProgressUI();
     hud.updatePoints(score.displayed);
     hud.updateLives(livesState.lives);
   }
@@ -381,7 +385,19 @@ function boot() {
     stage, document.getElementById('hud'), document.getElementById('points-value'),
     // A label landing is the ONLY thing that moves the visible number, and it
     // punches the counter as it lands. See systems/scoring.js.
-    (points) => { creditDisplayed(score, points); hud.updatePoints(score.displayed, true); },
+    //
+    // Tier-up is detected HERE, off the displayed total, not off the awarded
+    // one -- so the celebration fires at the moment the bar actually fills
+    // rather than a second earlier when the points were technically earned.
+    (points) => {
+      const before = progressAt(score.displayed).tier;
+      creditDisplayed(score, points);
+      hud.updatePoints(score.displayed, true);
+      const after = progressAt(score.displayed).tier;
+      // Loops rather than compares: a single big award can cross more than one
+      // threshold, and the player should see the tier they actually landed in.
+      if (after > before) hud.showTierUp(after);
+    },
   );
 
   // Heart tray built once from the CURRENT cap -- not from

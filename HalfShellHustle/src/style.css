@@ -103,29 +103,156 @@ html, body {
   transform-origin: 50% 0%;
 }
 
+/* Current score and the tier target read as one unit -- baseline-aligned so
+   "180 / 300" scans as a fraction rather than as two separate readouts. The
+   caption that used to sit here is gone: the bar below now names the tier, so
+   the label would have been a third thing saying what the other two already
+   do. */
+#points-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8vmin;
+}
+
 #points-value {
   font-weight: 900;
-  font-size: 9.5vmin;
+  font-size: 8.6vmin;
   letter-spacing: 1px;
   color: #ffe066;
-  -webkit-text-stroke: 0.85vmin #2a1400;
+  -webkit-text-stroke: 0.8vmin #2a1400;
   paint-order: stroke fill;
   text-shadow: 0 0.5vmin 0 rgba(0, 0, 0, 0.45), 0 0 2.4vmin rgba(255, 200, 60, 0.55);
   font-variant-numeric: tabular-nums;
 }
 
-/* Small caption under the number -- without it a bare figure at this size is
-   ambiguous (distance? coins? combo?), and the whole reason the three old
-   counters merged was to stop the player having to work that out. */
-#points-label {
-  margin-top: 0.5vmin;
+/* Deliberately much quieter than the score: this is the goalpost, not the
+   achievement. Same treatment keeps them reading as one fraction. */
+#points-target {
   font-weight: 800;
-  font-size: 1.9vmin;
-  letter-spacing: 0.45vmin;
+  font-size: 3.2vmin;
   color: #ffd98a;
-  opacity: 0.75;
-  -webkit-text-stroke: 0.28vmin #2a1400;
+  opacity: 0.72;
+  -webkit-text-stroke: 0.34vmin #2a1400;
   paint-order: stroke fill;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Tier progress bar (XP style) ---
+   Width is a fixed vmin rather than a percentage of the screen so the bar
+   keeps the same proportion to the number above it at any aspect. */
+#tier-bar {
+  position: relative;
+  margin-top: 0.9vmin;
+  width: 34vmin;
+  height: 3.1vmin;
+  border-radius: 999px;
+  background: rgba(16, 8, 26, 0.72);
+  box-shadow: inset 0 0 0 0.35vmin rgba(255, 224, 140, 0.55),
+              0 0.3vmin 0.8vmin rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+/* Width is written from JS. The transition is what turns a landing label into
+   a visible SURGE along the bar instead of a jump -- tuned just longer than
+   the counter punch (0.26s) so the bar is still moving as the number settles. */
+#tier-fill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffb43c 0%, #ffe066 55%, #fff6c8 100%);
+  box-shadow: 0 0 1.6vmin rgba(255, 200, 70, 0.75);
+  transition: width 0.32s cubic-bezier(0.22, 0.9, 0.3, 1);
+}
+
+#tier-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 1.75vmin;
+  letter-spacing: 0.4vmin;
+  color: #fff8e0;
+  -webkit-text-stroke: 0.3vmin #2a1400;
+  paint-order: stroke fill;
+}
+
+/* Sweeps across on tier-up. Separate from #tier-fill so the celebration can
+   never fight the fill's own width transition. */
+#tier-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #fffdf2;
+  opacity: 0;
+}
+
+.tier-bar-celebrate #tier-flash {
+  animation: tier-flash 0.6s ease-out;
+}
+
+@keyframes tier-flash {
+  0%   { opacity: 0.95; }
+  100% { opacity: 0; }
+}
+
+/* --- Tier-up announcement ---
+   Placeholder for the environment change these tiers exist to trigger, so for
+   now it carries the whole reward on its own. pointer-events none, and it sits
+   under the game-over overlay (z-index 20) so it can never cover a retry. */
+#tier-up {
+  position: absolute;
+  /* 34% -> 21%. At 34% this card sat exactly on the horizon line, which is
+     where obstacles and enemies first become visible -- a 2-second celebration
+     there can hide an approaching hazard and cost the player a life for
+     doing well. Raised into the empty sky band between the points HUD and the
+     horizon, where it covers nothing that can kill you. */
+  top: 21%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 16;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6vmin;
+}
+
+#tier-up.hidden {
+  display: none;
+}
+
+#tier-up-kicker {
+  font-weight: 800;
+  font-size: 2.4vmin;
+  letter-spacing: 0.7vmin;
+  color: #ffd98a;
+  -webkit-text-stroke: 0.34vmin #2a1400;
+  paint-order: stroke fill;
+}
+
+#tier-up-name {
+  font-weight: 900;
+  font-size: 6.2vmin;
+  letter-spacing: 0.3vmin;
+  color: #fff6c8;
+  -webkit-text-stroke: 0.85vmin #2a1400;
+  paint-order: stroke fill;
+  text-shadow: 0 0 3vmin rgba(255, 200, 70, 0.9);
+}
+
+.tier-up-play {
+  animation: tier-up-pop 2.1s ease-out forwards;
+}
+
+@keyframes tier-up-pop {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+  10%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+  18%  { transform: translate(-50%, -50%) scale(1); }
+  72%  { opacity: 1; transform: translate(-50%, -55%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -70%) scale(0.95); }
 }
 
 /* Fires when a flying label LANDS, never on the underlying tally changing --
@@ -161,9 +288,14 @@ html, body {
 }
 
 /* An enemy kill is worth 15x a common coin, so it reads hotter and bigger
-   before the number itself is even parsed. */
+   before the number itself is even parsed. 4.6 -> 5.6vmin on direct feedback
+   ("I want it to feel more significant when I kill an enemy").
+   HEADROOM IS DELIBERATE: enemies worth 30 and 50 are planned, and they should
+   be able to out-shout this one. So this is sized to feel weighty rather than
+   maximal -- treat ~7vmin as the ceiling reserved for those, and give them
+   their own variant rather than pushing this number up again. */
 .points-fly--enemy {
-  font-size: 4.6vmin;
+  font-size: 5.6vmin;
   color: #fff2a8;
   -webkit-text-stroke: 0.6vmin #6a1f00;
   text-shadow: 0 0 2vmin rgba(255, 170, 60, 0.9);
