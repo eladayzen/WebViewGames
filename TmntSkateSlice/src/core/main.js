@@ -360,6 +360,11 @@ async function boot() {
         } else if (gs.current === 'gameover') {
           ui.setCountdown(0);
           ui.showGameOver(scoring.score, scoring.bestCombo);
+          // Keep ticking VFX so the death screen-shake DECAYS to 0 and the
+          // explosion particles settle, instead of freezing with shakeTimer > 0
+          // -- which left renderFrame's getShakeOffsetFrac jittering the scene
+          // forever behind the game-over overlay (fix 2026-08-02).
+          updateJuice(juice, dt);
         }
       }
 
