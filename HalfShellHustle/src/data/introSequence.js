@@ -104,13 +104,30 @@ export const INTRO_SEED_ENABLED = true;
 // spawner's first live arrival later (obstacles from ~10.3s to ~14.7s), so
 // the seeds have to cover more of the opening than they used to or a hole
 // opens up right where the seeded intro hands off.
-export const INTRO_SEED_OBSTACLE_ARRIVALS = [4.2, 6.0, 7.8, 9.6, 11.4, 12.9];
-// A few more than the pure interval would give -- direct feedback asked for
-// "a bit more enemies in that first part." The 3-wide wall at ~2.6s lands
-// before all of these.
-// 12.2 rather than 12.5: against the 12.9 obstacle above, 12.5 would be only
-// 0.4s apart -- inside the 0.6s rule.
-export const INTRO_SEED_ENEMY_ARRIVALS = [3.0, 5.0, 8.6, 10.6, 12.2];
+//
+// THINNED 6 -> 3, and the first one pushed from 4.2s to 5.2s. Direct feedback:
+// the opening was too punishing ("you can find yourself losing lives really
+// fast"). This list IS the player's first ~13 seconds -- the live spawner's
+// very first obstacle doesn't arrive until ~14.7s -- so no amount of easing on
+// the live spawner could have fixed the opening on its own; these are placed by
+// hand and answer to nothing but this comment.
+//
+// The ~3.2s spacing here is deliberately matched to what
+// data/spawnConfig.js's EASE_IN_* dial produces at these arrival times
+// (~3.1-2.9s), so the seeded opening and the live pipeline hand off at the same
+// density instead of stepping. If you retune that dial hard, re-space these.
+export const INTRO_SEED_OBSTACLE_ARRIVALS = [5.2, 8.4, 11.5];
+// NOT thinned, unlike the obstacles above -- deliberately. Enemies are
+// rewarding to hit, so they're what keeps the (now much sparser) opening
+// interesting rather than empty. Same reasoning as the ease-in dial applying to
+// obstacles only. The 3-wide wall at ~2.6s still lands before all of these.
+//
+// Re-spaced only to keep every cross-pair with the obstacle list above at least
+// MIN_ENEMY_OBSTACLE_GAP_SEC (0.6s) apart -- that rule is enforced at SPAWN
+// time for live spawns, which can't help here (every seed spawns at t=0), so it
+// has to be checked by hand. Closest cross-pair now is 12.8 against the 11.5
+// obstacle: 1.3s. Comfortable.
+export const INTRO_SEED_ENEMY_ARRIVALS = [3.0, 6.6, 10.0, 12.8];
 // One platform on the way in from the very first frame -- direct feedback:
 // platforms were barely showing up at all early (one arrival at ~10s, then
 // nothing until ~22s). core/main.js passes an explicit lane for each entry,

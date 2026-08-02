@@ -36,7 +36,11 @@ export const STAGES = [
     fallSpeedFrac: 0.16,
     spawnIntervalSec: 1.4,
     bombChance: 0.20,
-    powerUpChance: 0.12,
+    // Highest power-up rate of any stage ON PURPOSE (raised 0.12 -> 0.16,
+    // 2026-08-02): the early game should hand out the most help (now
+    // shield-dominated -- see powerUps.js) so a new player survives the
+    // learning curve; later stages lower this as skill ramps up.
+    powerUpChance: 0.16,
     // pizzaChance is implicit: 1 - bombChance - powerUpChance - box-variant weights
     advanceScore: 150,
     advanceTimeSec: 45,

@@ -270,7 +270,7 @@ html, body {
    re-add). pointer-events:none so it never eats input. --- */
 #box-complete-popup {
   position: absolute;
-  top: 32%;
+  top: 34%;
   left: 50%;
   transform: translate(-50%, -50%) scale(1);
   z-index: 30;
@@ -278,30 +278,86 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+}
+
+/* Celebratory shockwave ring behind the popup -- expands + fades once on each
+   completion (bigger/"looks better" pass 2026-08-02). z-index:-1 keeps it
+   behind the icon/text within the popup's own stacking context. */
+#box-complete-popup::before {
+  content: '';
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  width: 190px;
+  height: 190px;
+  margin: -95px 0 0 -95px;
+  border-radius: 50%;
+  border: 6px solid var(--bcp-color, #fff);
+  opacity: 0;
+  z-index: -1;
+}
+
+.bcp-animate::before {
+  animation: bcp-shockwave 0.9s ease-out;
+}
+
+@keyframes bcp-shockwave {
+  0%   { transform: scale(0.35); opacity: 0.85; }
+  70%  { opacity: 0.28; }
+  100% { transform: scale(2.5);  opacity: 0; }
+}
+
+/* Soft persistent color halo behind the icon, fades in/out over the hold. */
+#box-complete-popup::after {
+  content: '';
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  width: 280px;
+  height: 280px;
+  margin: -140px 0 0 -140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--bcp-color, #fff) 0%, transparent 62%);
+  opacity: 0;
+  z-index: -1;
+}
+
+.bcp-animate::after {
+  animation: bcp-halo 2.9s ease-out;
+}
+
+@keyframes bcp-halo {
+  0%   { opacity: 0; }
+  12%  { opacity: 0.5; }
+  83%  { opacity: 0.34; }
+  100% { opacity: 0; }
 }
 
 #box-complete-popup.hidden {
   display: none;
 }
 
+/* Total 2.9s (was 1.4s) -- the +1.5s is spent in the HOLD (12%->83%), NOT by
+   slowing the pop-in/float-out, so the celebration lingers on screen longer
+   without feeling like slow motion (2026-08-02). */
 .bcp-animate {
-  animation: bcp-pop 1.4s ease-out forwards;
+  animation: bcp-pop 2.9s ease-out forwards;
 }
 
 @keyframes bcp-pop {
   0%   { transform: translate(-50%, -50%) scale(0.3);  opacity: 0; }
-  12%  { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
-  22%  { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
-  65%  { transform: translate(-50%, -55%) scale(1);    opacity: 1; }
-  100% { transform: translate(-50%, -95%) scale(0.95); opacity: 0; }
+  12%  { transform: translate(-50%, -50%) scale(1.18); opacity: 1; } /* ~0.35s pop-in overshoot */
+  19%  { transform: translate(-50%, -50%) scale(1);    opacity: 1; } /* ~0.55s settle */
+  83%  { transform: translate(-50%, -55%) scale(1);    opacity: 1; } /* ~2.4s -- long hold */
+  100% { transform: translate(-50%, -95%) scale(0.95); opacity: 0; } /* 2.9s float up + fade */
 }
 
 .bcp-icon {
-  width: 68px;
-  height: 68px;
+  width: 112px;
+  height: 112px;
   object-fit: contain;
-  filter: drop-shadow(0 0 10px var(--bcp-color, #fff));
+  filter: drop-shadow(0 0 16px var(--bcp-color, #fff)) drop-shadow(0 5px 9px rgba(0, 0, 0, 0.5));
 }
 
 .bcp-animate .bcp-icon {
@@ -319,27 +375,27 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
 }
 
 .bcp-title {
   font-weight: 900;
-  font-size: 30px;
-  letter-spacing: 1px;
+  font-size: 46px;
+  letter-spacing: 1.5px;
   color: var(--bcp-color, #fff);
-  -webkit-text-stroke: 3px #2a1a00;
+  -webkit-text-stroke: 4px #2a1a00;
   paint-order: stroke fill;
-  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.4), 0 0 22px var(--bcp-color, #fff);
   white-space: nowrap;
 }
 
 .bcp-bonus {
   font-weight: 900;
-  font-size: 34px;
+  font-size: 56px;
   color: #ffe066;
-  -webkit-text-stroke: 3px #4a2a00;
+  -webkit-text-stroke: 4px #4a2a00;
   paint-order: stroke fill;
-  text-shadow: 0 0 14px rgba(255, 210, 80, 0.8);
+  text-shadow: 0 0 18px rgba(255, 210, 80, 0.9);
   font-variant-numeric: tabular-nums;
 }
 

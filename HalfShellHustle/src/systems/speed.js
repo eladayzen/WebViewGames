@@ -62,3 +62,21 @@ export function speedAfterTraveling(distance) {
   if (RAMP_A === 0 || distance >= RAMP_DISTANCE) return SPEED_MAX;
   return Math.min(Math.sqrt(SPEED_START * SPEED_START + 4 * RAMP_A * distance), SPEED_MAX);
 }
+
+// Inverse of distanceTraveledBy: how many seconds into the run the world will
+// have scrolled `distance` units. Solving the same quadratic falls out of the
+// function above almost for free -- t = (v(D) - v0) / 2a -- so this reuses that
+// root rather than repeating the sqrt, and the two can never disagree.
+//
+// systems/difficulty.js needs this to convert "spawning something now" into
+// "the player meets it at time X". Those are ~13 seconds apart at the start of
+// a run, which is the whole reason it exists: an easing curve keyed on spawn
+// time would already be over by the time any of it reached the player.
+export function timeToTravel(distance) {
+  if (distance <= 0) return 0;
+  if (RAMP_A === 0) return distance / SPEED_MAX;
+  if (distance >= RAMP_DISTANCE) {
+    return SPEED_RAMP_DURATION_SEC + (distance - RAMP_DISTANCE) / SPEED_MAX;
+  }
+  return (speedAfterTraveling(distance) - SPEED_START) / (2 * RAMP_A);
+}

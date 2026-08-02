@@ -12,6 +12,37 @@
 // that uses them) -- this file is specifically the "how often does X
 // happen" dial set, not a catch-all.
 
+// ========================================================================
+// THE "HOW EASY IS THE START" DIAL (systems/difficulty.js)
+// ========================================================================
+// Direct feedback: "the game starts really hard on the start, so you have to
+// move a lot of things, and you can find yourself losing lives really fast...
+// We need to create some kind of value to control how easy it is on the start.
+// I'm NOT talking about speed, I'm talking about placement of game objects."
+//
+// So this is a spacing ramp, entirely independent of the speed ramp in
+// data/constants.js. Obstacles start further apart and close up to their
+// normal interval over EASE_IN_DURATION_SEC. Two dials, and they are the first
+// thing to reach for if the opening still feels harsh (or gets boring):
+//
+//   MULTIPLIER 1.0 = off (obstacles at their authored rate from frame one)
+//   MULTIPLIER 2.0 = the opening has HALF as many obstacles per second
+//   DURATION       = how long that takes to wear off, in seconds of PLAYER
+//                    experience (not spawn time -- see systems/difficulty.js)
+//
+// APPLIES TO OBSTACLES ONLY, on purpose. They're the only thing that costs a
+// life now (kill barriers are off, see PLATFORM_KILL_TYPE_ENABLED below).
+// Enemies are rewarding to hit, coins are pure upside, platforms are terrain --
+// thinning those out would make the opening EMPTY rather than kind, which is
+// the opposite of the ask ("we need difficulty but we need interest as well").
+// Hazards get sparser; everything worth chasing stays exactly as dense.
+//
+// The hand-authored opening in data/introSequence.js is spaced to match this
+// curve -- if you change these numbers a lot, re-check that its seeded arrival
+// times still line up, since those are placed by hand rather than by this ramp.
+export const EASE_IN_DURATION_SEC = 35;
+export const EASE_IN_HAZARD_SPACING_MULTIPLIER = 2.1;
+
 // --- Obstacles (entities/obstacles.js) ---
 export const OBSTACLE_FIRST_SPAWN_DELAY_SEC = 3; // grace period to read the scene before the first obstacle
 // Main obstacle-density/difficulty knob (both medium AND low spawn off this
@@ -19,6 +50,10 @@ export const OBSTACLE_FIRST_SPAWN_DELAY_SEC = 3; // grace period to read the sce
 // between them, not the overall rate). Still subject to
 // MIN_ENEMY_OBSTACLE_GAP_SEC, so the effective average interval is a bit
 // higher than this in practice.
+//
+// This is now the SETTLED rate, not the whole story: the ease-in dial at the
+// top of this file stretches it for the opening stretch of a run (x2.1 at the
+// very start, i.e. ~3.4s apart, easing to this value by 35s in).
 export const OBSTACLE_SPAWN_INTERVAL_SEC = 1.6;
 
 // DISABLED until further notice (direct feedback: "remove it completely,
@@ -248,3 +283,47 @@ export const COIN_PULSE_PHASE_STEP = 0.16; // seconds of phase offset per coin i
 // No equivalent constraint against ENEMIES -- bumping into one while
 // collecting coins is also a reward, so that overlap is welcome.
 export const COIN_OBSTACLE_CLEARANCE = 11; // world units, each side of the cluster span
+
+// --- Ability pickups (entities/pickups.js, data/pickupTypes.js) ---
+// Direct feedback: two pickups -- a coin magnet, and an extra life that is
+// "very, very... not common."
+//
+// ONE ATTEMPT every PICKUP_SPAWN_INTERVAL_SEC, which then rolls for what (if
+// anything) it produces. Structuring it as attempt-then-roll rather than two
+// independent spawners is what keeps the two from ever landing on top of each
+// other, and makes the rarity read directly off these numbers.
+//
+// Roll order per attempt: LIFE first (it's the rare prize and shouldn't lose
+// its slot to the common one), then MAGNET, then nothing.
+export const PICKUP_POOL_SIZE = 4;
+export const PICKUP_FIRST_SPAWN_DELAY_SEC = 10;
+export const PICKUP_SPAWN_INTERVAL_SEC = 11;
+
+// Chance an attempt yields a magnet -> roughly one every 24s of a run.
+export const PICKUP_MAGNET_SPAWN_CHANCE = 0.45;
+
+// Chance an attempt yields an extra life. Reads low because it IS low, but the
+// real rarity is stronger than this number alone: a life only rolls at all when
+// the player has actually LOST one (core/main.js checks before offering it), so
+// a clean run never sees a single heart. Combined, that's roughly one heart per
+// ~2 minutes of DAMAGED play -- and none at full health, where it would be a
+// dead pickup that teaches the player these are worthless.
+export const PICKUP_LIFE_SPAWN_CHANCE = 0.09;
+
+// Chest height, like coins -- deliberately collectible on foot with no jump.
+// A rare pickup that also demands jump timing would be cruel; the difficulty
+// of a pickup should be GETTING TO ITS LANE, nothing more.
+export const PICKUP_BASE_HEIGHT = 1.2;
+export const PICKUP_REACH_GRACE = 0.5; // more forgiving than a coin's 0.35 -- these are rare
+// Same job as COIN_OBSTACLE_CLEARANCE, and larger for the same reason it's
+// larger than nothing: a rare pickup is the strongest lane magnet in the game,
+// so baiting the player into an obstacle with one would be the worst version of
+// that trap.
+export const PICKUP_OBSTACLE_CLEARANCE = 13; // world units, each side
+
+// Cosmetic (entities/pickups.js). Pulses harder and faster than a coin, and
+// slowly rolls, because it has to win attention against a screen that may
+// already have a five-coin row on it.
+export const PICKUP_PULSE_PERIOD = 0.85; // seconds
+export const PICKUP_PULSE_SCALE_AMPLITUDE = 0.26; // fraction of size added at peak
+export const PICKUP_SPIN_RATE = 0.9; // radians/sec of billboard roll

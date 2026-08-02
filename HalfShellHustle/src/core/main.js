@@ -33,10 +33,14 @@ import {
   createCoinPool, resetCoinPool, spawnCoinCluster, updateCoinPool, collectCoins, despawnCoin,
   applyMagnetPull,
 } from '../entities/coins.js';
+import {
+  createPickupPool, resetPickupPool, spawnPickup, updatePickupPool, collectPickups, despawnPickup,
+} from '../entities/pickups.js';
+import { spawnArrivalTime, hazardSpacingMultiplierAt } from '../systems/difficulty.js';
 import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { speedAt, distanceTraveledBy } from '../systems/speed.js';
 import {
-  createLivesState, resetLivesState, tryHit, isInvulnerable,
+  createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
 } from '../systems/lives.js';
 import { createGameState, restartToRunning, triggerGameOver } from './gameState.js';
 import {
@@ -45,7 +49,7 @@ import {
 import * as hud from '../ui/hud.js';
 import { initSteeringPanel } from '../ui/steeringPanel.js';
 import {
-  LANE_X, CENTER_LANE, ASPECT_W, ASPECT_H, CAMERA_FOV, LIVES_START,
+  LANE_X, CENTER_LANE, ASPECT_W, ASPECT_H, CAMERA_FOV, LIVES_START, LIVES_SOFTCAP,
 } from '../data/constants.js';
 import {
   INTRO_WALL_ENABLED, INTRO_WALL_ENEMY_COUNT, INTRO_WALL_SPAWN_Z,
@@ -59,6 +63,9 @@ import {
   MIN_ENEMY_OBSTACLE_GAP_SEC, PLATFORM_FIRST_SPAWN_DELAY_SEC, PLATFORM_SPAWN_INTERVAL_SEC,
   PLATFORM_KILL_TYPE_ENABLED, PLATFORM_KILL_TYPE_CHANCE,
   COIN_FIRST_SPAWN_DELAY_SEC, COIN_CLUSTER_SPAWN_INTERVAL_SEC,
+  OBSTACLE_SPAWN_INTERVAL_SEC,
+  PICKUP_FIRST_SPAWN_DELAY_SEC, PICKUP_SPAWN_INTERVAL_SEC,
+  PICKUP_MAGNET_SPAWN_CHANCE, PICKUP_LIFE_SPAWN_CHANCE,
 } from '../data/spawnConfig.js';
 import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
 import {
@@ -116,6 +123,8 @@ function boot() {
   // coin -- see spawnCoinCluster.
   const coinField = createCoinPool(scene);
   const coinSpawnerState = createSpawnerState(COIN_FIRST_SPAWN_DELAY_SEC);
+  const pickupField = createPickupPool(scene);
+  const pickupSpawnerState = createSpawnerState(PICKUP_FIRST_SPAWN_DELAY_SEC);
 
   const cameraRig = createCameraRig(camera);
   const gs = createGameState();
@@ -233,6 +242,8 @@ function boot() {
     resetSpawner(platformSpawnerState, PLATFORM_FIRST_SPAWN_DELAY_SEC);
     resetCoinPool(coinField);
     resetSpawner(coinSpawnerState, COIN_FIRST_SPAWN_DELAY_SEC);
+    resetPickupPool(pickupField);
+    resetSpawner(pickupSpawnerState, PICKUP_FIRST_SPAWN_DELAY_SEC);
     resetLivesState(livesState);
     // Clears any death shake still decaying and snaps the camera back to
     // centre, so a quick retry doesn't inherit the previous run's jolt.
@@ -523,6 +534,20 @@ function boot() {
       // (enforced once, here, at spawn time) holds for the entity's entire
       // lifetime. The spawner's own interval timer still resets normally
       // either way, it just tries again next interval.
+      //
+      // The interval is stretched for the opening stretch of a run
+      // (systems/difficulty.js) -- direct feedback's "value to control how easy
+      // it is on the start", and deliberately about PLACEMENT, not speed. Two
+      // things worth knowing about this line:
+      //
+      //   1. It's keyed on when this obstacle will ARRIVE, not on gameTime.
+      //      Everything spawns ~13s of travel upstream, so an ease-in keyed on
+      //      spawn time would be fully spent before the player saw any of it.
+      //   2. updateSpawner only reads `interval` on the frame it actually
+      //      fires, so recomputing it every frame is free -- each gap is set by
+      //      the difficulty at the moment that gap begins.
+      const obstacleInterval = OBSTACLE_SPAWN_INTERVAL_SEC
+        * hazardSpacingMultiplierAt(spawnArrivalTime(gameTime));
       updateSpawner(spawnerState, dt, () => {
         if (gameTime - lastEnemySpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
           // data/introSequence.js: spawn close instead of at the far
@@ -531,7 +556,7 @@ function boot() {
           spawnObstacle(obstacleField, platformField);
           lastObstacleSpawnTime = gameTime;
         }
-      });
+      }, obstacleInterval);
       updateObstaclePool(obstacleField, dt, currentSpeed);
 
       // An obstacle costs ONE life rather than ending the run. The whole loop
@@ -630,6 +655,52 @@ function boot() {
       // One HUD write per frame regardless of how many coins landed at once.
       if (collected.length > 0) hud.updateCoins(coinsCollected);
       coinSparklePool.update(dt);
+
+      // Ability pickups (entities/pickups.js). ONE attempt per interval that
+      // then rolls for what it produces, rather than two competing spawners --
+      // that's what stops a magnet and a heart ever landing on top of each
+      // other, and keeps the rarity readable straight off the two chances in
+      // data/spawnConfig.js.
+      //
+      // The life roll goes FIRST (it's the rare prize; it shouldn't lose its
+      // slot to the common one) and is gated on the player ACTUALLY MISSING a
+      // life. That gate is the real rarity control: at full health a heart
+      // would be a no-op pickup, and a pickup that does nothing when collected
+      // teaches the player to ignore the next one.
+      //
+      // Placed after the coin section for the same reason coins come after
+      // platforms: placement queries live platform + obstacle geometry, so
+      // both should already have scrolled this frame before it's asked.
+      updateSpawner(pickupSpawnerState, dt, () => {
+        const wantsLife = livesState.lives < LIVES_SOFTCAP;
+        if (wantsLife && Math.random() < PICKUP_LIFE_SPAWN_CHANCE) {
+          spawnPickup(pickupField, platformField, obstacleField, 'life');
+        } else if (Math.random() < PICKUP_MAGNET_SPAWN_CHANCE) {
+          spawnPickup(pickupField, platformField, obstacleField, 'magnet');
+        }
+        // Otherwise nothing this interval -- that's the point.
+      }, PICKUP_SPAWN_INTERVAL_SEC);
+      updatePickupPool(pickupField, dt, currentSpeed, platformField);
+      for (const slot of collectPickups(player, pickupField, platformField)) {
+        // Reuses the coin sparkle, tinted to the pickup's own halo colour --
+        // same burst, so a pickup reads as "a collect, but bigger" rather than
+        // as an unrelated effect.
+        spawnCoinSparkle(
+          coinSparklePool,
+          slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
+          slot.type.glow,
+        );
+        if (slot.type.effect === 'magnet') {
+          grantMagnet(player);
+        } else if (slot.type.effect === 'life') {
+          // gainLife is clamped to LIVES_SOFTCAP and reports whether it did
+          // anything -- so a heart collected at full health (only reachable if
+          // damage was healed between spawn and pickup) silently does nothing
+          // rather than showing a phantom HUD change.
+          if (gainLife(livesState)) hud.updateLives(livesState.lives);
+        }
+        despawnPickup(slot);
+      }
     }
 
     // Follow the eased lane-center position, not the per-frame xOffset snap

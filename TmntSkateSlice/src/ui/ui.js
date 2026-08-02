@@ -23,6 +23,18 @@ const BUFF_ICON_URLS = {
   shield: new URL('../assets/powerup_shield.png', import.meta.url).href,
   magnet: new URL('../assets/powerup_magnet.png', import.meta.url).href,
 };
+
+// Per-color pizza-box art, keyed by box id (same literal-path rule as above --
+// no template URLs). The cardboard is tinted to each set's color while the
+// pizza stays golden, so the HUD chip reads at a glance as "which set am I
+// collecting" (feedback 2026-07-30: colored glow alone wasn't informative
+// enough). Regular keeps the classic brown box.
+const BOX_ICON_URLS = {
+  regular: new URL('../assets/pizza_box.png', import.meta.url).href,
+  blue: new URL('../assets/pizza_box_blue.png', import.meta.url).href,
+  purple: new URL('../assets/pizza_box_purple.png', import.meta.url).href,
+  red: new URL('../assets/pizza_box_red.png', import.meta.url).href,
+};
 const BUFF_CONFIGS = [
   { key: 'ooze', timerField: 'oozeBuffTimer', maxSec: OOZE_BUFF_DURATION_SEC, hex: '#1FC8D8' },
   { key: 'shield', timerField: 'shieldBuffTimer', maxSec: SHIELD_BUFF_DURATION_SEC, hex: '#4CE05A' },
@@ -84,8 +96,8 @@ export function createUI() {
   // pizza-box graphic where a full-opacity copy is REVEALED RADIALLY over a
   // faded "empty" copy as slices are caught (a conic mask -- non-text
   // progress feedback), wrapped by a depleting timer STROKE RING, with the
-  // "N/8" count below. Color-coded via --box-color.
-  const boxIconUrl = new URL('../assets/pizza_box.png', import.meta.url).href;
+  // "N/8" count below, and the box art tinted to that set's color
+  // (BOX_ICON_URLS). Color-coded via --box-color.
   const SVGNS = 'http://www.w3.org/2000/svg';
   el.boxTray = document.getElementById('box-tray');
   el.boxChips = {};
@@ -97,6 +109,7 @@ export function createUI() {
     const graphic = document.createElement('div');
     graphic.className = 'box-graphic';
 
+    const boxIconUrl = BOX_ICON_URLS[c.id] || BOX_ICON_URLS.regular;
     const ghost = document.createElement('img'); // faded "empty" box behind
     ghost.className = 'box-ghost';
     ghost.src = boxIconUrl;
@@ -141,13 +154,13 @@ export function createUI() {
     el.boxChips[c.id] = { chip, fillImg, arc, count };
   }
 
-  // Box-completion celebration popup (see showBoxComplete). Icon is the same
-  // pizza-box art, set once.
+  // Box-completion celebration popup (see showBoxComplete). Icon swaps to the
+  // completed set's tinted box art per completion; default to the regular box.
   el.boxCompletePopup = document.getElementById('box-complete-popup');
   el.bcpTitle = document.getElementById('bcp-title');
   el.bcpBonus = document.getElementById('bcp-bonus');
-  const bcpIcon = document.getElementById('bcp-icon');
-  bcpIcon.src = boxIconUrl;
+  el.bcpIcon = document.getElementById('bcp-icon');
+  el.bcpIcon.src = BOX_ICON_URLS.regular;
 
   // Last-written values, for the dirty-checks below.
   let lastScore = null;
@@ -160,8 +173,9 @@ export function createUI() {
     // Quick foreground celebration when a box completes: color-coded title +
     // bonus points + a bouncing box icon. Restarts the CSS animation each
     // call (remove class -> reflow -> re-add) so rapid completions replay.
-    showBoxComplete(label, bonus, hex) {
+    showBoxComplete(label, bonus, hex, id) {
       el.boxCompletePopup.style.setProperty('--bcp-color', hex);
+      el.bcpIcon.src = BOX_ICON_URLS[id] || BOX_ICON_URLS.regular;
       el.bcpTitle.textContent = `${label.toUpperCase()} BOX!`;
       el.bcpBonus.textContent = `+${bonus}`;
       el.boxCompletePopup.classList.remove('hidden');

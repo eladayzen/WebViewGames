@@ -30,14 +30,17 @@ export const SPEED_RAMP_DURATION_SEC = 45; // seconds from SPEED_START to SPEED_
 
 // --- Lives (systems/lives.js) ---
 // Direct feedback: an obstacle costs a life instead of ending the run.
-export const LIVES_START = 3;
-// Ceiling a health PICKUP may top you up to. Same as LIVES_START for now --
-// pickups restore, they don't extend.
-export const LIVES_SOFTCAP = 3;
-// Hard ceiling the system and HUD are built to handle, for a future
-// "extra heart" upgrade. NOT the tray size -- ui/hud.js builds the tray from
-// the live cap, because rendering 5 slots while holding 3 lives would show
-// two pre-greyed hearts and read as "you already lost two."
+// 3 -> 5 ("we will start with 5 hearts, not 3"), part of the same
+// make-it-easier pass as data/spawnConfig.js's ease-in dial.
+export const LIVES_START = 5;
+// Ceiling a health PICKUP may top you up to (systems/lives.js's gainLife) --
+// direct feedback: "of course, it will have a cap of 5." Equal to LIVES_START,
+// so a heart restores what you lost and never extends past the tray.
+export const LIVES_SOFTCAP = 5;
+// Hard ceiling the system and HUD are built to handle. Now equal to
+// LIVES_START, so it no longer has slack -- raising LIVES_START past this needs
+// this raised too (ui/hud.js's initLivesTray already rebuilds at any size, so
+// that's the only thing to check).
 export const LIVES_MAX_SUPPORTED = 5;
 // Grace window after a hit. See systems/lives.js for why this is required for
 // correctness (a single obstacle would otherwise drain every life in one
