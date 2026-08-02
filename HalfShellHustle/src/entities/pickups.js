@@ -26,12 +26,13 @@ import {
 } from '../data/constants.js';
 import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
 import { PICKUP_TYPES } from '../data/pickupTypes.js';
+import { getTexture } from './textureLoader.js';
 import { getWorldElevationAt, isPlatformFootprintBlocked } from './platform.js';
 import { PLAYER_COLLECT_REACH } from './player.js';
 import {
   PICKUP_POOL_SIZE, PICKUP_BASE_HEIGHT, PICKUP_REACH_GRACE,
   PICKUP_OBSTACLE_CLEARANCE, PICKUP_PULSE_PERIOD, PICKUP_PULSE_SCALE_AMPLITUDE,
-  PICKUP_SPIN_RATE,
+  PICKUP_ROCK_RADIANS,
 } from '../data/spawnConfig.js';
 
 // Own copy rather than the shared OBSTACLE_COLLISION_HALF_Z, matching the
@@ -42,50 +43,6 @@ const PICKUP_COLLECT_HALF_Z = 1.4;
 // Same value/semantics as the copies in collision.js / enemy.js / coins.js --
 // "is the player standing on the same surface as this thing".
 const ELEVATION_MATCH_THRESHOLD = 0.3;
-
-const TEXTURE_SIZE = 96;
-
-// One canvas texture per TYPE, built once and cached.
-//
-// Coins get away with ONE grayscale texture tinted per type via material.color,
-// but that trick is unavailable here and using it would be a bug: material.color
-// multiplies the WHOLE texture, so tinting a red magnet icon with the type's
-// cool-blue halo colour would come back muddy brown. Each pickup therefore bakes
-// its own halo colour into its own canvas, and the material stays pure white.
-function createPickupTexture(type) {
-  const s = TEXTURE_SIZE;
-  const canvas = document.createElement('canvas');
-  canvas.width = s;
-  canvas.height = s;
-  const ctx = canvas.getContext('2d');
-
-  // Soft halo behind the icon. Same reasoning as coins.js's dark-rim note: the
-  // sky and fog are both pale blue, so a pickup silhouetted against them needs
-  // to carry its own contrast rather than relying on the background for it.
-  const r = s / 2;
-  const { r: gr, g: gg, b: gb } = new THREE.Color(type.glow);
-  const rgb = `${Math.round(gr * 255)},${Math.round(gg * 255)},${Math.round(gb * 255)}`;
-  const grad = ctx.createRadialGradient(r, r, 0, r, r, r);
-  grad.addColorStop(0, `rgba(${rgb},0.95)`);
-  grad.addColorStop(0.42, `rgba(${rgb},0.6)`);
-  grad.addColorStop(0.72, `rgba(${rgb},0.2)`);
-  grad.addColorStop(1, `rgba(${rgb},0)`);
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.arc(r, r, r, 0, Math.PI * 2);
-  ctx.fill();
-
-  type.draw(ctx, s);
-  return new THREE.CanvasTexture(canvas);
-}
-
-const cachedTextures = {};
-function getPickupTexture(typeKey) {
-  if (!cachedTextures[typeKey]) {
-    cachedTextures[typeKey] = createPickupTexture(PICKUP_TYPES[typeKey]);
-  }
-  return cachedTextures[typeKey];
-}
 
 // fog: false and depthWrite: false for the same reasons coins.js documents (a
 // pickup must stay legible arriving from a distance, and it's a soft
@@ -176,12 +133,13 @@ export function spawnPickup(field, platformField, obstacleField, typeKey, z = SP
   slot.z = z;
   slot.baseHeight = PICKUP_BASE_HEIGHT;
   slot.pulseTimer = 0;
-  // Halo colour is baked into the texture (see createPickupTexture), so the
-  // material tint stays white -- swapping the map is the whole type change.
-  slot.sprite.material.map = getPickupTexture(typeKey);
+  // Untinted: material.color MULTIPLIES the texture, so leaving it white is
+  // what keeps the painted art's own colours intact. Swapping the map is the
+  // whole type change.
+  slot.sprite.material.map = getTexture(type.texture.url);
   slot.sprite.material.needsUpdate = true;
   slot.sprite.material.rotation = 0;
-  slot.sprite.scale.set(type.size, type.size, 1);
+  slot.sprite.scale.set(type.width, type.width * type.texture.aspect, 1);
   slot.sprite.position.set(LANE_X[lane], PICKUP_BASE_HEIGHT, z);
   slot.sprite.visible = true;
 }
@@ -206,12 +164,15 @@ export function updatePickupPool(field, dt, speed, platformField) {
     // already have a five-coin row on it.
     slot.pulseTimer = (slot.pulseTimer + dt) % PICKUP_PULSE_PERIOD;
     const swell = 0.5 * (1 - Math.cos((2 * Math.PI * slot.pulseTimer) / PICKUP_PULSE_PERIOD));
-    const scale = slot.type.size * (1 + PICKUP_PULSE_SCALE_AMPLITUDE * swell);
-    slot.sprite.scale.set(scale, scale, 1);
-    // Sprites always face the camera, so "spin" has to be roll rather than yaw.
-    // A slow rotation is the cheapest way to make a static billboard read as a
-    // solid object rather than a decal.
-    slot.sprite.material.rotation += PICKUP_SPIN_RATE * dt;
+    const w = slot.type.width * (1 + PICKUP_PULSE_SCALE_AMPLITUDE * swell);
+    slot.sprite.scale.set(w, w * slot.type.texture.aspect, 1);
+    // Rocks around upright rather than rolling continuously -- these icons have
+    // an obvious "up" now that they're real art (see PICKUP_ROCK_RADIANS).
+    // Driven off the same phase as the swell, a quarter-cycle out, so the tilt
+    // peaks as the scale passes through its middle instead of both hitting at
+    // once.
+    slot.sprite.material.rotation = PICKUP_ROCK_RADIANS
+      * Math.sin((2 * Math.PI * slot.pulseTimer) / PICKUP_PULSE_PERIOD);
   }
 }
 

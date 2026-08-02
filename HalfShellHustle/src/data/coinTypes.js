@@ -8,13 +8,20 @@
 // resolveClusterType) -- a row with mixed values reads as noise, a whole row of
 // one thing reads as a treat worth chasing.
 //
-// TELLING THEM APART IS THE POINT. The first pass made both types the same
-// grayscale glow blob tinted gold vs cyan, and direct feedback was blunt about
-// the result: "I don't know what's the difference between the gold and the blue
-// coins." A colour swap asks the player to learn a legend. So they're now
-// different OBJECTS -- one coin, versus a stack of coins with a gem on top --
-// which reads as "that one's worth more" with nothing to learn, and survives
-// being small, fogged, and glimpsed in peripheral vision.
+// TELLING THEM APART. The first pass made both types the same grayscale glow
+// blob tinted gold vs cyan, and direct feedback was blunt: "I don't know what's
+// the difference between the gold and the blue coins." A second pass made the
+// bonus a stack of coins topped with a gem, which was rejected in favour of
+// something simpler -- "let's just take the exact same gold and do it like in a
+// gem style render." So the bonus is now literally the same coin, cut from
+// translucent amber crystal instead of struck from gold.
+//
+// That is a deliberate trade, worth knowing before touching these numbers: the
+// two now share a silhouette AND a colour family, so the cues carrying the
+// difference are MATERIAL (faceted/translucent/sparkling vs solid metal) and
+// SIZE. Both are weaker at distance than the shape contrast they replaced,
+// which is exactly why `width` below stays meaningfully larger for the bonus --
+// it is now doing real work, not just flourish.
 //
 // The old grayscale-glow-plus-material.color trick is gone for a second reason
 // too: material.color MULTIPLIES the whole texture, so tinting real painted art
@@ -40,18 +47,17 @@ export const COIN_TYPES = {
     // as coming off the coin itself.
     sparkleColor: 0xffc93f,
   },
-  // Worth 5, and rarer (COIN_BONUS_TYPE_CHANCE in data/spawnConfig.js). Bigger
-  // silhouette AND a different shape AND a green accent -- three independent
-  // cues, so it still reads as the valuable one when it's small, heavily fogged
-  // at spawn distance, or only half-seen.
+  // Worth 5, and rarer (COIN_BONUS_TYPE_CHANCE in data/spawnConfig.js).
+  // Same coin, cut from amber crystal. 1.32x rather than the common coin's
+  // width -- nudged up from 1.24 when the design lost its distinct silhouette,
+  // since size is now one of only two cues separating the two types.
   bonus: {
     value: 5,
     texture: COIN_BONUS_TEXTURE,
-    width: COMMON_WIDTH * 1.24,
-    // Emerald, matching the gem. Deliberately not the player's own olive green,
-    // and clear of every other palette slot in play (barricade orange, enemy
-    // purple, magnet blue, life pink).
-    sparkleColor: 0x3fdc6b,
+    width: COMMON_WIDTH * 1.32,
+    // Brighter, whiter amber than the common coin's flat gold, so the collect
+    // burst still reads as the richer one.
+    sparkleColor: 0xffe89a,
   },
 };
 

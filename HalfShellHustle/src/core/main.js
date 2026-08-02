@@ -688,7 +688,7 @@ function boot() {
         spawnCoinSparkle(
           coinSparklePool,
           slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
-          slot.type.glow,
+          slot.type.sparkleColor,
         );
         if (slot.type.effect === 'magnet') {
           grantMagnet(player);

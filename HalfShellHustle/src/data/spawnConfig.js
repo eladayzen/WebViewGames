@@ -60,7 +60,7 @@ export const OBSTACLE_FIRST_SPAWN_DELAY_SEC = 3; // grace period to read the sce
 //
 // This is now the SETTLED rate, not the whole story: the ease-in dial at the
 // top of this file stretches it for the opening stretch of a run (x2.1 at the
-// very start, i.e. ~3.4s apart, easing to this value by 35s in).
+// very start, i.e. ~3.4s apart, easing to this value by 60s in).
 export const OBSTACLE_SPAWN_INTERVAL_SEC = 1.6;
 
 // DISABLED until further notice (direct feedback: "remove it completely,
@@ -333,9 +333,14 @@ export const PICKUP_REACH_GRACE = 0.5; // more forgiving than a coin's 0.35 -- t
 // that trap.
 export const PICKUP_OBSTACLE_CLEARANCE = 13; // world units, each side
 
-// Cosmetic (entities/pickups.js). Pulses harder and faster than a coin, and
-// slowly rolls, because it has to win attention against a screen that may
-// already have a five-coin row on it.
+// Cosmetic (entities/pickups.js). Pulses harder and faster than a coin because
+// it has to win attention against a screen that may already have a five-coin
+// row on it.
 export const PICKUP_PULSE_PERIOD = 0.85; // seconds
 export const PICKUP_PULSE_SCALE_AMPLITUDE = 0.26; // fraction of size added at peak
-export const PICKUP_SPIN_RATE = 0.9; // radians/sec of billboard roll
+// A gentle ROCK, not the continuous roll this used to be (0.9 rad/sec). That
+// spin was fine on the abstract canvas-drawn icons, but the hand-drawn art
+// replacing them is recognisable objects with an obvious up -- a horseshoe
+// magnet and a heart tumbling end over end read as broken, not lively. An
+// oscillating tilt keeps the "alive" cue and always returns to upright.
+export const PICKUP_ROCK_RADIANS = 0.16; // peak tilt either side of upright

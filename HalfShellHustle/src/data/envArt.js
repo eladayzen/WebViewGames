@@ -38,14 +38,31 @@ export const BARRICADE_TEXTURE = envTexture('barricade.png', 640, 585);
 // barricade, and generated as ONE sheet then split, so the two can't drift
 // apart stylistically.
 //
-// The two types are now different OBJECTS, not one object in two colours. That
-// was the other half of the same feedback -- "I don't know what's the
-// difference between the gold and the blue coins" -- and a hue swap was never
-// going to answer it: a single coin vs a STACK of coins topped with a gem reads
-// as "worth more" instantly and at any distance, with no legend to learn.
-// Gameplay-props like BARRICADE_TEXTURE above, so shared across every theme.
+// Gameplay props like BARRICADE_TEXTURE above, so shared across every theme.
 export const COIN_COMMON_TEXTURE = envTexture('coin_common.png', 506, 512);
-export const COIN_BONUS_TEXTURE = envTexture('coin_bonus.png', 395, 512);
+// The bonus coin is the SAME coin as above -- same silhouette, same rim, same
+// turtle-shell emblem -- re-rendered as translucent faceted amber crystal
+// rather than solid gold metal. Direct feedback, replacing a first attempt
+// that made it a stack of coins with a gem on top: "let's just take the exact
+// same gold and do it like in a gem style render." Produced by EDITING the
+// gold coin above rather than drawing a new one, so the two genuinely are the
+// same object in two materials.
+export const COIN_BONUS_TEXTURE = envTexture('coin_bonus.png', 512, 512);
+
+// Ability pickups (data/pickupTypes.js). Real Kolbo art in the same inked,
+// cel-shaded language as everything else, replacing the canvas-drawn shapes
+// the first pass used -- direct feedback: "let's change the icons for the
+// magnet and the life."
+//
+// NO GLOW HALO baked in, and none drawn at runtime any more. The first pass
+// leaned on a coloured halo to separate each icon from the background and to
+// tell the two apart; both jobs are now done better by the art itself -- a
+// thick black ink outline separates from any background, and an arch reads
+// nothing like a heart. A halo was tried here and measured against the real
+// sky colour: the magnet's cool-blue one was flatly invisible against
+// street.js's pale blue sky, which is the one place it would have mattered.
+export const PICKUP_MAGNET_TEXTURE = envTexture('pickup_magnet.png', 458, 512);
+export const PICKUP_LIFE_TEXTURE = envTexture('pickup_life.png', 512, 450);
 
 // Per-lane elevated platform art (entities/platform.js) -- the box (walkable
 // deck) and ramp (incline) are gameplay props like BARRICADE_TEXTURE above,
