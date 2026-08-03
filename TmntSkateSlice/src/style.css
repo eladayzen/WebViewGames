@@ -308,7 +308,7 @@ html, body {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  gap: 20px;
+  gap: 14px;
 }
 
 .box-complete-popup {
@@ -316,7 +316,7 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
 }
 
 /* Celebratory shockwave ring behind the popup -- expands + fades once on each
@@ -325,13 +325,13 @@ html, body {
 .box-complete-popup::before {
   content: '';
   position: absolute;
-  top: 46px;
+  top: 32px;
   left: 50%;
-  width: 133px;
-  height: 133px;
-  margin: -67px 0 0 -67px;
+  width: 93px;
+  height: 93px;
+  margin: -47px 0 0 -47px;
   border-radius: 50%;
-  border: 5px solid var(--bcp-color, #fff);
+  border: 4px solid var(--bcp-color, #fff);
   opacity: 0;
   z-index: -1;
 }
@@ -350,11 +350,11 @@ html, body {
 .box-complete-popup::after {
   content: '';
   position: absolute;
-  top: 46px;
+  top: 32px;
   left: 50%;
-  width: 196px;
-  height: 196px;
-  margin: -98px 0 0 -98px;
+  width: 137px;
+  height: 137px;
+  margin: -69px 0 0 -69px;
   border-radius: 50%;
   background: radial-gradient(circle, var(--bcp-color, #fff) 0%, transparent 62%);
   opacity: 0;
@@ -394,10 +394,10 @@ html, body {
 }
 
 .bcp-icon {
-  width: 78px;
-  height: 78px;
+  width: 55px;
+  height: 55px;
   object-fit: contain;
-  filter: drop-shadow(0 0 11px var(--bcp-color, #fff)) drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 0 8px var(--bcp-color, #fff)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
 }
 
 .bcp-animate .bcp-icon {
@@ -415,27 +415,27 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
 }
 
 .bcp-title {
   font-weight: 900;
-  font-size: 32px;
-  letter-spacing: 1px;
+  font-size: 22px;
+  letter-spacing: 0.5px;
   color: var(--bcp-color, #fff);
-  -webkit-text-stroke: 3px #2a1a00;
+  -webkit-text-stroke: 2.5px #2a1a00;
   paint-order: stroke fill;
-  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.4), 0 0 16px var(--bcp-color, #fff);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4), 0 0 11px var(--bcp-color, #fff);
   white-space: nowrap;
 }
 
 .bcp-bonus {
   font-weight: 900;
-  font-size: 39px;
+  font-size: 27px;
   color: #ffe066;
-  -webkit-text-stroke: 3px #4a2a00;
+  -webkit-text-stroke: 2.5px #4a2a00;
   paint-order: stroke fill;
-  text-shadow: 0 0 13px rgba(255, 210, 80, 0.9);
+  text-shadow: 0 0 9px rgba(255, 210, 80, 0.9);
   font-variant-numeric: tabular-nums;
 }
 
@@ -448,8 +448,8 @@ html, body {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  gap: 14px;
-  margin-top: 5px;
+  gap: 10px;
+  margin-top: 3px;
 }
 
 .bcp-reward.hidden {
@@ -468,30 +468,30 @@ html, body {
 }
 
 .bcp-reward-icon {
-  width: 53px;
-  height: 53px;
+  width: 37px;
+  height: 37px;
   object-fit: contain;
-  filter: drop-shadow(0 0 11px var(--bcp-reward-color, #fff)) drop-shadow(0 3px 5px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 0 8px var(--bcp-reward-color, #fff)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
 }
 
 .bcp-reward-label {
   font-weight: 900;
-  font-size: 17px;
-  letter-spacing: 0.5px;
+  font-size: 12px;
+  letter-spacing: 0.3px;
   color: var(--bcp-reward-color, #fff);
-  -webkit-text-stroke: 3px #2a1a00;
+  -webkit-text-stroke: 2px #2a1a00;
   paint-order: stroke fill;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4), 0 0 14px var(--bcp-reward-color, #fff);
   white-space: nowrap;
 }
 
 .bcp-life {
-  margin-top: 3px;
+  margin-top: 2px;
   font-weight: 900;
-  font-size: 24px;
-  letter-spacing: 1px;
+  font-size: 17px;
+  letter-spacing: 0.5px;
   color: #ff5a6e;
-  -webkit-text-stroke: 3px #3a0a12;
+  -webkit-text-stroke: 2px #3a0a12;
   paint-order: stroke fill;
   text-shadow: 0 0 16px rgba(255, 90, 110, 0.9);
   white-space: nowrap;
