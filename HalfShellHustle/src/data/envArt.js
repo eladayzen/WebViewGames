@@ -130,21 +130,45 @@ export const THEMES = {
   // Bright, cheerful, semi-casual DAYLIGHT palette per direct playtest
   // feedback -- an explicit pivot away from the build doc's original
   // sunset-to-neon dusk vision (§1); the first dusk-toned art pass read as
-  // grim/twilight rather than alive and happy. LOCKED per direct feedback --
-  // tune centralCity (or a future theme) instead of changing these numbers.
+  // grim/twilight rather than alive and happy. The BUILDING PROFILE below is
+  // still LOCKED per that same direct feedback -- tune a different theme's
+  // numbers instead of these.
+  //
+  // THE FACADE ART, unlike the profile, is not locked -- it just went through
+  // its own fix pass, once centralCity's now-fixed quality bar made this
+  // theme's flaws obvious by comparison: "sunny street doesn't look good
+  // enough at all." Inspecting the actual files (not just the memory of them)
+  // turned up three concrete problems, all predating every lesson this
+  // project has since learned the hard way:
+  //   - a DIAGONAL fire escape -- the exact illusion-breaking shape
+  //     centralCity's own facades were fixed for.
+  //   - a deep SCALLOPED awning with a shaded underside -- same category.
+  //   - a large READABLE sign ("SUNNY DAY BOOKS & GIFTS") baked into the
+  //     texture -- which TILES vertically, so it would repeat down the whole
+  //     building like a printing error, not just look busy.
+  // Also generally softer/more airbrushed than the flat cel-shaded ink-line
+  // language centralCity settled into.
+  //
+  // Regenerated keeping the SAME identity (the floral-mural brick tenement,
+  // the cosy book-and-gift shopfront) so the theme is still itself, with all
+  // three problems fixed by name: vertical ladder, flat straight-edged
+  // awning, the readable sign replaced with icon-only signage (a sun, a
+  // plant -- nothing to tile badly). Needed 3 candidates to land one with the
+  // fire escape actually vertical -- 2 of 3 still came back diagonal despite
+  // an explicit instruction, same unreliability rate as every other batch
+  // this session. Original pre-fix pair archived at art/final/alt/
+  // facade_a_v1_original.png / facade_b_v1_original.png.
   sunnyStreet: {
     street: envTexture('street_tex.png', 576, 768),
-    // Two facade variants (a flower-boxed brick tenement with a mural-
-    // painted shutter, a cheerful "Sunny Day Books & Gifts" shopfront) --
-    // alternated across building instances by index for cheap variety
-    // without generating a full per-building library (§2 "keep art
-    // generation minimal" instinct). bodyColor is each facade's own sampled
-    // average tone, used on the never-seen box faces instead of a generic
-    // (previously purple, explicitly flagged as looking "procedurally
-    // generated") placeholder color.
+    // Two facade variants -- alternated across building instances by index
+    // for cheap variety without generating a full per-building library (§2
+    // "keep art generation minimal" instinct). bodyColor is each facade's own
+    // sampled average tone, used on the never-seen box faces instead of a
+    // generic (previously purple, explicitly flagged as looking
+    // "procedurally generated") placeholder color.
     facades: [
-      { tex: envTexture('facade_a.png', 628, 768), bodyColor: 0x935534 },
-      { tex: envTexture('facade_b.png', 621, 768), bodyColor: 0x988549 },
+      { tex: envTexture('facade_a.png', 1342, 1514), bodyColor: 0x95624d }, // red-brick tenement, floral mural, vertical fire-escape ladder
+      { tex: envTexture('facade_b.png', 1304, 1517), bodyColor: 0x957547 }, // golden-yellow book-and-gift shopfront, icon-only signage
     ],
     // Distant skyline matte painting -- fog-immune (material.fog = false,
     // set in street.js) so it stays fully visible at that distance, the same
@@ -274,6 +298,164 @@ export const THEMES = {
       // or the gap scaling goes negative and buildings overlap.
       count: 18,
       gapMin: 1, gapRange: 6, // same tight-gap feel, rescaled for the bigger frontages
+      leftGapStride: 7, leftGapOffset: 0,
+      rightGapStride: 11, rightGapOffset: 3,
+    },
+  },
+
+  // "Harbor Docks" -- the brand-new middle district (tier 2, between
+  // centralCity and sunnyStreet). Direct feedback: put a third theme in
+  // between the other two, "really different from both of them" -- the build
+  // doc itself already named this as the natural next district (its own "more
+  // block/district themes" list: "subway platform, harbor docks, rooftop-
+  // chase finale"), so it wasn't invented from nothing.
+  //
+  // DIFFERENT ON EVERY AXIS a runner actually sees, not just the facades:
+  //   - GROUND: weathered wood dock planking + a cracked concrete quay,
+  //     rope-and-cleat trim -- centralCity/sunnyStreet both use the same
+  //     cream-paver sidewalk + grey asphalt street_tex.png (a real
+  //     leftover placeholder, still marked TODO on centralCity above). The
+  //     ground plane is in frame every single frame, so reusing it here would
+  //     have undercut "really different" more than any facade choice could.
+  //   - SKYLINE: cargo cranes, a container ship, a striped lighthouse --
+  //     replacing both themes' shared downtown skyline.png.
+  //   - PALETTE: weathered teal, rust-orange, driftwood tan, deep navy --
+  //     a genuinely different hue family from centralCity's brick/mustard/
+  //     charcoal and sunnyStreet's red-brick/golden-yellow.
+  //   - BUILDING TYPOLOGY: dockside warehouses and a harbor-master shack
+  //     instead of another street of storefronts -- and deliberately NEITHER
+  //     building has a fire escape (warehouses/shacks don't have residential
+  //     ones), which sidesteps this project's single least-reliable art
+  //     convention entirely rather than gambling on it a third time.
+  //
+  // Same locked daylight mood as both other themes (never re-litigated) --
+  // "different" is carried by palette and material language, not time of day.
+  harborDocks: {
+    street: envTexture('street_harbor.png', 1792, 2400),
+    skyline: envTexture('skyline_harbor.png', 2752, 1265),
+    // SCALE FIX (direct feedback, playtested): "same problem, too many details
+    // that are too big" -- the stencil-style cargo markings and chalkboard/
+    // price-tag clutter were individually legible instead of reading as texture
+    // at a glance, the same category of miss the sticker-gate facade hit
+    // earlier. Fixed with a targeted edit (not a redo): both facades' small
+    // decorative marks redrawn smaller and far more numerous -- dozens of tiny
+    // faded stencils and scattered notes instead of a handful of big clear
+    // ones. Everything else pixel-identical. Original too-big pair archived at
+    // art/final/alt/facade_h1_v1_toobig.png / facade_h2_v1_toobig.png.
+    facades: [
+      { tex: envTexture('facade_h1.png', 2048, 2048), bodyColor: 0x69746c }, // teal corrugated-metal cargo warehouse, roll-up door, portholes
+      { tex: envTexture('facade_h2.png', 2048, 2048), bodyColor: 0x8b8884 }, // weathered clapboard harbor-master shack, lighthouse cupola, bait counter
+    ],
+    buildingProfile: {
+      // A 5-value cycle against only 2 facades (not the 4 centralCity has) --
+      // still deliberately NOT a length that shares a factor with 2 wherever
+      // avoidable, for the same reason as centralCity's own note: a matching
+      // period would lock each facade to always the same width forever. 5 vs
+      // 2 gives a 10-building repeat period rather than a 2-building one --
+      // not a full guarantee across all 16, but far better than lockstep.
+      //
+      // Wider average (20.2) than centralCity's 17 -- big industrial slabs on
+      // a working waterfront, not shop-sized storefronts.
+      widthCycle: [18, 26, 15, 22, 20],
+      depth: 14,
+      // Shorter/blockier than either other theme's height range (centralCity
+      // ~11-23, sunnyStreet ~8-17) -- warehouses read as squat and wide, not
+      // tall, which is its own point of visual contrast against two themes
+      // built around apartment-height towers.
+      heightBase: 8, heightMod: 7, heightSideOffset: 11,
+      // Fewer than centralCity's 18 -- these are big buildings on a working
+      // waterfront with real yard space between them, not a packed block.
+      count: 16,
+      gapMin: 1, gapRange: 9, // a bit more gap-size variety -- irregular loading-bay spacing, not a tidy shop-front rhythm
+      leftGapStride: 7, leftGapOffset: 0,
+      rightGapStride: 11, rightGapOffset: 3,
+    },
+  },
+
+  // "Subway Platform" -- tier 3. Direct feedback: "let's do two more themes,
+  // not only one" -- the build doc's own third named district (alongside
+  // harbor docks and the rooftop chase below), and the one place a real
+  // fluorescent-lit underground corridor gives a genuinely different feel
+  // from every above-ground street theme without breaking the locked
+  // "bright, not dark/moody" mood -- clean tile and warm platform lights
+  // carry that instead of sunlight.
+  //
+  // FIRE ESCAPE risk sidestepped again, same trick as harborDocks: the
+  // "buildings" here are subway wall infrastructure -- mosaic tile bays, a
+  // support pillar, turnstiles, a newsstand kiosk -- none of which has any
+  // reason to have one.
+  //
+  // Ground and skyline are both bespoke rather than reused, same reasoning as
+  // harborDocks: the ground plane is in frame every single frame. The
+  // "skyline" here is a receding platform/tunnel corridor rather than a
+  // literal sky -- street.js's SKYLINE_Z placement (behind the buildings,
+  // fog-immune) works exactly the same for "the corridor keeps going into the
+  // distance" as it does for a real skyline.
+  // SHELVED -- not referenced by data/progression.js's TIER_THEMES, so this
+  // theme never plays. Built, wired, then rejected on sight: "completely
+  // bad... not in the right direction at all... closer to regular streets
+  // like the first one." Underground/elevated settings are the wrong CONCEPT
+  // for this game, not an execution miss (unlike harborDocks' earlier
+  // too-big-details pass, which WAS a fixable execution issue). Left in place
+  // rather than deleted in case a street-level reframing of the idea is worth
+  // trying later; the art files it references (facade_s1/s2, street_subway,
+  // skyline_subway) are likewise still on disk, just orphaned.
+  subwayPlatform: {
+    street: envTexture('street_subway.png', 1792, 2400),
+    skyline: envTexture('skyline_subway.png', 2752, 1536),
+    facades: [
+      { tex: envTexture('facade_s1.png', 1316, 1438), bodyColor: 0x5e6d58 }, // teal/cream mosaic tile bay, riveted mustard support pillar, tunnel arch
+      { tex: envTexture('facade_s2.png', 1316, 1438), bodyColor: 0x727060 }, // turnstiles + newsstand kiosk, cream/green tile, flat striped overhang
+    ],
+    buildingProfile: {
+      widthCycle: [16, 20, 14, 18, 22], // 5 values against 2 facades, same anti-lockstep reasoning as harborDocks
+      depth: 11,
+      // DELIBERATELY the shortest range of any theme -- a subway platform has
+      // a low corridor ceiling, not multi-storey height, and that squatness
+      // is itself part of what makes this read as underground rather than
+      // just another palette swap of a street.
+      heightBase: 6, heightMod: 4, heightSideOffset: 5,
+      count: 16,
+      gapMin: 1, gapRange: 6,
+      leftGapStride: 7, leftGapOffset: 0,
+      rightGapStride: 11, rightGapOffset: 3,
+    },
+  },
+
+  // "Rooftop Bridge" -- tier 4. The build doc's third named district
+  // ("rooftop-chase finale"), reframed to fit this game's fixed structural
+  // format (a road flanked by box-geometry "buildings"): a wide rooftop
+  // crossing linking several buildings, with rooftop EQUIPMENT -- a water
+  // tower, a mechanical/stairwell shed -- standing in for the buildings
+  // themselves. Classic TMNT rooftop-chase imagery, and neither structure
+  // has any reason to carry a fire escape either (same sidestep as the other
+  // two new themes).
+  //
+  // Ground is a tar-paper-and-catwalk-grating mix (with faded chalk hopscotch
+  // marks -- a small human touch, this is still someone's roof); skyline is
+  // the city seen from ABOVE rather than from the street -- nearby rooftops
+  // with water towers and clotheslines, taller towers rising behind them --
+  // which is a real, felt difference in vantage from every ground-level
+  // theme, not just a reskin.
+  // SHELVED -- same rejection as subwayPlatform above, not referenced by
+  // TIER_THEMES. Kept for the same reason; art files (facade_r1/r2,
+  // street_rooftop, skyline_rooftop) are likewise orphaned on disk.
+  rooftopBridge: {
+    street: envTexture('street_rooftop.png', 1792, 2400),
+    skyline: envTexture('skyline_rooftop.png', 2752, 1521),
+    facades: [
+      { tex: envTexture('facade_r1.png', 1324, 1481), bodyColor: 0x60797b }, // wooden water tower on X-braced legs, vertical ladder, pigeon coop
+      { tex: envTexture('facade_r2.png', 1428, 1536), bodyColor: 0x77878d }, // rooftop mechanical shed, HVAC unit, small abstract graffiti mural, flat safety railing
+    ],
+    buildingProfile: {
+      widthCycle: [14, 20, 11, 17, 15], // 5 values against 2 facades, same anti-lockstep reasoning as the other themes
+      depth: 12,
+      // Between subwayPlatform's squat range and centralCity's full towers --
+      // these are rooftop STRUCTURES (a tower, a shed), not whole buildings,
+      // but still need to read as substantial against a skyline seen from up here.
+      heightBase: 9, heightMod: 8, heightSideOffset: 13,
+      count: 18,
+      gapMin: 1, gapRange: 7,
       leftGapStride: 7, leftGapOffset: 0,
       rightGapStride: 11, rightGapOffset: 3,
     },
