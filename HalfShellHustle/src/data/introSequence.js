@@ -128,11 +128,14 @@ export const INTRO_SEED_OBSTACLE_ARRIVALS = [5.8, 11.2];
 // obstacles only. The 3-wide wall at ~2.6s still lands before all of these.
 //
 // Re-spaced only to keep every cross-pair with the obstacle list above at least
-// MIN_ENEMY_OBSTACLE_GAP_SEC (0.6s) apart -- that rule is enforced at SPAWN
-// time for live spawns, which can't help here (every seed spawns at t=0), so it
-// has to be checked by hand. Closest cross-pair now is 6.6 against the 5.8
-// obstacle: 0.8s. (Checked by simulation, not by eye -- see the commit.)
-export const INTRO_SEED_ENEMY_ARRIVALS = [3.0, 6.6, 10.0, 12.8];
+// MIN_ENEMY_OBSTACLE_GAP_SEC apart -- that rule is enforced at SPAWN time for
+// live spawns, which can't help here (every seed spawns at t=0), so it has to
+// be checked by hand. 6.6 -> 6.9 when MIN_ENEMY_OBSTACLE_GAP_SEC rose to 0.9:
+// its gap against the 5.8 obstacle was 0.8s, below the new floor. Closest
+// cross-pair now is that same pair at 1.1s. (Checked by hand, not by eye --
+// re-check every entry any time either list or MIN_ENEMY_OBSTACLE_GAP_SEC
+// changes again.)
+export const INTRO_SEED_ENEMY_ARRIVALS = [3.0, 6.9, 10.0, 12.8];
 // One platform on the way in from the very first frame -- direct feedback:
 // platforms were barely showing up at all early (one arrival at ~10s, then
 // nothing until ~22s). core/main.js passes an explicit lane for each entry,

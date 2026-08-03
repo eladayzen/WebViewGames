@@ -121,21 +121,30 @@ export const ENEMY_SPAWN_INTERVAL_SEC = 2.0;
 // effectively stopped appearing past the intro (direct feedback: "I just
 // have obstacles and platforms... most of the run I don't see any
 // enemies"). Pulled down to restore a healthy window on both sides
-// (~1.0s/1.6s for obstacles, ~1.4s/2.0s for enemies) -- re-check this same
-// math any time either spawn interval changes again.
+// -- re-check this same math any time either spawn interval changes again.
+//
+// 0.6 -> 0.9, direct feedback: "space out more enemies from obstacles."
+// Against the current OBSTACLE_SPAWN_INTERVAL_SEC (1.9) and
+// ENEMY_SPAWN_INTERVAL_SEC (2.0) that leaves a ~1.0s/1.9s obstacle window and
+// a ~1.1s/2.0s enemy window (~53-55%) -- comfortably above the ~0.1s choke
+// point above, similar margin to the ~1.0s/1.6s pair that was called healthy
+// there. Raising this ALSO required nudging data/introSequence.js's
+// INTRO_SEED_ENEMY_ARRIVALS (its 6.6 -> 6.9): that file's seeds are checked
+// by hand against this exact constant since MIN_ENEMY_OBSTACLE_GAP_SEC can't
+// enforce itself at t=0 the way it does for live spawns -- see that file's
+// own comment.
 //
 // SPEED-RAMP CAVEAT: this is a gap in SECONDS enforced at spawn time, and it
 // is no longer preserved exactly for the entity's whole lifetime the way the
 // section header above claims. Both entities still hold a FIXED z-separation
 // forever (that part is untouched -- everything scrolls at one speed), but the
-// seconds that separation represents shrinks as the world speeds up: a 0.6s
-// spawn gap laid down at SPEED_START delivers ~0.53s by the time it reaches
-// the player. Capped at ~11% erosion (worst at t=0) and exactly 0.6s again
-// once the ramp tops out. Deliberately NOT "fixed" by converting to a
-// distance gap against SPEED_MAX -- that would mean an 0.857s effective gap
-// at the start speed, leaving only ~0.74s of open window in the 1.6s obstacle
-// interval, i.e. re-creating the exact choke described above.
-export const MIN_ENEMY_OBSTACLE_GAP_SEC = 0.6; // -> ~6.0 world units at SPEED_START, ~8.6 at SPEED_MAX
+// seconds that separation represents shrinks as the world speeds up: at
+// SPEED_START a spawn gap laid down here delivers ~11% less by the time it
+// reaches the player, and exactly this value again once the ramp tops out.
+// Deliberately NOT "fixed" by converting to a distance gap against
+// SPEED_MAX -- see MIN_ENEMY_OBSTACLE_GAP_SEC's git history for why that
+// re-creates the exact choke described above at the start of a run.
+export const MIN_ENEMY_OBSTACLE_GAP_SEC = 0.9; // -> ~9.1 world units at SPEED_START, ~13.0 at SPEED_MAX
 
 // --- Elevated platforms (entities/platform.js, data/platformSequence.js) ---
 // 4 -> 0, forced by the speed ramp. Travel from SPAWN_Z at the run's starting
