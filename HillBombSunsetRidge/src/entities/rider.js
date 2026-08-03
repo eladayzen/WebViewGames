@@ -41,7 +41,10 @@ import clipPushUrl from '../assets/rig/clip_push.fbx?url';
 import baseColorUrl from '../assets/rig/rider_basecolor.jpg?url';
 import normalUrl from '../assets/rig/rider_normal.jpg?url';
 import metalRoughUrl from '../assets/rig/rider_metalrough.jpg?url';
-import { TRICK_LAND_SETTLE_DURATION, TRICK_LAND_SETTLE_AMOUNT } from '../data/constants.js';
+import {
+  TRICK_LAND_SETTLE_DURATION, TRICK_LAND_SETTLE_AMOUNT,
+  HOP_HIP_FOLD, HOP_KNEE_FOLD,
+} from '../data/constants.js';
 
 const RIDER_HEIGHT = 1.85;
 const BOARD_Y = 0.10;
@@ -226,6 +229,12 @@ export function createRider(scene, camera) {
   // Foot bones, cached so the board can be pinned to them every frame.
   let footL = null;
   let footR = null;
+  // Leg bones, cached for the procedural HOP tuck (see update()). Mixamo's
+  // standard humanoid names: UpLeg = thigh, Leg = shin.
+  let upLegL = null;
+  let upLegR = null;
+  let legL = null;
+  let legR = null;
   // Push is an OCCASIONAL ONE-SHOT layered over idle by weight (see update()).
   let pushing = false;
   let pushTimer = 2.5 + Math.random() * 2.5;
@@ -311,6 +320,12 @@ export function createRider(scene, camera) {
           if (!n.isBone) return;
           if (!footL && /LeftFoot$/.test(n.name)) footL = n;
           if (!footR && /RightFoot$/.test(n.name)) footR = n;
+          // Order matters: "LeftUpLeg" also ends in "Leg", so the thigh test
+          // has to run first and the shin test must exclude it explicitly.
+          if (!upLegL && /LeftUpLeg$/.test(n.name)) upLegL = n;
+          else if (!legL && /LeftLeg$/.test(n.name)) legL = n;
+          if (!upLegR && /RightUpLeg$/.test(n.name)) upLegR = n;
+          else if (!legR && /RightLeg$/.test(n.name)) legR = n;
         });
 
         Promise.all([
@@ -472,17 +487,10 @@ export function createRider(scene, camera) {
       if (s.airActive && s.airTrick === 'spin') {
         yawExtra = s.airT * Math.PI * 2;
       }
-      // SIDE FLIP -- a barrel roll about the direction of travel, used when the
-      // rider meets a rail/ledge too crosswise to grind it (see main.js's
-      // approach-angle gate). Rolls on Z, so it's a genuinely different read
-      // from the backflip's pitch and the spin's yaw.
-      let rollExtra = 0;
-      if (s.airActive && s.airTrick === 'sideflip') {
-        // Roll in the direction the rider was already cutting, so the flip
-        // continues the motion that made the grind impossible rather than
-        // fighting it.
-        rollExtra = Math.sign(s.carve || 1) * s.airT * Math.PI * 2;
-      }
+      // HOP-OVER has NO whole-body rotation -- it's a leg tuck applied directly
+      // to the rig's bones after the mixer runs (further down). The barrel roll
+      // that used to live here "didn't make a lot of sense" and is gone.
+      const rollExtra = 0;
 
       // Landing settle: a brief absorb-and-recover dip right after a TRICK
       // lands (main.js only starts this timer when airTrick was set), easing
@@ -555,6 +563,34 @@ export function createRider(scene, camera) {
 
         mixer.update(dt);
 
+        // --- HOP-OVER leg tuck (procedural, layered ON TOP of the clips) -----
+        //
+        // Not true IK -- it's direct FK on the Mixamo leg chain, which gets the
+        // read Amit described ("knees going up, feet and skateboard closer to
+        // the torso, folding his legs while jumping over") without needing a
+        // solver or any new animation.
+        //
+        // This MUST run after mixer.update(): the mixer writes absolute bone
+        // rotations every frame from the clips, so anything applied before it
+        // is simply overwritten. Adding to the post-mixer value layers the
+        // tuck over whatever idle/push is doing instead of fighting it.
+        //
+        // The board follows for free -- it's pinned to the foot bones below, so
+        // lifting the feet lifts the deck with them, exactly as a real hop does.
+        if (s.airTrick === 'hop' && s.airActive && upLegL) {
+          // Fold in and back out across the air: 0 at launch, peak at apex,
+          // 0 by landing -- so the legs are fully extended again for touchdown.
+          const fold = Math.sin(Math.min(1, s.airT) * Math.PI);
+          const hip = fold * HOP_HIP_FOLD;
+          const knee = fold * HOP_KNEE_FOLD;
+          // Signs are opposed between the two joints: the thigh swings the knee
+          // UP toward the chest, the shin folds the heel BACK under the thigh.
+          upLegL.rotation.x -= hip;
+          upLegR.rotation.x -= hip;
+          if (legL) legL.rotation.x += knee;
+          if (legR) legR.rotation.x += knee;
+        }
+
         // PIN THE BOARD TO THE FEET. Previously the board sat at a fixed height
         // and the rider was placed by his BIND-pose bounding box, so in an
         // animated pose his soles floated off the deck -- most visible mid-jump
@@ -588,7 +624,23 @@ export function createRider(scene, camera) {
           //
           // Threshold is deliberately loose (0.08, not 0.12) so the crossfade
           // frames either side of the push are caught too.
-          if (spread <= 0.08) {
+          //
+          // A HOP is the exception, and has to be handled explicitly: the tuck
+          // folds BOTH legs, but the skate stance is staggered so the two feet
+          // travel by different amounts -- spread grew to 0.325 and tripped
+          // this guard on 75% of hop frames, freezing the deck on the ground
+          // while the rider's feet climbed away from it. During a hop both feet
+          // genuinely are on the board, so it should track them: use the
+          // MIDPOINT height (not the higher foot, which would hang the deck off
+          // one boot) and skip the guard entirely.
+          const hopping = s.airTrick === 'hop' && s.airActive;
+          if (hopping) {
+            board.position.set(
+              (_fa.x + _fb.x) * 0.5,
+              (_fa.y + _fb.y) * 0.5 - BOARD_DROP,
+              (_fa.z + _fb.z) * 0.5,
+            );
+          } else if (spread <= 0.08) {
             const standing = _fa.y >= _fb.y ? _fa : _fb;
             board.position.set(
               (_fa.x + _fb.x) * 0.5,

@@ -106,24 +106,44 @@ export const AIR_HEIGHT_HIGH = 3.0;
 // -- there's no separate rotation-speed knob to touch, and there shouldn't be:
 // that decoupling is what made an earlier pass finish the flip before landing.
 //
-// Height comes DOWN with it, and deliberately further than a strict
-// gravity-scaling would suggest. Under real projectile motion a 0.55s hop
-// tops out around h ~ 4.0 * (0.55/1.5)^2 = 0.54, which is lower than an
-// ordinary jump and would make the "special" trick read as the smallest air in
-// the game. 1.4 keeps it clearly the bigger jump while still snapping up and
-// down fast; the arc is a sine curve rather than true ballistics anyway, so it
-// reads as punchy rather than wrong.
-export const AIR_HEIGHT_BACKFLIP = 1.4;
+// Height STAYS HIGH. Amit had explicitly asked for the backflip to be higher
+// ("make the jump higher so it will make sense"), and the only later note was
+// that it should be QUICKER -- I dropped 4.0 to 1.4 off my own ballistics
+// reasoning, which undid a change he'd asked for and wasn't requested. The arc
+// is a sine curve, not true projectile motion, so high AND fast is perfectly
+// coherent here: it snaps up, turns over, and snaps back down.
+export const AIR_HEIGHT_BACKFLIP = 4.0;
 export const AIR_DURATION_BACKFLIP = 0.55;
 
-// SIDE FLIP -- the bail-out when you meet a rail or ledge at a bad angle.
+// HOP-OVER -- the bail-out when you meet a rail or ledge at a bad angle.
 //
 // Amit's design note: gliding a pole only makes sense if you arrive roughly
-// ALONG it. Arriving fast from the side and magnetically snapping into a grind
-// reads as wrong, so in that case the rider flips sideways OVER the obstacle
-// instead. Quick and low -- it's a save, not a showpiece.
-export const AIR_HEIGHT_SIDEFLIP = 1.5;
-export const AIR_DURATION_SIDEFLIP = 0.5;
+// ALONG it. Arriving crosswise and magnetically snapping into a grind reads as
+// wrong. The first attempt at this was a barrel roll, which didn't land as an
+// idea -- replaced with a literal hop: clear the obstacle by a small margin
+// while TUCKING THE LEGS UP (knees toward the chest, board rising with the
+// feet), which is what a skater actually does to get over something.
+//
+// Height is deliberately small: rails/ledges are 0.52-0.62 tall, so ~1.1 clears
+// them by a believable margin rather than launching.
+export const AIR_HEIGHT_HOP = 1.1;
+export const AIR_DURATION_HOP = 0.5;
+
+// How hard the legs fold at the peak of a hop, in radians of added bone
+// rotation (see rider.js). Applied to the Mixamo thigh/shin bones on top of
+// whatever the animation is doing, peaking mid-air and unfolding by landing.
+// Solved from measurement rather than guessed twice more. Apex lift (how far
+// the feet rise toward the hips) turns out to go roughly as fold^2.3 -- the
+// rotations compound down the leg chain -- so eyeballing it overshoots badly
+// in both directions:
+//   fold 1.15/1.45 -> 0.70 lift: a cannonball, feet ABOVE the hips, and since
+//                     the board is pinned to the feet the deck came up to his
+//                     chest.
+//   fold 0.45/0.55 -> 0.08 lift: barely a twitch.
+// Fitting those two points and solving for ~0.29 lift puts the feet just under
+// hip height at the apex -- a real skate tuck over an obstacle.
+export const HOP_HIP_FOLD = 0.78; // knees driven up toward the chest
+export const HOP_KNEE_FOLD = 0.96; // heels tucked back under, board follows
 
 // How crosswise is too crosswise to grind. The rider's lateral speed is
 // |thetaVel| * R (angular rate around the trough, times local radius); compare

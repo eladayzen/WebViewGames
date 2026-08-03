@@ -22,7 +22,7 @@ import {
   TROUGH_RADIUS,
   AIR_DURATION, AIR_HEIGHT, AIR_DURATION_HIGH, AIR_HEIGHT_HIGH, HIGH_JUMP_CHANCE,
   AIR_DURATION_BACKFLIP, AIR_HEIGHT_BACKFLIP,
-  AIR_DURATION_SIDEFLIP, AIR_HEIGHT_SIDEFLIP, GRIND_MAX_CROSS_RATIO,
+  AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO,
   TRICK_LAND_SETTLE_DURATION,
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
 } from '../data/constants.js';
@@ -193,9 +193,9 @@ function beginAir(power, points, forcedTrick) {
   } else if (trick === 'spin') {
     state.airHeight = AIR_HEIGHT_HIGH;
     state.airDuration = AIR_DURATION_HIGH;
-  } else if (trick === 'sideflip') {
-    state.airHeight = AIR_HEIGHT_SIDEFLIP;
-    state.airDuration = AIR_DURATION_SIDEFLIP;
+  } else if (trick === 'hop') {
+    state.airHeight = AIR_HEIGHT_HOP;
+    state.airDuration = AIR_DURATION_HOP;
   } else {
     state.airHeight = AIR_HEIGHT;
     state.airDuration = AIR_DURATION * power;
@@ -421,9 +421,9 @@ function frame() {
           const lateralSpeed = Math.abs(state.thetaVel) * radiusAt(state.s);
           const crossRatio = lateralSpeed / Math.max(1, state.speed);
           if (crossRatio > GRIND_MAX_CROSS_RATIO) {
-            beginAir(1.0, 90, 'sideflip');
+            beginAir(1.0, 90, 'hop');
             hit.spent = true; // don't re-trigger on the next frame's overlap
-            hud.banner('SIDE FLIP');
+            hud.banner('HOP OVER');
           } else {
             state.grind = hit;
             state.grindPoints = 0;
