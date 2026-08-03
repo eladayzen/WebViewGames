@@ -216,9 +216,22 @@ export const THEMES = {
   //   two independently-verified single-fix edits.
   centralCity: {
     street: envTexture('street_tex.png', 576, 768), // TODO: dedicated downtown avenue texture
+    // 2 -> 4 facades, direct feedback after playtesting the fix pass: "I think
+    // maybe we need a bit more variation inside the theme." With only 2 facades
+    // cycling across 18 buildings per side, each one repeated 9 TIMES down a
+    // single block -- measured, not a guess. Generated as one sheet against
+    // BOTH the reference image and the already-fixed facade_c1 (so the model
+    // anchors on the flat-vertical-ladder/flat-awning convention instead of
+    // reintroducing the diagonal-stair problem that pass just fixed) -- and it
+    // worked on one candidate but not the other (a second sheet generated the
+    // same way came back with diagonal fire escapes on both buildings), which
+    // is why referencing the fixed asset is necessary but not sufficient --
+    // still worth checking each new batch before shipping it.
     facades: [
       { tex: envTexture('facade_c1.png', 2048, 2048), bodyColor: 0x886255 }, // red-brick walk-up over a green shopfront + graffiti shutter
       { tex: envTexture('facade_c2.png', 2048, 2048), bodyColor: 0x968569 }, // mustard commercial block over a diner, neon marquee
+      { tex: envTexture('facade_c3.png', 1175, 1334), bodyColor: 0x5d6973 }, // blue-grey walk-up over a bodega/fruit-stand + sticker gate
+      { tex: envTexture('facade_c4.png', 1062, 1334), bodyColor: 0x5a584e }, // charcoal-brass block over a laundromat, rooftop AC units
     ],
     skyline: envTexture('skyline.png', 1600, 906), // reused -- already a fitting daylight city skyline
     buildingProfile: {
@@ -228,10 +241,19 @@ export const THEMES = {
       // previously the one named "depth").
       //
       // ~2x sunnyStreet's 6-8 per direct feedback: "buildings ~2x wider is
-      // important, especially the side that is facing the street." A 4-value
+      // important, especially the side that is facing the street." A 5-value
       // cycle rather than a wider uniform range, so the block has a genuinely
       // varied rhythm instead of one repeated size.
-      widthCycle: [12, 17, 22, 15],
+      //
+      // DELIBERATELY 5 values, not 4, now that facades.length is also 4: both
+      // widthCycle and the facade picker (street.js's facadeIdx) are separate
+      // mod cycles walking the same building index, so if they were the SAME
+      // length every facade would always get paired with the exact same width
+      // -- facade 0 always narrow, facade 2 always wide, forever. 5 and 4 are
+      // coprime, so the combined (width, facade) pattern doesn't repeat until
+      // index 20 -- past all 18 buildings on a side, so no repeating pattern is
+      // ever visible within one block.
+      widthCycle: [12, 17, 22, 15, 19],
       depth: 13, // thickness away from the road -- barely seen, only the end caps
       heightBase: 11, heightMod: 13, heightSideOffset: 17, // ~11-23, taller than sunnyStreet's 8-17
       // Halved from sunnyStreet's 42 because each building is now ~2.3x its
