@@ -9,10 +9,14 @@
 // THEMES: everything environment-reskin-related (street/facade/skyline art
 // plus the building size/spacing profile) is grouped per named theme, keyed
 // by THEMES[key], so a new theme can be built alongside an existing one
-// without disturbing it -- direct feedback explicitly asked to "lock" the
-// first theme (sunnyStreet) while a second (centralCity, still pending its
-// own art) gets built. street.js's createStreet(scene, themeKey) picks one;
+// without disturbing it. street.js's createStreet(scene, themeKey) picks one;
 // nothing about an existing theme's numbers changes when a new one is added.
+//
+// centralCity is now the ACTIVE theme (createStreet's default). sunnyStreet is
+// unchanged and still selectable by name -- it was explicitly LOCKED earlier and
+// stays that way, as the fallback and as the second district once the level
+// transition starts swapping environments (data/progression.js's
+// LEVEL_SWAPS_ENVIRONMENT).
 //
 // Each texture entry carries its real pixel dimensions so street.js can size
 // its tile/decal geometry to the art's OWN aspect ratio instead of
@@ -161,38 +165,48 @@ export const THEMES = {
     },
   },
 
-  // "Central City" -- first-pass, NOT YET ACTIVE (main.js still defaults to
-  // sunnyStreet; nothing currently on screen changes until this is wired
-  // in). Direct feedback: closer to laneRunnerRef.png's actual downtown-
-  // street proportions/detail-scale, not sunnyStreet's boutique side-street.
-  // Same bright daylight mood as sunnyStreet (kept per explicit
-  // confirmation, not re-litigating time-of-day).
+  // "Central City" -- now the ACTIVE theme (street.js defaults to it).
+  // Direct feedback: build this out properly from laneRunnerRef.png's actual
+  // downtown proportions, and make it the first theme for now.
   //
-  // STYLE CAVEAT: this facade pair nails the requested density (a real
-  // small-scale multi-floor window grid, finally reading as a proper
-  // downtown tower instead of 1-2 giant windows repeated by tiling), but
-  // came back more photoreal-architectural than this game's cel-shaded
-  // illustration style -- worth a restyle pass before shipping, not a
-  // silent style regression to build around.
+  // The facades are a fresh Kolbo pass generated AGAINST that reference image,
+  // replacing a first attempt that came back photoreal-architectural -- a grey
+  // office tower with a monotonous window grid, flagged in this file at the time
+  // as "worth a restyle pass before shipping, not a silent style regression to
+  // build around". These are cel-shaded to match Leo and the barricade: bold ink
+  // outlines, flat saturated fills, bright daylight, with the detail that makes
+  // a street read as a city -- storefronts and awnings at ground level, fire
+  // escapes, a graffiti roll-down shutter, a neon marquee, window boxes.
   //
-  // No dedicated street/sidewalk texture yet -- reusing sunnyStreet's for
-  // now (visibly a placeholder call, not a matched downtown-avenue surface).
+  // Generated as ONE sheet and split, so the pair cannot drift apart
+  // stylistically -- the same reason the coin and pickup sets were batched.
+  // Deliberately no readable signage: these tile vertically, and repeated
+  // legible text reads as a printing error rather than a city.
   centralCity: {
     street: envTexture('street_tex.png', 576, 768), // TODO: dedicated downtown avenue texture
     facades: [
-      { tex: envTexture('facade_c1.png', 626, 768), bodyColor: 0x8c7b61 }, // tan concrete office tower
-      { tex: envTexture('facade_c2.png', 626, 768), bodyColor: 0x76503e }, // red-brick apartment tower
+      { tex: envTexture('facade_c1.png', 1309, 1410), bodyColor: 0x886255 }, // red-brick walk-up over a green shopfront + graffiti shutter
+      { tex: envTexture('facade_c2.png', 1214, 1413), bodyColor: 0x968569 }, // mustard commercial block over a diner, neon marquee
     ],
     skyline: envTexture('skyline.png', 1600, 906), // reused -- already a fitting daylight city skyline
     buildingProfile: {
-      // Longer (bigger footprint along the street) and a bit taller than
-      // sunnyStreet, with a genuinely diverse size spread (a 4-value cycle,
-      // not just a narrower/wider uniform range) per direct feedback.
-      widthCycle: [10, 14, 18, 13],
-      depth: 13, // deeper than sunnyStreet's 8 -- a proper downtown block, not a thin storefront
-      heightBase: 11, heightMod: 13, heightSideOffset: 17, // height range ~11-23, moderately taller than sunnyStreet's 8-17
-      count: 20, // fewer than sunnyStreet's 42 -- these buildings are ~2x wider on average
-      gapMin: 1, gapRange: 6, // same tight-gap feel as sunnyStreet, just re-scaled for the bigger widths
+      // widthCycle is the FRONTAGE along the street -- the span of the wall the
+      // player actually looks at (see street.js's axis note; this field used to
+      // be applied across the road instead, which is why the frontage dial was
+      // previously the one named "depth").
+      //
+      // ~2x sunnyStreet's 6-8 per direct feedback: "buildings ~2x wider is
+      // important, especially the side that is facing the street." A 4-value
+      // cycle rather than a wider uniform range, so the block has a genuinely
+      // varied rhythm instead of one repeated size.
+      widthCycle: [12, 17, 22, 15],
+      depth: 13, // thickness away from the road -- barely seen, only the end caps
+      heightBase: 11, heightMod: 13, heightSideOffset: 17, // ~11-23, taller than sunnyStreet's 8-17
+      // Halved from sunnyStreet's 42 because each building is now ~2.3x its
+      // frontage -- STREET_LENGTH is fixed at 400, so the count has to come down
+      // or the gap scaling goes negative and buildings overlap.
+      count: 18,
+      gapMin: 1, gapRange: 6, // same tight-gap feel, rescaled for the bigger frontages
       leftGapStride: 7, leftGapOffset: 0,
       rightGapStride: 11, rightGapOffset: 3,
     },

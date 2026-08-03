@@ -42,9 +42,14 @@ export const TIER_STEP_AFTER_LAST = 1500;
 // tiers exist -- past the end it falls back to "TIER n" (see
 // systems/progression.js's tierName). These are placeholders until the
 // environments they're meant to announce actually exist.
+// Ordered to match the themes that actually exist, so the bar never announces a
+// district the player isn't in: centralCity is the active theme now, and
+// sunnyStreet is the locked fallback lined up as the second district once
+// LEVEL_SWAPS_ENVIRONMENT is switched on. ROOFTOPS is still aspirational (the
+// build doc's back-alley -> market street -> rooftop arc), with no art yet.
 export const TIER_NAMES = [
+  'CENTRAL CITY',
   'SUNNY STREET',
-  'DOWNTOWN',
   'ROOFTOPS',
 ];
 
