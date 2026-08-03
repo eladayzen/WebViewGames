@@ -100,14 +100,37 @@ export const HIGH_JUMP_CHANCE = 0.35;
 // good" (only its rotation rate needed adjusting, see rider.js).
 export const AIR_DURATION_HIGH = 1.3; // long enough to read a full rotation
 export const AIR_HEIGHT_HIGH = 3.0;
-// BACKFLIP gets its own, taller arc: "make the jump higher so it will make
-// sense" -- with the flip itself now spinning 50% faster (rider.js), a taller
-// jump gives it room to finish and hold a clean landing pose instead of
-// snapping through the rotation in a hop that's over before it reads. Duration
-// scales with sqrt(height ratio) so the arc still looks like gravity rather
-// than teleporting up and dropping too fast for the extra height.
-export const AIR_HEIGHT_BACKFLIP = 4.0;
-export const AIR_DURATION_BACKFLIP = 1.5;
+// BACKFLIP: a SNAPPY up-and-down, "like half a second of a jump" (Amit,
+// after seeing the 1.5s version). Since the rotation is locked 1:1 to air time,
+// halving the duration is exactly what makes the flip itself whip round faster
+// -- there's no separate rotation-speed knob to touch, and there shouldn't be:
+// that decoupling is what made an earlier pass finish the flip before landing.
+//
+// Height comes DOWN with it, and deliberately further than a strict
+// gravity-scaling would suggest. Under real projectile motion a 0.55s hop
+// tops out around h ~ 4.0 * (0.55/1.5)^2 = 0.54, which is lower than an
+// ordinary jump and would make the "special" trick read as the smallest air in
+// the game. 1.4 keeps it clearly the bigger jump while still snapping up and
+// down fast; the arc is a sine curve rather than true ballistics anyway, so it
+// reads as punchy rather than wrong.
+export const AIR_HEIGHT_BACKFLIP = 1.4;
+export const AIR_DURATION_BACKFLIP = 0.55;
+
+// SIDE FLIP -- the bail-out when you meet a rail or ledge at a bad angle.
+//
+// Amit's design note: gliding a pole only makes sense if you arrive roughly
+// ALONG it. Arriving fast from the side and magnetically snapping into a grind
+// reads as wrong, so in that case the rider flips sideways OVER the obstacle
+// instead. Quick and low -- it's a save, not a showpiece.
+export const AIR_HEIGHT_SIDEFLIP = 1.5;
+export const AIR_DURATION_SIDEFLIP = 0.5;
+
+// How crosswise is too crosswise to grind. The rider's lateral speed is
+// |thetaVel| * R (angular rate around the trough, times local radius); compare
+// it to forward speed and the ratio is the tangent of the approach angle.
+// 0.30 ~= 17 degrees: drifting gently onto a rail still grinds, deliberately
+// carving across one flips over it instead.
+export const GRIND_MAX_CROSS_RATIO = 0.30;
 
 // A trick's rotation is now synced 1:1 to its OWN jump's air time (airT 0->1),
 // finishing exactly as the rider lands, per Amit's direct correction: the

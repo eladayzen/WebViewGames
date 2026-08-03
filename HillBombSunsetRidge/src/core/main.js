@@ -22,6 +22,7 @@ import {
   TROUGH_RADIUS,
   AIR_DURATION, AIR_HEIGHT, AIR_DURATION_HIGH, AIR_HEIGHT_HIGH, HIGH_JUMP_CHANCE,
   AIR_DURATION_BACKFLIP, AIR_HEIGHT_BACKFLIP,
+  AIR_DURATION_SIDEFLIP, AIR_HEIGHT_SIDEFLIP, GRIND_MAX_CROSS_RATIO,
   TRICK_LAND_SETTLE_DURATION,
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
 } from '../data/constants.js';
@@ -166,27 +167,38 @@ function reset() {
  * that later" -- so HIGH_JUMP_CHANCE is the one thing to swap out for a real
  * trigger (a held input, a specific ramp, a pickup) when one exists.
  */
-function beginAir(power, points) {
-  const high = Math.random() < HIGH_JUMP_CHANCE;
-  const trick = high ? (Math.random() < 0.5 ? 'backflip' : 'spin') : null;
+function beginAir(power, points, forcedTrick) {
+  const trick = forcedTrick !== undefined
+    ? forcedTrick
+    : (Math.random() < HIGH_JUMP_CHANCE ? (Math.random() < 0.5 ? 'backflip' : 'spin') : null);
   state.airActive = true;
   state.airT = 0;
   state.airPower = power;
   state.airPoints = points;
   state.airTrick = trick;
-  // Backflip gets its OWN, taller/longer arc (Amit: "make the jump higher so
-  // it will make sense", since the flip itself now spins faster -- see
-  // rider.js). Spin keeps the original high-jump height/duration; only its
-  // rotation rate changed.
+
+  // Duration is BAKED here rather than multiplied by airPower each frame.
+  //
+  // A TRICK's air time is its own authored value, deliberately independent of
+  // which ramp launched it: because rotation is locked 1:1 to air time, letting
+  // a big ramp's power stretch the duration also silently slowed the flip. The
+  // backflip was authored at 0.55s but measured 665-841ms in play for exactly
+  // that reason. Tricks should feel the same every time you see them.
+  //
+  // An ORDINARY jump still scales with ramp power -- a bigger kicker giving a
+  // longer air is correct, and there's no rotation riding on its timing.
   if (trick === 'backflip') {
     state.airHeight = AIR_HEIGHT_BACKFLIP;
     state.airDuration = AIR_DURATION_BACKFLIP;
   } else if (trick === 'spin') {
     state.airHeight = AIR_HEIGHT_HIGH;
     state.airDuration = AIR_DURATION_HIGH;
+  } else if (trick === 'sideflip') {
+    state.airHeight = AIR_HEIGHT_SIDEFLIP;
+    state.airDuration = AIR_DURATION_SIDEFLIP;
   } else {
     state.airHeight = AIR_HEIGHT;
-    state.airDuration = AIR_DURATION;
+    state.airDuration = AIR_DURATION * power;
   }
 }
 
@@ -322,7 +334,7 @@ function frame() {
       beginAir(0.72, 40); // a bare ollie: much smaller than a ramp launch
     }
     if (state.airActive) {
-      state.airT += dt / (state.airDuration * state.airPower);
+      state.airT += dt / state.airDuration; // power is already baked in by beginAir
       if (state.airT >= 1) {
         state.airActive = false;
         state.airT = 0;
@@ -397,19 +409,37 @@ function frame() {
           hit.spent = true;
           hud.banner(hit.def.label);
         } else if (hit.def.kind === 'grind') {
-          state.grind = hit;
-          state.grindPoints = 0;
-          state.grindTime = 0;
-          state.airActive = false;
-          state.airT = 0;
-          // The rail's own mesh sits at y=h in buildRail (props.js) -- that's
-          // how high its bar actually is off the trough surface. Without this,
-          // the rider stood at plain surface height while the rail bar rendered
-          // up around waist/pelvis height: "stuck between the skateboard and
-          // the boy's pelvis." Lifting the rider by the SAME h puts the board
-          // on top of the bar instead of the bar passing through the rider.
-          state.grindLiftHeight = hit.def.size.h;
-          hud.banner(hit.def.label);
+          // APPROACH ANGLE GATE. Gliding a rail/ledge only makes sense if you
+          // arrive roughly along it; snapping into a grind while cutting hard
+          // across it reads as the obstacle magnetically grabbing you. So:
+          // measure the crossing angle and, if it's too steep, flip sideways
+          // OVER the obstacle instead of grinding it.
+          //
+          // lateral speed = |thetaVel| * local radius (angular rate around the
+          // trough converted to world units); over forward speed that ratio is
+          // tan(approach angle).
+          const lateralSpeed = Math.abs(state.thetaVel) * radiusAt(state.s);
+          const crossRatio = lateralSpeed / Math.max(1, state.speed);
+          if (crossRatio > GRIND_MAX_CROSS_RATIO) {
+            beginAir(1.0, 90, 'sideflip');
+            hit.spent = true; // don't re-trigger on the next frame's overlap
+            hud.banner('SIDE FLIP');
+          } else {
+            state.grind = hit;
+            state.grindPoints = 0;
+            state.grindTime = 0;
+            state.airActive = false;
+            state.airT = 0;
+            // The rail's own mesh sits at y=h in buildRail (props.js) -- that's
+            // how high its bar actually is off the trough surface. Without this,
+            // the rider stood at plain surface height while the rail bar
+            // rendered up around waist/pelvis height: "stuck between the
+            // skateboard and the boy's pelvis." Lifting the rider by the SAME h
+            // puts the board on top of the bar instead of the bar passing
+            // through the rider.
+            state.grindLiftHeight = hit.def.size.h;
+            hud.banner(hit.def.label);
+          }
         } else if (hit.def.kind === 'hazard') {
           scoring.hit(hit.def.hazard.wobble, hit.def.label);
           state.speed *= 1 - hit.def.hazard.scrub;

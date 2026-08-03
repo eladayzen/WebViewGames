@@ -438,8 +438,9 @@ export function createRider(scene, camera) {
       }
 
       // Carve roll: the body banks into the turn. Identical signal in all modes.
+      // (A side-flip's barrel roll is added onto this further down, once
+      // rollExtra has been computed alongside the other trick rotations.)
       const roll = -s.carve * 0.42;
-      tilt.rotation.z = roll;
       // Tuck pitch. Note this is emergent from holding a straight line -- there
       // is no forward-lean input anywhere in this game (build doc §0).
       //
@@ -471,6 +472,17 @@ export function createRider(scene, camera) {
       if (s.airActive && s.airTrick === 'spin') {
         yawExtra = s.airT * Math.PI * 2;
       }
+      // SIDE FLIP -- a barrel roll about the direction of travel, used when the
+      // rider meets a rail/ledge too crosswise to grind it (see main.js's
+      // approach-angle gate). Rolls on Z, so it's a genuinely different read
+      // from the backflip's pitch and the spin's yaw.
+      let rollExtra = 0;
+      if (s.airActive && s.airTrick === 'sideflip') {
+        // Roll in the direction the rider was already cutting, so the flip
+        // continues the motion that made the grind impossible rather than
+        // fighting it.
+        rollExtra = Math.sign(s.carve || 1) * s.airT * Math.PI * 2;
+      }
 
       // Landing settle: a brief absorb-and-recover dip right after a TRICK
       // lands (main.js only starts this timer when airTrick was set), easing
@@ -484,6 +496,7 @@ export function createRider(scene, camera) {
 
       tilt.rotation.x = s.tucking * 0.30 + pitchExtra + settleExtra;
       tilt.rotation.y = yawExtra;
+      tilt.rotation.z = roll + rollExtra;
 
       if (mode === 'sprite') {
         // Billboard, then re-apply roll so the sprite still leans.

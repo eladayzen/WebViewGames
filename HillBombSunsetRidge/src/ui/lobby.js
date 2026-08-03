@@ -27,7 +27,12 @@ export function createLobby(onChange, onStart) {
   const q = new URLSearchParams(location.search);
 
   const config = {
-    mode: ['model', 'rigged'].includes(q.get('mode')) ? q.get('mode') : 'sprite',
+    // Default is the RIGGED character -- the mode that actually represents the
+    // game now. 'sprite' and 'model' were the A/B controls for the earlier
+    // "which rider representation should we use" comparison, which is settled;
+    // they stay reachable from the lab for reference but are no longer what you
+    // get on open.
+    mode: ['model', 'sprite'].includes(q.get('mode')) ? q.get('mode') : 'rigged',
     lighting: q.get('lit') === '1' ? 'lit' : 'unlit',
     swing: q.get('swing') || 'full',
     texres: q.get('texres') || '1024',
@@ -102,7 +107,11 @@ export function createLobby(onChange, onStart) {
 
   syncUI();
   onChange(config);
-  if (q.get('ride') === '1') close();
+  // Ride straight away by default -- the options screen is no longer the front
+  // door ("I don't need to see all of those options in the beginning"). It's
+  // still one keypress away: L, or the gear button, opens the lab mid-run and
+  // every setting applies live. `?lobby=1` forces it open on load if needed.
+  if (q.get('lobby') !== '1') close();
 
   return { config, open, close, isOpen: () => !lobby.classList.contains('hidden') };
 }
