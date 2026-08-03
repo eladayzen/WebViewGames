@@ -16,12 +16,18 @@ import {
   JUMP_TILT_THRESHOLD, JUMP_TILT_HYSTERESIS,
 } from '../data/constants.js';
 
-const KEY_MAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up' };
+// ArrowDown is here for the SAME reason ArrowUp is: jump now fires on a lean in
+// EITHER direction on the forward/back axis (see pollJumpPress). The host
+// already sends both -- WebGameController dispatches ArrowUp for tilt.y and
+// ArrowDown for -tilt.y off one shared threshold -- so nothing new is needed on
+// the Unity side beyond forwardVerticalAxis being on.
+const KEY_MAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
 
-const keys = { left: false, right: false, up: false };
+const keys = { left: false, right: false, up: false, down: false };
 let leftWasDown = false;
 let rightWasDown = false;
 let upWasDown = false;
+let downWasDown = false;
 
 window.addEventListener('keydown', (e) => {
   const action = KEY_MAP[e.code];
@@ -77,7 +83,8 @@ function readTilt() {
   const sensor = window.__gbSensor;
   if (sensor) return { x: sensor.x - center.x, y: sensor.y - center.y };
   const vx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
-  return { x: vx, y: keys.up ? 1 : 0 };
+  const vy = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
+  return { x: vx, y: vy };
 }
 
 // Captures the current raw tilt as the new neutral -- the fix for "I'm standing
@@ -127,8 +134,20 @@ export function updateSteering() {
   laneZone = resolveLaneZone(tilt.x);
   // Jump from tilt.y, with its own hysteresis, because analog mode means the
   // host never sends ArrowUp at all (see JUMP_TILT_THRESHOLD's note).
+  //
+  // MAGNITUDE, not signed value: a lean either forward OR backward past the
+  // threshold jumps. One shared threshold for both directions deliberately
+  // mirrors WebGameController, which derives its own ArrowUp/ArrowDown from
+  // tilt.y and -tilt.y against a single pressThreshold -- so the two modes stay
+  // describable by the same number instead of drifting apart.
+  //
+  // Passing through neutral is what re-arms it: hold a forward lean and you get
+  // one jump, and slamming straight from full forward to full backward without
+  // crossing back inside the release band correctly gives no second jump. That
+  // falls out of the hysteresis rather than needing its own rule.
   const release = Math.max(0, tuning.jumpTilt - JUMP_TILT_HYSTERESIS);
-  jumpTiltHeld = jumpTiltHeld ? tilt.y > release : tilt.y > tuning.jumpTilt;
+  const lean = Math.abs(tilt.y);
+  jumpTiltHeld = jumpTiltHeld ? lean > release : lean > tuning.jumpTilt;
 }
 
 // STEPPED mode only: edge-detected +/-1 lane step -- one press = one discrete
@@ -160,14 +179,22 @@ export function getLaneTarget() {
   return tuning.mode === STEERING_ABSOLUTE ? laneZone : null;
 }
 
-// Edge-detected one-shot jump press -- from ArrowUp in stepped mode, from
-// tilt.y in absolute mode (see updateSteering). The "no double-jump" guard
-// lives in entities/player.js's startPlayerJump; this only reports that a fresh
-// press happened.
+// Edge-detected one-shot jump press -- from ArrowUp/ArrowDown in stepped mode,
+// from |tilt.y| in absolute mode (see updateSteering). The "no double-jump"
+// guard lives in entities/player.js's startPlayerJump; this only reports that a
+// fresh press happened.
+//
+// EITHER direction jumps, on both modes. Direct feedback: keep the forward lean
+// and add backward alongside it. Worth knowing why that's free on the Unity
+// side -- the host already emits ArrowDown for a backward lean whenever
+// forwardVerticalAxis is on, so stepped mode needs no SDK change at all, and
+// absolute mode reads the raw axis itself and never needed one.
 export function pollJumpPress() {
   const up = keys.up;
-  const freshKey = up && !upWasDown;
+  const down = keys.down;
+  const freshKey = (up && !upWasDown) || (down && !downWasDown);
   upWasDown = up;
+  downWasDown = down;
 
   if (tuning.mode === STEERING_ABSOLUTE) {
     const pressed = jumpTiltHeld && !jumpTiltWasHeld;

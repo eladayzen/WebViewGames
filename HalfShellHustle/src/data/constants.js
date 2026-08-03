@@ -163,6 +163,11 @@ export const LANE_ZONE_HYSTERESIS = 0.12;
 // the ergonomically harder axis on this board, so it wants a deliberate lean,
 // and a low threshold would fire jumps from the postural noise of a
 // left/right weight shift.
+// Applied to the MAGNITUDE of tilt.y, so a lean either forward or backward
+// jumps -- direct feedback: keep forward, add backward alongside it. One
+// threshold covers both on purpose, matching WebGameController's own
+// ArrowUp/ArrowDown pair which share a single pressThreshold; if backward ever
+// needs its own feel, split this rather than widening it for both.
 export const JUMP_TILT_THRESHOLD = 0.45;
 export const JUMP_TILT_HYSTERESIS = 0.15;
 

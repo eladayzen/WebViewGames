@@ -287,7 +287,7 @@ export function initSteeringPanel() {
     max: 0.95,
     step: 0.05,
     fmt: (v) => v.toFixed(2),
-    note: 'forward lean to jump (analog mode sends no ArrowUp)',
+    note: 'lean forward OR back to jump (analog sends no arrows)',
   });
   addStepper({
     label: 'SENSITIVITY',
