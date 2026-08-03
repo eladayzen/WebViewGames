@@ -503,18 +503,58 @@ html, body {
 }
 
 /* --- Level-complete transition (core/main.js's level flow) ---
-   Reuses .overlay for the full-screen dim + centering, so it sits at the same
-   z-index (20) and behaves identically to the game-over screen. It carries no
-   button on purpose: the countdown advances it, and a stray tappable control
-   here could be hit by the host's restart auto-click logic. */
-#lc-title {
+   Reuses .overlay for the full-screen dim + centering (same z-index, same
+   layout skeleton as game-over) but OVERRIDES its background: direct
+   feedback, the two screens read as ambiguous at a glance because they were
+   otherwise identical -- same flat dark wash, same static centered text, no
+   color language telling them apart. A warm gold glow (vs game-over's flat
+   neutral dark) is the cue that survives even out of focus or peripheral
+   vision, which is exactly the case this matters most -- a player standing on
+   a board, glancing at a screen across the room. */
+#level-complete {
+  background: radial-gradient(ellipse at 50% 42%, rgba(255, 200, 90, 0.4), rgba(20, 10, 5, 0.88) 72%);
+}
+
+/* The emotional payoff, and deliberately the FIRST thing read -- "LEVEL
+   COMPLETE" (below) is now a caption under it, not the headline. GREEN is a
+   third color in this HUD's language, distinct from the gold already owned by
+   points/tiers and the red owned by damage/game-over, so "something good just
+   happened" has its own unambiguous signal. */
+#lc-headline {
   font-weight: 900;
-  font-size: 7.5vmin;
-  letter-spacing: 0.6vmin;
-  color: #ffe066;
-  -webkit-text-stroke: 0.9vmin #2a1400;
+  font-size: 10vmin;
+  letter-spacing: 0.3vmin;
+  color: #97ff6b;
+  -webkit-text-stroke: 1vmin #123a08;
   paint-order: stroke fill;
-  text-shadow: 0 0 3.5vmin rgba(255, 200, 60, 0.7);
+  text-shadow: 0 0 4vmin rgba(140, 255, 90, 0.75);
+}
+
+/* Bouncy elastic-overshoot pop, not a fade -- a plain fade-in reads as UI, an
+   overshoot reads as an exclamation. Fires once per showLevelComplete() call
+   via the usual remove-class/reflow/re-add restart idiom. */
+.lc-headline-play {
+  animation: lc-headline-bounce 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes lc-headline-bounce {
+  0%   { transform: scale(0.2) rotate(-8deg); opacity: 0; }
+  55%  { transform: scale(1.18) rotate(4deg); opacity: 1; }
+  75%  { transform: scale(0.94) rotate(-2deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+/* Demoted from the old headline role to a caption -- the numbers/name below
+   already say what happened, this just labels it. */
+#lc-title {
+  margin-top: 0.6vmin;
+  font-weight: 800;
+  font-size: 3.4vmin;
+  letter-spacing: 0.5vmin;
+  color: #ffe066;
+  opacity: 0.85;
+  -webkit-text-stroke: 0.4vmin #2a1400;
+  paint-order: stroke fill;
 }
 
 #lc-next {
@@ -558,4 +598,42 @@ html, body {
   0%   { transform: scale(1.5); opacity: 0.25; }
   35%  { transform: scale(1); opacity: 1; }
   100% { transform: scale(1); opacity: 1; }
+}
+
+/* --- Confetti (ui/hud.js builds the pieces once, replays via class restart) ---
+   DOM/CSS, not the 3D particle systems in systems/vfx.js -- this overlay lives
+   entirely in screen space above the WebGL canvas, so a world-space particle
+   would be the wrong tool. Positioned absolute within #level-complete so it's
+   naturally clipped to the overlay and never bleeds under the HUD chrome. */
+#lc-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -6vmin;
+  width: 1.1vmin;
+  height: 2.3vmin;
+  opacity: 0;
+  will-change: transform, opacity;
+  /* left / background / --drift / --spin / animation-delay / -duration are all
+     set per-piece inline by JS at build time -- each piece needs its own
+     random values, which a shared class alone can't express. */
+}
+
+/* Only animates while this class is present, so a freshly-built (not yet
+   celebrated) confetti pool sits inert instead of playing on page load. */
+.lc-confetti-play .confetti-piece {
+  animation-name: confetti-fall;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.7, 1);
+  animation-fill-mode: forwards;
+}
+
+@keyframes confetti-fall {
+  0%   { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  8%   { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--drift, 0), 118vh) rotate(var(--spin, 540deg)); }
 }

@@ -143,6 +143,16 @@
            inside it), so this is a separate element with its own id and no
            button, and the host will correctly ignore it. -->
       <div id="level-complete" class="overlay hidden">
+        <!-- Confetti pool -- built once by ui/hud.js, replayed on every
+             showLevelComplete() call. Direct feedback: the screen read as
+             ambiguous ("did I die, or did something good happen?") because it
+             was visually just the game-over overlay with different words --
+             same dark wash, no motion, no color language of its own. This is
+             the fix: an unambiguous celebratory beat, not just a label swap. -->
+        <div id="lc-confetti"></div>
+        <!-- The emotional headline, and deliberately the FIRST thing read --
+             "LEVEL COMPLETE" is now a caption underneath it, not the title. -->
+        <div id="lc-headline">AWESOME!</div>
         <div id="lc-title">LEVEL COMPLETE</div>
         <div id="lc-next">NEXT: DOWNTOWN</div>
         <div id="lc-ready">GET READY</div>

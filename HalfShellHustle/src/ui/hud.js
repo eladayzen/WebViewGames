@@ -19,8 +19,10 @@ const tierBarEl = document.getElementById('tier-bar');
 const tierFillEl = document.getElementById('tier-fill');
 const tierLabelEl = document.getElementById('tier-label');
 const lcEl = document.getElementById('level-complete');
+const lcHeadlineEl = document.getElementById('lc-headline');
 const lcNextEl = document.getElementById('lc-next');
 const lcCountdownEl = document.getElementById('lc-countdown');
+const lcConfettiEl = document.getElementById('lc-confetti');
 const livesTrayEl = document.getElementById('lives-tray');
 const gameoverEl = document.getElementById('gameover-overlay');
 const finalPointsEl = document.getElementById('final-points');
@@ -101,10 +103,54 @@ export function updatePoints(points, punch = false) {
 // tier now ends the level outright, and the full-screen overlay below says the
 // same thing better. All that survives is the bar's own sweep, which reads for
 // the instant before the overlay covers it.
+
+const CONFETTI_COLORS = ['#ffe066', '#ffc93f', '#5fe0ff', '#ff8fa3', '#7fd8ff', '#97ff6b', '#ffb43c'];
+const CONFETTI_COUNT = 34;
+
+// Built once at module load, not per celebration -- creating ~34 DOM nodes on
+// every level-up would be a needless allocation on a path that already has to
+// stay smooth. Each piece gets its own randomized drift/spin/timing baked in
+// as inline styles at BUILD time (CSS custom properties read by the
+// confetti-fall keyframe in style.css), since a shared class can't express
+// per-element randomness on its own.
+//
+// Delay/duration ranges are chosen so pieces are still falling ~5s in --
+// covering roughly the whole LEVEL_COUNTDOWN_SECONDS window, not just the
+// first second or two -- without needing a second timed burst.
+function buildConfetti() {
+  if (!lcConfettiEl) return;
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < CONFETTI_COUNT; i++) {
+    const el = document.createElement('div');
+    el.className = 'confetti-piece';
+    el.style.left = `${Math.random() * 100}%`;
+    el.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+    el.style.setProperty('--drift', `${(Math.random() * 2 - 1) * 24}vw`);
+    el.style.setProperty('--spin', `${(Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 3) * 360}deg`);
+    el.style.animationDuration = `${2 + Math.random() * 1.4}s`;
+    el.style.animationDelay = `${Math.random() * 2}s`;
+    frag.appendChild(el);
+  }
+  lcConfettiEl.appendChild(frag);
+}
+buildConfetti();
+
 export function showLevelComplete(nextTier) {
   tierBarEl.classList.remove('tier-bar-celebrate');
   void tierBarEl.offsetWidth;
   tierBarEl.classList.add('tier-bar-celebrate');
+
+  // Same remove/reflow/re-add restart idiom as the tier flash and countdown
+  // tick -- without the forced reflow, back-to-back level-ups (or a fast
+  // retry landing on the same tier) would coalesce into the browser's next
+  // paint and never actually replay.
+  lcHeadlineEl.classList.remove('lc-headline-play');
+  void lcHeadlineEl.offsetWidth;
+  lcHeadlineEl.classList.add('lc-headline-play');
+
+  lcConfettiEl.classList.remove('lc-confetti-play');
+  void lcConfettiEl.offsetWidth;
+  lcConfettiEl.classList.add('lc-confetti-play');
 
   lcNextEl.textContent = `NEXT: ${tierName(nextTier)}`;
   lastCountdownShown = null;
@@ -126,6 +172,8 @@ export function setLevelCountdown(seconds) {
 export function hideLevelComplete() {
   lcEl.classList.add('hidden');
   tierBarEl.classList.remove('tier-bar-celebrate');
+  lcHeadlineEl.classList.remove('lc-headline-play');
+  lcConfettiEl.classList.remove('lc-confetti-play');
 }
 
 // A fresh run starts at tier 1 with an empty bar -- and the fill must be reset
@@ -134,6 +182,8 @@ export function hideLevelComplete() {
 export function resetProgressUI() {
   lcEl.classList.add('hidden');
   tierBarEl.classList.remove('tier-bar-celebrate');
+  lcHeadlineEl.classList.remove('lc-headline-play');
+  lcConfettiEl.classList.remove('lc-confetti-play');
   const prev = tierFillEl.style.transition;
   tierFillEl.style.transition = 'none';
   tierFillEl.style.width = '0%';
