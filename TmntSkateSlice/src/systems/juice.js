@@ -34,8 +34,18 @@ export function resetJuice(juice) {
 // A collected "shred" that flies from the catch point (x0,y0) into its box's
 // HUD chip (x1,y1) and, on arrival, calls onArrive() (which pulses the chip) --
 // so the player SEES the slice register into that box. Colored by the box.
+//
+// Follows a quadratic-bezier CURVE (control point ctrlX/ctrlY) so a catch near
+// the middle of the frame -- a short, near-vertical drop to the center chip --
+// still arcs interestingly instead of dropping straight down: the sideways bow
+// grows as the horizontal travel shrinks (a far-to-the-side catch already flies
+// diagonally, so it gets little added bow), plus a small upward lift.
 export function spawnCollectFlyer(juice, x0, y0, x1, y1, color, onArrive) {
-  juice.flyers.push({ x0, y0, x1, y1, t: 0, ttl: COLLECT_FLYER_TTL_SEC, color, onArrive });
+  const horizShort = 1 - Math.min(1, Math.abs(x1 - x0) / 0.3); // 1 = straight down, 0 = far side
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const ctrlX = (x0 + x1) / 2 + side * 0.26 * horizShort; // sideways bow
+  const ctrlY = (y0 + y1) / 2 - (0.05 + 0.13 * horizShort); // upward bow
+  juice.flyers.push({ x0, y0, x1, y1, ctrlX, ctrlY, t: 0, ttl: COLLECT_FLYER_TTL_SEC, color, onArrive });
 }
 
 // Retro floating score popup ("+10", "+25", ...) at a world position -- rises
