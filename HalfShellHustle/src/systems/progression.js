@@ -12,7 +12,7 @@
 // cache would just be a second thing that can disagree with the config.
 
 import {
-  TIER_THRESHOLDS, TIER_STEP_AFTER_LAST, TIER_NAMES,
+  TIER_THRESHOLDS, TIER_STEP_AFTER_LAST, TIER_NAMES, TIER_THEMES,
 } from '../data/progression.js';
 
 // Cumulative points needed to COMPLETE tier n (1-based). Past the authored list
@@ -26,6 +26,13 @@ export function thresholdForTier(tier) {
 
 export function tierName(tier) {
   return TIER_NAMES[tier - 1] || `TIER ${tier}`;
+}
+
+// The environment key a tier plays in (data/envArt.js's THEMES), or null past
+// the end of TIER_THEMES -- the caller's cue to leave the current street
+// alone rather than tearing it down for a theme that doesn't exist.
+export function themeForTier(tier) {
+  return TIER_THEMES[tier - 1] || null;
 }
 
 // Everything the HUD needs for one score, in one object:

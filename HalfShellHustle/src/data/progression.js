@@ -61,9 +61,22 @@ export const TIER_NAMES = [
 // without a frame spike; behind a covered screen that cost is free.
 export const LEVEL_COUNTDOWN_SECONDS = 5;
 
-// The environment swap this is all FOR is not wired yet -- deliberately, so
-// the transition itself can be felt and tuned first. Flip to true once a
-// second theme has art (data/envArt.js's centralCity is stubbed but has no
-// street/facade textures of its own), and hook the actual swap at
-// core/main.js's startNextLevel.
-export const LEVEL_SWAPS_ENVIRONMENT = false;
+// Now wired: core/main.js's startNextLevel calls street.js's disposeStreet +
+// createStreet when the reached tier's theme differs from the current one.
+// Was left off deliberately while the transition itself (countdown, overlay,
+// celebration) was being felt and tuned first with the environment held
+// constant -- flip back to false to isolate a transition-only bug from a
+// theme-swap one.
+export const LEVEL_SWAPS_ENVIRONMENT = true;
+
+// Maps EACH TIER to the environment it plays in once the swap above is live.
+// Index 0 = tier 1. Keys must match data/envArt.js's THEMES map exactly.
+//
+// Past the end of this list -- or for any tier without an entry -- the theme
+// simply does not change. That's deliberate: it's what lets TIER_THRESHOLDS
+// keep an open-ended tail (systems/progression.js's thresholdForTier) without
+// ever needing art for a district that doesn't exist yet. Tier 3 (ROOFTOPS,
+// above) has no entry for exactly this reason -- the run keeps playing in
+// sunnyStreet past tier 2 until rooftop art exists and a third entry is added
+// here.
+export const TIER_THEMES = ['centralCity', 'sunnyStreet'];

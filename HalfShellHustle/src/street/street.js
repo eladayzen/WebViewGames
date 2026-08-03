@@ -157,7 +157,12 @@ export function createStreet(scene, themeKey = 'centralCity') {
   const skylineHeight = SKYLINE_WIDTH * theme.skyline.aspect;
   const skyline = new THREE.Mesh(new THREE.PlaneGeometry(SKYLINE_WIDTH, skylineHeight), skylineMat);
   skyline.position.set(0, SKYLINE_Y, SKYLINE_Z);
-  scene.add(skyline);
+  // Added to `group`, NOT `scene` directly -- this is what lets disposeStreet
+  // below tear down an entire theme (skyline included) with one scene.remove
+  // call, now that the level-transition environment swap needs to do exactly
+  // that. Purely a bookkeeping change: nothing about where the skyline renders
+  // moves, since `group` itself sits at the scene's own origin.
+  group.add(skyline);
 
   // Combined street cross-section (sidewalk + road + sidewalk in one plane,
   // matching how the generated texture itself depicts the full width) --
@@ -264,6 +269,34 @@ export function createStreet(scene, themeKey = 'centralCity') {
 
   scene.add(group);
   return { group, buildingSlots, streetTexture, streetTileLength };
+}
+
+// Tears down a whole theme -- the level-transition environment swap
+// (core/main.js's startNextLevel) is the only caller: it's the one moment the
+// screen is fully covered, so a teardown+rebuild here is free where it would
+// be a visible stutter mid-run.
+//
+// Disposes every geometry and material under `street.group` (the skyline
+// included, now that it's a child of group rather than the scene -- see
+// createStreet's comment on that). Deliberately does NOT dispose any
+// texture. Every texture reaching this code came from entities/
+// textureLoader.js's getTexture(), which caches forever by URL specifically
+// so a texture is loaded once and reused -- centralCity and sunnyStreet
+// currently even share one street_tex.png through that cache. Disposing a
+// cached texture here would leave the cache Map holding a dead reference
+// that silently breaks every FUTURE getTexture() call for that URL,
+// including a theme being switched back INTO later. The cost of leaving
+// textures resident is bounded (this game has a handful of art files total)
+// and is the correct trade against that failure mode.
+export function disposeStreet(scene, street) {
+  scene.remove(street.group);
+  street.group.traverse((obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const m of materials) if (m) m.dispose();
+    }
+  });
 }
 
 // Scrolls every building slot toward the camera at the given speed, wrapping

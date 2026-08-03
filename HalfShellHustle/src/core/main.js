@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import '../style.css';
 
-import { createStreet, updateStreet } from '../street/street.js';
+import { createStreet, updateStreet, disposeStreet } from '../street/street.js';
 import {
   createCameraRig, updateCameraRig, resetCameraRig, triggerCameraShake,
 } from '../street/camera-rig.js';
@@ -46,7 +46,7 @@ import {
   initPointsFly, spawnPointsFly, updatePointsFly, clearPointsFly,
   refreshPointsFlyTarget,
 } from '../ui/pointsFly.js';
-import { progressAt } from '../systems/progression.js';
+import { progressAt, themeForTier } from '../systems/progression.js';
 import { speedAt, distanceTraveledBy, seedDistanceAt } from '../systems/speed.js';
 import {
   createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
@@ -68,7 +68,7 @@ import {
   LEVEL_RESTART_SEED_OBSTACLE_ARRIVALS, LEVEL_RESTART_SEED_ENEMY_ARRIVALS,
   LEVEL_RESTART_SEED_PLATFORM_ARRIVALS, LEVEL_RESTART_SEED_COIN_ARRIVALS,
 } from '../data/introSequence.js';
-import { LEVEL_COUNTDOWN_SECONDS } from '../data/progression.js';
+import { LEVEL_COUNTDOWN_SECONDS, LEVEL_SWAPS_ENVIRONMENT } from '../data/progression.js';
 import { PLATFORM_ENABLED } from '../data/platformSequence.js';
 import {
   OBSTACLE_FIRST_SPAWN_DELAY_SEC, ENEMY_FIRST_SPAWN_DELAY_SEC, ENEMY_SPAWN_INTERVAL_SEC,
@@ -102,7 +102,11 @@ function boot() {
   // street/buildings, SpriteMaterial for player/obstacles) by design, so the
   // painted-in shading from the illustrated textures reads as intended
   // instead of getting re-shaded (§0, §9.1's environment-art correction).
-  const street = createStreet(scene);
+  // Mutable now that a level transition can rebuild it under a new theme
+  // (startNextLevel below) -- tier 1's theme, matching createStreet's own
+  // default, so nothing changes at boot for a run that never reaches tier 2.
+  let street = createStreet(scene, themeForTier(1));
+  let currentThemeKey = themeForTier(1);
 
   const player = createPlayer();
   scene.add(player.sprite);
@@ -216,6 +220,13 @@ function boot() {
   let levelIndex = 1;
   let levelStartTime = 0;
   let levelCountdown = 0;
+  // The tier a level-complete transition is FOR, captured at the moment it
+  // fires rather than derived by blindly incrementing levelIndex at the
+  // countdown's end -- a single huge award can in principle cross more than
+  // one tier threshold in one frame, and levelIndex must land on the tier
+  // actually reached, not just "one more than before", or the wrong theme
+  // gets picked below.
+  let pendingLevelTier = 1;
 
   const rollPlatformType = () => (
     PLATFORM_KILL_TYPE_ENABLED && Math.random() < PLATFORM_KILL_TYPE_CHANCE ? 'kill' : 'ramp'
@@ -348,7 +359,23 @@ function boot() {
     distance = 0;
     attackSequenceIndex = 0;
     levelIndex = 1;
+    pendingLevelTier = 1;
     levelCountdown = 0;
+
+    // A brand-new run always starts back at tier 1's environment, even if the
+    // PREVIOUS run had progressed into sunnyStreet before dying -- theme
+    // progress is session-scoped, same as points/tier/lives. Guarded the same
+    // way startNextLevel is: only rebuild if the theme is actually different,
+    // so a run that dies before ever reaching tier 2 doesn't pay a teardown/
+    // rebuild cost for a theme it was already in.
+    if (LEVEL_SWAPS_ENVIRONMENT) {
+      const firstTheme = themeForTier(1);
+      if (firstTheme && firstTheme !== currentThemeKey) {
+        disposeStreet(scene, street);
+        street = createStreet(scene, firstTheme);
+        currentThemeKey = firstTheme;
+      }
+    }
     resetLivesState(livesState);
     resetScoreState(score);
     clearPointsFly();
@@ -373,19 +400,34 @@ function boot() {
     settleScore(score);
     clearPointsFly();
     hud.updatePoints(score.displayed);
+    pendingLevelTier = nextTier;
     levelCountdown = LEVEL_COUNTDOWN_SECONDS;
     hud.setLevelCountdown(LEVEL_COUNTDOWN_SECONDS);
     hud.showLevelComplete(nextTier);
   }
 
-  // THE ENVIRONMENT SWAP HOOK. data/progression.js's LEVEL_SWAPS_ENVIRONMENT is
-  // false and street.js is left alone deliberately -- the transition is being
-  // felt and tuned first. When a second theme has art, rebuilding the street
-  // belongs here: it is the one moment the screen is fully covered, so the
-  // teardown/rebuild cost is invisible.
+  // THE ENVIRONMENT SWAP. Rebuilds the street under a new theme when the tier
+  // just reached calls for one -- this is the one moment the screen is fully
+  // covered, so the teardown/rebuild cost (disposeStreet + createStreet, ~50
+  // meshes on sunnyStreet) is invisible instead of a mid-run stutter.
+  //
+  // Guarded on the theme key actually CHANGING, not just on
+  // LEVEL_SWAPS_ENVIRONMENT being on: past the last entry in
+  // data/progression.js's TIER_THEMES, themeForTier returns null, and every
+  // tier after that would otherwise try to "swap" to null every single level.
   function startNextLevel() {
     hud.hideLevelComplete();
-    levelIndex += 1;
+    levelIndex = pendingLevelTier;
+
+    if (LEVEL_SWAPS_ENVIRONMENT) {
+      const nextTheme = themeForTier(levelIndex);
+      if (nextTheme && nextTheme !== currentThemeKey) {
+        disposeStreet(scene, street);
+        street = createStreet(scene, nextTheme);
+        currentThemeKey = nextTheme;
+      }
+    }
+
     resetLevelWorld(false);
     restartToRunning(gs);
   }
