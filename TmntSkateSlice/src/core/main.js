@@ -30,7 +30,7 @@ import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../syste
 import { createBombKills, resetBombKills, registerBombKill } from '../systems/bombKills.js';
 import { rollBoxReward, BOX_COLOR_BY_ID } from '../data/boxColors.js';
 import { BOMB_KILL_SET } from '../data/bombKills.js';
-import { createDifficulty, resetDifficulty, updateDifficulty, getStage } from '../systems/difficulty.js';
+import { createDifficulty, resetDifficulty, updateDifficulty, getStage, getScoreBand } from '../systems/difficulty.js';
 import {
   createScoring,
   resetScoring,
@@ -331,7 +331,8 @@ async function boot() {
     // that got no completing catch -- completion always wins the tie.
     updateBoxes(boxes, dt);
 
-    ui.setScore(scoring.score);
+    const scoreBand = getScoreBand(difficulty);
+    ui.setScore(scoring.score, scoreBand.prevThreshold, scoreBand.nextThreshold);
     ui.setCombo(scoring.comboCount, getComboMultiplier(scoring));
     ui.setLives(lives.remaining, lives.capacity);
     ui.setBuffs(player);

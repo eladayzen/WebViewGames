@@ -19,6 +19,16 @@ export function getStage(d) {
   return STAGES[d.stageIndex];
 }
 
+// The current "score band" for the HUD progression bar (2026-08-03): the
+// cumulative score threshold this stage started at (0 for stage 1) and the
+// one that advances to the next stage (Infinity on the final stage -- there
+// is no next threshold, so the caller shows the bare score with no bar).
+export function getScoreBand(d) {
+  const prevThreshold = d.stageIndex > 0 ? STAGES[d.stageIndex - 1].advanceScore : 0;
+  const nextThreshold = STAGES[d.stageIndex].advanceScore;
+  return { prevThreshold, nextThreshold };
+}
+
 // Call once per frame while running. `score` is the current run score.
 // Returns true (and flips justAdvanced) exactly on the frame a new stage
 // starts, so the caller can fire the stage-transition banner (§7) once.

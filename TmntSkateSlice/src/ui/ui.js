@@ -66,6 +66,8 @@ export function createUI() {
   const el = {
     countdown: document.getElementById('countdown-overlay'),
     score: document.getElementById('score'),
+    scoreBar: document.getElementById('score-bar'),
+    scoreBarFill: document.getElementById('score-bar-fill'),
     combo: document.getElementById('combo'),
     livesTray: document.getElementById('lives-tray'),
     stageBanner: document.getElementById('stage-banner'),
@@ -442,11 +444,24 @@ export function createUI() {
       chip.classList.add('bloop');
     },
 
-    setScore(value) {
+    // Shows "<score>/<next level threshold>" (no "SCORE:" label) with a
+    // progression fill bar toward that threshold; bare score + hidden bar on
+    // the final stage (nextThreshold is Infinity -- no next level to show).
+    setScore(value, prevThreshold, nextThreshold) {
       const floored = Math.floor(value);
-      if (floored === lastScore) return;
-      lastScore = floored;
-      el.score.textContent = `SCORE: ${floored}`;
+      const hasNext = Number.isFinite(nextThreshold);
+      const key = `${floored}:${hasNext ? nextThreshold : 'inf'}`;
+      if (key === lastScore) return;
+      lastScore = key;
+      el.score.textContent = hasNext ? `${floored}/${nextThreshold}` : `${floored}`;
+      if (hasNext) {
+        const span = Math.max(1, nextThreshold - prevThreshold);
+        const frac = Math.max(0, Math.min(1, (floored - prevThreshold) / span));
+        el.scoreBarFill.style.width = `${(frac * 100).toFixed(1)}%`;
+        el.scoreBar.classList.remove('hidden');
+      } else {
+        el.scoreBar.classList.add('hidden');
+      }
     },
 
     setCombo(comboCount, multiplier) {
