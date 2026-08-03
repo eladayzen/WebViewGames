@@ -20,7 +20,9 @@ import {
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
   THETA_MAX, THETA_GRAVITY, THETA_CARVE_TORQUE, THETA_DAMP, HEIGHT_EXCHANGE,
   TROUGH_RADIUS,
-  AIR_DURATION, AIR_HEIGHT,
+  AIR_DURATION, AIR_HEIGHT, AIR_DURATION_HIGH, AIR_HEIGHT_HIGH, HIGH_JUMP_CHANCE,
+  AIR_DURATION_BACKFLIP, AIR_HEIGHT_BACKFLIP,
+  TRICK_LAND_SETTLE_DURATION,
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
 } from '../data/constants.js';
 import { initInput, readInput, forcePop } from '../input/input.js';
@@ -94,9 +96,21 @@ const state = {
   airT: 0,
   airPower: 1,
   airPoints: 0,
+  airTrick: null, // null | 'backflip' | 'spin' -- set once at launch, read by rider.js
+  airHeight: AIR_HEIGHT, // per-jump, since regular and high jumps differ
+  airDuration: AIR_DURATION,
   grind: null, // the prop being ground, if any
   grindTime: 0,
   grindPoints: 0,
+  // How much of the current/last grind's rail-height offset is applied right
+  // now, 0..1 -- eased toward 1 while grinding (the "very small jump" onto the
+  // rail) and toward 0 once it ends (a physical settle back to the surface,
+  // NOT a launched air arc). grindLiftHeight is the target rail's own height,
+  // captured once on entry so the fraction still has something sensible to
+  // multiply against while it eases back down after grind exits.
+  grindLift: 0,
+  grindLiftHeight: 0,
+  trickLandT: 0, // counts down after a TRICK (backflip/spin) landing, for the settle wobble
 };
 
 let swingScale = 1;
@@ -124,14 +138,56 @@ function reset() {
   state.airT = 0;
   state.airPower = 1;
   state.airPoints = 0;
+  state.airTrick = null;
+  state.airHeight = AIR_HEIGHT;
+  state.airDuration = AIR_DURATION;
   state.grind = null;
   state.grindTime = 0;
   state.grindPoints = 0;
+  state.grindLift = 0;
+  state.grindLiftHeight = 0;
+  state.trickLandT = 0;
   autoTrickTimer = 0;
   rig.reset();
   props.reset();
   scoring.reset();
   props.update(0);
+}
+
+/**
+ * Start one air event -- ollie, grind-exit, or ramp launch all funnel through
+ * here so the high-jump roll lives in exactly one place.
+ *
+ * Two jump types (Amit, direct): a REGULAR jump (what launches already did,
+ * just much less altitude than before) and a rarer HIGH JUMP with a procedural
+ * whole-body backflip or spin, since there are no baked animations for either
+ * trick. Which one happens is a placeholder random roll for now -- "random
+ * between them, it doesn't matter how, we'll have real triggers or pickups for
+ * that later" -- so HIGH_JUMP_CHANCE is the one thing to swap out for a real
+ * trigger (a held input, a specific ramp, a pickup) when one exists.
+ */
+function beginAir(power, points) {
+  const high = Math.random() < HIGH_JUMP_CHANCE;
+  const trick = high ? (Math.random() < 0.5 ? 'backflip' : 'spin') : null;
+  state.airActive = true;
+  state.airT = 0;
+  state.airPower = power;
+  state.airPoints = points;
+  state.airTrick = trick;
+  // Backflip gets its OWN, taller/longer arc (Amit: "make the jump higher so
+  // it will make sense", since the flip itself now spins faster -- see
+  // rider.js). Spin keeps the original high-jump height/duration; only its
+  // rotation rate changed.
+  if (trick === 'backflip') {
+    state.airHeight = AIR_HEIGHT_BACKFLIP;
+    state.airDuration = AIR_DURATION_BACKFLIP;
+  } else if (trick === 'spin') {
+    state.airHeight = AIR_HEIGHT_HIGH;
+    state.airDuration = AIR_DURATION_HIGH;
+  } else {
+    state.airHeight = AIR_HEIGHT;
+    state.airDuration = AIR_DURATION;
+  }
 }
 
 // --- lobby ------------------------------------------------------------------
@@ -263,13 +319,10 @@ function frame() {
     // updated again, and probe() was never called at all. Restored below,
     // ported from (s, u) to (s, theta).
     if (pop && !state.airActive && !state.grind) {
-      state.airActive = true;
-      state.airT = 0;
-      state.airPower = 0.72; // a bare ollie: much smaller than a ramp launch
-      state.airPoints = 40;
+      beginAir(0.72, 40); // a bare ollie: much smaller than a ramp launch
     }
     if (state.airActive) {
-      state.airT += dt / (AIR_DURATION * state.airPower);
+      state.airT += dt / (state.airDuration * state.airPower);
       if (state.airT >= 1) {
         state.airActive = false;
         state.airT = 0;
@@ -282,8 +335,14 @@ function frame() {
           scoring.award(state.airPoints, state.airPoints >= 250 ? 'HUGE AIR' : 'AIR');
           state.airPoints = 0;
         }
+        // A trick's rotation is synced 1:1 to airT, so it lands exactly as it
+        // completes (rider.js). This is the extra beat right after: a brief
+        // absorb-and-recover wobble, ordinary jumps don't get.
+        if (state.airTrick) state.trickLandT = TRICK_LAND_SETTLE_DURATION;
+        state.airTrick = null;
       }
     }
+    if (state.trickLandT > 0) state.trickLandT = Math.max(0, state.trickLandT - dt);
 
     // --- grinding ----------------------------------------------------------
     if (state.grind) {
@@ -300,12 +359,23 @@ function frame() {
         state.grind = null;
         state.grindPoints = 0;
         state.grindTime = 0;
-        // Popped off the end into a small air, which is how a grind should exit.
-        state.airActive = true;
-        state.airT = 0;
-        state.airPower = 0.6;
-        state.airPoints = 0;
+        // NO exit hop, per Amit direct: "for now, don't do a jump at all, just
+        // straight-on physical fall back to the road." grindLift (below) eases
+        // back to 0 on its own now that state.grind is null -- a settle, not a
+        // launched arc -- and the ordinary theta pendulum (already running
+        // whenever !state.grind) pulls the rider back toward the floor under
+        // the same gravity as normal riding.
       }
+    }
+
+    // Rail-height lift: eased, not snapped, toward 1 while grinding and back to
+    // 0 once the grind ends. This is BOTH asks at once -- rising quickly reads
+    // as "a very small jump" onto the rail, and easing back down on exit reads
+    // as a physical settle rather than a launched hop.
+    {
+      const liftTarget = state.grind ? 1 : 0;
+      const liftRate = state.grind ? (1 / 0.14) : (1 / 0.22); // mount faster than settle
+      state.grindLift += (liftTarget - state.grindLift) * Math.min(1, dt * liftRate);
     }
 
     // --- prop interaction ----------------------------------------------
@@ -323,10 +393,7 @@ function frame() {
           // does something cool" behaviour: kickers/banks are the "something
           // cool happens" case, cones/potholes/barriers are the "that hurts"
           // case, and the two are told apart by kind, not by a player input.
-          state.airActive = true;
-          state.airT = 0;
-          state.airPower = hit.def.launch.power;
-          state.airPoints = hit.def.launch.points;
+          beginAir(hit.def.launch.power, hit.def.launch.points);
           hit.spent = true;
           hud.banner(hit.def.label);
         } else if (hit.def.kind === 'grind') {
@@ -335,6 +402,13 @@ function frame() {
           state.grindTime = 0;
           state.airActive = false;
           state.airT = 0;
+          // The rail's own mesh sits at y=h in buildRail (props.js) -- that's
+          // how high its bar actually is off the trough surface. Without this,
+          // the rider stood at plain surface height while the rail bar rendered
+          // up around waist/pelvis height: "stuck between the skateboard and
+          // the boy's pelvis." Lifting the rider by the SAME h puts the board
+          // on top of the bar instead of the bar passing through the rider.
+          state.grindLiftHeight = hit.def.size.h;
           hud.banner(hit.def.label);
         } else if (hit.def.kind === 'hazard') {
           scoring.hit(hit.def.hazard.wobble, hit.def.label);
@@ -366,7 +440,14 @@ function frame() {
     // rolled section throws you away from the wall you left, which is what
     // makes a corkscrew readable rather than arbitrary.
     surfaceUp(state.s, state.theta, _up);
-    _pos.addScaledVector(_up, Math.sin(state.airT * Math.PI) * AIR_HEIGHT);
+    _pos.addScaledVector(_up, Math.sin(state.airT * Math.PI) * state.airHeight);
+  }
+  if (state.grindLift > 0.001) {
+    // Lifts the rider onto TOP of the rail/ledge bar (see the grind-entry
+    // comment above for why) -- eased by grindLift, so mounting and settling
+    // off both move smoothly rather than snapping.
+    surfaceUp(state.s, state.theta, _up);
+    _pos.addScaledVector(_up, state.grindLift * state.grindLiftHeight);
   }
 
   // Forward is the trough's actual TANGENT, not a yaw-derived horizontal vector.
@@ -384,6 +465,8 @@ function frame() {
     tucking: state.tucking,
     airActive: state.airActive,
     airT: state.airT,
+    airTrick: state.airTrick,
+    trickLandT: state.trickLandT,
     swing: swingScale,
     theta: state.theta,
     surfaceUp: _up,

@@ -81,8 +81,47 @@ export const POP_PRESS = 0.30; // deliberately MORE forgiving than the SDK's 0.3
 export const POP_RELEASE = 0.16; // ...and 0.20, because back-lean is the hard axis
 
 // --- trick / air ---
-export const AIR_DURATION = 1.15; // seconds from launch to landing
-export const AIR_HEIGHT = 4.2;
+// REGULAR jump (ollie / grind-exit / most ramp launches). Amit: the old 4.2
+// peak height "feels insane, just too much" -- cut hard, and duration follows
+// it down too (roughly sqrt of the height ratio) so a shorter hop doesn't end
+// up floaty/moonwalking at the old hang time.
+export const AIR_DURATION = 0.62; // seconds from launch to landing
+export const AIR_HEIGHT = 1.2;
+
+// HIGH JUMP -- a rarer, taller air with a procedural whole-body backflip or
+// spin (rider.js), for when there are no baked animations for the trick. Which
+// jump happens is a placeholder random roll for now, per Amit directly:
+// "random between them, it doesn't matter how -- we'll have real triggers or
+// pickups for that later." Replace HIGH_JUMP_CHANCE with a real trigger
+// (an explicit input, a specific ramp type, a pickup) when one exists; nothing
+// else in main.js should need to change.
+export const HIGH_JUMP_CHANCE = 0.35;
+// SPIN's height/duration -- unchanged, Amit confirmed "the spin is really
+// good" (only its rotation rate needed adjusting, see rider.js).
+export const AIR_DURATION_HIGH = 1.3; // long enough to read a full rotation
+export const AIR_HEIGHT_HIGH = 3.0;
+// BACKFLIP gets its own, taller arc: "make the jump higher so it will make
+// sense" -- with the flip itself now spinning 50% faster (rider.js), a taller
+// jump gives it room to finish and hold a clean landing pose instead of
+// snapping through the rotation in a hop that's over before it reads. Duration
+// scales with sqrt(height ratio) so the arc still looks like gravity rather
+// than teleporting up and dropping too fast for the extra height.
+export const AIR_HEIGHT_BACKFLIP = 4.0;
+export const AIR_DURATION_BACKFLIP = 1.5;
+
+// A trick's rotation is now synced 1:1 to its OWN jump's air time (airT 0->1),
+// finishing exactly as the rider lands, per Amit's direct correction: the
+// earlier version rate-multiplied the rotation and held it once complete,
+// which finished the spin visibly before touching down. "Faster" now belongs
+// entirely to each trick's height/duration (AIR_*_HIGH / AIR_*_BACKFLIP above)
+// -- a shorter flight over the same one full rotation reads as quicker on its
+// own, without decoupling the trick from the landing.
+//
+// TRICK_LAND_SETTLE is the small polish on top: a brief absorb-and-recover
+// wobble right after a trick landing ("another small movement of adjusting
+// himself, selling it a bit better"), not present on an ordinary jump.
+export const TRICK_LAND_SETTLE_DURATION = 0.22; // seconds
+export const TRICK_LAND_SETTLE_AMOUNT = 0.20; // radians of forward-pitch dip
 
 // --- camera: FORTNITE-STYLE STEADY THIRD-PERSON ---
 // Per Amit's direct direction, this REPLACES the build doc's §5.2 orbiting

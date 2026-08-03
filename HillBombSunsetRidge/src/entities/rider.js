@@ -41,6 +41,7 @@ import clipPushUrl from '../assets/rig/clip_push.fbx?url';
 import baseColorUrl from '../assets/rig/rider_basecolor.jpg?url';
 import normalUrl from '../assets/rig/rider_normal.jpg?url';
 import metalRoughUrl from '../assets/rig/rider_metalrough.jpg?url';
+import { TRICK_LAND_SETTLE_DURATION, TRICK_LAND_SETTLE_AMOUNT } from '../data/constants.js';
 
 const RIDER_HEIGHT = 1.85;
 const BOARD_Y = 0.10;
@@ -412,10 +413,12 @@ export function createRider(scene, camera) {
     get modelAvailable() { return modelLoaded; },
     get rigAvailable() { return rigLoaded; },
     get clipNames() { return Object.keys(actions); },
+    get debugPushWeight() { return pushWeight; }, // verifying the mid-air push-cancel fix
 
     /**
      * @param {{pos:THREE.Vector3, yaw:number, carve:number, tucking:number,
-     *          airActive:boolean}} s
+     *          airActive:boolean, airT:number,
+     *          airTrick:('backflip'|'spin'|null), trickLandT:number}} s
      * @param {number} dt
      */
     update(s, dt) {
@@ -439,11 +442,48 @@ export function createRider(scene, camera) {
       tilt.rotation.z = roll;
       // Tuck pitch. Note this is emergent from holding a straight line -- there
       // is no forward-lean input anywhere in this game (build doc §0).
-      tilt.rotation.x = s.tucking * 0.30;
+      //
+      // HIGH-JUMP whole-body rotation (backflip/spin) is layered on TOP of tuck
+      // here rather than living on a separate group -- there is no dedicated
+      // "flip" node in this hierarchy (removed earlier per Amit's direction that
+      // the character shouldn't re-angle itself for ORDINARY tricks). Reusing
+      // `tilt` for the new special-jump case is deliberate: everything that
+      // needs to spin with the rider -- board, sprite, model, rig -- already
+      // lives under `tilt`, and the board-planting code below works entirely in
+      // `tilt`-local space, so it stays correct no matter how `tilt` is rotated.
+      // Both terms are recomputed from scratch every frame (not accumulated),
+      // so there's no residual spin left over once airTrick clears on landing.
+      //
+      // Rotation is synced 1:1 to airT (0->1 across the WHOLE jump), per
+      // Amit's direct correction: an earlier pass rate-multiplied the rotation
+      // and held it once complete, which finished the trick visibly before the
+      // rider actually touched down. "Faster" now lives entirely in each
+      // trick's own height/duration (main.js's beginAir) -- a shorter flight
+      // over the same one full turn already reads as quicker, without
+      // decoupling the spin from the landing.
+      let pitchExtra = 0;
+      let yawExtra = 0;
+      if (s.airActive && s.airTrick === 'backflip') {
+        // POSITIVE, not negative -- the original sign rotated the character
+        // forward-over (a front flip); Amit confirmed it needs to go backward.
+        pitchExtra = s.airT * Math.PI * 2;
+      }
+      if (s.airActive && s.airTrick === 'spin') {
+        yawExtra = s.airT * Math.PI * 2;
+      }
 
-      // NO whole-body flip rotation, per Amit's direction -- the character does
-      // not re-angle itself. Real motion is skeletal (mode C), not the whole
-      // body spun as a rigid object.
+      // Landing settle: a brief absorb-and-recover dip right after a TRICK
+      // lands (main.js only starts this timer when airTrick was set), easing
+      // from full amount at the instant of landing down to nothing -- a
+      // little knee-bend read, not present on an ordinary jump.
+      let settleExtra = 0;
+      if (s.trickLandT > 0) {
+        const settleProgress = 1 - s.trickLandT / TRICK_LAND_SETTLE_DURATION;
+        settleExtra = Math.cos(settleProgress * Math.PI * 0.5) * TRICK_LAND_SETTLE_AMOUNT;
+      }
+
+      tilt.rotation.x = s.tucking * 0.30 + pitchExtra + settleExtra;
+      tilt.rotation.y = yawExtra;
 
       if (mode === 'sprite') {
         // Billboard, then re-apply roll so the sprite still leans.
@@ -452,33 +492,50 @@ export function createRider(scene, camera) {
       }
 
       if (mode === 'rigged' && mixer) {
-        // PUSH IS OCCASIONAL, NOT CONTINUOUS. Looping it made the kid look like
-        // he was kick-pushing nonstop. A real rider pushes once in a while and
-        // otherwise just rides, so: fire it on a randomised few-second timer,
-        // and NEVER while airborne -- you can't push off a road that isn't
-        // under your foot.
-        if (!s.airActive && !pushing) {
-          pushTimer -= dt;
-          if (pushTimer <= 0) {
-            triggerPush();
-            pushTimer = 4.5 + Math.random() * 4.5;
-          }
-        }
-
         // Drive the idle<->push blend by hand. The clip is left running the whole
         // time; only its weight moves, and idle always takes up the remainder, so
         // the summed weight is permanently 1 and the bind-pose/T-pose fallback
         // can never be reached.
         const FADE = 0.22; // seconds to blend either way
-        if (pushing) {
-          // Start unwinding before the clip loops around, so the blend out is
-          // finished by the time it would repeat.
-          const nearEnd = pushDuration > 0
-            && actions.push.time >= pushDuration - FADE;
-          pushWeight = Math.min(1, pushWeight + dt / FADE);
-          if (nearEnd) pushing = false;
+        if (s.airActive) {
+          // NEVER show the push (leg-kick) animation mid-air -- you can't
+          // kick-push off a road that isn't under your foot. This used to be
+          // gated only against STARTING a new push (`!s.airActive && !pushing`
+          // below), which didn't stop a push already in progress: if a launch
+          // happened mid-push, `pushing` stayed true and the weight kept
+          // blending IN for the rest of the air, only unwinding near the
+          // clip's own natural end. That's the "second animation clip playing
+          // mid-air" bug. HARD cut, not an eased fade-out: main.js sets
+          // airActive true in the very same frame a launch fires, before
+          // rider.update() runs that frame, so zeroing instantly here means
+          // the leg-kick pose is never rendered even for a single frame --
+          // an eased decay (matching FADE's ~0.22s) measured up to 0.09
+          // residual weight in the first couple of airborne frames, small but
+          // not the "don't play it at all" Amit actually asked for.
+          pushing = false;
+          pushWeight = 0;
         } else {
-          pushWeight = Math.max(0, pushWeight - dt / FADE);
+          // PUSH IS OCCASIONAL, NOT CONTINUOUS. Looping it made the kid look
+          // like he was kick-pushing nonstop. A real rider pushes once in a
+          // while and otherwise just rides, so: fire it on a randomised
+          // few-second timer.
+          if (!pushing) {
+            pushTimer -= dt;
+            if (pushTimer <= 0) {
+              triggerPush();
+              pushTimer = 4.5 + Math.random() * 4.5;
+            }
+          }
+          if (pushing) {
+            // Start unwinding before the clip loops around, so the blend out is
+            // finished by the time it would repeat.
+            const nearEnd = pushDuration > 0
+              && actions.push.time >= pushDuration - FADE;
+            pushWeight = Math.min(1, pushWeight + dt / FADE);
+            if (nearEnd) pushing = false;
+          } else {
+            pushWeight = Math.max(0, pushWeight - dt / FADE);
+          }
         }
         if (actions.push) actions.push.setEffectiveWeight(pushWeight);
         if (actions.idle) actions.idle.setEffectiveWeight(1 - pushWeight);
