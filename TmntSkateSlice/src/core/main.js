@@ -28,7 +28,7 @@ import { updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlaye
 import { createSpawner, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../systems/boxes.js';
 import { createBombKills, resetBombKills, registerBombKill } from '../systems/bombKills.js';
-import { rollBoxReward } from '../data/boxColors.js';
+import { rollBoxReward, BOX_COLOR_BY_ID } from '../data/boxColors.js';
 import { BOMB_KILL_SET } from '../data/bombKills.js';
 import { createDifficulty, resetDifficulty, updateDifficulty, getStage } from '../systems/difficulty.js';
 import {
@@ -42,7 +42,7 @@ import {
   getComboMultiplier,
 } from '../systems/scoring.js';
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
-import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, triggerScreenShake } from '../systems/juice.js';
+import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
 import { PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 
@@ -183,7 +183,14 @@ async function boot() {
       // Box-colored slice: feed its collection box. registerBoxCatch resets
       // the box and returns its bonus/hex on the completing catch, else null.
       if (item.type.boxColor) {
-        const done = registerBoxCatch(boxes, item.type.boxColor);
+        const boxColor = item.type.boxColor;
+        // Fly a shred from the catch into that box's HUD chip; on landing it
+        // "bloops" the chip, so the player sees the slice register into that
+        // colored box (feedback 2026-08-03).
+        const chipPos = ui.getBoxChipCenterFrac(boxColor);
+        const boxHex = (BOX_COLOR_BY_ID[boxColor] || {}).hex || '#ffffff';
+        spawnCollectFlyer(juice, item.xFrac, item.yFrac, chipPos.xFrac, chipPos.yFrac, boxHex, () => ui.pulseBoxChip(boxColor));
+        const done = registerBoxCatch(boxes, boxColor);
         if (done) {
           // Auto-reward (2026-08-02): each box grants N distinct boosters
           // (regular 1, blue 2, purple 3); the top (red) box grants an extra

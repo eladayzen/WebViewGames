@@ -410,6 +410,29 @@ export function createUI() {
       }
     },
 
+    // Screen-space center of a box chip, in canvas fractions -- the target a
+    // collected shred flies toward (see spawnCollectFlyer). Falls back to the
+    // tray's bottom-center when the chip isn't visible yet (first catch of a
+    // box, before setBoxes un-hides it).
+    getBoxChipCenterFrac(id) {
+      const chip = el.boxChips[id] && el.boxChips[id].chip;
+      let r = chip && chip.getBoundingClientRect();
+      if (!r || r.width === 0) r = el.boxTray.getBoundingClientRect();
+      const w = window.innerWidth || 1;
+      const h = window.innerHeight || 1;
+      return { xFrac: (r.left + r.width / 2) / w, yFrac: (r.top + r.height / 2) / h };
+    },
+
+    // Quick "bloop" pulse on a box chip when a shred lands in it (restart the
+    // CSS animation: remove -> reflow -> re-add so rapid catches replay).
+    pulseBoxChip(id) {
+      const chip = el.boxChips[id] && el.boxChips[id].chip;
+      if (!chip) return;
+      chip.classList.remove('bloop');
+      void chip.offsetWidth;
+      chip.classList.add('bloop');
+    },
+
     setScore(value) {
       const floored = Math.floor(value);
       if (floored === lastScore) return;

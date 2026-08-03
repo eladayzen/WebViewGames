@@ -434,6 +434,38 @@ function drawFloaters(ctx, juice, w, h) {
   }
 }
 
+// Collected shreds flying from the catch into their box chip: a small
+// pizza-slice sprite (the same art the falling slices use) that eases toward
+// the chip with a gentle upward bow, shrinking + fading as it lands, wrapped in
+// the box's color glow so it clearly belongs to that colored box.
+function drawFlyers(ctx, juice, w, h, images) {
+  const img = images['pizza_slice'];
+  for (const fl of juice.flyers) {
+    const p = Math.min(1, fl.t / fl.ttl);
+    const e = 1 - (1 - p) * (1 - p); // easeOutQuad
+    const x = fl.x0 + (fl.x1 - fl.x0) * e;
+    const y = fl.y0 + (fl.y1 - fl.y0) * e - 0.06 * Math.sin(p * Math.PI); // arc up mid-flight
+    const size = h * ITEM_SIZE_FRAC * (0.72 - 0.42 * p); // shrink into the chip
+    const cx = px(x, w);
+    const cy = px(y, h);
+    ctx.save();
+    ctx.globalAlpha = 1 - 0.35 * p;
+    ctx.shadowColor = fl.color;
+    ctx.shadowBlur = size * 0.55;
+    if (img) {
+      const dw = size;
+      const dh = size * (img.height / img.width);
+      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+    } else {
+      ctx.fillStyle = fl.color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, size * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
 export function renderFrame(ctx, world) {
   // Same source as setupCanvas's resize() above -- window.innerWidth/
   // innerHeight, not canvas.clientWidth/clientHeight -- so the buffer size
@@ -453,6 +485,7 @@ export function renderFrame(ctx, world) {
   drawPlayer(ctx, player.xFrac, w, h, images, player, isRunning, stage);
   drawRings(ctx, juice, w, h);
   drawParticles(ctx, juice, w, h);
+  drawFlyers(ctx, juice, w, h, images);
   drawFloaters(ctx, juice, w, h);
 
   ctx.restore();

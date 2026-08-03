@@ -7,12 +7,14 @@ import { SCORE_POPUP_TTL_SEC } from '../data/constants.js';
 
 const GRAVITY_FRAC_PER_SEC2 = 1.6;
 const FLOATER_RISE_FRAC_PER_SEC = 0.11; // how fast a "+N" popup drifts upward
+const COLLECT_FLYER_TTL_SEC = 0.5; // catch -> box-chip flight time
 
 export function createJuice() {
   return {
     particles: [], // { xFrac, yFrac, vxFrac, vyFrac, life, maxLife, color, shape, sizeFrac, rotationRad, rotationSpeedRadPerSec, glow }
     rings: [], // { xFrac, yFrac, life, maxLife, maxRadiusFrac, color } -- bomb shockwave only
     floaters: [], // { xFrac, yFrac, text, color, life, maxLife } -- retro "+N" score popups
+    flyers: [], // { x0, y0, x1, y1, t, ttl, color, onArrive } -- shred flying into a box chip
     shakeTimer: 0,
     shakeMaxTimer: 0,
     shakeMagnitudeFrac: 0,
@@ -23,9 +25,17 @@ export function resetJuice(juice) {
   juice.particles = [];
   juice.rings = [];
   juice.floaters = [];
+  juice.flyers = [];
   juice.shakeTimer = 0;
   juice.shakeMaxTimer = 0;
   juice.shakeMagnitudeFrac = 0;
+}
+
+// A collected "shred" that flies from the catch point (x0,y0) into its box's
+// HUD chip (x1,y1) and, on arrival, calls onArrive() (which pulses the chip) --
+// so the player SEES the slice register into that box. Colored by the box.
+export function spawnCollectFlyer(juice, x0, y0, x1, y1, color, onArrive) {
+  juice.flyers.push({ x0, y0, x1, y1, t: 0, ttl: COLLECT_FLYER_TTL_SEC, color, onArrive });
 }
 
 // Retro floating score popup ("+10", "+25", ...) at a world position -- rises
@@ -250,6 +260,15 @@ export function updateJuice(juice, dt) {
     f.yFrac -= FLOATER_RISE_FRAC_PER_SEC * dt; // drift upward
     f.life -= dt;
     if (f.life <= 0) juice.floaters.splice(i, 1);
+  }
+
+  for (let i = juice.flyers.length - 1; i >= 0; i--) {
+    const fl = juice.flyers[i];
+    fl.t += dt;
+    if (fl.t >= fl.ttl) {
+      juice.flyers.splice(i, 1);
+      if (fl.onArrive) fl.onArrive(); // pulse the chip the instant it lands
+    }
   }
 
   if (juice.shakeTimer > 0) juice.shakeTimer = Math.max(0, juice.shakeTimer - dt);
