@@ -219,19 +219,32 @@ export const THEMES = {
     // 2 -> 4 facades, direct feedback after playtesting the fix pass: "I think
     // maybe we need a bit more variation inside the theme." With only 2 facades
     // cycling across 18 buildings per side, each one repeated 9 TIMES down a
-    // single block -- measured, not a guess. Generated as one sheet against
-    // BOTH the reference image and the already-fixed facade_c1 (so the model
-    // anchors on the flat-vertical-ladder/flat-awning convention instead of
-    // reintroducing the diagonal-stair problem that pass just fixed) -- and it
-    // worked on one candidate but not the other (a second sheet generated the
-    // same way came back with diagonal fire escapes on both buildings), which
-    // is why referencing the fixed asset is necessary but not sufficient --
-    // still worth checking each new batch before shipping it.
+    // single block -- measured, not a guess.
+    //
+    // c3/c4 were regenerated once already, and the first pass (still archived
+    // at art/final/alt/facade_c3_v1_flawed.png / facade_c4_v1_flawed.png) was
+    // rejected on direct feedback for being "off language" and having its own
+    // instance of the exact illusion-breaking problem the earlier fix pass had
+    // just solved -- a receding row of washing machines drawn WITH perspective
+    // inside the laundromat's glass, and a handful of oversized, individually-
+    // legible stickers instead of the dense small texture the rest of the
+    // block uses. Root cause, on inspection: that batch referenced the
+    // ALREADY-EDITED facade_c1 as a second style anchor (chained edits drift
+    // from the original clean render) and dropped this prompt's own
+    // "NOT a photograph... no realistic lighting or glass reflections" line,
+    // which is exactly the guardrail that would have stopped the glass depth
+    // issue. This batch went back to referencing ONLY the photo reference,
+    // restored the full original style block, and fixed both problems by name
+    // in text rather than by image reference -- "flat iconographic" glass
+    // interiors, explicitly small/dense stickers. Still needed 3 candidates to
+    // get one with vertical (not diagonal) fire escapes on both buildings, so
+    // the convention remains a per-batch check, not something the model can be
+    // trusted to hold from an instruction alone.
     facades: [
       { tex: envTexture('facade_c1.png', 2048, 2048), bodyColor: 0x886255 }, // red-brick walk-up over a green shopfront + graffiti shutter
       { tex: envTexture('facade_c2.png', 2048, 2048), bodyColor: 0x968569 }, // mustard commercial block over a diner, neon marquee
-      { tex: envTexture('facade_c3.png', 1175, 1334), bodyColor: 0x5d6973 }, // blue-grey walk-up over a bodega/fruit-stand + sticker gate
-      { tex: envTexture('facade_c4.png', 1062, 1334), bodyColor: 0x5a584e }, // charcoal-brass block over a laundromat, rooftop AC units
+      { tex: envTexture('facade_c3.png', 1052, 1350), bodyColor: 0x6f7272 }, // blue-grey walk-up over a bodega/fruit-stand + sticker gate
+      { tex: envTexture('facade_c4.png', 1243, 1351), bodyColor: 0x5b5950 }, // charcoal-brass block over a laundromat, rooftop AC units
     ],
     skyline: envTexture('skyline.png', 1600, 906), // reused -- already a fitting daylight city skyline
     buildingProfile: {
