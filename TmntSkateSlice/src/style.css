@@ -161,7 +161,9 @@ html, body {
   top: 114px; /* nudged down to match lives-tray's shift (2026-08-03) */
   left: 14px;
   display: flex;
-  gap: 8px;
+  flex-direction: column; /* stacked vertically (was a row) -- there's room below the hearts */
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .buff-chip {
