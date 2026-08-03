@@ -305,6 +305,16 @@ export function createProps(scene) {
         surfaceUp(it.s, it.theta, _up);
         const f = frameAt(it.s, _frame);
         _z.copy(f.tangent);
+        // RAMPS (kind 'launch': kicker/bigKicker/bank) are wedges whose tall lip
+        // is authored at local -Z (see buildKicker/buildBank) -- the intent
+        // written there was "rising toward the far, down-road end", but mapping
+        // local +Z straight to the tangent put the lip at -tangent instead, i.e.
+        // facing BACKWARD toward the approaching rider. That's exactly the bug:
+        // you meet the tall face first instead of rolling up a low edge and
+        // launching off the lip ahead of you. Flipping z here (and re-deriving x
+        // so the basis stays orthonormal) puts local -Z -- the lip -- at
+        // +tangent, ahead of the rider, where a launch is supposed to happen.
+        if (it.def.kind === 'launch') _z.negate();
         _x.crossVectors(_up, _z).normalize();
         _basis.makeBasis(_x, _up, _z);
         it.mesh.quaternion.setFromRotationMatrix(_basis);

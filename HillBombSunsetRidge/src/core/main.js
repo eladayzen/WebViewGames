@@ -252,6 +252,98 @@ function frame() {
     const v2 = Math.max(4, state.speed * state.speed - 2 * CONTROLS.heightExchange * dh);
     state.speed = Math.sqrt(v2);
 
+    // --- air / landing ---------------------------------------------------
+    // THIS ENTIRE SECTION (air/landing, grinding, and the props.update/probe
+    // calls below) was accidentally deleted during the road->trough migration
+    // -- a python find/replace anchored on this comment's text replaced
+    // everything from here through "score / wobble" with the new theta
+    // pendulum, silently dropping the interaction logic that used to live
+    // here. Nothing has collided with anything since that commit: props were
+    // spawned once at reset() (covering only s=0..SPAWN_AHEAD) and never
+    // updated again, and probe() was never called at all. Restored below,
+    // ported from (s, u) to (s, theta).
+    if (pop && !state.airActive && !state.grind) {
+      state.airActive = true;
+      state.airT = 0;
+      state.airPower = 0.72; // a bare ollie: much smaller than a ramp launch
+      state.airPoints = 40;
+    }
+    if (state.airActive) {
+      state.airT += dt / (AIR_DURATION * state.airPower);
+      if (state.airT >= 1) {
+        state.airActive = false;
+        state.airT = 0;
+        rig.onLand();
+        scoring.land();
+        // Landing clean pays out whatever the launch was worth. Deliberately
+        // NO landing skill-check (build doc §5.5) -- the skill is choosing
+        // where and when to launch, not a timed press.
+        if (state.airPoints > 0) {
+          scoring.award(state.airPoints, state.airPoints >= 250 ? 'HUGE AIR' : 'AIR');
+          state.airPoints = 0;
+        }
+      }
+    }
+
+    // --- grinding ----------------------------------------------------------
+    if (state.grind) {
+      const g = state.grind;
+      const half = g.def.size.l / 2;
+      // Locked to the rail's line while on it -- that's what a grind IS.
+      state.theta += (g.theta - state.theta) * Math.min(1, dt * 12);
+      state.thetaVel = 0;
+      state.grindTime += dt;
+      state.grindPoints += g.def.grind.pointsPerSecond * dt;
+      if (state.s > g.s + half) {
+        scoring.award(Math.round(state.grindPoints), g.def.label);
+        g.spent = true;
+        state.grind = null;
+        state.grindPoints = 0;
+        state.grindTime = 0;
+        // Popped off the end into a small air, which is how a grind should exit.
+        state.airActive = true;
+        state.airT = 0;
+        state.airPower = 0.6;
+        state.airPoints = 0;
+      }
+    }
+
+    // --- prop interaction ----------------------------------------------
+    // props.update() is what actually spawns new patterns as the rider
+    // advances (build doc §6) -- without this call every frame, the world
+    // stops generating past the first SPAWN_AHEAD stretch, which is exactly
+    // the "I see stuff at the start, then nothing" symptom.
+    props.update(state.s);
+    if (!state.grind) {
+      const hit = props.probe(state.s, state.theta, state.airActive);
+      if (hit) {
+        if (hit.def.kind === 'launch') {
+          // Ramps and banks auto-launch on contact -- no button, no tap. This
+          // is the "hit something that isn't a cone and my player automatically
+          // does something cool" behaviour: kickers/banks are the "something
+          // cool happens" case, cones/potholes/barriers are the "that hurts"
+          // case, and the two are told apart by kind, not by a player input.
+          state.airActive = true;
+          state.airT = 0;
+          state.airPower = hit.def.launch.power;
+          state.airPoints = hit.def.launch.points;
+          hit.spent = true;
+          hud.banner(hit.def.label);
+        } else if (hit.def.kind === 'grind') {
+          state.grind = hit;
+          state.grindPoints = 0;
+          state.grindTime = 0;
+          state.airActive = false;
+          state.airT = 0;
+          hud.banner(hit.def.label);
+        } else if (hit.def.kind === 'hazard') {
+          scoring.hit(hit.def.hazard.wobble, hit.def.label);
+          state.speed *= 1 - hit.def.hazard.scrub;
+          hit.spent = true;
+        }
+      }
+    }
+
     // --- score / wobble -------------------------------------------------
     scoring.update(dt, state.speed, state.carve, !!state.grind);
     if (scoring.state.lastEvent) {
