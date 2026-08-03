@@ -290,6 +290,14 @@ export function createUI() {
     });
   }
 
+  // Resolve a HUD collection-chip id (a box color, or BOMB_KILL_SET.id) to its
+  // DOM element -- shared by getChipCenterFrac/pulseChip below.
+  function chipElFor(id) {
+    if (el.boxChips[id]) return el.boxChips[id].chip;
+    if (id === BOMB_KILL_SET.id) return el.bombChip.chip;
+    return null;
+  }
+
   // Last-written values, for the dirty-checks below.
   let lastScore = null;
   let lastComboKey = null;
@@ -410,12 +418,13 @@ export function createUI() {
       }
     },
 
-    // Screen-space center of a box chip, in canvas fractions -- the target a
+    // Screen-space center of a HUD collection chip (a box, by color id, or the
+    // bomb-kill set via BOMB_KILL_SET.id), in canvas fractions -- the target a
     // collected shred flies toward (see spawnCollectFlyer). Falls back to the
-    // tray's bottom-center when the chip isn't visible yet (first catch of a
-    // box, before setBoxes un-hides it).
-    getBoxChipCenterFrac(id) {
-      const chip = el.boxChips[id] && el.boxChips[id].chip;
+    // tray's bottom-center when the chip isn't visible yet (first catch, before
+    // setBoxes/setBombKills un-hides it).
+    getChipCenterFrac(id) {
+      const chip = chipElFor(id);
       let r = chip && chip.getBoundingClientRect();
       if (!r || r.width === 0) r = el.boxTray.getBoundingClientRect();
       const w = window.innerWidth || 1;
@@ -423,10 +432,10 @@ export function createUI() {
       return { xFrac: (r.left + r.width / 2) / w, yFrac: (r.top + r.height / 2) / h };
     },
 
-    // Quick "bloop" pulse on a box chip when a shred lands in it (restart the
+    // Quick "bloop" pulse on a HUD chip when a shred lands in it (restart the
     // CSS animation: remove -> reflow -> re-add so rapid catches replay).
-    pulseBoxChip(id) {
-      const chip = el.boxChips[id] && el.boxChips[id].chip;
+    pulseChip(id) {
+      const chip = chipElFor(id);
       if (!chip) return;
       chip.classList.remove('bloop');
       void chip.offsetWidth;

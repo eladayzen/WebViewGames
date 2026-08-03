@@ -434,13 +434,14 @@ function drawFloaters(ctx, juice, w, h) {
   }
 }
 
-// Collected shreds flying from the catch into their box chip: a small
-// pizza-slice sprite (the same art the falling slices use) that follows a
-// curved (quadratic-bezier) path toward the chip, shrinking + fading as it
-// lands, wrapped in the box's color glow so it clearly belongs to that box.
+// Collected shreds flying from the catch into their HUD chip: a small sprite
+// (fl.spriteKey -- a pizza slice for box catches, the bomb icon for a kill)
+// that follows a curved (quadratic-bezier) path toward the chip, shrinking +
+// fading as it lands, wrapped in a color glow so it clearly belongs to that
+// chip.
 function drawFlyers(ctx, juice, w, h, images) {
-  const img = images['pizza_slice'];
   for (const fl of juice.flyers) {
+    const img = images[fl.spriteKey] || images['pizza_slice'];
     const p = Math.min(1, fl.t / fl.ttl);
     const e = 1 - (1 - p) * (1 - p); // easeOutQuad
     const mt = 1 - e;

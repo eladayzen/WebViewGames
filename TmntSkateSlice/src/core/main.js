@@ -152,6 +152,10 @@ async function boot() {
   function killBomb(item) {
     registerBombKillScore(scoring, BOMB_KILL_SET.killScore);
     spawnScorePopup(juice, item.xFrac, item.yFrac, `+${BOMB_KILL_SET.killScore}`, BOMB_KILL_SET.hex);
+    // Same "it registered" treatment as a caught slice: the bomb flies
+    // (curved) into the bomb-kill chip, which bloops on arrival (2026-08-03).
+    const chipPos = ui.getChipCenterFrac(BOMB_KILL_SET.id);
+    spawnCollectFlyer(juice, item.xFrac, item.yFrac, chipPos.xFrac, chipPos.yFrac, BOMB_KILL_SET.hex, () => ui.pulseChip(BOMB_KILL_SET.id), 'bomb');
     const done = registerBombKill(bombKills);
     if (done) {
       registerBoxComplete(scoring, done.bonusScore);
@@ -187,9 +191,9 @@ async function boot() {
         // Fly a shred from the catch into that box's HUD chip; on landing it
         // "bloops" the chip, so the player sees the slice register into that
         // colored box (feedback 2026-08-03).
-        const chipPos = ui.getBoxChipCenterFrac(boxColor);
+        const chipPos = ui.getChipCenterFrac(boxColor);
         const boxHex = (BOX_COLOR_BY_ID[boxColor] || {}).hex || '#ffffff';
-        spawnCollectFlyer(juice, item.xFrac, item.yFrac, chipPos.xFrac, chipPos.yFrac, boxHex, () => ui.pulseBoxChip(boxColor));
+        spawnCollectFlyer(juice, item.xFrac, item.yFrac, chipPos.xFrac, chipPos.yFrac, boxHex, () => ui.pulseChip(boxColor));
         const done = registerBoxCatch(boxes, boxColor);
         if (done) {
           // Auto-reward (2026-08-02): each box grants N distinct boosters
