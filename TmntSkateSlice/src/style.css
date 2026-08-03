@@ -215,8 +215,13 @@ html, body {
 
 .box-graphic {
   position: relative;
-  width: 48px;
-  height: 48px;
+  width: 58px;
+  height: 58px;
+  /* Outer glow so the chip pops off the busy floor (2026-08-03). border-radius
+     matches the rounded panel so the halo hugs its shape; the dark drop adds
+     separation. Colored per --box-color. */
+  border-radius: 13px;
+  box-shadow: 0 0 8px 1px var(--box-color, #fff), 0 2px 4px rgba(0, 0, 0, 0.55);
 }
 
 /* The rounded-square SVG: bg (black panel) + faint outline, and the
@@ -224,15 +229,15 @@ html, body {
 .box-ring {
   position: absolute;
   inset: 0;
-  width: 48px;
-  height: 48px;
+  width: 58px;
+  height: 58px;
   overflow: visible;
 }
 
 .ring-bg {
-  fill: rgba(0, 0, 0, 0.5);
-  stroke: rgba(255, 255, 255, 0.14);
-  stroke-width: 3;
+  fill: rgba(0, 0, 0, 0.85);
+  stroke: rgba(255, 255, 255, 0.32);
+  stroke-width: 3.5;
 }
 
 .ring-arc {
@@ -247,18 +252,18 @@ html, body {
 .box-ghost,
 .box-fill {
   position: absolute;
-  top: 5px;
+  top: 6px;
   left: 50%;
   transform: translateX(-50%);
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   pointer-events: none;
 }
 
 .box-ghost {
-  opacity: 0.7; /* faded "empty" box (per feedback -- was 0.25) */
-  filter: grayscale(0.5);
+  opacity: 0.85; /* "empty" box -- kept a touch faded so the radial fill still reads */
+  filter: grayscale(0.3);
 }
 
 .box-fill {
@@ -274,13 +279,13 @@ html, body {
 .box-count {
   position: absolute;
   left: 50%;
-  bottom: 2px;
+  bottom: 3px;
   transform: translateX(-50%);
   font-weight: 900;
-  font-size: 11px;
+  font-size: 13px;
   color: #fff;
   letter-spacing: 0.3px;
-  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.7);
+  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.8);
   paint-order: stroke fill;
   font-variant-numeric: tabular-nums;
 }
