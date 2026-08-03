@@ -26,8 +26,10 @@ import { LANE_X, SPAWN_Z, DESPAWN_Z } from '../data/constants.js';
 import { getTexture } from './textureLoader.js';
 import { getShadowTexture } from './contactShadow.js';
 import { OBSTACLE_TYPES } from '../data/obstacleTypes.js';
-import { LOW_OBSTACLE_ENABLED, LOW_OBSTACLE_SPAWN_CHANCE } from '../data/spawnConfig.js';
-import { findOpenLane } from './platform.js';
+import {
+  LOW_OBSTACLE_ENABLED, LOW_OBSTACLE_SPAWN_CHANCE, OBSTACLE_PLATFORM_CROSS_LANE_BUFFER,
+} from '../data/spawnConfig.js';
+import { findOpenLane, isNearAnyActivePlatform } from './platform.js';
 
 // Sized with headroom above the theoretical concurrent-obstacle count. That
 // count is set by how long an entity LIVES -- (DESPAWN_Z - SPAWN_Z) / speed --
@@ -137,9 +139,21 @@ function resolveRandomType() {
 // still empty. Silently skips (no free lane, or no free pool slot) rather
 // than forcing a spawn -- the spawner's own timer just tries again next
 // interval, same as data/spawnConfig.js's MIN_ENEMY_OBSTACLE_GAP_SEC skip.
-export function spawnObstacle(field, platformField, typeKey = null, z = SPAWN_Z) {
+//
+// `enforceCrossLanePlatformGap` defaults ON for ordinary live spawns --
+// data/spawnConfig.js's OBSTACLE_PLATFORM_CROSS_LANE_BUFFER, direct feedback
+// against barricades landing right next to a ramp in another lane. main.js
+// passes false for data/introSequence.js's seeds: those are hand-placed and
+// hand-checked against each other already, and running this check against
+// them would silently thin an already-carefully-tuned list instead of just
+// spacing out ordinary play.
+export function spawnObstacle(
+  field, platformField, typeKey = null, z = SPAWN_Z, enforceCrossLanePlatformGap = true,
+) {
   const slot = field.pool.find((s) => !s.active);
   if (!slot) return;
+  if (enforceCrossLanePlatformGap
+    && isNearAnyActivePlatform(platformField, z, OBSTACLE_PLATFORM_CROSS_LANE_BUFFER)) return;
   const lane = findOpenLane(platformField, z);
   if (lane === null) return;
   const key = typeKey || resolveRandomType();

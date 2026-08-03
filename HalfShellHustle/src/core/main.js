@@ -283,7 +283,9 @@ function boot() {
     }
     for (const t of obstacles) {
       const z = seedZ(t);
-      if (z !== null) spawnObstacle(obstacleField, platformField, null, z);
+      // false: skip the cross-lane platform gap check for seeds -- see
+      // entities/obstacles.js's spawnObstacle for why.
+      if (z !== null) spawnObstacle(obstacleField, platformField, null, z, false);
     }
     for (const t of enemies) {
       const z = seedZ(t);

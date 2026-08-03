@@ -22,7 +22,7 @@
 
 import * as THREE from 'three';
 import {
-  LANE_X, LANE_WIDTH, SPAWN_Z, DESPAWN_Z, PLAYER_Z, OBSTACLE_COLLISION_HALF_Z,
+  LANE_X, LANE_WIDTH, CENTER_LANE, SPAWN_Z, DESPAWN_Z, PLAYER_Z, OBSTACLE_COLLISION_HALF_Z,
 } from '../data/constants.js';
 import { PLATFORM_HEIGHT, PLATFORM_RAMP_LENGTH, PLATFORM_DECK_LENGTH } from '../data/platformSequence.js';
 import { PLATFORM_BOX_TEXTURE, PLATFORM_RAMP_TEXTURE } from '../data/envArt.js';
@@ -334,8 +334,21 @@ export function spawnPlatform(field, type, lane = null, z = SPAWN_Z) {
     if (!laneHasRoom(field, lane, type, z)) return;
     resolvedLane = lane;
   } else {
+    // Weighted candidate list, not a uniform shuffle -- direct feedback that
+    // ramps land "too much... in the middle" specifically, not just too
+    // often overall. Each edge lane gets 2 entries in the pool against
+    // CENTER_LANE's 1, so among 3 equally-open lanes the center is picked
+    // ~20% of the time instead of ~33%. A middle-lane ramp is the harder
+    // decision of the three (both side lanes are equally valid dodges,
+    // versus one clear direction from an edge), so cutting its frequency
+    // targets the decision-load complaint directly rather than just
+    // thinning ramps everywhere equally (see PLATFORM_SPAWN_INTERVAL_SEC in
+    // data/spawnConfig.js for that half of the same feedback).
     const lanes = [];
-    for (let i = 0; i < LANE_X.length; i++) lanes.push(i);
+    for (let i = 0; i < LANE_X.length; i++) {
+      lanes.push(i);
+      if (i !== CENTER_LANE) lanes.push(i);
+    }
     for (let i = lanes.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [lanes[i], lanes[j]] = [lanes[j], lanes[i]];
@@ -448,6 +461,22 @@ export function findOpenLane(field, z) {
   }
   if (open.length === 0) return null;
   return open[Math.floor(Math.random() * open.length)];
+}
+
+// CROSS-LANE check, unlike isPlatformFootprintBlocked above -- true if ANY
+// active platform in ANY lane has a span reaching within `buffer` of `z`, not
+// just the one obstacles.js is trying to spawn into. Used by
+// entities/obstacles.js's spawnObstacle (data/spawnConfig.js's
+// OBSTACLE_PLATFORM_CROSS_LANE_BUFFER) so a barricade doesn't land squarely
+// inside another lane's ramp-decision window -- see that constant's comment
+// for why this is a separate, lighter check from the same-lane one above,
+// and why it's opt-out for hand-placed seeds.
+export function isNearAnyActivePlatform(field, z, buffer) {
+  for (const slot of field.pool) {
+    if (!slot.active) continue;
+    if (z >= slot.entryStartZ - buffer && z <= slot.exitEndZ + buffer) return true;
+  }
+  return false;
 }
 
 // Direct feedback: enemies should actually stand on top of an elevated

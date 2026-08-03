@@ -73,7 +73,12 @@ export const OBSTACLE_FIRST_SPAWN_DELAY_SEC = 3; // grace period to read the sce
 // This is now the SETTLED rate, not the whole story: the ease-in dial at the
 // top of this file stretches it for the opening stretch of a run (x2.1 at the
 // very start, i.e. ~3.4s apart, easing to this value by 60s in).
-export const OBSTACLE_SPAWN_INTERVAL_SEC = 1.6;
+//
+// 1.6 -> 1.9, direct feedback: "space out mainly the blockers... especially
+// barcades closer to each other" -- makes the gameplay easier without
+// touching speed, which is exactly the ask (this dial is pure placement, see
+// EASE_IN_* above). ~19% more time between blockers at the settled rate.
+export const OBSTACLE_SPAWN_INTERVAL_SEC = 1.9;
 
 // DISABLED until further notice (direct feedback: "remove it completely,
 // we don't need it for now") -- entities/obstacles.js's resolveRandomType
@@ -143,7 +148,13 @@ export const MIN_ENEMY_OBSTACLE_GAP_SEC = 0.6; // -> ~6.0 world units at SPEED_S
 // seeded one, which is the cadence. Leaving this at 4 would have re-opened
 // the same 11.6s platform gap introSequence.js documents fighting.
 export const PLATFORM_FIRST_SPAWN_DELAY_SEC = 0;
-export const PLATFORM_SPAWN_INTERVAL_SEC = 6;
+// 6 -> 7.5, direct feedback: "too much ramps mainly in the middle are making
+// it harder for the player to make decisions so we need to space them out a
+// bit." Fewer ramps overall means fewer moments where a ramp decision and a
+// lane-dodge decision have to be made at once -- see also the CENTER_LANE
+// weighting in spawnPlatform's random-lane branch below, which targets the
+// "mainly in the middle" half of the same complaint directly.
+export const PLATFORM_SPAWN_INTERVAL_SEC = 7.5;
 
 // Minimum clear z between two platforms IN THE SAME LANE, on top of their own
 // 50-unit length. Enforced in entities/platform.js's spawnPlatform, which
@@ -193,6 +204,20 @@ export const PLATFORM_KILL_TYPE_CHANCE = 0.35;
 // it; 10 (~1.0s reaction room at SPEED_START, ~0.7s at SPEED_MAX) roughly matches
 // MIN_ENEMY_OBSTACLE_GAP_SEC's own reaction-time scale above.
 export const PLATFORM_FOOTPRINT_EXCLUSION_BUFFER = 10; // world units, each side
+
+// Direct feedback: barricades landing at the same z as an active ramp in a
+// NEIGHBORING lane force a ramp decision (jump or not) and a lane-dodge
+// decision into the same instant -- "especially barcades... closer to...
+// ramps." PLATFORM_FOOTPRINT_EXCLUSION_BUFFER above only keeps obstacles out
+// of a platform's OWN lane; this is a lighter CROSS-LANE check on top of it
+// (entities/obstacles.js's spawnObstacle), deliberately smaller than that one
+// -- that buffer has to guarantee zero visual overlap, this one only needs to
+// buy a beat of separation. LIVE spawns only (see spawnObstacle) -- NOT
+// applied to data/introSequence.js's seeds, which are hand-placed and
+// hand-checked against each other already (see that file's own comments);
+// running this same check against them would silently thin an
+// already-carefully-tuned list rather than just space out ordinary play.
+export const OBSTACLE_PLATFORM_CROSS_LANE_BUFFER = 6; // world units, each side
 
 // --- Enemies on platform decks (entities/enemy.js's spawnEnemy, entities/
 // platform.js's findDeckPlacements) -- direct feedback: enemies should

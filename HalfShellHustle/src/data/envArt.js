@@ -333,15 +333,22 @@ export const THEMES = {
   harborDocks: {
     street: envTexture('street_harbor.png', 1792, 2400),
     skyline: envTexture('skyline_harbor.png', 2752, 1265),
-    // SCALE FIX (direct feedback, playtested): "same problem, too many details
-    // that are too big" -- the stencil-style cargo markings and chalkboard/
-    // price-tag clutter were individually legible instead of reading as texture
-    // at a glance, the same category of miss the sticker-gate facade hit
-    // earlier. Fixed with a targeted edit (not a redo): both facades' small
-    // decorative marks redrawn smaller and far more numerous -- dozens of tiny
-    // faded stencils and scattered notes instead of a handful of big clear
-    // ones. Everything else pixel-identical. Original too-big pair archived at
-    // art/final/alt/facade_h1_v1_toobig.png / facade_h2_v1_toobig.png.
+    // SCALE FIX, PASS 2 (direct feedback, playtested twice): a first pass
+    // shrank the small decorative marks (stencils, notes) but left the HERO
+    // elements -- the roll-up door, all 7 portholes, the shopfront/chalkboard,
+    // the fish crates -- at single-building-portrait scale. Still read as "a
+    // handful of big clear things" rather than texture. Pass 2: "all the
+    // details... about half those sizes" -- both facades redrawn pulled back,
+    // showing roughly twice as much building (an extra wall band above h1's
+    // portholes, an extra floor above h2's balcony) with every element,
+    // including the door/portholes/shopfront/crates, roughly half its former
+    // size and twice as numerous (14 portholes not 7, 6 fish crates not 3).
+    // Not a redo -- same identity, palette, material language both times.
+    // Archived: art/final/alt/facade_h1_v1_toobig.png / facade_h2_v1_toobig.png
+    // (pre-pass-1) and facade_h1_v2_stilltoobig.png / facade_h2_v2_stilltoobig.png
+    // (pass 1, still too big). Pass 2 used the PASS-1-ORIGINAL (v1) crops as
+    // the edit reference, not the pass-1 output, per this project's own
+    // established rule against referencing an already-edited derivative.
     facades: [
       { tex: envTexture('facade_h1.png', 2048, 2048), bodyColor: 0x69746c }, // teal corrugated-metal cargo warehouse, roll-up door, portholes
       { tex: envTexture('facade_h2.png', 2048, 2048), bodyColor: 0x8b8884 }, // weathered clapboard harbor-master shack, lighthouse cupola, bait counter
