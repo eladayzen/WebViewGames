@@ -182,11 +182,43 @@ export const THEMES = {
   // stylistically -- the same reason the coin and pickup sets were batched.
   // Deliberately no readable signage: these tile vertically, and repeated
   // legible text reads as a printing error rather than a city.
+  // FIX PASS (direct feedback, playtested): two elements in the first facade
+  // pass had implied 3D depth painted into a flat texture, which conflicts with
+  // the real camera perspective and reads as obviously pasted-on --
+  // "the outer staircases... break the 3D illusion" and the storefront awnings
+  // "when it's wide, like when it's deep, it's also breaking the illusion."
+  // Not a redo -- targeted edits on the SAME art, keeping everything else (the
+  // brick, the storefronts, the graffiti shutter, the mural, the neon sign)
+  // pixel-identical. The original pre-fix pair is archived at
+  // art/final/alt/facade_c1_v1_original.png / facade_c2_v1_original.png.
+  //
+  //   FIRE ESCAPE (facade_c1 only -- facade_c2 has none): the diagonal
+  //   zigzag staircase was replaced with a straight VERTICAL drop-ladder.
+  //   The diagonal was the actual offender -- its own implied recession is a
+  //   second, conflicting perspective inside a flat-shaded scene, most visible
+  //   at the raking angle these walls are viewed at down the street corridor.
+  //   A vertical line has no such implied direction, so it reads as a flat
+  //   graphic at any viewing angle. Balcony platforms (plain horizontal bars)
+  //   were already flat and are untouched.
+  //
+  //   AWNING (both facades): the scalloped valance + shaded underside implied
+  //   a canopy projecting outward. Replaced with a straight-edged flat striped
+  //   band -- no scallop, no visible soffit -- so it reads as paint on the wall
+  //   rather than an object jutting into space.
+  //
+  //   Getting the image model to actually apply either fix took real
+  //   iteration: the first attempts (asking it to "flatten the perspective")
+  //   silently returned near-identical images despite explicit instructions.
+  //   What worked was replacing the vague ask with a concrete alternative
+  //   shape (vertical ladder; straight-edged band) and isolating one fix per
+  //   edit call rather than requesting both at once -- combined requests kept
+  //   dropping one of the two fixes. The final assets were built by chaining
+  //   two independently-verified single-fix edits.
   centralCity: {
     street: envTexture('street_tex.png', 576, 768), // TODO: dedicated downtown avenue texture
     facades: [
-      { tex: envTexture('facade_c1.png', 1309, 1410), bodyColor: 0x886255 }, // red-brick walk-up over a green shopfront + graffiti shutter
-      { tex: envTexture('facade_c2.png', 1214, 1413), bodyColor: 0x968569 }, // mustard commercial block over a diner, neon marquee
+      { tex: envTexture('facade_c1.png', 2048, 2048), bodyColor: 0x886255 }, // red-brick walk-up over a green shopfront + graffiti shutter
+      { tex: envTexture('facade_c2.png', 2048, 2048), bodyColor: 0x968569 }, // mustard commercial block over a diner, neon marquee
     ],
     skyline: envTexture('skyline.png', 1600, 906), // reused -- already a fitting daylight city skyline
     buildingProfile: {
