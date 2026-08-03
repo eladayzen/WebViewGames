@@ -105,14 +105,14 @@ export const CAM_PULLBACK = 1.2; // modest extra distance at top speed
 // game (build doc §0's environment-art correction). This harness is explicitly
 // the "very basic environment" case -- flat colors here are a stand-in so the
 // comparison isolates the RIDER layer, and must not be taken as the art plan.
-export const SKY_TOP = 0xc9c2ec;
-export const SKY_BOTTOM = 0xf6dcea;
-export const FOG_COLOR = 0xe6dcf4;
+export const SKY_TOP = 0xc3b2dc;
+export const SKY_BOTTOM = 0xf7d3bf;
+export const FOG_COLOR = 0xecd9dd;
 export const FOG_NEAR = 90;
 export const FOG_FAR = 340;
-export const TROUGH_COLOR = 0x9d92b5; // pale lilac concrete, pastel-sky palette
-export const TROUGH_FLOOR_COLOR = 0xc9bde0; // brighter stripe marking the fast line
-export const LIP_COLOR = 0xf3e6f7; // glowing coping at the top of the wall
+export const TROUGH_COLOR = 0xdfcbaa; // warm sand wall (concept-02) // pale lilac concrete, pastel-sky palette
+export const TROUGH_FLOOR_COLOR = 0xfffaf0; // near-white dashed centre line // brighter stripe marking the fast line
+export const LIP_COLOR = 0x6f7a83; // DARK slate coping -- a value break against the pale wall // glowing coping at the top of the wall
 export const ROAD_COLOR = 0x6f6257;
 export const LINE_COLOR = 0xf2c14a;
 export const SHOULDER_COLOR = 0x9c8f6a;
@@ -124,8 +124,17 @@ export const SHOULDER_COLOR = 0x9c8f6a;
 // Placeholder sky until the phase-3 matte painting. Pastel, per the chosen
 // dreamlike sky-city direction -- the previous sage green read as GRASS above
 // the lips, which made the trough look like a ditch in a field.
-export const TERRAIN_COLOR = 0xdcd3f0;
+export const TERRAIN_COLOR = 0xefdce0;
 export const RAIL_COLOR = 0xbfb4a4;
+
+// --- funnels: the trough pinching to a throat and flaring open again ---
+// The set-piece from concept-01, and the cheapest possible proof that connected
+// structure is GEOMETRY, not painting: it is radiusAt(s) returning a smaller
+// number. A tighter throat also accelerates you, since height = R*(1-cos theta)
+// shrinks with R and the energy exchange hands that back as speed.
+export const FUNNEL_SPACING = 760; // world units between funnel throats
+export const FUNNEL_WIDTH = 0.30; // fraction of the cycle spent pinched
+export const FUNNEL_TIGHTNESS = 0.46; // throat radius as a fraction of full
 
 // --- trough roll (the corkscrew hook) ---
 // A gentle roll is on by default so the frame maths is exercised and visible;
@@ -144,5 +153,8 @@ export const GRADE = 0.055; // vertical drop per unit travelled
 // speed at all -- which makes the "does carving up the wall feel good" gate
 // impossible to judge. Cheap to add, and they double as the painted guide lines
 // the real texture will carry.
-export const GUIDE_THETAS = [0.42, 0.78, 1.02];
-export const GUIDE_COLOR = 0xe8dff5;
+// Guide stripes up the walls. concept-02 keeps the walls fairly clean and puts
+// the graphic interest in a dashed CENTRE line down the floor, so these are
+// pulled back to two faint lines and the centre line does the speed-reading.
+export const GUIDE_THETAS = [0.62, 0.98];
+export const GUIDE_COLOR = 0xfdf8ee; // road markings, near-white

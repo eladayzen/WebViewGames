@@ -32,7 +32,7 @@ export function createLobby(onChange, onStart) {
     swing: q.get('swing') || 'full',
     texres: q.get('texres') || '1024',
     autotrick: q.get('autotrick') === 'on' ? 'on' : 'off',
-    controls: q.get('controls') === 'planted' ? 'planted' : 'loose',
+    controls: q.get('controls') === 'loose' ? 'loose' : 'planted',
   };
   // Keep the toggle cycles in sync with any URL overrides so the lobby's
   // displayed value matches what's actually running.

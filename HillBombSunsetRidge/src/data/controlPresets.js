@@ -35,7 +35,11 @@ export const CONTROL_PRESETS = {
 
 // Mutable active set. main.js reads through this every frame, so switching
 // preset takes effect immediately mid-run without a restart.
-export const CONTROLS = { ...CONTROL_PRESETS.loose, key: 'loose' };
+//
+// PLANTED is the default: Amit rode both and picked it. It's the heavier feel
+// that never reaches the rim, which is why the walls read sensibly rather than
+// like hitting a barrier.
+export const CONTROLS = { ...CONTROL_PRESETS.planted, key: 'planted' };
 
 export function setControlPreset(key) {
   const preset = CONTROL_PRESETS[key];

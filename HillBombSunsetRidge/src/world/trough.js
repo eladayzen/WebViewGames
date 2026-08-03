@@ -26,11 +26,15 @@ import * as THREE from 'three';
 import {
   SEG_LEN, SEGMENTS_AHEAD, SEGMENTS_BEHIND, GRADE,
   TROUGH_RADIUS, THETA_MAX, TROUGH_ROLL_AMOUNT, TROUGH_ROLL_WAVELENGTH,
-  TROUGH_COLOR, TROUGH_FLOOR_COLOR, LIP_COLOR, TERRAIN_COLOR,
+  FUNNEL_SPACING, FUNNEL_WIDTH, FUNNEL_TIGHTNESS,
+  TROUGH_COLOR, TROUGH_FLOOR_COLOR, LIP_COLOR,
   GUIDE_THETAS, GUIDE_COLOR,
 } from '../data/constants.js';
 
-const CROSS_SEGMENTS = 18; // resolution across the U
+// Resolution across the U. The concept art reads as a smooth continuous
+// ribbon, so the cross-section needs enough segments not to facet visibly --
+// especially through a funnel throat, where the curvature tightens.
+const CROSS_SEGMENTS = 30;
 
 // --- the spline -------------------------------------------------------------
 
@@ -40,10 +44,25 @@ export function centre(s, out = new THREE.Vector3()) {
   return out.set(x, -s * GRADE, -s);
 }
 
-/** Trough radius at s. Constant for now; varying it is the funnel/bowl. */
+/**
+ * Trough radius at s. THIS is the funnel.
+ *
+ * The moment in concept-01 where the channel narrows into a throat and flares
+ * open again is not painted and not a separate model -- it is this one function
+ * returning a smaller number for a stretch of s. Everything else follows
+ * automatically: the surface mesh, the rider's position, the height/speed
+ * exchange and prop placement all read the radius from here, so they cannot
+ * disagree about where the wall is.
+ *
+ * That is the general answer to "how does the art touch the playfield": for
+ * anything that connects, it doesn't -- the geometry is generated from the same
+ * spline, so the join is exact by construction.
+ */
 export function radiusAt(s) {
-  void s;
-  return TROUGH_RADIUS;
+  const phase = (s % FUNNEL_SPACING) / FUNNEL_SPACING;
+  // One smooth well per cycle: 0 at the edges, 1 at the throat.
+  const pinch = Math.max(0, Math.cos((phase - 0.5) * Math.PI * 2 / FUNNEL_WIDTH));
+  return TROUGH_RADIUS * (1 - (1 - FUNNEL_TIGHTNESS) * pinch * pinch);
 }
 
 /** Roll of the cross-section frame about the tangent, in radians. */
@@ -142,6 +161,8 @@ class TroughSurface {
     const vertCount = (this.rows + 1) * (this.cols + 1);
     this.positions = new Float32Array(vertCount * 3);
     this.uvs = new Float32Array(vertCount * 2);
+    this.colors = new Float32Array(vertCount * 3);
+    this.dashed = false; // set on the floor stripe
     const idx = [];
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
@@ -155,13 +176,19 @@ class TroughSurface {
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
     this.geometry.setAttribute('uv', new THREE.BufferAttribute(this.uvs, 2));
+    this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
     this.geometry.setIndex(idx);
 
     // Unlit, and DOUBLE-SIDED on purpose: the frame's handedness flips as the
     // trough rolls, so a single-sided surface silently vanishes through a
     // corkscrew. (The flat road learned this the hard way.)
+    // vertexColors carries the cross-section SHADING. Without it every surface
+    // sat in a 60-78 luminance band -- wall 61, lip 60 -- so the trough read as
+    // one flat beige field with no perceptible curvature or edge. This is not
+    // real lighting (materials stay unlit, per the art direction); it is painted
+    // shading baked per-vertex, which is exactly what the concept art does.
     this.material = new THREE.MeshBasicMaterial({
-      color: colour, side: THREE.DoubleSide,
+      color: colour, side: THREE.DoubleSide, vertexColors: true,
     });
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.frustumCulled = false;
@@ -173,13 +200,17 @@ class TroughSurface {
   update(riderS) {
     const pos = this.positions;
     const uv = this.uvs;
+    const col = this.colors;
     const s0 = Math.floor(riderS / SEG_LEN) * SEG_LEN - SEGMENTS_BEHIND * SEG_LEN;
 
     for (let r = 0; r <= this.rows; r++) {
       const s = s0 + r * SEG_LEN;
       const f = frameAt(s, this._frame);
       centre(s, this._p);
-      const R = f.radius - this.inset;
+      // inset > 0 moves the strip TOWARD the axis, i.e. in front of the main
+        // surface as seen from inside. Negative buries it behind and it never
+        // renders -- which is exactly what happened to every marking.
+        const R = f.radius - this.inset;
       for (let c = 0; c <= this.cols; c++) {
         const t = c / this.cols;
         const theta = this.thetaFrom + (this.thetaTo - this.thetaFrom) * t;
@@ -194,10 +225,23 @@ class TroughSurface {
         // length; u wraps across the cross-section.
         uv[i * 2] = t;
         uv[i * 2 + 1] = s / 24;
+
+        // Shading: darken up the walls, and darken one side more than the other
+        // so the channel has a lit side and a shadow side like concept-02.
+        let shade = 1 - 0.42 * (1 - cosT) - 0.13 * sinT;
+        if (this.dashed) {
+          // The floor centre line is dashed, which is what actually lets the eye
+          // read speed. A solid stripe gives no motion cue at all.
+          const dash = (s % 26) < 13 ? 1 : 0;
+          shade *= dash ? 1 : 0.0;
+        }
+        shade = Math.max(0.15, Math.min(1.25, shade));
+        col[o] = shade; col[o + 1] = shade; col[o + 2] = shade;
       }
     }
     this.geometry.attributes.position.needsUpdate = true;
     this.geometry.attributes.uv.needsUpdate = true;
+    this.geometry.attributes.color.needsUpdate = true;
   }
 }
 
@@ -206,39 +250,35 @@ export function createTrough(scene) {
 
   // The ridable surface, plus a floor stripe so the fast line reads clearly, and
   // a lip band past THETA_MAX that marks where the wall stops being ridable.
+  const centreLine = new TroughSurface(-0.035, 0.035, TROUGH_FLOOR_COLOR, 0.06);
+  centreLine.dashed = true;
+
   const surfaces = [
     new TroughSurface(-THETA_MAX, THETA_MAX, TROUGH_COLOR),
-    new TroughSurface(-0.09, 0.09, TROUGH_FLOOR_COLOR, -0.05),
-    new TroughSurface(THETA_MAX, THETA_MAX + 0.22, LIP_COLOR),
-    new TroughSurface(-THETA_MAX - 0.22, -THETA_MAX, LIP_COLOR),
+    centreLine,
+    // The lip must be a VALUE break, not just a different hue -- at luminance 60
+    // against a wall at 61 it was invisible, which is a large part of why the
+    // trough was hard to read at all.
+    new TroughSurface(THETA_MAX, THETA_MAX + 0.20, LIP_COLOR),
+    new TroughSurface(-THETA_MAX - 0.20, -THETA_MAX, LIP_COLOR),
   ];
   // Guide stripes up both walls -- the only way to read curvature and speed off
   // an otherwise flat-coloured surface.
   for (const t of GUIDE_THETAS) {
     for (const sign of [-1, 1]) {
       surfaces.push(new TroughSurface(
-        sign * (t - 0.022), sign * (t + 0.022), GUIDE_COLOR, -0.04,
+        sign * (t - 0.018), sign * (t + 0.018), GUIDE_COLOR, 0.05,
       ));
     }
   }
   surfaces.forEach((s) => group.add(s.mesh));
 
-  // Far backdrop so there's no void beyond the lip until the sky matte lands in
-  // phase 3. Deliberately crude -- it gets replaced, not refined.
-  const haze = new THREE.Mesh(
-    new THREE.SphereGeometry(620, 16, 12),
-    new THREE.MeshBasicMaterial({ color: TERRAIN_COLOR, side: THREE.BackSide, fog: false }),
-  );
-  haze.frustumCulled = false;
-  group.add(haze);
-
   scene.add(group);
 
   return {
     group,
-    update(riderS, riderPos) {
+    update(riderS) {
       surfaces.forEach((s) => s.update(riderS));
-      if (riderPos) haze.position.copy(riderPos);
     },
     setLit(lit) {
       surfaces.forEach((s) => {

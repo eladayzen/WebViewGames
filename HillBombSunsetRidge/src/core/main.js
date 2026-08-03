@@ -24,10 +24,11 @@ import {
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
 } from '../data/constants.js';
 import { initInput, readInput, forcePop } from '../input/input.js';
-import { createTrough, toWorld, surfaceUp, heightAt, frameAt, makeFrame } from '../world/trough.js';
+import { createTrough, toWorld, surfaceUp, heightAt, frameAt, makeFrame, radiusAt } from '../world/trough.js';
 import { createRider } from '../entities/rider.js';
 import { createCameraRig } from '../camera/cameraRig.js';
 import { createLobby } from '../ui/lobby.js';
+import { createSky } from '../world/sky.js';
 import { createProps } from '../entities/props.js';
 import { createScoring } from '../systems/scoring.js';
 import { createHud } from '../ui/hud.js';
@@ -72,6 +73,7 @@ scene.add(sun);
 
 // --- world ------------------------------------------------------------------
 const trough = createTrough(scene);
+const sky = createSky(scene);
 const props = createProps(scene);
 const scoring = createScoring();
 const hud = createHud();
@@ -216,7 +218,7 @@ function frame() {
     //
     // Suspended while grinding: you're committed to the rail's line.
     if (!state.grind) {
-      const R = TROUGH_RADIUS;
+      const R = radiusAt(state.s); // LOCAL radius -- gravity bites harder in a throat
       // CUSHIONED LIP, not a dead stop. Slamming theta to THETA_MAX and zeroing
       // the velocity is what read as "I just get blocked by the side". Instead
       // the wall stiffens as you approach the rim -- a transition steepening
@@ -262,7 +264,7 @@ function frame() {
       reset();
     }
 
-    trough.update(state.s, _pos);
+    trough.update(state.s);
   }
 
   // --- place the rider ---
@@ -303,6 +305,7 @@ function frame() {
   rider.update(view, dt);
   rig.update(view, dt);
 
+  sky.update(camera.position);
   renderer.render(scene, camera);
 
   // --- HUD ---
@@ -330,7 +333,7 @@ function frame() {
 window.__lab = { scene, camera, rider, state, THREE };
 
 // Road needs one build before the first frame so nothing pops in.
-trough.update(0, new THREE.Vector3());
+trough.update(0);
 rider.ready.then(() => {
   if (!rider.modelAvailable) {
     document.querySelector('[data-mode="model"] small').textContent =
