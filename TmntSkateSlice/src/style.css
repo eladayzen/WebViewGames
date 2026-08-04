@@ -824,9 +824,16 @@ html, body {
   100% { transform: perspective(380px) rotateY(-58deg); }
 }
 
+/* Fixed HEIGHT (not width) -- mike_run_1.png/mike_run_3.png share the same
+   640px source canvas height but differ in WIDTH (549 vs 505, pose-dependent
+   limb spread). A fixed width + height:auto let the computed height swing
+   ~10px between the two frames every 0.1s, which grew/shrank the whole
+   centered .intro-step flex column and read as the title bobbing up/down
+   (fix 2026-08-04). Fixing height instead keeps the sprite's vertical extent
+   -- and therefore the whole column's height -- constant across both frames. */
 .intro-sprite {
-  width: 96px;
-  height: auto;
+  height: 112px;
+  width: auto;
   object-fit: contain;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.4));
 }
