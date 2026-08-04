@@ -6,7 +6,7 @@
 import { loadAssets, loadAudioAssets } from './assets.js';
 import { setupCanvas, renderFrame } from './render.js';
 import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, togglePause, triggerIntro } from './gameState.js';
-import { INTRO_STEP_AUTO_ADVANCE_SEC, INTRO_RUN_FRAME_DURATION_SEC } from '../data/introTutorial.js';
+import { INTRO_STEP1_AUTO_ADVANCE_SEC, INTRO_STEP2_AUTO_ADVANCE_SEC, INTRO_RUN_FRAME_DURATION_SEC } from '../data/introTutorial.js';
 import { getSteerAxis } from '../input/input.js';
 import { createAudio, playSfx, startMusic, pauseMusic, resumeMusic, toggleMuted } from '../systems/audio.js';
 import {
@@ -433,10 +433,11 @@ async function boot() {
           // GOBALANCE_SDK.md's "first playable state reachable with no key"
           // contract -- each step auto-advances on its own after this many
           // seconds of no interaction (a click/Space/Enter above is a
-          // speed-up over this, never a requirement).
-          if (introElapsed >= INTRO_STEP_AUTO_ADVANCE_SEC) {
-            if (introStep === 1) advanceIntroStep();
-            else dismissIntro();
+          // speed-up over this, never a requirement). Per-step timeout.
+          if (introStep === 1) {
+            if (introElapsed >= INTRO_STEP1_AUTO_ADVANCE_SEC) advanceIntroStep();
+          } else if (introElapsed >= INTRO_STEP2_AUTO_ADVANCE_SEC) {
+            dismissIntro();
           }
         } else if (gs.current === 'countdown') {
           updateCountdown(gs, dt);

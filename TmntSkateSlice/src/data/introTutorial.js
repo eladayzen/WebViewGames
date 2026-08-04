@@ -22,8 +22,12 @@
 // How long each step waits with no input before auto-advancing on its own --
 // required for GOBALANCE_SDK.md's "first playable state reachable with no
 // key" contract (a click/Space/Enter is a speed-up over this, never a
-// requirement -- see core/gameState.js's 'intro' state comment).
-export const INTRO_STEP_AUTO_ADVANCE_SEC = 8;
+// requirement -- see core/gameState.js's 'intro' state comment). Tuned per
+// step (2026-08-04, was one shared 8s for both): step 1 (item recognition)
+// needs a bit longer to actually read both panels; step 2 (the movement
+// sweep) communicates faster since it's just watching a loop.
+export const INTRO_STEP1_AUTO_ADVANCE_SEC = 9;
+export const INTRO_STEP2_AUTO_ADVANCE_SEC = 6;
 
 // Step 2's run-cycle frame swap cadence while the tutorial sweep plays --
 // kept as its own knob (not imported from entities/player.js's internal
