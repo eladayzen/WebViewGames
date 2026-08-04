@@ -149,6 +149,17 @@
              was visually just the game-over overlay with different words --
              same dark wash, no motion, no color language of its own. This is
              the fix: an unambiguous celebratory beat, not just a label swap. -->
+        <!-- Curtain panels -- direct feedback: slide two TMNT-graphic panels
+             in from the sides partway through the countdown, both as their
+             own flourish and so the environment swap in core/main.js's
+             startNextLevel has a genuinely opaque cover to hide behind (the
+             radial-gradient background above is NOT fully opaque at its
+             center, so that swap was never actually hidden before this).
+             First in DOM order so they paint BELOW the confetti/headline/
+             countdown stack that follows -- see ui/hud.js's
+             open/closeLevelCurtains. -->
+        <div id="lc-curtain-left" class="lc-curtain"></div>
+        <div id="lc-curtain-right" class="lc-curtain"></div>
         <div id="lc-confetti"></div>
         <!-- The emotional headline, and deliberately the FIRST thing read --
              "LEVEL COMPLETE" is now a caption underneath it, not the title. -->

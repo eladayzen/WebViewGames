@@ -23,6 +23,8 @@ const lcHeadlineEl = document.getElementById('lc-headline');
 const lcNextEl = document.getElementById('lc-next');
 const lcCountdownEl = document.getElementById('lc-countdown');
 const lcConfettiEl = document.getElementById('lc-confetti');
+const lcCurtainLeftEl = document.getElementById('lc-curtain-left');
+const lcCurtainRightEl = document.getElementById('lc-curtain-right');
 const livesTrayEl = document.getElementById('lives-tray');
 const gameoverEl = document.getElementById('gameover-overlay');
 const finalPointsEl = document.getElementById('final-points');
@@ -154,7 +156,45 @@ export function showLevelComplete(nextTier) {
 
   lcNextEl.textContent = `NEXT: ${tierName(nextTier)}`;
   lastCountdownShown = null;
+  resetLevelCurtains();
   lcEl.classList.remove('hidden');
+}
+
+// core/main.js triggers this partway through the countdown (data/
+// progression.js's LEVEL_CURTAIN_CLOSE_DELAY_SEC), not immediately on
+// show -- the headline/confetti beat gets a clear beat to itself first, then
+// the curtains close over it. Adding the class is enough; style.css's
+// transform transition on .lc-curtain does the animating.
+export function closeLevelCurtains() {
+  lcCurtainLeftEl.classList.add('lc-curtain-closed');
+  lcCurtainRightEl.classList.add('lc-curtain-closed');
+}
+
+// core/main.js calls this once the next level's environment swap
+// (disposeStreet/createStreet) is done and gameplay is about to resume --
+// the curtains were the whole point of covering that swap, so they're the
+// last thing to move, sliding back open to reveal the new level in motion
+// rather than popping straight to it.
+export function openLevelCurtains() {
+  lcCurtainLeftEl.classList.remove('lc-curtain-closed');
+  lcCurtainRightEl.classList.remove('lc-curtain-closed');
+}
+
+// Snaps both panels back to their open (off-screen) resting state with NO
+// animation -- called at the START of every showLevelComplete (defensive,
+// in case a fast repeated tier-up somehow left them mid-close) and from
+// resetProgressUI's full-run reset, where the whole screen is snapping back
+// to its start state and a curtain-slide would be a stray, unexplained
+// animation. Same suppress-transition/reflow/restore idiom as
+// resetProgressUI's own tier-fill reset below.
+function resetLevelCurtains() {
+  for (const el of [lcCurtainLeftEl, lcCurtainRightEl]) {
+    const prev = el.style.transition;
+    el.style.transition = 'none';
+    el.classList.remove('lc-curtain-closed');
+    void el.offsetWidth;
+    el.style.transition = prev;
+  }
 }
 
 // Re-triggers the pop animation per whole second so each number lands with its
@@ -184,6 +224,7 @@ export function resetProgressUI() {
   tierBarEl.classList.remove('tier-bar-celebrate');
   lcHeadlineEl.classList.remove('lc-headline-play');
   lcConfettiEl.classList.remove('lc-confetti-play');
+  resetLevelCurtains();
   const prev = tierFillEl.style.transition;
   tierFillEl.style.transition = 'none';
   tierFillEl.style.width = '0%';

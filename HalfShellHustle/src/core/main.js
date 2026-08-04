@@ -68,7 +68,9 @@ import {
   LEVEL_RESTART_SEED_OBSTACLE_ARRIVALS, LEVEL_RESTART_SEED_ENEMY_ARRIVALS,
   LEVEL_RESTART_SEED_PLATFORM_ARRIVALS, LEVEL_RESTART_SEED_COIN_ARRIVALS,
 } from '../data/introSequence.js';
-import { LEVEL_COUNTDOWN_SECONDS, LEVEL_SWAPS_ENVIRONMENT } from '../data/progression.js';
+import {
+  LEVEL_COUNTDOWN_SECONDS, LEVEL_SWAPS_ENVIRONMENT, LEVEL_CURTAIN_CLOSE_DELAY_SEC,
+} from '../data/progression.js';
 import { PLATFORM_ENABLED } from '../data/platformSequence.js';
 import {
   OBSTACLE_FIRST_SPAWN_DELAY_SEC, ENEMY_FIRST_SPAWN_DELAY_SEC, ENEMY_SPAWN_INTERVAL_SEC,
@@ -228,6 +230,11 @@ function boot() {
   // gets picked below.
   let pendingLevelTier = 1;
 
+  // Set once per level-complete beat by tick's countdown branch below, at
+  // LEVEL_CURTAIN_CLOSE_DELAY_SEC in -- guards ui/hud.js's closeLevelCurtains
+  // so it fires exactly once per beat instead of every frame past that point.
+  let levelCurtainsClosed = false;
+
   const rollPlatformType = () => (
     PLATFORM_KILL_TYPE_ENABLED && Math.random() < PLATFORM_KILL_TYPE_CHANCE ? 'kill' : 'ramp'
   );
@@ -363,6 +370,7 @@ function boot() {
     levelIndex = 1;
     pendingLevelTier = 1;
     levelCountdown = 0;
+    levelCurtainsClosed = false;
 
     // A brand-new run always starts back at tier 1's environment, even if the
     // PREVIOUS run had progressed into sunnyStreet before dying -- theme
@@ -404,14 +412,17 @@ function boot() {
     hud.updatePoints(score.displayed);
     pendingLevelTier = nextTier;
     levelCountdown = LEVEL_COUNTDOWN_SECONDS;
+    levelCurtainsClosed = false;
     hud.setLevelCountdown(LEVEL_COUNTDOWN_SECONDS);
     hud.showLevelComplete(nextTier);
   }
 
   // THE ENVIRONMENT SWAP. Rebuilds the street under a new theme when the tier
   // just reached calls for one -- this is the one moment the screen is fully
-  // covered, so the teardown/rebuild cost (disposeStreet + createStreet, ~50
-  // meshes on sunnyStreet) is invisible instead of a mid-run stutter.
+  // covered (ui/hud.js's curtain panels, closed since
+  // LEVEL_CURTAIN_CLOSE_DELAY_SEC into the countdown), so the teardown/
+  // rebuild cost (disposeStreet + createStreet, ~50 meshes on sunnyStreet) is
+  // invisible instead of a mid-run stutter.
   //
   // Guarded on the theme key actually CHANGING, not just on
   // LEVEL_SWAPS_ENVIRONMENT being on: past the last entry in
@@ -432,6 +443,9 @@ function boot() {
 
     resetLevelWorld(false);
     restartToRunning(gs);
+    // The swap above is done and the new level is about to run -- slide the
+    // curtains back open to reveal it, rather than popping straight to it.
+    hud.openLevelCurtains();
   }
 
   function endRun() {
@@ -587,6 +601,15 @@ function boot() {
       // ceil, floored at 1: the display should read "1" for the whole final
       // second rather than flashing a 0 nobody is meant to see.
       hud.setLevelCountdown(Math.max(1, Math.ceil(levelCountdown)));
+      // Fires once, LEVEL_CURTAIN_CLOSE_DELAY_SEC into the countdown -- the
+      // flag guard is required because this branch runs every frame past
+      // that point, and closeLevelCurtains() re-adding an already-present
+      // class would be harmless but pointless.
+      if (!levelCurtainsClosed
+        && LEVEL_COUNTDOWN_SECONDS - levelCountdown >= LEVEL_CURTAIN_CLOSE_DELAY_SEC) {
+        hud.closeLevelCurtains();
+        levelCurtainsClosed = true;
+      }
       if (levelCountdown <= 0) startNextLevel();
     }
 

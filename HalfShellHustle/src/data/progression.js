@@ -72,6 +72,18 @@ export const TIER_NAMES = [
 // without a frame spike; behind a covered screen that cost is free.
 export const LEVEL_COUNTDOWN_SECONDS = 5;
 
+// How far into that countdown ui/hud.js's TMNT-graphic curtain panels slide
+// closed (core/main.js's tick). Direct feedback: close them over the scene
+// "so it will be easier to replace the backgrounds below it" -- the overlay's
+// own radial-gradient background above is NOT fully opaque at its center, so
+// the environment swap in startNextLevel (disposeStreet/createStreet) was
+// never actually hidden the way the comment above assumed; the curtains are
+// what makes that true now. 2s gives the headline/confetti beat above a clear
+// moment to itself before the curtains close over it, and leaves 3s of the
+// 5s countdown fully covered -- comfortably past the swap's own cost.
+// MUST stay under LEVEL_COUNTDOWN_SECONDS or the curtains never close at all.
+export const LEVEL_CURTAIN_CLOSE_DELAY_SEC = 2;
+
 // Wired: core/main.js's startNextLevel calls street.js's disposeStreet +
 // createStreet when the reached tier's theme differs from the current one.
 export const LEVEL_SWAPS_ENVIRONMENT = true;
