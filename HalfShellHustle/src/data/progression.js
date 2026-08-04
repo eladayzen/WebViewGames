@@ -20,23 +20,15 @@
 // TIER_THEMES entry if it should announce or swap into something). To change
 // how the open-ended tail behaves: edit TIER_STEP_AFTER_LAST.
 //
-// ⚠ TEMPORARY QA VALUES IN EFFECT ⚠ ---------------------------------------
-// Dropped to 100/200/300 specifically so every theme can be cycled through and
-// checked quickly instead of waiting minutes per transition. THE REAL VALUES,
-// to restore once QA is done:
-//
-//     export const TIER_THRESHOLDS = [300, 900, 1500];
-//     export const TIER_STEP_AFTER_LAST = 1500;
-//
-// Copy those two lines over the two below and delete this block.
-// ---------------------------------------------------------------------------
-export const TIER_THRESHOLDS = [100, 200, 300]; // TEMP (QA) -- real: [300, 900, 1500]
+// QA's temporary 100/200/300 values (fast-cycled theme checking) are done
+// with -- back to the real production numbers, direct feedback.
+export const TIER_THRESHOLDS = [300, 800, 1500];
 
 // Every tier past the end of that list needs this many more points than the
-// one before it, forever -- so with the real values tier 4 lands at 3000,
-// tier 5 at 4500, and so on. This exists because a run has no maximum: without
-// it the last authored threshold would be a wall the bar sits pinned against.
-export const TIER_STEP_AFTER_LAST = 100; // TEMP (QA) -- real: 1500
+// one before it, forever -- so tier 4 lands at 2500, tier 5 at 3500, and so
+// on. This exists because a run has no maximum: without it the last
+// authored threshold would be a wall the bar sits pinned against.
+export const TIER_STEP_AFTER_LAST = 1000;
 
 // Shown in the bar. The count of names does NOT limit how many tiers exist --
 // past the end, systems/progression.js's tierName WRAPS back to index 0 (see
@@ -72,20 +64,35 @@ export const TIER_NAMES = [
 // without a frame spike; behind a covered screen that cost is free.
 export const LEVEL_COUNTDOWN_SECONDS = 5;
 
-// How far into that countdown ui/hud.js's TMNT-graphic curtain panels slide
-// closed (core/main.js's tick). Direct feedback: close them over the scene
-// "so it will be easier to replace the backgrounds below it" -- the overlay's
-// own radial-gradient background above is NOT fully opaque at its center, so
-// the environment swap in startNextLevel (disposeStreet/createStreet) was
-// never actually hidden the way the comment above assumed; the curtains are
-// what makes that true now. 2s gives the headline/confetti beat above a clear
-// moment to itself before the curtains close over it, and leaves 3s of the
-// 5s countdown fully covered -- comfortably past the swap's own cost.
+// How far into that countdown ui/hud.js's TMNT-graphic curtain panels START
+// sliding closed (core/main.js's tick). Direct feedback: close them over the
+// scene "so it will be easier to replace the backgrounds below it" -- the
+// overlay's own radial-gradient background above is NOT fully opaque at its
+// center, so the environment swap (disposeStreet/createStreet) was never
+// actually hidden the way the comment above assumed; the curtains are what
+// makes that true now. 2s gives the headline/confetti beat above a clear
+// moment to itself before the curtains close over it.
 // MUST stay under LEVEL_COUNTDOWN_SECONDS or the curtains never close at all.
 export const LEVEL_CURTAIN_CLOSE_DELAY_SEC = 2;
 
-// Wired: core/main.js's startNextLevel calls street.js's disposeStreet +
-// createStreet when the reached tier's theme differs from the current one.
+// How long that close (and the matching open) animation itself takes --
+// MUST match src/style.css's .lc-curtain transition duration exactly, since
+// nothing enforces the two staying in sync automatically. core/main.js
+// waits this long AFTER LEVEL_CURTAIN_CLOSE_DELAY_SEC before doing the
+// environment swap below -- direct feedback, a second black-frame report:
+// the first fix moved the swap to fire the instant the CLOSE was
+// triggered, but the curtains were still mid-slide at that exact frame, so
+// the swap's own stutter was visible peeking around them. Waiting for the
+// close to actually finish first is what the "closed" in "swap while
+// closed" was supposed to mean. LEVEL_CURTAIN_CLOSE_DELAY_SEC +
+// LEVEL_CURTAIN_TRANSITION_SEC (2.6s) MUST stay comfortably under
+// LEVEL_COUNTDOWN_SECONDS (5s), or the swap has no hidden window left to
+// happen in before the curtains reopen.
+export const LEVEL_CURTAIN_TRANSITION_SEC = 0.6;
+
+// Wired: core/main.js's tick calls street.js's disposeStreet + createStreet
+// when the reached tier's theme differs from the current one, once the
+// curtains have fully closed.
 export const LEVEL_SWAPS_ENVIRONMENT = true;
 
 // Maps EACH TIER to the environment it plays in. Index 0 = tier 1. Keys must

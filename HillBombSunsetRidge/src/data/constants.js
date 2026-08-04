@@ -114,13 +114,40 @@ export const AIR_SPEED_GAIN = 0.55;
 // ramp choice both matter, which is the point.
 export const BACKFLIP_MIN_HEIGHT = 2.2;
 
-// SPIN is parked, not deleted. Amit: "for now every time you can do a backflip,
-// do a backflip" -- so the trick choice is no longer a random roll between the
-// two, and spin currently never triggers. Its constants and its rider.js
-// rotation path are intact, ready for the "another system of random / are we
-// doing it or not" he mentioned wanting later.
-export const AIR_DURATION_HIGH = 1.3; // long enough to read a full rotation
-export const AIR_HEIGHT_HIGH = 3.0;
+// SPIN vs BACKFLIP -- decided by how hard you were moving SIDEWAYS at takeoff.
+// Amit: "if my velocity going from side to side is too strong... it won't be a
+// backflip, it would be a spin."
+//
+// Which is also just physics read back to the player: a rider carrying real
+// lateral momentum into a launch has angular momentum about the vertical axis,
+// so they rotate flat rather than end-over-end. It gives the trick choice a
+// cause the player controls, instead of a dice roll.
+//
+// MEASURED distribution of lateral speed (|thetaVel| * radiusAt(s), world units
+// per second across the trough) so the threshold means something:
+//
+//     hands off, riding neutral    0.0 at every percentile -- the pendulum
+//                                  settles in the floor and simply stays there
+//     actively carving   p50 10.08   p90 20.27   p99 25.35   max 26.11
+//
+// The first pass used 9.0, from a cruder probe that assumed a fixed 26 radius
+// and topped out at 13. That was wrong twice over: radiusAt(s) varies along the
+// trough so the real ceiling is double that, and 9.0 turned out to sit BELOW
+// the median of active carving -- 54.7% of carving frames cleared it, which
+// would have made the spin the common case rather than the exceptional one.
+//
+// 15.0 sits between p50 and p90: comfortably above an ordinary committed lean,
+// reached only when genuinely crossing the trough at pace. Ordinary riding
+// never comes close, since neutral is a flat zero.
+export const SPIN_LATERAL_MIN = 15.0;
+
+// The spin gets the SAME earned height and cap as the backflip -- it replaces
+// that jump rather than being a different one, and having the same ramp produce
+// wildly different hang time depending on your drift would read as a bug. Its
+// air time is only a little longer: a flat yaw rotation reads quicker than an
+// end-over-end flip at equal duration, so it needs a touch more to land as
+// clearly as the backflip does at 0.55.
+export const AIR_DURATION_SPIN = 0.62;
 // BACKFLIP: a SNAPPY up-and-down, "like half a second of a jump" (Amit,
 // after seeing the 1.5s version). Since the rotation is locked 1:1 to air time,
 // halving the duration is exactly what makes the flip itself whip round faster
@@ -163,6 +190,34 @@ export const AIR_DURATION_HOP = 0.5;
 // hip height at the apex -- a real skate tuck over an obstacle.
 export const HOP_HIP_FOLD = 0.78; // knees driven up toward the chest
 export const HOP_KNEE_FOLD = 0.96; // heels tucked back under, board follows
+
+// --- AIR POSE (every jump) --------------------------------------------------
+// Amit: "every jump -- he brings his knees upwards a bit, and the arms are
+// going down to the sides."
+//
+// Applies to EVERY air, not just the hop: plain pops, ramp launches, backflips
+// and spins all get it, enveloped 0 -> peak at apex -> 0 so the legs are fully
+// extended again for touchdown and it hands straight over to the landing
+// absorb. The hop keeps its own deeper fold; the two are max'd rather than
+// summed, since they're the same joints doing the same thing.
+//
+// MEASURED knee rise on this rig, against the hop for scale:
+//     0.30/0.40 -> 0.090     0.45/0.55 -> 0.136
+//     0.60/0.70 -> 0.183     0.78/0.96 -> 0.237  (the hop)
+// 0.45/0.55 is "a bit" -- a little over half the hop's tuck.
+export const AIR_TUCK_HIP = 0.45;
+export const AIR_TUCK_KNEE = 0.55;
+
+// Arms down. Two axes, because neither alone does it: the idle holds the lead
+// arm FORWARD and the trailing arm already low and out, so the chains are not
+// symmetric to begin with. Probing a grid of (x, z) and reading each hand's
+// displacement in the rider's own frame, x+0.3/z-0.35 is the combination that
+// takes BOTH hands down (left -0.064, right -0.022 -- the right starts low, so
+// it has less to travel) while swinging them back rather than across the body.
+// The z term is mirrored between the arms because the two chains are mirror
+// images and a shared sign would swing them opposite ways in world space.
+export const AIR_ARM_DROP = 0.35; // rotation.x, same sign both arms
+export const AIR_ARM_SWING = 0.35; // rotation.z, mirrored
 
 // How crosswise is too crosswise to grind. The rider's lateral speed is
 // |thetaVel| * R (angular rate around the trough, times local radius); compare
@@ -225,6 +280,17 @@ export const GRIND_SPARK_RATE = 150; // particles per second while in contact
 // afterwards". The tail matters as much as the grind itself -- a kick-push
 // firing the instant the rider drops off a rail reads as a stumble.
 export const GRIND_PUSH_LOCKOUT = 1.0;
+
+// Coming OFF a rail. This was an exponential ease toward zero at 1/0.22, and an
+// exponential has a long tail: it took ~0.47s just to fall the first 88% of a
+// half-metre rail, and well over a second to finish. Amit: "the fall from the
+// glide downwards is way too long -- it should be super short."
+//
+// So it's an actual accelerating drop now rather than a decay curve, which is
+// also closer to the original ask for "a straight-on physical fall back to the
+// road". Time to ground is sqrt(2h/g): off a 0.58 rail at this g that's ~0.18s,
+// and unlike the ease it genuinely ARRIVES instead of asymptoting.
+export const GRIND_EXIT_FALL_G = 34.0; // world units/s^2
 
 // A trick's rotation is now synced 1:1 to its OWN jump's air time (airT 0->1),
 // finishing exactly as the rider lands, per Amit's direct correction: the
@@ -385,7 +451,45 @@ export const GRADE = 0.055; // vertical drop per unit travelled
 // impossible to judge. Cheap to add, and they double as the painted guide lines
 // the real texture will carry.
 // Guide stripes up the walls. concept-02 keeps the walls fairly clean and puts
-// the graphic interest in a dashed CENTRE line down the floor, so these are
-// pulled back to two faint lines and the centre line does the speed-reading.
-export const GUIDE_THETAS = [0.62, 0.98];
+// the graphic interest in a dashed CENTRE line down the floor, so the centre
+// line still does the speed-reading and these do the POSITION-reading.
+//
+// Two extra lines added nearer the floor, per Amit: "it really helps read and
+// understand where you are on the field." The old pair sat at 0.62 and 0.98,
+// which is 16.1 and 25.5 units of arc out from the centreline on a 26-unit
+// radius -- so the entire inner half of the trough, which is exactly where the
+// rider spends most of the run, had nothing between the centre line and the
+// first stripe. Now the spacing grades outward: 5.7, 10.9, 16.1, 25.5 units.
+//
+// Half-widths taper inward on purpose. The stripes are all the same physical
+// width in world terms, but the inner ones sit closer to the camera and so
+// render visibly fatter; thinning them keeps the set reading as one even family
+// rather than a heavy pair either side of the centre.
+export const GUIDE_STRIPES = [
+  { theta: 0.22, halfWidth: 0.013 },
+  { theta: 0.42, halfWidth: 0.015 },
+  { theta: 0.62, halfWidth: 0.018 },
+  { theta: 0.98, halfWidth: 0.018 },
+];
 export const GUIDE_COLOR = 0xfdf8ee; // road markings, near-white
+
+// --- SPEED LINES -----------------------------------------------------------
+// Streaks rushing past the camera (entities/speedLines.js), driven by the SPEED
+// WOBBLE meter rather than by raw speed.
+//
+// Raw speed was too touchy. The game accelerates from START_SPEED to terminal
+// within a few seconds and then sits at the top of its range -- measured 10.0
+// min / 34.4 max, but almost all of the time above 30 -- so an effect mapped
+// onto that range snapped from nothing to full almost immediately and then
+// stayed pinned there for the rest of the run.
+//
+// The wobble meter is the same 0..100 signal the HUD bar and the camera shake
+// already use, and it INTEGRATES: it fills only while over the speed threshold
+// and drains whenever you carve, grind or slow. That gives a ramp measured in
+// seconds instead of frames, and ties the streaks to the fail state, so a
+// screen thick with them says the same thing a full bar does.
+// Tuned down hard from a first pass at 220: at full intensity that read as a
+// solid starburst that buried the rider and the road rather than as motion. The
+// point is to feel fast, not to obscure the thing you're steering.
+export const SPEEDLINE_MAX = 85;
+export const SPEEDLINE_COLOR = 0xfdf8ee; // same near-white as the road markings

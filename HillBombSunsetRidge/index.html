@@ -48,15 +48,28 @@
     <div id="stage">
       <div id="app"></div>
 
-      <!-- GoBalance SDK: native-bridge Back button, top-right per BUILD_NOTES.md's
-           cross-game HUD chrome convention. -->
+      <!-- Top-right chrome row, per BUILD_NOTES.md's cross-game convention and
+           matching HalfShellHustle exactly: Back is the outer button (a plain
+           X), Pause sits to its left, the settings gear left of that. Icon-only
+           38px circles. -->
+
+      <!-- GoBalance SDK: native-bridge Back button. Returns to the games list. -->
       <button id="gb-back"
         onclick="if(window.Unity)window.Unity.call('nav:back');"
         title="Back">&times;</button>
 
-      <!-- Reopens the render-lab lobby mid-run so modes can be compared without
-           reloading — the whole point of this harness. -->
-      <button id="lab-button" title="Render Lab">&#9881;</button>
+      <!-- Placeholder glyph icon (real icon art later); swaps to ▶ when paused. -->
+      <button id="pause-button" title="Pause">&#9208;</button>
+
+      <!-- Live settings (gear). Every value that decides how the board feels is
+           adjustable mid-run, because the board is the only place any of it can
+           be judged and you can't edit a Unity Inspector field while standing on
+           one. Rows are built by src/ui/settingsPanel.js, not written here. The
+           render lab is now one of those rows rather than its own button. -->
+      <button id="settings-button" title="Settings">&#9881;</button>
+      <div id="settings-panel" class="hidden"></div>
+
+      <div id="paused-badge" class="hidden">PAUSED</div>
 
       <div id="hud">
         <div id="topLeft">
@@ -76,6 +89,25 @@
         <div id="trick-banner"></div>
         <div id="hint">
           lean / <b>&larr; &rarr;</b> carve &nbsp;·&nbsp; <b>&uarr;</b> or <b>space</b> trick &nbsp;·&nbsp; <b>L</b> lab
+        </div>
+      </div>
+
+      <!-- GAME OVER. The ids here are CONTRACTUAL, not stylistic: the GoBalance
+           host watches for #gameover-overlay losing its `hidden` class and, only
+           while it's visible, synthetically clicks #restart-button. Both must be
+           these exact hyphenated ids or restart is dead on the board, with no
+           error to explain why (GOBALANCE_SDK.md, "The exact DOM/JS contract").
+           That matters doubly here because the WebView forwards no pointer at
+           all -- that one synthetic click, plus Space/Enter, is the entire way
+           out of this screen on-device. -->
+      <div id="gameover-overlay" class="overlay hidden">
+        <div class="go-inner">
+          <div class="go-title">WIPEOUT</div>
+          <div class="go-score-label">SCORE</div>
+          <div id="final-score">0</div>
+          <div id="final-breakdown"></div>
+          <button id="restart-button">CONTINUE</button>
+          <div class="go-hint">or press <b>SPACE</b> / <b>ENTER</b></div>
         </div>
       </div>
 

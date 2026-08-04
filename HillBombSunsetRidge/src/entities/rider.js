@@ -43,6 +43,7 @@ import normalUrl from '../assets/rig/rider_normal.jpg?url';
 import metalRoughUrl from '../assets/rig/rider_metalrough.jpg?url';
 import {
   HOP_HIP_FOLD, HOP_KNEE_FOLD,
+  AIR_TUCK_HIP, AIR_TUCK_KNEE, AIR_ARM_DROP, AIR_ARM_SWING,
   LAND_HIP_BEND, LAND_KNEE_BEND, LAND_SPINE_CURL,
   GRIND_YAW, GRIND_HIP_BEND, GRIND_KNEE_BEND,
   GRIND_ARM_SPREAD, GRIND_ELBOW_OPEN, GRIND_PUSH_LOCKOUT,
@@ -527,7 +528,9 @@ export function createRider(scene, camera) {
         pitchExtra = s.airT * Math.PI * 2;
       }
       if (s.airActive && s.airTrick === 'spin') {
-        yawExtra = s.airT * Math.PI * 2;
+        // Signed by the drift direction captured at takeoff (main.js), so the
+        // rotation continues the rider's own momentum instead of fighting it.
+        yawExtra = s.airT * Math.PI * 2 * (s.spinDir || 1);
       }
       // HOP-OVER has NO whole-body rotation -- it's a leg tuck applied directly
       // to the rig's bones after the mixer runs (further down). The barrel roll
@@ -639,18 +642,37 @@ export function createRider(scene, camera) {
         //
         // The board follows for free -- it's pinned to the foot bones below, so
         // lifting the feet lifts the deck with them, exactly as a real hop does.
-        if (s.airTrick === 'hop' && s.airActive && upLegL) {
+        // EVERY air gets a pose, not just the hop -- knees up a bit, arms down
+        // to the sides. The hop is the same shape with a deeper fold, so the
+        // two are combined with max() rather than layered: they drive the same
+        // joints in the same direction, and summing them would double the tuck
+        // on a hop.
+        if (s.airActive && upLegL) {
           // Fold in and back out across the air: 0 at launch, peak at apex,
-          // 0 by landing -- so the legs are fully extended again for touchdown.
+          // 0 by landing -- so the legs are fully extended again for touchdown,
+          // and it hands straight over to the landing absorb with no jump.
           const fold = Math.sin(Math.min(1, s.airT) * Math.PI);
-          const hip = fold * HOP_HIP_FOLD;
-          const knee = fold * HOP_KNEE_FOLD;
+          const hopping = s.airTrick === 'hop';
+          const hip = fold * Math.max(AIR_TUCK_HIP, hopping ? HOP_HIP_FOLD : 0);
+          const knee = fold * Math.max(AIR_TUCK_KNEE, hopping ? HOP_KNEE_FOLD : 0);
           // Signs are opposed between the two joints: the thigh swings the knee
           // UP toward the chest, the shin folds the heel BACK under the thigh.
           upLegL.rotation.x -= hip;
           upLegR.rotation.x -= hip;
           if (legL) legL.rotation.x += knee;
           if (legR) legR.rotation.x += knee;
+
+          // Arms down and back. The z term is MIRRORED between the two arms --
+          // the chains are mirror images, so a shared sign swings them opposite
+          // ways in world space and one arm would rise while the other fell.
+          if (armL && armR) {
+            const drop = fold * AIR_ARM_DROP;
+            const swing = fold * AIR_ARM_SWING;
+            armL.rotation.x += drop;
+            armR.rotation.x += drop;
+            armL.rotation.z -= swing;
+            armR.rotation.z += swing;
+          }
         }
 
         // --- BOARDSLIDE pose (procedural, layered ON TOP of the clips) -------
@@ -772,8 +794,11 @@ export function createRider(scene, camera) {
           // it folds both legs, the staggered stance moves the two feet by
           // different amounts, and `spread` grows past the guard -- which would
           // freeze the deck mid-air while the rider compressed away from it.
-          const hopping = s.airTrick === 'hop' && s.airActive;
-          const posing = hopping || grindPose > 0.001 || landPose > 0.001;
+          // Any airborne pose folds both legs, and the staggered stance moves
+          // the two feet unequally -- which trips the spread guard below and
+          // freezes the deck away from the boots. That was already true of the
+          // hop; now that EVERY air is posed, it's true of every air.
+          const posing = s.airActive || grindPose > 0.001 || landPose > 0.001;
           if (posing) {
             board.position.set(
               (_fa.x + _fb.x) * 0.5,
@@ -830,11 +855,22 @@ export function createRider(scene, camera) {
       // rotation is in effect this frame, and leaves ordinary carve-roll
       // movement of the deck alone.
       if ((grindPose > 0.001 || landPose > 0.001) && hasRestBoard) {
-        const upNow = _cu.copy(board.position).applyQuaternion(tilt.quaternion).y;
-        const upRest = _cu.copy(restBoardLocal).applyQuaternion(tilt.quaternion).y;
-        tilt.position.y = -(upNow - upRest);
+        // ALL THREE AXES, not just height. Amit: "the skateboard should be firm
+        // on the ground, not moving at all." Cancelling only the vertical left
+        // the deck's local x/z still tracking the feet, and folding the legs
+        // swings them forward -- so the board slid along the ground even though
+        // it held its height. Solving the whole vector pins it outright:
+        //
+        //   board_root = tilt.position + R * board.position   (want: R * rest)
+        //   => tilt.position = R * (rest - board.position)
+        //
+        // The body then takes up the entire difference, which is exactly the
+        // read being asked for -- hips drop and shift back over a board that
+        // does not move at all.
+        tilt.position.copy(restBoardLocal).sub(board.position)
+          .applyQuaternion(tilt.quaternion);
       } else {
-        tilt.position.y = 0;
+        tilt.position.set(0, 0, 0);
       }
     },
 

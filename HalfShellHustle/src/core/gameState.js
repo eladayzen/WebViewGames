@@ -10,9 +10,10 @@
 // GOBALANCE_SDK.md's contract: the game's first playable/countdown state
 // must be reachable on page load with NO KEY REQUIRED. 'intro' satisfies
 // this the same way a countdown would -- core/main.js's tick auto-advances
-// it on its own (data/introTutorial.js's INTRO_STEP_AUTO_ADVANCE_SEC) even
-// with zero interaction, so a click/Space/Enter on the tutorial's
-// continue buttons is a SPEED-UP over that fallback, never a requirement.
+// it on its own (data/introTutorial.js's INTRO_LANE_STEP_AUTO_ADVANCE_SEC /
+// INTRO_JUMP_STEP_AUTO_ADVANCE_SEC) even with zero interaction, so a
+// click/Space/Enter on the tutorial's continue buttons is a SPEED-UP over
+// that fallback, never a requirement.
 // 'levelcomplete' is only ever entered mid-run, never at boot.
 //
 // 'levelcomplete'/'intro' are deliberately their own states rather than a

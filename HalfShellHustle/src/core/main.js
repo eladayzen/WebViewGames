@@ -55,7 +55,8 @@ import {
   createGameState, restartToRunning, triggerGameOver, triggerLevelComplete, triggerIntro,
 } from './gameState.js';
 import {
-  INTRO_LANE_CYCLE, INTRO_LANE_STATE_HOLD_SEC, INTRO_JUMP_CYCLE, INTRO_STEP_AUTO_ADVANCE_SEC,
+  INTRO_LANE_CYCLE, INTRO_LANE_STATE_HOLD_SEC, INTRO_JUMP_CYCLE,
+  INTRO_LANE_STEP_AUTO_ADVANCE_SEC, INTRO_JUMP_STEP_AUTO_ADVANCE_SEC,
 } from '../data/introTutorial.js';
 import {
   updateSteering, pollLaneStep, getLaneTarget, pollJumpPress,
@@ -75,6 +76,7 @@ import {
 } from '../data/introSequence.js';
 import {
   LEVEL_COUNTDOWN_SECONDS, LEVEL_SWAPS_ENVIRONMENT, LEVEL_CURTAIN_CLOSE_DELAY_SEC,
+  LEVEL_CURTAIN_TRANSITION_SEC,
 } from '../data/progression.js';
 import { PLATFORM_ENABLED } from '../data/platformSequence.js';
 import {
@@ -239,6 +241,11 @@ function boot() {
   // LEVEL_CURTAIN_CLOSE_DELAY_SEC in -- guards ui/hud.js's closeLevelCurtains
   // so it fires exactly once per beat instead of every frame past that point.
   let levelCurtainsClosed = false;
+  // Set once per beat, LEVEL_CURTAIN_TRANSITION_SEC AFTER levelCurtainsClosed
+  // -- guards the environment swap the same way, and deliberately a separate
+  // flag/timing check from it rather than reusing levelCurtainsClosed: the
+  // swap must wait for the CLOSE ANIMATION TO FINISH, not just start.
+  let levelEnvironmentSwapped = false;
 
   // --- Intro tutorial (data/introTutorial.js, ui/hud.js) -------------------
   // All dt-driven from tick's 'intro' branch below, same reasoning as every
@@ -468,41 +475,18 @@ function boot() {
     pendingLevelTier = nextTier;
     levelCountdown = LEVEL_COUNTDOWN_SECONDS;
     levelCurtainsClosed = false;
+    levelEnvironmentSwapped = false;
     hud.setLevelCountdown(LEVEL_COUNTDOWN_SECONDS);
     hud.showLevelComplete(nextTier);
   }
 
-  // THE ENVIRONMENT SWAP. Rebuilds the street under a new theme when the tier
-  // just reached calls for one -- this is the one moment the screen is fully
-  // covered (ui/hud.js's curtain panels, closed since
-  // LEVEL_CURTAIN_CLOSE_DELAY_SEC into the countdown), so the teardown/
-  // rebuild cost (disposeStreet + createStreet, ~50 meshes on sunnyStreet) is
-  // invisible instead of a mid-run stutter.
-  //
-  // Guarded on the theme key actually CHANGING, not just on
-  // LEVEL_SWAPS_ENVIRONMENT being on. themeForTier now WRAPS past the last
-  // entry in data/progression.js's TIER_THEMES rather than returning null
-  // (direct feedback: rotate back to the first theme once the last one's
-  // been presented) -- so this guard's job today is purely "don't tear down
-  // and rebuild an identical street for no reason", not the null-dodge it
-  // originally existed for.
   function startNextLevel() {
     hud.hideLevelComplete();
     levelIndex = pendingLevelTier;
-
-    if (LEVEL_SWAPS_ENVIRONMENT) {
-      const nextTheme = themeForTier(levelIndex);
-      if (nextTheme && nextTheme !== currentThemeKey) {
-        disposeStreet(scene, street);
-        street = createStreet(scene, nextTheme);
-        currentThemeKey = nextTheme;
-      }
-    }
-
     resetLevelWorld(false);
     restartToRunning(gs);
-    // The swap above is done and the new level is about to run -- slide the
-    // curtains back open to reveal it, rather than popping straight to it.
+    // The environment swap (if any) already happened when the curtains
+    // closed, below -- just reveal it, rather than popping straight to it.
     hud.openLevelCurtains();
   }
 
@@ -676,7 +660,7 @@ function boot() {
           introRunFrameIndex = (introRunFrameIndex + 1) % PLAYER_RUN_FRAMES.length;
           hud.setIntroRunFrame(introRunFrameIndex);
         }
-        if (introElapsed >= INTRO_STEP_AUTO_ADVANCE_SEC) advanceIntroStep();
+        if (introElapsed >= INTRO_LANE_STEP_AUTO_ADVANCE_SEC) advanceIntroStep();
       } else {
         introJumpCycleElapsed += dt;
         const currentHold = INTRO_JUMP_CYCLE[introJumpCycleIndex].holdSec;
@@ -685,7 +669,7 @@ function boot() {
           introJumpCycleIndex = (introJumpCycleIndex + 1) % INTRO_JUMP_CYCLE.length;
           hud.setIntroJumpCycleState(introJumpCycleIndex, INTRO_JUMP_CYCLE[introJumpCycleIndex]);
         }
-        if (introElapsed >= INTRO_STEP_AUTO_ADVANCE_SEC) dismissIntro();
+        if (introElapsed >= INTRO_JUMP_STEP_AUTO_ADVANCE_SEC) dismissIntro();
       }
     }
 
@@ -700,11 +684,51 @@ function boot() {
       // Fires once, LEVEL_CURTAIN_CLOSE_DELAY_SEC into the countdown -- the
       // flag guard is required because this branch runs every frame past
       // that point, and closeLevelCurtains() re-adding an already-present
-      // class would be harmless but pointless.
+      // class would be harmless but pointless. Only STARTS the close
+      // animation -- see the swap check below for why the swap itself
+      // waits for it to actually finish.
       if (!levelCurtainsClosed
         && LEVEL_COUNTDOWN_SECONDS - levelCountdown >= LEVEL_CURTAIN_CLOSE_DELAY_SEC) {
         hud.closeLevelCurtains();
         levelCurtainsClosed = true;
+      }
+
+      // THE ENVIRONMENT SWAP, once the curtains have actually FINISHED
+      // closing (LEVEL_CURTAIN_TRANSITION_SEC after the check above), not
+      // the instant they START to. Direct feedback, two rounds: a black
+      // frame was first visible right as the curtains pulled OPEN (the old
+      // code swapped in startNextLevel(), racing the reveal); moving the
+      // swap to the close trigger instead just moved the same visible
+      // stutter to peek out from behind the curtains WHILE THEY WERE STILL
+      // MID-SLIDE, since closeLevelCurtains() only starts a CSS transition,
+      // it doesn't block until it finishes. Waiting the extra
+      // LEVEL_CURTAIN_TRANSITION_SEC is what actually gets the swap
+      // (disposeStreet + createStreet, ~50 meshes, fresh textures that may
+      // never have been decoded/uploaded to the GPU this session) to run
+      // fully behind a fully-opaque curtain, with real hidden frames left
+      // over (see data/progression.js) before the countdown ends.
+      //
+      // Guarded on the theme key actually CHANGING, not just on
+      // LEVEL_SWAPS_ENVIRONMENT being on. themeForTier WRAPS past the last
+      // entry in data/progression.js's TIER_THEMES rather than returning
+      // null (direct feedback: rotate back to the first theme once the
+      // last one's been presented) -- so this guard's job today is purely
+      // "don't tear down and rebuild an identical street for no reason."
+      // pendingLevelTier, not levelIndex -- levelIndex is still the tier
+      // this run is ABOUT to leave; it only becomes the new one inside
+      // startNextLevel(), which hasn't run yet at this point.
+      if (!levelEnvironmentSwapped && levelCurtainsClosed
+        && LEVEL_COUNTDOWN_SECONDS - levelCountdown
+          >= LEVEL_CURTAIN_CLOSE_DELAY_SEC + LEVEL_CURTAIN_TRANSITION_SEC) {
+        levelEnvironmentSwapped = true;
+        if (LEVEL_SWAPS_ENVIRONMENT) {
+          const nextTheme = themeForTier(pendingLevelTier);
+          if (nextTheme && nextTheme !== currentThemeKey) {
+            disposeStreet(scene, street);
+            street = createStreet(scene, nextTheme);
+            currentThemeKey = nextTheme;
+          }
+        }
       }
       if (levelCountdown <= 0) startNextLevel();
     }

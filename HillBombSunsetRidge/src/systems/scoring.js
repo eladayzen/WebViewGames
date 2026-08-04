@@ -27,6 +27,7 @@ export function createScoring() {
   const s = {
     score: 0,
     wobble: 0,
+    topSpeed: 0, // fastest speed reached this run, for the game-over summary
     chain: 1,
     chainTimer: 0,
     dead: false,
@@ -44,6 +45,7 @@ export function createScoring() {
     reset() {
       s.score = 0;
       s.wobble = 0;
+      s.topSpeed = 0;
       s.chain = 1;
       s.chainTimer = 0;
       s.dead = false;
@@ -78,6 +80,7 @@ export function createScoring() {
       // arrive sooner, so speed compounds into score twice. The wobble meter is
       // the counterweight that stops that being a free lunch.
       s.score += speed * dt * 1.4;
+      if (speed > s.topSpeed) s.topSpeed = speed;
 
       const over = speed / SPEED_REF - WOBBLE_THRESHOLD;
       if (over > 0) {
