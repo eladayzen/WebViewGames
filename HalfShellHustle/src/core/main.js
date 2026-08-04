@@ -472,37 +472,13 @@ function boot() {
     hud.showLevelComplete(nextTier);
   }
 
-  // THE ENVIRONMENT SWAP. Rebuilds the street under a new theme when the tier
-  // just reached calls for one -- this is the one moment the screen is fully
-  // covered (ui/hud.js's curtain panels, closed since
-  // LEVEL_CURTAIN_CLOSE_DELAY_SEC into the countdown), so the teardown/
-  // rebuild cost (disposeStreet + createStreet, ~50 meshes on sunnyStreet) is
-  // invisible instead of a mid-run stutter.
-  //
-  // Guarded on the theme key actually CHANGING, not just on
-  // LEVEL_SWAPS_ENVIRONMENT being on. themeForTier now WRAPS past the last
-  // entry in data/progression.js's TIER_THEMES rather than returning null
-  // (direct feedback: rotate back to the first theme once the last one's
-  // been presented) -- so this guard's job today is purely "don't tear down
-  // and rebuild an identical street for no reason", not the null-dodge it
-  // originally existed for.
   function startNextLevel() {
     hud.hideLevelComplete();
     levelIndex = pendingLevelTier;
-
-    if (LEVEL_SWAPS_ENVIRONMENT) {
-      const nextTheme = themeForTier(levelIndex);
-      if (nextTheme && nextTheme !== currentThemeKey) {
-        disposeStreet(scene, street);
-        street = createStreet(scene, nextTheme);
-        currentThemeKey = nextTheme;
-      }
-    }
-
     resetLevelWorld(false);
     restartToRunning(gs);
-    // The swap above is done and the new level is about to run -- slide the
-    // curtains back open to reveal it, rather than popping straight to it.
+    // The environment swap (if any) already happened when the curtains
+    // closed, below -- just reveal it, rather than popping straight to it.
     hud.openLevelCurtains();
   }
 
@@ -701,10 +677,41 @@ function boot() {
       // flag guard is required because this branch runs every frame past
       // that point, and closeLevelCurtains() re-adding an already-present
       // class would be harmless but pointless.
+      // THE ENVIRONMENT SWAP happens HERE, the instant the curtains close --
+      // not in startNextLevel() when they open again. Direct feedback: a
+      // black frame ("I see the turtle, I see a black frame") was visible
+      // right as the curtains pulled open, because the old code rebuilt the
+      // street (disposeStreet + createStreet, ~50 meshes, fresh textures
+      // that may never have been decoded/uploaded to the GPU this session)
+      // at that exact moment -- the reveal was racing the rebuild. Doing it
+      // here instead spends the curtains' own ~3s fully-closed window
+      // (LEVEL_COUNTDOWN_SECONDS - LEVEL_CURTAIN_CLOSE_DELAY_SEC) on the
+      // teardown/rebuild AND on however many frames the new theme's
+      // textures need to actually finish uploading, all safely hidden,
+      // instead of spending zero frames on it and hoping the swap finishes
+      // before the curtains finish opening.
+      //
+      // Guarded on the theme key actually CHANGING, not just on
+      // LEVEL_SWAPS_ENVIRONMENT being on. themeForTier WRAPS past the last
+      // entry in data/progression.js's TIER_THEMES rather than returning
+      // null (direct feedback: rotate back to the first theme once the
+      // last one's been presented) -- so this guard's job today is purely
+      // "don't tear down and rebuild an identical street for no reason."
+      // pendingLevelTier, not levelIndex -- levelIndex is still the tier
+      // this run is ABOUT to leave; it only becomes the new one inside
+      // startNextLevel(), which hasn't run yet at this point.
       if (!levelCurtainsClosed
         && LEVEL_COUNTDOWN_SECONDS - levelCountdown >= LEVEL_CURTAIN_CLOSE_DELAY_SEC) {
         hud.closeLevelCurtains();
         levelCurtainsClosed = true;
+        if (LEVEL_SWAPS_ENVIRONMENT) {
+          const nextTheme = themeForTier(pendingLevelTier);
+          if (nextTheme && nextTheme !== currentThemeKey) {
+            disposeStreet(scene, street);
+            street = createStreet(scene, nextTheme);
+            currentThemeKey = nextTheme;
+          }
+        }
       }
       if (levelCountdown <= 0) startNextLevel();
     }
