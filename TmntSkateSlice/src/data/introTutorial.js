@@ -26,7 +26,7 @@
 // step (2026-08-04, was one shared 8s for both): step 1 (item recognition)
 // needs a bit longer to actually read both panels; step 2 (the movement
 // sweep) communicates faster since it's just watching a loop.
-export const INTRO_STEP1_AUTO_ADVANCE_SEC = 9;
+export const INTRO_STEP1_AUTO_ADVANCE_SEC = 6;
 export const INTRO_STEP2_AUTO_ADVANCE_SEC = 6;
 
 // Step 2's run-cycle frame swap cadence while the tutorial sweep plays --
