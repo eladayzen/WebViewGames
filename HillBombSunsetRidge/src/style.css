@@ -28,7 +28,7 @@ html, body {
 #app canvas { display: block; width: 100%; height: 100%; }
 
 /* --- chrome buttons (BUILD_NOTES.md convention: top-right, icon-only) --- */
-#gb-back, #lab-button {
+#gb-back, #pause-button, #settings-button {
   position: absolute;
   top: 12px;
   width: 38px;
@@ -45,8 +45,126 @@ html, body {
   justify-content: center;
   z-index: 9999;
 }
+/* Back outermost, then pause, then the gear -- same order and spacing as
+   HalfShellHustle so the two games are muscle-memory compatible. */
 #gb-back { right: 12px; }
-#lab-button { right: 60px; font-size: 17px; }
+#pause-button { right: 60px; font-size: 16px; }
+#settings-button { right: 108px; font-size: 17px; }
+
+/* --- settings panel (ui/settingsPanel.js) --- */
+#settings-panel {
+  position: absolute;
+  top: 58px;
+  right: 12px;
+  z-index: 9999;
+  width: 236px;
+  /* Must never run off the bottom: CLOSE is the last row and, on-device, the
+     only way back out of the menu -- a panel taller than the frame puts it
+     somewhere unreachable. Scrolls if the rows outgrow the space, and
+     settingsPanel.js keeps the selected row scrolled into view so the two-key
+     menu still works when it does. */
+  max-height: calc(100% - 76px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgba(38, 20, 44, 0.92);
+  color: #ffe9d6;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+#settings-panel.hidden { display: none; }
+
+.sp-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+.sp-row:first-child { margin-top: 0; }
+
+.sp-label {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  opacity: 0.85;
+}
+
+.sp-row button {
+  min-width: 62px;
+  height: 24px;
+  flex: none;
+  padding: 0 10px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffe9d6;
+  font: 800 12px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  -webkit-tap-highlight-color: transparent;
+}
+.sp-row button:active { background: rgba(255, 255, 255, 0.3); }
+
+.sp-note {
+  flex-basis: 100%;
+  font-size: 8.5px;
+  line-height: 1.25;
+  opacity: 0.5;
+  margin-top: 0;
+}
+
+/* Key legend at the top of the panel. */
+.sp-keyhint {
+  order: -1;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  opacity: 0.55;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+/* The row the two-key menu is currently on. Has to be unmistakable at a glance
+   from across a room, since on-device this highlight is the ONLY feedback about
+   what Space is about to change (see settingsPanel.js's header). */
+.sp-sel {
+  background: rgba(255, 168, 92, 0.20);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(255, 190, 130, 0.6);
+  margin-left: -5px;
+  margin-right: -5px;
+  padding: 2px 5px;
+}
+
+/* Selection wins over the dimming below -- a dimmed row is still selectable,
+   and it would be baffling for the highlight to vanish onto a row you can't
+   see. */
+.sp-sel.sp-dim { opacity: 1; }
+
+/* A control belonging to the OTHER steering mode. Dimmed rather than hidden so
+   the panel keeps a constant height -- a panel that reflows as you change modes
+   is miserable to poke at while standing on a board. */
+.sp-dim { opacity: 0.28; }
+
+#paused-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 900;
+  font: 900 34px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 3px;
+  color: #fff;
+  -webkit-text-stroke: 2.5px #2a1030;
+  paint-order: stroke fill;
+}
+#paused-badge.hidden { display: none; }
 
 /* --- HUD --- */
 #hud { position: absolute; inset: 0; pointer-events: none; z-index: 500; }

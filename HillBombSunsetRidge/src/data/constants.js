@@ -226,6 +226,17 @@ export const GRIND_SPARK_RATE = 150; // particles per second while in contact
 // firing the instant the rider drops off a rail reads as a stumble.
 export const GRIND_PUSH_LOCKOUT = 1.0;
 
+// Coming OFF a rail. This was an exponential ease toward zero at 1/0.22, and an
+// exponential has a long tail: it took ~0.47s just to fall the first 88% of a
+// half-metre rail, and well over a second to finish. Amit: "the fall from the
+// glide downwards is way too long -- it should be super short."
+//
+// So it's an actual accelerating drop now rather than a decay curve, which is
+// also closer to the original ask for "a straight-on physical fall back to the
+// road". Time to ground is sqrt(2h/g): off a 0.58 rail at this g that's ~0.18s,
+// and unlike the ease it genuinely ARRIVES instead of asymptoting.
+export const GRIND_EXIT_FALL_G = 34.0; // world units/s^2
+
 // A trick's rotation is now synced 1:1 to its OWN jump's air time (airT 0->1),
 // finishing exactly as the rider lands, per Amit's direct correction: the
 // earlier version rate-multiplied the rotation and held it once complete,

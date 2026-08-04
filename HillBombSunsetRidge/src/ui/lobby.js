@@ -16,6 +16,11 @@ export function createLobby(onChange, onStart) {
   const modeButtons = [...document.querySelectorAll('.opt')];
   const togButtons = [...document.querySelectorAll('.tog')];
   const startButton = document.getElementById('start-button');
+  // The dedicated lab button is gone from the chrome row -- the render lab is
+  // now a row inside the settings panel (see ui/settingsPanel.js), which is
+  // where per-game options live across all our games. Guarded rather than
+  // assumed: without this, a null element here throws on boot and takes the
+  // whole game down.
   const labButton = document.getElementById('lab-button');
   const modeReadout = document.getElementById('mode-readout');
   const controlsSelect = document.getElementById('controls-select');
@@ -97,7 +102,7 @@ export function createLobby(onChange, onStart) {
   }
 
   startButton.addEventListener('click', close);
-  labButton.addEventListener('click', open);
+  if (labButton) labButton.addEventListener('click', open);
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyL') {
       if (lobby.classList.contains('hidden')) open();

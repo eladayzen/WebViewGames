@@ -830,11 +830,22 @@ export function createRider(scene, camera) {
       // rotation is in effect this frame, and leaves ordinary carve-roll
       // movement of the deck alone.
       if ((grindPose > 0.001 || landPose > 0.001) && hasRestBoard) {
-        const upNow = _cu.copy(board.position).applyQuaternion(tilt.quaternion).y;
-        const upRest = _cu.copy(restBoardLocal).applyQuaternion(tilt.quaternion).y;
-        tilt.position.y = -(upNow - upRest);
+        // ALL THREE AXES, not just height. Amit: "the skateboard should be firm
+        // on the ground, not moving at all." Cancelling only the vertical left
+        // the deck's local x/z still tracking the feet, and folding the legs
+        // swings them forward -- so the board slid along the ground even though
+        // it held its height. Solving the whole vector pins it outright:
+        //
+        //   board_root = tilt.position + R * board.position   (want: R * rest)
+        //   => tilt.position = R * (rest - board.position)
+        //
+        // The body then takes up the entire difference, which is exactly the
+        // read being asked for -- hips drop and shift back over a board that
+        // does not move at all.
+        tilt.position.copy(restBoardLocal).sub(board.position)
+          .applyQuaternion(tilt.quaternion);
       } else {
-        tilt.position.y = 0;
+        tilt.position.set(0, 0, 0);
       }
     },
 
