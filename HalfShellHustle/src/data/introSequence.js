@@ -104,13 +104,38 @@ export const INTRO_SEED_ENABLED = true;
 // spawner's first live arrival later (obstacles from ~10.3s to ~14.7s), so
 // the seeds have to cover more of the opening than they used to or a hole
 // opens up right where the seeded intro hands off.
-export const INTRO_SEED_OBSTACLE_ARRIVALS = [4.2, 6.0, 7.8, 9.6, 11.4, 12.9];
-// A few more than the pure interval would give -- direct feedback asked for
-// "a bit more enemies in that first part." The 3-wide wall at ~2.6s lands
-// before all of these.
-// 12.2 rather than 12.5: against the 12.9 obstacle above, 12.5 would be only
-// 0.4s apart -- inside the 0.6s rule.
-export const INTRO_SEED_ENEMY_ARRIVALS = [3.0, 5.0, 8.6, 10.6, 12.2];
+//
+// THINNED 6 -> 3 -> 2, and the first one pushed 4.2 -> 5.2 -> 5.8s. Direct
+// feedback, twice: the opening was too punishing, then still "a bit too much
+// of those" after the first pass.
+//
+// THIS LIST IS THE WHOLE PROBLEM, AND THE EASE-IN DIAL CANNOT TOUCH IT. The
+// live spawner's very first obstacle doesn't reach the player until ~14.7s, so
+// everything before that is exactly these entries -- measured: turning
+// data/spawnConfig.js's EASE_IN_* dial off entirely changes the count in the
+// player's first 15 seconds by zero. Any complaint about how the game OPENS is
+// answered here; that dial only shapes what comes after. Worth knowing before
+// reaching for the dial again.
+//
+// Two obstacles in the opening ~13s, 5.4s apart -- roughly a third of the
+// settled rate. The opening stays busy, just not lethal: the 3-wide enemy wall
+// (~2.6s), four more enemies, four coin clusters and a platform all still land
+// in that same stretch. Sparser hazards, same amount to do.
+export const INTRO_SEED_OBSTACLE_ARRIVALS = [5.8, 11.2];
+// NOT thinned, unlike the obstacles above -- deliberately. Enemies are
+// rewarding to hit, so they're what keeps the (now much sparser) opening
+// interesting rather than empty. Same reasoning as the ease-in dial applying to
+// obstacles only. The 3-wide wall at ~2.6s still lands before all of these.
+//
+// Re-spaced only to keep every cross-pair with the obstacle list above at least
+// MIN_ENEMY_OBSTACLE_GAP_SEC apart -- that rule is enforced at SPAWN time for
+// live spawns, which can't help here (every seed spawns at t=0), so it has to
+// be checked by hand. 6.6 -> 6.9 when MIN_ENEMY_OBSTACLE_GAP_SEC rose to 0.9:
+// its gap against the 5.8 obstacle was 0.8s, below the new floor. Closest
+// cross-pair now is that same pair at 1.1s. (Checked by hand, not by eye --
+// re-check every entry any time either list or MIN_ENEMY_OBSTACLE_GAP_SEC
+// changes again.)
+export const INTRO_SEED_ENEMY_ARRIVALS = [3.0, 6.9, 10.0, 12.8];
 // One platform on the way in from the very first frame -- direct feedback:
 // platforms were barely showing up at all early (one arrival at ~10s, then
 // nothing until ~22s). core/main.js passes an explicit lane for each entry,
@@ -122,3 +147,23 @@ export const INTRO_SEED_PLATFORM_ARRIVALS = [6.8];
 // their 9s first-delay plus the full travel meant the first coin reached the
 // player at ~17.8s.
 export const INTRO_SEED_COIN_ARRIVALS = [3.4, 6.4, 9.4, 12.4];
+
+// --- Level restart (core/main.js's startNextLevel) ------------------------
+// A level transition is NOT a run start, so it does not reuse the lists above.
+// No teaching wall (the player has already learned what an enemy is), and
+// sparser hazards -- direct feedback: "we don't need the seeded intro, but we
+// do need a bit more disperse placing of elements, mainly of barriers, so you
+// don't come out insane into the new level."
+//
+// THE HORIZON IS TIGHTER HERE THAN AT RUN START, and that's the constraint that
+// sets these numbers. Seeds are placed at the distance the world will actually
+// scroll before they arrive, and speed CARRIES OVER across levels -- so by
+// level 2 the world is at or near SPEED_MAX and covers the 140-unit spawn
+// horizon in ~9.7s, not the ~13.1s available from a standing start. Anything
+// authored past that would have to spawn beyond SPAWN_Z; core/main.js skips
+// those rather than placing them wrong, so an over-long entry here silently
+// goes missing. Keep every value comfortably under 9.5.
+export const LEVEL_RESTART_SEED_OBSTACLE_ARRIVALS = [5.4, 9.0];
+export const LEVEL_RESTART_SEED_ENEMY_ARRIVALS = [2.8, 6.8];
+export const LEVEL_RESTART_SEED_COIN_ARRIVALS = [3.4, 6.2, 9.2];
+export const LEVEL_RESTART_SEED_PLATFORM_ARRIVALS = [7.6];

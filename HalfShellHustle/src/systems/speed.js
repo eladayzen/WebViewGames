@@ -62,3 +62,37 @@ export function speedAfterTraveling(distance) {
   if (RAMP_A === 0 || distance >= RAMP_DISTANCE) return SPEED_MAX;
   return Math.min(Math.sqrt(SPEED_START * SPEED_START + 4 * RAMP_A * distance), SPEED_MAX);
 }
+
+// Inverse of distanceTraveledBy: how many seconds into the run the world will
+// have scrolled `distance` units. Solving the same quadratic falls out of the
+// function above almost for free -- t = (v(D) - v0) / 2a -- so this reuses that
+// root rather than repeating the sqrt, and the two can never disagree.
+//
+// systems/difficulty.js needs this to convert "spawning something now" into
+// "the player meets it at time X". Those are ~13 seconds apart at the start of
+// a run, which is the whole reason it exists: an easing curve keyed on spawn
+// time would already be over by the time any of it reached the player.
+export function timeToTravel(distance) {
+  if (distance <= 0) return 0;
+  if (RAMP_A === 0) return distance / SPEED_MAX;
+  if (distance >= RAMP_DISTANCE) {
+    return SPEED_RAMP_DURATION_SEC + (distance - RAMP_DISTANCE) / SPEED_MAX;
+  }
+  return (speedAfterTraveling(distance) - SPEED_START) / (2 * RAMP_A);
+}
+
+// How far ahead to place something NOW so that it reaches the player
+// `arrivalSec` from now, given the run is currently `fromGameTime` seconds old.
+//
+// The `fromGameTime` term is what makes this correct across a level transition:
+// speed carries over, so a level-2 seed is laid down while the world is already
+// at or near SPEED_MAX and covers far more ground per second than a run-start
+// seed does. Using distanceTraveledBy(arrivalSec) directly -- which assumes a
+// standing start -- would place every level-2 seed far too close and they would
+// all arrive early, bunched.
+//
+// Reduces exactly to distanceTraveledBy(arrivalSec) when fromGameTime is 0,
+// which is why run-start seeding is unchanged.
+export function seedDistanceAt(fromGameTime, arrivalSec) {
+  return distanceTraveledBy(fromGameTime + arrivalSec) - distanceTraveledBy(fromGameTime);
+}

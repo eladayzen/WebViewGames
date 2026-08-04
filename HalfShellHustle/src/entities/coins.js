@@ -24,10 +24,12 @@ import * as THREE from 'three';
 import {
   LANE_X, SPAWN_Z, DESPAWN_Z, PLAYER_Z,
   MAGNET_RANGE_Z, MAGNET_COLLECT_PULL_THRESHOLD, MAGNET_EASE_RATE,
+  MAGNET_LATCH_THRESHOLD, MAGNET_PULL_ACCELERATION_POWER,
 } from '../data/constants.js';
 import { distanceTraveledBy, speedAfterTraveling } from '../systems/speed.js';
 import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
 import { COIN_TYPES, DEFAULT_COIN_TYPE } from '../data/coinTypes.js';
+import { getTexture } from './textureLoader.js';
 import {
   getWorldElevationAt, isPlatformFootprintBlocked, findActiveRampSpans,
 } from './platform.js';
@@ -51,62 +53,29 @@ const COIN_COLLECT_HALF_Z = 1.1;
 // own copies -- "is the player standing on the same surface as this thing".
 const ELEVATION_MATCH_THRESHOLD = 0.3;
 
-// Soft radial glow, built once and shared -- same cached-canvas-texture
-// recipe as entities/contactShadow.js's getShadowTexture (and
-// systems/vfx.js's dot texture), NOT entities/textureLoader.js's getTexture
-// (that's URL-keyed, for real art files).
+// ART: real Kolbo-painted textures per type (data/coinTypes.js -> envArt.js),
+// loaded through the shared URL-keyed cache in entities/textureLoader.js like
+// every other real art file in the game. This REPLACED a procedurally-drawn
+// radial-gradient glow blob -- direct feedback: "they're just like HTML
+// spheres... I want them to be good looking 2D hand-drawn art, like in the
+// language of the characters."
 //
-// GRAYSCALE on purpose: each coin's own SpriteMaterial tints this via
-// material.color (data/coinTypes.js), so one texture serves every type and
-// adding a type needs no new art. The brightness ramp is what reads as
-// "glowing"; the DARK outer ring is what keeps it readable -- see the
-// blending note on createSlot below.
-function createCoinTexture() {
-  const size = 64;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  const r = size / 2;
-  const grad = ctx.createRadialGradient(r, r, 0, r, r, r);
-  grad.addColorStop(0, 'rgba(255,255,255,1)'); // hot core
-  grad.addColorStop(0.34, 'rgba(245,245,245,1)');
-  grad.addColorStop(0.60, 'rgba(190,190,190,1)'); // body
-  grad.addColorStop(0.80, 'rgba(70,70,70,1)'); // dark rim -- the contrast that survives any background
-  grad.addColorStop(0.92, 'rgba(45,45,45,0.6)');
-  grad.addColorStop(1, 'rgba(45,45,45,0)');
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.arc(r, r, r, 0, Math.PI * 2);
-  ctx.fill();
-  return new THREE.CanvasTexture(canvas);
-}
-
-let cachedCoinTexture = null;
-function getCoinTexture() {
-  if (!cachedCoinTexture) cachedCoinTexture = createCoinTexture();
-  return cachedCoinTexture;
-}
-
-// NOTE on blending -- deliberately NORMAL, not additive, despite additive
-// being the obvious choice for a "glow". street.js's fog and background are
-// both pale sky-blue (0x9fd2ec / 0x8fc7e8), and an arc-peak coin sits high
-// enough to be silhouetted against exactly that: additive gold on pale blue
-// saturates straight to white, losing the coin's color identity precisely
-// where it's most visible, and making a gold 'common' indistinguishable
-// from a cyan 'bonus'. This project has already been burned by this same
-// class of problem once (see entities/platform.js's note on its flat
-// placeholder colors vanishing into the sky). A dark rim + normal blending
-// reads as a glowing coin against any background, at one draw call.
+// Consequences of that swap, both deliberate:
+//   - material.color is never touched now. It MULTIPLIES the texture, so the
+//     old per-type tint would muddy painted art; the two types differ by being
+//     different pictures instead.
+//   - the sprite is scaled to the ART'S OWN ASPECT (width, width * aspect)
+//     rather than as a square, so the taller bonus stack isn't squashed. Same
+//     convention data/obstacleTypes.js already uses for the barricade.
 //
-// fog: false for the same reason everything soft here sets it -- a coin at
-// SPAWN_Z is ~34% fogged toward pale blue otherwise, and coins need to be
-// legible arriving from a distance. depthWrite off (it's a soft transparent
-// sprite) but depthTest ON, unlike systems/vfx.js's ParticlePool -- a coin
-// behind a platform's solid box should be correctly hidden by it.
+// fog: false is kept from the glow version, for the same reason -- a coin at
+// SPAWN_Z would otherwise be ~34% washed toward street.js's pale blue fog, and
+// coins need to be legible arriving from a distance. depthWrite off (soft
+// transparent edges) but depthTest ON, so a coin behind a platform's solid box
+// is correctly hidden by it.
 function createSlot(scene) {
   const material = new THREE.SpriteMaterial({
-    map: getCoinTexture(), transparent: true, depthWrite: false, fog: false,
+    transparent: true, depthWrite: false, fog: false,
   });
   const sprite = new THREE.Sprite(material);
   sprite.visible = false;
@@ -119,10 +88,12 @@ function createSlot(scene) {
     z: 0,
     baseHeight: 0,
     pulseTimer: 0,
-    // 0..1 magnet influence, recomputed every frame by applyMagnetPull (0
-    // whenever the ability is inactive). Kept OFF slot.lane on purpose -- see
-    // applyMagnetPull's note.
-    magnetPull: 0,
+    // Magnet state, all recomputed by applyMagnetPull -- and deliberately kept
+    // OFF slot.lane, which stays immutable authored data (see that function's
+    // note on why reassigning it would break the surface query).
+    magnetPull: 0,       // raw 0..1 grip from z-proximity
+    magnetInfluence: 0,  // that grip eased -- the only thing that MOVES the coin
+    magnetLatched: false, // committed: pull may never fall again
   };
 }
 
@@ -153,8 +124,11 @@ function placeCoin(slot, lane, z, baseHeight, typeKey, pulsePhase) {
   slot.baseHeight = baseHeight;
   slot.pulseTimer = pulsePhase % COIN_PULSE_PERIOD;
   slot.magnetPull = 0;
-  slot.sprite.material.color.setHex(type.color);
-  slot.sprite.scale.set(type.size, type.size, 1);
+  slot.magnetInfluence = 0;
+  slot.magnetLatched = false;
+  slot.sprite.material.map = getTexture(type.texture.url);
+  slot.sprite.material.needsUpdate = true;
+  slot.sprite.scale.set(type.width, type.width * type.texture.aspect, 1);
   // y is corrected against the live surface on this same frame's
   // updateCoinPool pass -- baseHeight alone is only right over flat street.
   slot.sprite.position.set(LANE_X[lane], baseHeight, z);
@@ -181,8 +155,8 @@ export function updateCoinPool(field, dt, speed, platformField) {
     // free (a cosine's rate of change is zero at its peak/trough).
     slot.pulseTimer = (slot.pulseTimer + dt) % COIN_PULSE_PERIOD;
     const swell = 0.5 * (1 - Math.cos((2 * Math.PI * slot.pulseTimer) / COIN_PULSE_PERIOD));
-    const scale = slot.type.size * (1 + COIN_PULSE_SCALE_AMPLITUDE * swell);
-    slot.sprite.scale.set(scale, scale, 1);
+    const w = slot.type.width * (1 + COIN_PULSE_SCALE_AMPLITUDE * swell);
+    slot.sprite.scale.set(w, w * slot.type.texture.aspect, 1);
     slot.sprite.material.opacity = COIN_PULSE_OPACITY_MIN + (1 - COIN_PULSE_OPACITY_MIN) * swell;
   }
 }
@@ -233,7 +207,7 @@ export function collectCoins(player, field, platformField) {
   for (const slot of field.pool) {
     if (!slot.active) continue;
     if (Math.abs(slot.z - PLAYER_Z) > COIN_COLLECT_HALF_Z) continue;
-    const magnetized = slot.magnetPull >= MAGNET_COLLECT_PULL_THRESHOLD;
+    const magnetized = slot.magnetInfluence >= MAGNET_COLLECT_PULL_THRESHOLD;
     if (!magnetized && slot.lane !== player.laneIndex) continue;
     if (!magnetized && (slot.baseHeight < reachLow || slot.baseHeight > reachHigh)) continue;
     collected.push(slot);
@@ -261,10 +235,24 @@ export function collectCoins(player, field, platformField) {
 // immutable authored data, and a separate 0..1 `magnetPull` scalar carries the
 // influence. Fully reversible, no surface discontinuity.
 //
-// Called every frame regardless of whether the buff is up -- `active: false`
-// eases the pull back to 0 and returns each coin to its own lane, which is
-// what makes losing the buff mid-flight look deliberate instead of leaving
-// coins hanging off-lane.
+// Called every frame regardless of whether the buff is up. An UNCOMMITTED coin
+// (one the field only just started to bend) eases back to its own lane when the
+// buff drops; a COMMITTED one never does -- see MAGNET_LATCH_THRESHOLD.
+//
+// TWO SEPARATE NUMBERS, and keeping them apart is what makes both behaviours
+// possible:
+//
+//   slot.magnetPull      -- raw 0..1 grip, driven by z-proximity. Rises
+//                           linearly as the coin closes in. Monotonic once
+//                           committed.
+//   slot.magnetInfluence -- that grip run through an ease-in curve, and the
+//                           only thing that ever moves a coin or decides
+//                           whether it's collectible.
+//
+// Direct feedback drove both: coins used to be dragged back to their lane the
+// instant the buff lapsed ("it should keep on moving until it gets to me"), and
+// they used to travel at a flat rate because the raw grip WAS the displacement
+// ("it should have some kind of acceleration").
 export function applyMagnetPull(field, player, dt, active) {
   // The centre of the player's collectible band, in world y. Reuses his own
   // elevationY (already resolved this frame) rather than re-querying the
@@ -275,21 +263,42 @@ export function applyMagnetPull(field, player, dt, active) {
   for (const slot of field.pool) {
     if (!slot.active) continue;
 
-    let target = 0;
-    if (active) {
-      const dz = Math.abs(slot.z - PLAYER_Z);
-      if (dz < MAGNET_RANGE_Z) target = 1 - dz / MAGNET_RANGE_Z;
-    }
+    // Proximity grip, independent of the buff -- a committed coin keeps reading
+    // it after the buff is gone, which is what lets it carry on closing under
+    // its own momentum instead of freezing at whatever value it lapsed on.
+    const dz = Math.abs(slot.z - PLAYER_Z);
+    const proximity = dz < MAGNET_RANGE_Z ? 1 - dz / MAGNET_RANGE_Z : 0;
+    let target = active ? proximity : 0;
+
+    // THE COMMITMENT. Not "hold the pull steady" but "never let it fall": the
+    // coin carries on along the exact curve it was already following, because
+    // proximity keeps climbing as the world scrolls it toward the player. That's
+    // why an expiring buff is now invisible -- nothing about the coin's motion
+    // changes at the moment it lapses. Freezing the pull instead would stall the
+    // coin part-way across; snapping it to 1 would make it lurch.
+    if (slot.magnetLatched) target = Math.max(target, proximity, slot.magnetPull);
+
     slot.magnetPull += (target - slot.magnetPull) * ease;
-    if (slot.magnetPull < 0.002) slot.magnetPull = 0;
+    if (!slot.magnetLatched && slot.magnetPull < 0.002) slot.magnetPull = 0;
+    if (slot.magnetPull >= MAGNET_LATCH_THRESHOLD) slot.magnetLatched = true;
+
+    // Ease-in: displacement is the grip CURVED, so the coin creeps out of its
+    // lane and then rushes the last stretch. Since the grip rises linearly with
+    // time, a power of 2 makes displacement go as t^2 -- literally constant
+    // acceleration, not a curve that merely looks like one.
+    slot.magnetInfluence = slot.magnetPull ** MAGNET_PULL_ACCELERATION_POWER;
 
     const laneX = LANE_X[slot.lane];
-    if (slot.magnetPull > 0) {
+    if (slot.magnetInfluence > 0) {
       // player.laneX, NOT sprite.position.x -- the latter carries the
       // per-frame foot-plant xOffset bob, which would make every pulled coin
       // jitter in sympathy with his stride.
-      slot.sprite.position.x = laneX + (player.laneX - laneX) * slot.magnetPull;
-      slot.sprite.position.y += (pullTargetY - slot.sprite.position.y) * slot.magnetPull;
+      slot.sprite.position.x = laneX + (player.laneX - laneX) * slot.magnetInfluence;
+      // updateCoinPool re-resolved this to the surface height earlier THIS
+      // frame, so it's a clean lerp from the coin's own resting height rather
+      // than an accumulating chase of a moving target.
+      const restY = slot.sprite.position.y;
+      slot.sprite.position.y = restY + (pullTargetY - restY) * slot.magnetInfluence;
     } else {
       slot.sprite.position.x = laneX;
     }

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script>
+      // GoBalance SDK integration — see ../GOBALANCE_SDK.md for the full contract this depends
+      // on. Everything below is a no-op outside the Unity WebView (guarded by
+      // `if (window.Unity)` / feature checks), so it's always safe to ship, including when
+      // testing in a normal browser.
+
+      // The only channel for JS errors on-device — there's no devtools console inside the
+      // WebView, so surface them through the native bridge instead.
+      window.addEventListener('error', function (e) {
+        if (window.Unity) window.Unity.call('JS ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        if (window.Unity) window.Unity.call('JS UNHANDLED REJECTION: ' + e.reason);
+      });
+
+      // rAF shim: WKWebView treats the occluded Unity overlay as a background tab and
+      // suspends requestAnimationFrame entirely. Queue callbacks instead of scheduling them
+      // natively; Unity's WebGameController flushes the queue via window.__pumpFrames() every
+      // frame (~60Hz) regardless of tab visibility. A real native rAF loop keeps running
+      // underneath too, so a normal browser (testing outside Unity) behaves exactly as before.
+      (function () {
+        var nativeRAF = window.requestAnimationFrame.bind(window);
+        window.__rafQueue = [];
+        window.requestAnimationFrame = function (cb) { window.__rafQueue.push(cb); return window.__rafQueue.length; };
+        window.cancelAnimationFrame = function () {};
+        window.__pumpFrames = function () {
+          var q = window.__rafQueue;
+          if (!q.length) return;
+          window.__rafQueue = [];
+          var t = performance.now();
+          for (var i = 0; i < q.length; i++) {
+            try { q[i](t); }
+            catch (e) { if (window.Unity) window.Unity.call('RAF CB ERROR: ' + e.message); }
+          }
+        };
+        (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+      })();
+    </script>
+    <title>Hill Bomb: Sunset Ridge — Render Lab</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="stage">
+      <div id="app"></div>
+
+      <!-- GoBalance SDK: native-bridge Back button, top-right per BUILD_NOTES.md's
+           cross-game HUD chrome convention. -->
+      <button id="gb-back"
+        onclick="if(window.Unity)window.Unity.call('nav:back');"
+        title="Back">&times;</button>
+
+      <!-- Reopens the render-lab lobby mid-run so modes can be compared without
+           reloading — the whole point of this harness. -->
+      <button id="lab-button" title="Render Lab">&#9881;</button>
+
+      <div id="hud">
+        <div id="topLeft">
+          <div id="mode-readout">MODE A — SPRITE</div>
+          <div id="wobble-bar"><div id="wobble-fill"></div></div>
+          <div id="wobble-label">SPEED WOBBLE</div>
+          <div id="perf-readout">-- fps</div>
+        </div>
+
+        <div id="topRight">
+          <div id="score-readout">0</div>
+          <div id="speed-readout">0 km/h</div>
+          <div id="chain-readout"></div>
+        </div>
+
+        <div id="popups"></div>
+        <div id="trick-banner"></div>
+        <div id="hint">
+          lean / <b>&larr; &rarr;</b> carve &nbsp;·&nbsp; <b>&uarr;</b> or <b>space</b> trick &nbsp;·&nbsp; <b>L</b> lab
+        </div>
+      </div>
+
+      <!-- The render lab lobby. This is the harness's reason to exist: every mode
+           differs ONLY in the rider layer, so switching mid-run is an honest A/B
+           rather than four separate prototypes. -->
+      <div id="lobby" class="overlay">
+        <div class="lobby-inner">
+          <h1>Hill Bomb <span>· Render Lab</span></h1>
+          <p class="sub">Same scene, same physics, same camera. Only the rider layer changes.</p>
+
+          <div class="group">
+            <label>Rider render mode</label>
+            <div class="row" id="mode-buttons">
+              <button class="opt" data-mode="sprite">
+                <b>A · Flat sprite</b>
+                <small>Billboard that always faces camera. The HalfShellHustle method — the control.</small>
+              </button>
+              <button class="opt" data-mode="model">
+                <b>B · 3D model</b>
+                <small>Kolbo-generated mesh, unrigged. Animated by whole-body lean &amp; rotation.</small>
+              </button>
+              <button class="opt" data-mode="rigged">
+                <b>C · Rigged + animated</b>
+                <small>Loading…</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="group">
+            <label>Control feel</label>
+            <select id="controls-select">
+              <option value="planted">Planted — heavier, settles mid-wall</option>
+              <option value="loose">Loose — fast, reaches the lip</option>
+            </select>
+            <p class="hintline">
+              Switchable mid-run — press <b>L</b> any time. Loose is livelier in
+              the middle; Planted never slams the rim.
+            </p>
+          </div>
+
+          <div class="group">
+            <label>Toggles</label>
+            <div class="row wrap">
+              <button class="tog" data-tog="lighting"><b>Lighting</b><small>unlit</small></button>
+              <button class="tog" data-tog="swing"><b>Camera swing</b><small>full</small></button>
+              <button class="tog" data-tog="texres"><b>Texture res</b><small>1024</small></button>
+              <button class="tog" data-tog="autotrick"><b>Auto-trick</b><small>off</small></button>
+            </div>
+          </div>
+
+          <button id="start-button">RIDE</button>
+          <p class="foot">Press <b>L</b> any time to come back here. <b>T</b> fires a trick on demand.</p>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/core/main.js"></script>
+  </body>
+</html>

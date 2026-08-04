@@ -85,23 +85,36 @@
       <div id="steering-panel" class="hidden"></div>
 
       <div id="hud">
-        <!-- POC has no CHASE meter / score UI (build doc §2, §7) -- this bare
-             distance readout is the doc's explicitly-allowed optional stand-in
-             ("a bare static distance counter can stand in if a HUD number is
-             wanted for testing"). -->
+        <!-- POINTS: the single headline number, upper centre. Direct feedback
+             replaced three competing top-left readouts (distance / kill score /
+             coin count) with one merged total -- "those values summed up into
+             one main points value" -- and moved it where the eye already is,
+             since a lane runner is read down the middle of the screen.
+             The distance meter is gone entirely, also per that feedback; the
+             value is still tracked and still shown on the game-over recap.
+             #points-value is the flight target for ui/pointsFly.js's labels,
+             so it must stay a distinct element that can be measured. -->
+        <div id="points-hud">
+          <div id="points-row">
+            <div id="points-value">0</div>
+            <div id="points-target">/ 300</div>
+          </div>
+          <!-- XP-style bar toward the next tier. Tier name sits INSIDE the bar
+               rather than on its own line: the numbers above already say how
+               far there is to go, so the bar's own space is better spent
+               naming the thing being worked toward than repeating a figure.
+               #tier-flash is a separate full-bar overlay purely for the
+               tier-up sweep, so the celebration can't disturb the fill. -->
+          <div id="tier-bar">
+            <div id="tier-fill"></div>
+            <div id="tier-flash"></div>
+            <div id="tier-label">TIER 1</div>
+          </div>
+        </div>
         <div id="topLeft">
-          <div id="distance">0m</div>
-          <div id="score">0</div>
-          <!-- Coins collected -- its own counter, deliberately NOT summed
-               into #score (which is enemy kills): coins are a distinct
-               resource, kept separate so they can become real currency
-               later instead of just inflating the kill score. -->
-          <div id="coins">&#10022; 0</div>
           <!-- Lives. Populated by ui/hud.js's initLivesTray from the live cap
                (data/constants.js's LIVES_START), NOT hardcoded here, so a
-               future extra-heart upgrade needs no markup change. A flow child
-               of #topLeft on purpose -- no absolute offset to re-tune if the
-               counters above it change size. -->
+               future extra-heart upgrade needs no markup change. -->
           <div id="lives-tray"></div>
         </div>
 
@@ -125,10 +138,75 @@
 
       </div>
 
+      <!-- Curtain panels -- direct feedback: slide two TMNT-graphic panels in
+           from the sides partway through the level-complete countdown, both
+           as their own flourish and so the environment swap in core/main.js's
+           startNextLevel has a genuinely opaque cover to hide behind (the
+           #level-complete radial-gradient background below is NOT fully
+           opaque at its center, so that swap was never actually hidden
+           before this). A SIBLING of #level-complete, not a child of it, on
+           purpose: #level-complete gets display:none the instant
+           startNextLevel calls hideLevelComplete, and a transition cannot
+           play on an element whose ancestor just went display:none -- the
+           curtains would (and did) snap open in a single frame instead of
+           sliding. Living outside that element is what lets them keep
+           animating after the text/confetti overlay is already gone. See
+           ui/hud.js's open/closeLevelCurtains. -->
+      <div id="lc-curtain-left" class="lc-curtain"></div>
+      <div id="lc-curtain-right" class="lc-curtain"></div>
+
+      <!-- Level-complete transition. NOT the SDK's #gameover-overlay -- that id
+           is contractual (the host watches it and synth-clicks #restart-button
+           inside it), so this is a separate element with its own id and no
+           button, and the host will correctly ignore it. -->
+      <div id="level-complete" class="overlay hidden">
+        <!-- Confetti pool -- built once by ui/hud.js, replayed on every
+             showLevelComplete() call. Direct feedback: the screen read as
+             ambiguous ("did I die, or did something good happen?") because it
+             was visually just the game-over overlay with different words --
+             same dark wash, no motion, no color language of its own. This is
+             the fix: an unambiguous celebratory beat, not just a label swap. -->
+        <div id="lc-confetti"></div>
+        <!-- The emotional headline, and deliberately the FIRST thing read --
+             "LEVEL COMPLETE" is now a caption underneath it, not the title. -->
+        <div id="lc-headline">AWESOME!</div>
+        <div id="lc-title">LEVEL COMPLETE</div>
+        <div id="lc-next">NEXT: DOWNTOWN</div>
+        <div id="lc-ready">GET READY</div>
+        <div id="lc-countdown">5</div>
+      </div>
+
       <div id="gameover-overlay" class="overlay hidden">
         <div class="title">HIT!</div>
-        <div id="final-distance"></div>
+        <!-- Final points get the hero treatment; the per-source breakdown the
+             merged counter hides during play (kills / coins / distance) is
+             spelled out here instead, which is the natural place for it. -->
+        <div id="final-points">0</div>
+        <div id="final-breakdown"></div>
         <button id="restart-button">RETRY</button>
+      </div>
+
+      <!-- First-run onboarding, direct feedback: two auto-cycling explainer
+           steps ("really explanatory", an actual moving diagram, not a
+           screenshot with an arrow drawn on it) shown before the world
+           starts, EVERY run. core/main.js's beginIntro/advanceIntroStep/
+           dismissIntro drive it; data/introTutorial.js holds the cycle
+           data. NOT #gameover-overlay (see that overlay's own comment) --
+           own id, own #intro-next-button/#intro-start-button, so the SDK's
+           synthetic #restart-button click can never target this. -->
+      <div id="intro-tutorial-overlay" class="overlay hidden">
+        <div id="intro-step-lanes" class="intro-step">
+          <div class="intro-step-title">TILT TO MOVE LEFT AND RIGHT</div>
+          <img id="intro-player" class="intro-sprite" alt="" />
+          <div id="intro-board-lanes" class="intro-board"></div>
+          <button id="intro-next-button">NEXT</button>
+        </div>
+        <div id="intro-step-jump" class="intro-step hidden">
+          <div class="intro-step-title">FORWARD/BACKWARDS TO JUMP</div>
+          <img id="intro-jumper" class="intro-sprite" alt="" />
+          <div id="intro-board-jump" class="intro-board"></div>
+          <button id="intro-start-button">START</button>
+        </div>
       </div>
     </div>
 

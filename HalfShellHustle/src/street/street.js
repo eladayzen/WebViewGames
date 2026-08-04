@@ -130,7 +130,7 @@ function tiledFacadeMaterial(texEntry, faceWidth, faceHeight) {
   return new THREE.MeshBasicMaterial({ map: tex });
 }
 
-export function createStreet(scene, themeKey = 'sunnyStreet') {
+export function createStreet(scene, themeKey = 'centralCity') {
   const theme = THEMES[themeKey];
 
   // Bright, cheerful daytime backdrop (§0/§9.1's correction plus the
@@ -157,7 +157,12 @@ export function createStreet(scene, themeKey = 'sunnyStreet') {
   const skylineHeight = SKYLINE_WIDTH * theme.skyline.aspect;
   const skyline = new THREE.Mesh(new THREE.PlaneGeometry(SKYLINE_WIDTH, skylineHeight), skylineMat);
   skyline.position.set(0, SKYLINE_Y, SKYLINE_Z);
-  scene.add(skyline);
+  // Added to `group`, NOT `scene` directly -- this is what lets disposeStreet
+  // below tear down an entire theme (skyline included) with one scene.remove
+  // call, now that the level-transition environment swap needs to do exactly
+  // that. Purely a bookkeeping change: nothing about where the skyline renders
+  // moves, since `group` itself sits at the scene's own origin.
+  group.add(skyline);
 
   // Combined street cross-section (sidewalk + road + sidewalk in one plane,
   // matching how the generated texture itself depicts the full width) --
@@ -218,7 +223,7 @@ export function createStreet(scene, themeKey = 'sunnyStreet') {
     for (let i = 0; i < profile.count; i++) {
       const { width, height, z } = layout[i];
       const depth = profile.depth;
-      const x = side * (BUILDING_BASE_X + width / 2);
+      const x = side * (BUILDING_BASE_X + depth / 2); // depth is the across-road extent now
 
       const facadeIdx = (i + (side > 0 ? 1 : 0)) % theme.facades.length;
       const { tex: texEntry, bodyColor } = theme.facades[facadeIdx];
@@ -236,12 +241,25 @@ export function createStreet(scene, themeKey = 'sunnyStreet') {
       const backIndex = roadFacingIndex === 0 ? 1 : 0;
       const neverSeenMat = new THREE.MeshBasicMaterial({ color: bodyColor });
       const materials = [null, null, neverSeenMat, neverSeenMat, null, null];
-      materials[roadFacingIndex] = tiledFacadeMaterial(texEntry, depth, height);
-      materials[backIndex] = neverSeenMat;
-      materials[4] = tiledFacadeMaterial(texEntry, width, height); // +Z end cap
-      materials[5] = tiledFacadeMaterial(texEntry, width, height); // -Z end cap
 
-      const building = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), materials);
+      // AXES: `width` is the FRONTAGE -- the building's extent ALONG the street
+      // (Z), which is both what layoutBuildingSlots reserves per slot and the
+      // horizontal span of the road-facing wall the player actually looks at.
+      // `depth` is the thickness away from the road (X).
+      //
+      // These were previously swapped: the box was built as (width, height,
+      // depth) = (X, Y, Z), which put `width` across the road and `depth` along
+      // it -- so every slot reserved `width` of street while the box only filled
+      // `depth`, and the visible frontage was driven by the field named "depth".
+      // Harmless-looking while the two numbers happened to be close (8 vs 6-8 on
+      // sunnyStreet), but it meant the frontage dial was the wrong field, and it
+      // left a ~1-unit phantom gap per building.
+      materials[roadFacingIndex] = tiledFacadeMaterial(texEntry, width, height);
+      materials[backIndex] = neverSeenMat;
+      materials[4] = tiledFacadeMaterial(texEntry, depth, height); // +Z end cap
+      materials[5] = tiledFacadeMaterial(texEntry, depth, height); // -Z end cap
+
+      const building = new THREE.Mesh(new THREE.BoxGeometry(depth, height, width), materials);
       building.position.set(0, height / 2, 0);
       slotGroup.add(building);
 
@@ -251,6 +269,34 @@ export function createStreet(scene, themeKey = 'sunnyStreet') {
 
   scene.add(group);
   return { group, buildingSlots, streetTexture, streetTileLength };
+}
+
+// Tears down a whole theme -- the level-transition environment swap
+// (core/main.js's startNextLevel) is the only caller: it's the one moment the
+// screen is fully covered, so a teardown+rebuild here is free where it would
+// be a visible stutter mid-run.
+//
+// Disposes every geometry and material under `street.group` (the skyline
+// included, now that it's a child of group rather than the scene -- see
+// createStreet's comment on that). Deliberately does NOT dispose any
+// texture. Every texture reaching this code came from entities/
+// textureLoader.js's getTexture(), which caches forever by URL specifically
+// so a texture is loaded once and reused -- centralCity and sunnyStreet
+// currently even share one street_tex.png through that cache. Disposing a
+// cached texture here would leave the cache Map holding a dead reference
+// that silently breaks every FUTURE getTexture() call for that URL,
+// including a theme being switched back INTO later. The cost of leaving
+// textures resident is bounded (this game has a handful of art files total)
+// and is the correct trade against that failure mode.
+export function disposeStreet(scene, street) {
+  scene.remove(street.group);
+  street.group.traverse((obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const m of materials) if (m) m.dispose();
+    }
+  });
 }
 
 // Scrolls every building slot toward the camera at the given speed, wrapping

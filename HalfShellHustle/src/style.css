@@ -47,59 +47,218 @@ html, body {
 
 #topLeft {
   position: absolute;
-  top: 14px;
-  left: 14px;
+  top: 18px;
+  left: 20px;
   text-align: left;
 }
 
-#distance {
-  font-weight: 900;
-  font-size: 24px;
-  color: #ffffff;
-  letter-spacing: 0.5px;
-  -webkit-text-stroke: 2px #1a0a2a;
-  paint-order: stroke fill;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
-}
-
-/* TEMPORARY: bare score readout for the enemy-bump-kill experiment (no
-   real scoring system exists yet, build doc §8 -- MVP's actual score UI is
-   top-right, per concept art). Placeholder styling, smaller than distance. */
-#score {
-  font-weight: 800;
-  font-size: 16px;
-  color: #ffe98a;
-  letter-spacing: 0.5px;
-  -webkit-text-stroke: 1.5px #1a0a2a;
-  paint-order: stroke fill;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
-  margin-top: 2px;
-}
-
-/* Lives tray -- a flow child of #topLeft (see index.html), so it stacks under
-   the counters with no magic offset to re-tune. Built in JS by
-   ui/hud.js's initLivesTray. */
+/* Lives tray -- built in JS by ui/hud.js's initLivesTray. Scaled up with the
+   rest of the HUD (direct feedback wanted it bigger), and in vmin for the same
+   reason the points counter is: the real viewing distance is a player standing
+   on a board in front of a large screen, not a laptop at desk range. */
 #lives-tray {
   display: flex;
-  gap: 5px;
-  margin-top: 3px;
+  gap: 0.9vmin;
 }
 
 .life-icon {
-  font-size: 20px;
+  font-size: 4.4vmin;
   color: #ff5566;
   line-height: 1;
-  -webkit-text-stroke: 1.5px #2a0a12;
+  -webkit-text-stroke: 0.42vmin #2a0a12;
   paint-order: stroke fill;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 0.25vmin 0.4vmin rgba(0, 0, 0, 0.5));
   transition: opacity 0.18s, filter 0.18s;
 }
 
-/* A life already lost -- greyed rather than removed, so the tray never
-   changes width and the total stays readable at a glance. */
+/* A life already lost -- greyed rather than removed, so the tray never changes
+   width and the total stays readable at a glance. */
 .life-icon.spent {
   opacity: 0.22;
   filter: grayscale(1);
+}
+
+/* --- POINTS: the headline readout (ui/hud.js) ---
+   Upper centre, deliberately large. Direct feedback asked for a bigger, better
+   HUD using "the upper center and the left center", with the distance meter
+   gone and points carrying the screen. A lane runner is read straight down the
+   middle, so this sits where the eye already is instead of competing for a
+   corner. Sized in vmin, not px: this ships into a WebView whose pixel size we
+   don't control, and a 34px counter that reads fine on a laptop is unreadable
+   on a TV across a room -- which is the actual viewing distance here, since the
+   player is standing on a balance board.
+   pointer-events stay off (inherited from #hud) so it can never eat input. */
+#points-hud {
+  position: absolute;
+  top: 2.2vmin;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  /* The flying labels land on the middle of #points-value, so this element's
+     own transform origin matters -- punching from the top keeps the number's
+     centre (the flight target) from lurching mid-animation. */
+  transform-origin: 50% 0%;
+}
+
+/* Current score and the tier target read as one unit -- baseline-aligned so
+   "180 / 300" scans as a fraction rather than as two separate readouts. The
+   caption that used to sit here is gone: the bar below now names the tier, so
+   the label would have been a third thing saying what the other two already
+   do. */
+#points-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8vmin;
+}
+
+#points-value {
+  font-weight: 900;
+  font-size: 8.6vmin;
+  letter-spacing: 1px;
+  color: #ffe066;
+  -webkit-text-stroke: 0.8vmin #2a1400;
+  paint-order: stroke fill;
+  text-shadow: 0 0.5vmin 0 rgba(0, 0, 0, 0.45), 0 0 2.4vmin rgba(255, 200, 60, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Deliberately much quieter than the score: this is the goalpost, not the
+   achievement. Same treatment keeps them reading as one fraction. */
+#points-target {
+  font-weight: 800;
+  font-size: 3.2vmin;
+  color: #ffd98a;
+  opacity: 0.72;
+  -webkit-text-stroke: 0.34vmin #2a1400;
+  paint-order: stroke fill;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Tier progress bar (XP style) ---
+   Width is a fixed vmin rather than a percentage of the screen so the bar
+   keeps the same proportion to the number above it at any aspect. */
+#tier-bar {
+  position: relative;
+  margin-top: 0.9vmin;
+  width: 34vmin;
+  height: 3.1vmin;
+  border-radius: 999px;
+  background: rgba(16, 8, 26, 0.72);
+  box-shadow: inset 0 0 0 0.35vmin rgba(255, 224, 140, 0.55),
+              0 0.3vmin 0.8vmin rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+/* Width is written from JS. The transition is what turns a landing label into
+   a visible SURGE along the bar instead of a jump -- tuned just longer than
+   the counter punch (0.26s) so the bar is still moving as the number settles. */
+#tier-fill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffb43c 0%, #ffe066 55%, #fff6c8 100%);
+  box-shadow: 0 0 1.6vmin rgba(255, 200, 70, 0.75);
+  transition: width 0.32s cubic-bezier(0.22, 0.9, 0.3, 1);
+}
+
+#tier-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 1.75vmin;
+  letter-spacing: 0.4vmin;
+  color: #fff8e0;
+  -webkit-text-stroke: 0.3vmin #2a1400;
+  paint-order: stroke fill;
+}
+
+/* Sweeps across on tier-up. Separate from #tier-fill so the celebration can
+   never fight the fill's own width transition. */
+#tier-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #fffdf2;
+  opacity: 0;
+}
+
+.tier-bar-celebrate #tier-flash {
+  animation: tier-flash 0.6s ease-out;
+}
+
+@keyframes tier-flash {
+  0%   { opacity: 0.95; }
+  100% { opacity: 0; }
+}
+
+
+/* Fires when a flying label LANDS, never on the underlying tally changing --
+   that's what makes the counter feel struck rather than merely updated. */
+.points-punch {
+  animation: points-punch 0.26s ease-out;
+}
+
+@keyframes points-punch {
+  0%   { transform: translateX(-50%) scale(1); }
+  35%  { transform: translateX(-50%) scale(1.16); }
+  100% { transform: translateX(-50%) scale(1); }
+}
+
+/* --- Flying "+N" labels (ui/pointsFly.js) ---
+   Positioned entirely from JS via `transform`, so `left/top` stay at 0 and the
+   per-frame write only ever touches transform + opacity -- both compositor-only
+   properties, which keeps this off the same repaint path that makes stroked
+   text expensive in this WebView. Centring is part of the JS transform string
+   (translate(-50%,-50%)), so it stays exact for any number of digits. */
+.points-fly {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform, opacity;
+  pointer-events: none;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  paint-order: stroke fill;
+  font-variant-numeric: tabular-nums;
+  z-index: 15;
+}
+
+/* An enemy kill is worth 15x a common coin, so it reads hotter and bigger
+   before the number itself is even parsed. 4.6 -> 5.6vmin on direct feedback
+   ("I want it to feel more significant when I kill an enemy").
+   HEADROOM IS DELIBERATE: enemies worth 30 and 50 are planned, and they should
+   be able to out-shout this one. So this is sized to feel weighty rather than
+   maximal -- treat ~7vmin as the ceiling reserved for those, and give them
+   their own variant rather than pushing this number up again. */
+.points-fly--enemy {
+  font-size: 5.6vmin;
+  color: #fff2a8;
+  -webkit-text-stroke: 0.6vmin #6a1f00;
+  text-shadow: 0 0 2vmin rgba(255, 170, 60, 0.9);
+}
+
+.points-fly--coin {
+  font-size: 3.1vmin;
+  color: #ffe9a8;
+  -webkit-text-stroke: 0.45vmin #4a2a00;
+  text-shadow: 0 0 1.4vmin rgba(255, 200, 80, 0.8);
+}
+
+/* Bonus (sapphire) coins carry their own colour all the way through, so the
+   +3 is traceable back to the thing that produced it. */
+.points-fly--bonus {
+  font-size: 3.6vmin;
+  color: #d6f6ff;
+  -webkit-text-stroke: 0.5vmin #06384a;
+  text-shadow: 0 0 1.8vmin rgba(95, 224, 255, 0.95);
 }
 
 /* Damage flash -- opacity is driven per-frame from core/main.js's
@@ -259,20 +418,6 @@ html, body {
   opacity: 0.28;
 }
 
-/* Coin counter -- mirrors #score's treatment with its own gold accent so
-   the two read as different resources at a glance (#hud only sets
-   `color: #fff`, so without this it would render as unstyled 16px text). */
-#coins {
-  font-weight: 800;
-  font-size: 18px;
-  color: #ffc93f;
-  letter-spacing: 0.5px;
-  -webkit-text-stroke: 1.5px #1a0a2a;
-  paint-order: stroke fill;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
-  margin-top: 2px;
-}
-
 #paused-badge {
   position: absolute;
   top: 50%;
@@ -319,10 +464,23 @@ html, body {
   paint-order: stroke fill;
 }
 
-#final-distance {
-  font-size: 22px;
-  font-weight: 700;
+#final-points {
+  font-weight: 900;
+  font-size: 12vmin;
+  line-height: 1;
   color: #ffe066;
+  -webkit-text-stroke: 1vmin #2a1400;
+  paint-order: stroke fill;
+  text-shadow: 0 0 3vmin rgba(255, 200, 60, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+#final-breakdown {
+  font-size: 2.4vmin;
+  font-weight: 700;
+  letter-spacing: 0.15vmin;
+  color: #ffd98a;
+  opacity: 0.85;
 }
 
 #restart-button {
@@ -342,4 +500,322 @@ html, body {
 #restart-button:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Level-complete transition (core/main.js's level flow) ---
+   Reuses .overlay for the full-screen dim + centering (same z-index, same
+   layout skeleton as game-over) but OVERRIDES its background: direct
+   feedback, the two screens read as ambiguous at a glance because they were
+   otherwise identical -- same flat dark wash, same static centered text, no
+   color language telling them apart. A warm gold glow (vs game-over's flat
+   neutral dark) is the cue that survives even out of focus or peripheral
+   vision, which is exactly the case this matters most -- a player standing on
+   a board, glancing at a screen across the room. */
+#level-complete {
+  background: radial-gradient(ellipse at 50% 42%, rgba(255, 200, 90, 0.4), rgba(20, 10, 5, 0.88) 72%);
+}
+
+/* Curtain panels -- each is a pre-split half (src/assets/lc_curtain_left.png
+   / lc_curtain_right.png) of one symmetric TMNT-styled artwork, so the two
+   meet as one continuous image at the center seam rather than needing to
+   tile or align two independent images. background-size: cover rather than
+   a fixed size because #stage's own pixel size can vary slightly with
+   viewport, cover keeps each half filling its 50%-wide panel with no gap
+   regardless. translateX(...) rather than left/width is what's animated (see
+   .lc-curtain-closed below): a transform is compositor-only, no layout
+   thrash, same reasoning as every other transform-driven animation in this
+   file. ui/hud.js's open/closeLevelCurtains toggle .lc-curtain-closed;
+   resetLevelCurtains snaps both open with the transition suppressed, for a
+   fresh run where no animation should play.
+
+   SIBLINGS of #level-complete in index.html, deliberately NOT children of
+   it (see the markup comment there): #level-complete goes display:none the
+   instant hideLevelComplete runs, and a transition cannot play on an
+   element whose ancestor just went display:none -- nested here, the "open"
+   slide was silently skipped and the curtains just vanished in one frame
+   instead of animating (confirmed by playtest). Own explicit z-index for
+   the same reason -- no longer inheriting .overlay's z-index:20, so without
+   this they'd default to auto and could end up under the canvas or #hud
+   (z-index 10). Matches .overlay's own 20: DOM order (these come right
+   before #level-complete) then puts the text/confetti stack above the
+   curtains at that shared level, same visual relationship as before.
+
+   The headline/title/next/ready/countdown stack keeps its own
+   `position: relative` (below) as defense in depth -- no longer load-
+   bearing against these siblings specifically, but still correct in case
+   anything else positioned ever lands inside #level-complete. */
+#lc-headline, #lc-title, #lc-next, #lc-ready, #lc-countdown {
+  position: relative;
+}
+
+.lc-curtain {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  z-index: 20;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: transform 0.6s cubic-bezier(0.6, 0, 0.35, 1);
+}
+
+/* Darkened in place with a flat 40%-black layer under the art rather than a
+   new asset pass -- a second background-image layer stacked in front of the
+   PNG (first-listed paints on top), same technique as a CSS scrim over a
+   photo. .lc-curtain's single background-size: cover value above applies to
+   BOTH layers automatically (a shorthand with fewer values than layers
+   repeats the pattern), so this needed no size/position changes. */
+#lc-curtain-left {
+  left: 0;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('./assets/lc_curtain_left.png');
+  transform: translateX(-100%);
+}
+
+#lc-curtain-right {
+  right: 0;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('./assets/lc_curtain_right.png');
+  transform: translateX(100%);
+}
+
+/* ID+class compound selectors, not a plain .lc-curtain-closed rule -- a bare
+   class selector (specificity 0,1,0) loses to #lc-curtain-left/right's own
+   ID selector (1,0,0) above, so the "closed" transform would never actually
+   win and the panels would silently never move. Matching the IDs here beats
+   that specificity, not just adding !important over it. */
+#lc-curtain-left.lc-curtain-closed,
+#lc-curtain-right.lc-curtain-closed {
+  transform: translateX(0);
+}
+
+/* The emotional payoff, and deliberately the FIRST thing read -- "LEVEL
+   COMPLETE" (below) is now a caption under it, not the headline. GREEN is a
+   third color in this HUD's language, distinct from the gold already owned by
+   points/tiers and the red owned by damage/game-over, so "something good just
+   happened" has its own unambiguous signal. */
+#lc-headline {
+  font-weight: 900;
+  font-size: 10vmin;
+  letter-spacing: 0.3vmin;
+  color: #97ff6b;
+  -webkit-text-stroke: 1vmin #123a08;
+  paint-order: stroke fill;
+  text-shadow: 0 0 4vmin rgba(140, 255, 90, 0.75);
+}
+
+/* Bouncy elastic-overshoot pop, not a fade -- a plain fade-in reads as UI, an
+   overshoot reads as an exclamation. Fires once per showLevelComplete() call
+   via the usual remove-class/reflow/re-add restart idiom. */
+.lc-headline-play {
+  animation: lc-headline-bounce 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes lc-headline-bounce {
+  0%   { transform: scale(0.2) rotate(-8deg); opacity: 0; }
+  55%  { transform: scale(1.18) rotate(4deg); opacity: 1; }
+  75%  { transform: scale(0.94) rotate(-2deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+/* Demoted from the old headline role to a caption -- the numbers/name below
+   already say what happened, this just labels it. */
+#lc-title {
+  margin-top: 0.6vmin;
+  font-weight: 800;
+  font-size: 3.4vmin;
+  letter-spacing: 0.5vmin;
+  color: #ffe066;
+  opacity: 0.85;
+  -webkit-text-stroke: 0.4vmin #2a1400;
+  paint-order: stroke fill;
+}
+
+#lc-next {
+  margin-top: 1vmin;
+  font-weight: 900;
+  font-size: 5.4vmin;
+  letter-spacing: 0.35vmin;
+  color: #fff6c8;
+  -webkit-text-stroke: 0.62vmin #2a1400;
+  paint-order: stroke fill;
+}
+
+#lc-ready {
+  font-weight: 800;
+  font-size: 2.6vmin;
+  letter-spacing: 0.9vmin;
+  color: #ffd98a;
+  opacity: 0.85;
+  -webkit-text-stroke: 0.34vmin #2a1400;
+  paint-order: stroke fill;
+}
+
+/* Re-animated per tick from JS (class removed, reflow, re-added) so each
+   number lands with its own beat rather than the digits just swapping. */
+#lc-countdown {
+  margin-top: 1.6vmin;
+  font-weight: 900;
+  font-size: 13vmin;
+  line-height: 1;
+  color: #ffffff;
+  -webkit-text-stroke: 1.1vmin #2a1400;
+  paint-order: stroke fill;
+  font-variant-numeric: tabular-nums;
+}
+
+.lc-tick {
+  animation: lc-tick 0.5s ease-out;
+}
+
+@keyframes lc-tick {
+  0%   { transform: scale(1.5); opacity: 0.25; }
+  35%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* --- Confetti (ui/hud.js builds the pieces once, replays via class restart) ---
+   DOM/CSS, not the 3D particle systems in systems/vfx.js -- this overlay lives
+   entirely in screen space above the WebGL canvas, so a world-space particle
+   would be the wrong tool. Positioned absolute within #level-complete so it's
+   naturally clipped to the overlay and never bleeds under the HUD chrome. */
+#lc-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -6vmin;
+  width: 1.1vmin;
+  height: 2.3vmin;
+  opacity: 0;
+  will-change: transform, opacity;
+  /* left / background / --drift / --spin / animation-delay / -duration are all
+     set per-piece inline by JS at build time -- each piece needs its own
+     random values, which a shared class alone can't express. */
+}
+
+/* Only animates while this class is present, so a freshly-built (not yet
+   celebrated) confetti pool sits inert instead of playing on page load. */
+.lc-confetti-play .confetti-piece {
+  animation-name: confetti-fall;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.7, 1);
+  animation-fill-mode: forwards;
+}
+
+@keyframes confetti-fall {
+  0%   { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  8%   { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--drift, 0), 118vh) rotate(var(--spin, 540deg)); }
+}
+
+/* --- First-run onboarding (core/main.js's beginIntro/advanceIntroStep/
+   dismissIntro, driven by data/introTutorial.js) ---
+   #intro-tutorial-overlay takes .overlay's default neutral dark wash
+   unmodified -- deliberately distinct from level-complete's gold celebration
+   background, since this is an informational screen, not a celebratory or
+   damage one (same "own color language per screen" reasoning as
+   #level-complete's own background override). */
+.intro-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.6vmin;
+}
+
+.intro-step.hidden {
+  display: none;
+}
+
+.intro-step-title {
+  font-weight: 900;
+  font-size: 5vmin;
+  letter-spacing: 0.3vmin;
+  color: #eafcff;
+  -webkit-text-stroke: 0.5vmin #0a2a30;
+  paint-order: stroke fill;
+}
+
+/* Real GoBalance board art (src/assets/gobalance_horizontal_board.png,
+   copied from the Unity project's CrazySnowboard UI -- the real board icon
+   players already associate with steering, not a redrawn stand-in). One
+   shared visual footprint for both steps; each step's own JS-driven
+   transform (ui/hud.js) decides which axis it appears to tilt on. */
+/* 34vmin -> 24vmin, direct feedback ("make the board a bit smaller, 30%"). */
+.intro-board {
+  width: 24vmin;
+  aspect-ratio: 358 / 266;
+  background-image: url('./assets/gobalance_horizontal_board.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  transition: transform 0.4s ease;
+}
+
+/* Step 1 -- perspective + rotateY, a real 3D lean (the board's left/right
+   edge tilts toward/away from the viewer) instead of an in-plane rotateZ
+   spin. Direct feedback: a flat rotate reads as STEERING (turning a wheel),
+   not TILTING (leaning a board) -- same 3D-tilt language as step 2's
+   rotateX below, just around the other axis, since this board art is drawn
+   as a top-down plan view: rolling left/right foreshortens the left/right
+   edges exactly the way rotateY simulates, where a flat rotateZ would just
+   spin the whole silhouette like a wheel instead. Same magnitude/perspective
+   as step 2 (see data/introTutorial.js's INTRO_JUMP_CYCLE comment for why
+   these numbers, not gentler ones, are what actually reads on screen).
+   Compound ID+class selectors, not a bare class rule -- same specificity
+   lesson as .lc-curtain-closed above.
+   58deg -> 29deg (half), direct feedback ("the 3D tilt... much less, like
+   half of the tilt") -- perspective(380px) left as-is, only the angle
+   dropped, so this is a gentler lean, not a smaller/closer board. */
+#intro-board-lanes.intro-lane-center { transform: perspective(380px) rotateY(0deg); }
+#intro-board-lanes.intro-lane-left { transform: perspective(380px) rotateY(-29deg); }
+#intro-board-lanes.intro-lane-right { transform: perspective(380px) rotateY(29deg); }
+
+/* Step 2's board tilt is set inline from JS instead (a continuous rotateX
+   degree value from data/introTutorial.js's INTRO_JUMP_CYCLE, not one of 3
+   fixed states) -- see ui/hud.js's setIntroJumpCycleState. */
+
+/* 12vmin -> 17vmin -> 22vmin across two feedback passes ("a bit bigger",
+   then "increase the character a bit, 30%") -- still smaller than the board
+   (now 24vmin), but close to it rather than a clear afterthought. */
+.intro-sprite {
+  width: 22vmin;
+  height: auto;
+  transition: transform 0.25s ease;
+}
+
+/* Step 1's run-cycle frame swap (ui/hud.js's setIntroRunFrame) is a plain src
+   change, no transform of its own -- only the LANE position animates here. */
+#intro-player.intro-lane-center { transform: translateX(0); }
+#intro-player.intro-lane-left { transform: translateX(-16vmin); }
+#intro-player.intro-lane-right { transform: translateX(16vmin); }
+
+/* Step 2's jumper transform (a small translateY hop on the airborne frame)
+   is set inline from JS alongside its frame swap -- see setIntroJumpCycleState. */
+
+/* Same pill-button visual language as #restart-button -- both are the
+   single positive action on their screen. */
+/* vmin throughout, NOT the px #restart-button was copied from -- everything
+   else in this overlay (title/board/sprite/margins) is already vmin-scaled,
+   so a fixed-px button is the one thing that doesn't shrink with the rest of
+   it. Direct feedback, from a screenshot at a small/shrunk browser size
+   (simulating the SDK's mobile WebView): every element scaled down together
+   except the button, which stayed full-size and ended up dominating the
+   screen. border-radius is the one exception left in px -- 999px is just
+   "large enough to always fully round the pill" at any real button size,
+   not a literal dimension, so it doesn't need to scale. */
+#intro-next-button, #intro-start-button {
+  margin-top: 1vmin;
+  font-weight: 900;
+  font-size: 2.6vmin;
+  letter-spacing: 0.13vmin;
+  padding: 1.8vmin 4.5vmin;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffde50, #ffa93c);
+  color: #2a1a00;
+  cursor: pointer;
+  box-shadow: 0 0.5vmin 0 #a86800, 0 0.75vmin 1.5vmin rgba(0, 0, 0, 0.4);
 }
