@@ -390,12 +390,13 @@ async function boot() {
       return stage;
     }
 
-    // Bomb presence floor (2026-08-05): if it's been too long since a bomb
-    // was actually on screen, force the NEXT spawn to be a bomb, at the
-    // play-area edge FAR from the player -- directly answers "I can camp an
-    // edge and stay safe." See systems/bombPresence.js.
-    const bombOnScreen = items.some((it) => !it.resolved && it.type.kind === 'hazard');
-    const forceBomb = updateBombPresence(bombPresence, dt, bombOnScreen);
+    // Bomb presence floor (2026-08-05, raised to a count of 2): if the
+    // number of bombs currently on screen has stayed below the floor too
+    // long, force the NEXT spawn to be a bomb, at the play-area edge FAR
+    // from the player -- directly answers "I can camp an edge and stay
+    // safe." See systems/bombPresence.js.
+    const bombCount = items.reduce((n, it) => n + (!it.resolved && it.type.kind === 'hazard' ? 1 : 0), 0);
+    const forceBomb = updateBombPresence(bombPresence, dt, bombCount);
     const forcedBombXFrac = forceBomb ? (player.xFrac < 0.5 ? ITEM_MAX_X_FRAC : ITEM_MIN_X_FRAC) : null;
 
     const spawned = updateSpawner(spawner, dt, stage, boxes, forcedBombXFrac);
