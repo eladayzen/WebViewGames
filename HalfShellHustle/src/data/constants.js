@@ -138,12 +138,22 @@ export const LANE_RESPONSE = 10; // exponential lane-follow rate
 //                 raw analog value (window.__gbSensor) instead of keys, so it
 //                 needs forwardSteeringKeys = FALSE on the scene.
 //
-// Default is 'stepped' deliberately: it works with the scene exactly as
-// shipped, so nothing regresses if the Inspector flag is never flipped.
+// Default is 'absolute', direct feedback: this game's whole onboarding
+// tutorial (data/introTutorial.js) teaches absolute-mode steering
+// specifically ("tilt to move left and right" = stand where you want to
+// be, not gesture-and-return), so shipping with 'stepped' as the actual
+// default would contradict what every new run just taught. Safe to flip
+// purely in JS: input/input.js's readTilt() reads window.__gbSensor first
+// and only ever falls back to the synthetic arrow keys when that sensor is
+// ABSENT, and the sensor is published unconditionally regardless of the
+// Unity scene's forwardSteeringKeys Inspector flag (see that function's own
+// comment) -- so this doesn't require a matching Unity-side change to work
+// correctly on a real device, though flipping forwardSteeringKeys to false
+// there too would stop it from dispatching now-unused synthetic keys.
 export const STEERING_STEPPED = 'stepped';
 export const STEERING_ABSOLUTE = 'absolute';
 export const STEERING_MODES = [STEERING_STEPPED, STEERING_ABSOLUTE];
-export const DEFAULT_STEERING_MODE = STEERING_STEPPED;
+export const DEFAULT_STEERING_MODE = STEERING_ABSOLUTE;
 
 // Zone edge: |tilt.x| past this leaves the centre lane's zone. 0.35 matches the
 // SDK's own pressThreshold, so 'absolute' starts out as responsive as
