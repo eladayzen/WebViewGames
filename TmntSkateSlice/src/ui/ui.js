@@ -15,7 +15,7 @@
 
 import { BOX_COLORS } from '../data/boxColors.js';
 import { BOMB_KILL_SET } from '../data/bombKills.js';
-import { OOZE_BUFF_DURATION_SEC, SHIELD_BUFF_DURATION_SEC, MAGNET_BUFF_DURATION_SEC, MAX_LIVES } from '../data/constants.js';
+import { OOZE_BUFF_DURATION_SEC, SHIELD_BUFF_DURATION_SEC, MAGNET_BUFF_DURATION_SEC, MAX_LIVES, BOX_COMPLETE_FLY_MS } from '../data/constants.js';
 
 // Active-buff chips (ooze/shield/magnet). Static icon URLs -- Vite only
 // bundles new URL(import.meta.url) with a literal path, not a template.
@@ -354,7 +354,7 @@ export function createUI() {
     root.appendChild(life);
     el.bcTray.appendChild(root);
 
-    el.bcPopups.push({ root, icon, title, bonus, reward, rewardItems, life, active: false, hideTimer: null });
+    el.bcPopups.push({ root, icon, title, bonus, reward, rewardItems, life, active: false, revealTimer: null, hideTimer: null });
   }
   let activeBoxPopups = []; // live popups, newest first
 
@@ -389,8 +389,9 @@ export function createUI() {
   // update runs, so this is purely a decorative bridge between the two.
   // Twice as long + a genuine ease-IN curve (starts slow, accelerates into
   // the landing), per feedback 2026-08-04 -- was 380ms/an ease-in-out-style
-  // curve that read as arriving too fast/abrupt.
-  const SHOOT_FLY_MS = 760;
+  // curve that read as arriving too fast/abrupt. Duration lives in
+  // constants.js as BOX_COMPLETE_FLY_MS since core/main.js also times the
+  // completion's game-state effects off it (see showBoxComplete below).
   function shootChipToPopup(id, hex, targetIconEl) {
     const chipEl = chipElFor(id);
     if (!chipEl) return;
@@ -412,12 +413,12 @@ export function createUI() {
     const dx = (targetRect.left + targetRect.width / 2) - (startRect.left + startRect.width / 2);
     const dy = (targetRect.top + targetRect.height / 2) - (startRect.top + startRect.width / 2);
     icon.style.transition =
-      `transform ${SHOOT_FLY_MS}ms cubic-bezier(0.55, 0.055, 0.675, 0.19), ` + // easeInCubic -- slow start, accelerating hard into the landing
-      `opacity 110ms ease-in ${SHOOT_FLY_MS - 110}ms`; // stays fully visible until the very end, then vanishes fast right at arrival
+      `transform ${BOX_COMPLETE_FLY_MS}ms cubic-bezier(0.55, 0.055, 0.675, 0.19), ` + // easeInCubic -- slow start, accelerating hard into the landing
+      `opacity 110ms ease-in ${BOX_COMPLETE_FLY_MS - 110}ms`; // stays fully visible until the very end, then vanishes fast right at arrival
     icon.style.transform = `translate(${dx}px, ${dy}px) scale(1.2)`;
     icon.style.opacity = '0';
 
-    setTimeout(() => icon.remove(), SHOOT_FLY_MS + 50);
+    setTimeout(() => icon.remove(), BOX_COMPLETE_FLY_MS + 50);
   }
 
   // Last-written values, for the dirty-checks below.
@@ -464,6 +465,12 @@ export function createUI() {
     // a bouncing box icon, then a BIG reveal of the booster you earned (+ "+1
     // LIFE" for the red box). Up to MAX_BOX_POPUPS play at once, side by side
     // and centered, so near-simultaneous completions don't cut each other off.
+    // Stays invisible (bcp-pending) until the flying twin chip lands, then
+    // reveals -- core/main.js times the completion's game-state effects
+    // (score bonus, booster/life grant, particle burst, sfx) off its OWN
+    // independent BOX_COMPLETE_FLY_MS timer rather than a callback from
+    // here, so those effects are never silently lost if this popup's slot
+    // gets recycled before it reveals (see the pool-recycle branch below).
     showBoxComplete(label, bonus, hex, id, reward) {
       // A free pool slot, or recycle the OLDEST live one if all are busy -- a
       // 4th completion still shows (replacing the oldest), never the newest.
@@ -472,9 +479,13 @@ export function createUI() {
         slot = activeBoxPopups[activeBoxPopups.length - 1];
         activeBoxPopups = activeBoxPopups.filter((p) => p !== slot);
         if (slot.hideTimer) clearTimeout(slot.hideTimer);
+        if (slot.revealTimer) clearTimeout(slot.revealTimer);
       }
 
-      // Populate.
+      // Populate immediately (content + layout, so the tray reserves its
+      // spot and slot.icon has a real screen rect to fly toward) but stay
+      // invisible via bcp-pending -- the reveal is held until the flying
+      // twin chip actually lands, see below (2026-08-04).
       slot.root.style.setProperty('--bcp-color', hex);
       slot.icon.src = BOX_ICON_URLS[id] || BOX_ICON_URLS.regular;
       slot.title.textContent = `${label.toUpperCase()} BOX!`;
@@ -494,28 +505,33 @@ export function createUI() {
       slot.reward.classList.toggle('hidden', effects.length === 0);
       slot.life.classList.toggle('hidden', !(reward && reward.grantLife));
 
-      // Mark live (newest first) + restart its animation.
       slot.active = true;
       activeBoxPopups.unshift(slot);
       slot.root.classList.remove('hidden');
       slot.root.classList.remove('bcp-animate');
-      void slot.root.offsetWidth; // force reflow to restart the animation
-      slot.root.classList.add('bcp-animate');
+      slot.root.classList.add('bcp-pending');
+      layoutBoxPopups();
 
-      // NOW that the popup is laid out (its icon has a real screen rect),
-      // shoot the completed chip up into it -- see shootChipToPopup.
+      // NOW that it's laid out (its icon has a real screen rect), shoot the
+      // completed chip up into it -- see shootChipToPopup. The reveal below
+      // is timed to land exactly when this arrives.
       shootChipToPopup(id, hex, slot.icon);
 
-      slot.hideTimer = setTimeout(() => {
-        slot.active = false;
-        slot.hideTimer = null;
-        slot.root.classList.add('hidden');
-        slot.root.classList.remove('bcp-animate');
-        activeBoxPopups = activeBoxPopups.filter((p) => p !== slot);
-        layoutBoxPopups();
-      }, BCP_ANIM_MS);
+      slot.revealTimer = setTimeout(() => {
+        slot.revealTimer = null;
+        slot.root.classList.remove('bcp-pending');
+        void slot.root.offsetWidth; // force reflow to (re)start the animation
+        slot.root.classList.add('bcp-animate');
 
-      layoutBoxPopups();
+        slot.hideTimer = setTimeout(() => {
+          slot.active = false;
+          slot.hideTimer = null;
+          slot.root.classList.add('hidden');
+          slot.root.classList.remove('bcp-animate');
+          activeBoxPopups = activeBoxPopups.filter((p) => p !== slot);
+          layoutBoxPopups();
+        }, BCP_ANIM_MS);
+      }, BOX_COMPLETE_FLY_MS);
     },
 
     setBuffs(player) {

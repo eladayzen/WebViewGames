@@ -48,7 +48,7 @@ import {
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
-import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC } from '../data/constants.js';
+import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, BOX_COMPLETE_FLY_MS } from '../data/constants.js';
 
 // Clamp so a tab-resume/frame-hitch never simulates a huge leap. Raised
 // 1/20 -> 1/10 (2026-07-30): the old 1/20 meant any frame slower than 20fps
@@ -244,11 +244,18 @@ async function boot() {
     spawnCollectFlyer(juice, item.xFrac, item.yFrac, chipPos.xFrac, chipPos.yFrac, BOMB_KILL_SET.hex, () => ui.pulseChip(BOMB_KILL_SET.id), 'bomb');
     const done = registerBombKill(bombKills);
     if (done) {
-      registerBoxComplete(scoring, done.bonusScore);
-      for (const effect of done.effects) grantBooster(effect, item.xFrac, item.yFrac);
-      spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
-      playSfx(audio, sfx.sfx_box_complete);
+      // Stalled until the flying twin chip actually lands on the popup
+      // (2026-08-04 feedback) -- see BOX_COMPLETE_FLY_MS/showBoxComplete.
+      // This timer is independent of ui.js's own reveal timer so these
+      // effects always fire exactly once, even if the popup's pool slot
+      // later gets recycled by a further completion.
       ui.showBoxComplete(done.label, done.bonusScore, done.hex, done.id, { effects: done.effects, grantLife: false });
+      setTimeout(() => {
+        registerBoxComplete(scoring, done.bonusScore);
+        for (const effect of done.effects) grantBooster(effect, item.xFrac, item.yFrac);
+        spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
+        playSfx(audio, sfx.sfx_box_complete);
+      }, BOX_COMPLETE_FLY_MS);
     }
   }
 
@@ -287,12 +294,19 @@ async function boot() {
           // life only. Counts per box in data/boxColors.js. Rolled BEFORE the
           // popup so it can show what you earned, big.
           const reward = rollBoxReward(done.id);
-          for (const effect of reward.effects) grantBooster(effect, item.xFrac, item.yFrac);
-          if (reward.grantLife) gainLife(lives);
-          registerBoxComplete(scoring, done.bonusScore);
-          spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
-          playSfx(audio, sfx.sfx_box_complete);
           ui.showBoxComplete(done.label, done.bonusScore, done.hex, done.id, reward);
+          // Stalled until the flying twin chip actually lands on the popup
+          // (2026-08-04 feedback) -- see BOX_COMPLETE_FLY_MS/showBoxComplete.
+          // This timer is independent of ui.js's own reveal timer so these
+          // effects always fire exactly once, even if the popup's pool slot
+          // later gets recycled by a further completion.
+          setTimeout(() => {
+            for (const effect of reward.effects) grantBooster(effect, item.xFrac, item.yFrac);
+            if (reward.grantLife) gainLife(lives);
+            registerBoxComplete(scoring, done.bonusScore);
+            spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
+            playSfx(audio, sfx.sfx_box_complete);
+          }, BOX_COMPLETE_FLY_MS);
         }
       }
       // Ooze buff active: an extra cyan sparkle on every catch, so the buff

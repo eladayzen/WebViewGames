@@ -79,6 +79,15 @@ export const COMBO_MULTIPLIER_MAX = 3.0;
 // Floating "+N" retro score popups: how long each rises and fades (2026-08-02).
 export const SCORE_POPUP_TTL_SEC = 1.75;
 
+// Box/bomb-kill completion: how long the "twin" chip flight (tray chip ->
+// celebration popup) takes, in ms. Shared between ui.js (drives the flight
+// itself and when the popup visually reveals) and core/main.js (delays the
+// completion's game-state effects -- score bonus, booster/life grant,
+// particle burst, sfx -- to that same moment, 2026-08-04 feedback) so the
+// celebration reads as CAUSED by the chip landing, not simultaneous with a
+// chip still visibly catching up.
+export const BOX_COMPLETE_FLY_MS = 760;
+
 // --- Lives (§5.4, §8) ---
 export const STARTING_LIVES = 3;
 // Lives can grow past the starting 3 (the red box's completion reward grants an
