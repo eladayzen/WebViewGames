@@ -16,8 +16,10 @@ export function resetBombKills(bk) {
   bk.active = false;
 }
 
-// Register one bomb kill. Starts the timer on the first kill, otherwise
-// increments. On reaching the target it resets internally and returns
+// Register one bomb kill. Starts the timer on the first kill; every kill
+// AFTER that tops the timer back up by BOMB_KILL_SET.timerBonusSec instead
+// (capped at timerSec, 2026-08-04 -- same mechanic as systems/boxes.js's
+// registerBoxCatch). On reaching the target it resets internally and returns
 // { id, label, hex, bonusScore, effects } so the caller can fire the reward +
 // celebration (same shape as a box completion). Returns null on a
 // non-completing kill.
@@ -25,6 +27,8 @@ export function registerBombKill(bk) {
   if (!bk.active) {
     bk.active = true;
     bk.timerRemaining = BOMB_KILL_SET.timerSec;
+  } else {
+    bk.timerRemaining = Math.min(BOMB_KILL_SET.timerSec, bk.timerRemaining + BOMB_KILL_SET.timerBonusSec);
   }
   bk.progress += 1;
   if (bk.progress >= BOMB_KILL_SET.requiredCount) {

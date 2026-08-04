@@ -387,7 +387,10 @@ export function createUI() {
   // the real chip element: the real chip already hides itself via the
   // normal setBoxes/setBombKills dirty-check the instant this frame's HUD
   // update runs, so this is purely a decorative bridge between the two.
-  const SHOOT_FLY_MS = 380;
+  // Twice as long + a genuine ease-IN curve (starts slow, accelerates into
+  // the landing), per feedback 2026-08-04 -- was 380ms/an ease-in-out-style
+  // curve that read as arriving too fast/abrupt.
+  const SHOOT_FLY_MS = 760;
   function shootChipToPopup(id, hex, targetIconEl) {
     const chipEl = chipElFor(id);
     if (!chipEl) return;
@@ -409,7 +412,7 @@ export function createUI() {
     const dx = (targetRect.left + targetRect.width / 2) - (startRect.left + startRect.width / 2);
     const dy = (targetRect.top + targetRect.height / 2) - (startRect.top + startRect.width / 2);
     icon.style.transition =
-      `transform ${SHOOT_FLY_MS}ms cubic-bezier(0.3, 0, 0.2, 1), ` +
+      `transform ${SHOOT_FLY_MS}ms cubic-bezier(0.55, 0.055, 0.675, 0.19), ` + // easeInCubic -- slow start, accelerating hard into the landing
       `opacity 110ms ease-in ${SHOOT_FLY_MS - 110}ms`; // stays fully visible until the very end, then vanishes fast right at arrival
     icon.style.transform = `translate(${dx}px, ${dy}px) scale(1.2)`;
     icon.style.opacity = '0';

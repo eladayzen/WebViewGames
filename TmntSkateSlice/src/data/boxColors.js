@@ -23,6 +23,12 @@
 // rollBoxReward picks the distinct set (pickDistinctBoosters); main.js grants
 // them + fires the celebration. Same grant path as the falling pickups and the
 // bomb-kill set.
+//
+// TIMER REFILL (2026-08-04): every catch that ADDS to an already-active box
+// (not just the first one that starts it) also tops the timer back up by
+// `timerBonusSec`, capped at the box's own `timerSec` -- committing to a box
+// and actively feeding it keeps its clock topped up, rather than only ever
+// draining. See systems/boxes.js's registerBoxCatch.
 import { pickDistinctBoosters } from './powerUps.js';
 
 export const BOX_COLORS = [
@@ -31,7 +37,8 @@ export const BOX_COLORS = [
     label: 'Pizza',
     hex: '#E8A23C',
     requiredCount: 8,
-    timerSec: 156, // +30% for easier completion (2026-08-02), was 120
+    timerSec: 78, // 50% faster (2026-08-04, was 156) -- now matches the other 3 boxes' timer
+    timerBonusSec: 8, // added back to the timer per catch (~10% of timerSec), capped at timerSec
     bonusScore: 100,
     // Common box: 1 random pickup (any of magnet/shield/blow-up, never life).
     reward: { boosterCount: 1, grantLife: false },
@@ -42,6 +49,7 @@ export const BOX_COLORS = [
     hex: '#3B8FE8',
     requiredCount: 8,
     timerSec: 78, // +30% for easier completion (2026-08-02), was 60
+    timerBonusSec: 8, // added back to the timer per catch (~10% of timerSec), capped at timerSec
     bonusScore: 150,
     baseSpawnWeight: 0.05,
     activeSpawnWeight: 0.16,
@@ -54,6 +62,7 @@ export const BOX_COLORS = [
     hex: '#9B5DE5',
     requiredCount: 8,
     timerSec: 78, // +30% for easier completion (2026-08-02), was 60
+    timerBonusSec: 8, // added back to the timer per catch (~10% of timerSec), capped at timerSec
     bonusScore: 220,
     baseSpawnWeight: 0.035,
     activeSpawnWeight: 0.13,
@@ -66,6 +75,7 @@ export const BOX_COLORS = [
     hex: '#E5325B',
     requiredCount: 8,
     timerSec: 78, // +30% for easier completion (2026-08-02), was 60
+    timerBonusSec: 8, // added back to the timer per catch (~10% of timerSec), capped at timerSec
     bonusScore: 320,
     baseSpawnWeight: 0.02,
     activeSpawnWeight: 0.10,
