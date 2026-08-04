@@ -75,6 +75,7 @@ import {
 } from '../data/introSequence.js';
 import {
   LEVEL_COUNTDOWN_SECONDS, LEVEL_SWAPS_ENVIRONMENT, LEVEL_CURTAIN_CLOSE_DELAY_SEC,
+  LEVEL_CURTAIN_TRANSITION_SEC,
 } from '../data/progression.js';
 import { PLATFORM_ENABLED } from '../data/platformSequence.js';
 import {
@@ -239,6 +240,11 @@ function boot() {
   // LEVEL_CURTAIN_CLOSE_DELAY_SEC in -- guards ui/hud.js's closeLevelCurtains
   // so it fires exactly once per beat instead of every frame past that point.
   let levelCurtainsClosed = false;
+  // Set once per beat, LEVEL_CURTAIN_TRANSITION_SEC AFTER levelCurtainsClosed
+  // -- guards the environment swap the same way, and deliberately a separate
+  // flag/timing check from it rather than reusing levelCurtainsClosed: the
+  // swap must wait for the CLOSE ANIMATION TO FINISH, not just start.
+  let levelEnvironmentSwapped = false;
 
   // --- Intro tutorial (data/introTutorial.js, ui/hud.js) -------------------
   // All dt-driven from tick's 'intro' branch below, same reasoning as every
@@ -468,6 +474,7 @@ function boot() {
     pendingLevelTier = nextTier;
     levelCountdown = LEVEL_COUNTDOWN_SECONDS;
     levelCurtainsClosed = false;
+    levelEnvironmentSwapped = false;
     hud.setLevelCountdown(LEVEL_COUNTDOWN_SECONDS);
     hud.showLevelComplete(nextTier);
   }
@@ -676,20 +683,29 @@ function boot() {
       // Fires once, LEVEL_CURTAIN_CLOSE_DELAY_SEC into the countdown -- the
       // flag guard is required because this branch runs every frame past
       // that point, and closeLevelCurtains() re-adding an already-present
-      // class would be harmless but pointless.
-      // THE ENVIRONMENT SWAP happens HERE, the instant the curtains close --
-      // not in startNextLevel() when they open again. Direct feedback: a
-      // black frame ("I see the turtle, I see a black frame") was visible
-      // right as the curtains pulled open, because the old code rebuilt the
-      // street (disposeStreet + createStreet, ~50 meshes, fresh textures
-      // that may never have been decoded/uploaded to the GPU this session)
-      // at that exact moment -- the reveal was racing the rebuild. Doing it
-      // here instead spends the curtains' own ~3s fully-closed window
-      // (LEVEL_COUNTDOWN_SECONDS - LEVEL_CURTAIN_CLOSE_DELAY_SEC) on the
-      // teardown/rebuild AND on however many frames the new theme's
-      // textures need to actually finish uploading, all safely hidden,
-      // instead of spending zero frames on it and hoping the swap finishes
-      // before the curtains finish opening.
+      // class would be harmless but pointless. Only STARTS the close
+      // animation -- see the swap check below for why the swap itself
+      // waits for it to actually finish.
+      if (!levelCurtainsClosed
+        && LEVEL_COUNTDOWN_SECONDS - levelCountdown >= LEVEL_CURTAIN_CLOSE_DELAY_SEC) {
+        hud.closeLevelCurtains();
+        levelCurtainsClosed = true;
+      }
+
+      // THE ENVIRONMENT SWAP, once the curtains have actually FINISHED
+      // closing (LEVEL_CURTAIN_TRANSITION_SEC after the check above), not
+      // the instant they START to. Direct feedback, two rounds: a black
+      // frame was first visible right as the curtains pulled OPEN (the old
+      // code swapped in startNextLevel(), racing the reveal); moving the
+      // swap to the close trigger instead just moved the same visible
+      // stutter to peek out from behind the curtains WHILE THEY WERE STILL
+      // MID-SLIDE, since closeLevelCurtains() only starts a CSS transition,
+      // it doesn't block until it finishes. Waiting the extra
+      // LEVEL_CURTAIN_TRANSITION_SEC is what actually gets the swap
+      // (disposeStreet + createStreet, ~50 meshes, fresh textures that may
+      // never have been decoded/uploaded to the GPU this session) to run
+      // fully behind a fully-opaque curtain, with real hidden frames left
+      // over (see data/progression.js) before the countdown ends.
       //
       // Guarded on the theme key actually CHANGING, not just on
       // LEVEL_SWAPS_ENVIRONMENT being on. themeForTier WRAPS past the last
@@ -700,10 +716,10 @@ function boot() {
       // pendingLevelTier, not levelIndex -- levelIndex is still the tier
       // this run is ABOUT to leave; it only becomes the new one inside
       // startNextLevel(), which hasn't run yet at this point.
-      if (!levelCurtainsClosed
-        && LEVEL_COUNTDOWN_SECONDS - levelCountdown >= LEVEL_CURTAIN_CLOSE_DELAY_SEC) {
-        hud.closeLevelCurtains();
-        levelCurtainsClosed = true;
+      if (!levelEnvironmentSwapped && levelCurtainsClosed
+        && LEVEL_COUNTDOWN_SECONDS - levelCountdown
+          >= LEVEL_CURTAIN_CLOSE_DELAY_SEC + LEVEL_CURTAIN_TRANSITION_SEC) {
+        levelEnvironmentSwapped = true;
         if (LEVEL_SWAPS_ENVIRONMENT) {
           const nextTheme = themeForTier(pendingLevelTier);
           if (nextTheme && nextTheme !== currentThemeKey) {
