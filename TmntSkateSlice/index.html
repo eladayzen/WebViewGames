@@ -163,14 +163,17 @@
         </div>
         <div id="intro-step-steer" class="intro-step hidden">
           <div class="intro-step-title">TILT LEFT &amp; RIGHT TO MOVE</div>
-          <!-- Fixed-height wrapper, feet anchored to its bottom edge (same
-               idea render.js's drawPlayer already uses for real gameplay --
-               draw upward from a fixed ground line) -- the run-cycle frames
-               swap height slightly, and anchoring the wrapper instead of the
-               <img> itself keeps the whole popup from reflowing per frame. -->
-          <div class="intro-sprite-wrap">
-            <img id="intro-steer-player" class="intro-sprite" alt="" />
-          </div>
+          <!-- Fixed width+height box (not sized off either source frame) --
+               mike_run_1.png/mike_run_3.png are genuinely different poses
+               (arms/legs spread differently mid-stride, verified via each
+               PNG's own alpha content bbox -- not asset padding), so no
+               single non-distorting size is IDENTICAL for both. object-fit:
+               contain letterboxes each frame inside this one unchanging box
+               (invisible, since the PNGs are transparent) instead of the box
+               itself changing size -- locks HEIGHT (the axis that read as
+               "small big small big") to zero variance between frames; only
+               a small transparent-letterboxed width gap differs. -->
+          <img id="intro-steer-player" class="intro-sprite" alt="" />
           <div id="intro-steer-board" class="intro-board"></div>
           <button id="intro-start-button">START</button>
         </div>

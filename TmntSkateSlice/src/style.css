@@ -834,19 +834,21 @@ html, body {
    technique render.js's drawPlayer already uses for real gameplay -- draw
    upward from a fixed ground line) keeps the whole popup column from
    reflowing regardless, without resizing the character (fix 2026-08-04). */
-.intro-sprite-wrap {
-  position: relative;
-  width: 100px;
-  height: 122px; /* >= the taller frame's rendered height at 96px wide */
-}
-
+/* Fixed box on BOTH axes (2026-08-04, replaces the width-only/height-only/
+   bottom-anchor attempts) -- see the index.html comment above this element.
+   96x112 matches mike_run_1's own aspect almost exactly (549x640 -> renders
+   96.0x111.9, i.e. essentially fills the box with no letterbox at all), so
+   the run-cycle frame shown first looks identical to before; mike_run_3
+   (505x640, a visibly narrower pose) is height-bound instead -- 88.4x112,
+   letterboxed ~4px each side. Net: height is IDENTICAL across both frames
+   (111.9 vs 112 -- a 0.1px difference, imperceptible), only a small
+   transparent-letterboxed width gap differs. object-fit does the letterboxing
+   -- no absolute positioning/wrapper needed, the <img>'s own box never
+   changes size at all, so neither the character NOR the popup layout around
+   it can visibly pulse. */
 .intro-sprite {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
   width: 96px;
-  height: auto;
+  height: 112px;
   object-fit: contain;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.4));
 }
