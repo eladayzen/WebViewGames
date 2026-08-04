@@ -1,12 +1,26 @@
-// Top-level state machine (§9.2): countdown -> running -> gameover -> back
-// to running (via countdown) on restart. No menu state -- the game must
-// reach its first playable/countdown state on load with no key press
-// (GOBALANCE_SDK.md contract).
+// Top-level state machine (§9.2): intro -> countdown -> running -> gameover
+// -> back to intro (via restart) -- see core/main.js's beginIntro(), called
+// from both boot() and the restart button, matching the reference
+// onboarding-tutorial pattern's "shown every run, not just once ever"
+// (WEB_MINIGAME_TECH_RETROSPECTIVE.md, 2026-08-04).
+//
+// 'intro' -- the onboarding tutorial (ui/ui.js's showIntroTutorial), two
+// auto-cycling steps; world built but frozen, shown before every run. This
+// satisfies GOBALANCE_SDK.md's "first playable/countdown state reachable on
+// load with no key required" contract the same way a countdown does --
+// core/main.js's frame() auto-advances each step on its own
+// (data/introTutorial.js's INTRO_STEP_AUTO_ADVANCE_SEC) even with zero
+// interaction, so a click/Space/Enter on the tutorial's NEXT/START buttons
+// is a SPEED-UP over that fallback, never a requirement.
 
 import { COUNTDOWN_SEC } from '../data/constants.js';
 
 export function createGameState() {
-  return { current: 'countdown', countdownRemaining: COUNTDOWN_SEC, paused: false };
+  return { current: 'intro', countdownRemaining: COUNTDOWN_SEC, paused: false };
+}
+
+export function triggerIntro(gs) {
+  gs.current = 'intro';
 }
 
 export function restartToCountdown(gs) {

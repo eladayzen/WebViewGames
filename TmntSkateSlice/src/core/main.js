@@ -5,7 +5,8 @@
 
 import { loadAssets, loadAudioAssets } from './assets.js';
 import { setupCanvas, renderFrame } from './render.js';
-import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, togglePause } from './gameState.js';
+import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, togglePause, triggerIntro } from './gameState.js';
+import { INTRO_STEP_AUTO_ADVANCE_SEC, INTRO_RUN_FRAME_DURATION_SEC } from '../data/introTutorial.js';
 import { getSteerAxis } from '../input/input.js';
 import { createAudio, playSfx, startMusic, pauseMusic, resumeMusic, toggleMuted } from '../systems/audio.js';
 import {
@@ -78,6 +79,16 @@ async function boot() {
   let items = [];
   let lastCountdownTick = null; // last whole-second value shown, for tick SFX
 
+  // First-run onboarding tutorial state (core/gameState.js's 'intro' state,
+  // data/introTutorial.js's timing knobs) -- all dt-driven from frame()'s
+  // 'intro' branch below, same reasoning as every other timed effect here:
+  // pausing genuinely holds it rather than letting it expire behind the
+  // pause screen.
+  let introStep = 1; // 1 = item recognition, 2 = movement
+  let introElapsed = 0; // time in the CURRENT step, for the auto-advance timeout
+  let introRunFrameIndex = 0;
+  let introRunFrameElapsed = 0;
+
   // Background music defaults OFF for now (per request 2026-07-30) -- SFX
   // still play. Flip MUSIC_ON to re-enable the ambient bed (it loops
   // continuously across countdown/running/restart; pause is the only thing
@@ -98,10 +109,57 @@ async function boot() {
     ui.hideGameOver();
   }
 
+  // Shown every run (boot() below and the restart button both call this),
+  // not just the first one ever -- direct-feedback pattern ported from
+  // HalfShellHustle (see WEB_MINIGAME_TECH_RETROSPECTIVE.md). Always called
+  // right after fullReset() has the world already built and frozen.
+  function beginIntro() {
+    triggerIntro(gs);
+    introStep = 1;
+    introElapsed = 0;
+    introRunFrameIndex = 0;
+    introRunFrameElapsed = 0;
+    ui.showIntroTutorial();
+  }
+
+  function advanceIntroStep() {
+    introStep = 2;
+    introElapsed = 0;
+    ui.setIntroStep(2);
+  }
+
+  function dismissIntro() {
+    ui.hideIntroTutorial();
+    restartToCountdown(gs);
+  }
+
+  document.getElementById('intro-next-button').addEventListener('click', () => {
+    if (gs.current === 'intro' && introStep === 1) {
+      playSfx(audio, sfx.sfx_ui_tap);
+      advanceIntroStep();
+    }
+  });
+  document.getElementById('intro-start-button').addEventListener('click', () => {
+    if (gs.current === 'intro' && introStep === 2) {
+      playSfx(audio, sfx.sfx_ui_tap);
+      dismissIntro();
+    }
+  });
+  // GOBALANCE_SDK.md: Space/Enter keydown/keyup are ALWAYS forwarded
+  // (unlike the synthetic #restart-button click, which is gated on
+  // #gameover-overlay) -- a real on-device speed-up over the 8s auto-
+  // advance fallback below, not just a dev convenience.
+  window.addEventListener('keydown', (e) => {
+    if (gs.current !== 'intro' || (e.code !== 'Space' && e.code !== 'Enter')) return;
+    playSfx(audio, sfx.sfx_ui_tap);
+    if (introStep === 1) advanceIntroStep();
+    else dismissIntro();
+  });
+
   document.getElementById('restart-button').addEventListener('click', () => {
     playSfx(audio, sfx.sfx_ui_tap);
     fullReset();
-    restartToCountdown(gs);
+    beginIntro();
     ui.setPaused(false);
   });
 
@@ -358,7 +416,29 @@ async function boot() {
       // untouched, so resuming drops back into exactly countdown/running/
       // gameover, whichever it was paused from (§ HUD conventions).
       if (!gs.paused) {
-        if (gs.current === 'countdown') {
+        if (gs.current === 'intro') {
+          ui.setCountdown(0);
+          introElapsed += dt;
+          if (introStep === 2) {
+            // Run-cycle frame swap, the only dt-driven visual here -- the
+            // board/character sweep itself is pure CSS (style.css), so it
+            // can't desync no matter what dt does.
+            introRunFrameElapsed += dt;
+            if (introRunFrameElapsed >= INTRO_RUN_FRAME_DURATION_SEC) {
+              introRunFrameElapsed -= INTRO_RUN_FRAME_DURATION_SEC;
+              introRunFrameIndex = (introRunFrameIndex + 1) % 2;
+              ui.setIntroRunFrame(introRunFrameIndex);
+            }
+          }
+          // GOBALANCE_SDK.md's "first playable state reachable with no key"
+          // contract -- each step auto-advances on its own after this many
+          // seconds of no interaction (a click/Space/Enter above is a
+          // speed-up over this, never a requirement).
+          if (introElapsed >= INTRO_STEP_AUTO_ADVANCE_SEC) {
+            if (introStep === 1) advanceIntroStep();
+            else dismissIntro();
+          }
+        } else if (gs.current === 'countdown') {
           updateCountdown(gs, dt);
           ui.setCountdown(gs.countdownRemaining);
           const tick = Math.ceil(gs.countdownRemaining);
@@ -390,6 +470,7 @@ async function boot() {
     }
   }
 
+  beginIntro();
   requestAnimationFrame(frame);
 }
 

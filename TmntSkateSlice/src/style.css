@@ -648,3 +648,195 @@ html, body {
   transform: translateY(3px);
   box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
 }
+
+/* --- First-run onboarding tutorial (2026-08-04), ported from
+   HalfShellHustle's onboarding-tutorial pattern (see
+   WEB_MINIGAME_TECH_RETROSPECTIVE.md) -- same #id.class-compound-selector
+   discipline that doc's lesson #1 calls out (a bare .class loses a
+   specificity fight to any #id rule that also sets the same property), same
+   fixed-px sizing as the rest of this game's HUD (not vmin -- this game
+   never adopted vmin scaling, so introducing it here would be the
+   inconsistency, not avoiding it). --- */
+#intro-next-button,
+#intro-start-button {
+  margin-top: 6px;
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 1px;
+  padding: 14px 36px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffde50, #ffa93c);
+  color: #2a1a00;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #a86800, 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+#intro-next-button:active,
+#intro-start-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.intro-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.intro-step.hidden {
+  display: none;
+}
+
+.intro-step-title {
+  font-weight: 900;
+  font-size: 26px;
+  letter-spacing: 1px;
+  color: #eafcff;
+  -webkit-text-stroke: 2px #0a2a30;
+  paint-order: stroke fill;
+  text-align: center;
+}
+
+/* --- Step 1: item recognition (redesigned 2026-08-04, replaces a
+   board/character diagram) -- no animation gimmick, just a clear two-panel
+   split: everything catchable (pizza + the 3 pickups) under a green
+   checkmark, the one hazard (bombs) under a red X. --- */
+.intro-items-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+}
+
+.intro-item-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 3px solid;
+}
+
+.intro-item-good {
+  background: rgba(76, 224, 90, 0.16);
+  border-color: #4ce05a;
+}
+
+.intro-item-bad {
+  background: rgba(255, 74, 74, 0.16);
+  border-color: #ff4a4a;
+}
+
+.intro-item-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 24px;
+  color: #fff;
+}
+
+.intro-badge-good {
+  background: #4ce05a;
+  box-shadow: 0 0 14px rgba(76, 224, 90, 0.8);
+}
+
+.intro-badge-bad {
+  background: #ff4a4a;
+  box-shadow: 0 0 14px rgba(255, 74, 74, 0.8);
+}
+
+.intro-item-icons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.intro-item-icon {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  /* Quick entrance pop so the panel isn't totally static (matches this
+     game's existing icon-reveal language -- e.g. .bcp-reward-item), but
+     deliberately a ONE-SHOT settle, not a loop -- no board/character
+     diagram here per direct feedback. */
+  animation: intro-icon-pop 0.4s ease-out backwards;
+}
+
+.intro-item-icon:nth-child(1) { animation-delay: 0s; }
+.intro-item-icon:nth-child(2) { animation-delay: 0.06s; }
+.intro-item-icon:nth-child(3) { animation-delay: 0.12s; }
+.intro-item-icon:nth-child(4) { animation-delay: 0.18s; }
+
+@keyframes intro-icon-pop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  70%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.intro-item-label {
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+
+.intro-item-good .intro-item-label {
+  color: #8cffa0;
+}
+
+.intro-item-bad .intro-item-label {
+  color: #ff9a9a;
+}
+
+/* --- Step 2: how to move -- a CONTINUOUS board+character sweep, not
+   HalfShellHustle's 3-state lane-snap cycle (this game's input is analog/
+   continuous lean, not an absolute lane target -- see data/introTutorial.js's
+   header note). Both elements share ONE keyframe percentage timeline (0%
+   full-left -> 50% full-right -> 100% full-left, a seamless loop since the
+   start/end states match) and the SAME animation-duration/timing-function,
+   started in the same synchronous call (ui.js's showIntroTutorial), so they
+   can never drift out of phase with each other. -84deg magnitude (steeper
+   than HalfShellHustle's 29deg) + a tight 380px perspective: this board art
+   is the same wide, mostly-flat oval that reads as nearly nothing at a
+   "natural" angle (the reference doc's lesson #2) -- verify by screenshot if
+   retuning either number. */
+.intro-board {
+  width: 140px;
+  aspect-ratio: 358 / 266;
+  background-image: url('./assets/gobalance_horizontal_board.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+#intro-steer-board {
+  animation: intro-steer-board-sweep 3.6s ease-in-out infinite;
+}
+
+@keyframes intro-steer-board-sweep {
+  0%   { transform: perspective(380px) rotateY(-58deg); }
+  50%  { transform: perspective(380px) rotateY(58deg); }
+  100% { transform: perspective(380px) rotateY(-58deg); }
+}
+
+.intro-sprite {
+  width: 96px;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.4));
+}
+
+#intro-steer-player {
+  animation: intro-steer-player-sweep 3.6s ease-in-out infinite;
+}
+
+@keyframes intro-steer-player-sweep {
+  0%   { transform: translateX(-72px); }
+  50%  { transform: translateX(72px); }
+  100% { transform: translateX(-72px); }
+}

@@ -127,6 +127,47 @@
         <div id="final-combo"></div>
         <button id="restart-button">RETRY</button>
       </div>
+
+      <!-- First-run onboarding tutorial (shown every run: boot() and the
+           restart button both call beginIntro() -- see core/main.js). Own
+           ids throughout (intro-next-button/intro-start-button), distinct
+           from #restart-button, so the SDK's gameover-only synthetic click
+           can never target these. Step 1: what to catch/avoid (no board, no
+           character -- pure item recognition). Step 2: how to move (a
+           CONTINUOUS board+character sweep, not a lane-snap cycle -- this
+           game's input is analog/continuous lean, not an absolute lane
+           target; see data/introTutorial.js). -->
+      <div id="intro-tutorial-overlay" class="overlay hidden">
+        <div id="intro-step-items" class="intro-step">
+          <div class="intro-step-title">KNOW YOUR ITEMS</div>
+          <div class="intro-items-row">
+            <div class="intro-item-panel intro-item-good">
+              <div class="intro-item-badge intro-badge-good">&#10003;</div>
+              <div class="intro-item-icons">
+                <img id="intro-icon-pizza" class="intro-item-icon" alt="" />
+                <img id="intro-icon-shield" class="intro-item-icon" alt="" />
+                <img id="intro-icon-magnet" class="intro-item-icon" alt="" />
+                <img id="intro-icon-wave" class="intro-item-icon" alt="" />
+              </div>
+              <div class="intro-item-label">CATCH</div>
+            </div>
+            <div class="intro-item-panel intro-item-bad">
+              <div class="intro-item-badge intro-badge-bad">&#10007;</div>
+              <div class="intro-item-icons">
+                <img id="intro-icon-bomb" class="intro-item-icon" alt="" />
+              </div>
+              <div class="intro-item-label">AVOID</div>
+            </div>
+          </div>
+          <button id="intro-next-button">NEXT</button>
+        </div>
+        <div id="intro-step-steer" class="intro-step hidden">
+          <div class="intro-step-title">TILT LEFT &amp; RIGHT TO MOVE</div>
+          <img id="intro-steer-player" class="intro-sprite" alt="" />
+          <div id="intro-steer-board" class="intro-board"></div>
+          <button id="intro-start-button">START</button>
+        </div>
+      </div>
     </div>
 
     <script type="module" src="/src/core/main.js"></script>

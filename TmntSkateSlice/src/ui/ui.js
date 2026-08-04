@@ -25,6 +25,24 @@ const BUFF_ICON_URLS = {
   magnet: new URL('../assets/powerup_magnet.png', import.meta.url).href,
 };
 
+// Intro tutorial step 1's item icons -- the real gameplay sprites (pizza +
+// the 3 pickups), never new art, so it reads as "this is literally what
+// falls," not a generic icon (same principle the reference pattern used).
+const INTRO_GOOD_ICON_URLS = {
+  pizza: new URL('../assets/pizza_slice.png', import.meta.url).href,
+  shield: new URL('../assets/powerup_shield.png', import.meta.url).href,
+  magnet: new URL('../assets/powerup_magnet.png', import.meta.url).href,
+  wave: new URL('../assets/powerup_wave.png', import.meta.url).href,
+};
+const INTRO_BOMB_ICON_URL = new URL('../assets/bomb.png', import.meta.url).href;
+
+// Same order as entities/player.js's RUN_CYCLE_KEYS -- step 2 plays the
+// character's real run-cycle frames while it sweeps, not a static pose.
+const INTRO_RUN_FRAME_URLS = [
+  new URL('../assets/mike_run_1.png', import.meta.url).href,
+  new URL('../assets/mike_run_3.png', import.meta.url).href,
+];
+
 // Per-color pizza-box art, keyed by box id (same literal-path rule as above --
 // no template URLs). The cardboard is tinted to each set's color while the
 // pizza stays golden, so the HUD chip reads at a glance as "which set am I
@@ -77,7 +95,19 @@ export function createUI() {
     pauseButton: document.getElementById('pause-button'),
     pausedBadge: document.getElementById('paused-badge'),
     muteButton: document.getElementById('mute-button'),
+    introOverlay: document.getElementById('intro-tutorial-overlay'),
+    introStepItems: document.getElementById('intro-step-items'),
+    introStepSteer: document.getElementById('intro-step-steer'),
+    introSteerPlayer: document.getElementById('intro-steer-player'),
   };
+
+  // Step 1's item icons -- set once, static content (unlike the box-reward
+  // pool, this popup never changes what it shows).
+  document.getElementById('intro-icon-pizza').src = INTRO_GOOD_ICON_URLS.pizza;
+  document.getElementById('intro-icon-shield').src = INTRO_GOOD_ICON_URLS.shield;
+  document.getElementById('intro-icon-magnet').src = INTRO_GOOD_ICON_URLS.magnet;
+  document.getElementById('intro-icon-wave').src = INTRO_GOOD_ICON_URLS.wave;
+  document.getElementById('intro-icon-bomb').src = INTRO_BOMB_ICON_URL;
 
   // Build MAX_LIVES life-icon slots once. Only the first `capacity` are shown
   // (the rest hidden) and the first `remaining` are full vs. spent -- see
@@ -307,6 +337,21 @@ export function createUI() {
   const lastBoxKeys = {}; // per-box last-written key
   const lastBuffKeys = {}; // per-buff last-written key
   let lastBombKillKey = null; // bomb-kill chip last-written key
+  let lastIntroRunFrame = null; // intro step 2's run-cycle frame last-written index
+
+  function setIntroStep(step) {
+    el.introStepItems.classList.toggle('hidden', step !== 1);
+    el.introStepSteer.classList.toggle('hidden', step !== 2);
+  }
+
+  // index into INTRO_RUN_FRAME_URLS -- step 2's continuous board/character
+  // sweep is pure CSS (see style.css), only the run-cycle frame itself is
+  // dt-driven from core/main.js to match the real in-game cadence.
+  function setIntroRunFrame(index) {
+    if (index === lastIntroRunFrame) return;
+    lastIntroRunFrame = index;
+    el.introSteerPlayer.src = INTRO_RUN_FRAME_URLS[index];
+  }
 
   return {
     // Foreground celebration when a box completes: color-coded title + bonus +
@@ -527,5 +572,22 @@ export function createUI() {
     setMuted(isMuted) {
       el.muteButton.innerHTML = isMuted ? '&#128263;' : '&#128266;'; // muted : speaker-on glyph
     },
+
+    // First-run onboarding tutorial (see core/gameState.js's 'intro' state
+    // and core/main.js's beginIntro/advanceIntroStep/dismissIntro). Called
+    // fresh at the start of every run, not gated behind a "seen it" flag.
+    showIntroTutorial() {
+      el.introOverlay.classList.remove('hidden');
+      lastIntroRunFrame = null;
+      setIntroStep(1);
+      setIntroRunFrame(0);
+    },
+
+    hideIntroTutorial() {
+      el.introOverlay.classList.add('hidden');
+    },
+
+    setIntroStep,
+    setIntroRunFrame,
   };
 }
