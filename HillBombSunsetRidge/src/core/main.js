@@ -20,8 +20,9 @@ import {
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
   THETA_MAX, THETA_GRAVITY, THETA_CARVE_TORQUE, THETA_DAMP, HEIGHT_EXCHANGE,
   TROUGH_RADIUS,
-  AIR_DURATION, AIR_HEIGHT, AIR_DURATION_HIGH, AIR_HEIGHT_HIGH, HIGH_JUMP_CHANCE,
-  AIR_DURATION_BACKFLIP, AIR_HEIGHT_BACKFLIP,
+  AIR_DURATION, AIR_HEIGHT, AIR_DURATION_HIGH, AIR_HEIGHT_HIGH,
+  AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
+  AIR_DURATION_BACKFLIP, AIR_HEIGHT_BACKFLIP_MAX,
   AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO,
   TRICK_LAND_SETTLE_DURATION,
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
@@ -157,20 +158,34 @@ function reset() {
 
 /**
  * Start one air event -- ollie, grind-exit, or ramp launch all funnel through
- * here so the high-jump roll lives in exactly one place.
+ * here so the trick decision lives in exactly one place.
  *
- * Two jump types (Amit, direct): a REGULAR jump (what launches already did,
- * just much less altitude than before) and a rarer HIGH JUMP with a procedural
- * whole-body backflip or spin, since there are no baked animations for either
- * trick. Which one happens is a placeholder random roll for now -- "random
- * between them, it doesn't matter how, we'll have real triggers or pickups for
- * that later" -- so HIGH_JUMP_CHANCE is the one thing to swap out for a real
- * trigger (a held input, a specific ramp, a pickup) when one exists.
+ * THE HEIGHT DECIDES THE TRICK, not the other way round. Amit: "the height of
+ * the jump needs to be calculated based on the action movement of the boy, and
+ * if it hits a minimum threshold then enable doing a backflip."
+ *
+ * So: work out how much air this launch actually earned (ramp strength x how
+ * fast the rider was going), and only if it clears BACKFLIP_MIN_HEIGHT is a
+ * flip possible. That inverts the old model, where a random roll picked a trick
+ * and the trick then dictated a fixed height -- meaning a feeble ollie could
+ * produce the same towering backflip as a full-speed hit on the big kicker.
+ *
+ * Right now every qualifying jump flips, per "for now every time you can do a
+ * backflip do a backflip". The random/conditional layer he mentioned wanting
+ * later goes exactly here, gated behind the same `canFlip` check.
  */
 function beginAir(power, points, forcedTrick) {
+  // How much air this launch earned. Speed never contributes zero -- a crawling
+  // rider still gets some pop, just never enough to reach the flip threshold.
+  const speedFactor = AIR_SPEED_FLOOR
+    + AIR_SPEED_GAIN * Math.min(1.2, state.speed / SPEED_REF);
+  const earnedHeight = AIR_HEIGHT_BASE * power * power * speedFactor;
+
+  const canFlip = earnedHeight >= BACKFLIP_MIN_HEIGHT;
   const trick = forcedTrick !== undefined
     ? forcedTrick
-    : (Math.random() < HIGH_JUMP_CHANCE ? (Math.random() < 0.5 ? 'backflip' : 'spin') : null);
+    : (canFlip ? 'backflip' : null);
+
   state.airActive = true;
   state.airT = 0;
   state.airPower = power;
@@ -184,20 +199,23 @@ function beginAir(power, points, forcedTrick) {
   // a big ramp's power stretch the duration also silently slowed the flip. The
   // backflip was authored at 0.55s but measured 665-841ms in play for exactly
   // that reason. Tricks should feel the same every time you see them.
-  //
-  // An ORDINARY jump still scales with ramp power -- a bigger kicker giving a
-  // longer air is correct, and there's no rotation riding on its timing.
   if (trick === 'backflip') {
-    state.airHeight = AIR_HEIGHT_BACKFLIP;
+    // The earned height IS the jump -- capped only so a freak launch can't
+    // fling the rider absurdly high.
+    state.airHeight = Math.min(earnedHeight, AIR_HEIGHT_BACKFLIP_MAX);
     state.airDuration = AIR_DURATION_BACKFLIP;
   } else if (trick === 'spin') {
     state.airHeight = AIR_HEIGHT_HIGH;
     state.airDuration = AIR_DURATION_HIGH;
   } else if (trick === 'hop') {
+    // The hop-over is a fixed, deliberate save move: it has to clear a
+    // 0.52-0.62 rail by a believable margin regardless of how fast you hit it.
     state.airHeight = AIR_HEIGHT_HOP;
     state.airDuration = AIR_DURATION_HOP;
   } else {
-    state.airHeight = AIR_HEIGHT;
+    // An ordinary jump also uses the earned height now, so a fast hit off a
+    // kicker still visibly out-jumps a slow one -- it just didn't earn a flip.
+    state.airHeight = earnedHeight;
     state.airDuration = AIR_DURATION * power;
   }
 }
@@ -408,6 +426,14 @@ function frame() {
           beginAir(hit.def.launch.power, hit.def.launch.points);
           hit.spent = true;
           hud.banner(hit.def.label);
+        } else if (hit.def.kind === 'grind' && state.airActive && state.airTrick) {
+          // MID-TRICK: leave it alone. Landing into a grind is normally a happy
+          // accident, but interrupting a flip kills airActive instantly, which
+          // zeroes the rotation and snaps a half-turned rider upright in one
+          // frame (measured: caught at 3.43 rad -- a half rotation -- then gone).
+          // That was rare while flips were a 35% roll; now that every qualifying
+          // jump flips it would be constant. Let the flip finish; the rail is
+          // still there to be caught on a later pass.
         } else if (hit.def.kind === 'grind') {
           // APPROACH ANGLE GATE. Gliding a rail/ledge only makes sense if you
           // arrive roughly along it; snapping into a grind while cutting hard

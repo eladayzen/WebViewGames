@@ -88,16 +88,37 @@ export const POP_RELEASE = 0.16; // ...and 0.20, because back-lean is the hard a
 export const AIR_DURATION = 0.62; // seconds from launch to landing
 export const AIR_HEIGHT = 1.2;
 
-// HIGH JUMP -- a rarer, taller air with a procedural whole-body backflip or
-// spin (rider.js), for when there are no baked animations for the trick. Which
-// jump happens is a placeholder random roll for now, per Amit directly:
-// "random between them, it doesn't matter how -- we'll have real triggers or
-// pickups for that later." Replace HIGH_JUMP_CHANCE with a real trigger
-// (an explicit input, a specific ramp type, a pickup) when one exists; nothing
-// else in main.js should need to change.
-export const HIGH_JUMP_CHANCE = 0.35;
-// SPIN's height/duration -- unchanged, Amit confirmed "the spin is really
-// good" (only its rotation rate needed adjusting, see rider.js).
+// --- EARNED AIR ------------------------------------------------------------
+// Jump height is DERIVED from what the rider actually did, not from which
+// trick got rolled. Amit: "the height of the jump needs to be calculated based
+// on the action movement of the boy, and if it hits a minimum threshold then
+// enable doing a backflip."
+//
+//   height = AIR_HEIGHT_BASE * power^2 * speedFactor
+//
+// power is the launcher's own strength (ollie 0.72, kicker 1.0, bank 1.2, big
+// kicker 1.5) and it's SQUARED so the ramps spread out properly instead of
+// bunching -- linear left every launcher within a whisker of every other, which
+// makes a height threshold meaningless as a gate.
+export const AIR_HEIGHT_BASE = 1.6;
+// Speed's contribution, as a fraction of SPEED_REF. Never drops to zero: even a
+// crawling rider gets some pop off a ramp, they just can't reach a flip.
+export const AIR_SPEED_FLOOR = 0.45;
+export const AIR_SPEED_GAIN = 0.55;
+
+// The bar a jump must clear to permit a backflip. Sized against the spread the
+// formula actually produces at full speed:
+//   ollie 0.83 | kicker 1.60 | bank 2.30 | big kicker 3.60
+// so 2.2 means a bank or a big kicker earns a flip and an ollie or plain kicker
+// never can -- and slowing down takes even the big ramps below it. Speed and
+// ramp choice both matter, which is the point.
+export const BACKFLIP_MIN_HEIGHT = 2.2;
+
+// SPIN is parked, not deleted. Amit: "for now every time you can do a backflip,
+// do a backflip" -- so the trick choice is no longer a random roll between the
+// two, and spin currently never triggers. Its constants and its rider.js
+// rotation path are intact, ready for the "another system of random / are we
+// doing it or not" he mentioned wanting later.
 export const AIR_DURATION_HIGH = 1.3; // long enough to read a full rotation
 export const AIR_HEIGHT_HIGH = 3.0;
 // BACKFLIP: a SNAPPY up-and-down, "like half a second of a jump" (Amit,
@@ -106,13 +127,11 @@ export const AIR_HEIGHT_HIGH = 3.0;
 // -- there's no separate rotation-speed knob to touch, and there shouldn't be:
 // that decoupling is what made an earlier pass finish the flip before landing.
 //
-// Height STAYS HIGH. Amit had explicitly asked for the backflip to be higher
-// ("make the jump higher so it will make sense"), and the only later note was
-// that it should be QUICKER -- I dropped 4.0 to 1.4 off my own ballistics
-// reasoning, which undid a change he'd asked for and wasn't requested. The arc
-// is a sine curve, not true projectile motion, so high AND fast is perfectly
-// coherent here: it snaps up, turns over, and snaps back down.
-export const AIR_HEIGHT_BACKFLIP = 4.0;
+// Height is no longer a fixed number for the backflip -- it's whatever the
+// EARNED AIR formula above produced, which is what qualified the jump for a
+// flip in the first place. AIR_HEIGHT_BACKFLIP is kept only as the ceiling, so
+// an unusually hot launch can't fling the rider absurdly high.
+export const AIR_HEIGHT_BACKFLIP_MAX = 4.0;
 export const AIR_DURATION_BACKFLIP = 0.55;
 
 // HOP-OVER -- the bail-out when you meet a rail or ledge at a bad angle.
