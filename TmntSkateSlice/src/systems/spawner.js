@@ -5,7 +5,7 @@
 // item).
 
 import { createFallingItem } from '../entities/fallingItem.js';
-import { rollItemType } from '../data/itemTypes.js';
+import { rollItemType, ITEM_TYPES } from '../data/itemTypes.js';
 import { ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, MAX_SPAWN_X_JUMP_FRAC } from '../data/constants.js';
 
 export function createSpawner() {
@@ -43,11 +43,24 @@ function pickFallSpeedFrac(stage) {
 // live collection-box state) is threaded through to rollItemType so
 // box-colored pizza variants can spawn more often while their box is active
 // (see data/itemTypes.js / systems/boxes.js).
-export function updateSpawner(sp, dt, stage, boxes) {
+//
+// `forcedBombXFrac` (optional, systems/bombPresence.js): when set, this
+// spawn is FORCED to a bomb at exactly that x, bypassing both the normal
+// weighted roll AND pickNextX's random-walk -- a deliberate exception to the
+// "never a big x jump between spawns" rule above, since forcing the bomb
+// specifically to a play-area EDGE (main.js picks whichever edge is far from
+// the player) is the whole point: it's meant to threaten wherever the
+// player has been safely camping, not ease in from wherever the walk was.
+// sp.lastXFrac is still updated so the walk continues naturally afterward.
+export function updateSpawner(sp, dt, stage, boxes, forcedBombXFrac = null) {
   sp.timer -= dt;
   if (sp.timer > 0) return null;
 
   sp.timer = stage.spawnIntervalSec;
+  if (forcedBombXFrac != null) {
+    sp.lastXFrac = forcedBombXFrac;
+    return createFallingItem(ITEM_TYPES.BOMB, forcedBombXFrac, pickFallSpeedFrac(stage));
+  }
   const type = rollItemType(stage, boxes);
   const x = pickNextX(sp);
   return createFallingItem(type, x, pickFallSpeedFrac(stage));

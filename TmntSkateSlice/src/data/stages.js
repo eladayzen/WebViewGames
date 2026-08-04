@@ -35,7 +35,7 @@ export const STAGES = [
     groundYFrac: 0.87,
     fallSpeedFrac: 0.16,
     spawnIntervalSec: 1.4,
-    bombChance: 0.20,
+    bombChance: 0.24, // a bit more, not a lot (2026-08-05, was 0.20) -- see systems/bombPresence.js for the separate "never too long without one" floor
     // Highest power-up rate of any stage ON PURPOSE (raised 0.12 -> 0.16,
     // 2026-08-02): the early game should hand out the most help (now
     // shield-dominated -- see powerUps.js) so a new player survives the
@@ -60,7 +60,7 @@ export const STAGES = [
     groundYFrac: 0.85,
     fallSpeedFrac: 0.21,
     spawnIntervalSec: 1.15,
-    bombChance: 0.28,
+    bombChance: 0.32, // a bit more, not a lot (2026-08-05, was 0.28)
     powerUpChance: 0.13,
     advanceScore: 3000, // kept; cumulative (+2500 over L1->L2's 500), see stage 1 note
     advanceTimeSec: Infinity, // score-only advancement
@@ -73,7 +73,7 @@ export const STAGES = [
     groundYFrac: 0.87,
     fallSpeedFrac: 0.26,
     spawnIntervalSec: 0.95,
-    bombChance: 0.35,
+    bombChance: 0.39, // a bit more, not a lot (2026-08-05, was 0.35)
     powerUpChance: 0.14,
     // Last stage: holds here. Denser late-game ramping beyond this is
     // explicitly Post-MVP scope (§2, §10) -- not built here.

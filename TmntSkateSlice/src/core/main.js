@@ -28,6 +28,7 @@ import {
 } from '../entities/player.js';
 import { updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
 import { createSpawner, resetSpawner, updateSpawner } from '../systems/spawner.js';
+import { createBombPresence, resetBombPresence, updateBombPresence } from '../systems/bombPresence.js';
 import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../systems/boxes.js';
 import { createBombKills, resetBombKills, registerBombKill, updateBombKills } from '../systems/bombKills.js';
 import { rollBoxReward, BOX_COLOR_BY_ID } from '../data/boxColors.js';
@@ -47,7 +48,7 @@ import {
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
-import { PLAYER_HEIGHT_FRAC } from '../data/constants.js';
+import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC } from '../data/constants.js';
 
 // Clamp so a tab-resume/frame-hitch never simulates a huge leap. Raised
 // 1/20 -> 1/10 (2026-07-30): the old 1/20 meant any frame slower than 20fps
@@ -71,6 +72,7 @@ async function boot() {
   const gs = createGameState();
   const player = createPlayer();
   const spawner = createSpawner();
+  const bombPresence = createBombPresence();
   const difficulty = createDifficulty();
   const scoring = createScoring();
   const lives = createLives();
@@ -109,6 +111,7 @@ async function boot() {
   function fullReset() {
     resetPlayer(player);
     resetSpawner(spawner);
+    resetBombPresence(bombPresence);
     resetDifficulty(difficulty);
     resetScoring(scoring);
     resetLives(lives);
@@ -372,7 +375,15 @@ async function boot() {
       return stage;
     }
 
-    const spawned = updateSpawner(spawner, dt, stage, boxes);
+    // Bomb presence floor (2026-08-05): if it's been too long since a bomb
+    // was actually on screen, force the NEXT spawn to be a bomb, at the
+    // play-area edge FAR from the player -- directly answers "I can camp an
+    // edge and stay safe." See systems/bombPresence.js.
+    const bombOnScreen = items.some((it) => !it.resolved && it.type.kind === 'hazard');
+    const forceBomb = updateBombPresence(bombPresence, dt, bombOnScreen);
+    const forcedBombXFrac = forceBomb ? (player.xFrac < 0.5 ? ITEM_MAX_X_FRAC : ITEM_MIN_X_FRAC) : null;
+
+    const spawned = updateSpawner(spawner, dt, stage, boxes, forcedBombXFrac);
     if (spawned) items.push(spawned);
 
     // groundYFrac is per-stage (each background's floor line differs);
