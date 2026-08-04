@@ -30,6 +30,45 @@ export const TIER_THRESHOLDS = [300, 800, 1500];
 // authored threshold would be a wall the bar sits pinned against.
 export const TIER_STEP_AFTER_LAST = 1000;
 
+// ========================================================================
+// PER-TIER OBSTACLE DENSITY -- the "does it actually get harder" dial
+// ========================================================================
+// Direct feedback: "level 2 feels easier than level 1." Diagnosed as two
+// separate bugs stacked together, both fixed by this system:
+//
+//   1. Nothing scaled obstacle density UP by tier at all. data/spawnConfig.js's
+//      OBSTACLE_SPAWN_INTERVAL_SEC was a flat constant every tier read
+//      identically -- there was no "harder" axis past tier 1, only the speed
+//      ramp (systems/speed.js), which tops out ~45s into a RUN, long before
+//      most players reach tier 2.
+//   2. data/spawnConfig.js's LEVEL_RESTART_EASE_IN_DURATION_SEC grace period
+//      re-widened spacing at the START of every level, tier 2+ included -- so
+//      a level that just finished tier 1 at full settled density opened tier
+//      2 measurably SPARSER for its first ~15s. core/main.js clamps against
+//      this now (see its own comment) using tier 1's threshold below.
+//
+// Interval TIGHTENS (harder) by this many seconds per tier past the first,
+// down to a floor -- tier 1 keeps data/spawnConfig.js's authored
+// OBSTACLE_SPAWN_INTERVAL_SEC exactly as tuned (that value already reflects
+// the "make it easier" pass earlier this session; this system only ever
+// tightens FROM there, never independently of it). See systems/
+// progression.js's obstacleIntervalForTier for the arithmetic.
+//
+// Obstacles only, matching data/spawnConfig.js's own established
+// philosophy (the ease-in dial right above it in that file): obstacles are
+// the one thing that costs a life. Enemies/coins/platforms are NOT scaled
+// by tier -- enemies are rewarding to hit, coins are pure upside, and
+// thinning either would make higher tiers emptier rather than harder,
+// which was already litigated once ("we need difficulty but we need
+// interest as well").
+export const TIER_OBSTACLE_INTERVAL_STEP_SEC = 0.2;
+// Floor keeps real headroom above data/spawnConfig.js's
+// MIN_ENEMY_OBSTACLE_GAP_SEC (0.9s) -- at 1.3s that's a ~0.4s/31% open
+// window, comfortably clear of the ~0.1s/6% choke this repo has already
+// measured once (see that constant's own history in spawnConfig.js). Don't
+// lower this without re-reading that note.
+export const TIER_OBSTACLE_INTERVAL_FLOOR_SEC = 1.3;
+
 // Shown in the bar. The count of names does NOT limit how many tiers exist --
 // past the end, systems/progression.js's tierName WRAPS back to index 0 (see
 // TIER_THEMES below, which wraps in lockstep).

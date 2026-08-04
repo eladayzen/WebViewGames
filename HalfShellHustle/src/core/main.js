@@ -46,7 +46,7 @@ import {
   initPointsFly, spawnPointsFly, updatePointsFly, clearPointsFly,
   refreshPointsFlyTarget,
 } from '../ui/pointsFly.js';
-import { progressAt, themeForTier } from '../systems/progression.js';
+import { progressAt, themeForTier, obstacleIntervalForTier } from '../systems/progression.js';
 import { speedAt, distanceTraveledBy, seedDistanceAt } from '../systems/speed.js';
 import {
   createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
@@ -887,8 +887,28 @@ function boot() {
       const easeDuration = levelIndex === 1
         ? EASE_IN_DURATION_SEC
         : LEVEL_RESTART_EASE_IN_DURATION_SEC;
-      const obstacleInterval = OBSTACLE_SPAWN_INTERVAL_SEC
+      // TIER BASELINE (data/progression.js's TIER_OBSTACLE_INTERVAL_*):
+      // tier 1 keeps OBSTACLE_SPAWN_INTERVAL_SEC exactly as authored, later
+      // tiers tighten from there -- direct feedback, "level 2 feels easier
+      // than level 1," half of which was that nothing made later tiers
+      // harder at all.
+      const tierInterval = obstacleIntervalForTier(levelIndex, OBSTACLE_SPAWN_INTERVAL_SEC);
+      const easedInterval = tierInterval
         * hazardSpacingMultiplierAt(spawnArrivalTime(gameTime) - levelStartTime, easeDuration);
+      // CLAMPED against the PREVIOUS tier's own settled interval, level 2+
+      // only. The other half of the "feels easier" bug: LEVEL_RESTART_EASE_
+      // IN_DURATION_SEC's grace ramp can widen spacing back toward
+      // EASE_IN_HAZARD_SPACING_MULTIPLIER at the very start of a level, and
+      // with tier 1's own baseline that grace was widening spacing PAST what
+      // the player had already been surviving in the level before it --
+      // i.e. tier 2 opened measurably sparser than tier 1 had settled to.
+      // This floor guarantees a level transition can never read as easier
+      // than the level before it, however the ease-in/tier numbers above end
+      // up tuned later. No previous tier exists for tier 1 itself, so it's
+      // unclamped -- that's the run's own onboarding ramp, untouched.
+      const obstacleInterval = levelIndex === 1
+        ? easedInterval
+        : Math.min(easedInterval, obstacleIntervalForTier(levelIndex - 1, OBSTACLE_SPAWN_INTERVAL_SEC));
       updateSpawner(spawnerState, dt, () => {
         if (gameTime - lastEnemySpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
           // data/introSequence.js: spawn close instead of at the far

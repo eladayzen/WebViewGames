@@ -13,6 +13,7 @@
 
 import {
   TIER_THRESHOLDS, TIER_STEP_AFTER_LAST, TIER_NAMES, TIER_THEMES,
+  TIER_OBSTACLE_INTERVAL_STEP_SEC, TIER_OBSTACLE_INTERVAL_FLOOR_SEC,
 } from '../data/progression.js';
 
 // Cumulative points needed to COMPLETE tier n (1-based). Past the authored list
@@ -47,6 +48,18 @@ export function tierName(tier) {
 export function themeForTier(tier) {
   if (TIER_THEMES.length === 0) return null;
   return TIER_THEMES[(tier - 1) % TIER_THEMES.length];
+}
+
+// Obstacle spawn interval for a given tier -- tightens (harder) by
+// TIER_OBSTACLE_INTERVAL_STEP_SEC per tier past the first, clamped at
+// TIER_OBSTACLE_INTERVAL_FLOOR_SEC so it never chokes out the enemy
+// spawner (see that constant's own comment). `baseIntervalSec` is tier 1's
+// own value (data/spawnConfig.js's OBSTACLE_SPAWN_INTERVAL_SEC) -- passed
+// in rather than imported here, so this stays pure arithmetic over a
+// caller-supplied number, same spirit as thresholdForTier above.
+export function obstacleIntervalForTier(tier, baseIntervalSec) {
+  const tightened = baseIntervalSec - (tier - 1) * TIER_OBSTACLE_INTERVAL_STEP_SEC;
+  return Math.max(TIER_OBSTACLE_INTERVAL_FLOOR_SEC, tightened);
 }
 
 // Everything the HUD needs for one score, in one object:
