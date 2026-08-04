@@ -234,11 +234,86 @@ export const GRIND_PUSH_LOCKOUT = 1.0;
 // -- a shorter flight over the same one full rotation reads as quicker on its
 // own, without decoupling the trick from the landing.
 //
-// TRICK_LAND_SETTLE is the small polish on top: a brief absorb-and-recover
-// wobble right after a trick landing ("another small movement of adjusting
-// himself, selling it a bit better"), not present on an ordinary jump.
-export const TRICK_LAND_SETTLE_DURATION = 0.22; // seconds
-export const TRICK_LAND_SETTLE_AMOUNT = 0.20; // radians of forward-pitch dip
+// --- LANDING ABSORB --------------------------------------------------------
+// Amit: "every time the character lands and touches ground, do a small bending
+// down -- torso goes down, knees bend -- to sell the impact. Strongest on the
+// backflip, but also on the spins, and when we end a glide, and the little jump
+// to the side."
+//
+// This REPLACES the old TRICK_LAND_SETTLE, which was a pitch rotation on the
+// whole rider group and fired only after tricks. Rotating the group tipped the
+// BOARD with it, which is not what a landing looks like; and an absorb is a
+// compression, not a tilt. The pose is now real bone work -- knees fold, spine
+// curls -- on the same FK chain and the same board-planting compensation the
+// boardslide crouch uses, so the deck stays on the ground while the body sinks.
+export const LAND_SETTLE_DURATION = 0.40; // seconds, compress + recover
+// ...scaled by impact, for the same saturation reason: a heavier landing can't
+// go much deeper, but it can take longer to push back out of.
+export const LAND_DURATION_FLOOR = 0.78;
+export const LAND_DURATION_GAIN = 0.42;
+// Where in that window the compression peaks. Early -- an impact is a sharp
+// squash followed by a slower push back up, and a symmetric curve reads as a
+// gentle bob rather than a hit. Kept SHORT for a second reason too: see the
+// dead-zone note below.
+export const LAND_SETTLE_PEAK = 0.16;
+
+// The crouch pose, and the scale range it is driven over.
+//
+// THE POSE CANNOT SIMPLY BE SCALED FROM ZERO, and this is geometry rather than
+// tuning. Sweeping the pair and measuring the hips' vertical closure gave:
+//
+//     scale  0.2    0.4    0.6    0.8    0.9    1.0    1.2    1.3
+//     sink  -0.040 -0.058 -0.049 -0.012 +0.016 +0.051 +0.139 +0.190
+//
+// Everything below ~0.85 is NEGATIVE -- the rider stands UP. At small angles
+// the shin's fold drops the foot faster than the hip flexion lifts it, and
+// since the board is pinned to the feet, that reads as the body rising. Tried
+// five different hip/knee/ankle ratios; all of them start negative, because
+// the knee's contribution is first-order in the angle and the hip's is
+// second-order. So a linearly-scaled crouch has a dead zone at the bottom, and
+// the original LAND_AMOUNT table (0.42-0.55 for plain/hop/grind landings) sat
+// squarely inside it -- measured 0.03 of sink on a grind exit versus 0.18 on a
+// backflip, when it should have been roughly half.
+//
+// Two consequences, both deliberate:
+//   1. Amount maps into the MONOTONIC part of the curve (>= ~0.95), not from
+//      zero. LAND_K_FLOOR is the weakest landing's scale, LAND_K_GAIN spreads
+//      the rest up to the backflip.
+//   2. The envelope still has to travel from neutral, so it does cross the
+//      dead zone -- but the short peak time above gets it across in ~35ms,
+//      where the brief upward drift is imperceptible and, if anything, reads
+//      as the legs extending to meet the ground before absorbing.
+export const LAND_HIP_BEND = 0.52;
+export const LAND_KNEE_BEND = 0.95;
+// Solved against the LIVE response, not the offline sweep: the first pass
+// (0.95/0.42, peaking at k=1.37) measured 0.397 of sink on a backflip against a
+// 0.63 rest stance -- nearly sitting on the heels. Fitting the measured
+// sink-vs-k slope (~0.76 per unit k) for a ~0.24 backflip and ~0.13 grind exit
+// gives these, which keep every landing inside the monotonic band while landing
+// at an athletic depth.
+export const LAND_K_FLOOR = 0.84;
+export const LAND_K_GAIN = 0.33;
+// Spine curl, split down the chain. MEASURED: +rotation.x on any spine bone
+// moves the head down and forward (the fold direction), strongest at the lower
+// spine -- Spine -0.083Y/-0.146Z per 0.4 rad, tapering to -0.050/-0.060 by
+// Spine2. Weighting it the same way curls the back instead of hinging it.
+// Driven by the RAW amount, not by the leg scale -- and this is what actually
+// separates a backflip landing from a spin. The leg fold SATURATES: measured
+// sink was 0.249 at k=1.12 and 0.250 at k=1.17, i.e. the knee is already about
+// as folded as it gets, so pushing the scale higher buys nothing and the two
+// biggest tricks landed identically. The torso has plenty of range left, so the
+// curl carries the difference (a full 1.0 vs 0.85 vs 0.5 vs 0.42 spread).
+export const LAND_SPINE_CURL = 0.85;
+
+// How hard each kind of landing hits, 0..1. Ordered per Amit: the backflip is
+// the strongest, spins just under it, and the grind exit and hop are real but
+// lighter -- they're short drops, and overselling them would make ordinary
+// riding look like a series of stumbles.
+export const LAND_AMOUNT_BACKFLIP = 1.0;
+export const LAND_AMOUNT_SPIN = 0.85;
+export const LAND_AMOUNT_GRIND = 0.55;
+export const LAND_AMOUNT_HOP = 0.5;
+export const LAND_AMOUNT_PLAIN = 0.42; // a bare ollie or a small ramp pop
 
 // --- camera: FORTNITE-STYLE STEADY THIRD-PERSON ---
 // Per Amit's direct direction, this REPLACES the build doc's §5.2 orbiting

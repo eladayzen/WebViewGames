@@ -24,7 +24,10 @@ import {
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
   AIR_DURATION_BACKFLIP, AIR_HEIGHT_BACKFLIP_MAX,
   AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO, GRIND_SPARK_RATE,
-  TRICK_LAND_SETTLE_DURATION,
+  LAND_SETTLE_DURATION, LAND_SETTLE_PEAK, LAND_K_FLOOR, LAND_K_GAIN,
+  LAND_DURATION_FLOOR, LAND_DURATION_GAIN,
+  LAND_AMOUNT_BACKFLIP, LAND_AMOUNT_SPIN, LAND_AMOUNT_GRIND,
+  LAND_AMOUNT_HOP, LAND_AMOUNT_PLAIN,
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
 } from '../data/constants.js';
 import { initInput, readInput, forcePop } from '../input/input.js';
@@ -121,7 +124,16 @@ const state = {
   grindYawSign: 1,
   // Height of the launch ramp deck the rider is standing on right now.
   rampLift: 0,
-  trickLandT: 0, // counts down after a TRICK (backflip/spin) landing, for the settle wobble
+  // Landing absorb. landT counts down from LAND_SETTLE_DURATION; landAmount is
+  // how hard THIS landing hit (see the LAND_AMOUNT_* table). Kept apart so the
+  // envelope shape is one piece of code and only its scale varies by trick.
+  landT: 0,
+  landAmount: 0,
+  landDuration: LAND_SETTLE_DURATION,
+  // A grind exit isn't an air, so there's no airT to watch for touchdown --
+  // this flags that the rider is still settling off a rail, and the absorb
+  // fires when grindLift has actually decayed back to the surface.
+  grindLanding: false,
 };
 
 let swingScale = 1;
@@ -139,6 +151,54 @@ const _frame = makeFrame();
 // placement vectors above, which are still live when these are used.
 const _spark = new THREE.Vector3();
 const _sparkBack = new THREE.Vector3();
+
+/**
+ * The landing absorb as a single 0..1 signal: how compressed the rider is right
+ * now. Zero when not landing, peaking shortly after touchdown, back to zero as
+ * he pushes upright again.
+ *
+ * Shaped asymmetrically on purpose. A symmetric curve reads as a gentle bob;
+ * an impact is a fast squash followed by a slower recovery, so the peak sits
+ * early (LAND_SETTLE_PEAK) and the ride back up takes the rest of the window.
+ * Both halves are smoothstepped so there's no corner at the peak.
+ */
+function landPose() {
+  if (state.landT <= 0) return 0;
+  const p = 1 - state.landT / state.landDuration; // 0 at touchdown -> 1 at end
+  const x = p < LAND_SETTLE_PEAK
+    ? p / LAND_SETTLE_PEAK
+    : 1 - (p - LAND_SETTLE_PEAK) / (1 - LAND_SETTLE_PEAK);
+  // Map the trick's strength into the crouch scale's MONOTONIC band rather
+  // than using it as a raw 0..1 multiplier -- see the dead-zone measurements in
+  // constants.js. The envelope then rides that scale from neutral up to it and
+  // back, so the returned value peaks at kPeak (which is >1 by design: it is a
+  // multiplier on the LAND_*_BEND pair, not a fraction of it).
+  const kPeak = LAND_K_FLOOR + state.landAmount * LAND_K_GAIN;
+  return kPeak * x * x * (3 - 2 * x); // smoothstep
+}
+
+/**
+ * The same envelope, but scaled by the RAW impact rather than the leg-crouch
+ * scale. The spine curl uses this so heavy and light landings actually differ:
+ * the legs saturate, the torso doesn't.
+ */
+function landCurl() {
+  if (state.landT <= 0) return 0;
+  const p = 1 - state.landT / state.landDuration;
+  const x = p < LAND_SETTLE_PEAK
+    ? p / LAND_SETTLE_PEAK
+    : 1 - (p - LAND_SETTLE_PEAK) / (1 - LAND_SETTLE_PEAK);
+  return state.landAmount * x * x * (3 - 2 * x);
+}
+
+/** Begin a landing absorb of the given strength (0..1). */
+function beginLanding(amount) {
+  state.landAmount = amount;
+  // Heavier landings take longer to recover from, which is the other half of
+  // telling them apart once the leg fold has saturated.
+  state.landDuration = LAND_SETTLE_DURATION * (LAND_DURATION_FLOOR + amount * LAND_DURATION_GAIN);
+  state.landT = state.landDuration;
+}
 
 function reset() {
   state.s = 0;
@@ -163,7 +223,10 @@ function reset() {
   state.grindLift = 0;
   state.grindLiftHeight = 0;
   state.rampLift = 0;
-  state.trickLandT = 0;
+  state.landT = 0;
+  state.landAmount = 0;
+  state.landDuration = LAND_SETTLE_DURATION;
+  state.grindLanding = false;
   autoTrickTimer = 0;
   rig.reset();
   props.reset();
@@ -387,11 +450,16 @@ function frame() {
         // A trick's rotation is synced 1:1 to airT, so it lands exactly as it
         // completes (rider.js). This is the extra beat right after: a brief
         // absorb-and-recover wobble, ordinary jumps don't get.
-        if (state.airTrick) state.trickLandT = TRICK_LAND_SETTLE_DURATION;
+        // ABSORB ON EVERY LANDING, not just tricks. Scale by what was just
+        // pulled off -- a backflip lands hardest, a hop barely at all.
+        beginLanding(state.airTrick === 'backflip' ? LAND_AMOUNT_BACKFLIP
+          : state.airTrick === 'spin' ? LAND_AMOUNT_SPIN
+          : state.airTrick === 'hop' ? LAND_AMOUNT_HOP
+          : LAND_AMOUNT_PLAIN);
         state.airTrick = null;
       }
     }
-    if (state.trickLandT > 0) state.trickLandT = Math.max(0, state.trickLandT - dt);
+    if (state.landT > 0) state.landT = Math.max(0, state.landT - dt);
 
     // --- grinding ----------------------------------------------------------
     if (state.grind) {
@@ -414,6 +482,11 @@ function frame() {
         // launched arc -- and the ordinary theta pendulum (already running
         // whenever !state.grind) pulls the rider back toward the floor under
         // the same gravity as normal riding.
+        //
+        // The absorb can't fire here though -- he's still up at rail height and
+        // hasn't touched anything yet. Flag it and let the check below trigger
+        // when grindLift has actually decayed back down.
+        state.grindLanding = true;
       }
     }
 
@@ -425,6 +498,13 @@ function frame() {
       const liftTarget = state.grind ? 1 : 0;
       const liftRate = state.grind ? (1 / 0.14) : (1 / 0.22); // mount faster than settle
       state.grindLift += (liftTarget - state.grindLift) * Math.min(1, dt * liftRate);
+      // TOUCHDOWN off a rail. Timing the absorb to the lift actually decaying
+      // -- rather than to the frame the grind ended -- means he crouches as he
+      // meets the surface, not while still dropping toward it.
+      if (state.grindLanding && state.grindLift < 0.12) {
+        state.grindLanding = false;
+        beginLanding(LAND_AMOUNT_GRIND);
+      }
     }
 
     // Ramp deck height. ASYMMETRIC on purpose: rising, it snaps to the exact
@@ -489,7 +569,20 @@ function frame() {
           const crossRatio = lateralSpeed / Math.max(1, state.speed);
           if (crossRatio > GRIND_MAX_CROSS_RATIO) {
             beginAir(1.0, 90, 'hop');
-            hit.spent = true; // don't re-trigger on the next frame's overlap
+            // DELIBERATELY NOT `spent`. Hopping a rail must not consume it:
+            // `spent` is permanent and drops the prop from probe() entirely, so
+            // a rail you skipped over crosswise lost its collider for good and
+            // could never be grinded on a later approach -- and rails are 14-28
+            // units long while a hop only covers ~10-17, so landing back on the
+            // same one is routine, not a corner case.
+            //
+            // The debounce that flag was standing in for is already handled,
+            // and more precisely: the mid-trick branch above refuses grind
+            // entry for as long as a trick is rotating, and airActive/airTrick
+            // are cleared in the SAME frame on landing, so there is no gap
+            // where a hop could re-trigger itself. Once he's down, a crosswise
+            // approach hops again and an aligned one grinds -- which is the
+            // whole point of the angle gate.
             hud.banner('HOP OVER');
           } else {
             state.grind = hit;
@@ -577,7 +670,8 @@ function frame() {
     airActive: state.airActive,
     airT: state.airT,
     airTrick: state.airTrick,
-    trickLandT: state.trickLandT,
+    landPose: landPose(),
+    landCurl: landCurl(),
     swing: swingScale,
     theta: state.theta,
     surfaceUp: _up,

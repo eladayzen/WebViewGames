@@ -42,8 +42,8 @@ import baseColorUrl from '../assets/rig/rider_basecolor.jpg?url';
 import normalUrl from '../assets/rig/rider_normal.jpg?url';
 import metalRoughUrl from '../assets/rig/rider_metalrough.jpg?url';
 import {
-  TRICK_LAND_SETTLE_DURATION, TRICK_LAND_SETTLE_AMOUNT,
   HOP_HIP_FOLD, HOP_KNEE_FOLD,
+  LAND_HIP_BEND, LAND_KNEE_BEND, LAND_SPINE_CURL,
   GRIND_YAW, GRIND_HIP_BEND, GRIND_KNEE_BEND,
   GRIND_ARM_SPREAD, GRIND_ELBOW_OPEN, GRIND_PUSH_LOCKOUT,
 } from '../data/constants.js';
@@ -247,6 +247,10 @@ export function createRider(scene, camera) {
   let armR = null;
   let foreL = null;
   let foreR = null;
+  // Spine chain, cached for the landing absorb's torso curl.
+  let spine = null;
+  let spine1 = null;
+  let spine2 = null;
   // Seconds left on the "no kick-push" lock -- held at full while grinding,
   // then counting down afterwards (Amit: not during the glide "+ 1 second
   // afterwards").
@@ -260,7 +264,8 @@ export function createRider(scene, camera) {
   // the constant subtracted that 0.24 gap as if it were crouch, sinking the
   // whole rider through the rail on every grind. Sampling the live value
   // instead is also self-correcting if the rig or board scale ever changes.
-  let restBoardLocalY = null;
+  const restBoardLocal = new THREE.Vector3();
+  let hasRestBoard = false;
   // Push is an OCCASIONAL ONE-SHOT layered over idle by weight (see update()).
   let pushing = false;
   let pushTimer = 2.5 + Math.random() * 2.5;
@@ -358,6 +363,11 @@ export function createRider(scene, camera) {
           else if (!armL && /LeftArm$/.test(n.name)) armL = n;
           if (!foreR && /RightForeArm$/.test(n.name)) foreR = n;
           else if (!armR && /RightArm$/.test(n.name)) armR = n;
+          // Ordering again: "Spine1"/"Spine2" would both match a loose /Spine/,
+          // so the numbered ones are tested before the bare one.
+          if (!spine1 && /Spine1$/.test(n.name)) spine1 = n;
+          else if (!spine2 && /Spine2$/.test(n.name)) spine2 = n;
+          else if (!spine && /Spine$/.test(n.name)) spine = n;
         });
 
         Promise.all([
@@ -524,15 +534,10 @@ export function createRider(scene, camera) {
       // that used to live here "didn't make a lot of sense" and is gone.
       const rollExtra = 0;
 
-      // Landing settle: a brief absorb-and-recover dip right after a TRICK
-      // lands (main.js only starts this timer when airTrick was set), easing
-      // from full amount at the instant of landing down to nothing -- a
-      // little knee-bend read, not present on an ordinary jump.
-      let settleExtra = 0;
-      if (s.trickLandT > 0) {
-        const settleProgress = 1 - s.trickLandT / TRICK_LAND_SETTLE_DURATION;
-        settleExtra = Math.cos(settleProgress * Math.PI * 0.5) * TRICK_LAND_SETTLE_AMOUNT;
-      }
+      // The landing absorb used to live here as a pitch on `tilt`. It doesn't
+      // any more: rotating this group tips the BOARD with it, and an impact is
+      // a compression rather than a tilt. It's real bone work now -- knees and
+      // spine, applied after the mixer further down.
 
       // BOARDSLIDE TWIST. The whole `tilt` group swings side-on to the rail, so
       // board, body and rig all turn together as one piece -- and because the
@@ -541,9 +546,12 @@ export function createRider(scene, camera) {
       // as the rail-height lift, so the rider twists into the trick exactly as
       // he rises onto the rail and untwists as he settles off it.
       const grindPose = s.grindPose || 0;
+      // Hoisted alongside grindPose: both the bone pose (inside the rigged
+      // branch) and the board-planting compensation (outside it) read this.
+      const landPose = s.landPose || 0;
       const grindYaw = grindPose * GRIND_YAW * (s.grindYawSign || 1);
 
-      tilt.rotation.x = s.tucking * 0.30 + pitchExtra + settleExtra;
+      tilt.rotation.x = s.tucking * 0.30 + pitchExtra;
       tilt.rotation.y = yawExtra + grindYaw;
       tilt.rotation.z = roll + rollExtra;
 
@@ -566,7 +574,13 @@ export function createRider(scene, camera) {
         if (s.grinding) pushLockT = GRIND_PUSH_LOCKOUT;
         else if (pushLockT > 0) pushLockT = Math.max(0, pushLockT - dt);
 
-        if (s.airActive || pushLockT > 0) {
+        // A landing absorb bars it too. Partly because kick-pushing while
+        // soaking up an impact is nonsense, and partly mechanical: a push lifts
+        // one foot clear of the deck, and the board is pinned to the FEET
+        // during a pose, so a push overlapping an absorb dragged the deck off
+        // its resting height (measured up to 0.067 of drift on exactly those
+        // landings, versus ~0.002 on the clean ones).
+        if (s.airActive || pushLockT > 0 || landPose > 0.001) {
           // NEVER show the push (leg-kick) animation mid-air -- you can't
           // kick-push off a road that isn't under your foot. This used to be
           // gated only against STARTING a new push (`!s.airActive && !pushing`
@@ -665,13 +679,45 @@ export function createRider(scene, camera) {
         // sinks the hips down over feet that stay put. FK alone can't express
         // that (it moves the feet, not the hips), which is what the tilt-height
         // compensation further down exists to fix.
-        if (grindPose > 0.001 && upLegL) {
-          const hip = grindPose * GRIND_HIP_BEND;
-          const knee = grindPose * GRIND_KNEE_BEND;
-          upLegL.rotation.x -= hip;
-          upLegR.rotation.x -= hip;
-          if (legL) legL.rotation.x += knee;
-          if (legR) legR.rotation.x += knee;
+        //
+        // The grind crouch and the landing absorb are THE SAME physical pose,
+        // so they take the larger of the two rather than summing. They do
+        // overlap in practice -- landing a backflip straight onto a rail fires
+        // both, and stacking them folded the rider to 0.067 of hip-above-board
+        // against a 0.63 rest stance: a cartoon squat, not an absorb.
+        const crouchHip = Math.max(grindPose * GRIND_HIP_BEND, landPose * LAND_HIP_BEND);
+        const crouchKnee = Math.max(grindPose * GRIND_KNEE_BEND, landPose * LAND_KNEE_BEND);
+        if (crouchHip > 0.001 && upLegL) {
+          upLegL.rotation.x -= crouchHip;
+          upLegR.rotation.x -= crouchHip;
+          if (legL) legL.rotation.x += crouchKnee;
+          if (legR) legR.rotation.x += crouchKnee;
+        }
+
+        // --- LANDING ABSORB (procedural, layered ON TOP of the clips) --------
+        //
+        // "Every time the character lands and touches ground, a small bending
+        // down -- torso goes down, knees bend -- to sell the impact."
+        //
+        // Knees use the same thigh/shin pairing as the grind crouch, and for
+        // the same measured reason: the two joints oppose each other, and the
+        // shin term has to be carried past the thigh term before the leg closes
+        // at all. Spine curls forward on top, which is the part that actually
+        // reads as absorbing rather than just squatting -- MEASURED as
+        // +rotation.x moving the head down and forward, weighted down the chain
+        // (Spine strongest, Spine2 least) so the back curls instead of hinging.
+        //
+        // The board stays planted through all of it via the same tilt-height
+        // compensation the crouch uses -- so the body drops onto a deck that
+        // doesn't move, which is what an impact looks like.
+        // Legs are handled with the grind crouch above (same pose, max'd);
+        // the spine curl is the landing's own, and is what actually reads as
+        // absorbing rather than merely squatting.
+        if (landPose > 0.001) {
+          const curl = (s.landCurl || 0) * LAND_SPINE_CURL;
+          if (spine) spine.rotation.x += curl * 0.5;
+          if (spine1) spine1.rotation.x += curl * 0.32;
+          if (spine2) spine2.rotation.x += curl * 0.18;
         }
 
         // PIN THE BOARD TO THE FEET. Previously the board sat at a fixed height
@@ -722,8 +768,12 @@ export function createRider(scene, camera) {
           // deck would freeze at its last pre-crouch spot while the rider sank
           // away from it. Both feet really are on the board through a grind, so
           // it takes the same midpoint treatment.
+          // The LANDING ABSORB joins the same club as the grind crouch here:
+          // it folds both legs, the staggered stance moves the two feet by
+          // different amounts, and `spread` grows past the guard -- which would
+          // freeze the deck mid-air while the rider compressed away from it.
           const hopping = s.airTrick === 'hop' && s.airActive;
-          const posing = hopping || grindPose > 0.001;
+          const posing = hopping || grindPose > 0.001 || landPose > 0.001;
           if (posing) {
             board.position.set(
               (_fa.x + _fb.x) * 0.5,
@@ -741,7 +791,7 @@ export function createRider(scene, camera) {
           // Keep the crouch's reference height current, but only from frames
           // where no pose is deforming the legs -- otherwise the reference
           // would chase the crouch and cancel itself out.
-          if (!posing) restBoardLocalY = board.position.y;
+          if (!posing) { restBoardLocal.copy(board.position); hasRestBoard = true; }
         }
       } else {
         // Other modes keep the board at its neutral spot under the rider.
@@ -764,9 +814,28 @@ export function createRider(scene, camera) {
       //
       // Restricted to the grind: a hop's board SHOULD leave the ground. Held at
       // 0 until a rest sample exists, so the very first frames can't lurch.
-      tilt.position.y = (grindPose > 0.001 && restBoardLocalY !== null)
-        ? -(board.position.y - restBoardLocalY)
-        : 0;
+      // Applies to the grind crouch AND the landing absorb -- both sink the
+      // body over a board that must stay put. NOT the hop, whose board should
+      // genuinely leave the ground.
+      //
+      // Done in ROOT space, not tilt-local. Cancelling the raw local-Y change
+      // is only correct while `tilt` is unrotated, and it never is -- carve
+      // rolls it and the tuck pitches it, so the deck's local X and Z leak into
+      // world height and the cancellation comes up short. Measured: the board
+      // floated 0.11-0.14 above its resting height through every absorb, which
+      // is exactly the "feet and board riding up near his waist" look.
+      //
+      // Rotating BOTH the current and the rest local positions by the same
+      // live quaternion isolates the pose's own contribution under whatever
+      // rotation is in effect this frame, and leaves ordinary carve-roll
+      // movement of the deck alone.
+      if ((grindPose > 0.001 || landPose > 0.001) && hasRestBoard) {
+        const upNow = _cu.copy(board.position).applyQuaternion(tilt.quaternion).y;
+        const upRest = _cu.copy(restBoardLocal).applyQuaternion(tilt.quaternion).y;
+        tilt.position.y = -(upNow - upRest);
+      } else {
+        tilt.position.y = 0;
+      }
     },
 
     /**
