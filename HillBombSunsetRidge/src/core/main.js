@@ -20,7 +20,7 @@ import {
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
   THETA_MAX, THETA_GRAVITY, THETA_CARVE_TORQUE, THETA_DAMP, HEIGHT_EXCHANGE,
   TROUGH_RADIUS,
-  AIR_DURATION, AIR_HEIGHT, AIR_DURATION_HIGH, AIR_HEIGHT_HIGH,
+  AIR_DURATION, AIR_HEIGHT, AIR_DURATION_SPIN, SPIN_LATERAL_MIN,
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
   AIR_DURATION_BACKFLIP, AIR_HEIGHT_BACKFLIP_MAX,
   AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO, GRIND_SPARK_RATE,
@@ -40,6 +40,7 @@ import { initSettingsPanel, isPanelOpen, FEEL } from '../ui/settingsPanel.js';
 import { createSky } from '../world/sky.js';
 import { createProps } from '../entities/props.js';
 import { createSparks } from '../entities/sparks.js';
+import { createSpeedLines } from '../entities/speedLines.js';
 import { createScoring } from '../systems/scoring.js';
 import { createHud } from '../ui/hud.js';
 import { CONTROLS, setControlPreset } from '../data/controlPresets.js';
@@ -86,6 +87,7 @@ const trough = createTrough(scene);
 const sky = createSky(scene);
 const props = createProps(scene);
 const sparks = createSparks(scene);
+const speedLines = createSpeedLines(scene);
 const scoring = createScoring();
 const hud = createHud();
 const rider = createRider(scene, camera);
@@ -125,6 +127,7 @@ const state = {
   // from the direction the rider was already drifting, so the twist continues
   // his momentum instead of snapping against it; +1 if he arrived dead straight.
   grindYawSign: 1,
+  spinDir: 1, // which way a spin rotates -- set from lateral drift at takeoff
   // Height of the launch ramp deck the rider is standing on right now.
   rampLift: 0,
   // Landing absorb. landT counts down from LAND_SETTLE_DURATION; landAmount is
@@ -226,6 +229,7 @@ function reset() {
   state.grindLift = 0;
   state.grindLiftHeight = 0;
   state.grindFallVel = 0;
+  state.spinDir = 1;
   state.rampLift = 0;
   state.landT = 0;
   state.landAmount = 0;
@@ -264,9 +268,21 @@ function beginAir(power, points, forcedTrick) {
   const earnedHeight = AIR_HEIGHT_BASE * power * power * speedFactor;
 
   const canFlip = earnedHeight >= BACKFLIP_MIN_HEIGHT;
+
+  // WHICH way you rotate is decided by how hard you were travelling SIDEWAYS at
+  // takeoff. Carrying real lateral momentum into a launch means angular momentum
+  // about the vertical axis, so the rider goes flat instead of end-over-end --
+  // and it hands the trick choice to something the player is actually doing,
+  // rather than a dice roll. Same quantity the grind angle gate uses:
+  // |thetaVel| * radius, the angular rate around the trough in world units.
+  const lateral = Math.abs(state.thetaVel) * radiusAt(state.s);
+  const spinning = lateral >= SPIN_LATERAL_MIN;
   const trick = forcedTrick !== undefined
     ? forcedTrick
-    : (canFlip ? 'backflip' : null);
+    : (canFlip ? (spinning ? 'spin' : 'backflip') : null);
+  // Spin the way he was already going -- rotating against your own drift reads
+  // as the animation fighting the physics.
+  if (trick === 'spin') state.spinDir = Math.sign(state.thetaVel) || 1;
 
   state.airActive = true;
   state.airT = 0;
@@ -287,8 +303,11 @@ function beginAir(power, points, forcedTrick) {
     state.airHeight = Math.min(earnedHeight, AIR_HEIGHT_BACKFLIP_MAX);
     state.airDuration = AIR_DURATION_BACKFLIP;
   } else if (trick === 'spin') {
-    state.airHeight = AIR_HEIGHT_HIGH;
-    state.airDuration = AIR_DURATION_HIGH;
+    // Same earned height and cap as the backflip: the spin REPLACES that jump
+    // rather than being a different one, so the same ramp must not produce
+    // wildly different hang time depending on which way you happened to rotate.
+    state.airHeight = Math.min(earnedHeight, AIR_HEIGHT_BACKFLIP_MAX);
+    state.airDuration = AIR_DURATION_SPIN;
   } else if (trick === 'hop') {
     // The hop-over is a fixed, deliberate save move: it has to clear a
     // 0.52-0.62 rail by a believable margin regardless of how fast you hit it.
@@ -323,6 +342,47 @@ const lobby = createLobby(
     reset();
   },
 );
+
+// --- game over --------------------------------------------------------------
+// Death used to banner "WIPEOUT" and call reset() on the same frame, so a run
+// simply restarted under the player with no end at all -- and, just as
+// importantly, the SDK's restart path had nothing to click. The host watches
+// #gameover-overlay for the `hidden` class and only synth-clicks
+// #restart-button while it's visible; on-device that click plus Space/Enter is
+// the ENTIRE way out, since the WebView forwards no pointer.
+let gameOver = false;
+const gameoverEl = document.getElementById('gameover-overlay');
+const finalScoreEl = document.getElementById('final-score');
+const finalBreakdownEl = document.getElementById('final-breakdown');
+
+function showGameOver() {
+  if (gameOver) return; // the death flag stays set; only fire the screen once
+  gameOver = true;
+  const sc = scoring.state;
+  finalScoreEl.textContent = Math.round(sc.score).toLocaleString();
+  const km = (state.s / 1000).toFixed(2);
+  finalBreakdownEl.textContent = `${km} km ridden  \u00b7  top ${Math.round(sc.topSpeed * 2.6)} km/h`;
+  gameoverEl.classList.remove('hidden');
+}
+
+function restart() {
+  if (!gameOver) return;
+  gameOver = false;
+  gameoverEl.classList.add('hidden');
+  reset();
+}
+
+document.getElementById('restart-button').addEventListener('click', restart);
+// Space/Enter restart too: they're the only keys the host forwards, and the
+// settings panel deliberately stands down while this overlay is up so it can't
+// swallow them.
+window.addEventListener('keydown', (e) => {
+  if (!gameOver) return;
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    restart();
+  }
+});
 
 // --- pause ------------------------------------------------------------------
 // Freezes the simulation but keeps rendering, so the frozen frame stays on
@@ -360,7 +420,7 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, clock.getDelta());
 
-  if (running && !paused && !lobby.isOpen() && !isPanelOpen()) {
+  if (running && !paused && !gameOver && !lobby.isOpen() && !isPanelOpen()) {
     const { carve, pop } = readInput();
 
     // SOFT tilt response (see constants.js). Two stages:
@@ -662,10 +722,7 @@ function frame() {
       hud.popup(e.text, e.points);
       scoring.state.lastEvent = null;
     }
-    if (scoring.state.dead) {
-      hud.banner('WIPEOUT');
-      reset();
-    }
+    if (scoring.state.dead) showGameOver();
 
     trough.update(state.s);
   }
@@ -724,6 +781,7 @@ function frame() {
     // contact ends, but the lockout's own tail starts counting from here.
     grindPose: state.grindLift,
     grindYawSign: state.grindYawSign,
+    spinDir: state.spinDir,
     grinding: !!state.grind,
   };
 
@@ -751,6 +809,11 @@ function frame() {
 
   rig.update(view, dt);
 
+  // Speed lines last, AFTER the camera rig has moved this frame -- they're
+  // built from the camera's matrix, so reading it a frame stale would leave
+  // them lagging behind every turn.
+  speedLines.update(scoring.state.wobble, state.speed, camera, paused ? 0 : dt);
+
   sky.update(camera.position);
   renderer.render(scene, camera);
 
@@ -776,7 +839,7 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer };
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);

@@ -114,13 +114,40 @@ export const AIR_SPEED_GAIN = 0.55;
 // ramp choice both matter, which is the point.
 export const BACKFLIP_MIN_HEIGHT = 2.2;
 
-// SPIN is parked, not deleted. Amit: "for now every time you can do a backflip,
-// do a backflip" -- so the trick choice is no longer a random roll between the
-// two, and spin currently never triggers. Its constants and its rider.js
-// rotation path are intact, ready for the "another system of random / are we
-// doing it or not" he mentioned wanting later.
-export const AIR_DURATION_HIGH = 1.3; // long enough to read a full rotation
-export const AIR_HEIGHT_HIGH = 3.0;
+// SPIN vs BACKFLIP -- decided by how hard you were moving SIDEWAYS at takeoff.
+// Amit: "if my velocity going from side to side is too strong... it won't be a
+// backflip, it would be a spin."
+//
+// Which is also just physics read back to the player: a rider carrying real
+// lateral momentum into a launch has angular momentum about the vertical axis,
+// so they rotate flat rather than end-over-end. It gives the trick choice a
+// cause the player controls, instead of a dice roll.
+//
+// MEASURED distribution of lateral speed (|thetaVel| * radiusAt(s), world units
+// per second across the trough) so the threshold means something:
+//
+//     hands off, riding neutral    0.0 at every percentile -- the pendulum
+//                                  settles in the floor and simply stays there
+//     actively carving   p50 10.08   p90 20.27   p99 25.35   max 26.11
+//
+// The first pass used 9.0, from a cruder probe that assumed a fixed 26 radius
+// and topped out at 13. That was wrong twice over: radiusAt(s) varies along the
+// trough so the real ceiling is double that, and 9.0 turned out to sit BELOW
+// the median of active carving -- 54.7% of carving frames cleared it, which
+// would have made the spin the common case rather than the exceptional one.
+//
+// 15.0 sits between p50 and p90: comfortably above an ordinary committed lean,
+// reached only when genuinely crossing the trough at pace. Ordinary riding
+// never comes close, since neutral is a flat zero.
+export const SPIN_LATERAL_MIN = 15.0;
+
+// The spin gets the SAME earned height and cap as the backflip -- it replaces
+// that jump rather than being a different one, and having the same ramp produce
+// wildly different hang time depending on your drift would read as a bug. Its
+// air time is only a little longer: a flat yaw rotation reads quicker than an
+// end-over-end flip at equal duration, so it needs a touch more to land as
+// clearly as the backflip does at 0.55.
+export const AIR_DURATION_SPIN = 0.62;
 // BACKFLIP: a SNAPPY up-and-down, "like half a second of a jump" (Amit,
 // after seeing the 1.5s version). Since the rotation is locked 1:1 to air time,
 // halving the duration is exactly what makes the flip itself whip round faster
@@ -445,3 +472,24 @@ export const GUIDE_STRIPES = [
   { theta: 0.98, halfWidth: 0.018 },
 ];
 export const GUIDE_COLOR = 0xfdf8ee; // road markings, near-white
+
+// --- SPEED LINES -----------------------------------------------------------
+// Streaks rushing past the camera (entities/speedLines.js), driven by the SPEED
+// WOBBLE meter rather than by raw speed.
+//
+// Raw speed was too touchy. The game accelerates from START_SPEED to terminal
+// within a few seconds and then sits at the top of its range -- measured 10.0
+// min / 34.4 max, but almost all of the time above 30 -- so an effect mapped
+// onto that range snapped from nothing to full almost immediately and then
+// stayed pinned there for the rest of the run.
+//
+// The wobble meter is the same 0..100 signal the HUD bar and the camera shake
+// already use, and it INTEGRATES: it fills only while over the speed threshold
+// and drains whenever you carve, grind or slow. That gives a ramp measured in
+// seconds instead of frames, and ties the streaks to the fail state, so a
+// screen thick with them says the same thing a full bar does.
+// Tuned down hard from a first pass at 220: at full intensity that read as a
+// solid starburst that buried the rider and the road rather than as motion. The
+// point is to feel fast, not to obscure the thing you're steering.
+export const SPEEDLINE_MAX = 85;
+export const SPEEDLINE_COLOR = 0xfdf8ee; // same near-white as the road markings

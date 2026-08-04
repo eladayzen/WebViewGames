@@ -92,6 +92,25 @@
         </div>
       </div>
 
+      <!-- GAME OVER. The ids here are CONTRACTUAL, not stylistic: the GoBalance
+           host watches for #gameover-overlay losing its `hidden` class and, only
+           while it's visible, synthetically clicks #restart-button. Both must be
+           these exact hyphenated ids or restart is dead on the board, with no
+           error to explain why (GOBALANCE_SDK.md, "The exact DOM/JS contract").
+           That matters doubly here because the WebView forwards no pointer at
+           all -- that one synthetic click, plus Space/Enter, is the entire way
+           out of this screen on-device. -->
+      <div id="gameover-overlay" class="overlay hidden">
+        <div class="go-inner">
+          <div class="go-title">WIPEOUT</div>
+          <div class="go-score-label">SCORE</div>
+          <div id="final-score">0</div>
+          <div id="final-breakdown"></div>
+          <button id="restart-button">CONTINUE</button>
+          <div class="go-hint">or press <b>SPACE</b> / <b>ENTER</b></div>
+        </div>
+      </div>
+
       <!-- The render lab lobby. This is the harness's reason to exist: every mode
            differs ONLY in the rider layer, so switching mid-run is an honest A/B
            rather than four separate prototypes. -->

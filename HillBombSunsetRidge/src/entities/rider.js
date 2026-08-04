@@ -528,7 +528,9 @@ export function createRider(scene, camera) {
         pitchExtra = s.airT * Math.PI * 2;
       }
       if (s.airActive && s.airTrick === 'spin') {
-        yawExtra = s.airT * Math.PI * 2;
+        // Signed by the drift direction captured at takeoff (main.js), so the
+        // rotation continues the rider's own momentum instead of fighting it.
+        yawExtra = s.airT * Math.PI * 2 * (s.spinDir || 1);
       }
       // HOP-OVER has NO whole-body rotation -- it's a leg tuck applied directly
       // to the rig's bones after the mixer runs (further down). The barrel roll

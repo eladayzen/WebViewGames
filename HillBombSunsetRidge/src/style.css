@@ -392,3 +392,53 @@ html, body {
 #controls-select option { background: #23180f; color: var(--paper); }
 .hintline { margin: 8px 0 0; font-size: 11.5px; line-height: 1.4; opacity: 0.55; }
 .hintline b { color: var(--hot); }
+
+/* --- game over (GoBalance SDK DOM contract: #gameover-overlay toggles this
+   exact `hidden` class, #restart-button does the restart -- see
+   GOBALANCE_SDK.md) --- */
+#gameover-overlay {
+  background: radial-gradient(120% 100% at 50% 0%, rgba(60, 34, 26, 0.92) 0%, rgba(20, 14, 10, 0.96) 70%);
+  z-index: 9500; /* above the HUD, below the chrome row */
+}
+.go-inner { text-align: center; color: var(--paper); }
+
+.go-title {
+  font: 900 46px/1 system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  color: var(--hot);
+  margin-bottom: 22px;
+}
+.go-score-label {
+  font: 700 11px system-ui, sans-serif;
+  letter-spacing: 0.18em;
+  opacity: 0.55;
+  margin-bottom: 2px;
+}
+#final-score {
+  font: 900 68px/1 system-ui, sans-serif;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+#final-breakdown {
+  margin-top: 12px;
+  font: 600 12.5px/1.7 system-ui, sans-serif;
+  opacity: 0.6;
+}
+#restart-button {
+  margin-top: 26px;
+  padding: 15px 44px;
+  border: none;
+  border-radius: 999px;
+  background: var(--hot);
+  color: #23150c;
+  font: 800 15px system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+#restart-button:hover { filter: brightness(1.07); }
+.go-hint {
+  margin-top: 12px;
+  font: 500 11.5px system-ui, sans-serif;
+  opacity: 0.45;
+}
+.go-hint b { color: var(--paper); opacity: 0.8; }
