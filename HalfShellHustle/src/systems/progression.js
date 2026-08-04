@@ -24,15 +24,29 @@ export function thresholdForTier(tier) {
   return last + (tier - TIER_THRESHOLDS.length) * TIER_STEP_AFTER_LAST;
 }
 
+// Wraps rather than falling back to "TIER n" past the end of the authored
+// list -- direct feedback: "rotation after the last actual theme is being
+// presented. The next one will start out from the first one." Kept in sync
+// with themeForTier's own wraparound below so the name always matches
+// whichever environment tier n actually plays in (tier 4 announces "CENTRAL
+// CITY" again, not a generic label, since that's genuinely where it's
+// heading back to).
 export function tierName(tier) {
-  return TIER_NAMES[tier - 1] || `TIER ${tier}`;
+  if (TIER_NAMES.length === 0) return `TIER ${tier}`;
+  return TIER_NAMES[(tier - 1) % TIER_NAMES.length];
 }
 
-// The environment key a tier plays in (data/envArt.js's THEMES), or null past
-// the end of TIER_THEMES -- the caller's cue to leave the current street
-// alone rather than tearing it down for a theme that doesn't exist.
+// The environment key a tier plays in (data/envArt.js's THEMES). Wraps back
+// to index 0 past the end of TIER_THEMES rather than returning null --
+// direct feedback: once the last authored theme (currently sunnyStreet, tier
+// 3) is reached, the NEXT tier should cycle back to the first one
+// (centralCity), not freeze on the last theme forever. core/main.js's own
+// swap guard (only rebuild if the theme key actually CHANGED) still does its
+// job unmodified: at tier 4 this returns 'centralCity' while currentThemeKey
+// is still 'sunnyStreet', so the swap fires exactly like any other tier-up.
 export function themeForTier(tier) {
-  return TIER_THEMES[tier - 1] || null;
+  if (TIER_THEMES.length === 0) return null;
+  return TIER_THEMES[(tier - 1) % TIER_THEMES.length];
 }
 
 // Everything the HUD needs for one score, in one object:

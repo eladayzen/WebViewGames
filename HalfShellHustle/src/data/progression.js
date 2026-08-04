@@ -38,9 +38,9 @@ export const TIER_THRESHOLDS = [100, 200, 300]; // TEMP (QA) -- real: [300, 900,
 // it the last authored threshold would be a wall the bar sits pinned against.
 export const TIER_STEP_AFTER_LAST = 100; // TEMP (QA) -- real: 1500
 
-// Shown in the bar. Purely cosmetic; the count of names does NOT limit how many
-// tiers exist -- past the end it falls back to "TIER n" (see
-// systems/progression.js's tierName).
+// Shown in the bar. The count of names does NOT limit how many tiers exist --
+// past the end, systems/progression.js's tierName WRAPS back to index 0 (see
+// TIER_THEMES below, which wraps in lockstep).
 //
 // ORDER, direct feedback: sunnyStreet "doesn't look good enough at all" next
 // to the now-fixed centralCity, so it moved to tier 3 to buy room for its own
@@ -93,8 +93,12 @@ export const LEVEL_SWAPS_ENVIRONMENT = true;
 // TIER_NAMES above -- they describe the same sequence from two angles (what to
 // call it, what to render).
 //
-// Past the end of this list -- or for any tier without an entry -- the theme
-// simply does not change. That's deliberate: it's what lets TIER_THRESHOLDS
+// Past the end of this list, systems/progression.js's themeForTier WRAPS back
+// to index 0 rather than leaving the theme unchanged -- direct feedback:
+// "rotation after the last actual theme is being presented. The next one
+// will start out from the first one." So tier 4 replays centralCity, tier 5
+// harborDocks, and so on, forever -- which is also what lets TIER_THRESHOLDS
 // keep an open-ended tail without ever needing art for a district that
-// doesn't exist yet.
+// doesn't exist yet: the tail just re-tours the ones that do. tierName wraps
+// the exact same way, so the "NEXT: X" announcement always matches.
 export const TIER_THEMES = ['centralCity', 'harborDocks', 'sunnyStreet'];

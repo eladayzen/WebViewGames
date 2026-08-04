@@ -519,24 +519,31 @@ html, body {
    / lc_curtain_right.png) of one symmetric TMNT-styled artwork, so the two
    meet as one continuous image at the center seam rather than needing to
    tile or align two independent images. background-size: cover rather than
-   a fixed size because #level-complete is a flex child of the aspect-locked
-   #stage -- its own pixel size can vary slightly with viewport, cover keeps
-   each half filling its 50%-wide panel with no gap regardless.
-   translateX(...) rather than left/width is what's animated (see
+   a fixed size because #stage's own pixel size can vary slightly with
+   viewport, cover keeps each half filling its 50%-wide panel with no gap
+   regardless. translateX(...) rather than left/width is what's animated (see
    .lc-curtain-closed below): a transform is compositor-only, no layout
    thrash, same reasoning as every other transform-driven animation in this
    file. ui/hud.js's open/closeLevelCurtains toggle .lc-curtain-closed;
    resetLevelCurtains snaps both open with the transition suppressed, for a
    fresh run where no animation should play.
 
-   The headline/title/next/ready/countdown stack below all need
-   `position: relative` for exactly the reason the curtains need
-   `position: absolute`: per CSS stacking rules, ANY positioned descendant
-   (z-index:auto included) paints above ALL non-positioned normal-flow
-   content, regardless of DOM order -- so without this, the closed curtains
-   (positioned) would silently paint over that whole text stack (not
-   positioned) even though the text comes later in the markup. Confirmed by
-   screenshot: the headline visibly vanished behind the curtains without it. */
+   SIBLINGS of #level-complete in index.html, deliberately NOT children of
+   it (see the markup comment there): #level-complete goes display:none the
+   instant hideLevelComplete runs, and a transition cannot play on an
+   element whose ancestor just went display:none -- nested here, the "open"
+   slide was silently skipped and the curtains just vanished in one frame
+   instead of animating (confirmed by playtest). Own explicit z-index for
+   the same reason -- no longer inheriting .overlay's z-index:20, so without
+   this they'd default to auto and could end up under the canvas or #hud
+   (z-index 10). Matches .overlay's own 20: DOM order (these come right
+   before #level-complete) then puts the text/confetti stack above the
+   curtains at that shared level, same visual relationship as before.
+
+   The headline/title/next/ready/countdown stack keeps its own
+   `position: relative` (below) as defense in depth -- no longer load-
+   bearing against these siblings specifically, but still correct in case
+   anything else positioned ever lands inside #level-complete. */
 #lc-headline, #lc-title, #lc-next, #lc-ready, #lc-countdown {
   position: relative;
 }
@@ -546,21 +553,28 @@ html, body {
   top: 0;
   bottom: 0;
   width: 50%;
+  z-index: 20;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
   transition: transform 0.6s cubic-bezier(0.6, 0, 0.35, 1);
 }
 
+/* Darkened in place with a flat 40%-black layer under the art rather than a
+   new asset pass -- a second background-image layer stacked in front of the
+   PNG (first-listed paints on top), same technique as a CSS scrim over a
+   photo. .lc-curtain's single background-size: cover value above applies to
+   BOTH layers automatically (a shorthand with fewer values than layers
+   repeats the pattern), so this needed no size/position changes. */
 #lc-curtain-left {
   left: 0;
-  background-image: url('./assets/lc_curtain_left.png');
+  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('./assets/lc_curtain_left.png');
   transform: translateX(-100%);
 }
 
 #lc-curtain-right {
   right: 0;
-  background-image: url('./assets/lc_curtain_right.png');
+  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('./assets/lc_curtain_right.png');
   transform: translateX(100%);
 }
 

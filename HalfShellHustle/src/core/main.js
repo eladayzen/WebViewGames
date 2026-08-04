@@ -425,9 +425,12 @@ function boot() {
   // invisible instead of a mid-run stutter.
   //
   // Guarded on the theme key actually CHANGING, not just on
-  // LEVEL_SWAPS_ENVIRONMENT being on: past the last entry in
-  // data/progression.js's TIER_THEMES, themeForTier returns null, and every
-  // tier after that would otherwise try to "swap" to null every single level.
+  // LEVEL_SWAPS_ENVIRONMENT being on. themeForTier now WRAPS past the last
+  // entry in data/progression.js's TIER_THEMES rather than returning null
+  // (direct feedback: rotate back to the first theme once the last one's
+  // been presented) -- so this guard's job today is purely "don't tear down
+  // and rebuild an identical street for no reason", not the null-dodge it
+  // originally existed for.
   function startNextLevel() {
     hud.hideLevelComplete();
     levelIndex = pendingLevelTier;

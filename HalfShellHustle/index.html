@@ -138,6 +138,23 @@
 
       </div>
 
+      <!-- Curtain panels -- direct feedback: slide two TMNT-graphic panels in
+           from the sides partway through the level-complete countdown, both
+           as their own flourish and so the environment swap in core/main.js's
+           startNextLevel has a genuinely opaque cover to hide behind (the
+           #level-complete radial-gradient background below is NOT fully
+           opaque at its center, so that swap was never actually hidden
+           before this). A SIBLING of #level-complete, not a child of it, on
+           purpose: #level-complete gets display:none the instant
+           startNextLevel calls hideLevelComplete, and a transition cannot
+           play on an element whose ancestor just went display:none -- the
+           curtains would (and did) snap open in a single frame instead of
+           sliding. Living outside that element is what lets them keep
+           animating after the text/confetti overlay is already gone. See
+           ui/hud.js's open/closeLevelCurtains. -->
+      <div id="lc-curtain-left" class="lc-curtain"></div>
+      <div id="lc-curtain-right" class="lc-curtain"></div>
+
       <!-- Level-complete transition. NOT the SDK's #gameover-overlay -- that id
            is contractual (the host watches it and synth-clicks #restart-button
            inside it), so this is a separate element with its own id and no
@@ -149,17 +166,6 @@
              was visually just the game-over overlay with different words --
              same dark wash, no motion, no color language of its own. This is
              the fix: an unambiguous celebratory beat, not just a label swap. -->
-        <!-- Curtain panels -- direct feedback: slide two TMNT-graphic panels
-             in from the sides partway through the countdown, both as their
-             own flourish and so the environment swap in core/main.js's
-             startNextLevel has a genuinely opaque cover to hide behind (the
-             radial-gradient background above is NOT fully opaque at its
-             center, so that swap was never actually hidden before this).
-             First in DOM order so they paint BELOW the confetti/headline/
-             countdown stack that follows -- see ui/hud.js's
-             open/closeLevelCurtains. -->
-        <div id="lc-curtain-left" class="lc-curtain"></div>
-        <div id="lc-curtain-right" class="lc-curtain"></div>
         <div id="lc-confetti"></div>
         <!-- The emotional headline, and deliberately the FIRST thing read --
              "LEVEL COMPLETE" is now a caption underneath it, not the title. -->
