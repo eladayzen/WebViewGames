@@ -55,7 +55,8 @@ import {
   createGameState, restartToRunning, triggerGameOver, triggerLevelComplete, triggerIntro,
 } from './gameState.js';
 import {
-  INTRO_LANE_CYCLE, INTRO_LANE_STATE_HOLD_SEC, INTRO_JUMP_CYCLE, INTRO_STEP_AUTO_ADVANCE_SEC,
+  INTRO_LANE_CYCLE, INTRO_LANE_STATE_HOLD_SEC, INTRO_JUMP_CYCLE,
+  INTRO_LANE_STEP_AUTO_ADVANCE_SEC, INTRO_JUMP_STEP_AUTO_ADVANCE_SEC,
 } from '../data/introTutorial.js';
 import {
   updateSteering, pollLaneStep, getLaneTarget, pollJumpPress,
@@ -659,7 +660,7 @@ function boot() {
           introRunFrameIndex = (introRunFrameIndex + 1) % PLAYER_RUN_FRAMES.length;
           hud.setIntroRunFrame(introRunFrameIndex);
         }
-        if (introElapsed >= INTRO_STEP_AUTO_ADVANCE_SEC) advanceIntroStep();
+        if (introElapsed >= INTRO_LANE_STEP_AUTO_ADVANCE_SEC) advanceIntroStep();
       } else {
         introJumpCycleElapsed += dt;
         const currentHold = INTRO_JUMP_CYCLE[introJumpCycleIndex].holdSec;
@@ -668,7 +669,7 @@ function boot() {
           introJumpCycleIndex = (introJumpCycleIndex + 1) % INTRO_JUMP_CYCLE.length;
           hud.setIntroJumpCycleState(introJumpCycleIndex, INTRO_JUMP_CYCLE[introJumpCycleIndex]);
         }
-        if (introElapsed >= INTRO_STEP_AUTO_ADVANCE_SEC) dismissIntro();
+        if (introElapsed >= INTRO_JUMP_STEP_AUTO_ADVANCE_SEC) dismissIntro();
       }
     }
 

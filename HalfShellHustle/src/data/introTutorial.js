@@ -67,5 +67,8 @@ export const INTRO_JUMP_CYCLE = [
 // this is purely the zero-interaction fallback that keeps the game
 // compliant with GOBALANCE_SDK.md's "first playable state must be reachable
 // with no key required" -- see core/gameState.js's own note on the 'intro'
-// state for the full reasoning.
-export const INTRO_STEP_AUTO_ADVANCE_SEC = 8;
+// state for the full reasoning. Two separate constants (not one shared
+// value) per direct feedback -- step 1 needs a beat longer to read given
+// it's the first thing a run shows, step 2 a good deal shorter.
+export const INTRO_LANE_STEP_AUTO_ADVANCE_SEC = 9;
+export const INTRO_JUMP_STEP_AUTO_ADVANCE_SEC = 6;
