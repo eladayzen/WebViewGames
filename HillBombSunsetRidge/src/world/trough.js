@@ -28,7 +28,7 @@ import {
   TROUGH_RADIUS, THETA_MAX, TROUGH_ROLL_AMOUNT, TROUGH_ROLL_WAVELENGTH,
   FUNNEL_SPACING, FUNNEL_WIDTH, FUNNEL_TIGHTNESS,
   TROUGH_COLOR, TROUGH_FLOOR_COLOR, LIP_COLOR,
-  GUIDE_THETAS, GUIDE_COLOR,
+  GUIDE_STRIPES, GUIDE_COLOR,
 } from '../data/constants.js';
 
 // Resolution across the U. The concept art reads as a smooth continuous
@@ -264,10 +264,10 @@ export function createTrough(scene) {
   ];
   // Guide stripes up both walls -- the only way to read curvature and speed off
   // an otherwise flat-coloured surface.
-  for (const t of GUIDE_THETAS) {
+  for (const { theta, halfWidth } of GUIDE_STRIPES) {
     for (const sign of [-1, 1]) {
       surfaces.push(new TroughSurface(
-        sign * (t - 0.018), sign * (t + 0.018), GUIDE_COLOR, 0.05,
+        sign * (theta - halfWidth), sign * (theta + halfWidth), GUIDE_COLOR, 0.05,
       ));
     }
   }

@@ -164,6 +164,34 @@ export const AIR_DURATION_HOP = 0.5;
 export const HOP_HIP_FOLD = 0.78; // knees driven up toward the chest
 export const HOP_KNEE_FOLD = 0.96; // heels tucked back under, board follows
 
+// --- AIR POSE (every jump) --------------------------------------------------
+// Amit: "every jump -- he brings his knees upwards a bit, and the arms are
+// going down to the sides."
+//
+// Applies to EVERY air, not just the hop: plain pops, ramp launches, backflips
+// and spins all get it, enveloped 0 -> peak at apex -> 0 so the legs are fully
+// extended again for touchdown and it hands straight over to the landing
+// absorb. The hop keeps its own deeper fold; the two are max'd rather than
+// summed, since they're the same joints doing the same thing.
+//
+// MEASURED knee rise on this rig, against the hop for scale:
+//     0.30/0.40 -> 0.090     0.45/0.55 -> 0.136
+//     0.60/0.70 -> 0.183     0.78/0.96 -> 0.237  (the hop)
+// 0.45/0.55 is "a bit" -- a little over half the hop's tuck.
+export const AIR_TUCK_HIP = 0.45;
+export const AIR_TUCK_KNEE = 0.55;
+
+// Arms down. Two axes, because neither alone does it: the idle holds the lead
+// arm FORWARD and the trailing arm already low and out, so the chains are not
+// symmetric to begin with. Probing a grid of (x, z) and reading each hand's
+// displacement in the rider's own frame, x+0.3/z-0.35 is the combination that
+// takes BOTH hands down (left -0.064, right -0.022 -- the right starts low, so
+// it has less to travel) while swinging them back rather than across the body.
+// The z term is mirrored between the arms because the two chains are mirror
+// images and a shared sign would swing them opposite ways in world space.
+export const AIR_ARM_DROP = 0.35; // rotation.x, same sign both arms
+export const AIR_ARM_SWING = 0.35; // rotation.z, mirrored
+
 // How crosswise is too crosswise to grind. The rider's lateral speed is
 // |thetaVel| * R (angular rate around the trough, times local radius); compare
 // it to forward speed and the ratio is the tangent of the approach angle.
@@ -396,7 +424,24 @@ export const GRADE = 0.055; // vertical drop per unit travelled
 // impossible to judge. Cheap to add, and they double as the painted guide lines
 // the real texture will carry.
 // Guide stripes up the walls. concept-02 keeps the walls fairly clean and puts
-// the graphic interest in a dashed CENTRE line down the floor, so these are
-// pulled back to two faint lines and the centre line does the speed-reading.
-export const GUIDE_THETAS = [0.62, 0.98];
+// the graphic interest in a dashed CENTRE line down the floor, so the centre
+// line still does the speed-reading and these do the POSITION-reading.
+//
+// Two extra lines added nearer the floor, per Amit: "it really helps read and
+// understand where you are on the field." The old pair sat at 0.62 and 0.98,
+// which is 16.1 and 25.5 units of arc out from the centreline on a 26-unit
+// radius -- so the entire inner half of the trough, which is exactly where the
+// rider spends most of the run, had nothing between the centre line and the
+// first stripe. Now the spacing grades outward: 5.7, 10.9, 16.1, 25.5 units.
+//
+// Half-widths taper inward on purpose. The stripes are all the same physical
+// width in world terms, but the inner ones sit closer to the camera and so
+// render visibly fatter; thinning them keeps the set reading as one even family
+// rather than a heavy pair either side of the centre.
+export const GUIDE_STRIPES = [
+  { theta: 0.22, halfWidth: 0.013 },
+  { theta: 0.42, halfWidth: 0.015 },
+  { theta: 0.62, halfWidth: 0.018 },
+  { theta: 0.98, halfWidth: 0.018 },
+];
 export const GUIDE_COLOR = 0xfdf8ee; // road markings, near-white
