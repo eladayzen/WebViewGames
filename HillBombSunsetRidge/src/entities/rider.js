@@ -44,6 +44,8 @@ import metalRoughUrl from '../assets/rig/rider_metalrough.jpg?url';
 import {
   TRICK_LAND_SETTLE_DURATION, TRICK_LAND_SETTLE_AMOUNT,
   HOP_HIP_FOLD, HOP_KNEE_FOLD,
+  GRIND_YAW, GRIND_HIP_BEND, GRIND_KNEE_BEND,
+  GRIND_ARM_SPREAD, GRIND_ELBOW_OPEN, GRIND_PUSH_LOCKOUT,
 } from '../data/constants.js';
 
 const RIDER_HEIGHT = 1.85;
@@ -90,6 +92,11 @@ const _rup = new THREE.Vector3();
 const _rx = new THREE.Vector3();
 const _rz = new THREE.Vector3();
 const _rbasis = new THREE.Matrix4();
+// Dedicated scratch for contactPoint(). Deliberately NOT shared with the
+// vectors above: an earlier bug in the trough code came from exactly this kind
+// of reuse, where one call quietly clobbered another's working value.
+const _cu = new THREE.Vector3();
+const _q = new THREE.Quaternion();
 
 /**
  * Mixamo's "in place" clips still carry a Hips position track, and the second
@@ -235,6 +242,25 @@ export function createRider(scene, camera) {
   let upLegR = null;
   let legL = null;
   let legR = null;
+  // Arm bones, cached for the boardslide's spread-arms balance pose.
+  let armL = null;
+  let armR = null;
+  let foreL = null;
+  let foreR = null;
+  // Seconds left on the "no kick-push" lock -- held at full while grinding,
+  // then counting down afterwards (Amit: not during the glide "+ 1 second
+  // afterwards").
+  let pushLockT = 0;
+  // The deck's tilt-local height while riding normally, sampled live and used
+  // as the reference the grind crouch is compensated against.
+  //
+  // It CANNOT be the authored BOARD_Y: the board is pinned to the animated foot
+  // bones, so its real resting height is wherever the skate stance actually
+  // puts the soles -- measured at ~0.343 against a BOARD_Y of 0.10. Referencing
+  // the constant subtracted that 0.24 gap as if it were crouch, sinking the
+  // whole rider through the rail on every grind. Sampling the live value
+  // instead is also self-correcting if the rig or board scale ever changes.
+  let restBoardLocalY = null;
   // Push is an OCCASIONAL ONE-SHOT layered over idle by weight (see update()).
   let pushing = false;
   let pushTimer = 2.5 + Math.random() * 2.5;
@@ -326,6 +352,12 @@ export function createRider(scene, camera) {
           else if (!legL && /LeftLeg$/.test(n.name)) legL = n;
           if (!upLegR && /RightUpLeg$/.test(n.name)) upLegR = n;
           else if (!legR && /RightLeg$/.test(n.name)) legR = n;
+          // Same ordering trap as the legs: "LeftForeArm" also ends in "Arm",
+          // so the forearm has to be tested before the upper arm.
+          if (!foreL && /LeftForeArm$/.test(n.name)) foreL = n;
+          else if (!armL && /LeftArm$/.test(n.name)) armL = n;
+          if (!foreR && /RightForeArm$/.test(n.name)) foreR = n;
+          else if (!armR && /RightArm$/.test(n.name)) armR = n;
         });
 
         Promise.all([
@@ -502,8 +534,17 @@ export function createRider(scene, camera) {
         settleExtra = Math.cos(settleProgress * Math.PI * 0.5) * TRICK_LAND_SETTLE_AMOUNT;
       }
 
+      // BOARDSLIDE TWIST. The whole `tilt` group swings side-on to the rail, so
+      // board, body and rig all turn together as one piece -- and because the
+      // board-planting code below works purely in tilt-local space, it stays
+      // correct however far tilt is yawed. Driven by the same eased 0..1 signal
+      // as the rail-height lift, so the rider twists into the trick exactly as
+      // he rises onto the rail and untwists as he settles off it.
+      const grindPose = s.grindPose || 0;
+      const grindYaw = grindPose * GRIND_YAW * (s.grindYawSign || 1);
+
       tilt.rotation.x = s.tucking * 0.30 + pitchExtra + settleExtra;
-      tilt.rotation.y = yawExtra;
+      tilt.rotation.y = yawExtra + grindYaw;
       tilt.rotation.z = roll + rollExtra;
 
       if (mode === 'sprite') {
@@ -518,7 +559,14 @@ export function createRider(scene, camera) {
         // the summed weight is permanently 1 and the bind-pose/T-pose fallback
         // can never be reached.
         const FADE = 0.22; // seconds to blend either way
-        if (s.airActive) {
+        // Push lockout: held at full for the whole glide, then draining
+        // afterwards, so the clip is barred during the grind AND for a second
+        // after it. Amit asked for the tail specifically -- a kick-push firing
+        // the instant the rider drops off a rail reads as a stumble.
+        if (s.grinding) pushLockT = GRIND_PUSH_LOCKOUT;
+        else if (pushLockT > 0) pushLockT = Math.max(0, pushLockT - dt);
+
+        if (s.airActive || pushLockT > 0) {
           // NEVER show the push (leg-kick) animation mid-air -- you can't
           // kick-push off a road that isn't under your foot. This used to be
           // gated only against STARTING a new push (`!s.airActive && !pushing`
@@ -591,6 +639,41 @@ export function createRider(scene, camera) {
           if (legR) legR.rotation.x += knee;
         }
 
+        // --- BOARDSLIDE pose (procedural, layered ON TOP of the clips) -------
+        //
+        // Same technique and the same post-mixer requirement as the hop tuck:
+        // the mixer writes absolute bone rotations from the clips every frame,
+        // so this has to run after it to layer rather than be overwritten.
+        //
+        // Arms: spread wide for balance. The axis and sign are MEASURED, not
+        // assumed -- probing each local axis of the upper arms and reading the
+        // hand's displacement in the rider's own frame showed rotation.x is the
+        // lateral one, and the same negative sign spreads BOTH arms even though
+        // the idle holds them asymmetrically (lead arm forward, trailing arm
+        // out). The forearms continue the same direction, straightening the
+        // arms out into the spread instead of leaving them bent.
+        if (grindPose > 0.001 && armL) {
+          const spread = grindPose * GRIND_ARM_SPREAD;
+          const elbow = grindPose * GRIND_ELBOW_OPEN;
+          armL.rotation.x -= spread;
+          armR.rotation.x -= spread;
+          if (foreL) foreL.rotation.x -= elbow;
+          if (foreR) foreR.rotation.x -= elbow;
+        }
+        // Knees: bend into a crouch. Note the sign on the thigh is OPPOSITE to
+        // the hop's -- the hop drives the knees up toward the chest, a crouch
+        // sinks the hips down over feet that stay put. FK alone can't express
+        // that (it moves the feet, not the hips), which is what the tilt-height
+        // compensation further down exists to fix.
+        if (grindPose > 0.001 && upLegL) {
+          const hip = grindPose * GRIND_HIP_BEND;
+          const knee = grindPose * GRIND_KNEE_BEND;
+          upLegL.rotation.x -= hip;
+          upLegR.rotation.x -= hip;
+          if (legL) legL.rotation.x += knee;
+          if (legR) legR.rotation.x += knee;
+        }
+
         // PIN THE BOARD TO THE FEET. Previously the board sat at a fixed height
         // and the rider was placed by his BIND-pose bounding box, so in an
         // animated pose his soles floated off the deck -- most visible mid-jump
@@ -633,8 +716,15 @@ export function createRider(scene, camera) {
           // genuinely are on the board, so it should track them: use the
           // MIDPOINT height (not the higher foot, which would hang the deck off
           // one boot) and skip the guard entirely.
+          // A GRIND CROUCH trips this guard for exactly the same reason a hop
+          // does: bending both knees in a staggered stance moves the two feet
+          // by different amounts, so `spread` grows past the threshold and the
+          // deck would freeze at its last pre-crouch spot while the rider sank
+          // away from it. Both feet really are on the board through a grind, so
+          // it takes the same midpoint treatment.
           const hopping = s.airTrick === 'hop' && s.airActive;
-          if (hopping) {
+          const posing = hopping || grindPose > 0.001;
+          if (posing) {
             board.position.set(
               (_fa.x + _fb.x) * 0.5,
               (_fa.y + _fb.y) * 0.5 - BOARD_DROP,
@@ -648,11 +738,48 @@ export function createRider(scene, camera) {
               (_fa.z + _fb.z) * 0.5,
             );
           }
+          // Keep the crouch's reference height current, but only from frames
+          // where no pose is deforming the legs -- otherwise the reference
+          // would chase the crouch and cancel itself out.
+          if (!posing) restBoardLocalY = board.position.y;
         }
       } else {
         // Other modes keep the board at its neutral spot under the rider.
         board.position.set(0, BOARD_Y, 0);
       }
+
+      // CROUCH COMPENSATION -- the piece that turns an FK leg-fold into a
+      // believable crouch. Folding the legs is a forward-kinematic operation:
+      // the hips are the root of the chain, so the feet (and the board pinned
+      // to them) rise toward a stationary pelvis. Left alone that reads as the
+      // rider tucking his board UP off the rail, the exact opposite of sinking
+      // onto it.
+      //
+      // The fix needs no reference pose or extra measurement, because the
+      // board-planting code above has already solved where the deck ended up
+      // for the ACTUAL folded pose. Pushing `tilt` down by however far the deck
+      // drifted from its neutral height puts the board back on the rail and
+      // carries the hips down with it -- feet planted, body sinking, which is
+      // what a crouch is. Self-correcting for any bend amount.
+      //
+      // Restricted to the grind: a hop's board SHOULD leave the ground. Held at
+      // 0 until a rest sample exists, so the very first frames can't lurch.
+      tilt.position.y = (grindPose > 0.001 && restBoardLocalY !== null)
+        ? -(board.position.y - restBoardLocalY)
+        : 0;
+    },
+
+    /**
+     * World-space contact patch under the board, where sparks are struck.
+     * Read after update() -- it depends on this frame's board placement.
+     */
+    contactPoint(out) {
+      board.getWorldPosition(out);
+      // Down to the deck's underside rather than its centre, so the shower
+      // comes off the rail line instead of out of the middle of the plank.
+      _cu.set(0, 1, 0).applyQuaternion(tilt.getWorldQuaternion(_q));
+      out.addScaledVector(_cu, -DECK_HALF_THICKNESS * 2.2);
+      return out;
     },
   };
 }

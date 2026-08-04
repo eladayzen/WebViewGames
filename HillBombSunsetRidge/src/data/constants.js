@@ -171,6 +171,61 @@ export const HOP_KNEE_FOLD = 0.96; // heels tucked back under, board follows
 // carving across one flips over it instead.
 export const GRIND_MAX_CROSS_RATIO = 0.30;
 
+// --- BOARDSLIDE POSE -------------------------------------------------------
+// The grind used to be pure physics: the rider held his ordinary ride pose and
+// simply travelled along the rail, which read as sliding rather than as a
+// trick. This is the pose that sells it, and every term is layered on top of
+// the running idle clip rather than replacing it, so the body still breathes.
+//
+// The board turns almost side-on to the rail -- a boardslide. Not the full 90
+// degrees: dead perpendicular reads as a modelled prop rotated by a right
+// angle, while a few degrees short keeps the rider's line visible and looks
+// ridden. 1.35 rad ~= 77 degrees.
+export const GRIND_YAW = 1.35;
+
+// Knees. Applied as FK on the same thigh/shin chain the hop tuck uses. In bone
+// terms a crouch and a tuck are the SAME operation -- the hips are the root of
+// the chain, so folding the legs always closes the hip-to-foot distance; what
+// separates them is the compensation (a tuck lets the board rise, a crouch
+// pins it and sinks the body instead).
+//
+// These are MEASURED against the rig's actual response, not picked by feel,
+// because the two joints pull in OPPOSITE directions and an intuitive-looking
+// pair does the wrong thing entirely. Sweeping (hip, knee) and reading the
+// hip-to-foot closure in tilt space gave:
+//
+//     hip 0.0, knee 0.6  ->  -0.111   shin fold ALONE straightens the stance
+//     hip 0.6, knee 0.0  ->  +0.068   thigh alone closes it, weakly
+//     hip 0.34, knee 0.6 ->  -0.035   the intuitive first guess: a stretch
+//     hip 0.5, knee 1.0  ->  +0.059
+//     hip 0.7, knee 1.2  ->  +0.205   deep -- nearly sitting on the heels
+//
+// So the knee term has to be carried well past the thigh term before the pose
+// closes at all. 0.60/1.10 lands ~0.13 of sink against a 0.445 rest stance:
+// an athletic crouch, not a squat.
+export const GRIND_HIP_BEND = 0.60;
+export const GRIND_KNEE_BEND = 1.10;
+
+// Arms out for balance. MEASURED, not guessed at Mixamo's bone axes: probing
+// each local axis of the upper arms and reading the hand's displacement in the
+// rider's own frame showed rotation.x is the lateral one, and -- despite the
+// idle holding the two arms in quite different places (lead arm forward,
+// trailing arm out) -- the SAME negative sign spreads both, 0.6 rad of it
+// moving each hand ~0.15 outward and slightly up. Hence one constant, not a
+// mirrored pair.
+export const GRIND_ARM_SPREAD = 0.95;
+export const GRIND_ELBOW_OPEN = 0.32; // straightens the arms into the spread
+
+// Sparks live only as long as the contact does; this is the tail after the
+// rider leaves the rail, so the last few embers fall away instead of vanishing
+// mid-air the frame the grind ends.
+export const GRIND_SPARK_RATE = 150; // particles per second while in contact
+
+// Amit: the push clip must not play "at all while gliding + 1 second
+// afterwards". The tail matters as much as the grind itself -- a kick-push
+// firing the instant the rider drops off a rail reads as a stumble.
+export const GRIND_PUSH_LOCKOUT = 1.0;
+
 // A trick's rotation is now synced 1:1 to its OWN jump's air time (airT 0->1),
 // finishing exactly as the rider lands, per Amit's direct correction: the
 // earlier version rate-multiplied the rotation and held it once complete,

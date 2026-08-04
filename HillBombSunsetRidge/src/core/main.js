@@ -23,7 +23,7 @@ import {
   AIR_DURATION, AIR_HEIGHT, AIR_DURATION_HIGH, AIR_HEIGHT_HIGH,
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
   AIR_DURATION_BACKFLIP, AIR_HEIGHT_BACKFLIP_MAX,
-  AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO,
+  AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO, GRIND_SPARK_RATE,
   TRICK_LAND_SETTLE_DURATION,
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
 } from '../data/constants.js';
@@ -34,6 +34,7 @@ import { createCameraRig } from '../camera/cameraRig.js';
 import { createLobby } from '../ui/lobby.js';
 import { createSky } from '../world/sky.js';
 import { createProps } from '../entities/props.js';
+import { createSparks } from '../entities/sparks.js';
 import { createScoring } from '../systems/scoring.js';
 import { createHud } from '../ui/hud.js';
 import { CONTROLS, setControlPreset } from '../data/controlPresets.js';
@@ -79,6 +80,7 @@ scene.add(sun);
 const trough = createTrough(scene);
 const sky = createSky(scene);
 const props = createProps(scene);
+const sparks = createSparks(scene);
 const scoring = createScoring();
 const hud = createHud();
 const rider = createRider(scene, camera);
@@ -87,6 +89,7 @@ const rig = createCameraRig(camera);
 // --- run state --------------------------------------------------------------
 const state = {
   s: 0, // distance down the trough
+  sPrev: 0, // last frame's s -- the ramp-lip crossing test needs the interval
   theta: 0, // angle around the cross-section; 0 = the floor, +-THETA_MAX = the lip
   thetaVel: 0,
   height: 0, // R*(1-cos theta) -- how far up the wall, drives speed exchange
@@ -112,6 +115,12 @@ const state = {
   // multiply against while it eases back down after grind exits.
   grindLift: 0,
   grindLiftHeight: 0,
+  // Which way the board swings side-on for the boardslide. Locked in at entry
+  // from the direction the rider was already drifting, so the twist continues
+  // his momentum instead of snapping against it; +1 if he arrived dead straight.
+  grindYawSign: 1,
+  // Height of the launch ramp deck the rider is standing on right now.
+  rampLift: 0,
   trickLandT: 0, // counts down after a TRICK (backflip/spin) landing, for the settle wobble
 };
 
@@ -126,9 +135,14 @@ const _b = new THREE.Vector3();
 const _up = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _frame = makeFrame();
+// Scratch for the grind spark emission -- own pool, not shared with the
+// placement vectors above, which are still live when these are used.
+const _spark = new THREE.Vector3();
+const _sparkBack = new THREE.Vector3();
 
 function reset() {
   state.s = 0;
+  state.sPrev = 0;
   state.theta = 0;
   state.thetaVel = 0;
   state.height = 0;
@@ -148,6 +162,7 @@ function reset() {
   state.grindPoints = 0;
   state.grindLift = 0;
   state.grindLiftHeight = 0;
+  state.rampLift = 0;
   state.trickLandT = 0;
   autoTrickTimer = 0;
   rig.reset();
@@ -295,6 +310,10 @@ function frame() {
       - DRAG * state.speed * state.speed
       - CONTROLS.carveScrub * absCarve * state.speed;
     state.speed = Math.max(2, state.speed + accel * dt);
+    // Keep last frame's distance: the ramp-lip test in props.probe() needs the
+    // INTERVAL the rider swept this frame, not just where they ended up, so a
+    // fast pass over a short kicker can't skip the lip entirely.
+    state.sPrev = state.s;
     state.s += state.speed * dt;
 
     // --- theta: the pendulum around the trough (the core of the redesign) ---
@@ -408,6 +427,20 @@ function frame() {
       state.grindLift += (liftTarget - state.grindLift) * Math.min(1, dt * liftRate);
     }
 
+    // Ramp deck height. ASYMMETRIC on purpose: rising, it snaps to the exact
+    // geometric height so the board tracks the ramp face with no lag or
+    // sinking; falling, it eases, which is what carries the rider off the
+    // takeoff smoothly instead of dropping them a ramp-height in one frame the
+    // instant they go airborne. The ease-down is hidden under the air arc,
+    // which is already climbing over the same moment.
+    {
+      const rampTarget = state.airActive || state.grind
+        ? 0
+        : props.rampHeightAt(state.s, state.theta);
+      if (rampTarget >= state.rampLift) state.rampLift = rampTarget;
+      else state.rampLift += (rampTarget - state.rampLift) * Math.min(1, dt * (1 / 0.16));
+    }
+
     // --- prop interaction ----------------------------------------------
     // props.update() is what actually spawns new patterns as the rider
     // advances (build doc §6) -- without this call every frame, the world
@@ -415,7 +448,7 @@ function frame() {
     // the "I see stuff at the start, then nothing" symptom.
     props.update(state.s);
     if (!state.grind) {
-      const hit = props.probe(state.s, state.theta, state.airActive);
+      const hit = props.probe(state.s, state.theta, state.airActive, state.sPrev);
       if (hit) {
         if (hit.def.kind === 'launch') {
           // Ramps and banks auto-launch on contact -- no button, no tap. This
@@ -424,6 +457,14 @@ function frame() {
           // cool happens" case, cones/potholes/barriers are the "that hurts"
           // case, and the two are told apart by kind, not by a player input.
           beginAir(hit.def.launch.power, hit.def.launch.points);
+          // Take off from the FULL lip height. The crossing test fires on the
+          // first frame at or past the takeoff, which can be up to ~0.5 units
+          // beyond it at speed -- by which point rampHeightAt() already reads
+          // zero for a wedge (whose apex IS its far edge) and the ease-down has
+          // begun, so the arc was starting ~0.2 below the lip. Pinning it here
+          // means the jump always leaves from the top of the ramp, and the
+          // existing ease handles the descent from there.
+          state.rampLift = hit.def.size.h;
           hit.spent = true;
           hud.banner(hit.def.label);
         } else if (hit.def.kind === 'grind' && state.airActive && state.airTrick) {
@@ -464,6 +505,13 @@ function frame() {
             // puts the board on top of the bar instead of the bar passing
             // through the rider.
             state.grindLiftHeight = hit.def.size.h;
+            // Swing the board side-on the way he was already drifting. Below a
+            // small deadzone he arrived straight enough that either direction
+            // is arbitrary, so keep whichever was used last rather than letting
+            // near-zero noise pick a side.
+            if (Math.abs(state.thetaVel) > 0.02) {
+              state.grindYawSign = Math.sign(state.thetaVel);
+            }
             hud.banner(hit.def.label);
           }
         } else if (hit.def.kind === 'hazard') {
@@ -498,6 +546,13 @@ function frame() {
     surfaceUp(state.s, state.theta, _up);
     _pos.addScaledVector(_up, Math.sin(state.airT * Math.PI) * state.airHeight);
   }
+  if (state.rampLift > 0.001) {
+    // Stand the rider on the ramp deck. Added along the SURFACE NORMAL like
+    // every other offset here, so a ramp sitting up the trough wall lifts the
+    // rider away from that wall rather than straight up in world space.
+    surfaceUp(state.s, state.theta, _up);
+    _pos.addScaledVector(_up, state.rampLift);
+  }
   if (state.grindLift > 0.001) {
     // Lifts the rider onto TOP of the rail/ledge bar (see the grind-entry
     // comment above for why) -- eased by grindLift, so mounting and settling
@@ -527,6 +582,15 @@ function frame() {
     theta: state.theta,
     surfaceUp: _up,
     forward: _fwd,
+    // The boardslide pose rides the SAME eased 0..1 signal as the rail-height
+    // lift, so the rider twists side-on exactly as he rises onto the rail and
+    // unwinds as he settles back off it -- one motion, not two that have to be
+    // kept in sync. `grinding` is the raw contact flag, which the push-clip
+    // lockout needs separately: the pose is still unwinding for a moment after
+    // contact ends, but the lockout's own tail starts counting from here.
+    grindPose: state.grindLift,
+    grindYawSign: state.grindYawSign,
+    grinding: !!state.grind,
   };
 
   // Camera shake ramps with the wobble meter, so the fail state is FELT coming
@@ -534,6 +598,23 @@ function frame() {
   view.shake = Math.max(0, (scoring.state.wobble - 55) / 45);
 
   rider.update(view, dt);
+
+  // GRIND SPARKS. Struck at the board's actual underside, which has to be read
+  // AFTER rider.update() has placed it for this frame -- the deck's position is
+  // derived from the animated foot bones plus the crouch compensation, so
+  // anything sampled earlier would trail a frame behind the pose.
+  //
+  // Emission is gated on real contact (state.grind), not on the eased pose, so
+  // the shower stops the instant the rider leaves the rail even though he's
+  // still visibly untwisting for a moment afterwards. Sparks already in flight
+  // finish their own lives, which is the tail that sells it.
+  if (state.grind) {
+    rider.contactPoint(_spark);
+    _sparkBack.copy(_fwd).negate();
+    sparks.emit(_spark, _sparkBack, _up, state.speed, GRIND_SPARK_RATE, dt);
+  }
+  sparks.update(dt);
+
   rig.update(view, dt);
 
   sky.update(camera.position);
@@ -561,7 +642,7 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE };
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);

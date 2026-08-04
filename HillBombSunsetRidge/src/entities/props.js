@@ -64,6 +64,39 @@ function buildKicker(def) {
   return g;
 }
 
+// --- RAMP RIDING SURFACE ----------------------------------------------------
+// The height of a launch prop's deck at fraction f along it (0 = the near base,
+// 1 = the far end), and where along it the takeoff actually is.
+//
+// This exists because the launch moved from the ramp's leading edge to its
+// takeoff point. Popping at the base meant the rider never touched the wedge --
+// they were already airborne over it -- so nothing had to know its shape. Now
+// they travel its whole length on the ground first, and without a surface to
+// climb they simply pass THROUGH the geometry (verified: at 35% along a big
+// kicker only the head and shoulders cleared the deck).
+//
+// The two shapes are genuinely different and it matters:
+//   'wedge' (kicker, bigKicker) -- buildKicker's triangle, rising all the way
+//       to the far end. Takeoff IS the far end.
+//   'hump'  (bank) -- buildBank's profile runs (0,0) -> straight up to an apex
+//       at the MIDDLE -> quadratic back down to zero at the far end. Its
+//       takeoff is the apex at f=0.5; firing at the far end would launch the
+//       rider from ground level off the back of the hump.
+function rampHeight(profile, h, f) {
+  const t = Math.max(0, Math.min(1, f));
+  if (profile === 'hump') {
+    if (t <= 0.5) return h * (t / 0.5); // straight face up to the apex
+    const b = (t - 0.5) / 0.5;
+    return h * (1 - b * b); // curved back side
+  }
+  return h * t;
+}
+
+/** Fraction along a launch prop where the rider leaves it. */
+function apexFrac(profile) {
+  return profile === 'hump' ? 0.5 : 1;
+}
+
 function buildRail(def) {
   const { w, h, l } = def.size;
   const g = new THREE.Group();
@@ -326,14 +359,34 @@ export function createProps(scene) {
      * frame, or null. Airborne riders only collide with nothing -- being in the
      * air is exactly what clears hazards.
      *
-     * @param {number} s @param {number} u @param {boolean} airborne
+     * @param {number} s @param {number} theta @param {boolean} airborne
+     * @param {number} sPrev where the rider was last frame, for the ramp-lip
+     *   crossing test below
      */
-    probe(s, theta, airborne) {
+    probe(s, theta, airborne, sPrev) {
       for (const it of active) {
         if (it.spent || it.def.kind === 'scenery') continue;
         const { l, w } = it.def.size;
         const halfL = (it.def.kind === 'grind' ? l : Math.max(l, 1.2)) / 2;
-        if (s < it.s - halfL || s > it.s + halfL) continue;
+        if (it.def.kind === 'launch') {
+          // LAUNCH AT THE TAKEOFF, NOT THE BASE. A plain overlap test fires on
+          // the ramp's leading edge, so the rider popped the instant they
+          // touched the bottom and then sailed over the wedge instead of riding
+          // up it. The takeoff point comes from the prop's own profile -- the
+          // far end for a wedge, the mid apex for a bank (see rampHeight).
+          //
+          // This is a CROSSING test rather than a "near the end" zone on
+          // purpose. At 35 u/s the rider covers ~0.6 units per frame, and more
+          // on a slow one, so any fixed zone narrow enough to read as "the end"
+          // of a 3.4-unit kicker can be stepped clean over -- an occasional
+          // ramp that silently does nothing. Asking whether the takeoff fell
+          // BETWEEN last frame's position and this one cannot miss, at any
+          // speed or frame rate.
+          const takeoff = it.s - halfL + 2 * halfL * apexFrac(it.def.launch.profile);
+          if (!(sPrev < takeoff && s >= takeoff)) continue;
+        } else if (s < it.s - halfL || s > it.s + halfL) {
+          continue;
+        }
         const catchW = it.def.kind === 'grind'
           ? it.def.grind.catchWidth
           : w / 2 + 0.45;
@@ -348,6 +401,37 @@ export function createProps(scene) {
         return it;
       }
       return null;
+    },
+
+    /**
+     * Height of the launch ramp the rider is currently standing on, or 0.
+     *
+     * The counterpart to the takeoff-crossing test above: now that the rider
+     * travels the ramp's full length on the ground before popping, they need
+     * its deck to stand on, or they ride straight through the wedge.
+     *
+     * Deliberately geometric and un-eased -- the board should track the face
+     * exactly, not lag behind it. Smoothing belongs on the way back DOWN after
+     * launch, which is the caller's business (see main.js's rampLift).
+     *
+     * @param {number} s @param {number} theta
+     */
+    rampHeightAt(s, theta) {
+      let best = 0;
+      for (const it of active) {
+        if (it.def.kind !== 'launch') continue;
+        const { l, w, h } = it.def.size;
+        const halfL = Math.max(l, 1.2) / 2;
+        const base = it.s - halfL;
+        if (s < base || s > it.s + halfL) continue;
+        const arcGap = Math.abs(theta - it.theta) * TROUGH_RADIUS;
+        if (arcGap > w / 2 + 0.45) continue;
+        // Overlapping ramps are not authored today, but taking the highest
+        // keeps this correct if a pattern ever stacks them.
+        const y = rampHeight(it.def.launch.profile, h, (s - base) / (2 * halfL));
+        if (y > best) best = y;
+      }
+      return best;
     },
   };
 }

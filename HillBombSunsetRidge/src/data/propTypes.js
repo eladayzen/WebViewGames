@@ -24,7 +24,7 @@ export const PROP_TYPES = {
     size: { w: 4.2, h: 0.95, l: 3.4 },
     colour: 0xb2763f,
     accent: 0x8a5a2e,
-    launch: { power: 1.0, points: 120 },
+    launch: { power: 1.0, points: 120, profile: 'wedge' },
     label: 'KICKER',
   },
   bigKicker: {
@@ -32,7 +32,7 @@ export const PROP_TYPES = {
     size: { w: 5.6, h: 1.6, l: 5.0 },
     colour: 0xc08347,
     accent: 0x92602f,
-    launch: { power: 1.5, points: 260 },
+    launch: { power: 1.5, points: 260, profile: 'wedge' },
     label: 'BIG AIR',
   },
   bank: {
@@ -42,7 +42,7 @@ export const PROP_TYPES = {
     size: { w: 9.0, h: 1.2, l: 6.0 },
     colour: 0x9aa3ad,
     accent: 0x7c848d,
-    launch: { power: 1.2, points: 150 },
+    launch: { power: 1.2, points: 150, profile: 'hump' },
     label: 'BANK',
   },
 
