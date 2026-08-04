@@ -120,6 +120,21 @@ async function boot() {
     resetBombKills(bombKills);
     items = [];
     ui.hideGameOver();
+
+    // Push the HUD fresh RIGHT NOW (2026-08-05 fix) -- these 6 setters are
+    // otherwise only ever called from inside updateRunning, which doesn't
+    // run again until 'running' resumes (after the intro tutorial +
+    // countdown finish). Without this, the score/combo/lives/buffs/boxes
+    // HUD kept showing the PREVIOUS run's leftover numbers the whole time
+    // the player was sitting through the new run's intro/countdown -- a
+    // real bug carried since the start, not just a this-session one.
+    const scoreBand = getScoreBand(difficulty);
+    ui.setScore(scoring.score, scoreBand.prevThreshold, scoreBand.nextThreshold);
+    ui.setCombo(scoring.comboCount, getComboMultiplier(scoring));
+    ui.setLives(lives.remaining, lives.capacity);
+    ui.setBuffs(player);
+    ui.setBoxes(boxes);
+    ui.setBombKills(bombKills);
   }
 
   // Shown every run (boot() below and the restart button both call this),
