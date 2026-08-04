@@ -11,6 +11,7 @@
 // systems/scoring.js and surface on the game-over recap.
 
 import { progressAt, tierName } from '../systems/progression.js';
+import { PLAYER_RUN_FRAMES, PLAYER_JUMP_FRAMES } from '../data/playerSprite.js';
 
 const pointsValueEl = document.getElementById('points-value');
 const pointsTargetEl = document.getElementById('points-target');
@@ -31,6 +32,13 @@ const finalPointsEl = document.getElementById('final-points');
 const finalBreakdownEl = document.getElementById('final-breakdown');
 const pausedBadgeEl = document.getElementById('paused-badge');
 const frameDebugEl = document.getElementById('frame-debug');
+const introEl = document.getElementById('intro-tutorial-overlay');
+const introStepLanesEl = document.getElementById('intro-step-lanes');
+const introStepJumpEl = document.getElementById('intro-step-jump');
+const introBoardLanesEl = document.getElementById('intro-board-lanes');
+const introPlayerEl = document.getElementById('intro-player');
+const introBoardJumpEl = document.getElementById('intro-board-jump');
+const introJumperEl = document.getElementById('intro-jumper');
 
 const LIFE_GLYPH = '❤';
 
@@ -289,4 +297,72 @@ export function hideGameOver() {
 
 export function setPausedBadge(paused) {
   pausedBadgeEl.classList.toggle('hidden', !paused);
+}
+
+// --- First-run onboarding (core/main.js's beginIntro/advanceIntroStep/
+// dismissIntro, driven by data/introTutorial.js) -----------------------
+// Dirty-checked the same way the rest of this file is (see the DIRTY-CHECK
+// CACHES note up top) -- core/main.js's tick calls these every frame past
+// a hold threshold, not just on the frame the state actually changes.
+let lastIntroLaneState = null;
+let lastIntroRunFrame = null;
+let lastIntroJumpCycleIndex = null;
+
+const INTRO_LANE_CLASSES = ['intro-lane-center', 'intro-lane-left', 'intro-lane-right'];
+
+export function showIntroTutorial() {
+  introEl.classList.remove('hidden');
+  lastIntroLaneState = null;
+  lastIntroRunFrame = null;
+  lastIntroJumpCycleIndex = null;
+  setIntroStep(1);
+  setIntroLaneState('center');
+  setIntroRunFrame(0);
+}
+
+export function hideIntroTutorial() {
+  introEl.classList.add('hidden');
+}
+
+export function setIntroStep(step) {
+  introStepLanesEl.classList.toggle('hidden', step !== 1);
+  introStepJumpEl.classList.toggle('hidden', step !== 2);
+}
+
+// state is one of data/introTutorial.js's INTRO_LANE_CYCLE entries
+// ('center'/'left'/'right') -- the SAME class name drives both the board's
+// rotate and the player's lane translateX (src/style.css), so they can never
+// drift out of sync with each other.
+export function setIntroLaneState(state) {
+  if (state === lastIntroLaneState) return;
+  lastIntroLaneState = state;
+  const cls = `intro-lane-${state}`;
+  introBoardLanesEl.classList.remove(...INTRO_LANE_CLASSES);
+  introBoardLanesEl.classList.add(cls);
+  introPlayerEl.classList.remove(...INTRO_LANE_CLASSES);
+  introPlayerEl.classList.add(cls);
+}
+
+export function setIntroRunFrame(index) {
+  if (index === lastIntroRunFrame) return;
+  lastIntroRunFrame = index;
+  introPlayerEl.src = PLAYER_RUN_FRAMES[index].url;
+}
+
+// `entry` is one of data/introTutorial.js's INTRO_JUMP_CYCLE objects --
+// board tilt is a continuous rotateX degree, not one of a few fixed states
+// like step 1's, so it's set inline here rather than through a CSS class
+// (see src/style.css's .intro-board note on why). The small translateY on
+// the airborne frame is the same idea -- a one-off "hop" only that frame
+// needs, not worth a whole class for.
+export function setIntroJumpCycleState(index, entry) {
+  if (index === lastIntroJumpCycleIndex) return;
+  lastIntroJumpCycleIndex = index;
+  introJumperEl.src = PLAYER_JUMP_FRAMES[entry.frame].url;
+  // 380px, a tight perspective distance -- verified via screenshot that a
+  // longer one (700px) made even a large rotateX barely register visually.
+  // See data/introTutorial.js's INTRO_JUMP_CYCLE comment for the same story
+  // on the degree values.
+  introBoardJumpEl.style.transform = `perspective(380px) rotateX(${entry.boardDeg}deg)`;
+  introJumperEl.style.transform = entry.frame === 2 ? 'translateY(-3vmin)' : 'translateY(0)';
 }

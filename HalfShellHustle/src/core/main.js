@@ -51,7 +51,12 @@ import { speedAt, distanceTraveledBy, seedDistanceAt } from '../systems/speed.js
 import {
   createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
 } from '../systems/lives.js';
-import { createGameState, restartToRunning, triggerGameOver, triggerLevelComplete } from './gameState.js';
+import {
+  createGameState, restartToRunning, triggerGameOver, triggerLevelComplete, triggerIntro,
+} from './gameState.js';
+import {
+  INTRO_LANE_CYCLE, INTRO_LANE_STATE_HOLD_SEC, INTRO_JUMP_CYCLE, INTRO_STEP_AUTO_ADVANCE_SEC,
+} from '../data/introTutorial.js';
 import {
   updateSteering, pollLaneStep, getLaneTarget, pollJumpPress,
 } from '../input/input.js';
@@ -82,7 +87,7 @@ import {
   PICKUP_FIRST_SPAWN_DELAY_SEC, PICKUP_SPAWN_INTERVAL_SEC,
   PICKUP_MAGNET_SPAWN_CHANCE, PICKUP_LIFE_SPAWN_CHANCE,
 } from '../data/spawnConfig.js';
-import { FRAME_LABELS, PLAYER_RUN_FRAMES } from '../data/playerSprite.js';
+import { FRAME_LABELS, PLAYER_RUN_FRAMES, RUN_FRAME_DURATION } from '../data/playerSprite.js';
 import { COIN_TYPES } from '../data/coinTypes.js';
 import {
   ParticlePool, spawnDustPuff, spawnEnemyPoof, spawnCoinSparkle,
@@ -234,6 +239,18 @@ function boot() {
   // LEVEL_CURTAIN_CLOSE_DELAY_SEC in -- guards ui/hud.js's closeLevelCurtains
   // so it fires exactly once per beat instead of every frame past that point.
   let levelCurtainsClosed = false;
+
+  // --- Intro tutorial (data/introTutorial.js, ui/hud.js) -------------------
+  // All dt-driven from tick's 'intro' branch below, same reasoning as every
+  // other timed effect in this file: pausing genuinely holds it.
+  let introStep = 1; // 1 = lane steering, 2 = jump
+  let introElapsed = 0; // time since the CURRENT step started -- drives auto-advance
+  let introLaneIndex = 0; // index into INTRO_LANE_CYCLE
+  let introLaneCycleElapsed = 0;
+  let introRunFrameIndex = 0;
+  let introRunFrameElapsed = 0;
+  let introJumpCycleIndex = 0;
+  let introJumpCycleElapsed = 0;
 
   const rollPlatformType = () => (
     PLATFORM_KILL_TYPE_ENABLED && Math.random() < PLATFORM_KILL_TYPE_CHANCE ? 'kill' : 'ramp'
@@ -397,6 +414,44 @@ function boot() {
     resetLevelWorld(true);
   }
 
+  // --- Intro tutorial -------------------------------------------------------
+  // Shown every run (direct feedback: "every time when I start a new game"),
+  // not just the first one ever -- called from both boot() and restart()
+  // below, always right after fullReset() has the world already built and
+  // frozen. See core/gameState.js's 'intro' state for why this is safe
+  // against GOBALANCE_SDK.md's "no key required" contract.
+  function beginIntro() {
+    triggerIntro(gs);
+    introStep = 1;
+    introElapsed = 0;
+    introLaneIndex = 0;
+    introLaneCycleElapsed = 0;
+    introRunFrameIndex = 0;
+    introRunFrameElapsed = 0;
+    hud.showIntroTutorial();
+  }
+
+  function advanceIntroStep() {
+    introStep = 2;
+    introElapsed = 0;
+    introJumpCycleIndex = 0;
+    introJumpCycleElapsed = 0;
+    hud.setIntroStep(2);
+    hud.setIntroJumpCycleState(0, INTRO_JUMP_CYCLE[0]);
+  }
+
+  function dismissIntro() {
+    hud.hideIntroTutorial();
+    restartToRunning(gs);
+  }
+
+  document.getElementById('intro-next-button').addEventListener('click', () => {
+    if (gs.current === 'intro' && introStep === 1) advanceIntroStep();
+  });
+  document.getElementById('intro-start-button').addEventListener('click', () => {
+    if (gs.current === 'intro' && introStep === 2) dismissIntro();
+  });
+
   // --- Level transition ---------------------------------------------------
   // Entered when a landing points label pushes the score past a tier
   // threshold. The world freezes (gs.current gates the whole of tick's update
@@ -492,12 +547,16 @@ function boot() {
   function restart() {
     hud.hideGameOver();
     fullReset();
-    restartToRunning(gs);
+    beginIntro();
   }
 
   document.getElementById('restart-button').addEventListener('click', restart);
   window.addEventListener('keydown', (e) => {
     if (gs.current === 'gameover' && (e.code === 'Space' || e.code === 'Enter')) restart();
+    else if (gs.current === 'intro' && (e.code === 'Space' || e.code === 'Enter')) {
+      if (introStep === 1) advanceIntroStep();
+      else dismissIntro();
+    }
   });
 
   // TEMPORARY debug view (direct feedback: "lose all the graphics except
@@ -595,6 +654,40 @@ function boot() {
   function tick() {
     requestAnimationFrame(tick);
     const dt = Math.min(clock.getDelta(), 1 / 30);
+
+    // Intro tutorial. Runs on dt like every other timed effect here, so
+    // pausing genuinely holds it rather than letting it expire behind the
+    // pause screen.
+    if (!paused && gs.current === 'intro') {
+      introElapsed += dt;
+      if (introStep === 1) {
+        introLaneCycleElapsed += dt;
+        if (introLaneCycleElapsed >= INTRO_LANE_STATE_HOLD_SEC) {
+          introLaneCycleElapsed -= INTRO_LANE_STATE_HOLD_SEC;
+          introLaneIndex = (introLaneIndex + 1) % INTRO_LANE_CYCLE.length;
+          hud.setIntroLaneState(INTRO_LANE_CYCLE[introLaneIndex]);
+        }
+        // Independent cycle from the lane state above -- the run-cycle leg
+        // animation plays at its own normal in-game cadence (RUN_FRAME_
+        // DURATION) throughout, regardless of which lane is currently shown.
+        introRunFrameElapsed += dt;
+        if (introRunFrameElapsed >= RUN_FRAME_DURATION) {
+          introRunFrameElapsed -= RUN_FRAME_DURATION;
+          introRunFrameIndex = (introRunFrameIndex + 1) % PLAYER_RUN_FRAMES.length;
+          hud.setIntroRunFrame(introRunFrameIndex);
+        }
+        if (introElapsed >= INTRO_STEP_AUTO_ADVANCE_SEC) advanceIntroStep();
+      } else {
+        introJumpCycleElapsed += dt;
+        const currentHold = INTRO_JUMP_CYCLE[introJumpCycleIndex].holdSec;
+        if (introJumpCycleElapsed >= currentHold) {
+          introJumpCycleElapsed -= currentHold;
+          introJumpCycleIndex = (introJumpCycleIndex + 1) % INTRO_JUMP_CYCLE.length;
+          hud.setIntroJumpCycleState(introJumpCycleIndex, INTRO_JUMP_CYCLE[introJumpCycleIndex]);
+        }
+        if (introElapsed >= INTRO_STEP_AUTO_ADVANCE_SEC) dismissIntro();
+      }
+    }
 
     // Level-complete countdown. Runs on dt like every other timed effect here,
     // so pausing genuinely holds it rather than letting it expire behind the
@@ -954,6 +1047,7 @@ function boot() {
   }
 
   fullReset();
+  beginIntro();
   tick();
 }
 

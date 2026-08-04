@@ -185,6 +185,29 @@
         <div id="final-breakdown"></div>
         <button id="restart-button">RETRY</button>
       </div>
+
+      <!-- First-run onboarding, direct feedback: two auto-cycling explainer
+           steps ("really explanatory", an actual moving diagram, not a
+           screenshot with an arrow drawn on it) shown before the world
+           starts, EVERY run. core/main.js's beginIntro/advanceIntroStep/
+           dismissIntro drive it; data/introTutorial.js holds the cycle
+           data. NOT #gameover-overlay (see that overlay's own comment) --
+           own id, own #intro-next-button/#intro-start-button, so the SDK's
+           synthetic #restart-button click can never target this. -->
+      <div id="intro-tutorial-overlay" class="overlay hidden">
+        <div id="intro-step-lanes" class="intro-step">
+          <div class="intro-step-title">TILT TO MOVE LEFT AND RIGHT</div>
+          <img id="intro-player" class="intro-sprite" alt="" />
+          <div id="intro-board-lanes" class="intro-board"></div>
+          <button id="intro-next-button">NEXT</button>
+        </div>
+        <div id="intro-step-jump" class="intro-step hidden">
+          <div class="intro-step-title">FORWARD/BACKWARDS TO JUMP</div>
+          <img id="intro-jumper" class="intro-sprite" alt="" />
+          <div id="intro-board-jump" class="intro-board"></div>
+          <button id="intro-start-button">START</button>
+        </div>
+      </div>
     </div>
 
     <script type="module" src="/src/core/main.js"></script>

@@ -710,3 +710,112 @@ html, body {
   8%   { opacity: 1; }
   100% { opacity: 0; transform: translate(var(--drift, 0), 118vh) rotate(var(--spin, 540deg)); }
 }
+
+/* --- First-run onboarding (core/main.js's beginIntro/advanceIntroStep/
+   dismissIntro, driven by data/introTutorial.js) ---
+   #intro-tutorial-overlay takes .overlay's default neutral dark wash
+   unmodified -- deliberately distinct from level-complete's gold celebration
+   background, since this is an informational screen, not a celebratory or
+   damage one (same "own color language per screen" reasoning as
+   #level-complete's own background override). */
+.intro-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.6vmin;
+}
+
+.intro-step.hidden {
+  display: none;
+}
+
+.intro-step-title {
+  font-weight: 900;
+  font-size: 5vmin;
+  letter-spacing: 0.3vmin;
+  color: #eafcff;
+  -webkit-text-stroke: 0.5vmin #0a2a30;
+  paint-order: stroke fill;
+}
+
+/* Real GoBalance board art (src/assets/gobalance_horizontal_board.png,
+   copied from the Unity project's CrazySnowboard UI -- the real board icon
+   players already associate with steering, not a redrawn stand-in). One
+   shared visual footprint for both steps; each step's own JS-driven
+   transform (ui/hud.js) decides which axis it appears to tilt on. */
+/* 34vmin -> 24vmin, direct feedback ("make the board a bit smaller, 30%"). */
+.intro-board {
+  width: 24vmin;
+  aspect-ratio: 358 / 266;
+  background-image: url('./assets/gobalance_horizontal_board.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  transition: transform 0.4s ease;
+}
+
+/* Step 1 -- perspective + rotateY, a real 3D lean (the board's left/right
+   edge tilts toward/away from the viewer) instead of an in-plane rotateZ
+   spin. Direct feedback: a flat rotate reads as STEERING (turning a wheel),
+   not TILTING (leaning a board) -- same 3D-tilt language as step 2's
+   rotateX below, just around the other axis, since this board art is drawn
+   as a top-down plan view: rolling left/right foreshortens the left/right
+   edges exactly the way rotateY simulates, where a flat rotateZ would just
+   spin the whole silhouette like a wheel instead. Same magnitude/perspective
+   as step 2 (see data/introTutorial.js's INTRO_JUMP_CYCLE comment for why
+   these numbers, not gentler ones, are what actually reads on screen).
+   Compound ID+class selectors, not a bare class rule -- same specificity
+   lesson as .lc-curtain-closed above.
+   58deg -> 29deg (half), direct feedback ("the 3D tilt... much less, like
+   half of the tilt") -- perspective(380px) left as-is, only the angle
+   dropped, so this is a gentler lean, not a smaller/closer board. */
+#intro-board-lanes.intro-lane-center { transform: perspective(380px) rotateY(0deg); }
+#intro-board-lanes.intro-lane-left { transform: perspective(380px) rotateY(-29deg); }
+#intro-board-lanes.intro-lane-right { transform: perspective(380px) rotateY(29deg); }
+
+/* Step 2's board tilt is set inline from JS instead (a continuous rotateX
+   degree value from data/introTutorial.js's INTRO_JUMP_CYCLE, not one of 3
+   fixed states) -- see ui/hud.js's setIntroJumpCycleState. */
+
+/* 12vmin -> 17vmin -> 22vmin across two feedback passes ("a bit bigger",
+   then "increase the character a bit, 30%") -- still smaller than the board
+   (now 24vmin), but close to it rather than a clear afterthought. */
+.intro-sprite {
+  width: 22vmin;
+  height: auto;
+  transition: transform 0.25s ease;
+}
+
+/* Step 1's run-cycle frame swap (ui/hud.js's setIntroRunFrame) is a plain src
+   change, no transform of its own -- only the LANE position animates here. */
+#intro-player.intro-lane-center { transform: translateX(0); }
+#intro-player.intro-lane-left { transform: translateX(-16vmin); }
+#intro-player.intro-lane-right { transform: translateX(16vmin); }
+
+/* Step 2's jumper transform (a small translateY hop on the airborne frame)
+   is set inline from JS alongside its frame swap -- see setIntroJumpCycleState. */
+
+/* Same pill-button visual language as #restart-button -- both are the
+   single positive action on their screen. */
+/* vmin throughout, NOT the px #restart-button was copied from -- everything
+   else in this overlay (title/board/sprite/margins) is already vmin-scaled,
+   so a fixed-px button is the one thing that doesn't shrink with the rest of
+   it. Direct feedback, from a screenshot at a small/shrunk browser size
+   (simulating the SDK's mobile WebView): every element scaled down together
+   except the button, which stayed full-size and ended up dominating the
+   screen. border-radius is the one exception left in px -- 999px is just
+   "large enough to always fully round the pill" at any real button size,
+   not a literal dimension, so it doesn't need to scale. */
+#intro-next-button, #intro-start-button {
+  margin-top: 1vmin;
+  font-weight: 900;
+  font-size: 2.6vmin;
+  letter-spacing: 0.13vmin;
+  padding: 1.8vmin 4.5vmin;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffde50, #ffa93c);
+  color: #2a1a00;
+  cursor: pointer;
+  box-shadow: 0 0.5vmin 0 #a86800, 0 0.75vmin 1.5vmin rgba(0, 0, 0, 0.4);
+}
