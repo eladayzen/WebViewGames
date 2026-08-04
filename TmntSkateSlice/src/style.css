@@ -566,29 +566,115 @@ html, body {
   display: none;
 }
 
-/* --- Stage banner --- */
-#stage-banner {
+/* --- Stage-complete transition (freeze + curtain, ported from
+   HalfShellHustle's level-complete pattern, 2026-08-04) -- replaces the old
+   instant-pop #stage-banner above. See data/stageTransition.js for the
+   timing knobs this CSS's transition duration must stay in sync with. --- */
+.stage-curtain {
   position: absolute;
-  top: 30%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(0.9);
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  z-index: 20; /* own explicit value, not inherited -- see index.html's comment */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: transform 0.6s cubic-bezier(0.6, 0, 0.35, 1); /* MUST match STAGE_CURTAIN_TRANSITION_SEC */
+}
+
+#stage-curtain-left {
+  left: 0;
+  background-image: url('./assets/stage_curtain_left.png');
+  transform: translateX(-100%);
+}
+
+#stage-curtain-right {
+  right: 0;
+  background-image: url('./assets/stage_curtain_right.png');
+  transform: translateX(100%);
+}
+
+/* Compound #id.class selectors, not a bare .stage-curtain-closed rule -- a
+   plain class selector (specificity 0,1,0) loses to #stage-curtain-left/
+   right's own ID selector (1,0,0) above, so the "closed" transform would
+   silently never win and the panels would never move. */
+#stage-curtain-left.stage-curtain-closed,
+#stage-curtain-right.stage-curtain-closed {
+  transform: translateX(0);
+}
+
+#stage-complete-overlay {
+  background: radial-gradient(ellipse at 50% 42%, rgba(255, 180, 60, 0.35), rgba(20, 10, 5, 0.88) 72%);
+}
+
+/* Own position:relative, same defense-in-depth reasoning as HalfShellHustle's
+   equivalent -- not load-bearing against the curtain siblings specifically,
+   but correct in case anything else ever lands inside this overlay. */
+#sc-headline, #sc-next, #sc-countdown {
+  position: relative;
+}
+
+/* This game's own established positive-feedback green (matches the shield
+   buff / "CATCH" panel in the intro tutorial), not a fresh color -- stays
+   consistent with the palette already in use rather than importing
+   HalfShellHustle's own green. */
+#sc-headline {
   font-weight: 900;
-  font-size: 40px;
-  letter-spacing: 2px;
-  color: #ffffff;
-  -webkit-text-stroke: 2.5px #2a1a00;
+  font-size: 48px;
+  letter-spacing: 1.5px;
+  color: #8cffa0;
+  -webkit-text-stroke: 4px #123a08;
   paint-order: stroke fill;
-  opacity: 0;
-  transition: opacity 0.25s, transform 0.25s;
+  text-shadow: 0 0 22px rgba(140, 255, 160, 0.75);
 }
 
-#stage-banner.visible {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
+/* Bouncy elastic-overshoot pop, not a fade -- a fade reads as UI, an
+   overshoot reads as an exclamation. Restarted per showStageComplete() via
+   the same remove-class/reflow/re-add idiom already used throughout this
+   file's HUD setters. */
+.sc-headline-play {
+  animation: sc-headline-bounce 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-#stage-banner.hidden {
-  opacity: 0;
+@keyframes sc-headline-bounce {
+  0%   { transform: scale(0.2) rotate(-8deg); opacity: 0; }
+  55%  { transform: scale(1.18) rotate(4deg); opacity: 1; }
+  75%  { transform: scale(0.94) rotate(-2deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+#sc-next {
+  margin-top: 10px;
+  font-weight: 900;
+  font-size: 26px;
+  letter-spacing: 1px;
+  color: #fff6c8;
+  -webkit-text-stroke: 3px #2a1400;
+  paint-order: stroke fill;
+}
+
+/* Re-animated per whole-second tick from JS (class removed, reflow,
+   re-added) so each number lands with its own beat rather than the digits
+   silently swapping. */
+#sc-countdown {
+  margin-top: 14px;
+  font-weight: 900;
+  font-size: 64px;
+  line-height: 1;
+  color: #ffffff;
+  -webkit-text-stroke: 5px #2a1400;
+  paint-order: stroke fill;
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-tick {
+  animation: sc-tick 0.5s ease-out;
+}
+
+@keyframes sc-tick {
+  0%   { transform: scale(1.5); opacity: 0.25; }
+  35%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 /* --- Game-over overlay --- */

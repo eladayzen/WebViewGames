@@ -6,13 +6,12 @@
 import { STAGES } from '../data/stages.js';
 
 export function createDifficulty() {
-  return { stageIndex: 0, elapsedSec: 0, justAdvanced: false };
+  return { stageIndex: 0, elapsedSec: 0 };
 }
 
 export function resetDifficulty(d) {
   d.stageIndex = 0;
   d.elapsedSec = 0;
-  d.justAdvanced = false;
 }
 
 export function getStage(d) {
@@ -30,20 +29,28 @@ export function getScoreBand(d) {
 }
 
 // Call once per frame while running. `score` is the current run score.
-// Returns true (and flips justAdvanced) exactly on the frame a new stage
-// starts, so the caller can fire the stage-transition banner (§7) once.
+// Returns true exactly on the frame the next stage's threshold is crossed --
+// DETECTION only, does NOT advance stageIndex itself (2026-08-04, was an
+// instant increment here -- the "background pops immediately" behavior
+// that's being replaced by the freeze+curtain transition). The caller
+// (core/main.js's beginStageComplete) freezes the world on this signal;
+// commitStageAdvance below is what actually moves stageIndex forward, called
+// later, once the transition's curtains are fully closed.
 export function updateDifficulty(d, dt, score) {
   d.elapsedSec += dt;
-  d.justAdvanced = false;
 
   const stage = STAGES[d.stageIndex];
   const isLastStage = d.stageIndex >= STAGES.length - 1;
   if (isLastStage) return false;
 
-  if (score >= stage.advanceScore || d.elapsedSec >= stage.advanceTimeSec) {
-    d.stageIndex += 1;
-    d.justAdvanced = true;
-    return true;
-  }
-  return false;
+  return score >= stage.advanceScore || d.elapsedSec >= stage.advanceTimeSec;
+}
+
+// Actually advances to the next stage -- called once, behind the closed
+// curtain (core/main.js's 'stagecomplete' frame() branch), not the instant
+// updateDifficulty detects the threshold. Advancing by exactly 1 is safe
+// without a separate "pending index" (unlike an arbitrary-jump progression
+// system might need) since stages are strictly sequential here.
+export function commitStageAdvance(d) {
+  d.stageIndex += 1;
 }

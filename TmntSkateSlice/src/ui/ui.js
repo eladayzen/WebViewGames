@@ -1,6 +1,6 @@
 // DOM/CSS overlay HUD (§7): "UI is a DOM/CSS overlay on top of the game
 // canvas, not drawn into the canvas itself." Score/combo/lives/buffs/boxes/
-// stage-banner/countdown/game-over all live here, updated via
+// stage-complete/countdown/game-over all live here, updated via
 // textContent/class toggles rather than re-created per frame.
 //
 // Every per-frame setter (setScore/setCombo/setLives/setBuffs/setBoxes) is
@@ -78,7 +78,6 @@ const BUFF_CONFIGS = [
   { key: 'magnet', timerField: 'magnetBuffTimer', maxSec: MAGNET_BUFF_DURATION_SEC, hex: '#F84FA0' },
 ];
 
-let bannerHideTimer = null;
 
 export function createUI() {
   const el = {
@@ -88,7 +87,12 @@ export function createUI() {
     scoreBarFill: document.getElementById('score-bar-fill'),
     combo: document.getElementById('combo'),
     livesTray: document.getElementById('lives-tray'),
-    stageBanner: document.getElementById('stage-banner'),
+    stageCurtainLeft: document.getElementById('stage-curtain-left'),
+    stageCurtainRight: document.getElementById('stage-curtain-right'),
+    stageCompleteOverlay: document.getElementById('stage-complete-overlay'),
+    scHeadline: document.getElementById('sc-headline'),
+    scNext: document.getElementById('sc-next'),
+    scCountdown: document.getElementById('sc-countdown'),
     gameoverOverlay: document.getElementById('gameover-overlay'),
     finalScore: document.getElementById('final-score'),
     finalCombo: document.getElementById('final-combo'),
@@ -338,6 +342,22 @@ export function createUI() {
   const lastBuffKeys = {}; // per-buff last-written key
   let lastBombKillKey = null; // bomb-kill chip last-written key
   let lastIntroRunFrame = null; // intro step 2's run-cycle frame last-written index
+  let lastStageCountdownShown = null; // stage-complete countdown last-written whole-second
+
+  // Snaps both curtain panels back to open (off-screen) with NO animation --
+  // called at the START of every showStageComplete (defensive, in case a
+  // fast repeat somehow left them mid-close). Same suppress-transition/
+  // reflow/restore idiom needed anywhere else in this codebase a class
+  // toggle must NOT animate.
+  function resetStageCurtains() {
+    for (const el2 of [el.stageCurtainLeft, el.stageCurtainRight]) {
+      const prev = el2.style.transition;
+      el2.style.transition = 'none';
+      el2.classList.remove('stage-curtain-closed');
+      void el2.offsetWidth;
+      el2.style.transition = prev;
+    }
+  }
 
   function setIntroStep(step) {
     el.introStepItems.classList.toggle('hidden', step !== 1);
@@ -534,15 +554,58 @@ export function createUI() {
       }
     },
 
-    showStageBanner(label) {
-      el.stageBanner.textContent = label;
-      el.stageBanner.classList.remove('hidden');
-      el.stageBanner.classList.add('visible');
-      if (bannerHideTimer) clearTimeout(bannerHideTimer);
-      bannerHideTimer = setTimeout(() => {
-        el.stageBanner.classList.remove('visible');
-        el.stageBanner.classList.add('hidden');
-      }, 1700);
+    // Stage-complete transition (freeze + curtain, ported from
+    // HalfShellHustle's level-complete pattern -- see
+    // WEB_MINIGAME_TECH_RETROSPECTIVE.md, data/stageTransition.js, and
+    // core/main.js's beginStageComplete/frame() 'stagecomplete' branch,
+    // which drives all of this on dt, not a wall-clock setTimeout, so
+    // pausing genuinely holds it. showStageComplete resets the curtains to
+    // open (defensive, in case a fast repeat left them mid-close) and
+    // restarts the headline pop the same remove/reflow/re-add way every
+    // other one-shot animation in this file does.
+    showStageComplete(nextName) {
+      resetStageCurtains();
+      lastStageCountdownShown = null;
+      el.scNext.textContent = `NEXT: ${nextName.toUpperCase()}`;
+      el.scHeadline.classList.remove('sc-headline-play');
+      void el.scHeadline.offsetWidth;
+      el.scHeadline.classList.add('sc-headline-play');
+      el.stageCompleteOverlay.classList.remove('hidden');
+    },
+
+    hideStageComplete() {
+      el.stageCompleteOverlay.classList.add('hidden');
+      el.scHeadline.classList.remove('sc-headline-play');
+    },
+
+    // core/main.js triggers this partway through the countdown (data/
+    // stageTransition.js's STAGE_CURTAIN_CLOSE_DELAY_SEC), not immediately
+    // on show -- the headline gets a clear beat to itself first. Adding the
+    // class is enough; style.css's transition on .stage-curtain's transform
+    // does the animating.
+    closeStageCurtains() {
+      el.stageCurtainLeft.classList.add('stage-curtain-closed');
+      el.stageCurtainRight.classList.add('stage-curtain-closed');
+    },
+
+    // core/main.js calls this once the stage swap is done and gameplay is
+    // about to resume -- the curtains slide back open to reveal the new
+    // stage already in motion rather than popping straight to it.
+    openStageCurtains() {
+      el.stageCurtainLeft.classList.remove('stage-curtain-closed');
+      el.stageCurtainRight.classList.remove('stage-curtain-closed');
+    },
+
+    // Re-triggers the pop animation per whole second so each number lands
+    // with its own beat instead of the digits silently swapping. Dirty-
+    // checked because the caller ticks this every frame.
+    setStageCountdown(seconds) {
+      if (seconds === lastStageCountdownShown) return;
+      lastStageCountdownShown = seconds;
+      el.scCountdown.textContent = `${seconds}`;
+      el.scCountdown.classList.remove('sc-tick');
+      void el.scCountdown.offsetWidth;
+      el.scCountdown.classList.add('sc-tick');
     },
 
     setCountdown(value) {

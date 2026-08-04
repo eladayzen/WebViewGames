@@ -1,8 +1,9 @@
-// Top-level state machine (§9.2): intro -> countdown -> running -> gameover
-// -> back to intro (via restart) -- see core/main.js's beginIntro(), called
-// from both boot() and the restart button, matching the reference
-// onboarding-tutorial pattern's "shown every run, not just once ever"
-// (WEB_MINIGAME_TECH_RETROSPECTIVE.md, 2026-08-04).
+// Top-level state machine (§9.2): intro -> countdown -> running ->
+// stagecomplete -> back to running -> gameover -> back to intro (via
+// restart) -- see core/main.js's beginIntro(), called from both boot() and
+// the restart button, matching the reference onboarding-tutorial pattern's
+// "shown every run, not just once ever" (WEB_MINIGAME_TECH_RETROSPECTIVE.md,
+// 2026-08-04).
 //
 // 'intro' -- the onboarding tutorial (ui/ui.js's showIntroTutorial), two
 // auto-cycling steps; world built but frozen, shown before every run. This
@@ -12,6 +13,16 @@
 // (data/introTutorial.js's INTRO_STEP_AUTO_ADVANCE_SEC) even with zero
 // interaction, so a click/Space/Enter on the tutorial's NEXT/START buttons
 // is a SPEED-UP over that fallback, never a requirement.
+//
+// 'stagecomplete' -- reaching a new stage's score threshold freezes the
+// world (same free-freeze trick as 'intro': everything in frame()'s tick is
+// already gated on gs.current, so a distinct state pauses spawner/collision/
+// scroll with no extra guards) behind a curtain-close/open transition, ported
+// from HalfShellHustle's level-complete pattern (see
+// WEB_MINIGAME_TECH_RETROSPECTIVE.md and data/stageTransition.js's timing
+// knobs). Only ever entered mid-run, never at boot -- resumeRunning (not
+// restartToCountdown) is what returns from it, since there's no re-countdown
+// on a mid-run stage change.
 
 import { COUNTDOWN_SEC } from '../data/constants.js';
 
@@ -45,4 +56,15 @@ export function updateCountdown(gs, dt) {
 
 export function triggerGameOver(gs) {
   gs.current = 'gameover';
+}
+
+export function triggerStageComplete(gs) {
+  gs.current = 'stagecomplete';
+}
+
+// Resume straight into 'running' (no re-countdown) -- the mid-run
+// stagecomplete -> running case, distinct from restartToCountdown's
+// fresh-run-start case.
+export function resumeRunning(gs) {
+  gs.current = 'running';
 }

@@ -186,6 +186,29 @@ export function spawnBoxComplete(juice, xFrac, yFrac, hex) {
   });
 }
 
+// Stage-complete celebration (2026-08-04, freeze+curtain transition ported
+// from HalfShellHustle) -- fires once from beginStageComplete, screen-center.
+// Bigger/showier than the per-catch bursts above on purpose: the world is
+// fully frozen for this (no ongoing gameplay to stay cheap alongside), and
+// it's a rarer, bigger milestone than a single box completion. Glow:true is
+// safe here for the same reason -- this never fires mid-catch-streak.
+export function spawnStageCompleteBurst(juice, xFrac, yFrac) {
+  emitBurst(juice, xFrac, yFrac, {
+    count: 30,
+    colors: ['#8CFFA0', '#4CE05A', '#FFE066', '#ffffff'],
+    speedMin: 0.3,
+    speedMax: 0.65,
+    life: 0.7,
+    shape: 'spark',
+    sizeMin: 0.012,
+    sizeMax: 0.022,
+    upBias: 0.18,
+    glow: true,
+  });
+  juice.rings.push({ xFrac, yFrac, life: 0.5, maxLife: 0.5, maxRadiusFrac: 0.45, color: '#8CFFA0' });
+  juice.rings.push({ xFrac, yFrac, life: 0.4, maxLife: 0.4, maxRadiusFrac: 0.28, color: '#FFE066' });
+}
+
 // Shield block (special abilities, 2026-07-30) -- fires when a shielded
 // player absorbs a bomb. Bright green spark burst + a ring, no shadowBlur.
 // Reads as a satisfying deflect, not a hit.

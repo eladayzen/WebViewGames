@@ -5,8 +5,9 @@
 
 import { loadAssets, loadAudioAssets } from './assets.js';
 import { setupCanvas, renderFrame } from './render.js';
-import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, togglePause, triggerIntro } from './gameState.js';
+import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, togglePause, triggerIntro, triggerStageComplete, resumeRunning } from './gameState.js';
 import { INTRO_STEP1_AUTO_ADVANCE_SEC, INTRO_STEP2_AUTO_ADVANCE_SEC, INTRO_RUN_FRAME_DURATION_SEC } from '../data/introTutorial.js';
+import { STAGE_COMPLETE_COUNTDOWN_SEC, STAGE_CURTAIN_CLOSE_DELAY_SEC, STAGE_CURTAIN_TRANSITION_SEC } from '../data/stageTransition.js';
 import { getSteerAxis } from '../input/input.js';
 import { createAudio, playSfx, startMusic, pauseMusic, resumeMusic, toggleMuted } from '../systems/audio.js';
 import {
@@ -31,7 +32,8 @@ import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../syste
 import { createBombKills, resetBombKills, registerBombKill } from '../systems/bombKills.js';
 import { rollBoxReward, BOX_COLOR_BY_ID } from '../data/boxColors.js';
 import { BOMB_KILL_SET } from '../data/bombKills.js';
-import { createDifficulty, resetDifficulty, updateDifficulty, getStage, getScoreBand } from '../systems/difficulty.js';
+import { createDifficulty, resetDifficulty, updateDifficulty, commitStageAdvance, getStage, getScoreBand } from '../systems/difficulty.js';
+import { STAGES } from '../data/stages.js';
 import {
   createScoring,
   resetScoring,
@@ -43,7 +45,7 @@ import {
   getComboMultiplier,
 } from '../systems/scoring.js';
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
-import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, triggerScreenShake } from '../systems/juice.js';
+import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
 import { PLAYER_HEIGHT_FRAC } from '../data/constants.js';
 
@@ -88,6 +90,14 @@ async function boot() {
   let introElapsed = 0; // time in the CURRENT step, for the auto-advance timeout
   let introRunFrameIndex = 0;
   let introRunFrameElapsed = 0;
+
+  // Stage-complete transition state (freeze + curtain, ported from
+  // HalfShellHustle's level-complete pattern -- data/stageTransition.js's
+  // timing knobs) -- all dt-driven from frame()'s 'stagecomplete' branch,
+  // same reasoning as intro above: pausing genuinely holds it.
+  let stageCompleteElapsed = 0;
+  let stageCurtainsClosed = false;
+  let stageSwapped = false;
 
   // Background music defaults OFF for now (per request 2026-07-30) -- SFX
   // still play. Flip MUSIC_ON to re-enable the ambient bed (it loops
@@ -327,6 +337,26 @@ async function boot() {
     // missed ooze/bomb: no penalty, no combo effect (§5.4, §6)
   }
 
+  // Entered when updateDifficulty detects the next stage's threshold crossed
+  // (freeze + curtain transition, ported from HalfShellHustle's level-
+  // complete pattern -- see WEB_MINIGAME_TECH_RETROSPECTIVE.md). The world
+  // freezes (gs.current gates the whole of updateRunning), the curtain
+  // closes over the scene, the stage actually advances hidden behind it
+  // (commitStageAdvance, in frame()'s 'stagecomplete' branch below), then
+  // the curtain opens back onto the new stage already in motion. Reads the
+  // NEXT stage's name before anything advances -- difficulty.stageIndex
+  // itself doesn't move until commitStageAdvance runs, later.
+  function beginStageComplete() {
+    triggerStageComplete(gs);
+    stageCompleteElapsed = 0;
+    stageCurtainsClosed = false;
+    stageSwapped = false;
+    const nextStage = STAGES[difficulty.stageIndex + 1];
+    ui.showStageComplete(nextStage.name);
+    spawnStageCompleteBurst(juice, 0.5, 0.4);
+    playSfx(audio, sfx.sfx_stage_advance);
+  }
+
   function updateRunning(dt) {
     const steerAxis = getSteerAxis();
     updatePlayer(player, dt, steerAxis);
@@ -334,8 +364,12 @@ async function boot() {
     const advanced = updateDifficulty(difficulty, dt, scoring.score);
     const stage = getStage(difficulty);
     if (advanced) {
-      ui.showStageBanner(stage.bannerLabel);
-      playSfx(audio, sfx.sfx_stage_advance);
+      // Freeze starts THIS frame -- return immediately so no spawn/item/
+      // collision logic below sneaks in one more tick after gs.current has
+      // already flipped to 'stagecomplete' (a genuine freeze, not a
+      // one-frame-late one).
+      beginStageComplete();
+      return stage;
     }
 
     const spawned = updateSpawner(spawner, dt, stage, boxes);
@@ -450,6 +484,46 @@ async function boot() {
         } else if (gs.current === 'running') {
           ui.setCountdown(0);
           stage = updateRunning(dt);
+        } else if (gs.current === 'stagecomplete') {
+          ui.setCountdown(0);
+          stageCompleteElapsed += dt;
+          // ceil, floored at 1: reads "1" for the whole final second rather
+          // than flashing a 0 nobody is meant to see.
+          ui.setStageCountdown(Math.max(1, Math.ceil(STAGE_COMPLETE_COUNTDOWN_SEC - stageCompleteElapsed)));
+          // Let the celebration burst play out/decay while the world is
+          // frozen (same "keep ticking VFX" fix already applied to gameover
+          // -- otherwise it'd freeze mid-burst instead of settling).
+          updateJuice(juice, dt);
+
+          // Starts the curtain CLOSE partway through the countdown -- the
+          // headline/burst beat gets a clear moment to itself first. Only
+          // STARTS the CSS transition; see the swap check below for why the
+          // actual stage advance waits for it to finish.
+          if (!stageCurtainsClosed && stageCompleteElapsed >= STAGE_CURTAIN_CLOSE_DELAY_SEC) {
+            ui.closeStageCurtains();
+            stageCurtainsClosed = true;
+          }
+
+          // THE STAGE ADVANCE, once the curtains have actually FINISHED
+          // closing (CLOSE_DELAY + TRANSITION), not the instant they start
+          // to -- each stage's groundYFrac differs, so swapping while the
+          // curtains are still open (or mid-slide) would visibly teleport
+          // the player/ground line. A closed curtain is what actually hides
+          // that jump.
+          if (!stageSwapped && stageCurtainsClosed
+              && stageCompleteElapsed >= STAGE_CURTAIN_CLOSE_DELAY_SEC + STAGE_CURTAIN_TRANSITION_SEC) {
+            stageSwapped = true;
+            commitStageAdvance(difficulty);
+            stage = getStage(difficulty); // hidden behind the still-closed curtain until it reopens
+          }
+
+          if (stageCompleteElapsed >= STAGE_COMPLETE_COUNTDOWN_SEC) {
+            ui.hideStageComplete();
+            resumeRunning(gs);
+            // Curtains are the LAST thing to move -- reveals the new stage
+            // already in motion rather than popping straight to it.
+            ui.openStageCurtains();
+          }
         } else if (gs.current === 'gameover') {
           ui.setCountdown(0);
           ui.showGameOver(scoring.score, scoring.bestCombo);

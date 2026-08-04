@@ -109,8 +109,6 @@
              dynamically per color in ui.js, hidden until each box is active. -->
         <div id="box-tray"></div>
 
-        <div id="stage-banner" class="hidden"></div>
-
         <div id="paused-badge" class="hidden">PAUSED</div>
 
         <!-- Box-completion celebrations. Each: box icon + "<COLOR> BOX!" + the
@@ -177,6 +175,24 @@
           <div id="intro-steer-board" class="intro-board"></div>
           <button id="intro-start-button">START</button>
         </div>
+      </div>
+
+      <!-- Stage-complete transition (freeze + curtain, ported from
+           HalfShellHustle's level-complete pattern -- see
+           WEB_MINIGAME_TECH_RETROSPECTIVE.md and data/stageTransition.js).
+           Curtain panels are SIBLINGS of #stage-complete-overlay, deliberately
+           NOT children of it: the overlay goes display:none the instant
+           hideStageComplete runs, and a CSS transition cannot play on an
+           element whose ancestor just went display:none -- nested, the
+           opening slide would silently never animate. Own explicit z-index
+           for the same reason (no longer inheriting .overlay's). -->
+      <div id="stage-curtain-left" class="stage-curtain"></div>
+      <div id="stage-curtain-right" class="stage-curtain"></div>
+
+      <div id="stage-complete-overlay" class="overlay hidden">
+        <div id="sc-headline">STAGE CLEAR!</div>
+        <div id="sc-next">NEXT: FIRE ESCAPE</div>
+        <div id="sc-countdown">4</div>
       </div>
     </div>
 
