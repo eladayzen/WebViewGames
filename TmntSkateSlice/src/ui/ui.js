@@ -149,12 +149,15 @@ export function createUI() {
   }
 
   // Build one large collection-box chip per box once (hidden until active),
-  // driven from data/boxColors.js. Each chip (redesign 2026-07-30): a big
-  // pizza-box graphic where a full-opacity copy is REVEALED RADIALLY over a
-  // faded "empty" copy as slices are caught (a conic mask -- non-text
-  // progress feedback), wrapped by a depleting timer STROKE RING, with the
-  // "N/8" count below, and the box art tinted to that set's color
-  // (BOX_ICON_URLS). Color-coded via --box-color.
+  // driven from data/boxColors.js. Each chip (redesign 2026-07-30, timer
+  // bar added 2026-08-04): a big pizza-box graphic where a full-opacity
+  // copy is REVEALED RADIALLY over a faded "empty" copy as slices are
+  // caught (a conic mask -- non-text progress feedback), wrapped by a
+  // stroke ring that MIRRORS that same progress fraction, with the "N/8"
+  // count below, and the box art tinted to that set's color (BOX_ICON_URLS).
+  // Time gets its OWN indicator now -- a small stopwatch icon + thin bar
+  // above the chip (.box-timer) -- since sharing the ring between progress
+  // and time read as ambiguous. Color-coded via --box-color.
   const SVGNS = 'http://www.w3.org/2000/svg';
   el.boxTray = document.getElementById('box-tray');
   el.boxChips = {};
@@ -162,6 +165,26 @@ export function createUI() {
     const chip = document.createElement('div');
     chip.className = 'box-chip hidden';
     chip.style.setProperty('--box-color', c.hex);
+
+    // Thin countdown bar + stopwatch icon ABOVE the chip (2026-08-04) -- the
+    // ring below used to deplete on time, but that read as ambiguous
+    // ("what is this circle even showing?"); it's now repurposed to mirror
+    // the pizza art's own progress fill (see setBoxes), so time gets its
+    // own unambiguous, differently-shaped indicator instead of sharing the
+    // ring with progress.
+    const timerRow = document.createElement('div');
+    timerRow.className = 'box-timer';
+    const timerIcon = document.createElement('span');
+    timerIcon.className = 'box-timer-icon';
+    timerIcon.textContent = '⏱️';
+    const timerTrack = document.createElement('div');
+    timerTrack.className = 'box-timer-track';
+    const timerFill = document.createElement('div');
+    timerFill.className = 'box-timer-fill';
+    timerTrack.appendChild(timerFill);
+    timerRow.appendChild(timerIcon);
+    timerRow.appendChild(timerTrack);
+    chip.appendChild(timerRow);
 
     const graphic = document.createElement('div');
     graphic.className = 'box-graphic';
@@ -178,9 +201,9 @@ export function createUI() {
     fillImg.style.setProperty('--fill', '0');
 
     // Rounded-square outer shape: a low-opacity black background (bg+track
-    // rect) with the depleting timer as a stroke around its perimeter (arc
+    // rect) with the progress fraction as a stroke around its perimeter (arc
     // rect, pathLength-normalized to 100 so the offset math is perimeter-
-    // independent).
+    // independent) -- see setBoxes.
     const svg = document.createElementNS(SVGNS, 'svg');
     svg.setAttribute('viewBox', '0 0 100 100');
     svg.classList.add('box-ring');
@@ -208,7 +231,7 @@ export function createUI() {
 
     chip.appendChild(graphic);
     el.boxTray.appendChild(chip);
-    el.boxChips[c.id] = { chip, fillImg, arc, count };
+    el.boxChips[c.id] = { chip, fillImg, arc, count, timerFill };
   }
 
   // Bomb-kill set chip (2026-08-02) -- same visual language as the box chips
@@ -459,10 +482,18 @@ export function createUI() {
           chip.chip.classList.remove('hidden');
           chip.count.textContent = `${b.progress}/${c.requiredCount}`;
           // radial reveal of the full box (0..1 of a full turn)
-          chip.fillImg.style.setProperty('--fill', (b.progress / c.requiredCount).toFixed(3));
-          // timer stroke depletes around the rounded square (pathLength 100)
-          const frac = Math.max(0, Math.min(1, b.timerRemaining / c.timerSec));
-          chip.arc.style.strokeDashoffset = (100 * (1 - frac)).toFixed(1);
+          const progressFrac = b.progress / c.requiredCount;
+          chip.fillImg.style.setProperty('--fill', progressFrac.toFixed(3));
+          // Ring stroke MIRRORS that same progress fraction now (2026-08-04,
+          // was time -- see the chip-build comment above) -- reinforces the
+          // pizza art's own fill instead of showing a second, different
+          // metric on the same shape.
+          chip.arc.style.strokeDashoffset = (100 * (1 - progressFrac)).toFixed(1);
+          // The NEW, unambiguous time indicator: a thin bar that shrinks
+          // left-to-right as the timer runs out, same width-percent
+          // technique .buff-fill already uses for buff durations.
+          const timeFrac = Math.max(0, Math.min(1, b.timerRemaining / c.timerSec));
+          chip.timerFill.style.width = `${(timeFrac * 100).toFixed(1)}%`;
         } else {
           chip.chip.classList.add('hidden');
         }

@@ -206,10 +206,12 @@ html, body {
    horizontal row centered along the BOTTOM, below the character: on the left
    they covered him and a 3rd/4th chip ran off-screen. Halved in size (96->48).
    Outer shape is a rounded-SQUARE low-opacity black panel whose perimeter
-   STROKE is the depleting timer (boxes only; the bomb-kill chip has none).
-   Inside: a faded pizza-box copy (70% opacity) with a full-opacity copy
-   revealed RADIALLY (conic mask) as slices are caught, plus the "N/8" count.
-   Color-coded via --box-color set in ui.js. --- */
+   STROKE mirrors the box's PROGRESS fraction (boxes only; the bomb-kill chip
+   has none). Inside: a faded pizza-box copy (70% opacity) with a full-opacity
+   copy revealed RADIALLY (conic mask) as slices are caught, plus the "N/8"
+   count. Color-coded via --box-color set in ui.js. Time is a SEPARATE
+   indicator now -- see .box-timer below -- not shared with this ring
+   (2026-08-04, feedback: sharing them read as ambiguous). --- */
 #box-tray {
   position: absolute;
   bottom: 8px;
@@ -244,6 +246,42 @@ html, body {
   100% { transform: scale(1); }
 }
 
+/* Thin countdown bar + stopwatch icon ABOVE each box chip (2026-08-04) --
+   the ring inside .box-graphic used to double as the timer, but that read
+   as unclear ("what is this circle even showing?"); it's now repurposed to
+   mirror the pizza art's own progress fill (see ui.js's setBoxes), so time
+   gets its own small, differently-shaped, unambiguous indicator instead. */
+.box-timer {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 58px; /* matches .box-graphic's width so it reads as "belonging" to the chip below it */
+  margin-bottom: 3px;
+}
+
+.box-timer-icon {
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
+}
+
+.box-timer-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.box-timer-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--box-color, #fff);
+  transition: width 0.25s linear; /* smooths the ~2x/sec JS update, same technique as .ring-arc's stroke-dashoffset transition */
+}
+
 .box-graphic {
   position: relative;
   width: 58px;
@@ -256,7 +294,7 @@ html, body {
 }
 
 /* The rounded-square SVG: bg (black panel) + faint outline, and the
-   depleting timer arc, sit behind the box images. */
+   progress-mirroring arc, sit behind the box images. */
 .box-ring {
   position: absolute;
   inset: 0;
