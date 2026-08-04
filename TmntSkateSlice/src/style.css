@@ -254,13 +254,13 @@ html, body {
 .box-timer {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 0; /* touches the icon (feedback 2026-08-04, was 3px) */
   width: 58px; /* matches .box-graphic's width so it reads as "belonging" to the chip below it */
   margin-bottom: 3px;
 }
 
 .box-timer-icon {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1;
   flex-shrink: 0;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
@@ -268,8 +268,8 @@ html, body {
 
 .box-timer-track {
   flex: 1;
-  height: 5px;
-  border-radius: 3px;
+  height: 8px; /* thicker/taller (feedback 2026-08-04, was 5px) */
+  border-radius: 4px;
   background: rgba(0, 0, 0, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.25);
   overflow: hidden;
@@ -357,6 +357,23 @@ html, body {
   -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.8);
   paint-order: stroke fill;
   font-variant-numeric: tabular-nums;
+}
+
+/* Transient "shoot" clone (ui.js's shootChipToPopup, 2026-08-04) -- bridges
+   a just-completed chip in the bottom tray to the celebration popup that's
+   replacing it: flies from the chip's screen position to the popup's icon,
+   scaling up slightly, and vanishes right as it arrives. position:fixed (not
+   inside any tray/overlay) since it travels across the whole screen; a high
+   z-index keeps it visible over the popup tray (30) as it approaches. Not a
+   persistent element -- created and removed per completion, not pooled (this
+   fires rarely, unlike the hot-path canvas particles). */
+.chip-shoot-fly {
+  position: fixed;
+  z-index: 45;
+  pointer-events: none;
+  object-fit: contain;
+  opacity: 1;
+  filter: drop-shadow(0 0 10px var(--shoot-color, #fff));
 }
 
 /* --- Box-completion celebrations (progression update) -- a quick foreground

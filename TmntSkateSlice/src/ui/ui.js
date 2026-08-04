@@ -234,13 +234,29 @@ export function createUI() {
     el.boxChips[c.id] = { chip, fillImg, arc, count, timerFill };
   }
 
-  // Bomb-kill set chip (2026-08-02) -- same visual language as the box chips
-  // (bomb icon revealed radially as kills accumulate + "N/8" count) but with NO
-  // timer ring (the set has no timer). Hidden until the first kill.
+  // Bomb-kill set chip (2026-02-02, timer added 2026-08-04) -- same visual
+  // language as the box chips now that it has both progress AND a real
+  // timer: bomb icon revealed radially as kills accumulate + a progress-
+  // mirroring ring + "N/8" count, plus its own .box-timer bar above. Hidden
+  // until the first kill.
   {
     const chip = document.createElement('div');
     chip.className = 'box-chip hidden';
     chip.style.setProperty('--box-color', BOMB_KILL_SET.hex);
+
+    const timerRow = document.createElement('div');
+    timerRow.className = 'box-timer';
+    const timerIcon = document.createElement('span');
+    timerIcon.className = 'box-timer-icon';
+    timerIcon.textContent = '⏱️';
+    const timerTrack = document.createElement('div');
+    timerTrack.className = 'box-timer-track';
+    const timerFill = document.createElement('div');
+    timerFill.className = 'box-timer-fill';
+    timerTrack.appendChild(timerFill);
+    timerRow.appendChild(timerIcon);
+    timerRow.appendChild(timerTrack);
+    chip.appendChild(timerRow);
 
     const graphic = document.createElement('div');
     graphic.className = 'box-graphic';
@@ -256,15 +272,21 @@ export function createUI() {
     fillImg.alt = '';
     fillImg.style.setProperty('--fill', '0');
 
-    // Rounded-square panel (bg only -- no depleting timer arc).
     const svg = document.createElementNS(SVGNS, 'svg');
     svg.setAttribute('viewBox', '0 0 100 100');
     svg.classList.add('box-ring');
-    const bg = document.createElementNS(SVGNS, 'rect');
     const RECT = { x: '5', y: '5', width: '90', height: '90', rx: '20', ry: '20' };
+    const bg = document.createElementNS(SVGNS, 'rect');
     for (const k in RECT) bg.setAttribute(k, RECT[k]);
     bg.classList.add('ring-bg');
+    const arc = document.createElementNS(SVGNS, 'rect');
+    for (const k in RECT) arc.setAttribute(k, RECT[k]);
+    arc.classList.add('ring-arc');
+    arc.setAttribute('pathLength', '100');
+    arc.style.strokeDasharray = '100';
+    arc.style.strokeDashoffset = '0';
     svg.appendChild(bg);
+    svg.appendChild(arc);
 
     const count = document.createElement('span');
     count.className = 'box-count';
@@ -275,7 +297,7 @@ export function createUI() {
     graphic.appendChild(count);
     chip.appendChild(graphic);
     el.boxTray.appendChild(chip);
-    el.bombChip = { chip, fillImg, count };
+    el.bombChip = { chip, fillImg, arc, count, timerFill };
   }
 
   // Box-completion celebrations (see showBoxComplete). A small pool of popup
@@ -355,6 +377,44 @@ export function createUI() {
     if (el.boxChips[id]) return el.boxChips[id].chip;
     if (id === BOMB_KILL_SET.id) return el.bombChip.chip;
     return null;
+  }
+
+  // "Shoots" a small clone of the just-completed chip from its position in
+  // the bottom tray up to the celebration popup that's replacing it, with a
+  // slight scale-up, disappearing right as/when it arrives -- so it reads
+  // as "this filled-up chip flew up and burst into that experience," not as
+  // two disconnected events (feedback 2026-08-04). A transient clone, not
+  // the real chip element: the real chip already hides itself via the
+  // normal setBoxes/setBombKills dirty-check the instant this frame's HUD
+  // update runs, so this is purely a decorative bridge between the two.
+  const SHOOT_FLY_MS = 380;
+  function shootChipToPopup(id, hex, targetIconEl) {
+    const chipEl = chipElFor(id);
+    if (!chipEl) return;
+    const startRect = chipEl.getBoundingClientRect();
+    const targetRect = targetIconEl.getBoundingClientRect();
+    if (startRect.width === 0 || targetRect.width === 0) return; // defensive: nothing visible to fly from/to
+
+    const icon = document.createElement('img');
+    icon.className = 'chip-shoot-fly';
+    icon.src = BOX_ICON_URLS[id] || BOX_ICON_URLS.regular;
+    icon.style.setProperty('--shoot-color', hex);
+    icon.style.left = `${startRect.left}px`;
+    icon.style.top = `${startRect.top}px`;
+    icon.style.width = `${startRect.width}px`;
+    icon.style.height = `${startRect.width}px`;
+    document.body.appendChild(icon);
+    void icon.offsetWidth; // lock in the start position before animating
+
+    const dx = (targetRect.left + targetRect.width / 2) - (startRect.left + startRect.width / 2);
+    const dy = (targetRect.top + targetRect.height / 2) - (startRect.top + startRect.width / 2);
+    icon.style.transition =
+      `transform ${SHOOT_FLY_MS}ms cubic-bezier(0.3, 0, 0.2, 1), ` +
+      `opacity 110ms ease-in ${SHOOT_FLY_MS - 110}ms`; // stays fully visible until the very end, then vanishes fast right at arrival
+    icon.style.transform = `translate(${dx}px, ${dy}px) scale(1.2)`;
+    icon.style.opacity = '0';
+
+    setTimeout(() => icon.remove(), SHOOT_FLY_MS + 50);
   }
 
   // Last-written values, for the dirty-checks below.
@@ -439,6 +499,10 @@ export function createUI() {
       void slot.root.offsetWidth; // force reflow to restart the animation
       slot.root.classList.add('bcp-animate');
 
+      // NOW that the popup is laid out (its icon has a real screen rect),
+      // shoot the completed chip up into it -- see shootChipToPopup.
+      shootChipToPopup(id, hex, slot.icon);
+
       slot.hideTimer = setTimeout(() => {
         slot.active = false;
         slot.hideTimer = null;
@@ -500,17 +564,22 @@ export function createUI() {
       }
     },
 
-    // Bomb-kill chip: shown once you've killed at least one bomb, radial reveal
-    // + "N/8" count. No timer. Dirty-checked like the other per-frame setters.
+    // Bomb-kill chip: shown once you've killed at least one bomb, radial
+    // reveal + progress-mirroring ring + "N/8" count + its own .box-timer
+    // bar (2026-08-04, now has a real timer -- see data/bombKills.js).
+    // Dirty-checked like the other per-frame setters.
     setBombKills(bombKills) {
-      const active = bombKills.progress > 0;
-      const key = active ? String(bombKills.progress) : 'off';
+      const key = bombKills.active ? `${bombKills.progress}:${Math.ceil(bombKills.timerRemaining * 2)}` : 'off';
       if (key === lastBombKillKey) return;
       lastBombKillKey = key;
-      if (active) {
+      if (bombKills.active) {
         el.bombChip.chip.classList.remove('hidden');
         el.bombChip.count.textContent = `${bombKills.progress}/${BOMB_KILL_SET.requiredCount}`;
-        el.bombChip.fillImg.style.setProperty('--fill', (bombKills.progress / BOMB_KILL_SET.requiredCount).toFixed(3));
+        const progressFrac = bombKills.progress / BOMB_KILL_SET.requiredCount;
+        el.bombChip.fillImg.style.setProperty('--fill', progressFrac.toFixed(3));
+        el.bombChip.arc.style.strokeDashoffset = (100 * (1 - progressFrac)).toFixed(1);
+        const timeFrac = Math.max(0, Math.min(1, bombKills.timerRemaining / BOMB_KILL_SET.timerSec));
+        el.bombChip.timerFill.style.width = `${(timeFrac * 100).toFixed(1)}%`;
       } else {
         el.bombChip.chip.classList.add('hidden');
       }

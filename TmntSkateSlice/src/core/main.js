@@ -29,7 +29,7 @@ import {
 import { updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
 import { createSpawner, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../systems/boxes.js';
-import { createBombKills, resetBombKills, registerBombKill } from '../systems/bombKills.js';
+import { createBombKills, resetBombKills, registerBombKill, updateBombKills } from '../systems/bombKills.js';
 import { rollBoxReward, BOX_COLOR_BY_ID } from '../data/boxColors.js';
 import { BOMB_KILL_SET } from '../data/bombKills.js';
 import { createDifficulty, resetDifficulty, updateDifficulty, commitStageAdvance, getStage, getScoreBand } from '../systems/difficulty.js';
@@ -422,6 +422,9 @@ async function boot() {
     // box this frame is already handled above, so this only expires boxes
     // that got no completing catch -- completion always wins the tie.
     updateBoxes(boxes, dt);
+    // Same ordering rule, same reason (2026-08-04): a kill that completes
+    // the bomb-kill set this frame is already handled inside killBomb above.
+    updateBombKills(bombKills, dt);
 
     const scoreBand = getScoreBand(difficulty);
     ui.setScore(scoring.score, scoreBand.prevThreshold, scoreBand.nextThreshold);
