@@ -6,8 +6,7 @@
 
 import { createFallingItem } from '../entities/fallingItem.js';
 import { rollItemType, ITEM_TYPES } from '../data/itemTypes.js';
-import { MAX_SPAWN_X_JUMP_FRAC } from '../data/constants.js';
-import { getPlayAreaBounds } from '../data/stages.js';
+import { ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, MAX_SPAWN_X_JUMP_FRAC } from '../data/constants.js';
 
 export function createSpawner() {
   return { timer: 0, lastXFrac: 0.5 };
@@ -18,10 +17,9 @@ export function resetSpawner(sp) {
   sp.lastXFrac = 0.5;
 }
 
-function pickNextX(sp, stage) {
-  const bounds = getPlayAreaBounds(stage);
-  const lo = Math.max(bounds.itemLeft, sp.lastXFrac - MAX_SPAWN_X_JUMP_FRAC);
-  const hi = Math.min(bounds.itemRight, sp.lastXFrac + MAX_SPAWN_X_JUMP_FRAC);
+function pickNextX(sp) {
+  const lo = Math.max(ITEM_MIN_X_FRAC, sp.lastXFrac - MAX_SPAWN_X_JUMP_FRAC);
+  const hi = Math.min(ITEM_MAX_X_FRAC, sp.lastXFrac + MAX_SPAWN_X_JUMP_FRAC);
   const x = lo + Math.random() * (hi - lo);
   sp.lastXFrac = x;
   return x;
@@ -64,6 +62,6 @@ export function updateSpawner(sp, dt, stage, boxes, forcedBombXFrac = null) {
     return createFallingItem(ITEM_TYPES.BOMB, forcedBombXFrac, pickFallSpeedFrac(stage));
   }
   const type = rollItemType(stage, boxes);
-  const x = pickNextX(sp, stage);
+  const x = pickNextX(sp);
   return createFallingItem(type, x, pickFallSpeedFrac(stage));
 }

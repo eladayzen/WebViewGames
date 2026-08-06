@@ -34,7 +34,7 @@ import { createBombKills, resetBombKills, registerBombKill, updateBombKills } fr
 import { rollBoxReward, BOX_COLOR_BY_ID } from '../data/boxColors.js';
 import { BOMB_KILL_SET } from '../data/bombKills.js';
 import { createDifficulty, resetDifficulty, updateDifficulty, commitStageAdvance, getStage, getScoreBand } from '../systems/difficulty.js';
-import { STAGES, getPlayAreaBounds } from '../data/stages.js';
+import { STAGES } from '../data/stages.js';
 import {
   createScoring,
   resetScoring,
@@ -48,7 +48,7 @@ import {
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
-import { PLAYER_HEIGHT_FRAC, BOX_COMPLETE_FLY_MS } from '../data/constants.js';
+import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, BOX_COMPLETE_FLY_MS } from '../data/constants.js';
 
 // Clamp so a tab-resume/frame-hitch never simulates a huge leap. Raised
 // 1/20 -> 1/10 (2026-07-30): the old 1/20 meant any frame slower than 20fps
@@ -391,10 +391,10 @@ async function boot() {
 
   function updateRunning(dt) {
     const steerAxis = getSteerAxis();
-    const stage = getStage(difficulty);
-    updatePlayer(player, dt, steerAxis, stage);
+    updatePlayer(player, dt, steerAxis);
 
     const advanced = updateDifficulty(difficulty, dt, scoring.score);
+    const stage = getStage(difficulty);
     if (advanced) {
       // Freeze starts THIS frame -- return immediately so no spawn/item/
       // collision logic below sneaks in one more tick after gs.current has
@@ -411,8 +411,7 @@ async function boot() {
     // safe." See systems/bombPresence.js.
     const bombCount = items.reduce((n, it) => n + (!it.resolved && it.type.kind === 'hazard' ? 1 : 0), 0);
     const forceBomb = updateBombPresence(bombPresence, dt, bombCount);
-    const stageBounds = getPlayAreaBounds(stage);
-    const forcedBombXFrac = forceBomb ? (player.xFrac < 0.5 ? stageBounds.itemRight : stageBounds.itemLeft) : null;
+    const forcedBombXFrac = forceBomb ? (player.xFrac < 0.5 ? ITEM_MAX_X_FRAC : ITEM_MIN_X_FRAC) : null;
 
     const spawned = updateSpawner(spawner, dt, stage, boxes, forcedBombXFrac);
     if (spawned) items.push(spawned);
@@ -441,7 +440,7 @@ async function boot() {
       // kind:'good', never bombs/pickups). Separate pass so updateFallingItem
       // keeps its "straight down" invariant; applyMagnetPull self-clamps x.
       if (isMagnetBuffed(player) && item.type.kind === 'good') {
-        applyMagnetPull(item, player.xFrac, dt, stage);
+        applyMagnetPull(item, player.xFrac, dt);
       }
 
       const horizontalOverlap = Math.abs(item.xFrac - player.xFrac) <= getHitHalfWidthFrac(player);

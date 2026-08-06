@@ -7,6 +7,8 @@
 
 import {
   PLAYER_MAX_SPEED_FRAC_PER_SEC,
+  PLAY_AREA_LEFT_FRAC,
+  PLAY_AREA_RIGHT_FRAC,
   BASE_HIT_HALF_WIDTH_FRAC,
   OOZE_HIT_HALF_WIDTH_FRAC,
   OOZE_BUFF_DURATION_SEC,
@@ -14,7 +16,6 @@ import {
   MAGNET_BUFF_DURATION_SEC,
   HIT_INVULNERABILITY_SEC,
 } from '../data/constants.js';
-import { getPlayAreaBounds } from '../data/stages.js';
 
 // Per-swing-frame hold time. Frames 2/3 match the walking run-cycle's
 // per-frame pace at max speed (RUN_CYCLE_STEP_FRAC /
@@ -69,12 +70,11 @@ export function resetPlayer(player) {
   player.isMoving = false;
 }
 
-export function updatePlayer(player, dt, steerAxis, stage) {
+export function updatePlayer(player, dt, steerAxis) {
   // Continuous, proportional movement -- never a discrete step (§4).
   const prevX = player.xFrac;
   player.xFrac += steerAxis * PLAYER_MAX_SPEED_FRAC_PER_SEC * dt;
-  const bounds = getPlayAreaBounds(stage);
-  player.xFrac = Math.max(bounds.left, Math.min(bounds.right, player.xFrac));
+  player.xFrac = Math.max(PLAY_AREA_LEFT_FRAC, Math.min(PLAY_AREA_RIGHT_FRAC, player.xFrac));
   const deltaXFrac = Math.abs(player.xFrac - prevX);
 
   // Gates the run-cycle frame swap -- requires both meaningful input (not
