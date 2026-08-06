@@ -27,6 +27,11 @@
 // per-stage feedback about how he reads against a background is feedback
 // on that background (groundYFrac, or the art itself), never a reason to
 // resize him.
+// TEMP (2026-08-06): every advanceScore below is a low testing value (50,
+// 100, 150...) so all 8 stages -- especially the 5 new ones -- can be
+// reached quickly for a playtest pass, instead of grinding real score.
+// Each real production value is noted inline next to its temp value.
+// Revert before shipping: restore each advanceScore to its noted real value.
 export const STAGES = [
   {
     id: 'rooftop',
@@ -50,7 +55,7 @@ export const STAGES = [
     //   | L5->L6 9000 (+2500) | ... (+500 each level)
     // Only 2 transitions exist today (3 stages); the rest is the pattern for
     // any future stages.
-    advanceScore: 500,
+    advanceScore: 50, // TEMP testing value (2026-08-06), real value: 500
     advanceTimeSec: Infinity,
   },
   {
@@ -63,7 +68,7 @@ export const STAGES = [
     spawnIntervalSec: 1.15,
     bombChance: 0.32, // a bit more, not a lot (2026-08-05, was 0.28)
     powerUpChance: 0.13,
-    advanceScore: 3000, // kept; cumulative (+2500 over L1->L2's 500), see stage 1 note
+    advanceScore: 100, // TEMP testing value (2026-08-06), real value: 3000
     advanceTimeSec: Infinity, // score-only advancement
   },
   {
@@ -79,7 +84,7 @@ export const STAGES = [
     // No longer the last stage (2026-08-06) -- advances at the L3->L4
     // threshold the original comment already reserved for this (4500,
     // +1500 over L2->L3's 2500 -- the "+500 per level from L3 on" pattern).
-    advanceScore: 4500,
+    advanceScore: 150, // TEMP testing value (2026-08-06), real value: 4500
     advanceTimeSec: Infinity,
   },
   {
@@ -96,7 +101,7 @@ export const STAGES = [
     spawnIntervalSec: 0.82,
     bombChance: 0.42,
     powerUpChance: 0.13,
-    advanceScore: 6500, // L4->L5, +2000 per the documented pattern
+    advanceScore: 200, // TEMP testing value (2026-08-06), real value: 6500
     advanceTimeSec: Infinity,
   },
   {
@@ -109,7 +114,7 @@ export const STAGES = [
     spawnIntervalSec: 0.72,
     bombChance: 0.45,
     powerUpChance: 0.12,
-    advanceScore: 9000, // L5->L6, +2500
+    advanceScore: 250, // TEMP testing value (2026-08-06), real value: 9000
     advanceTimeSec: Infinity,
   },
   {
@@ -122,7 +127,7 @@ export const STAGES = [
     spawnIntervalSec: 0.64,
     bombChance: 0.47,
     powerUpChance: 0.12,
-    advanceScore: 12000, // L6->L7, +3000
+    advanceScore: 300, // TEMP testing value (2026-08-06), real value: 12000
     advanceTimeSec: Infinity,
   },
   {
@@ -135,7 +140,7 @@ export const STAGES = [
     spawnIntervalSec: 0.58,
     bombChance: 0.49,
     powerUpChance: 0.11,
-    advanceScore: 15500, // L7->L8, +3500
+    advanceScore: 350, // TEMP testing value (2026-08-06), real value: 15500
     advanceTimeSec: Infinity,
   },
   {
