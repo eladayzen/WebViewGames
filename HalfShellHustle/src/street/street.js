@@ -112,8 +112,16 @@ function layoutBuildingSlots(side, profile) {
 // (~-180) but inside camera.far, sized generously to fill the frame at that
 // distance for the given vertical FOV/aspect (with margin for camera x-sway
 // during lane changes) -- see main.js's CAMERA_FOV/ASPECT_W/H.
+//
+// 520 -> 624 (+20%), direct feedback: "in extreme cases, I can see the end
+// of it" -- happening identically on every theme (this constant isn't
+// per-theme), so the old margin just wasn't generous enough at the actual
+// extreme camera positions this game reaches, not an art/content problem on
+// any one theme's image. theme.skyline.aspect (envArt.js) derives the
+// height from this same width below, so scaling this one number scales the
+// whole backdrop uniformly, still centred on the same SKYLINE_Y/Z.
 const SKYLINE_Z = -195;
-const SKYLINE_WIDTH = 520;
+const SKYLINE_WIDTH = 624;
 const SKYLINE_Y = 60;
 
 // Builds a MeshBasicMaterial that tiles `texEntry` (an envArt.js entry, with

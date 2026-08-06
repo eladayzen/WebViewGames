@@ -332,7 +332,40 @@ export const THEMES = {
   // "different" is carried by palette and material language, not time of day.
   harborDocks: {
     street: envTexture('street_harbor.png', 1792, 2400),
-    skyline: envTexture('skyline_harbor.png', 2752, 1265),
+    // 2752x1265 -> 3136x1344 with the atmospheric-depth pass below -- dims
+    // here MUST track the actual file exactly or street.js's skyline plane
+    // (SKYLINE_WIDTH is a fixed world-unit constant, height derived from
+    // this aspect ratio) stretches/misscales and gaps open up at the frame
+    // edges. Learned the hard way: PASS 1 of this fix asked the edit call
+    // for a 16:9 aspect ratio (0.4597 -> 0.5581, h/w) instead of matching
+    // the original panoramic ~2.18:1 shape, which recomposed the scene onto
+    // a taller canvas and shifted where the painted content sat relative to
+    // what the street-level building geometry expected -- visible in-game
+    // as a flat light-blue gap clipping in at the top-left, direct feedback
+    // caught via screenshot. PASS 2 fixed it by passing aspect_ratio:
+    // "auto" instead (preserves the source's own shape) rather than trying
+    // to hand-pick a matching preset.
+    skyline: envTexture('skyline_harbor.png', 3136, 1344),
+    // ATMOSPHERIC DEPTH PASS (direct feedback): "I need to feel a little bit
+    // more in the distance. I have too much big details over there. It
+    // feels like I'm about to reach it." The crane/ship/warehouse cluster
+    // was rendered at uniform crisp linework and full saturation regardless
+    // of implied distance -- only the back mountain silhouette had real
+    // atmospheric perspective. Redone so the FOREGROUND (the two leftmost
+    // cranes, the dockside warehouses) stays crisp and saturated, while
+    // everything further back -- the ship, the rest of the crane row, the
+    // structures behind them -- desaturates and hazes toward the mountains'
+    // own blue-grey, same composition/content otherwise (same cranes, same
+    // ship, same lighthouse, same count of everything). Also dropped the
+    // "MV HARMONY" text painted on the ship's hull, a readable-text
+    // violation missed in the original pass. 3 candidates generated on the
+    // (correct, aspect-preserving) second pass -- one played the haze too
+    // safe (barely different from the original), another had a visible
+    // hard seam banding across the sky -- both rejected; this one nailed
+    // the depth grading with no artifacts. Originals archived: art/final/
+    // alt/skyline_harbor_v1_flat.png (pre-fix) and
+    // art/originals/harbordocks_skyline_atmospheric_depth.jpg (the
+    // wrong-aspect pass-1 output, kept for the record, never shipped).
     // SCALE FIX, PASS 2 (direct feedback, playtested twice): a first pass
     // shrank the small decorative marks (stencils, notes) but left the HERO
     // elements -- the roll-up door, all 7 portholes, the shopfront/chalkboard,
@@ -349,6 +382,15 @@ export const THEMES = {
     // (pass 1, still too big). Pass 2 used the PASS-1-ORIGINAL (v1) crops as
     // the edit reference, not the pass-1 output, per this project's own
     // established rule against referencing an already-edited derivative.
+    //
+    // GAP FILL, PASS 3, facade_h2 only (direct feedback): the pass-2 regen
+    // left two areas of plain white background showing through instead of
+    // finished wall -- a large rectangular gap between the two rope-railing
+    // balconies, and a smaller triangular one at the top-left corner behind
+    // the left gable. Two rounds of targeted edits (the rectangular gap
+    // closed on the first pass; the top-left corner needed a dedicated
+    // second pass after the first left it unfixed) -- pure completion, no
+    // other change. Archived: art/final/alt/facade_h2_v3_whitegaps.png.
     facades: [
       { tex: envTexture('facade_h1.png', 2048, 2048), bodyColor: 0x69746c }, // teal corrugated-metal cargo warehouse, roll-up door, portholes
       { tex: envTexture('facade_h2.png', 2048, 2048), bodyColor: 0x8b8884 }, // weathered clapboard harbor-master shack, lighthouse cupola, bait counter
