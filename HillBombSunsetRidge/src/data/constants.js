@@ -385,34 +385,106 @@ export const LAND_AMOUNT_PLAIN = 0.42; // a bare ollie or a small ramp pop
 // Per Amit's direct direction, this REPLACES the build doc's §5.2 orbiting
 // "trick swing" camera. No orbit, no roll, no FOV pumping -- a stable
 // over-the-shoulder rig that stays put. See camera/cameraRig.js's header.
-export const CAM_BACK = 4.1; // follow distance behind the rider
-export const CAM_HEIGHT = 1.85;
-export const CAM_SHOULDER = 0.85; // over-the-shoulder lateral offset (the Fortnite tell)
-export const CAM_LOOK_AHEAD = 11.0; // how far down-road the camera aims
+// --- LENS ---------------------------------------------------------------
+// Amit: a longer camera length, with the character always bigger in frame --
+// what the team called "more isometric feeling". That reading is right: a long
+// lens is exactly what produces it. Narrowing the FOV compresses depth, so the
+// trough walls and the matte painting flatten toward parallel instead of
+// racing to a vanishing point, and the rider stops being distorted by
+// wide-angle perspective.
+//
+// MEASURED before and after, since apparent size is 1/(distance x tan(fov/2))
+// and moving either one alone gets it wrong:
+//     before   fov 66 at speed, 5.69 away  ->  rider 32.5% of frame height,
+//              108.5 degrees horizontal -- practically fisheye
+//     after    fov 44 at speed, ~6.6 away  ->  rider ~45% of frame height,
+//              ~82 degrees horizontal
+// So the camera moves BACK and the rider still ends up much larger: that gap is
+// the lens doing the work rather than the dolly.
+// Pulled in for a further +20% on-screen character size. Done as DISTANCE, not
+// more lens: apparent size is 1/(distance x tan(fov/2)), and narrowing the FOV
+// again would drop the horizontal field below the 81.6 degrees the long-lens
+// pass already traded down to, costing reaction time on wide-placed props.
+// Distance is the free lever here; focal length is not.
+export const CAM_BACK = 3.80; // follow distance behind the rider
+// Lowered with the lens. How far below frame-centre the rider sits is set by
+// the height:distance ratio -- atan(CAM_HEIGHT / follow distance) -- and a
+// narrow FOV magnifies that same angle into a much larger slice of the frame.
+// At 1.85 he sat at -0.47 NDC and spilled off the bottom edge once he was big
+// enough to be worth looking at.
+// Lowered again with the closer camera. How far below frame-centre the rider
+// sits is atan(CAM_HEIGHT / distance), so pulling IN without dropping the
+// camera pushes him toward the bottom edge -- at 1.42 and this distance he
+// started clipping it. Dropping the height buys that margin back and costs no
+// on-screen size at all, which pure pull-back would.
+export const CAM_HEIGHT = 1.15;
+// Over-the-shoulder lateral offset (the Fortnite tell). Scaled down with the
+// lens: this is a fixed WORLD offset, so a narrower FOV turns the same 0.85
+// into a much larger share of the frame -- it pushed the rider to -0.38 NDC,
+// well left of centre, once the lens went long. 0.55 restores roughly the
+// original on-screen offset.
+export const CAM_SHOULDER = 0.55;
+// Pulled in with the lens. The rider sits below centre by however far the aim
+// point leads him, and a narrow FOV magnifies that same angular offset into a
+// much bigger slice of the frame -- at 11.0 he sank toward the bottom edge.
+export const CAM_LOOK_AHEAD = 7.0; // how far down-road the camera aims
 export const CAM_LOOK_HEIGHT = 1.35;
-export const CAM_LERP = 6.0; // base follow easing (per second)
+// Follow easing. Raised from 6.0, because at 6.0 the STEADY-STATE trail is
+// speed/CAM_LERP -- 5.8 units at 34.6 u/s, nearly as much again as the rig's
+// own 6.3 -- so the real follow distance was 12.1 and, worse, it GREW with
+// speed: the character shrank exactly when the game got fast. Amit asked for
+// him to be bigger in frame *always*, which means the distance has to be set by
+// the rig rather than by how far the lerp happens to be losing. At 14 the trail
+// is 2.5 units and roughly constant across the speeds the game actually uses.
+// Carve still adds its own lag via CAM_LAG_AT_FULL_CARVE, so the rider keeps
+// leading the frame through a turn.
+export const CAM_LERP = 14.0; // base follow easing (per second)
 export const CAM_LAG_AT_FULL_CARVE = 0.35; // eases slower at full carve so the
 // rider leads the frame through a turn -- without the camera leaving its rig.
-export const FOV_BASE = 58;
-export const FOV_AT_SPEED = 66; // only a slight breathe with speed, not a pump
-export const CAM_PULLBACK = 1.2; // modest extra distance at top speed
+export const FOV_BASE = 39;
+export const FOV_AT_SPEED = 44; // only a slight breathe with speed, not a pump
+export const CAM_PULLBACK = 0.8; // modest extra distance at top speed
 
 // --- world look (placeholder, deliberately flat) ---
 // NOTE: real illustrated Kolbo textures are a hard requirement for the actual
 // game (build doc §0's environment-art correction). This harness is explicitly
 // the "very basic environment" case -- flat colors here are a stand-in so the
 // comparison isolates the RIDER layer, and must not be taken as the art plan.
-export const SKY_TOP = 0xc3b2dc;
-export const SKY_BOTTOM = 0xf7d3bf;
-export const FOG_COLOR = 0xecd9dd;
+// --- PALETTE: DUSK NEON -----------------------------------------------------
+// Replaces the pastel sand-and-lilac sunset. That palette had a measured
+// problem, not just a taste one -- every element sat inside a 62-point band at
+// the very top of a 0..255 luminance scale, and the sky was actually DARKER
+// than the playfield:
+//
+//                       ground  markings  sky   marks-vs-ground  sky-vs-ground
+//     pastel sunset      205      248     188         43              -17
+//     dusk neon (this)    46      193     129        147               83
+//
+// The negative number is the heart of it: backdrop and playfield merged instead
+// of separating. Everything downstream suffered -- the speed lines were
+// invisible until widened and darkened, additive sparks blew out to white, the
+// guide stripes got lost in the sand. Flipping the playfield dark fixes all of
+// them at once and gives the VFX somewhere to glow.
+//
+// It is also simply the right register for the audience: 8-12 year olds read
+// pastel dusk as calm and pretty, which is a strange thing to feel while
+// bombing a hill at 90 km/h.
+//
+// The ground is 0x2f2763 rather than the 0x272052 of the prototype -- lifted a
+// step on purpose. The darker value tested better on a monitor but risks
+// crushing on a board-mounted screen in a lit room, and the lift costs almost
+// nothing in contrast while giving the eventual surface texture room to read.
+export const SKY_TOP = 0x160e47; // sampled from the matte's own top band
+export const SKY_BOTTOM = 0x401a5f; // ...and its bottom band
+export const FOG_COLOR = 0x5b3070; // the painting's horizon band: the trough now fades INTO the sky art rather than into an invented colour
 export const FOG_NEAR = 90;
 export const FOG_FAR = 340;
-export const TROUGH_COLOR = 0xdfcbaa; // warm sand wall (concept-02) // pale lilac concrete, pastel-sky palette
-export const TROUGH_FLOOR_COLOR = 0xfffaf0; // near-white dashed centre line // brighter stripe marking the fast line
-export const LIP_COLOR = 0x6f7a83; // DARK slate coping -- a value break against the pale wall // glowing coping at the top of the wall
-export const ROAD_COLOR = 0x6f6257;
-export const LINE_COLOR = 0xf2c14a;
-export const SHOULDER_COLOR = 0x9c8f6a;
+export const TROUGH_COLOR = 0x2f2763; // deep indigo playfield -- the value flip
+export const TROUGH_FLOOR_COLOR = 0x4ff0ff; // hot cyan dashed centre line
+export const LIP_COLOR = 0xff3ea5; // hot magenta coping: the loudest value break in frame
+export const ROAD_COLOR = 0x241d4e;
+export const LINE_COLOR = 0x4ff0ff;
+export const SHOULDER_COLOR = 0x4a3f8c;
 // Ground either side of the road. Must read as LAND, not sky: the first pass
 // used a pale sand (0xd8b98a) that was within a few percent of FOG_COLOR, so
 // wherever the road curved away the terrain beside it looked like empty sky and
@@ -421,8 +493,8 @@ export const SHOULDER_COLOR = 0x9c8f6a;
 // Placeholder sky until the phase-3 matte painting. Pastel, per the chosen
 // dreamlike sky-city direction -- the previous sage green read as GRASS above
 // the lips, which made the trough look like a ditch in a field.
-export const TERRAIN_COLOR = 0xefdce0;
-export const RAIL_COLOR = 0xbfb4a4;
+export const TERRAIN_COLOR = 0x3b2f72;
+export const RAIL_COLOR = 0x5cff9e;
 
 // --- funnels: the trough pinching to a throat and flaring open again ---
 // The set-piece from concept-01, and the cheapest possible proof that connected
@@ -471,7 +543,7 @@ export const GUIDE_STRIPES = [
   { theta: 0.62, halfWidth: 0.018 },
   { theta: 0.98, halfWidth: 0.018 },
 ];
-export const GUIDE_COLOR = 0xfdf8ee; // road markings, near-white
+export const GUIDE_COLOR = 0x76dcff; // road markings -- cyan on indigo
 
 // --- SPEED LINES -----------------------------------------------------------
 // Streaks rushing past the camera (entities/speedLines.js), driven by the SPEED
@@ -492,4 +564,12 @@ export const GUIDE_COLOR = 0xfdf8ee; // road markings, near-white
 // solid starburst that buried the rider and the road rather than as motion. The
 // point is to feel fast, not to obscure the thing you're steering.
 export const SPEEDLINE_MAX = 85;
-export const SPEEDLINE_COLOR = 0xfdf8ee; // same near-white as the road markings
+export const SPEEDLINE_COLOR = 0x9fe9ff; // pale cyan -- finally glows against a dark playfield
+
+// --- RIDER RIM LIGHT --------------------------------------------------------
+// A bright fresnel edge on the character so his silhouette separates from the
+// background regardless of palette. Cool white with a cyan bias, so it reads as
+// the scene's own neon bouncing off him rather than as an arbitrary outline.
+export const RIM_COLOR = 0xa8ecff;
+export const RIM_STRENGTH = 0.55;
+export const RIM_POWER = 2.2; // higher = tighter edge, less wash over the body

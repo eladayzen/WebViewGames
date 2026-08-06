@@ -22,16 +22,16 @@ export const PROP_TYPES = {
     kind: 'launch',
     // A wedge: low at the near edge, rising toward the rider's direction.
     size: { w: 4.2, h: 0.95, l: 3.4 },
-    colour: 0xb2763f,
-    accent: 0x8a5a2e,
+    colour: 0x6c3fd8,
+    accent: 0x4223a2,
     launch: { power: 1.0, points: 120, profile: 'wedge' },
     label: 'KICKER',
   },
   bigKicker: {
     kind: 'launch',
     size: { w: 5.6, h: 1.6, l: 5.0 },
-    colour: 0xc08347,
-    accent: 0x92602f,
+    colour: 0x8a4fe8,
+    accent: 0x5427b6,
     launch: { power: 1.5, points: 260, profile: 'wedge' },
     label: 'BIG AIR',
   },
@@ -40,34 +40,40 @@ export const PROP_TYPES = {
     // Wide, shallow quarter-pipe style bank -- a gentler launch, and forgiving
     // because it's wide enough that you don't have to aim.
     size: { w: 9.0, h: 1.2, l: 6.0 },
-    colour: 0x9aa3ad,
-    accent: 0x7c848d,
+    colour: 0x35538f,
+    accent: 0x27406f,
     launch: { power: 1.2, points: 150, profile: 'hump' },
     label: 'BANK',
   },
 
   // --- grindables --------------------------------------------------------
+  // SPRING GREEN, and deliberately its own hue. These were cyan -- the exact
+  // colour of the painted guide stripes -- so a solid object you ride and a
+  // marking you're meant to ignore looked identical at a glance. Hue here
+  // carries FUNCTION, not mood: indigo ground, cyan paint, magenta boundary,
+  // violet launcher, yellow hazard, green grindable. Green also reads as
+  // "positive, go for it", which is what a rail is.
   rail: {
     kind: 'grind',
     size: { w: 0.16, h: 0.52, l: 16 },
-    colour: 0xd9d2c4,
-    accent: 0x8e887c,
+    colour: 0x5cff9e,
+    accent: 0x1f8f52,
     grind: { pointsPerSecond: 260, catchWidth: 1.5 },
     label: 'RAIL',
   },
   longRail: {
     kind: 'grind',
     size: { w: 0.16, h: 0.58, l: 28 },
-    colour: 0xe4dccd,
-    accent: 0x8e887c,
+    colour: 0x5cff9e,
+    accent: 0x1f8f52,
     grind: { pointsPerSecond: 320, catchWidth: 1.5 },
     label: 'LONG RAIL',
   },
   ledge: {
     kind: 'grind',
     size: { w: 1.5, h: 0.62, l: 14 },
-    colour: 0xbfb3a0,
-    accent: 0x958a79,
+    colour: 0x4ae08a,
+    accent: 0x1a7a48,
     grind: { pointsPerSecond: 220, catchWidth: 1.9 },
     label: 'LEDGE',
   },
@@ -76,24 +82,24 @@ export const PROP_TYPES = {
   cone: {
     kind: 'hazard',
     size: { w: 0.55, h: 0.8, l: 0.55 },
-    colour: 0xf06a2a,
-    accent: 0xf4f1e8,
+    colour: 0xffd23f,
+    accent: 0xfff6c4,
     hazard: { wobble: 9, scrub: 0.14 },
     label: 'CONE',
   },
   pothole: {
     kind: 'hazard',
     size: { w: 2.2, h: 0.05, l: 2.6 },
-    colour: 0x2f2a26,
-    accent: 0x2f2a26,
+    colour: 0x1b1640,
+    accent: 0x1b1640,
     hazard: { wobble: 14, scrub: 0.2 },
     label: 'POTHOLE',
   },
   roadwork: {
     kind: 'hazard',
     size: { w: 2.6, h: 1.0, l: 0.5 },
-    colour: 0xf0a52a,
-    accent: 0x2f2a26,
+    colour: 0xffd23f,
+    accent: 0x1b1640,
     hazard: { wobble: 16, scrub: 0.24 },
     label: 'BARRIER',
   },
@@ -101,7 +107,7 @@ export const PROP_TYPES = {
   // Only the lip lamps remain as scenery. Palms, bushes and buildings were
   // removed: they were flat-road furniture and looked absurd sprouting from the
   // rim of a half-pipe in the sky.
-  lamp: { kind: 'scenery', size: { w: 0.24, h: 6.5, l: 0.24 }, colour: 0x8d86a8, accent: 0xfff0d0 },
+  lamp: { kind: 'scenery', size: { w: 0.24, h: 6.5, l: 0.24 }, colour: 0x5b4f9e, accent: 0xd8f4ff },
 };
 
 // ---------------------------------------------------------------------------

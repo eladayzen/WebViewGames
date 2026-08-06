@@ -47,6 +47,7 @@ import {
   LAND_HIP_BEND, LAND_KNEE_BEND, LAND_SPINE_CURL,
   GRIND_YAW, GRIND_HIP_BEND, GRIND_KNEE_BEND,
   GRIND_ARM_SPREAD, GRIND_ELBOW_OPEN, GRIND_PUSH_LOCKOUT,
+  RIM_COLOR, RIM_STRENGTH, RIM_POWER,
 } from '../data/constants.js';
 
 const RIDER_HEIGHT = 1.85;
@@ -158,8 +159,14 @@ export function createRider(scene, camera) {
   // demonstrates the build doc's §9.1 rule that things the rider physically
   // rides on are real geometry, not billboards.
   const board = new THREE.Group();
-  const deckMat = new THREE.MeshBasicMaterial({ color: 0x3b2f28 });
-  const wheelMat = new THREE.MeshBasicMaterial({ color: 0xe8d9c0 });
+  // Deck and wheels, lifted off near-black for the dusk-neon palette. The deck
+  // was 0x3b2f28 -- luminance 50 against a playfield at 46, so a broad flat
+  // plank directly under the rider was rendering as a hole in the frame. Warm
+  // maple reads as an actual skateboard and separates cleanly from the indigo
+  // without borrowing a hue that already means something (cyan paint, green
+  // rail, magenta boundary, violet launcher, yellow hazard).
+  const deckMat = new THREE.MeshBasicMaterial({ color: 0xd9a86a });
+  const wheelMat = new THREE.MeshBasicMaterial({ color: 0xfff0d8 });
   board.add(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.08, 2.15), deckMat));
   for (const dx of [-0.26, 0.26]) {
     for (const dz of [-0.72, 0.72]) {
@@ -320,6 +327,42 @@ export function createRider(scene, camera) {
             metalness: 0.35, roughness: 0.75,
           });
           const unlit = new THREE.MeshBasicMaterial({ map: base });
+          // RIM LIGHT. Recolouring the hoodie scarlet fixed the character's HUE
+          // separation from the indigo ground (87 -> 115 degrees) but actually
+          // cost value contrast: red is darker than the green it replaced, so
+          // the luminance gap fell from 63 to 44. Hue reads fine on a monitor;
+          // on a dim board-mounted screen value is the more reliable cue, and
+          // that is exactly where a character can get lost.
+          //
+          // A fresnel rim solves it independently of palette: a bright edge
+          // wherever the surface turns away from the viewer, so the silhouette
+          // separates from ANY background, including future ones. Injected into
+          // MeshBasicMaterial rather than switching to a lit material, because
+          // the whole art direction is unlit and a real light would flatten the
+          // hand-painted texture.
+          //
+          // three only computes normals in the basic shader when USE_ENVMAP or
+          // USE_SKINNING is defined -- this rig is skinned, so transformedNormal
+          // is genuinely available here. It would NOT be on an unskinned mesh.
+          unlit.onBeforeCompile = (shader) => {
+            shader.uniforms.uRimColor = { value: new THREE.Color(RIM_COLOR) };
+            shader.uniforms.uRimStrength = { value: RIM_STRENGTH };
+            shader.uniforms.uRimPower = { value: RIM_POWER };
+            shader.vertexShader = shader.vertexShader
+              .replace('void main() {', 'varying vec3 vRimN;\nvarying vec3 vRimV;\nvoid main() {')
+              .replace('#include <project_vertex>',
+                '#include <project_vertex>\n\tvRimN = transformedNormal;\n\tvRimV = -mvPosition.xyz;');
+            shader.fragmentShader = shader.fragmentShader
+              .replace('void main() {',
+                'uniform vec3 uRimColor;\nuniform float uRimStrength;\nuniform float uRimPower;\n'
+                + 'varying vec3 vRimN;\nvarying vec3 vRimV;\nvoid main() {')
+              .replace('#include <dithering_fragment>',
+                '#include <dithering_fragment>\n'
+                // abs() so back-facing normals rim too -- without it, whichever
+                // side of him faces away from the camera loses its edge.
+                + '\tfloat rim = pow(1.0 - abs(dot(normalize(vRimN), normalize(vRimV))), uRimPower);\n'
+                + '\tgl_FragColor.rgb += uRimColor * rim * uRimStrength;');
+          };
           rigLitMats.push(lit);
           rigUnlitMats.push(unlit);
           n.material = unlit;

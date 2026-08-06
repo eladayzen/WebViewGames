@@ -103,6 +103,12 @@ export function createSpeedLines(scene) {
       void main() { gl_FragColor = vec4(uColor, vAlpha); }
     `,
     transparent: true,
+    // ADDITIVE, now that the playfield is dark. This was ordinary alpha
+    // blending under the pastel palette for a specific reason -- additive only
+    // reads as glow over a DARK background, and against pale sand every streak
+    // saturated straight to white. The dusk-neon palette is what makes the
+    // correct blend mode usable, so the streaks read as light rather than paint.
+    blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
     // Screen-space effect in spirit: it should never be occluded by the trough
     // wall it happens to be passing through, and never punch a hole in

@@ -19,9 +19,10 @@
 //     blending plus darkening toward black -- which is exactly what the first
 //     version did, and it failed for a reason specific to THIS game: additive
 //     blending only reads as "glow" over a DARK background, and Hill Bomb's
-//     palette is pale sand and lilac. Every spark saturated straight to white.
-//     So: ordinary alpha blending, a real per-particle alpha attribute, and
-//     saturated orange that stays orange against a light ground.
+//     palette WAS pale sand and lilac -- every spark saturated straight to
+//     white. The per-particle alpha attribute below is the durable half of that
+//     fix and stays. The blend mode is now back to additive, because the
+//     dusk-neon repalette made the playfield dark and additive correct again.
 //
 // Everything is world-space on purpose. Parenting the sparks to the rider would
 // drag them along with him and make the board look like it's carrying a flare;
@@ -80,6 +81,12 @@ export function createSparks(scene) {
     `,
     vertexColors: true,
     transparent: true,
+    // ADDITIVE again -- see the header note. The original version used this and
+    // failed, but for a reason that no longer holds: additive reads as glow
+    // only over a DARK background, and the old pastel sand blew every ember out
+    // to white. On the dusk-neon playfield it does exactly what it should, and
+    // hot sparks off a rail are the single best thing to have glowing.
+    blending: THREE.AdditiveBlending,
     depthWrite: false, // never let a spark punch a hole in what's behind it
     depthTest: true,
   });
