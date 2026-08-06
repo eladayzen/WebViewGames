@@ -9,7 +9,7 @@
 // box (systems/bombKills.js's registerBombKill/updateBombKills). Set well
 // more generous than any pizza box's 78s -- a bomb kill is a rarer sub-event
 // than a pizza catch (needs a bomb AND an active shield/blow-up already up),
-// so 8 of them needs more real time to be achievable, not less.
+// so 20 of them needs more real time to be achievable, not less.
 //
 // TIMER REFILL (2026-08-04): every kill that ADDS to an already-active set
 // (not just the first) also tops the timer back up by `timerBonusSec`,
@@ -19,7 +19,7 @@ export const BOMB_KILL_SET = {
   id: 'bombsquad',
   label: 'Bomb Squad',
   hex: '#FF7A2E',       // hazard orange -- HUD chip, "+N" popup, celebration tint
-  requiredCount: 8,     // kills to complete a set
+  requiredCount: 20,    // kills to complete a set (2026-08-06, was 8)
   timerSec: 150,        // resets progress if 8 kills aren't reached in time
   timerBonusSec: 15,    // added back to the timer per kill (~10% of timerSec), capped at timerSec
   killScore: 25,        // points per kill
