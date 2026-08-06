@@ -65,12 +65,18 @@ export const STAGES = [
     bg: 'bg_fire_escape',
     // Zoomed + re-tuned (2026-08-06, see core/render.js's drawBackground):
     // the railing's perspective corner used to cross the floor line near
-    // both edges. Scaling the art up crops that corner out of view
-    // entirely -- movement is NOT restricted, the player can still walk
-    // the full play area -- verified by compositing the sprite against the
-    // actual zoomed art at both edges before picking these numbers.
-    bgScale: 1.1667,
-    groundYFrac: 0.88, // was 0.85; floor sits differently after the zoom
+    // both edges. First pass only cropped it out of the reachable play
+    // area (scale 1.1667); direct feedback (after the same fix on Subway)
+    // wanted it gone from view ENTIRELY, so this crops the full canvas
+    // edge-to-edge to the clean center of the source art instead (scale
+    // 1.3889 = 1/0.72, where 0.14-0.86 was the verified-clear source
+    // range) -- no railing-corner pixel is ever on screen, at any x.
+    // Movement is NOT restricted -- the player can still walk the full
+    // play area. Verified by compositing the sprite against the actual
+    // re-cropped art at both edges and center before picking these numbers.
+    bgScale: 1.3889,
+    bgOffsetYFrac: -0.1,
+    groundYFrac: 0.89,
     fallSpeedFrac: 0.21,
     spawnIntervalSec: 1.15,
     bombChance: 0.32, // a bit more, not a lot (2026-08-05, was 0.28)
@@ -139,9 +145,16 @@ export const STAGES = [
     // Art edited (2026-08-06, Track B, see art/archive/pre-track-b-backgrounds/
     // for the original): the center water channel that used to split the
     // walkway into two islands is now a continuous flat floor across the
-    // full width. groundYFrac re-tuned + re-verified at both edges (and
-    // center) via the same sprite-composite check as every other stage.
-    groundYFrac: 0.89, // was 0.86
+    // full width. Even after that edit, the round tunnel's curved walls
+    // still crept in close enough to the reachable edges to look like
+    // standing against the wall -- zoomed + re-tuned (see core/render.js's
+    // drawBackground) the same way as fire-escape/subway, cropping the
+    // full canvas edge-to-edge to the clean center of the art (scale
+    // 1.5625 = 1/0.64, where 0.18-0.82 was the verified-clear range) so
+    // no wall pixel is ever under his feet, at any x.
+    bgScale: 1.5625,
+    bgOffsetYFrac: -0.18,
+    groundYFrac: 0.89,
     fallSpeedFrac: 0.33,
     spawnIntervalSec: 0.72,
     bombChance: 0.45,
