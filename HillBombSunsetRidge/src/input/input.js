@@ -28,15 +28,16 @@
 // needs no special casing. Tuning decided on a keyboard will still overstate how
 // easy the pop is -- see §12.
 
-import { DEADZONE, POP_PRESS, POP_RELEASE } from '../data/constants.js';
+import { DEADZONE } from '../data/constants.js';
 
 export const STEER_REGULAR = 'regular';
 export const STEER_ANALOG = 'analog';
 export const STEER_MODES = [STEER_REGULAR, STEER_ANALOG];
 
 const keys = new Set();
-let popLatched = false; // hysteresis state for the back-lean edge
-let popEdge = false; // consumed once per frame by the game loop
+// A trick can still be fired programmatically (the lab's auto-trick, and the
+// 'T' key) even though the manual pop input is gone -- see forcePop.
+let popEdge = false;
 let steerMode = STEER_REGULAR;
 // Board zero. A rider isn't necessarily standing level when the scene loads, so
 // analog mode subtracts a captured centre rather than trusting raw zero.
@@ -81,7 +82,15 @@ function applyDeadzone(v) {
 }
 
 /**
- * @returns {{carve:number, pop:boolean}} carve in [-1,1]; pop is a one-shot edge.
+ * @returns {{carve:number, tuck:number, brake:number, pop:boolean}}
+ *   carve in [-1,1]; tuck and brake each in [0,1]; pop is a one-shot edge that
+ *   now only fires programmatically.
+ *
+ * THE FORE/AFT AXIS IS TUCK AND BRAKE, not the trick pop. Lean forward to tuck
+ * and gain speed, lean back to drag the tail and slow down. The manual pop that
+ * used to live on this axis is gone: tricks already fire automatically off
+ * ramps, and asking for a sharp forward JAB to distinguish "trick" from a
+ * sustained "tuck" is not something to ask of someone balancing on a board.
  */
 export function readInput() {
   let x = 0;
@@ -101,29 +110,19 @@ export function readInput() {
   // what the host's synthetic events set.
   if (keys.has('ArrowLeft') || keys.has('KeyA')) x -= 1;
   if (keys.has('ArrowRight') || keys.has('KeyD')) x += 1;
-  if (keys.has('ArrowUp') || keys.has('Space')) y += 1;
+  // +y is FORWARD (tuck), -y is BACK (brake). In 'regular' mode these arrive as
+  // ArrowUp/ArrowDown, which the host only dispatches when forwardVerticalAxis
+  // is ticked on the scene -- it is off by DEFAULT and fails silently, so a
+  // build with it unticked simply has no tuck and no brake at all.
+  if (keys.has('ArrowUp') || keys.has('KeyW')) y += 1;
+  if (keys.has('ArrowDown') || keys.has('KeyS')) y -= 1;
 
   const carve = applyDeadzone(Math.max(-1, Math.min(1, x)));
-
-  // Back-lean pop: edge-detected with our own hysteresis, because analog mode
-  // ships none of its own. Thresholds are intentionally more forgiving than the
-  // SDK's digital-mode numbers (§4) -- this is the physically hard axis.
-  //
-  // In 'regular' mode this axis arrives as ArrowUp, which the host only
-  // dispatches when forwardVerticalAxis is ticked (off by default, and it fails
-  // silently). Tricks fire automatically off ramps, so the manual pop is a
-  // bonus rather than a requirement either way.
-  const ay = Math.max(-1, Math.min(1, y));
-  if (!popLatched && ay >= POP_PRESS) {
-    popLatched = true;
-    popEdge = true;
-  } else if (popLatched && ay < POP_RELEASE) {
-    popLatched = false;
-  }
+  const ay = applyDeadzone(Math.max(-1, Math.min(1, y)));
 
   const pop = popEdge;
   popEdge = false;
-  return { carve, pop };
+  return { carve, tuck: Math.max(0, ay), brake: Math.max(0, -ay), pop };
 }
 
 /** Lets the lobby fire a trick programmatically (auto-trick toggle). */

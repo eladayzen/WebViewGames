@@ -16,11 +16,13 @@
 
 import * as THREE from 'three';
 import {
-  GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_DWELL, START_SPEED,
+  GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED,
+  BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE,
+  TAIL_LOAD_RATE, TAIL_LOAD_DECAY, TAIL_LOAD_BOOST,
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
   THETA_MAX, THETA_GRAVITY, THETA_CARVE_TORQUE, THETA_DAMP, HEIGHT_EXCHANGE,
   TROUGH_RADIUS,
-  AIR_DURATION, AIR_HEIGHT, AIR_DURATION_SPIN, SPIN_LATERAL_MIN,
+  AIR_DURATION, AIR_HEIGHT, AIR_DURATION_SPIN, SPIN_LATERAL_MIN, SPIN_MIN_HEIGHT,
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
   AIR_DURATION_BACKFLIP, AIR_HEIGHT_BACKFLIP_MAX,
   AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO, GRIND_SPARK_RATE,
@@ -104,6 +106,8 @@ const state = {
   carve: 0,
   neutralTime: 0,
   tucking: 0,
+  braking: 0,
+  tailLoad: 0, // stored tail compression, spent on the next launch
   airActive: false,
   airT: 0,
   airPower: 1,
@@ -234,6 +238,8 @@ function reset() {
   state.carve = 0;
   state.neutralTime = 0;
   state.tucking = 0;
+  state.braking = 0;
+  state.tailLoad = 0;
   state.airActive = false;
   state.airT = 0;
   state.airPower = 1;
@@ -283,7 +289,10 @@ function beginAir(power, points, forcedTrick) {
   // rider still gets some pop, just never enough to reach the flip threshold.
   const speedFactor = AIR_SPEED_FLOOR
     + AIR_SPEED_GAIN * Math.min(1.2, state.speed / SPEED_REF);
-  const earnedHeight = AIR_HEIGHT_BASE * power * power * speedFactor;
+  // A loaded tail pops higher. This is what makes the brake a setup move rather
+  // than only a way to slow down: compress into the lip and the jump is bigger.
+  const loadBoost = 1 + state.tailLoad * TAIL_LOAD_BOOST;
+  const earnedHeight = AIR_HEIGHT_BASE * power * power * speedFactor * loadBoost;
 
   const canFlip = earnedHeight >= BACKFLIP_MIN_HEIGHT;
 
@@ -294,16 +303,23 @@ function beginAir(power, points, forcedTrick) {
   // rather than a dice roll. Same quantity the grind angle gate uses:
   // |thetaVel| * radius, the angular rate around the trough in world units.
   const lateral = Math.abs(state.thetaVel) * radiusAt(state.s);
-  const spinning = lateral >= SPIN_LATERAL_MIN;
+  // SPIN IS CHECKED FIRST, and against its own much lower height bar. Lateral
+  // speed is what selects it, not leftover backflip eligibility -- gating it
+  // behind canFlip made it unreachable, because the height bar wants speed and
+  // the lateral bar wants carving, and carving spends speed.
+  const spinning = lateral >= SPIN_LATERAL_MIN && earnedHeight >= SPIN_MIN_HEIGHT;
   const trick = forcedTrick !== undefined
     ? forcedTrick
-    : (canFlip ? (spinning ? 'spin' : 'backflip') : null);
+    : (spinning ? 'spin' : (canFlip ? 'backflip' : null));
   // Spin the way he was already going -- rotating against your own drift reads
   // as the animation fighting the physics.
   if (trick === 'spin') state.spinDir = Math.sign(state.thetaVel) || 1;
 
   state.airActive = true;
   state.airT = 0;
+  // Spent, not retained -- otherwise one well-timed compression would boost
+  // every launch for the rest of the run.
+  state.tailLoad = 0;
   state.airPower = power;
   state.airPoints = points;
   state.airTrick = trick;
@@ -439,7 +455,7 @@ function frame() {
   const dt = Math.min(0.05, clock.getDelta());
 
   if (running && !paused && !gameOver && !lobby.isOpen() && !isPanelOpen()) {
-    const { carve, pop } = readInput();
+    const { carve, tuck, brake, pop } = readInput();
 
     // SOFT tilt response (see constants.js). Two stages:
     //   1. shape it   -- |carve|^CARVE_CURVE, sign kept. Flattens the region
@@ -464,15 +480,32 @@ function frame() {
     }
 
     // --- speed model (build doc §5.1) ---
-    // Speed comes from DOING NOTHING: holding the board neutral means a
-    // straight line, an automatic tuck, and acceleration. There is no forward
-    // lean anywhere in this design -- that axis is physically hard on the board
-    // (build doc §0), so the restful posture is the fast/risky one instead.
+    // The fore/aft axis is now a real control: lean FORWARD to tuck and gain
+    // speed, lean BACK to drag the tail and slow down.
+    //
+    // This supersedes the old design where the tuck was emergent -- earned by
+    // holding a straight line for TUCK_DWELL seconds. That existed because the
+    // build doc ruled the fore/aft axis out as physically hard on the board, so
+    // "doing nothing" had to be the fast posture. It is a direct input now, but
+    // note the axis is still the hard one, and it is now load-bearing rather
+    // than optional.
+    //
+    // BOTH ARE CONTINUOUS AND EASED. The input scales the effect and the effect
+    // ramps in over ~0.3s, so speed arrives and bleeds smoothly instead of
+    // switching between two states -- "gaining speed in a natural way, not
+    // stepped".
     const absCarve = Math.abs(state.carve);
-    if (absCarve < 0.12) state.neutralTime += dt;
-    else state.neutralTime = 0;
-    const wantTuck = state.neutralTime > TUCK_DWELL ? 1 : 0;
-    state.tucking += (wantTuck - state.tucking) * Math.min(1, dt * 4);
+    state.tucking += (tuck - state.tucking) * (1 - Math.exp(-TUCK_SMOOTH * dt));
+    state.braking += (brake - state.braking) * (1 - Math.exp(-BRAKE_SMOOTH * dt));
+
+    // TAIL LOAD: braking compresses the board, and the stored load boosts the
+    // next launch (see beginAir). Charges while braking, bleeds once released,
+    // so it has to be timed into a ramp rather than held indefinitely.
+    if (state.braking > 0.05) {
+      state.tailLoad = Math.min(1, state.tailLoad + state.braking * TAIL_LOAD_RATE * dt);
+    } else {
+      state.tailLoad = Math.max(0, state.tailLoad - TAIL_LOAD_DECAY * dt);
+    }
 
     const accel =
       GRADE_ACCEL
@@ -480,6 +513,13 @@ function frame() {
       - DRAG * state.speed * state.speed
       - CONTROLS.carveScrub * absCarve * state.speed;
     state.speed = Math.max(2, state.speed + accel * dt);
+    // Brake drag is PROPORTIONAL to speed, so it bites hard when you're flying
+    // and can't yank a slow rider to a standstill; the floor stops it stalling
+    // him entirely, since a dead stop is a fail state, not a brake.
+    if (state.braking > 0.01 && state.speed > BRAKE_MIN_SPEED) {
+      const shed = state.speed * BRAKE_DRAG * state.braking * dt;
+      state.speed = Math.max(BRAKE_MIN_SPEED, state.speed - shed);
+    }
     // Keep last frame's distance: the ramp-lip test in props.probe() needs the
     // INTERVAL the rider swept this frame, not just where they ended up, so a
     // fast pass over a short kicker can't skip the lip entirely.
@@ -782,6 +822,8 @@ function frame() {
     carve: state.carve,
     speed: state.speed,
     tucking: state.tucking,
+    braking: state.braking,
+    tailLoad: state.tailLoad,
     airActive: state.airActive,
     airT: state.airT,
     airTrick: state.airTrick,
@@ -829,6 +871,15 @@ function frame() {
     rider.contactPoint(_spark);
     _sparkBack.copy(_fwd).negate();
     sparks.emit(_spark, _sparkBack, _up, state.speed, GRIND_SPARK_RATE, dt);
+  } else if (state.braking > 0.15 && !state.airActive && state.speed > BRAKE_MIN_SPEED + 1) {
+    // TAIL DRAG sparks. Struck off the back edge of the deck rather than under
+    // its middle, and at a lower rate than a grind -- this is friction against
+    // a surface, not steel on steel. Gated on real speed too: scraping a tail
+    // while barely moving should not throw sparks.
+    rider.tailPoint(_spark);
+    _sparkBack.copy(_fwd).negate();
+    sparks.emit(_spark, _sparkBack, _up, state.speed,
+      BRAKE_SPARK_RATE * state.braking, dt);
   }
   sparks.update(dt);
 

@@ -45,6 +45,7 @@ import {
   HOP_HIP_FOLD, HOP_KNEE_FOLD,
   AIR_TUCK_HIP, AIR_TUCK_KNEE, AIR_ARM_LIFT, LAND_ARM_LIFT,
   LAND_HIP_BEND, LAND_KNEE_BEND, LAND_SPINE_CURL,
+  TUCK_SPINE, TUCK_HIP, TUCK_KNEE, BRAKE_SPINE, BRAKE_BOARD_PITCH,
   GRIND_YAW, GRIND_HIP_BEND, GRIND_KNEE_BEND,
   GRIND_ARM_SPREAD, GRIND_ELBOW_OPEN, GRIND_PUSH_LOCKOUT,
   RIM_COLOR, RIM_STRENGTH, RIM_POWER,
@@ -718,6 +719,40 @@ export function createRider(scene, camera) {
           // one-sided and free of the hand-into-hip clipping.
         }
 
+        // --- TUCK / BRAKE pose (procedural, layered ON TOP of the clips) -----
+        //
+        // Forward: torso down and forward over the board with a little knee
+        // bend -- the aerodynamic crouch that is now what actually earns speed.
+        // Back: stand up and lean away as the tail drags.
+        //
+        // Deliberately two separate poses rather than one signed value: they
+        // are not mirror images. A tuck curls the spine forward and bends the
+        // knees; a brake straightens up and leans back without the knee bend,
+        // because you are weighting the tail, not crouching.
+        {
+          const tk = s.tucking || 0;
+          const bk = s.braking || 0;
+          if (tk > 0.001) {
+            const curl = tk * TUCK_SPINE;
+            if (spine) spine.rotation.x += curl * 0.5;
+            if (spine1) spine1.rotation.x += curl * 0.32;
+            if (spine2) spine2.rotation.x += curl * 0.18;
+            if (upLegL) {
+              upLegL.rotation.x -= tk * TUCK_HIP;
+              upLegR.rotation.x -= tk * TUCK_HIP;
+              if (legL) legL.rotation.x += tk * TUCK_KNEE;
+              if (legR) legR.rotation.x += tk * TUCK_KNEE;
+            }
+          }
+          if (bk > 0.001) {
+            // Negative on the same chain leans him BACK -- measured direction,
+            // the inverse of the forward fold.
+            const lean = bk * BRAKE_SPINE;
+            if (spine) spine.rotation.x -= lean * 0.55;
+            if (spine1) spine1.rotation.x -= lean * 0.30;
+          }
+        }
+
         // --- ARM BALANCE (procedural, layered ON TOP of the clips) -----------
         //
         // The rider's arms otherwise do nothing but replay the idle loop, which
@@ -946,6 +981,10 @@ export function createRider(scene, camera) {
         board.position.set(0, BOARD_Y, 0);
       }
 
+      // TAIL DRAG: pitch the deck nose-up while braking, so the board visibly
+      // rides on its tail rather than the whole thing sliding flat.
+      board.rotation.x = -(s.braking || 0) * BRAKE_BOARD_PITCH;
+
       // CROUCH COMPENSATION -- the piece that turns an FK leg-fold into a
       // believable crouch. Folding the legs is a forward-kinematic operation:
       // the hips are the root of the chain, so the feet (and the board pinned
@@ -995,6 +1034,23 @@ export function createRider(scene, camera) {
       } else {
         tilt.position.set(0, 0, 0);
       }
+    },
+
+    /**
+     * World-space contact patch at the TAIL of the board, where the brake
+     * sparks are struck. Distinct from contactPoint(): a grind sparks under the
+     * middle of the deck, a tail drag sparks off its back edge.
+     */
+    tailPoint(out) {
+      board.getWorldPosition(out);
+      const q = board.getWorldQuaternion(_q);
+      // Local +Z is the deck's tail (the rider faces local -Z), and down a
+      // little so it sits on the scraping edge rather than inside the plank.
+      _cu.set(0, 0, 1).applyQuaternion(q);
+      out.addScaledVector(_cu, DECK_HALF_THICKNESS * 14);
+      _cu.set(0, 1, 0).applyQuaternion(q);
+      out.addScaledVector(_cu, -DECK_HALF_THICKNESS * 2.2);
+      return out;
     },
 
     /**

@@ -17,8 +17,31 @@ export const DRAG = 0.0095;
 // climb cost 20 u/s when the energy exchange only justified 0.7. The geometry
 // is the brake now.
 export const CARVE_SCRUB = 0.10;
-export const TUCK_BONUS = 2.4; // small extra accel while holding a straight line
-export const TUCK_DWELL = 0.35; // seconds of near-neutral before the tuck engages
+// --- TUCK AND BRAKE (the fore/aft axis) -------------------------------------
+// Lean forward to tuck and gain speed, lean back to drag the tail and slow.
+// Both are CONTINUOUS: the input scales the effect and the effect is eased in,
+// so speed builds and bleeds smoothly rather than switching between two states.
+export const TUCK_BONUS = 5.2; // extra accel at full tuck, world units/s^2
+// How fast the tuck engages and releases. Deliberately unhurried -- a tuck that
+// snaps on reads as a button, and Amit asked for speed that arrives naturally.
+export const TUCK_SMOOTH = 3.2;
+
+// Braking. Scales with speed rather than being a flat subtraction, so it bites
+// hard when you are flying and cannot yank a slow rider to a dead stop.
+export const BRAKE_DRAG = 1.35; // fraction of speed shed per second at full brake
+export const BRAKE_SMOOTH = 5.0;
+export const BRAKE_MIN_SPEED = 4.0; // never drag below this -- a stall is not a brake
+// Tail sparks, quieter than a grind's: this is friction on a surface, not steel
+// on steel.
+export const BRAKE_SPARK_RATE = 95;
+
+// LOADING THE TAIL. Pressing back compresses the board; whatever load is still
+// stored when you cross a ramp's takeoff scales the jump. That is how a real
+// pop works, and it turns the brake into a setup move rather than only a way to
+// slow down -- time the compression into the lip and you go higher.
+export const TAIL_LOAD_RATE = 1.9;  // how fast braking charges it
+export const TAIL_LOAD_DECAY = 2.6; // and how fast it bleeds away once released
+export const TAIL_LOAD_BOOST = 0.55; // extra jump height at full load, as a fraction
 export const START_SPEED = 11;
 
 // --- lateral motion (build doc §5.1) ---
@@ -140,6 +163,20 @@ export const BACKFLIP_MIN_HEIGHT = 2.2;
 // reached only when genuinely crossing the trough at pace. Ordinary riding
 // never comes close, since neutral is a flat zero.
 export const SPIN_LATERAL_MIN = 15.0;
+
+// The spin has its OWN, much lower height gate. It used to inherit the
+// backflip's 2.2, which made it effectively unreachable: that bar needs a big
+// launcher AT SPEED, while the lateral threshold needs hard carving -- and
+// carving bleeds speed through the height exchange, so the two conditions fight
+// each other. Measured over 70s of mixed play: 10 launches, 5 hops and 5 plain
+// jumps, ZERO backflips and zero spins, with takeoff heights of 1.25-2.11 never
+// once clearing 2.2.
+//
+// Physically it was the wrong bar anyway. A flat 360 needs far less air than an
+// end-over-end flip -- you can spin off a small pop, but you cannot flip off
+// one. So the spin now asks only for enough air to complete a rotation, and
+// lateral speed is what actually selects it.
+export const SPIN_MIN_HEIGHT = 1.0;
 
 // The spin gets the SAME earned height and cap as the backflip -- it replaces
 // that jump rather than being a different one, and having the same ramp produce
@@ -664,3 +701,18 @@ export const BALANCE_LIFT_ASYM = 0.38;
 // measured reversal above -- so a jump landing mid-carve, which stacks air lift
 // on top of balance lift, must not be allowed to add its way through it.
 export const ARM_LIFT_MAX = 2.0;
+
+// --- TUCK / BRAKE POSES -----------------------------------------------------
+// Forward: torso down and forward over the board, knees bent a little. The
+// spine curl reuses the measured landing-absorb chain (+rotation.x folds the
+// head down and forward, weighted toward the lower spine so the back curls
+// rather than hinging).
+export const TUCK_SPINE = 0.62;
+export const TUCK_HIP = 0.34;
+export const TUCK_KNEE = 0.62;
+
+// Back: stand up and lean away, nose lifts as the tail drags. The spine goes
+// the OTHER way, which is why it is a separate constant rather than a negative
+// tuck -- the two poses are not mirror images of each other.
+export const BRAKE_SPINE = 0.30;
+export const BRAKE_BOARD_PITCH = 0.30; // radians of nose-up on the deck
