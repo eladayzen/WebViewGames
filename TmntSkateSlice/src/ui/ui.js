@@ -648,6 +648,9 @@ export function createUI() {
       }
     },
 
+    // DISABLED for now (2026-08-06 feedback) -- core/main.js no longer
+    // calls this, so #combo stays at its default `hidden` (index.html).
+    // Left defined, unused, as the re-enable hook.
     setCombo(comboCount, multiplier) {
       const key = comboCount >= 2 ? multiplier.toFixed(1) : null;
       if (key === lastComboKey) return;

@@ -43,7 +43,6 @@ import {
   registerComboBreak,
   registerBoxComplete,
   registerBombKillScore,
-  getComboMultiplier,
 } from '../systems/scoring.js';
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
@@ -121,16 +120,17 @@ async function boot() {
     items = [];
     ui.hideGameOver();
 
-    // Push the HUD fresh RIGHT NOW (2026-08-05 fix) -- these 6 setters are
+    // Push the HUD fresh RIGHT NOW (2026-08-05 fix) -- these setters are
     // otherwise only ever called from inside updateRunning, which doesn't
     // run again until 'running' resumes (after the intro tutorial +
-    // countdown finish). Without this, the score/combo/lives/buffs/boxes
-    // HUD kept showing the PREVIOUS run's leftover numbers the whole time
-    // the player was sitting through the new run's intro/countdown -- a
-    // real bug carried since the start, not just a this-session one.
+    // countdown finish). Without this, the score/lives/buffs/boxes HUD kept
+    // showing the PREVIOUS run's leftover numbers the whole time the player
+    // was sitting through the new run's intro/countdown -- a real bug
+    // carried since the start, not just a this-session one. (setCombo is
+    // no longer called -- the combo multiplier HUD chip is disabled, see
+    // systems/scoring.js.)
     const scoreBand = getScoreBand(difficulty);
     ui.setScore(scoring.score, scoreBand.prevThreshold, scoreBand.nextThreshold);
-    ui.setCombo(scoring.comboCount, getComboMultiplier(scoring));
     ui.setLives(lives.remaining, lives.capacity);
     ui.setBuffs(player);
     ui.setBoxes(boxes);
@@ -265,18 +265,16 @@ async function boot() {
   function handleItemOverlap(item) {
     if (item.type.kind === 'good') {
       item.resolved = true;
-      const prevMultiplier = getComboMultiplier(scoring);
-      const scoreBefore = scoring.score;
-      const newMultiplier = registerPizzaHit(scoring);
-      const gained = scoring.score - scoreBefore; // actual points (base x combo)
+      // Flat, tiered per-catch score (2026-08-06) -- see data/itemTypes.js.
+      // The combo multiplier is disabled for now (hidden from the HUD, no
+      // longer applied here); registerPizzaHit still tracks the streak
+      // count underneath for a later re-enable.
+      registerPizzaHit(scoring, item.type.score);
       triggerSwing(player);
       spawnPizzaBreak(juice, item.xFrac, item.yFrac);
       // Retro "+N" popup at the slice, showing exactly what the catch was worth.
-      spawnScorePopup(juice, item.xFrac, item.yFrac, `+${gained}`, '#ffe066');
-      // Small splash on EVERY pizza hit (plain or box-variant); the rising
-      // combo chime layers on top only when the multiplier ticks up.
+      spawnScorePopup(juice, item.xFrac, item.yFrac, `+${item.type.score}`, '#ffe066');
       playSfx(audio, sfx.sfx_pizza_splash);
-      if (newMultiplier > prevMultiplier) playSfx(audio, sfx.sfx_combo_up);
       // Box-colored slice: feed its collection box. registerBoxCatch resets
       // the box and returns its bonus/hex on the completing catch, else null.
       if (item.type.boxColor) {
@@ -469,7 +467,6 @@ async function boot() {
 
     const scoreBand = getScoreBand(difficulty);
     ui.setScore(scoring.score, scoreBand.prevThreshold, scoreBand.nextThreshold);
-    ui.setCombo(scoring.comboCount, getComboMultiplier(scoring));
     ui.setLives(lives.remaining, lives.capacity);
     ui.setBuffs(player);
     ui.setBoxes(boxes);

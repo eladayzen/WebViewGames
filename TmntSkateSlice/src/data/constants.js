@@ -70,8 +70,15 @@ export const ITEM_MAX_X_FRAC = PLAY_AREA_RIGHT_FRAC - 0.02;
 export const MAX_SPAWN_X_JUMP_FRAC = 0.4;
 
 // --- Scoring (§8) ---
-export const PIZZA_SCORE = 10;
+// Per-pizza-catch score now lives on each variant in data/itemTypes.js
+// (flat, tiered by box color) -- PIZZA_SCORE was the old flat base value
+// the combo multiplier below used to scale; removed since nothing reads it
+// anymore.
 export const OOZE_SCORE = 0; // buff-only reward, per §8/§12's "don't double-dip" guidance and the open question there
+// Combo/hot-streak multiplier: DISABLED for now (2026-08-06 feedback,
+// hidden from the HUD and no longer applied to score -- see
+// systems/scoring.js's registerPizzaHit). Kept here, unused, as the
+// re-enable hook.
 export const COMBO_STEP = 3; // every N consecutive pizza hits bumps the multiplier
 export const COMBO_MULTIPLIER_STEP = 0.5;
 export const COMBO_MULTIPLIER_MAX = 3.0;

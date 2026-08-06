@@ -1,11 +1,16 @@
-// Scoring + combo-streak system (§8). Score = points per strike x active
-// combo multiplier. Combo tracks CONSECUTIVE PIZZA strikes only -- a missed
-// pizza (let fall past unstruck) or a bomb hit resets it to zero; striking
-// or missing an ooze canister is neutral (neither builds nor breaks the
-// streak -- the doc only specifies missed-pizza/bomb-hit as breaking it).
+// Scoring + combo-streak system (§8). Each pizza catch scores its own flat,
+// tiered value (data/itemTypes.js's per-variant `score`, 10/20/30/40) --
+// the combo multiplier is DISABLED for now (2026-08-06 feedback: unclear,
+// hidden from the HUD, no longer applied to score). Combo streak tracking
+// (comboCount/bestCombo) is left running underneath, unused by scoring, so
+// re-enabling the multiplier later is just wiring currentMultiplier back
+// into registerPizzaHit -- the constants/function below are kept for that.
+// Combo tracks CONSECUTIVE PIZZA strikes only -- a missed pizza (let fall
+// past unstruck) or a bomb hit resets it to zero; striking or missing an
+// ooze canister is neutral (neither builds nor breaks the streak -- the
+// doc only specifies missed-pizza/bomb-hit as breaking it).
 
 import {
-  PIZZA_SCORE,
   OOZE_SCORE,
   COMBO_STEP,
   COMBO_MULTIPLIER_STEP,
@@ -31,11 +36,10 @@ function currentMultiplier(s) {
   return Math.min(1 + steps * COMBO_MULTIPLIER_STEP, COMBO_MULTIPLIER_MAX);
 }
 
-export function registerPizzaHit(s) {
+export function registerPizzaHit(s, points) {
   s.comboCount += 1;
   if (s.comboCount > s.bestCombo) s.bestCombo = s.comboCount;
-  s.score += Math.round(PIZZA_SCORE * currentMultiplier(s));
-  return currentMultiplier(s);
+  s.score += points;
 }
 
 export function registerOozeHit(s) {

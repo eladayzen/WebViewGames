@@ -12,11 +12,16 @@
 // id stays 'pizza' on all of them so drawItemFallback's pizza branch (and
 // all catch/combo logic) treats them identically.
 
+// Per-catch score (2026-08-06): flat, tiered by box color -- NOT combo-
+// multiplied (the combo/hot-streak multiplier is disabled for now, see
+// systems/scoring.js's registerPizzaHit). Same rarity order as
+// data/boxColors.js (regular -> blue -> purple -> red), evenly spaced
+// 10/20/30/40 so a rarer catch is always worth visibly more on its own.
 export const ITEM_TYPES = {
-  PIZZA: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'regular' },
-  PIZZA_BLUE: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'blue' },
-  PIZZA_PURPLE: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'purple' },
-  PIZZA_RED: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'red' },
+  PIZZA: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'regular', score: 10 },
+  PIZZA_BLUE: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'blue', score: 20 },
+  PIZZA_PURPLE: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'purple', score: 30 },
+  PIZZA_RED: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'red', score: 40 },
   BOMB: { id: 'bomb', sprite: 'bomb', kind: 'hazard' },
 };
 
