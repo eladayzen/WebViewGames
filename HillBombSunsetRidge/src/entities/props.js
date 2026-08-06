@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { PROP_TYPES, PATTERNS } from '../data/propTypes.js';
 import { toWorld, surfaceUp, frameAt, makeFrame } from '../world/trough.js';
-import { THETA_MAX, TROUGH_RADIUS } from '../data/constants.js';
+import { THETA_MAX, TROUGH_RADIUS, RAMP_ARROW_COLOR } from '../data/constants.js';
 
 const SPAWN_AHEAD = 340; // keep the field populated this far down the road
 const RECYCLE_BEHIND = 40;
@@ -38,6 +38,68 @@ function centreOnXZ(geo) {
   geo.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2);
 }
 
+// --- RAMP CHEVRONS ----------------------------------------------------------
+// White arrow markings up the face of every launcher, like the painted
+// direction arrows in a real skatepark or on a road. They do two jobs at once:
+// they make a ramp instantly legible as "ride UP this, that way" rather than as
+// a coloured wedge, and they give the surface some graphic interest without a
+// texture.
+//
+// Built as separate geometry laid ON the face, the same approach the trough's
+// guide stripes use, rather than painted into a texture map. ExtrudeGeometry's
+// UVs on a swept profile are not something to rely on for placing artwork, and
+// separate geometry stays crisp at any ramp size.
+//
+// The face is described by its start and end in the prop's local (z, y) plane,
+// so the same builder serves the straight wedge of a kicker and the straight
+// lower face of a bank -- which rise to different places -- without either
+// caller knowing how the marking is constructed.
+function buildChevrons(w, z0, y0, z1, y1, count, colour) {
+  const g = new THREE.Group();
+  const dz = z1 - z0, dy = y1 - y0;
+  const len = Math.hypot(dz, dy);
+  if (len < 0.01) return g;
+
+  // Orthonormal frame ON the ramp face: +Y runs up the slope, +Z is the face
+  // normal, +X stays the width axis.
+  const up = new THREE.Vector3(0, dy / len, dz / len);
+  const nrm = new THREE.Vector3(0, -dz / len, dy / len);
+  const right = new THREE.Vector3(1, 0, 0);
+  const basis = new THREE.Matrix4().makeBasis(right, up, nrm);
+  const quat = new THREE.Quaternion().setFromRotationMatrix(basis);
+
+  const mat = new THREE.MeshBasicMaterial({ color: colour, side: THREE.DoubleSide });
+  // ELONGATED UP THE SLOPE on purpose. Seen from directly above these are
+  // well-proportioned arrows, but the game camera looks at a ramp face almost
+  // edge-on and foreshortens them into flat stripes. Real road chevrons are
+  // stretched lengthwise for exactly this reason -- drawn "correct" they read
+  // squashed from a driver's eye height.
+  const halfW = w * 0.26;
+  const rise = len * 0.22;
+  const thick = rise * 0.38;
+
+  for (let i = 0; i < count; i++) {
+    // Evenly spaced up the face, inset from both ends so no chevron hangs off
+    // the lip or buries itself in the ground at the base.
+    const t = (i + 0.9) / (count + 0.9);
+    const shape = new THREE.Shape();
+    shape.moveTo(-halfW, 0);
+    shape.lineTo(0, rise);
+    shape.lineTo(halfW, 0);
+    shape.lineTo(halfW - thick * 0.9, 0);
+    shape.lineTo(0, rise - thick);
+    shape.lineTo(-halfW + thick * 0.9, 0);
+    shape.lineTo(-halfW, 0);
+    const m = new THREE.Mesh(new THREE.ShapeGeometry(shape), mat);
+    m.quaternion.copy(quat);
+    m.position.set(0, y0 + dy * t, z0 + dz * t)
+      // Lift clear of the face so it never z-fights the ramp it sits on.
+      .addScaledVector(nrm, 0.02);
+    g.add(m);
+  }
+  return g;
+}
+
 function buildKicker(def) {
   const { w, h, l } = def.size;
   const g = new THREE.Group();
@@ -61,6 +123,8 @@ function buildKicker(def) {
   );
   lip.position.set(0, h, -l / 2 + 0.25);
   g.add(lip);
+  // Face runs from the base (z = +l/2, y = 0) up to the lip (z = -l/2, y = h).
+  g.add(buildChevrons(w, l / 2, 0, -l / 2, h, 3, RAMP_ARROW_COLOR));
   return g;
 }
 
@@ -147,6 +211,10 @@ function buildBank(def) {
   g.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
     color: def.colour, side: THREE.DoubleSide,
   })));
+  // The bank's rideable face is the STRAIGHT edge from its base up to the apex
+  // at the MIDDLE (shape x = l/2 -> local z = 0), not the curved back half the
+  // rider never touches -- see rampHeight()'s 'hump' profile.
+  g.add(buildChevrons(w, l / 2, 0, 0, h, 3, RAMP_ARROW_COLOR));
   return g;
 }
 

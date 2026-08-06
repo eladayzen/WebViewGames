@@ -406,7 +406,7 @@ export const LAND_AMOUNT_PLAIN = 0.42; // a bare ollie or a small ramp pop
 // again would drop the horizontal field below the 81.6 degrees the long-lens
 // pass already traded down to, costing reaction time on wide-placed props.
 // Distance is the free lever here; focal length is not.
-export const CAM_BACK = 3.80; // follow distance behind the rider
+export const CAM_BACK = 3.15; // follow distance behind the rider
 // Lowered with the lens. How far below frame-centre the rider sits is set by
 // the height:distance ratio -- atan(CAM_HEIGHT / follow distance) -- and a
 // narrow FOV magnifies that same angle into a much larger slice of the frame.
@@ -417,7 +417,7 @@ export const CAM_BACK = 3.80; // follow distance behind the rider
 // camera pushes him toward the bottom edge -- at 1.42 and this distance he
 // started clipping it. Dropping the height buys that margin back and costs no
 // on-screen size at all, which pure pull-back would.
-export const CAM_HEIGHT = 1.15;
+export const CAM_HEIGHT = 1.05;
 // Over-the-shoulder lateral offset (the Fortnite tell). Scaled down with the
 // lens: this is a fixed WORLD offset, so a narrower FOV turns the same 0.85
 // into a much larger share of the frame -- it pushed the rider to -0.38 NDC,
@@ -428,7 +428,17 @@ export const CAM_SHOULDER = 0.55;
 // point leads him, and a narrow FOV magnifies that same angular offset into a
 // much bigger slice of the frame -- at 11.0 he sank toward the bottom edge.
 export const CAM_LOOK_AHEAD = 7.0; // how far down-road the camera aims
-export const CAM_LOOK_HEIGHT = 1.35;
+// Dropped BELOW CAM_HEIGHT on purpose. The camera aims at a point this high
+// above the rider, so while it sat above the camera the whole rig tilted
+// slightly UP and pushed him toward the bottom of frame -- fighting exactly the
+// thing the low camera was buying. Below it, the rig tilts DOWN and lifts him,
+// which is what makes room for the much closer follow distance.
+// Nudged just below CAM_HEIGHT so the rig tilts very slightly DOWN, lifting the
+// rider a hair. At a level aim the framing measured worst-bottom -0.99 -- inside
+// the frame, but 0.01 of margin is not margin, and a deep landing absorb or a
+// grind pose would spend it. This spreads the slack across both edges instead
+// of leaving it all at the top.
+export const CAM_LOOK_HEIGHT = 0.92;
 // Follow easing. Raised from 6.0, because at 6.0 the STEADY-STATE trail is
 // speed/CAM_LERP -- 5.8 units at 34.6 u/s, nearly as much again as the rig's
 // own 6.3 -- so the real follow distance was 12.1 and, worse, it GREW with
@@ -573,3 +583,9 @@ export const SPEEDLINE_COLOR = 0x9fe9ff; // pale cyan -- finally glows against a
 export const RIM_COLOR = 0xa8ecff;
 export const RIM_STRENGTH = 0.55;
 export const RIM_POWER = 2.2; // higher = tighter edge, less wash over the body
+
+// White direction arrows painted up the face of every launcher (see props.js's
+// buildChevrons). Pure white rather than the cyan used for trough markings:
+// these sit ON an object you interact with, and cyan already means "painted on
+// the ground, ignore me".
+export const RAMP_ARROW_COLOR = 0xffffff;
