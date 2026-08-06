@@ -90,10 +90,29 @@ function drawBackgroundFallback(ctx, w, h, stage) {
   ctx.fillRect(0, groundY, w, h * 0.015);
 }
 
+// Per-stage background zoom/pan (2026-08-06). A few backgrounds have real
+// floor obstructions -- a railing's perspective corner, a raised curb,
+// flanking pillar bases -- sitting in the outer edges of the play area.
+// Restricting player/item movement to dodge them was tried and explicitly
+// rejected (it should never feel like the world is narrower than it looks);
+// this instead scales the ART up and pans it, cropping the obstruction out
+// of view entirely while the player can still walk the full play area.
+// bgScale/bgOffsetXFrac/bgOffsetYFrac are optional per-stage (data/
+// stages.js) -- default 1/0/0 draws exactly as before (full non-uniform
+// stretch to the canvas, no crop). This is pure canvas draw-call math, NOT
+// the CSS aspect-ratio lock an earlier attempt got tangled up in (that one
+// broke the real Unity WebView because CSS vw/vh don't resolve reliably
+// there -- this never touches CSS/layout, only where/how big the image is
+// drawn inside the already-correctly-sized canvas).
 function drawBackground(ctx, w, h, images, stage) {
   const img = images[stage.bg];
   if (img) {
-    ctx.drawImage(img, 0, 0, w, h);
+    const scale = stage.bgScale ?? 1;
+    const drawW = w * scale;
+    const drawH = h * scale;
+    const x = (w - drawW) / 2 + (stage.bgOffsetXFrac ?? 0) * w;
+    const y = (h - drawH) / 2 + (stage.bgOffsetYFrac ?? 0) * h;
+    ctx.drawImage(img, x, y, drawW, drawH);
   } else {
     drawBackgroundFallback(ctx, w, h, stage);
   }

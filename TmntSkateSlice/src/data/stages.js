@@ -63,7 +63,14 @@ export const STAGES = [
     name: 'Fire Escape',
     bannerLabel: 'STAGE 2',
     bg: 'bg_fire_escape',
-    groundYFrac: 0.85,
+    // Zoomed + re-tuned (2026-08-06, see core/render.js's drawBackground):
+    // the railing's perspective corner used to cross the floor line near
+    // both edges. Scaling the art up crops that corner out of view
+    // entirely -- movement is NOT restricted, the player can still walk
+    // the full play area -- verified by compositing the sprite against the
+    // actual zoomed art at both edges before picking these numbers.
+    bgScale: 1.1667,
+    groundYFrac: 0.88, // was 0.85; floor sits differently after the zoom
     fallSpeedFrac: 0.21,
     spawnIntervalSec: 1.15,
     bombChance: 0.32, // a bit more, not a lot (2026-08-05, was 0.28)
@@ -76,7 +83,15 @@ export const STAGES = [
     name: 'Alley',
     bannerLabel: 'STAGE 3',
     bg: 'bg_alley',
-    groundYFrac: 0.87,
+    // Zoomed (2026-08-06, see core/render.js's drawBackground): the raised
+    // loading-dock curb used to cross the floor line near both edges (a
+    // pre-existing issue, not one of the 5 new stages -- only found once a
+    // live screenshot sweep checked the edges, not just center). Movement
+    // is NOT restricted; the zoom crops the curb out of view instead.
+    // Slight offsetX since the curb wasn't quite symmetric left/right.
+    bgScale: 1.1667,
+    bgOffsetXFrac: 0.012,
+    groundYFrac: 0.87, // unchanged -- the zoom happened to land the floor at the same spot
     fallSpeedFrac: 0.26,
     spawnIntervalSec: 0.95,
     bombChance: 0.39, // a bit more, not a lot (2026-08-05, was 0.35)
@@ -92,11 +107,16 @@ export const STAGES = [
     name: 'Subway',
     bannerLabel: 'STAGE 4',
     bg: 'bg_subway',
-    // Tuned the same way as fire-escape/alley (2026-08-06): the sprite's
-    // feet were test-composited onto the actual background art at several
-    // candidate values before picking this one, specifically to avoid
-    // repeating the fire-escape "standing on a fence" ambiguity.
-    groundYFrac: 0.86,
+    // Zoomed + re-tuned (2026-08-06, see core/render.js's drawBackground):
+    // the flanking pillar bases sat right at both edges -- needed a much
+    // bigger zoom than fire-escape/alley to fully crop them out of view.
+    // Movement is NOT restricted; the player can walk the full play area
+    // and the platform floor now reads as continuous the whole width.
+    // Verified by compositing the sprite against the actual zoomed art at
+    // both edges (and center, where the track opening sits) before
+    // picking these numbers.
+    bgScale: 1.6154,
+    groundYFrac: 0.92, // was 0.86; floor sits lower on screen after the zoom
     fallSpeedFrac: 0.30,
     spawnIntervalSec: 0.82,
     bombChance: 0.42,
