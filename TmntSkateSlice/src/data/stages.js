@@ -129,7 +129,12 @@ export const STAGES = [
     name: 'Sewer',
     bannerLabel: 'STAGE 5',
     bg: 'bg_sewer',
-    groundYFrac: 0.86,
+    // Art edited (2026-08-06, Track B, see art/archive/pre-track-b-backgrounds/
+    // for the original): the center water channel that used to split the
+    // walkway into two islands is now a continuous flat floor across the
+    // full width. groundYFrac re-tuned + re-verified at both edges (and
+    // center) via the same sprite-composite check as every other stage.
+    groundYFrac: 0.89, // was 0.86
     fallSpeedFrac: 0.33,
     spawnIntervalSec: 0.72,
     bombChance: 0.45,
@@ -155,6 +160,11 @@ export const STAGES = [
     name: 'Warehouse Rooftop',
     bannerLabel: 'STAGE 7',
     bg: 'bg_warehouse',
+    // Art edited (2026-08-06, Track B, see art/archive/pre-track-b-backgrounds/
+    // for the original): the pallets/cable coil that intruded deep into
+    // both edges are now pushed to the margins and shrunk. groundYFrac
+    // (0.89) already worked and needed no change -- re-verified at both
+    // edges via the same sprite-composite check as every other stage.
     groundYFrac: 0.89,
     fallSpeedFrac: 0.38,
     spawnIntervalSec: 0.58,
@@ -168,7 +178,14 @@ export const STAGES = [
     name: 'Docks',
     bannerLabel: 'STAGE 8',
     bg: 'bg_docks',
-    groundYFrac: 0.83,
+    // Art edited (2026-08-06, Track B, see art/archive/pre-track-b-backgrounds/
+    // for the original): the deck used to physically narrow away near the
+    // right edge (no floor pixels past a point, just open under-pier
+    // bracing over water); it now spans the full frame width, and the
+    // rope-and-lantern guard rail was moved up/back out of the walkable
+    // band. groundYFrac re-tuned + re-verified at both edges (and center)
+    // via the same sprite-composite check as every other stage.
+    groundYFrac: 0.89, // was 0.83
     fallSpeedFrac: 0.40,
     spawnIntervalSec: 0.52,
     bombChance: 0.50,
