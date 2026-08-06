@@ -177,7 +177,18 @@ export const THEMES = {
     // and reverted here: it clashed badly against this theme's cheerful
     // daylight foreground, reading as an ominous burning-city backdrop
     // rather than depth/atmosphere.
-    skyline: envTexture('skyline.png', 1600, 906),
+    //
+    // Was skyline.png (centralCity's own backdrop, reused) until direct
+    // feedback -- tier 3 was showing the exact same skyline the player
+    // already saw at tier 1. Replaced with a skyline of its own: warm
+    // brick/brownstone low-rise rooftops and water towers matching this
+    // theme's own facade language (facade_a's brick tenement, fire escape),
+    // staying bright daylight per the note above -- not the rejected orange
+    // dusk direction -- with real atmospheric depth (nearest rooftops crisp
+    // and saturated, background fading to a hazy blue-grey downtown
+    // silhouette) applying the depth lesson harborDocks' skyline fix
+    // learned. Alt candidate archived at art/final/alt/skyline_sunny_v1_alt.png.
+    skyline: envTexture('skyline_sunny.png', 3168, 1344),
     buildingProfile: {
       widthCycle: [6, 7, 8], // building width (along the street) cycles through these
       depth: 8, // building depth (perpendicular to the street)
