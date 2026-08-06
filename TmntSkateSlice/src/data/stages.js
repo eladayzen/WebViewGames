@@ -108,15 +108,22 @@ export const STAGES = [
     bannerLabel: 'STAGE 4',
     bg: 'bg_subway',
     // Zoomed + re-tuned (2026-08-06, see core/render.js's drawBackground):
-    // the flanking pillar bases sat right at both edges -- needed a much
-    // bigger zoom than fire-escape/alley to fully crop them out of view.
-    // Movement is NOT restricted; the player can walk the full play area
-    // and the platform floor now reads as continuous the whole width.
-    // Verified by compositing the sprite against the actual zoomed art at
-    // both edges (and center, where the track opening sits) before
+    // the flanking pillar bases sat right at both edges. First pass only
+    // cropped them out of the reachable play area (scale 1.6154) but left
+    // a sliver visible in the unreachable margins; direct feedback wanted
+    // the poles gone from view ENTIRELY, so this crops the full canvas
+    // edge-to-edge to the clean center of the source art (scale 1.9231 =
+    // 1/0.52, where 0.24-0.76 was the verified-clear source range) --
+    // no pole pixel is ever on screen, at any x, reachable or not.
+    // bgOffsetYFrac pulls the crop down a bit (keeps the tunnel arch +
+    // posters in frame; a purely centered crop pushed the top too close
+    // and lost too much floor). Movement is NOT restricted -- the player
+    // can walk the full play area. Verified by compositing the sprite
+    // against the actual re-cropped art at both edges and center before
     // picking these numbers.
-    bgScale: 1.6154,
-    groundYFrac: 0.92, // was 0.86; floor sits lower on screen after the zoom
+    bgScale: 1.9231,
+    bgOffsetYFrac: -0.15,
+    groundYFrac: 0.92,
     fallSpeedFrac: 0.30,
     spawnIntervalSec: 0.82,
     bombChance: 0.42,
