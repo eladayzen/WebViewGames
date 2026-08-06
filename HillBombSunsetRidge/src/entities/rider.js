@@ -43,11 +43,13 @@ import normalUrl from '../assets/rig/rider_normal.jpg?url';
 import metalRoughUrl from '../assets/rig/rider_metalrough.jpg?url';
 import {
   HOP_HIP_FOLD, HOP_KNEE_FOLD,
-  AIR_TUCK_HIP, AIR_TUCK_KNEE, AIR_ARM_DROP, AIR_ARM_SWING,
+  AIR_TUCK_HIP, AIR_TUCK_KNEE, AIR_ARM_LIFT, LAND_ARM_LIFT,
   LAND_HIP_BEND, LAND_KNEE_BEND, LAND_SPINE_CURL,
   GRIND_YAW, GRIND_HIP_BEND, GRIND_KNEE_BEND,
   GRIND_ARM_SPREAD, GRIND_ELBOW_OPEN, GRIND_PUSH_LOCKOUT,
   RIM_COLOR, RIM_STRENGTH, RIM_POWER,
+  BALANCE_CARVE, BALANCE_LATERAL, BALANCE_LATERAL_REF, BALANCE_SMOOTH,
+  BALANCE_LIFT_BASE, BALANCE_LIFT_ASYM, ARM_LIFT_MAX,
 } from '../data/constants.js';
 
 const RIDER_HEIGHT = 1.85;
@@ -99,6 +101,7 @@ const _rbasis = new THREE.Matrix4();
 // of reuse, where one call quietly clobbered another's working value.
 const _cu = new THREE.Vector3();
 const _q = new THREE.Quaternion();
+const _ax = new THREE.Vector3();
 
 /**
  * Mixamo's "in place" clips still carry a Hips position track, and the second
@@ -263,6 +266,10 @@ export function createRider(scene, camera) {
   // then counting down afterwards (Amit: not during the glide "+ 1 second
   // afterwards").
   let pushLockT = 0;
+  // Smoothed arm-balance signal, -1..1. Persisted across frames because it is
+  // eased rather than recomputed: an arm that steps to a new angle in a single
+  // frame reads as a glitch, not a correction.
+  let balance = 0;
   // The deck's tilt-local height while riding normally, sampled live and used
   // as the reference the grind crouch is compensated against.
   //
@@ -705,18 +712,36 @@ export function createRider(scene, camera) {
           if (legL) legL.rotation.x += knee;
           if (legR) legR.rotation.x += knee;
 
-          // Arms down and back. The z term is MIRRORED between the two arms --
-          // the chains are mirror images, so a shared sign swings them opposite
-          // ways in world space and one arm would rise while the other fell.
-          if (armL && armR) {
-            const drop = fold * AIR_ARM_DROP;
-            const swing = fold * AIR_ARM_SWING;
-            armL.rotation.x += drop;
-            armR.rotation.x += drop;
-            armL.rotation.z -= swing;
-            armR.rotation.z += swing;
-          }
+          // Arms in the air are handled by the ARM LIFT block below, not here:
+          // they now go UP rather than down, and routing them through the same
+          // abduction path as the balance lift is what keeps every arm pose
+          // one-sided and free of the hand-into-hip clipping.
         }
+
+        // --- ARM BALANCE (procedural, layered ON TOP of the clips) -----------
+        //
+        // The rider's arms otherwise do nothing but replay the idle loop, which
+        // is what makes him read as a puppet riding on rails. This gives them
+        // the physics to react to.
+        //
+        // Two inputs, deliberately not one: CARVE is what he's asking for, and
+        // LATERAL is what the trough is actually doing to him. The pendulum
+        // lets those disagree -- carving one way while still drifting the other
+        // -- and that disagreement is exactly the moment a real rider throws an
+        // arm out. Summing them means the arms are busiest when he's fighting
+        // the board rather than merely turning.
+        //
+        // Only rotation.x is used: it measured as the one strong lever on both
+        // chains (0.42 of hand travel at 1.2 rad, against 0.11 for y), and it
+        // is the only one that behaves the same on both arms -- z swings the
+        // left hand forward and the right hand backward.
+        {
+          const want = Math.max(-1, Math.min(1,
+            (s.carve || 0) * BALANCE_CARVE
+            + ((s.lateral || 0) / BALANCE_LATERAL_REF) * BALANCE_LATERAL));
+          balance += (want - balance) * (1 - Math.exp(-BALANCE_SMOOTH * dt));
+        }
+        // (the lift itself is applied at the very end -- see ARM LIFT below)
 
         // --- BOARDSLIDE pose (procedural, layered ON TOP of the clips) -------
         //
@@ -783,6 +808,61 @@ export function createRider(scene, camera) {
           if (spine) spine.rotation.x += curl * 0.5;
           if (spine1) spine1.rotation.x += curl * 0.32;
           if (spine2) spine2.rotation.x += curl * 0.18;
+        }
+
+        // --- ARM LIFT (applied last, on top of every other arm pose) --------
+        //
+        // ONE-SIDED BY CONSTRUCTION: both lifts are >= 0, so the arms can only
+        // ever rise away from the animated idle pose, never be driven toward
+        // the body. That is the fix for the hands clipping into the hip -- the
+        // previous version tilted the arm line, and whichever arm went DOWN
+        // pushed its hand through the torso.
+        //
+        // Rotated about the PARENT-space X axis rather than the bone's own
+        // Euler angles. Measured, because it is not obvious: this rig's arm
+        // bones are near-degenerate in their local frame -- both local x and
+        // local z drag the hand inward AND up together, so no combination of
+        // them abducts cleanly. A negative rotation about parent X does, and
+        // does it for BOTH arms with the same sign:
+        //     left  -0.135 outward, +0.101 up
+        //     right +0.201 outward, +0.088 up
+        if (armL && armR) {
+          const mag = Math.abs(balance);
+          // BASE lifts both (a person off-balance raises both arms); ASYM adds
+          // more to the arm on the high side of the lean, so it reads as a
+          // correction rather than a symmetric shrug.
+          let liftL = BALANCE_LIFT_BASE * mag + BALANCE_LIFT_ASYM * Math.max(0, balance);
+          let liftR = BALANCE_LIFT_BASE * mag + BALANCE_LIFT_ASYM * Math.max(0, -balance);
+
+          // JUMPS: hands high, on every air and straight through the landing.
+          // Same envelope as the leg tuck -- 0 at launch, peak at the apex, 0
+          // by touchdown -- so it hands over to the landing absorb with no step.
+          if (s.airActive) {
+            const airFold = Math.sin(Math.min(1, s.airT) * Math.PI);
+            const a = airFold * AIR_ARM_LIFT;
+            liftL += a; liftR += a;
+          }
+          // The absorb keeps them up as he compresses, rather than dropping
+          // them the instant he touches down. Driven by the bare envelope, NOT
+          // the amount-scaled one: the crouch and spine curl should be heavier
+          // after a backflip than after an ollie, but the hands go high on
+          // every landing regardless -- amount-scaling gave a plain jump a
+          // 0.07 rise where a backflip got far more.
+          const land = (s.landEnv || 0) * LAND_ARM_LIFT;
+          liftL += land; liftR += land;
+
+          // Cap the SUM. Each source is reasonable alone, but a jump landing
+          // mid-carve stacks them, and past ~2.1 the arm swings over vertical
+          // and the hand starts coming back in toward the body -- which is the
+          // clipping this whole approach exists to avoid.
+          liftL = Math.min(liftL, ARM_LIFT_MAX);
+          liftR = Math.min(liftR, ARM_LIFT_MAX);
+          if (liftL > 0.001) {
+            armL.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(1, 0, 0), -liftL));
+          }
+          if (liftR > 0.001) {
+            armR.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(1, 0, 0), -liftR));
+          }
         }
 
         // PIN THE BOARD TO THE FEET. Previously the board sat at a fixed height

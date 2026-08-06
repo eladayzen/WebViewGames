@@ -208,16 +208,36 @@ export const HOP_KNEE_FOLD = 0.96; // heels tucked back under, board follows
 export const AIR_TUCK_HIP = 0.45;
 export const AIR_TUCK_KNEE = 0.55;
 
-// Arms down. Two axes, because neither alone does it: the idle holds the lead
-// arm FORWARD and the trailing arm already low and out, so the chains are not
-// symmetric to begin with. Probing a grid of (x, z) and reading each hand's
-// displacement in the rider's own frame, x+0.3/z-0.35 is the combination that
-// takes BOTH hands down (left -0.064, right -0.022 -- the right starts low, so
-// it has less to travel) while swinging them back rather than across the body.
-// The z term is mirrored between the arms because the two chains are mirror
-// images and a shared sign would swing them opposite ways in world space.
-export const AIR_ARM_DROP = 0.35; // rotation.x, same sign both arms
-export const AIR_ARM_SWING = 0.35; // rotation.z, mirrored
+// ARMS HIGH IN THE AIR. This REPLACES an earlier "arms down to the sides" pass
+// -- Amit reversed it: hands should go up, and high, on every jump and through
+// the landing. Applied through the same parent-X abduction the balance lift
+// uses, so it inherits the never-inward guarantee instead of needing its own.
+//
+// MEASURED reach, hand displacement against the idle pose, with the head
+// sitting 0.515 above the hips:
+//     0.9 -> up 0.232, out +0.192      1.2 -> up 0.346, out +0.199
+//     1.6 -> up 0.500, out +0.159  (hand level with the head)
+//     2.0 -> up 0.634, out +0.070  (hand above the head)
+//     2.4 -> up 0.727, out -0.055  (arm has swung over the centreline)
+//
+// Note where "out" turns around: past ~1.2 the arm keeps rising but starts
+// coming back IN, and by 2.4 the hand is closer to the body than it began.
+// That is the clipping failure all over again, which is why ARM_LIFT_MAX caps
+// the combined total well short of it.
+// Cut to half the on-screen RISE of the original 1.75, which reached head
+// height at the apex and read as a star jump rather than a skater popping an
+// ollie.
+//
+// Note the value is NOT half the angle: the abduction response is nonlinear, so
+// 0.88 rad -- the arithmetic half -- actually cut the rise to 0.201 against the
+// original 0.514, a 61% reduction rather than 50%. Solving against the measured
+// curve (0.9 rad -> 0.232 of rise, 1.2 -> 0.346) for the 0.257 that is a true
+// half lands here.
+//
+// The landing lift is deliberately untouched: Amit liked that one, and it is a
+// separate additive term, so the two tune independently.
+export const AIR_ARM_LIFT = 0.98;  // at the apex of a jump
+export const LAND_ARM_LIFT = 1.50; // still high through the absorb
 
 // How crosswise is too crosswise to grind. The rider's lateral speed is
 // |thetaVel| * R (angular rate around the trough, times local radius); compare
@@ -589,3 +609,58 @@ export const RIM_POWER = 2.2; // higher = tighter edge, less wash over the body
 // these sit ON an object you interact with, and cyan already means "painted on
 // the ground, ignore me".
 export const RAMP_ARROW_COLOR = 0xffffff;
+
+// --- ARM BALANCE ------------------------------------------------------------
+// Procedural counter-balance on the arms, layered over the idle clip so the
+// rider stops repeating the same loop forever. Amit: "bring more liveliness
+// into it... him trying to balance himself... break the bottom of the idle
+// cycle."
+//
+// FK, not IK, and that's deliberate. IK earns its keep when a hand must reach a
+// specific world-space point -- planting on a rail, a grab meeting the deck.
+// Balance flailing has no such target; the hand just needs to go "out there".
+// A solver would add a target rig and pole vector to produce what two rotations
+// already give, and would be harder to blend against the running clip.
+//
+// MEASURED response of this rig's arms, hand displacement in the rider's own
+// frame per rotation applied:
+//     axis x   +0.3 -> 0.120   +0.6 -> 0.237   +0.9 -> 0.341   +1.2 -> 0.424
+//     axis y   negligible (0.11 at its very best -- a twist about the bone)
+//     axis z   asymmetric: swings the LEFT hand forward with lateral coupling,
+//              the RIGHT hand backward with almost none
+//
+// Two consequences baked into the numbers below. Rotation x is the only strong,
+// symmetric lever, so it does the work. And it SATURATES -- those increments
+// are 0.120, 0.117, 0.104, 0.083, so past ~0.9 rad more rotation buys steadily
+// less movement. Peak stays well under that.
+//
+// The arm LINE tilts rather than both arms doing the same thing: one arm rises
+// as the other drops, which is how a person actually counterweights. Perfectly
+// mirrored flailing reads as robotic.
+export const BALANCE_CARVE = 0.55; // how much carve feeds the balance signal
+// Drift contributes separately from carve, because the pendulum means they
+// disagree: you can be carving right while still travelling left, and that
+// disagreement is exactly the moment a rider is fighting for balance.
+export const BALANCE_LATERAL = 0.35;
+export const BALANCE_LATERAL_REF = 15.0; // world units/s that counts as "full"
+// Eased, never snapped -- an arm that steps to a new angle in one frame reads
+// as a glitch rather than a correction.
+export const BALANCE_SMOOTH = 6.5;
+
+// THE IDLE POSE IS THE FLOOR. Amit: the arms' animated position is the CLOSEST
+// they should ever get to the torso -- the balance may only ever raise them.
+// The first pass tilted the arm line, one arm up and the other down, and the
+// downward one drove the hand into the hip and clipped through the body.
+//
+// Both of these are therefore >= 0 and only ever ADD lift. BASE rises on both
+// arms with the magnitude of the imbalance -- a person off-balance brings both
+// arms up, like a tightrope walker -- and ASYM adds more to the arm on the high
+// side, which is what keeps it from reading as a symmetric shrug.
+export const BALANCE_LIFT_BASE = 0.30;
+export const BALANCE_LIFT_ASYM = 0.38;
+
+// Hard ceiling on the SUM of every lift source. Beyond ~2.1 the arm swings past
+// vertical and the hand starts travelling back toward the body -- see the
+// measured reversal above -- so a jump landing mid-carve, which stacks air lift
+// on top of balance lift, must not be allowed to add its way through it.
+export const ARM_LIFT_MAX = 2.0;

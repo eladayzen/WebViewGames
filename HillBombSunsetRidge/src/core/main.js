@@ -197,6 +197,24 @@ function landCurl() {
   return state.landAmount * x * x * (3 - 2 * x);
 }
 
+/**
+ * The landing envelope's SHAPE alone, 0..1, with no trick-strength scaling.
+ *
+ * landPose() and landCurl() are both scaled by how hard the landing was, which
+ * is right for the crouch and the spine curl -- a backflip should land heavier
+ * than an ollie. It is wrong for the arms: Amit wants high hands on EVERY
+ * landing, and scaling by amount made a plain jump raise them by 0.07 against
+ * a backflip's much larger lift. So the arms read the bare shape.
+ */
+function landEnv() {
+  if (state.landT <= 0) return 0;
+  const p = 1 - state.landT / state.landDuration;
+  const x = p < LAND_SETTLE_PEAK
+    ? p / LAND_SETTLE_PEAK
+    : 1 - (p - LAND_SETTLE_PEAK) / (1 - LAND_SETTLE_PEAK);
+  return x * x * (3 - 2 * x);
+}
+
 /** Begin a landing absorb of the given strength (0..1). */
 function beginLanding(amount) {
   state.landAmount = amount;
@@ -769,6 +787,7 @@ function frame() {
     airTrick: state.airTrick,
     landPose: landPose(),
     landCurl: landCurl(),
+    landEnv: landEnv(),
     swing: swingScale,
     theta: state.theta,
     surfaceUp: _up,
@@ -779,6 +798,12 @@ function frame() {
     // kept in sync. `grinding` is the raw contact flag, which the push-clip
     // lockout needs separately: the pose is still unwinding for a moment after
     // contact ends, but the lockout's own tail starts counting from here.
+    // Signed lateral drift in world units/s. The arm balance needs this as well
+    // as carve, because the pendulum lets the two disagree -- carving one way
+    // while still travelling the other is precisely when a rider is fighting to
+    // stay over the board.
+    lateral: state.thetaVel * radiusAt(state.s),
+    wobble: scoring.state.wobble,
     grindPose: state.grindLift,
     grindYawSign: state.grindYawSign,
     spinDir: state.spinDir,
