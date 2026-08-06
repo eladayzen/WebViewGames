@@ -27,11 +27,11 @@
 // per-stage feedback about how he reads against a background is feedback
 // on that background (groundYFrac, or the art itself), never a reason to
 // resize him.
-// TEMP (2026-08-06): every advanceScore below is a low testing value (50,
-// 100, 150...) so all 8 stages -- especially the 5 new ones -- can be
-// reached quickly for a playtest pass, instead of grinding real score.
-// Each real production value is noted inline next to its temp value.
-// Revert before shipping: restore each advanceScore to its noted real value.
+// Real production advanceScore thresholds restored (2026-08-06) after a
+// playtest pass that temporarily lowered them (50/100/200/400/600/800/
+// 1000) to reach all 8 stages quickly. Each stage's testing value is noted
+// inline in a comment next to its real value in case another fast-pass
+// playtest is needed later.
 export const STAGES = [
   {
     id: 'rooftop',
@@ -55,7 +55,7 @@ export const STAGES = [
     //   | L5->L6 9000 (+2500) | ... (+500 each level)
     // Only 2 transitions exist today (3 stages); the rest is the pattern for
     // any future stages.
-    advanceScore: 50, // TEMP testing value (2026-08-06, spiced up), real value: 500
+    advanceScore: 500, // real value; testing value was 50 (2026-08-06)
     advanceTimeSec: Infinity,
   },
   {
@@ -81,7 +81,7 @@ export const STAGES = [
     spawnIntervalSec: 1.15,
     bombChance: 0.32, // a bit more, not a lot (2026-08-05, was 0.28)
     powerUpChance: 0.13,
-    advanceScore: 100, // TEMP testing value (2026-08-06, spiced up), real value: 3000
+    advanceScore: 3000, // real value; testing value was 100 (2026-08-06)
     advanceTimeSec: Infinity, // score-only advancement
   },
   {
@@ -105,7 +105,7 @@ export const STAGES = [
     // No longer the last stage (2026-08-06) -- advances at the L3->L4
     // threshold the original comment already reserved for this (4500,
     // +1500 over L2->L3's 2500 -- the "+500 per level from L3 on" pattern).
-    advanceScore: 200, // TEMP testing value (2026-08-06, spiced up), real value: 4500
+    advanceScore: 4500, // real value; testing value was 200 (2026-08-06)
     advanceTimeSec: Infinity,
   },
   {
@@ -134,7 +134,7 @@ export const STAGES = [
     spawnIntervalSec: 0.82,
     bombChance: 0.42,
     powerUpChance: 0.13,
-    advanceScore: 400, // TEMP testing value (2026-08-06, spiced up), real value: 6500
+    advanceScore: 6500, // real value; testing value was 400 (2026-08-06)
     advanceTimeSec: Infinity,
   },
   {
@@ -159,7 +159,7 @@ export const STAGES = [
     spawnIntervalSec: 0.72,
     bombChance: 0.45,
     powerUpChance: 0.12,
-    advanceScore: 600, // TEMP testing value (2026-08-06, spiced up), real value: 9000
+    advanceScore: 9000, // real value; testing value was 600 (2026-08-06)
     advanceTimeSec: Infinity,
   },
   {
@@ -172,7 +172,7 @@ export const STAGES = [
     spawnIntervalSec: 0.64,
     bombChance: 0.47,
     powerUpChance: 0.12,
-    advanceScore: 800, // TEMP testing value (2026-08-06, spiced up), real value: 12000
+    advanceScore: 12000, // real value; testing value was 800 (2026-08-06)
     advanceTimeSec: Infinity,
   },
   {
@@ -190,7 +190,7 @@ export const STAGES = [
     spawnIntervalSec: 0.58,
     bombChance: 0.49,
     powerUpChance: 0.11,
-    advanceScore: 1000, // TEMP testing value (2026-08-06, spiced up), real value: 15500
+    advanceScore: 15500, // real value; testing value was 1000 (2026-08-06)
     advanceTimeSec: Infinity,
   },
   {
