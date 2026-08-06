@@ -47,6 +47,11 @@ const MANIFEST = {
   bg_rooftop: new URL('../assets/bg_rooftop.png', import.meta.url).href,
   bg_fire_escape: new URL('../assets/bg_fire_escape.png', import.meta.url).href,
   bg_alley: new URL('../assets/bg_alley.png', import.meta.url).href,
+  bg_subway: new URL('../assets/bg_subway.png', import.meta.url).href,
+  bg_sewer: new URL('../assets/bg_sewer.png', import.meta.url).href,
+  bg_neon_street: new URL('../assets/bg_neon_street.png', import.meta.url).href,
+  bg_warehouse: new URL('../assets/bg_warehouse.png', import.meta.url).href,
+  bg_docks: new URL('../assets/bg_docks.png', import.meta.url).href,
 };
 
 function loadOne(src) {

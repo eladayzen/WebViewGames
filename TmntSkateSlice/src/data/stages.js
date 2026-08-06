@@ -1,10 +1,11 @@
 // Stage / difficulty-ramp definitions (build doc §5.2, §8, §12).
 //
-// 3 in-game stages for this MVP build (3 is an explicitly acceptable floor
-// per §5.2; 5 is the ceiling for a future tuning pass -- not added here to
-// keep the art budget and pacing-tuning surface reasonable for a first
-// ship). Rooftop -> Fire Escape -> Alley, exactly the example order the doc
-// gives.
+// 8 in-game stages (2026-08-06, up from the original MVP's 3 -- the future
+// tuning pass the old comment here deferred). Rooftop -> Fire Escape ->
+// Alley -> Subway -> Sewer -> Neon Street -> Warehouse Rooftop -> Docks,
+// escalating from the doc's original rooftop/fire-escape/alley example
+// order into a "descent into the city" arc that ends on the Docks as a
+// finale set piece.
 //
 // All pacing numbers (fall speed, spawn interval, item-mix odds, thresholds)
 // are DIRECTIONAL per §12 -- the source report could only loosely infer
@@ -75,8 +76,80 @@ export const STAGES = [
     spawnIntervalSec: 0.95,
     bombChance: 0.39, // a bit more, not a lot (2026-08-05, was 0.35)
     powerUpChance: 0.14,
-    // Last stage: holds here. Denser late-game ramping beyond this is
-    // explicitly Post-MVP scope (§2, §10) -- not built here.
+    // No longer the last stage (2026-08-06) -- advances at the L3->L4
+    // threshold the original comment already reserved for this (4500,
+    // +1500 over L2->L3's 2500 -- the "+500 per level from L3 on" pattern).
+    advanceScore: 4500,
+    advanceTimeSec: Infinity,
+  },
+  {
+    id: 'subway',
+    name: 'Subway',
+    bannerLabel: 'STAGE 4',
+    bg: 'bg_subway',
+    // Tuned the same way as fire-escape/alley (2026-08-06): the sprite's
+    // feet were test-composited onto the actual background art at several
+    // candidate values before picking this one, specifically to avoid
+    // repeating the fire-escape "standing on a fence" ambiguity.
+    groundYFrac: 0.86,
+    fallSpeedFrac: 0.30,
+    spawnIntervalSec: 0.82,
+    bombChance: 0.42,
+    powerUpChance: 0.13,
+    advanceScore: 6500, // L4->L5, +2000 per the documented pattern
+    advanceTimeSec: Infinity,
+  },
+  {
+    id: 'sewer',
+    name: 'Sewer',
+    bannerLabel: 'STAGE 5',
+    bg: 'bg_sewer',
+    groundYFrac: 0.86,
+    fallSpeedFrac: 0.33,
+    spawnIntervalSec: 0.72,
+    bombChance: 0.45,
+    powerUpChance: 0.12,
+    advanceScore: 9000, // L5->L6, +2500
+    advanceTimeSec: Infinity,
+  },
+  {
+    id: 'neon-street',
+    name: 'Neon Street',
+    bannerLabel: 'STAGE 6',
+    bg: 'bg_neon_street',
+    groundYFrac: 0.89,
+    fallSpeedFrac: 0.36,
+    spawnIntervalSec: 0.64,
+    bombChance: 0.47,
+    powerUpChance: 0.12,
+    advanceScore: 12000, // L6->L7, +3000
+    advanceTimeSec: Infinity,
+  },
+  {
+    id: 'warehouse',
+    name: 'Warehouse Rooftop',
+    bannerLabel: 'STAGE 7',
+    bg: 'bg_warehouse',
+    groundYFrac: 0.89,
+    fallSpeedFrac: 0.38,
+    spawnIntervalSec: 0.58,
+    bombChance: 0.49,
+    powerUpChance: 0.11,
+    advanceScore: 15500, // L7->L8, +3500
+    advanceTimeSec: Infinity,
+  },
+  {
+    id: 'docks',
+    name: 'Docks',
+    bannerLabel: 'STAGE 8',
+    bg: 'bg_docks',
+    groundYFrac: 0.83,
+    fallSpeedFrac: 0.40,
+    spawnIntervalSec: 0.52,
+    bombChance: 0.50,
+    powerUpChance: 0.11,
+    // Last stage: holds here, same as the old alley finale. Denser
+    // late-game ramping beyond this is still Post-MVP scope (§2, §10).
     advanceScore: Infinity,
     advanceTimeSec: Infinity,
   },
