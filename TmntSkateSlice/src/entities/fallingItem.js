@@ -5,12 +5,11 @@
 
 import {
   ITEM_SIZE_FRAC,
-  PLAY_AREA_LEFT_FRAC,
-  PLAY_AREA_RIGHT_FRAC,
   MAGNET_PULL_RADIUS_FRAC,
   MAGNET_PULL_RATE_PER_SEC,
   MAGNET_PULL_MAX_SPEED_FRAC_PER_SEC,
 } from '../data/constants.js';
+import { getPlayAreaBounds } from '../data/stages.js';
 
 let nextId = 1;
 
@@ -69,7 +68,7 @@ export function isOffScreen(item) {
 // clamps item x). Called as a separate pass from core/main.js's
 // updateRunning right after updateFallingItem, for kind:'good' items only
 // while the magnet buff is active (never bombs/pickups).
-export function applyMagnetPull(item, targetXFrac, dt) {
+export function applyMagnetPull(item, targetXFrac, dt, stage) {
   const dx = targetXFrac - item.xFrac;
   if (Math.abs(dx) > MAGNET_PULL_RADIUS_FRAC) return; // out of reach
   // Gentle, gradual follow: proportional to distance (eases toward the
@@ -85,5 +84,6 @@ export function applyMagnetPull(item, targetXFrac, dt) {
   else if (step < -maxStep) step = -maxStep;
   if (Math.abs(step) > Math.abs(dx)) step = dx; // never overshoot the target
   item.xFrac += step;
-  item.xFrac = Math.max(PLAY_AREA_LEFT_FRAC, Math.min(PLAY_AREA_RIGHT_FRAC, item.xFrac));
+  const bounds = getPlayAreaBounds(stage);
+  item.xFrac = Math.max(bounds.left, Math.min(bounds.right, item.xFrac));
 }

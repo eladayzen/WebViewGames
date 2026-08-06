@@ -60,8 +60,11 @@ export const MAGNET_PULL_MAX_SPEED_FRAC_PER_SEC = 0.3; // hard cap on per-second
 
 // --- Falling items ---
 export const ITEM_SIZE_FRAC = 0.075; // width/height of a falling item sprite, as a fraction of canvas height
-export const ITEM_MIN_X_FRAC = PLAY_AREA_LEFT_FRAC + 0.02;
-export const ITEM_MAX_X_FRAC = PLAY_AREA_RIGHT_FRAC - 0.02;
+// How far inside the play-area edge items stay clear of (see data/stages.js's
+// getPlayAreaBounds, which reuses this for any per-stage override too).
+export const ITEM_EDGE_MARGIN_FRAC = 0.02;
+export const ITEM_MIN_X_FRAC = PLAY_AREA_LEFT_FRAC + ITEM_EDGE_MARGIN_FRAC;
+export const ITEM_MAX_X_FRAC = PLAY_AREA_RIGHT_FRAC - ITEM_EDGE_MARGIN_FRAC;
 
 // Never require fast alternating left-right corrections (§5.2, §11): cap how
 // far a newly spawned item's x can jump from the previous item's x, so

@@ -1,3 +1,5 @@
+import { PLAY_AREA_LEFT_FRAC, PLAY_AREA_RIGHT_FRAC, ITEM_EDGE_MARGIN_FRAC } from './constants.js';
+
 // Stage / difficulty-ramp definitions (build doc §5.2, §8, §12).
 //
 // 8 in-game stages (2026-08-06, up from the original MVP's 3 -- the future
@@ -32,6 +34,31 @@
 // reached quickly for a playtest pass, instead of grinding real score.
 // Each real production value is noted inline next to its temp value.
 // Revert before shipping: restore each advanceScore to its noted real value.
+// Per-stage play-area override (2026-08-06). A few backgrounds have real
+// floor obstructions -- a railing's perspective corner, a raised curb, a
+// pillar base -- sitting in the outer edges of the default 0.08-0.92 play
+// area (found by compositing the player sprite against these backgrounds
+// at the actual edges, not just center, after live screenshots showed him
+// appearing to stand on the obstruction rather than the floor there).
+// Narrowing how close the player -- and therefore items, which must stay
+// reachable -- can get to those specific stages' edges keeps everyone
+// clear of it, without touching groundYFrac or the art itself. Stages
+// that omit these two fields use the global default from constants.js.
+// Deliberately just two numbers per affected stage, not a scale/offset
+// transform system -- see systems using this: entities/player.js (movement
+// clamp), entities/fallingItem.js (magnet-pull clamp), systems/spawner.js
+// (spawn x-range), core/main.js (forced-bomb edge target).
+export function getPlayAreaBounds(stage) {
+  const left = stage.playAreaLeftFrac ?? PLAY_AREA_LEFT_FRAC;
+  const right = stage.playAreaRightFrac ?? PLAY_AREA_RIGHT_FRAC;
+  return {
+    left,
+    right,
+    itemLeft: left + ITEM_EDGE_MARGIN_FRAC,
+    itemRight: right - ITEM_EDGE_MARGIN_FRAC,
+  };
+}
+
 export const STAGES = [
   {
     id: 'rooftop',
@@ -64,6 +91,10 @@ export const STAGES = [
     bannerLabel: 'STAGE 2',
     bg: 'bg_fire_escape',
     groundYFrac: 0.85,
+    // Railing's perspective corner crosses the floor line past this point
+    // on both sides -- verified clear via sprite composite (2026-08-06).
+    playAreaLeftFrac: 0.14,
+    playAreaRightFrac: 0.86,
     fallSpeedFrac: 0.21,
     spawnIntervalSec: 1.15,
     bombChance: 0.32, // a bit more, not a lot (2026-08-05, was 0.28)
@@ -77,6 +108,12 @@ export const STAGES = [
     bannerLabel: 'STAGE 3',
     bg: 'bg_alley',
     groundYFrac: 0.87,
+    // Raised loading-dock curb crosses the floor line past this point on
+    // both sides -- verified clear via sprite composite (2026-08-06). A
+    // pre-existing issue (this stage predates the 5 new ones), only found
+    // once a live screenshot sweep checked the edges, not just center.
+    playAreaLeftFrac: 0.13,
+    playAreaRightFrac: 0.85,
     fallSpeedFrac: 0.26,
     spawnIntervalSec: 0.95,
     bombChance: 0.39, // a bit more, not a lot (2026-08-05, was 0.35)
@@ -97,6 +134,11 @@ export const STAGES = [
     // candidate values before picking this one, specifically to avoid
     // repeating the fire-escape "standing on a fence" ambiguity.
     groundYFrac: 0.86,
+    // Flanking pillar bases sit deep into both edges -- needed a bigger
+    // margin than fire-escape/alley to fully clear their raised plinths,
+    // verified via sprite composite (2026-08-06).
+    playAreaLeftFrac: 0.24,
+    playAreaRightFrac: 0.76,
     fallSpeedFrac: 0.30,
     spawnIntervalSec: 0.82,
     bombChance: 0.42,
