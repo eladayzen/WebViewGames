@@ -96,7 +96,24 @@
              so it must stay a distinct element that can be measured. -->
         <div id="points-hud">
           <div id="points-row">
-            <div id="points-value">0</div>
+            <!-- #points-value stays the flight target for ui/pointsFly.js
+                 (still the element it measures/lands on) but no longer holds
+                 the digits directly -- #points-value-text does, since
+                 ui/hud.js writes textContent every score change and that
+                 would silently delete #points-burst below if it lived on
+                 this element instead. Particle burst on the counter,
+                 enemy-kill landings only -- direct feedback: bigger squeeze
+                 AND particles for a kill, smaller squeeze for a coin. Built
+                 once by ui/hud.js, replayed per landing -- see that file's
+                 buildPointsBurst. Nested INSIDE #points-value (not a sibling
+                 in #points-row) so it's centred on the number itself, not
+                 the wider row that also includes the smaller "/ 300" --
+                 direct feedback, a first pass anchored to the row read too
+                 weak/off-centre. -->
+            <div id="points-value">
+              <span id="points-value-text">0</span>
+              <div id="points-burst"></div>
+            </div>
             <div id="points-target">/ 300</div>
           </div>
           <!-- XP-style bar toward the next tier. Tier name sits INSIDE the bar

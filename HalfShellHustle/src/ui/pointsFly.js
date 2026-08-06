@@ -64,7 +64,9 @@ export function initPointsFly(stage, hud, counter, arriveCallback) {
     el.className = 'points-fly';
     el.style.display = 'none';
     hudEl.appendChild(el);
-    labels.push({ el, active: false, t: 0, x0: 0, y0: 0, value: 0, credited: false });
+    labels.push({
+      el, active: false, t: 0, x0: 0, y0: 0, value: 0, variant: null, credited: false,
+    });
   }
   measureTarget();
   window.addEventListener('resize', measureTarget);
@@ -92,19 +94,22 @@ function worldToStage(worldX, worldY, worldZ, camera) {
 
 // `variant` picks the styling (see style.css): 'enemy' reads hotter and bigger
 // than 'coin', because a kill is worth 15x a common coin and the feedback
-// should say so before the number is even read.
+// should say so before the number is even read. Threaded all the way through
+// to `onArrive` too (ui/hud.js's updatePoints/punchPoints), so the counter's
+// OWN landing reaction -- squeeze size, whether particles fire -- can differ
+// by source as well, not just the flying label itself.
 export function spawnPointsFly(worldX, worldY, worldZ, camera, value, variant) {
   // EVERY awarded point must reach the counter. The visible total is driven
   // purely by arrivals (systems/scoring.js), so any path that awards points
   // without launching a label has to credit them directly or the HUD silently
   // under-reports for the rest of the run. Both bail-outs below do that.
   if (!hudEl) {
-    if (onArrive) onArrive(value);
+    if (onArrive) onArrive(value, variant);
     return;
   }
   const at = worldToStage(worldX, worldY, worldZ, camera);
   if (!at) {
-    if (onArrive) onArrive(value);
+    if (onArrive) onArrive(value, variant);
     return;
   }
 
@@ -114,7 +119,9 @@ export function spawnPointsFly(worldX, worldY, worldZ, camera, value, variant) {
   let slot = labels.find((l) => !l.active);
   if (!slot) {
     slot = labels.reduce((a, b) => (a.t > b.t ? a : b));
-    if (!slot.credited && onArrive) onArrive(slot.value); // settle the one being evicted
+    // Settle the one being evicted, with ITS OWN variant -- not the
+    // incoming spawn's -- since it's a different, already-in-flight label.
+    if (!slot.credited && onArrive) onArrive(slot.value, slot.variant);
   }
 
   slot.active = true;
@@ -123,6 +130,7 @@ export function spawnPointsFly(worldX, worldY, worldZ, camera, value, variant) {
   slot.x0 = at.x;
   slot.y0 = at.y;
   slot.value = value;
+  slot.variant = variant;
   slot.el.textContent = `+${value}`;
   slot.el.className = `points-fly points-fly--${variant}`;
   slot.el.style.display = 'block';
@@ -173,7 +181,7 @@ export function updatePointsFly(dt) {
       // Landed. Credit exactly once, then retire the slot.
       if (!l.credited) {
         l.credited = true;
-        if (onArrive) onArrive(l.value);
+        if (onArrive) onArrive(l.value, l.variant);
       }
       l.active = false;
       l.el.style.display = 'none';

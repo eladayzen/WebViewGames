@@ -585,10 +585,10 @@ function boot() {
     // Tier-up is detected HERE, off the displayed total, not off the awarded
     // one -- so the celebration fires at the moment the bar actually fills
     // rather than a second earlier when the points were technically earned.
-    (points) => {
+    (points, variant) => {
       const before = progressAt(score.displayed).tier;
       creditDisplayed(score, points);
-      hud.updatePoints(score.displayed, true);
+      hud.updatePoints(score.displayed, true, variant);
       const after = progressAt(score.displayed).tier;
       // Compares tier NUMBERS rather than testing one boundary: a single award
       // can cross more than one threshold, and the level should end on the tier

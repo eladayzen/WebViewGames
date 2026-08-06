@@ -13,9 +13,16 @@
 import { progressAt, tierName } from '../systems/progression.js';
 import { PLAYER_RUN_FRAMES, PLAYER_JUMP_FRAMES } from '../data/playerSprite.js';
 
-const pointsValueEl = document.getElementById('points-value');
+// #points-value itself is unused here -- it's still the flight target
+// ui/pointsFly.js measures/lands labels on (grabbed directly by main.js),
+// but this file writes the digits to the nested #points-value-text instead:
+// #points-value also hosts #points-burst as a child (see index.html), and a
+// raw .textContent write on the outer element would silently delete it on
+// every score change.
+const pointsValueTextEl = document.getElementById('points-value-text');
 const pointsTargetEl = document.getElementById('points-target');
 const pointsHudEl = document.getElementById('points-hud');
+const pointsBurstEl = document.getElementById('points-burst');
 const tierBarEl = document.getElementById('tier-bar');
 const tierFillEl = document.getElementById('tier-fill');
 const tierLabelEl = document.getElementById('tier-label');
@@ -56,32 +63,87 @@ let lastFillPct = -1;
 let lastLives = null;
 let lastCountdownShown = null;
 
+// Enemy-kill-only particle burst on the counter (direct feedback: "a bit
+// bigger and even add some particles" for a kill landing). Warm/ember tones
+// matching .points-fly--enemy's own palette, not the celebratory confetti
+// rainbow -- this is a KILL cue, not a party cue.
+const POINTS_BURST_COLORS = ['#fff2a8', '#ffb43c', '#ff8a3c', '#ffe066'];
+const POINTS_BURST_COUNT = 12;
+
+// Built once at module load, same reasoning as buildConfetti below it --
+// creating a dozen DOM nodes on every single kill (they can chain several
+// times a second) would be a needless allocation on a path that already has
+// to stay smooth. Each piece gets its own random angle/distance baked in as
+// a --bx/--by CSS custom property pair (read by the points-burst keyframe in
+// style.css) at BUILD time, since a shared class can't express per-element
+// randomness on its own -- same technique as buildConfetti's --drift/--spin.
+function buildPointsBurst() {
+  if (!pointsBurstEl) return;
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < POINTS_BURST_COUNT; i++) {
+    const el = document.createElement('div');
+    el.className = 'points-burst-piece';
+    const color = POINTS_BURST_COLORS[i % POINTS_BURST_COLORS.length];
+    el.style.background = color;
+    // Also sets `color` (not just `background`), so the CSS glow
+    // (box-shadow: ... currentColor) picks up the SAME hue per piece rather
+    // than whatever text color it would otherwise inherit.
+    el.style.color = color;
+    const angle = (i / POINTS_BURST_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
+    // 3.4-5.8vmin -> 5.5-9vmin, direct feedback ("I want the effect to be
+    // bigger") -- a first pass barely cleared the counter's own glyphs.
+    const dist = 5.5 + Math.random() * 3.5; // vmin
+    el.style.setProperty('--bx', `${(Math.cos(angle) * dist).toFixed(2)}vmin`);
+    el.style.setProperty('--by', `${(Math.sin(angle) * dist).toFixed(2)}vmin`);
+    frag.appendChild(el);
+  }
+  pointsBurstEl.appendChild(frag);
+}
+buildPointsBurst();
+
+function playPointsBurst() {
+  if (!pointsBurstEl) return;
+  pointsBurstEl.classList.remove('points-burst-play');
+  void pointsBurstEl.offsetWidth;
+  pointsBurstEl.classList.add('points-burst-play');
+}
+
 // Fires the counter's punch animation. Restarting a CSS animation needs the
 // class removed, a reflow forced, then re-added -- without the reflow the
 // browser coalesces both class changes and nothing replays, which matters here
 // because points can land back-to-back during a coin row.
-function punchPoints() {
+//
+// Two variants (src/style.css), not one shared punch -- direct feedback: a
+// coin should squeeze the counter LESS than it used to, a kill should
+// squeeze it MORE and throw particles. 'coin' is also the fallback for any
+// variant without its own rule (bonus coins included -- still a coin).
+function punchPoints(variant) {
   if (!pointsHudEl) return;
-  pointsHudEl.classList.remove('points-punch');
+  const cls = variant === 'enemy' ? 'points-punch-enemy' : 'points-punch-coin';
+  pointsHudEl.classList.remove('points-punch-coin', 'points-punch-enemy');
   void pointsHudEl.offsetWidth;
-  pointsHudEl.classList.add('points-punch');
+  pointsHudEl.classList.add(cls);
+  if (variant === 'enemy') playPointsBurst();
 }
 
 // `punch` is passed only when the change was caused by a label ARRIVING, so
 // the counter reacts to the feedback rather than to the underlying tally --
-// see systems/scoring.js's displayed/total split.
+// see systems/scoring.js's displayed/total split. `variant` is that same
+// label's variant ('coin'/'bonus'/'enemy', ui/pointsFly.js) -- threaded all
+// the way from spawnPointsFly through to here so the counter's OWN reaction
+// can differ by source, not just the flying label's.
 //
 // Also drives the tier bar, since both read off the same number and updating
 // them from one call is what stops the score and the bar ever disagreeing.
 // Every write below is dirty-checked independently: the bar's width changes on
 // almost every landing while the tier name changes a handful of times a run,
 // and rewriting stroked text is the expensive one in this WebView.
-export function updatePoints(points, punch = false) {
+export function updatePoints(points, punch = false, variant = null) {
   const text = `${points}`;
   if (text !== lastPointsText) {
     lastPointsText = text;
-    pointsValueEl.textContent = text;
-    if (punch) punchPoints();
+    pointsValueTextEl.textContent = text;
+    if (punch) punchPoints(variant);
   }
 
   const p = progressAt(points);
