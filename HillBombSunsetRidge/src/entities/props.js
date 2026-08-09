@@ -313,6 +313,8 @@ export function createProps(scene) {
 
   const pools = {}; // type -> array of free meshes
   const active = []; // { type, def, s, u, mesh, spent }
+  // Which prop kinds may spawn. Hazards excluded by default; see add().
+  let allowedKinds = new Set(['launch', 'grind', 'scenery']);
   let nextPatternS = 60; // leave the opening stretch clear
   let patternIndex = 0;
 
@@ -339,6 +341,13 @@ export function createProps(scene) {
   function add(type, s, theta) {
     const def = PROP_TYPES[type];
     if (!def) return;
+    // KIND FILTER. Hazards (cones, potholes) are off by default -- Amit wants
+    // the punishing encounters gone for now, but explicitly may want them back
+    // for a future game mode. So they are filtered at SPAWN rather than deleted
+    // from the catalogue or stripped out of the authored patterns: the content
+    // survives intact and a mode can switch it back on with one flag, instead
+    // of someone having to re-author eight patterns from a git history.
+    if (!allowedKinds.has(def.kind)) return;
     const mesh = acquire(type);
     group.add(mesh);
     active.push({ type, def, s, theta, mesh, spent: false });
@@ -431,6 +440,15 @@ export function createProps(scene) {
      * @param {number} sPrev where the rider was last frame, for the ramp-lip
      *   crossing test below
      */
+    /**
+     * Choose which prop kinds spawn from here on. Takes effect for newly
+     * emitted patterns; anything already in the world stays until it recycles.
+     * @param {string[]} kinds e.g. ['launch','grind','scenery','hazard']
+     */
+    setAllowedKinds(kinds) {
+      allowedKinds = new Set(kinds);
+    },
+
     probe(s, theta, airborne, sPrev) {
       for (const it of active) {
         if (it.spent || it.def.kind === 'scenery') continue;
