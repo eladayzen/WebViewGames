@@ -123,7 +123,17 @@
            out of this screen on-device. -->
       <div id="gameover-overlay" class="overlay hidden">
         <div class="go-inner">
+          <!-- Stars first, before the words. On a results screen the rating is
+               what the player looks for, and putting it above the verdict lets
+               them read the outcome without reading at all. -->
+          <div id="go-stars" class="hidden">
+            <span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span>
+          </div>
           <div class="go-title">WIPEOUT</div>
+          <div id="go-subtitle"></div>
+          <!-- What you were asked to do and how far you got. In a mission this
+               is the actual result; the score is a footnote to it. -->
+          <ul id="go-recap" class="hidden"></ul>
           <div class="go-score-label">SCORE</div>
           <div id="final-score">0</div>
           <div id="final-breakdown"></div>

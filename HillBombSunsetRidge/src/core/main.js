@@ -171,6 +171,12 @@ const state = {
   grindLanding: false,
 };
 
+// What separates a HUGE AIR from an ordinary one, in launch points. Defined
+// once because the on-screen popup and the missions mode's objective must agree
+// -- a mission asking for something the banner never calls by that name is a
+// mission the player cannot tell they are making progress on.
+const HUGE_AIR_POINTS = 250;
+
 let swingScale = 1;
 let running = false;
 let autoTrick = false;
@@ -453,25 +459,79 @@ let gameOver = false;
 const gameoverEl = document.getElementById('gameover-overlay');
 const finalScoreEl = document.getElementById('final-score');
 const finalBreakdownEl = document.getElementById('final-breakdown');
+const restartButton = document.getElementById('restart-button');
 
+const goInnerEl = document.querySelector('.go-inner');
 const goTitleEl = document.querySelector('.go-title');
+const goSubtitleEl = document.getElementById('go-subtitle');
+const goStarsEl = document.getElementById('go-stars');
+const goRecapEl = document.getElementById('go-recap');
 
 /**
  * @param {'wipeout'|'timeup'|'complete'} [reason]
- * @param {{title:string, detail:string}} [card] what the mode wants said. A
- *   mode ending a run for its own reasons (time up, objectives cleared) owns
- *   the wording; a wipeout is the ride's own ending and keeps the default.
+ * @param {{tone?:string, title:string, subtitle?:string, detail?:string,
+ *          stars?:number, rows?:Array}} [card] what the mode wants said.
+ *
+ * A mode ending a run for its own reasons owns the whole screen: the verdict,
+ * its tone, the star rating and the objective recap. A wipeout is the ride's
+ * own ending and falls back to the distance/speed summary.
+ *
+ * WHY THE SCORE SHRINKS. In a mission the score is not the result -- the list
+ * is. Leaving a 68px score as the biggest thing on screen told the player the
+ * opposite of what the mode is about, so a card carrying a recap gets the
+ * `compact` treatment and the number drops to a footnote under it.
  */
 function showGameOver(reason = 'wipeout', card = null) {
   if (gameOver) return; // the death flag stays set; only fire the screen once
   gameOver = true;
   const sc = scoring.state;
-  finalScoreEl.textContent = Math.round(sc.score).toLocaleString();
   const km = (state.s / 1000).toFixed(2);
+
+  const tone = card ? (card.tone || 'fail') : 'fail';
+  goInnerEl.classList.toggle('fail', tone === 'fail');
+  goInnerEl.classList.toggle('success', tone === 'success');
+  // The backdrop tints too, and reads its tone from the overlay rather than
+  // from this child -- see the CSS note on why :has() is not used here.
+  gameoverEl.classList.toggle('fail', tone === 'fail');
+
   goTitleEl.textContent = card ? card.title : 'WIPEOUT';
-  finalBreakdownEl.textContent = card
+  goSubtitleEl.textContent = card && card.subtitle ? card.subtitle : '';
+
+  // --- stars ---
+  const stars = card && typeof card.stars === 'number' ? card.stars : null;
+  goStarsEl.classList.toggle('hidden', stars === null);
+  if (stars !== null) {
+    [...goStarsEl.children].forEach((el, i) => {
+      el.classList.toggle('earned', i < stars);
+      // Staggered so they land one at a time -- three stars appearing together
+      // is a state, three arriving in sequence is an event.
+      el.style.animationDelay = `${0.12 + i * 0.16}s`;
+    });
+  }
+
+  // --- objective recap ---
+  const rows = card && card.rows ? card.rows : null;
+  goRecapEl.classList.toggle('hidden', !rows);
+  goRecapEl.innerHTML = '';
+  if (rows) {
+    for (const r of rows) {
+      const li = document.createElement('li');
+      li.className = r.done ? 'done' : 'missed';
+      li.innerHTML = `<span>${r.label}</span><b>${r.have}/${r.count}</b>`;
+      goRecapEl.appendChild(li);
+    }
+  }
+  goInnerEl.classList.toggle('compact', !!rows);
+
+  finalScoreEl.textContent = Math.round(sc.score).toLocaleString();
+  finalBreakdownEl.textContent = card && card.detail
     ? card.detail
     : `${km} km ridden  \u00b7  top ${Math.round(sc.topSpeed * 2.6)} km/h`;
+
+  // The button names the action, not the screen. After a failure the honest
+  // word is RETRY -- you are doing the same mission again, not moving on.
+  restartButton.textContent = tone === 'success' ? 'CONTINUE' : 'RETRY';
+
   gameoverEl.classList.remove('hidden');
   events.emit(EV.RUN_END, {
     reason, score: Math.round(sc.score), distance: state.s,
@@ -489,7 +549,7 @@ function restart() {
   modes.restart();
 }
 
-document.getElementById('restart-button').addEventListener('click', restart);
+restartButton.addEventListener('click', restart);
 // Space/Enter restart too: they're the only keys the host forwards, and the
 // settings panel deliberately stands down while this overlay is up so it can't
 // swallow them.
@@ -698,8 +758,12 @@ function frame() {
         // Landing clean pays out whatever the launch was worth. Deliberately
         // NO landing skill-check (build doc §5.5) -- the skill is choosing
         // where and when to launch, not a timed press.
+        // Captured BEFORE the reset below, because the LAND event further down
+        // reports it and state.airPoints is zeroed here.
+        const airPoints = state.airPoints;
+        const huge = airPoints >= HUGE_AIR_POINTS;
         if (state.airPoints > 0) {
-          scoring.award(state.airPoints, state.airPoints >= 250 ? 'HUGE AIR' : 'AIR');
+          scoring.award(state.airPoints, huge ? 'HUGE AIR' : 'AIR');
           state.airPoints = 0;
         }
         // A trick's rotation is synced 1:1 to airT, so it lands exactly as it
@@ -717,7 +781,14 @@ function frame() {
         if (landedTrick && landedTrick !== 'hop') {
           events.emit(EV.TRICK, { type: landedTrick, height: state.airHeight });
         }
-        events.emit(EV.LAND, { trick: landedTrick, amount: state.landAmount });
+        // HEIGHT AND POINTS TRAVEL WITH THE LANDING. Without them a mode could
+        // only ask "did you land", never "did you land something big" -- and the
+        // missions mode was already asking exactly that, silently failing every
+        // frame because the field it tested did not exist.
+        events.emit(EV.LAND, {
+          trick: landedTrick, amount: state.landAmount,
+          height: state.airHeight, points: airPoints, huge,
+        });
         state.airTrick = null;
       }
     }

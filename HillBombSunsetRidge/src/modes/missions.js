@@ -59,10 +59,15 @@ const KIND_SPECS = {
   },
   air: {
     event: EV.LAND,
-    // LAND fires on every touchdown including the little side hops, so this one
-    // is gated on height -- "big air", not "any air".
-    match: (o, p) => (p.height || 0) >= (o.min || 0),
-    label: () => 'BIG AIRS',
+    // LAND fires on every touchdown including the little side hops, so this is
+    // gated on the SAME threshold that makes the on-screen popup read HUGE AIR.
+    // It used to test `p.height`, a field the LAND event never carried, so it
+    // could never advance and the mission was unwinnable. Matching the banner's
+    // own definition also fixes the softer half of that bug: the objective said
+    // "BIG AIRS" while the game only ever says AIR or HUGE AIR, so there was no
+    // way to tell which landings were supposed to count.
+    match: (o, p) => !!p.huge,
+    label: () => 'HUGE AIRS',
   },
   score: {
     // Score is a level, not a tally of events, so it is polled in update()
@@ -98,6 +103,24 @@ export default registerMode({
     /** @type {Function[]} */
     const unsubs = [];
 
+    /** What you were asked to do and how far you got, for the results screen. */
+    function recap() {
+      return objectives.map((o) => ({
+        label: o.spec ? o.spec.label(o) : o.kind,
+        have: o.have, count: o.count, done: o.done,
+      }));
+    }
+
+    /**
+     * Stars for a CLEARED mission: one for finishing, two more from score.
+     * A failed run gets none -- see the data file for why partial credit is
+     * deliberately not offered.
+     */
+    function starsFor(score) {
+      const [two, three] = mission.stars || [Infinity, Infinity];
+      return score >= three ? 3 : score >= two ? 2 : 1;
+    }
+
     function checkComplete() {
       if (finished || objectives.some((o) => !o.done)) return;
       finished = true;
@@ -106,9 +129,15 @@ export default registerMode({
       const bonus = Math.round(left * 25);
       ctx.scoring.award(bonus, 'TIME BONUS');
       missionIndex += 1;
+      // Read the score AFTER the bonus lands, so banking time can be what
+      // carries a run over a star threshold.
       ctx.endRun('complete', {
+        tone: 'success',
         title: 'MISSION COMPLETE',
-        detail: `${mission.name}  ·  ${Math.ceil(left)}s to spare`,
+        subtitle: mission.name,
+        detail: `${Math.ceil(left)}s to spare`,
+        stars: starsFor(ctx.scoring.state.score),
+        rows: recap(),
       });
     }
 
@@ -165,8 +194,15 @@ export default registerMode({
           finished = true;
           const done = objectives.filter((o) => o.done).length;
           ctx.endRun('timeup', {
-            title: 'TIME UP',
-            detail: `${mission.name}  ·  ${done}/${objectives.length} objectives`,
+            tone: 'fail',
+            // The verdict, not just the cause. "TIME UP" alone reads as a
+            // neutral status line; the player has to work out from the rest of
+            // the screen whether that was good or bad.
+            title: 'TIME UP — MISSION FAILED',
+            subtitle: mission.name,
+            detail: `${done}/${objectives.length} objectives cleared`,
+            stars: 0,
+            rows: recap(),
           });
         }
       },

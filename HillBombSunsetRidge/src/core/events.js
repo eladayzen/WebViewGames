@@ -20,7 +20,11 @@ export const RIDE_EVENTS = {
   LAUNCH: 'launch',
   /** A rotation completed and landed. {type: 'backflip'|'spin'|'hop', height} */
   TRICK: 'trick',
-  /** Touched back down. {trick, amount} -- trick null for an ordinary jump. */
+  /**
+   * Touched back down. {trick, amount, height, points, huge} -- trick is null
+   * for an ordinary jump, and `huge` is the same threshold that makes the
+   * on-screen popup read HUGE AIR rather than AIR.
+   */
   LAND: 'land',
   /** Left a rail or ledge. {label, seconds, points} */
   GRIND: 'grind',

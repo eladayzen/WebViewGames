@@ -459,47 +459,135 @@ html, body {
    GOBALANCE_SDK.md) --- */
 #gameover-overlay {
   background: radial-gradient(120% 100% at 50% 0%, rgba(60, 34, 26, 0.92) 0%, rgba(20, 14, 10, 0.96) 70%);
+  transition: background 0.2s;
   z-index: 9500; /* above the HUD, below the chrome row */
 }
-.go-inner { text-align: center; color: var(--paper); }
+.go-inner {
+  text-align: center;
+  color: var(--paper);
+  /* Same viewport-relative scale as the HUD -- this screen is read on the same
+     ~788px-wide phone, and sizing it in fixed px made it a wall of text there. */
+  font-size: clamp(9px, 1.34vw, 13px);
+}
+
+/* SUCCESS IS ORANGE, FAILURE IS RED. The verdict used to be the same colour
+   either way, so the only thing distinguishing a cleared mission from a blown
+   one was reading the words -- at a glance the two screens looked identical.
+   Colour carries it now, and the words confirm it. */
+/* Tone class goes on the OVERLAY, not read off a child with :has(). The SDK
+   ships on whatever Android System WebView the device happens to have, and
+   :has() is recent enough that a older one would silently drop this rule --
+   the failure screen would keep the warm backdrop with no error to explain it.
+   A class the JS sets directly cannot fail that way. */
+#gameover-overlay.fail {
+  background: radial-gradient(120% 100% at 50% 0%, rgba(78, 22, 22, 0.93) 0%, rgba(20, 10, 10, 0.96) 70%);
+}
+.go-inner.fail { --verdict: #ff4d4d; }
+.go-inner.success { --verdict: var(--hot); }
+
+/* --- star rating ----------------------------------------------------------
+   One star for finishing, two more from score (see data/missions.js). Unearned
+   stars stay VISIBLE but dark rather than being hidden: seeing the two you
+   missed is the whole reason to run the mission again. */
+#go-stars {
+  display: flex; justify-content: center; gap: 0.5em;
+  margin-bottom: 0.8em;
+  font-size: 3.4em; line-height: 1;
+}
+#go-stars.hidden { display: none; }
+#go-stars .star {
+  color: rgba(255, 243, 228, 0.15);
+  text-shadow: none;
+  transform: scale(0.6);
+  opacity: 0;
+  animation: starIn 0.5s cubic-bezier(.2,1.7,.4,1) forwards;
+}
+#go-stars .star.earned {
+  color: #ffd166;
+  text-shadow: 0 0 0.35em rgba(255, 209, 102, 0.65);
+}
+@keyframes starIn {
+  0% { transform: scale(0.6) rotate(-25deg); opacity: 0; }
+  60% { transform: scale(1.25) rotate(6deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
 
 .go-title {
-  font: 900 46px/1 system-ui, sans-serif;
-  letter-spacing: 0.06em;
-  color: var(--hot);
-  margin-bottom: 22px;
+  font: 900 2.6em/1.1 system-ui, sans-serif;
+  letter-spacing: 0.05em;
+  color: var(--verdict, var(--hot));
+  margin-bottom: 0.2em;
 }
-.go-score-label {
-  font: 700 11px system-ui, sans-serif;
+#go-subtitle {
+  font: 800 1.05em/1 system-ui, sans-serif;
   letter-spacing: 0.18em;
-  opacity: 0.55;
-  margin-bottom: 2px;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin-bottom: 1.4em;
+}
+#go-subtitle:empty { display: none; }
+
+/* --- objective recap ------------------------------------------------------
+   The actual result of a mission. Cleared lines are green and ticked, missed
+   ones stay in the verdict colour with their real progress showing -- "2/3"
+   tells you how close you were, which "failed" alone does not. */
+#go-recap {
+  list-style: none; margin: 0 auto 1.6em; padding: 0;
+  width: min(22em, 78vw); text-align: left;
+}
+#go-recap.hidden { display: none; }
+#go-recap li {
+  display: flex; justify-content: space-between; align-items: center; gap: 1em;
+  padding: 0.55em 0.8em;
+  border-radius: 0.5em;
+  font: 800 1.05em/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+#go-recap li + li { margin-top: 0.4em; }
+#go-recap li.done { background: rgba(126, 240, 168, 0.14); color: #9df5bd; }
+#go-recap li.missed { background: rgba(255, 255, 255, 0.05); color: rgba(255, 243, 228, 0.6); }
+#go-recap li.missed b { color: var(--verdict, var(--hot)); }
+#go-recap li b { font-variant-numeric: tabular-nums; }
+#go-recap li.done b::after { content: ' \2713'; }
+
+.go-score-label {
+  font: 700 0.85em system-ui, sans-serif;
+  letter-spacing: 0.18em;
+  opacity: 0.5;
+  margin-bottom: 0.15em;
 }
 #final-score {
-  font: 900 68px/1 system-ui, sans-serif;
+  font: 900 4.6em/1 system-ui, sans-serif;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
+/* In a mission the list above IS the result and the score is a footnote to it.
+   Left at full size it was the biggest thing on screen, which said the opposite
+   of what this mode is about. */
+.go-inner.compact .go-score-label { font-size: 0.72em; opacity: 0.4; }
+.go-inner.compact #final-score { font-size: 1.5em; opacity: 0.75; }
+
 #final-breakdown {
-  margin-top: 12px;
-  font: 600 12.5px/1.7 system-ui, sans-serif;
-  opacity: 0.6;
+  margin-top: 0.7em;
+  font: 600 0.95em/1.7 system-ui, sans-serif;
+  opacity: 0.55;
 }
 #restart-button {
-  margin-top: 26px;
-  padding: 15px 44px;
+  margin-top: 1.7em;
+  padding: 1em 3em;
   border: none;
   border-radius: 999px;
-  background: var(--hot);
+  background: var(--verdict, var(--hot));
   color: #23150c;
-  font: 800 15px system-ui, sans-serif;
+  font: 800 1.1em system-ui, sans-serif;
   letter-spacing: 0.12em;
   cursor: pointer;
 }
 #restart-button:hover { filter: brightness(1.07); }
 .go-hint {
-  margin-top: 12px;
-  font: 500 11.5px system-ui, sans-serif;
+  margin-top: 0.9em;
+  font: 500 0.85em system-ui, sans-serif;
   opacity: 0.45;
 }
 .go-hint b { color: var(--paper); opacity: 0.8; }
