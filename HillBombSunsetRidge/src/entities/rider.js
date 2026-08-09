@@ -605,7 +605,14 @@ export function createRider(scene, camera) {
       const landPose = s.landPose || 0;
       const grindYaw = grindPose * GRIND_YAW * (s.grindYawSign || 1);
 
-      tilt.rotation.x = s.tucking * 0.30 + pitchExtra;
+      // NO tucking term here any more. This used to pitch the whole rider group
+      // forward as the tuck engaged -- which also dragged the BOARD with it,
+      // since the deck lives under `tilt`. Amit: pressing forward should tilt
+      // the board not at all. The tuck is a real pose now (spine curl plus knee
+      // bend, further down), so this legacy whole-group lean is both redundant
+      // and the thing that was tipping the deck. Measured: it was setting
+      // tilt.rotation.x to 0.298 and dropping the nose by 0.44.
+      tilt.rotation.x = pitchExtra;
       tilt.rotation.y = yawExtra + grindYaw;
       tilt.rotation.z = roll + rollExtra;
 
@@ -981,9 +988,12 @@ export function createRider(scene, camera) {
         board.position.set(0, BOARD_Y, 0);
       }
 
-      // TAIL DRAG: pitch the deck nose-up while braking, so the board visibly
-      // rides on its tail rather than the whole thing sliding flat.
-      board.rotation.x = -(s.braking || 0) * BRAKE_BOARD_PITCH;
+      // TAIL DRAG: nose UP, tail down, so the deck visibly rides on its back
+      // edge rather than sliding flat. Sign is POSITIVE -- the deck's tail is
+      // at local +Z (the rider faces -Z), and a positive x-rotation drops that
+      // end and lifts the nose. The first version had this inverted and pitched
+      // the nose down into the ground, which is the opposite of a tail drag.
+      board.rotation.x = (s.braking || 0) * BRAKE_BOARD_PITCH;
 
       // CROUCH COMPENSATION -- the piece that turns an FK leg-fold into a
       // believable crouch. Folding the legs is a forward-kinematic operation:
