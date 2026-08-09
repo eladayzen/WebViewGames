@@ -707,9 +707,34 @@ export const ARM_LIFT_MAX = 2.0;
 // spine curl reuses the measured landing-absorb chain (+rotation.x folds the
 // head down and forward, weighted toward the lower spine so the back curls
 // rather than hinging).
-export const TUCK_SPINE = 0.62;
-export const TUCK_HIP = 0.34;
-export const TUCK_KNEE = 0.62;
+export const TUCK_SPINE = 0.44;
+// Hip and knee raised from 0.34/0.62. Those sat in the leg chain's DEAD ZONE --
+// the same trap the landing absorb hit: the two joints oppose each other, and
+// measured, hip 0.34 / knee 0.60 gives -0.035 of closure, i.e. it STRAIGHTENS
+// the stance instead of sinking it. The knee term has to be carried past the
+// thigh term before the pose closes at all.
+// How far the pelvis drops at full tuck, in world units. Applied directly to
+// the body rather than derived from a leg fold, with the legs then solved back
+// to planted feet -- so this number IS the sink, with no dead zone and no
+// nonlinearity to fight.
+// 0.30 was far too deep -- against a ~0.9 leg it drove the knees down onto the
+// deck and read as crawling rather than tucking. This is the drop that gives an
+// aero crouch while the legs still look like legs.
+export const TUCK_SINK = 0.15;
+// Knees out to the sides, so the crouch reads as a wide aero stance rather than
+// a squat. Applied about the PARENT Z axis and MIRRORED between the legs --
+// measured: left +Z and right -Z both push the knee outward (-0.070 and +0.101
+// at half a radian), whereas a shared sign splays one and tucks the other.
+// How far the knees break outward. With IK this is a POLE direction, not a
+// rotation -- it chooses the plane the knee bends in, so it costs the foot
+// nothing. That is the whole reason the splay is free now: as FK it swung the
+// thigh and dragged the foot on a long lever (measured 0.47 of foot movement).
+export const TUCK_KNEE_SPLAY = 0.55;
+// Arms reach forward, in front of the body. Parent Y, also mirrored: left -Y
+// and right +Y each carry the hand forward (-0.177 and -0.105 of Z at 0.6 rad).
+// This composes with the balance lift's abduction rather than replacing it, so
+// a tuck taken mid-carve still counter-balances.
+export const TUCK_ARM_FORWARD = 0.52;
 
 // Back: stand up and lean away, nose lifts as the tail drags. The spine goes
 // the OTHER way, which is why it is a separate constant rather than a negative

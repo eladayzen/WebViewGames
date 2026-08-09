@@ -45,7 +45,8 @@ import {
   HOP_HIP_FOLD, HOP_KNEE_FOLD,
   AIR_TUCK_HIP, AIR_TUCK_KNEE, AIR_ARM_LIFT, LAND_ARM_LIFT,
   LAND_HIP_BEND, LAND_KNEE_BEND, LAND_SPINE_CURL,
-  TUCK_SPINE, TUCK_HIP, TUCK_KNEE, BRAKE_SPINE, BRAKE_BOARD_PITCH,
+  TUCK_SPINE, TUCK_SINK, TUCK_KNEE_SPLAY, TUCK_ARM_FORWARD,
+  BRAKE_SPINE, BRAKE_BOARD_PITCH,
   GRIND_YAW, GRIND_HIP_BEND, GRIND_KNEE_BEND,
   GRIND_ARM_SPREAD, GRIND_ELBOW_OPEN, GRIND_PUSH_LOCKOUT,
   RIM_COLOR, RIM_STRENGTH, RIM_POWER,
@@ -150,6 +151,103 @@ function stripRootMotion(clip, rigRoot) {
     fixed++;
   }
   return fixed;
+}
+
+
+// --- TWO-BONE LEG IK --------------------------------------------------------
+// Drops the pelvis while the FEET STAY EXACTLY WHERE THEY ARE on the deck.
+//
+// This is the one place in this rig that genuinely needs IK, and it is worth
+// being precise about why, because everywhere else FK was the right call. An
+// arm reaching "out there" for balance has no target -- two rotations describe
+// it completely. A foot planted on a board IS a world-space target: the pelvis
+// moves and the ankle must not, which is a constraint FK cannot express. Trying
+// it with FK is exactly what slid the boots around the deck -- the hips are the
+// root of the chain, so folding the legs moves the feet by construction, and no
+// amount of tuning the fold changes that.
+//
+// Standard analytic 2-bone solve: the law of cosines gives the angle between
+// the thigh and the hip->ankle line, and a pole direction chooses which way the
+// knee breaks -- which is also how the knees get to point outward for free.
+const _ikHip = new THREE.Vector3();
+const _ikKnee = new THREE.Vector3();
+const _ikAnkle = new THREE.Vector3();
+const _ikTo = new THREE.Vector3();
+const _ikSide = new THREE.Vector3();
+const _ikDir = new THREE.Vector3();
+const _ikCur = new THREE.Vector3();
+const _ikQ = new THREE.Quaternion();
+const _ikQW = new THREE.Quaternion();
+const _ikQP = new THREE.Quaternion();
+
+// aimBone gets its OWN scratch. It used to borrow _ikHip/_ikKnee, which
+// solveLegIK is still holding when it calls in -- the same scratch-aliasing
+// class of bug that once collapsed the trough ribbons onto their centreline.
+const _aimA = new THREE.Vector3();
+const _aimB = new THREE.Vector3();
+
+/** Rotate `bone` so the vector from it to `childBone` points along `dirWorld`. */
+function aimBone(bone, childBone, dirWorld) {
+  bone.getWorldPosition(_aimA);
+  childBone.getWorldPosition(_aimB);
+  _ikCur.copy(_aimB).sub(_aimA);
+  if (_ikCur.lengthSq() < 1e-8) return;
+  _ikCur.normalize();
+  _ikQ.setFromUnitVectors(_ikCur, dirWorld);
+  bone.getWorldQuaternion(_ikQW);
+  _ikQW.premultiply(_ikQ);                    // desired world orientation
+  bone.parent.getWorldQuaternion(_ikQP).invert();
+  bone.quaternion.copy(_ikQP.multiply(_ikQW)); // back into parent space
+  bone.updateMatrixWorld(true);
+}
+
+/**
+ * @param {THREE.Bone} upLeg thigh  @param {THREE.Bone} lowLeg shin
+ * @param {THREE.Bone} foot ankle
+ * @param {THREE.Vector3} targetWorld where the ankle must end up
+ * @param {THREE.Vector3} poleWorld which way the knee should break
+ */
+function solveLegIK(upLeg, lowLeg, foot, targetWorld, poleWorld) {
+  upLeg.getWorldPosition(_ikHip);
+  lowLeg.getWorldPosition(_ikKnee);
+  foot.getWorldPosition(_ikAnkle);
+  const L1 = _ikHip.distanceTo(_ikKnee);
+  const L2 = _ikKnee.distanceTo(_ikAnkle);
+  if (L1 < 1e-5 || L2 < 1e-5) return;
+
+  _ikTo.copy(targetWorld).sub(_ikHip);
+  let d = _ikTo.length();
+  if (d < 1e-5) return;
+  // Clamp inside the reachable annulus, leaving a margin so the leg never locks
+  // dead straight (which would make the knee direction undefined) or folds to a
+  // singularity.
+  const dMin = Math.abs(L1 - L2) + 1e-3;
+  const dMax = L1 + L2 - 1e-3;
+  d = Math.max(dMin, Math.min(dMax, d));
+  _ikTo.normalize();
+
+  // Pole, projected perpendicular to the hip->ankle line: this is the plane the
+  // knee breaks in, so pointing it outward splays the knees.
+  _ikSide.copy(poleWorld).addScaledVector(_ikTo, -poleWorld.dot(_ikTo));
+  if (_ikSide.lengthSq() < 1e-8) {
+    // Pole parallel to the limb: pick any perpendicular rather than bailing.
+    // Returning here would leave the leg UNSOLVED after the body has already
+    // been lowered, which drops the foot straight through the deck.
+    _ikSide.set(0, 0, 1).addScaledVector(_ikTo, -_ikTo.z);
+    if (_ikSide.lengthSq() < 1e-8) _ikSide.set(1, 0, 0).addScaledVector(_ikTo, -_ikTo.x);
+  }
+  _ikSide.normalize();
+
+  const cosA = Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d)));
+  const a = Math.acos(cosA);
+  _ikDir.copy(_ikTo).multiplyScalar(Math.cos(a)).addScaledVector(_ikSide, Math.sin(a));
+  aimBone(upLeg, lowLeg, _ikDir);
+
+  // Shin: now simply aim the knee at the target.
+  lowLeg.getWorldPosition(_ikKnee);
+  _ikDir.copy(targetWorld).sub(_ikKnee);
+  if (_ikDir.lengthSq() < 1e-8) return;
+  aimBone(lowLeg, foot, _ikDir.normalize());
 }
 
 export function createRider(scene, camera) {
@@ -282,6 +380,14 @@ export function createRider(scene, camera) {
   // instead is also self-correcting if the rig or board scale ever changes.
   const restBoardLocal = new THREE.Vector3();
   let hasRestBoard = false;
+  // Where each ankle sits when he is NOT tucking, in the rider root's frame.
+  // These become the IK targets: the tuck drops the pelvis, and the legs solve
+  // back to exactly these, so the boots never move on the deck.
+  const restAnkleL = new THREE.Vector3();
+  const restAnkleR = new THREE.Vector3();
+  let hasRestAnkle = false;
+  const _tgt = new THREE.Vector3();
+  const _pole = new THREE.Vector3();
   // Push is an OCCASIONAL ONE-SHOT layered over idle by weight (see update()).
   let pushing = false;
   let pushTimer = 2.5 + Math.random() * 2.5;
@@ -603,6 +709,13 @@ export function createRider(scene, camera) {
       // Hoisted alongside grindPose: both the bone pose (inside the rigged
       // branch) and the board-planting compensation (outside it) read this.
       const landPose = s.landPose || 0;
+      // Hoisted: the tuck IK applies this BEFORE solving, and the compensation
+      // block at the very end must preserve it rather than zeroing it. Those
+      // are the only two writers of tilt.position, and they previously fought --
+      // the compensation reset the sink to 0 after the legs had already been
+      // solved against it, which left the legs bent while the body came back
+      // up and drove the FEET down through the deck.
+      const tuckSink = (s.tucking || 0) * TUCK_SINK;
       const grindYaw = grindPose * GRIND_YAW * (s.grindYawSign || 1);
 
       // NO tucking term here any more. This used to pitch the whole rider group
@@ -744,12 +857,10 @@ export function createRider(scene, camera) {
             if (spine) spine.rotation.x += curl * 0.5;
             if (spine1) spine1.rotation.x += curl * 0.32;
             if (spine2) spine2.rotation.x += curl * 0.18;
-            if (upLegL) {
-              upLegL.rotation.x -= tk * TUCK_HIP;
-              upLegR.rotation.x -= tk * TUCK_HIP;
-              if (legL) legL.rotation.x += tk * TUCK_KNEE;
-              if (legR) legR.rotation.x += tk * TUCK_KNEE;
-            }
+            // NO FK leg fold here. Folding the legs forward-kinematically moves
+            // the FEET -- the hips are the root of the chain -- which slid the
+            // boots around on the deck. The legs are solved with IK further
+            // down instead, against planted foot targets.
           }
           if (bk > 0.001) {
             // Negative on the same chain leans him BACK -- measured direction,
@@ -899,11 +1010,63 @@ export function createRider(scene, camera) {
           // clipping this whole approach exists to avoid.
           liftL = Math.min(liftL, ARM_LIFT_MAX);
           liftR = Math.min(liftR, ARM_LIFT_MAX);
+
+          // TUCK: hands reach out in FRONT of the body. Parent Y, mirrored --
+          // left negative and right positive each carry the hand forward.
+          // Applied alongside the abduction rather than instead of it, so
+          // tucking through a carve still counter-balances.
+          const fwd = (s.tucking || 0) * TUCK_ARM_FORWARD;
+          if (fwd > 0.001) {
+            armL.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(0, 1, 0), -fwd));
+            armR.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(0, 1, 0), fwd));
+          }
           if (liftL > 0.001) {
             armL.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(1, 0, 0), -liftL));
           }
           if (liftR > 0.001) {
             armR.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(1, 0, 0), -liftR));
+          }
+        }
+
+        // --- TUCK: DROP THE PELVIS, KEEP THE FEET PLANTED --------------------
+        //
+        // The sink is applied to the whole body and the legs are then solved
+        // back onto the ankles' resting positions. Doing it this way round --
+        // rather than folding the legs and hoping the feet land right -- is
+        // what makes "the feet do not move" true by construction instead of by
+        // tuning.
+        {
+          const tk = s.tucking || 0;
+          if (tk > 0.001 && hasRestAnkle && upLegL && legL && footL) {
+            // Lower the body. Everything, feet included, moves down with it...
+            tilt.position.y = -tuckSink;
+            tilt.updateMatrixWorld(true);
+            // ...and the IK then puts the ankles back exactly where they were.
+            const q = root.getWorldQuaternion(_q);
+            const splay = tk * TUCK_KNEE_SPLAY;
+            // Pole points outward and slightly forward, so the knees break out
+            // to the sides rather than straight ahead.
+            // Pole sign is per-leg and MEASURED, not assumed: a shared
+            // convention broke the right knee inward (-0.095) while the left
+            // went correctly outward (+0.077).
+            for (const [up, low, ft, rest, sgn] of [
+              [upLegL, legL, footL, restAnkleL, -1],
+              // MIRRORED. A shared sign swings BOTH knees the same way -- the
+              // left by -0.221 and the right by -0.304 -- which is the two legs
+              // clamping into each other rather than splaying apart. Note this
+              // was invisible to an |x| metric: he rides a SKATE STANCE, feet
+              // separated along the board rather than left-and-right, so both
+              // knees sit at positive x when calm (+0.031 and +0.211) and
+              // "moved outward" cannot be read from magnitude alone.
+              [upLegR, legR, footR, restAnkleR, 1],
+            ]) {
+              _tgt.copy(rest);
+              root.localToWorld(_tgt);
+              _pole.set(sgn * splay, 0, -1).normalize().applyQuaternion(q);
+              solveLegIK(up, low, ft, _tgt, _pole);
+            }
+          } else if (hasRestAnkle === false && footL && footR) {
+            // nothing to solve against yet
           }
         }
 
@@ -963,7 +1126,10 @@ export function createRider(scene, camera) {
           // the two feet unequally -- which trips the spread guard below and
           // freezes the deck away from the boots. That was already true of the
           // hop; now that EVERY air is posed, it's true of every air.
-          const posing = s.airActive || grindPose > 0.001 || landPose > 0.001;
+          const posing = s.airActive || grindPose > 0.001 || landPose > 0.001
+            || (s.tucking || 0) > 0.001;
+          // (tucking is in `posing` so the REST targets stop updating while
+          // tucked -- otherwise they would chase the sink and cancel it.)
           if (posing) {
             board.position.set(
               (_fa.x + _fb.x) * 0.5,
@@ -981,7 +1147,15 @@ export function createRider(scene, camera) {
           // Keep the crouch's reference height current, but only from frames
           // where no pose is deforming the legs -- otherwise the reference
           // would chase the crouch and cancel itself out.
-          if (!posing) { restBoardLocal.copy(board.position); hasRestBoard = true; }
+          if (!posing) {
+            restBoardLocal.copy(board.position);
+            hasRestBoard = true;
+            // Ankle rest targets, in the rider root's frame so they travel with
+            // him down the trough.
+            restAnkleL.copy(root.worldToLocal(footL.getWorldPosition(_tgt)));
+            restAnkleR.copy(root.worldToLocal(footR.getWorldPosition(_tgt)));
+            hasRestAnkle = true;
+          }
         }
       } else {
         // Other modes keep the board at its neutral spot under the rider.
@@ -1026,6 +1200,16 @@ export function createRider(scene, camera) {
       // live quaternion isolates the pose's own contribution under whatever
       // rotation is in effect this frame, and leaves ordinary carve-roll
       // movement of the deck alone.
+      // The TUCK joins the grind crouch and landing absorb here. Amit: the feet
+      // must stay exactly where they are in the idle pose. Folding the legs is
+      // forward-kinematic, so without this the feet rise toward stationary hips
+      // and drag the board with them; cancelling the deck's movement pins the
+      // feet in world space and sends the hips DOWN instead, which is the tuck.
+      // NOTE the tuck is deliberately absent here. The grind crouch and landing
+      // absorb still fold their legs with FK and need the deck movement
+      // cancelled; the tuck solves its legs with IK against planted ankles, so
+      // its feet -- and therefore its board -- already do not move. Running it
+      // through this as well would compensate a displacement that isn't there.
       if ((grindPose > 0.001 || landPose > 0.001) && hasRestBoard) {
         // ALL THREE AXES, not just height. Amit: "the skateboard should be firm
         // on the ground, not moving at all." Cancelling only the vertical left
@@ -1041,8 +1225,9 @@ export function createRider(scene, camera) {
         // does not move at all.
         tilt.position.copy(restBoardLocal).sub(board.position)
           .applyQuaternion(tilt.quaternion);
+        tilt.position.y -= tuckSink; // keep the tuck's drop on top
       } else {
-        tilt.position.set(0, 0, 0);
+        tilt.position.set(0, -tuckSink, 0);
       }
     },
 
