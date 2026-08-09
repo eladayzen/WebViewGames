@@ -42,7 +42,7 @@ export function createObjectives() {
       listEl.appendChild(li);
       return li;
     });
-    prev = objectives.map(() => ({ have: -1, done: false }));
+    prev = objectives.map(() => ({ text: null, done: false }));
     retrigger(titleEl, 'intro');
     retrigger(root, 'intro');
   }
@@ -76,13 +76,13 @@ export function createObjectives() {
           // flashes and settles into its struck-through state.
           rows[i].classList.add('done');
           retrigger(rows[i], 'just-done');
-          count.textContent = '✓';
-        } else if (o.have !== was.have) {
-          count.textContent = o.done ? '✓' : `${o.have}/${o.count}`;
+          count.textContent = o.text;
+        } else if (o.text !== was.text) {
+          count.textContent = o.text;
           if (!o.done) retrigger(count, 'kick');
         }
 
-        was.have = o.have;
+        was.text = o.text;
         was.done = o.done;
       }
 

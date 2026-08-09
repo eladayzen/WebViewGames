@@ -12,10 +12,11 @@
 // shared system: a mission can change what you are asked to do, never how the
 // board responds.
 //
-// PROGRESSION lives here rather than in the lobby, because the lobby's only
-// choice is the mode itself. Clear a mission and the next one loads; fail it and
-// you retry the same one. The index survives a restart within the session, so
-// "again" means "the mission I was on", not "back to the first".
+// WHICH MISSION runs is decided by the mission-select screen, not here. This
+// file used to hold a private index and advance it on a win, which meant the
+// only way to play a mission was to arrive at it in order -- there was nowhere
+// to express "replay the one I two-starred". Selection lives in the UI, results
+// go to the progress store, and this mode just runs whatever it was handed.
 
 import { registerMode } from './mode.js';
 import { RIDE_EVENTS as EV } from '../core/events.js';
@@ -75,11 +76,20 @@ const KIND_SPECS = {
     // and the completion check do not need to know the difference.
     poll: (ctx) => ctx.scoring.state.score,
     label: () => 'SCORE',
+    // Its own counter format: "12043/20000" does not fit the panel's width and
+    // is unreadable at a glance anyway. Thousands are the unit that matters.
+    fmt: (o) => `${Math.floor(o.have / 1000)}k/${Math.round(o.count / 1000)}k`,
   },
 };
 
-// Progression is per session, not per run -- see the header note.
-let missionIndex = 0;
+// Set by the mission-select screen just before the run starts. Null falls back
+// to the first mission, so a direct ?gamemode=missions still works.
+let pendingId = null;
+
+/** @param {string} id */
+export function setPendingMission(id) {
+  pendingId = id;
+}
 
 export default registerMode({
   id: 'missions',
@@ -88,7 +98,7 @@ export default registerMode({
   course: DEFAULT_COURSE,
 
   create(ctx) {
-    const mission = MISSIONS[missionIndex % MISSIONS.length];
+    const mission = MISSIONS.find((m) => m.id === pendingId) || MISSIONS[0];
     // Each objective carries its own live progress. Copied rather than mutated
     // in place so MISSIONS stays immutable data and a retry starts clean.
     const objectives = mission.objectives.map((o) => ({
@@ -104,10 +114,15 @@ export default registerMode({
     const unsubs = [];
 
     /** What you were asked to do and how far you got, for the results screen. */
+    function counterText(o) {
+      if (o.done) return '\u2713';
+      return o.spec && o.spec.fmt ? o.spec.fmt(o) : `${o.have}/${o.count}`;
+    }
+
     function recap() {
       return objectives.map((o) => ({
         label: o.spec ? o.spec.label(o) : o.kind,
-        have: o.have, count: o.count, done: o.done,
+        text: counterText(o), done: o.done,
       }));
     }
 
@@ -128,15 +143,18 @@ export default registerMode({
       // the clock, which is the behaviour a hard cap is meant to encourage.
       const bonus = Math.round(left * 25);
       ctx.scoring.award(bonus, 'TIME BONUS');
-      missionIndex += 1;
       // Read the score AFTER the bonus lands, so banking time can be what
       // carries a run over a star threshold.
+      const earned = starsFor(ctx.scoring.state.score);
+      // Recorded BEFORE the results screen is built, so the mission list behind
+      // it already reflects this run -- including whatever it just unlocked.
+      ctx.progress.record(mission.id, earned, ctx.scoring.state.score);
       ctx.endRun('complete', {
         tone: 'success',
         title: 'MISSION COMPLETE',
-        subtitle: mission.name,
+        subtitle: `${String(mission.number).padStart(2, '0')} \u00b7 ${mission.name}`,
         detail: `${Math.ceil(left)}s to spare`,
-        stars: starsFor(ctx.scoring.state.score),
+        stars: earned,
         rows: recap(),
       });
     }
@@ -199,7 +217,7 @@ export default registerMode({
             // neutral status line; the player has to work out from the rest of
             // the screen whether that was good or bad.
             title: 'TIME UP — MISSION FAILED',
-            subtitle: mission.name,
+            subtitle: `${String(mission.number).padStart(2, '0')} \u00b7 ${mission.name}`,
             detail: `${done}/${objectives.length} objectives cleared`,
             stars: 0,
             rows: recap(),
@@ -213,19 +231,10 @@ export default registerMode({
         limit: mission.seconds,
         objectives: objectives.map((o) => ({
           label: o.spec ? o.spec.label(o) : o.kind,
-          have: o.have,
-          count: o.count,
+          text: counterText(o),
           done: o.done,
         })),
       }),
     };
   },
 });
-
-/** Lets a fresh session (or a test) start from a known mission. */
-export function setMissionIndex(i) {
-  missionIndex = i;
-}
-export function getMissionIndex() {
-  return missionIndex;
-}

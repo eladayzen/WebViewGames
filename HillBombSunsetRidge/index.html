@@ -157,6 +157,23 @@
         </div>
       </div>
 
+      <!-- MISSION SELECT. Sits between the front door and a run, and is where
+           you land again after every result -- so finishing a mission shows you
+           what it unlocked rather than dropping you straight back onto the hill.
+           Rows are built from the mission list and the progress store by
+           src/ui/missionSelect.js. -->
+      <div id="mission-select" class="overlay hidden">
+        <div class="msel-inner">
+          <div class="msel-head">
+            <h2>MISSIONS</h2>
+            <div id="msel-total"></div>
+          </div>
+          <div id="mission-list"></div>
+          <button id="msel-next">NEXT MISSION</button>
+          <div class="msel-hint">or press <b>SPACE</b> / <b>ENTER</b></div>
+        </div>
+      </div>
+
       <!-- The render lab lobby. This is the harness's reason to exist: every mode
            differs ONLY in the rider layer, so switching mid-run is an honest A/B
            rather than four separate prototypes. -->

@@ -53,8 +53,11 @@ import { createModeHost, getMode } from '../modes/mode.js';
 // which modes exist; there is no second list to keep in sync. Order here is the
 // order they appear on the front door.
 import '../modes/freeride.js';
-import '../modes/missions.js';
+import { setPendingMission } from '../modes/missions.js';
+import { MISSIONS } from '../data/missions.js';
+import { createProgress } from '../systems/progress.js';
 import { createModeSelect } from '../ui/modeSelect.js';
+import { createMissionSelect } from '../ui/missionSelect.js';
 import { createObjectives } from '../ui/objectives.js';
 import { getCourse, DEFAULT_COURSE } from '../data/courses.js';
 
@@ -109,6 +112,10 @@ const rig = createCameraRig(camera);
 // of this line may reach back into the simulation -- see core/events.js.
 const events = createEvents();
 const objectivesUi = createObjectives();
+// Stars and unlocks. Local today, account data in the shipped product -- the
+// whole point of it being a module is that swapping the backing store touches
+// only that file (see systems/progress.js).
+const progress = createProgress(MISSIONS.map((m) => m.id));
 
 // The mode is handed a read-only view of the ride and a way to END it, and
 // nothing else. Everything it wants to know arrives through `events`.
@@ -117,6 +124,7 @@ const modes = createModeHost({
   scoring,
   hud,
   getState: () => ({ s: state.s, speed: state.speed, airborne: state.airActive }),
+  progress,
   endRun: (reason, card) => showGameOver(reason, card),
 });
 
@@ -417,8 +425,19 @@ const lobby = createLobby(
 );
 
 // --- the front door ---------------------------------------------------------
-// Only choice here is the mode. Picking one starts a run of it.
-const modeSelect = createModeSelect((id) => startRun(id));
+// Only choice here is the mode. A mode with levels goes on to pick one; a mode
+// without them starts immediately.
+const modeSelect = createModeSelect((id) => {
+  if (id === 'missions') missionSelect.open();
+  else startRun(id);
+});
+
+// --- mission select ---------------------------------------------------------
+// Shown after choosing MISSIONS, and again after every result.
+const missionSelect = createMissionSelect(MISSIONS, progress, (missionId) => {
+  setPendingMission(missionId);
+  startRun('missions');
+});
 
 /** @param {string} id a registered mode id */
 function startRun(id) {
@@ -517,7 +536,7 @@ function showGameOver(reason = 'wipeout', card = null) {
     for (const r of rows) {
       const li = document.createElement('li');
       li.className = r.done ? 'done' : 'missed';
-      li.innerHTML = `<span>${r.label}</span><b>${r.have}/${r.count}</b>`;
+      li.innerHTML = `<span>${r.label}</span><b>${r.text}</b>`;
       goRecapEl.appendChild(li);
     }
   }
@@ -530,7 +549,10 @@ function showGameOver(reason = 'wipeout', card = null) {
 
   // The button names the action, not the screen. After a failure the honest
   // word is RETRY -- you are doing the same mission again, not moving on.
-  restartButton.textContent = tone === 'success' ? 'CONTINUE' : 'RETRY';
+  // Name the destination, not the mood: in missions this button opens the
+  // mission list, so RETRY would be a lie -- you land on a screen, not a run.
+  restartButton.textContent = modes.id === 'missions' ? 'CONTINUE'
+    : tone === 'success' ? 'CONTINUE' : 'RETRY';
 
   gameoverEl.classList.remove('hidden');
   events.emit(EV.RUN_END, {
@@ -542,10 +564,19 @@ function restart() {
   if (!gameOver) return;
   gameOver = false;
   gameoverEl.classList.add('hidden');
+  if (modes.id === 'missions') {
+    // Back to the list, not straight into another run. Finishing a mission
+    // should show what it unlocked, and it is the only place to choose a
+    // different one -- a result screen that restarts in place gives the player
+    // no way out except the back button.
+    modes.stop();
+    running = false;
+    missionSelect.open();
+    return;
+  }
   reset();
-  // Same mode again -- and a fresh instance of it, so a mission's counters and
-  // clock start clean rather than resuming a run that already ended. Missions
-  // advance their own index on success, so "again" lands on the next one.
+  // Same mode again -- and a fresh instance of it, so counters and clocks start
+  // clean rather than resuming a run that already ended.
   modes.restart();
 }
 
@@ -597,7 +628,7 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, clock.getDelta());
 
-  if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !isPanelOpen()) {
+  if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !missionSelect.isOpen() && !isPanelOpen()) {
     const { carve, tuck, brake, pop } = readInput();
 
     // SOFT tilt response (see constants.js). Two stages:
@@ -1143,7 +1174,7 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring };
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);

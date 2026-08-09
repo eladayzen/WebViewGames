@@ -744,3 +744,129 @@ html, body {
 /* The wobble bar and its label are hidden together in modes that don't use the
    speed fail state -- an always-empty meter reads as broken, not as disabled. */
 #wobble-bar.hidden, #wobble-label.hidden { display: none; }
+
+/* --- mission select -------------------------------------------------------
+   The list of what you have done, what is next, and what is still shut. Same
+   viewport-relative scale as everything else, because it is read on the same
+   phone-sized WebView. */
+.msel-inner {
+  width: min(34em, 92vw);
+  color: var(--paper);
+  font-size: clamp(9px, 1.34vw, 13px);
+}
+.msel-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 1em;
+}
+.msel-head h2 {
+  margin: 0;
+  font: 900 2em/1 system-ui, sans-serif;
+  letter-spacing: 0.1em;
+}
+#msel-total {
+  font: 800 1.1em/1 system-ui, sans-serif;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+#mission-list {
+  display: flex; flex-direction: column; gap: 0.6em;
+  /* Scrolls rather than growing the page: ten rows do not fit a 452px-tall
+     phone in landscape, and an overlay that overflows the viewport puts the
+     NEXT button somewhere unreachable. The list moves, the button stays put. */
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Room for the scrollbar so the rows do not shift when it appears. */
+  padding-right: 0.35em;
+}
+/* Thin, dim scrollbar -- present enough to say "there is more", not enough to
+   compete with the rows. */
+#mission-list::-webkit-scrollbar { width: 0.4em; }
+#mission-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 243, 228, 0.22); border-radius: 999px;
+}
+.msel-more {
+  padding: 0.7em 0.4em 0.2em;
+  text-align: center;
+  font: 700 0.9em system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.38;
+}
+.msel-row {
+  display: flex; align-items: center; gap: 0.9em;
+  width: 100%; text-align: left;
+  padding: 0.9em 1.1em;
+  border-radius: 0.8em;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  color: var(--paper);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+}
+.msel-row:hover:not(:disabled), .msel-row:focus-visible:not(:disabled) {
+  border-color: var(--hot);
+  background: rgba(255, 122, 61, 0.12);
+  transform: translateY(-2px);
+  outline: none;
+}
+/* The one you are here to play. Marked on the row itself rather than by
+   sorting it to the top, so the list always reads in mission order and you can
+   see how far along it you are. */
+.msel-row.next { border-color: var(--hot); background: rgba(255, 122, 61, 0.14); }
+.msel-row.locked {
+  cursor: default;
+  opacity: 0.4;
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+  border-style: dashed;
+}
+/* The row number. Tabular and fixed-width so the names all start at the same
+   x -- a ragged left edge down twenty rows is worse than no numbers at all. */
+.msel-num {
+  flex: 0 0 auto;
+  min-width: 1.9em;
+  font: 900 1.5em/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.35;
+  text-align: right;
+}
+.msel-row.next .msel-num { opacity: 0.85; color: var(--hot); }
+.msel-row.cleared .msel-num { opacity: 0.5; }
+.msel-text { flex: 1 1 auto; min-width: 0; }
+.msel-text b {
+  display: block;
+  font: 900 1.35em/1.1 system-ui, sans-serif;
+  letter-spacing: 0.06em;
+}
+.msel-text small {
+  display: block; margin-top: 0.25em;
+  font-size: 0.95em; opacity: 0.6;
+}
+.msel-stars { display: flex; gap: 0.15em; font-size: 1.5em; line-height: 1; }
+/* Unearned stars stay VISIBLE. The gap between two and three is the only
+   reason to replay a mission you have already cleared. */
+.msel-star { color: rgba(255, 243, 228, 0.18); }
+.msel-star.earned { color: #ffd166; text-shadow: 0 0 0.3em rgba(255, 209, 102, 0.5); }
+.msel-lock { font-size: 1.3em; opacity: 0.7; }
+
+#msel-next {
+  display: block; width: 100%;
+  margin-top: 1.2em;
+  padding: 1em;
+  border: none; border-radius: 999px;
+  background: var(--hot);
+  color: #23150c;
+  font: 800 1.15em system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+#msel-next:hover { filter: brightness(1.07); }
+.msel-hint {
+  margin-top: 0.7em; text-align: center;
+  font: 500 0.85em system-ui, sans-serif;
+  opacity: 0.45;
+}
+.msel-hint b { color: var(--paper); opacity: 0.8; }
