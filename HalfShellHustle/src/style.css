@@ -202,40 +202,28 @@ html, body {
 
 /* Fires when a flying label LANDS, never on the underlying tally changing --
    that's what makes the counter feel struck rather than merely updated.
-   Two variants, not one shared punch (ui/hud.js's punchPoints picks by the
-   landing label's variant) -- direct feedback: a coin should squeeze the
-   counter LESS than it used to, a kill should squeeze it MORE and throw
-   particles (see #points-burst below). Coin is also the fallback for any
-   variant without its own rule (bonus coins included -- still a coin). */
-.points-punch-coin {
-  animation: points-punch-coin 0.26s ease-out;
-}
-
-@keyframes points-punch-coin {
-  0%   { transform: translateX(-50%) scale(1); }
-  35%  { transform: translateX(-50%) scale(1.07); }
-  100% { transform: translateX(-50%) scale(1); }
-}
-
-.points-punch-enemy {
-  animation: points-punch-enemy 0.32s ease-out;
-}
-
-@keyframes points-punch-enemy {
-  0%   { transform: translateX(-50%) scale(1); }
-  30%  { transform: translateX(-50%) scale(1.34); }
-  60%  { transform: translateX(-50%) scale(0.97); }
-  100% { transform: translateX(-50%) scale(1); }
-}
+   Two variants (ui/hud.js's punchPoints picks by the landing label's
+   variant) -- direct feedback: a coin should squeeze the counter LESS than
+   it used to, a kill should squeeze it MORE and throw particles (see
+   #points-burst below). Coin is also the fallback for any variant without
+   its own rule (bonus coins included -- still a coin).
+   USED to be @keyframes animations toggled by class -- rewritten to a
+   JS/dt-driven timer (ui/hud.js's updateHudEffects) after direct feedback
+   from the SDK WebView: burst particles got stuck fully visible instead of
+   fading out. A one-frame class toggle isn't guaranteed to reach a
+   composite under that WebView's rAF-queue shim (see index.html's
+   #damage-flash comment for the same lesson learned earlier) -- ui/hud.js
+   now writes transform/opacity directly every frame instead, so there's no
+   animation timeline left for the WebView to stall. Only the pieces'
+   sizing/color rules stay here. */
 
 /* Particle burst, enemy-kill landings only -- ui/hud.js builds
    POINTS_BURST_COUNT pieces once (same pooled/reuse-not-rebuild idiom as
-   #lc-confetti), each with a random --bx/--by (burst offset, vmin) baked in
-   at build time as inline custom properties, and replays them via the
-   remove/reflow/re-add idiom on every kill landing. Anchored at the CENTRE
-   of #points-value itself (0x0 box, position:relative on that element) --
-   NOT #points-row, which also includes the smaller "/ 300" and threw the
-   burst off-centre in a first pass (direct feedback: also read too weak). */
+   #lc-confetti) and drives their transform/opacity from JS every frame.
+   Anchored at the CENTRE of #points-value itself (0x0 box,
+   position:relative on that element) -- NOT #points-row, which also
+   includes the smaller "/ 300" and threw the burst off-centre in a first
+   pass (direct feedback: also read too weak). */
 #points-burst {
   position: absolute;
   left: 50%;
@@ -247,7 +235,9 @@ html, body {
 
 /* 0.9vmin/no initial pop -> 1.6vmin with a brief overshoot, direct feedback
    ("I want the effect to be bigger"): a first pass read as barely visible
-   next to an 8.6vmin counter. */
+   next to an 8.6vmin counter. opacity: 0 here is the piece's RESTING state
+   before its first burst -- ui/hud.js's updateHudEffects takes over writing
+   opacity/transform once a burst starts, and leaves it at 0 when done. */
 .points-burst-piece {
   position: absolute;
   left: 0;
@@ -259,16 +249,6 @@ html, body {
   box-shadow: 0 0 1.2vmin currentColor;
   opacity: 0;
   will-change: transform, opacity;
-}
-
-.points-burst-play .points-burst-piece {
-  animation: points-burst 0.55s ease-out;
-}
-
-@keyframes points-burst {
-  0%   { opacity: 1; transform: translate(0, 0) scale(1.6); }
-  20%  { opacity: 1; transform: translate(calc(var(--bx) * 0.35), calc(var(--by) * 0.35)) scale(1.3); }
-  100% { opacity: 0; transform: translate(var(--bx), var(--by)) scale(0.3); }
 }
 
 /* --- Flying "+N" labels (ui/pointsFly.js) ---

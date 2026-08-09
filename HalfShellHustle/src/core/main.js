@@ -1084,6 +1084,10 @@ function boot() {
     // game-over screen (which would sit behind it anyway -- overlay z-index 20
     // vs label 15).
     if (!paused) updatePointsFly(dt);
+    // Points-counter punch/burst -- see ui/hud.js's own comment for why this
+    // is a per-frame JS timer rather than a CSS animation. Frozen by pause
+    // like pointsFly above it.
+    if (!paused) hud.updateHudEffects(dt);
 
     updateCameraRig(cameraRig, player.laneX, player.elevationY, paused ? 0 : dt);
 

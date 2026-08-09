@@ -70,13 +70,51 @@ let lastCountdownShown = null;
 const POINTS_BURST_COLORS = ['#fff2a8', '#ffb43c', '#ff8a3c', '#ffe066'];
 const POINTS_BURST_COUNT = 12;
 
+// Both the punch squeeze and this burst USED to be CSS @keyframes animations
+// started by a remove/reflow/re-add class toggle. On-device in the GoBalance
+// SDK WebView that left burst pieces stuck fully visible instead of fading
+// out -- direct feedback ("particles... just stays there, it doesn't
+// disappear... it's something new"). Root cause: same class of bug
+// index.html's #damage-flash comment already documents for exactly this
+// WebView -- a one-frame class toggle isn't guaranteed to reach a composite
+// under the rAF-queue shim, so the animation can start from a frame that
+// never advances. Rewritten to be JS/dt-driven instead, same as
+// damage-flash and ui/pointsFly.js: a timer ticked every frame from the
+// game's own tick loop (updateHudEffects, called from core/main.js
+// alongside updatePointsFly), writing transform/opacity directly. That
+// guarantees progress every frame main.js actually runs, with no dependency
+// on the browser's own animation timeline.
+let pointsPunchTimer = 0;
+let pointsPunchDuration = 0;
+let pointsPunchVariant = 'coin';
+let pointsBurstTimer = 0;
+let pointsBurstActive = false;
+const POINTS_PUNCH_COIN_DURATION_SEC = 0.26;
+const POINTS_PUNCH_ENEMY_DURATION_SEC = 0.32;
+const POINTS_BURST_DURATION_SEC = 0.55;
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// Piecewise-linear reproduction of the old @keyframes points-punch-coin /
+// points-punch-enemy stops (style.css history has the exact values this
+// mirrors).
+function pointsPunchScale(variant, p) {
+  if (variant === 'enemy') {
+    if (p < 0.3) return lerp(1, 1.34, p / 0.3);
+    if (p < 0.6) return lerp(1.34, 0.97, (p - 0.3) / 0.3);
+    return lerp(0.97, 1, (p - 0.6) / 0.4);
+  }
+  if (p < 0.35) return lerp(1, 1.07, p / 0.35);
+  return lerp(1.07, 1, (p - 0.35) / 0.65);
+}
+
 // Built once at module load, same reasoning as buildConfetti below it --
 // creating a dozen DOM nodes on every single kill (they can chain several
 // times a second) would be a needless allocation on a path that already has
-// to stay smooth. Each piece gets its own random angle/distance baked in as
-// a --bx/--by CSS custom property pair (read by the points-burst keyframe in
-// style.css) at BUILD time, since a shared class can't express per-element
-// randomness on its own -- same technique as buildConfetti's --drift/--spin.
+// to stay smooth. Each piece's random angle/distance is kept as plain JS
+// numbers (bx/by, vmin) rather than CSS custom properties now that the
+// animation itself is JS-driven -- nothing reads them via CSS anymore.
+const pointsBurstPieces = [];
 function buildPointsBurst() {
   if (!pointsBurstEl) return;
   const frag = document.createDocumentFragment();
@@ -93,9 +131,8 @@ function buildPointsBurst() {
     // 3.4-5.8vmin -> 5.5-9vmin, direct feedback ("I want the effect to be
     // bigger") -- a first pass barely cleared the counter's own glyphs.
     const dist = 5.5 + Math.random() * 3.5; // vmin
-    el.style.setProperty('--bx', `${(Math.cos(angle) * dist).toFixed(2)}vmin`);
-    el.style.setProperty('--by', `${(Math.sin(angle) * dist).toFixed(2)}vmin`);
     frag.appendChild(el);
+    pointsBurstPieces.push({ el, bx: Math.cos(angle) * dist, by: Math.sin(angle) * dist });
   }
   pointsBurstEl.appendChild(frag);
 }
@@ -103,27 +140,70 @@ buildPointsBurst();
 
 function playPointsBurst() {
   if (!pointsBurstEl) return;
-  pointsBurstEl.classList.remove('points-burst-play');
-  void pointsBurstEl.offsetWidth;
-  pointsBurstEl.classList.add('points-burst-play');
+  pointsBurstActive = true;
+  pointsBurstTimer = 0;
 }
 
-// Fires the counter's punch animation. Restarting a CSS animation needs the
-// class removed, a reflow forced, then re-added -- without the reflow the
-// browser coalesces both class changes and nothing replays, which matters here
-// because points can land back-to-back during a coin row.
-//
-// Two variants (src/style.css), not one shared punch -- direct feedback: a
-// coin should squeeze the counter LESS than it used to, a kill should
-// squeeze it MORE and throw particles. 'coin' is also the fallback for any
-// variant without its own rule (bonus coins included -- still a coin).
+// Fires the counter's punch. Two variants (src/style.css still carries the
+// sizing/color rules for the pieces themselves), not one shared punch --
+// direct feedback: a coin should squeeze the counter LESS than it used to, a
+// kill should squeeze it MORE and throw particles. 'coin' is also the
+// fallback for any variant without its own rule (bonus coins included --
+// still a coin).
 function punchPoints(variant) {
   if (!pointsHudEl) return;
-  const cls = variant === 'enemy' ? 'points-punch-enemy' : 'points-punch-coin';
-  pointsHudEl.classList.remove('points-punch-coin', 'points-punch-enemy');
-  void pointsHudEl.offsetWidth;
-  pointsHudEl.classList.add(cls);
+  pointsPunchVariant = variant === 'enemy' ? 'enemy' : 'coin';
+  pointsPunchDuration = pointsPunchVariant === 'enemy'
+    ? POINTS_PUNCH_ENEMY_DURATION_SEC
+    : POINTS_PUNCH_COIN_DURATION_SEC;
+  pointsPunchTimer = 0;
   if (variant === 'enemy') playPointsBurst();
+}
+
+// Called every frame from core/main.js's tick, right alongside
+// updatePointsFly -- see the state block above for why this needs to be
+// dt-driven rather than a CSS animation.
+export function updateHudEffects(dt) {
+  if (pointsHudEl) {
+    if (pointsPunchTimer < pointsPunchDuration) {
+      pointsPunchTimer = Math.min(pointsPunchDuration, pointsPunchTimer + dt);
+      const scale = pointsPunchScale(pointsPunchVariant, pointsPunchTimer / pointsPunchDuration);
+      // translateX(-50%) reproduces #points-hud's own base centering rule
+      // (style.css) -- an inline transform overrides the stylesheet one
+      // while set, so it has to be repeated here rather than just scale().
+      pointsHudEl.style.transform = `translateX(-50%) scale(${scale.toFixed(4)})`;
+    } else if (pointsHudEl.style.transform) {
+      pointsHudEl.style.transform = '';
+    }
+  }
+
+  if (pointsBurstActive) {
+    pointsBurstTimer += dt;
+    const p = Math.min(1, pointsBurstTimer / POINTS_BURST_DURATION_SEC);
+    for (const piece of pointsBurstPieces) {
+      let opacity;
+      let scale;
+      let q;
+      let tx;
+      let ty;
+      if (p < 0.2) {
+        q = p / 0.2;
+        opacity = 1;
+        scale = lerp(1.6, 1.3, q);
+        tx = piece.bx * 0.35 * q;
+        ty = piece.by * 0.35 * q;
+      } else {
+        q = (p - 0.2) / 0.8;
+        opacity = lerp(1, 0, q);
+        scale = lerp(1.3, 0.3, q);
+        tx = lerp(piece.bx * 0.35, piece.bx, q);
+        ty = lerp(piece.by * 0.35, piece.by, q);
+      }
+      piece.el.style.transform = `translate(${tx.toFixed(2)}vmin, ${ty.toFixed(2)}vmin) scale(${scale.toFixed(3)})`;
+      piece.el.style.opacity = opacity.toFixed(3);
+    }
+    if (p >= 1) pointsBurstActive = false;
+  }
 }
 
 // `punch` is passed only when the change was caused by a label ARRIVING, so
