@@ -288,6 +288,7 @@ function reset() {
   rig.reset();
   props.reset();
   scoring.reset();
+  hud.reset(); // the score readout counts UP, so a new run must start it at zero
   props.update(0);
 }
 

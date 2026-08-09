@@ -169,21 +169,67 @@ html, body {
 /* --- HUD --- */
 #hud { position: absolute; inset: 0; pointer-events: none; z-index: 500; }
 
+/* ONE SCALE KNOB FOR THE WHOLE LEFT BLOCK.
+   Everything below is sized in `em` off this one font-size, so the entire
+   score/mission stack grows and shrinks together from a single number.
+   Calibrated against a real device capture: the chrome buttons are 38 CSS px and
+   measured ~68 px in a 1410-wide screenshot, which puts the WebView's CSS
+   viewport at roughly 788x452 -- a phone in landscape, not the desktop-sized
+   viewport these sizes were first chosen on. At that width the panel was eating
+   38% of the screen. The vw term is what keeps it honest across devices instead
+   of assuming any particular one; the clamp stops it turning into a postage
+   stamp on a small phone or a billboard on a desktop browser. */
 #topLeft {
   position: absolute;
-  top: 12px;
-  left: 14px;
+  top: 1.1em;
+  left: 1.3em;
+  font-size: clamp(9px, 1.34vw, 13px);
   color: #fff3e4;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
 }
-#mode-readout {
-  font: 800 13px/1.1 system-ui, sans-serif;
-  letter-spacing: 0.09em;
-  color: var(--hot);
-  margin-bottom: 4px;
+
+/* --- score + chain --------------------------------------------------------
+   The score sits above the mission because it is the one number that is true in
+   every mode; the mission below it is what makes this run different. */
+/* Stacked, not side by side. The score's bump is a TRANSFORM, so it takes no
+   layout space -- a scaled-up 46px number simply grew across the chain sitting
+   beside it and the two collided mid-animation. Stacking removes the collision
+   entirely rather than trying to reserve enough room for it. */
+#score-block { display: block; }
+#score-readout {
+  font: 800 2.45em/1 system-ui, sans-serif;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; /* stops the whole block jittering as digits change */
+  transform-origin: left center;
 }
-#speed-readout { font: 800 30px/1 system-ui, sans-serif; letter-spacing: -0.02em; }
-#perf-readout { font: 600 12px/1.4 ui-monospace, Menlo, monospace; opacity: 0.72; }
+/* Scale AND colour, briefly. Scale alone is easy to miss in peripheral vision;
+   the colour flash is what actually catches the eye while you are watching the
+   road, which is where the player is looking when they earn points. */
+#score-readout.bump { animation: scoreBump 0.34s cubic-bezier(.2,1.6,.4,1); }
+@keyframes scoreBump {
+  0% { transform: scale(1); color: #fff3e4; }
+  28% { transform: scale(1.22); color: #ffd166; }
+  100% { transform: scale(1); color: #fff3e4; }
+}
+
+/* --- speed, bottom-right --------------------------------------------------
+   A readout, not a goal: present, legible, and out of the way of everything the
+   player is actually trying to do. */
+#bottomRight {
+  position: absolute;
+  font-size: clamp(9px, 1.34vw, 13px);
+  right: 1.4em;
+  bottom: 1.2em;
+  text-align: right;
+  color: #fff3e4;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+#bottomRight #speed-readout {
+  font: 800 1.55em/1 system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
 
 #hint {
   position: absolute;
@@ -307,24 +353,39 @@ html, body {
   margin-bottom: 6px;
 }
 
-/* --- score / speed / chain, top-right per the concept art --- */
-#topRight {
-  position: absolute;
-  top: 12px;
-  right: 108px;
-  text-align: right;
-  color: #fff3e4;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
-}
-#score-readout { font: 800 34px/1 system-ui, sans-serif; letter-spacing: -0.02em; }
-#topRight #speed-readout { font: 700 15px/1.4 system-ui, sans-serif; opacity: 0.85; }
+/* --- chain multiplier -----------------------------------------------------
+   Lives beside the score because it multiplies it. The underline is the chain's
+   remaining time (--chain-left, 0..1): the last second of a multiplier you are
+   trying to keep alive is the most tense moment the scoring system has, and it
+   used to be completely invisible. */
 #chain-readout {
-  font: 900 22px/1.1 system-ui, sans-serif;
+  position: relative;
+  display: inline-block;
+  margin-top: 0.25em;
+  font: 900 1.42em/1.1 system-ui, sans-serif;
   color: var(--hot);
   opacity: 0;
   transition: opacity .15s;
+  transform-origin: left bottom;
 }
 #chain-readout.live { opacity: 1; }
+#chain-readout::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -0.16em;
+  height: 0.13em;
+  border-radius: 2px;
+  background: var(--hot);
+  transform: scaleX(var(--chain-left, 0));
+  transform-origin: left center;
+  opacity: 0.85;
+}
+#chain-readout.pop { animation: chainPop 0.32s cubic-bezier(.2,1.7,.4,1); }
+@keyframes chainPop {
+  0% { transform: scale(1) rotate(0deg); }
+  30% { transform: scale(1.45) rotate(-6deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
 
 /* --- trick popups --- */
 #popups {
@@ -477,40 +538,120 @@ html, body {
 .ms-opt small { display: block; margin-top: 4px; opacity: 0.62; font-size: 13px; }
 
 /* --- objectives panel -----------------------------------------------------
-   Sits under the wobble bar, top-left, so the two things that can end a run
-   (falling over, running out of time) read in one glance without crossing the
-   screen. */
+   Sits under the score, top-left, because this is what the player is actually
+   trying to do. Sized to be read in the half-second glances a rider can spare
+   from the road -- the first version was 11px and effectively invisible at
+   speed. Every state change here animates; see ui/objectives.js for why the
+   effects fire on edges rather than conditions. */
 #objectives {
-  margin-top: 14px; width: 216px;
-  font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
+  margin-top: 1.15em;
+  width: 14.6em;
+  padding: 0.72em 0.82em 0.62em;
+  border-radius: 0.75em;
+  background: rgba(24, 18, 30, 0.44);
+  border: 1px solid rgba(255, 233, 214, 0.16);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 #objectives.hidden { display: none; }
-#obj-title { font-weight: 800; font-size: 13px; opacity: 0.92; margin-bottom: 6px; }
+/* The panel slides in when a mission starts, so the list is something that
+   ARRIVES rather than something that was always there. */
+#objectives.intro { animation: panelIn 0.42s cubic-bezier(.2,1.2,.35,1); }
+@keyframes panelIn {
+  0% { opacity: 0; transform: translateX(-18px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+#obj-title {
+  font: 900 1.02em/1 system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--hot);
+  margin-bottom: 0.55em;
+}
+#obj-title.intro { animation: titleIn 0.5s cubic-bezier(.2,1.5,.35,1); }
+@keyframes titleIn {
+  0% { opacity: 0; transform: scale(0.82); }
+  55% { opacity: 1; transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
 #obj-clock {
-  height: 5px; border-radius: 3px; overflow: hidden;
-  background: rgba(255, 255, 255, 0.16);
+  height: 0.38em;
+  border-radius: 0.2em;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.14);
 }
 #obj-clock-fill {
-  height: 100%; width: 100%; border-radius: 3px;
-  background: var(--paper); transition: background 0.2s;
+  height: 100%; width: 100%;
+  border-radius: 0.2em;
+  background: #fff3e4;
+  transition: background 0.25s;
 }
 /* The clock only shouts at the end. A timer that is red for its whole second
    half stops meaning anything. */
 #objectives.warn #obj-clock-fill { background: #ffcf4d; }
 #objectives.critical #obj-clock-fill { background: var(--hot); }
+#objectives.critical { border-color: rgba(255, 122, 61, 0.5); }
+
 #obj-time {
-  font-size: 20px; font-weight: 800; letter-spacing: 1px;
-  margin: 4px 0 8px; font-variant-numeric: tabular-nums;
+  font: 900 1.85em/1 system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  margin: 0.22em 0 0.32em;
+  transform-origin: left center;
 }
+#objectives.warn #obj-time { color: #ffcf4d; }
 #objectives.critical #obj-time { color: var(--hot); }
+/* One kick per second, and only over the last ten. Pulsing the whole way down
+   would make the clock ambient and rob the ending of any weight. */
+#obj-time.tick { animation: timeTick 0.4s cubic-bezier(.2,1.6,.4,1); }
+@keyframes timeTick {
+  0% { transform: scale(1); }
+  25% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+
 #obj-list { list-style: none; margin: 0; padding: 0; }
 #obj-list li {
-  display: flex; justify-content: space-between; gap: 8px;
-  padding: 3px 0; opacity: 0.82;
+  position: relative;
+  display: flex; justify-content: space-between; align-items: center; gap: 0.7em;
+  padding: 0.28em 0;
+  font: 700 0.9em/1.25 system-ui, sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.9;
+  transition: opacity 0.3s;
 }
-#obj-list li.done { opacity: 0.45; text-decoration: line-through; }
-#obj-list li b { font-weight: 700; font-variant-numeric: tabular-nums; }
-#obj-list li.done b { color: #7ef0a8; }
+#obj-list li.done { opacity: 0.42; }
+#obj-list li.done .obj-label { text-decoration: line-through; }
+.obj-count {
+  font: 800 1.12em/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  transform-origin: right center;
+}
+#obj-list li.done .obj-count {
+  color: #7ef0a8;
+  text-decoration: none;
+  font-size: 1.28em;
+}
+/* A counter moving 3/6 -> 4/6 is the single most common thing that happens in
+   this panel, and the easiest to miss. It kicks and flashes. */
+.obj-count.kick { animation: countKick 0.36s cubic-bezier(.2,1.7,.4,1); }
+@keyframes countKick {
+  0% { transform: scale(1); color: #fff3e4; }
+  30% { transform: scale(1.42); color: #ffd166; }
+  100% { transform: scale(1); color: #fff3e4; }
+}
+/* Completion is the loudest thing the panel does: the row lights up across its
+   full width before settling into struck-through. */
+#obj-list li.just-done { animation: rowDone 0.62s ease-out; }
+@keyframes rowDone {
+  0% { opacity: 1; transform: translateX(0); box-shadow: inset 0 0 0 0 rgba(126, 240, 168, 0); }
+  15% { opacity: 1; transform: translateX(6px); box-shadow: inset 0 0 0 40px rgba(126, 240, 168, 0.3); }
+  55% { opacity: 1; transform: translateX(0); box-shadow: inset 0 0 0 40px rgba(126, 240, 168, 0.1); }
+  100% { opacity: 0.42; transform: translateX(0); box-shadow: inset 0 0 0 40px rgba(126, 240, 168, 0); }
+}
 
 /* The wobble bar and its label are hidden together in modes that don't use the
    speed fail state -- an always-empty meter reads as broken, not as disabled. */

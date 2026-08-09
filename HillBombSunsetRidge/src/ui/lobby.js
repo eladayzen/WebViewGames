@@ -22,6 +22,9 @@ export function createLobby(onChange, onStart) {
   // assumed: without this, a null element here throws on boot and takes the
   // whole game down.
   const labButton = document.getElementById('lab-button');
+  // The rider-mode readout used to sit in the HUD's top-left corner. That corner
+  // now belongs to the mission, and a development label has no business there --
+  // so the element is gone and this guard lets the lab keep working without it.
   const modeReadout = document.getElementById('mode-readout');
   const controlsSelect = document.getElementById('controls-select');
 
@@ -59,7 +62,7 @@ export function createLobby(onChange, onStart) {
       b.querySelector('small').textContent = t.values[t.index];
       b.classList.toggle('active', t.index !== 0);
     });
-    modeReadout.textContent = {
+    if (modeReadout) modeReadout.textContent = {
       sprite: 'MODE A — SPRITE',
       model: 'MODE B — 3D MODEL (STATIC)',
       rigged: 'MODE C — RIGGED + ANIMATED',

@@ -19,6 +19,26 @@ export function createHud() {
   };
 
   let bannerTimer = 0;
+  let lastFps = 0;
+  let lastSpeed = 0;
+  let shownScore = 0; // what the readout currently reads, for the count-up
+  let lastChain = 1;
+  let lastTarget = 0; // last frame's score, for edge-detecting an award
+
+  /**
+   * Restart a CSS animation that may already be running. Toggling the class
+   * alone does nothing if the animation is mid-flight -- the browser sees no
+   * change -- so the class comes off, layout is forced to flush, and it goes
+   * back on. Without the reflow read, rapid-fire events (a trick chain) would
+   * animate once and then sit still for the rest of the run, which is the
+   * exact opposite of feedback.
+   */
+  function retrigger(node, cls) {
+    if (!node) return;
+    node.classList.remove(cls);
+    void node.offsetWidth;
+    node.classList.add(cls);
+  }
 
   function popup(text, points) {
     if (!el.popups) return;
@@ -34,6 +54,14 @@ export function createHud() {
 
   return {
     popup,
+
+    /** New run: the count-up must start at zero, not roll down from the last. */
+    reset() {
+      shownScore = 0;
+      lastTarget = 0;
+      lastChain = 1;
+      if (el.score) el.score.textContent = '0';
+    },
 
     /**
      * Show or hide the SPEED WOBBLE bar. A meter that is always empty is worse
@@ -55,7 +83,23 @@ export function createHud() {
 
     update(dt, { speed, score, wobble, chain, chainTimer }) {
       el.speed.textContent = `${Math.round(speed * 2.6)} km/h`;
-      el.score.textContent = Math.round(score).toLocaleString();
+
+      // THE SCORE COUNTS UP rather than snapping. A number that jumps 1,350 in
+      // one frame is read as "the number changed"; one that rolls up over a
+      // fifth of a second is read as "I earned that", and it keeps drawing the
+      // eye for long enough to notice. The rate is proportional to the gap, so
+      // small distance ticks stay smooth and a big trick still lands fast.
+      // The bump fires on the EDGE -- how much the target jumped since last
+      // frame -- not on how far the display still has to travel. Testing the
+      // remaining gap would restart the animation every frame for the whole
+      // count-up, which freezes it on its first frame and shows nothing at all.
+      if (score - lastTarget > 40) retrigger(el.score, 'bump');
+      lastTarget = score;
+
+      const gap = score - shownScore;
+      if (Math.abs(gap) > 0.5) shownScore += gap * Math.min(1, dt * 9);
+      else shownScore = score;
+      el.score.textContent = Math.round(shownScore).toLocaleString();
 
       if (el.wobbleFill) {
         el.wobbleFill.style.width = `${wobble}%`;
@@ -69,6 +113,14 @@ export function createHud() {
         const live = chain > 1 && chainTimer > 0;
         el.chain.classList.toggle('live', live);
         el.chain.textContent = live ? `×${chain}` : '';
+        // Pop on the way UP only. Chains decay silently -- celebrating the
+        // multiplier falling would read as a reward for losing it.
+        if (chain > lastChain) retrigger(el.chain, 'pop');
+        lastChain = chain;
+        // The chain is on a timer, so it gets a bar: the last second of a
+        // multiplier you are trying to keep alive is the most tense moment the
+        // scoring system has, and until now it was completely invisible.
+        el.chain.style.setProperty('--chain-left', live ? chainTimer / 4 : 0);
       }
 
       if (bannerTimer > 0) {
@@ -77,8 +129,18 @@ export function createHud() {
       }
     },
 
+    /**
+     * The on-screen fps counter is gone -- it was instrumentation parked in the
+     * corner the player actually reads. The numbers still go somewhere useful:
+     * the lab keeps them live, so a perf regression is still one glance away
+     * from the console rather than being lost.
+     */
     fps(value, speed) {
-      el.perf.textContent = `${value.toFixed(0)} fps · ${speed.toFixed(0)} u/s`;
+      if (el.perf) el.perf.textContent = `${value.toFixed(0)} fps · ${speed.toFixed(0)} u/s`;
+      lastFps = value;
+      lastSpeed = speed;
     },
+
+    get perf() { return { fps: lastFps, speed: lastSpeed }; },
   };
 }

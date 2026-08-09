@@ -25,45 +25,51 @@ import { DEFAULT_COURSE } from '../data/courses.js';
 // How each objective kind reads the event stream: which event feeds it, whether
 // a given payload counts, how far a payload advances it, and how it is worded.
 // Adding a kind is adding an entry here -- missions themselves stay pure data.
+//
+// LABELS NAME THE THING, NOT THE TARGET. "COLLECT 6 CRYSTALS" beside a counter
+// reading 0/6 says six twice, and at the panel's real on-device width it wrapped
+// to two lines to do it. The label is what you are after; the counter is how far
+// you have got. The full phrasing survives where it is actually useful -- the
+// popup when a line completes, which has the room and no counter next to it.
 const KIND_SPECS = {
   pickup: {
     event: EV.PICKUP,
     match: (o, p) => !o.type || p.type === o.type,
-    label: (o) => `COLLECT ${o.count} ${(o.type || 'pickup').toUpperCase()}S`,
+    label: (o) => `${(o.type || 'pickup').toUpperCase()}S`,
   },
   trick: {
     event: EV.TRICK,
     match: (o, p) => p.type === o.trick,
-    label: (o) => `LAND ${o.count} ${String(o.trick).toUpperCase()}${o.count > 1 ? 'S' : ''}`,
+    label: (o) => `${String(o.trick).toUpperCase()}${o.count > 1 ? 'S' : ''}`,
   },
   anyTrick: {
     event: EV.TRICK,
     match: () => true,
-    label: (o) => `LAND ${o.count} TRICKS`,
+    label: () => 'TRICKS',
   },
   launch: {
     event: EV.LAUNCH,
     match: () => true,
-    label: (o) => `HIT ${o.count} RAMPS`,
+    label: () => 'RAMPS',
   },
   grind: {
     event: EV.GRIND,
     match: () => true,
-    label: (o) => `GRIND ${o.count} RAILS`,
+    label: () => 'RAILS',
   },
   air: {
     event: EV.LAND,
     // LAND fires on every touchdown including the little side hops, so this one
     // is gated on height -- "big air", not "any air".
     match: (o, p) => (p.height || 0) >= (o.min || 0),
-    label: (o) => `${o.count} BIG AIRS`,
+    label: () => 'BIG AIRS',
   },
   score: {
     // Score is a level, not a tally of events, so it is polled in update()
     // rather than driven by a subscription. Kept in the same table so the panel
     // and the completion check do not need to know the difference.
     poll: (ctx) => ctx.scoring.state.score,
-    label: (o) => `SCORE ${o.count.toLocaleString()}`,
+    label: () => 'SCORE',
   },
 };
 
@@ -111,8 +117,13 @@ export default registerMode({
       o.have = Math.min(o.count, o.have + amount);
       if (o.have >= o.count) {
         o.done = true;
-        ctx.hud.popup(o.spec.label(o), 250);
-        ctx.scoring.award(250, null);
+        // ONE report, not two. Awarding with the label is enough: scoring
+        // publishes a lastEvent that main.js already turns into a popup, so the
+        // manual popup that used to sit here produced a second floating line --
+        // and the paired award(250, null) printed it as literally "null".
+        // The popup gets the full phrasing -- it has the room, and unlike the
+        // panel row there is no counter beside it to supply the number.
+        ctx.scoring.award(250, `${o.count} ${o.spec.label(o)}`);
         checkComplete();
       }
     }

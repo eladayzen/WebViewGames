@@ -1,12 +1,17 @@
-// The mission panel: clock plus checklist.
+// The mission panel: clock plus checklist, and the feedback that makes it feel
+// like something is happening.
 //
 // Driven entirely by whatever the active mode's `panel()` returns, and hidden
 // when that is null. So a mode with no objectives costs nothing here, and this
 // file never needs to know which modes exist.
 //
-// It also rebuilds the list only when the SHAPE changes, not every frame: the
-// labels are stable for a whole run, and replacing DOM nodes 60 times a second
-// would restart any CSS transition on them and thrash layout for no reason.
+// FEEDBACK IS THE POINT OF THIS FILE, not decoration. A checklist that silently
+// changes 3/6 to 4/6 while the player is looking at the road is a checklist they
+// never see move. Every change therefore announces itself: the counter kicks, a
+// completed line snaps shut with a tick, and the last ten seconds of the clock
+// pulse once per second. The rule throughout is that effects fire on EDGES --
+// the frame a value actually changed -- never on a condition that stays true,
+// which would restart the animation every frame and freeze it on frame one.
 
 export function createObjectives() {
   const root = document.getElementById('objectives');
@@ -18,15 +23,28 @@ export function createObjectives() {
   let signature = '';
   /** @type {HTMLElement[]} */
   let rows = [];
+  /** Last frame's values, so a change can be detected rather than a state. */
+  let prev = [];
+  let prevSecond = -1;
+
+  function retrigger(node, cls) {
+    if (!node) return;
+    node.classList.remove(cls);
+    void node.offsetWidth; // force a reflow so the animation restarts
+    node.classList.add(cls);
+  }
 
   function rebuild(objectives) {
     listEl.innerHTML = '';
     rows = objectives.map((o) => {
       const li = document.createElement('li');
-      li.innerHTML = `<span>${o.label}</span><b></b>`;
+      li.innerHTML = `<span class="obj-label">${o.label}</span><b class="obj-count"></b>`;
       listEl.appendChild(li);
       return li;
     });
+    prev = objectives.map(() => ({ have: -1, done: false }));
+    retrigger(titleEl, 'intro');
+    retrigger(root, 'intro');
   }
 
   return {
@@ -34,6 +52,7 @@ export function createObjectives() {
       if (!panel) {
         root.classList.add('hidden');
         signature = '';
+        prevSecond = -1;
         return;
       }
       root.classList.remove('hidden');
@@ -42,13 +61,29 @@ export function createObjectives() {
       const sig = panel.title + '|' + panel.objectives.map((o) => o.label).join('|');
       if (sig !== signature) {
         signature = sig;
+        // Rebuild only when the SHAPE changes. Replacing these nodes every frame
+        // would restart every animation on them and thrash layout for nothing.
         rebuild(panel.objectives);
       }
 
       for (let i = 0; i < rows.length; i++) {
         const o = panel.objectives[i];
-        rows[i].classList.toggle('done', o.done);
-        rows[i].lastElementChild.textContent = o.done ? '✓' : `${o.have}/${o.count}`;
+        const was = prev[i];
+        const count = rows[i].lastElementChild;
+
+        if (o.done && !was.done) {
+          // Completion gets the loudest treatment in the panel: the whole row
+          // flashes and settles into its struck-through state.
+          rows[i].classList.add('done');
+          retrigger(rows[i], 'just-done');
+          count.textContent = '✓';
+        } else if (o.have !== was.have) {
+          count.textContent = o.done ? '✓' : `${o.have}/${o.count}`;
+          if (!o.done) retrigger(count, 'kick');
+        }
+
+        was.have = o.have;
+        was.done = o.done;
       }
 
       if (panel.limit > 0) {
@@ -62,7 +97,14 @@ export function createObjectives() {
       }
 
       const t = Math.max(0, Math.ceil(panel.seconds));
-      timeEl.textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+      if (t !== prevSecond) {
+        timeEl.textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+        // Tick audibly-in-vision for the last ten seconds only. Pulsing the
+        // whole way down would make the clock ambient and the ending mean
+        // nothing; starting at ten is where it earns attention.
+        if (t <= 10 && t > 0) retrigger(timeEl, 'tick');
+        prevSecond = t;
+      }
     },
   };
 }

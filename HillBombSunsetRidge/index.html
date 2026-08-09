@@ -71,16 +71,29 @@
 
       <div id="paused-badge" class="hidden">PAUSED</div>
 
+      <!-- HUD.
+           TOP-LEFT is where everything you are trying to DO lives: score, chain,
+           mission, clock, objectives. TOP-RIGHT is reserved for the chrome
+           buttons (gear / pause / back) and holds nothing else. Speed is a
+           readout, not a goal, so it sits bottom-right out of the way.
+           The render-lab mode readout and the fps counter are gone from here --
+           they were development instrumentation sitting in the most valuable
+           corner of the screen. -->
       <div id="hud">
         <div id="topLeft">
-          <div id="mode-readout">MODE A — SPRITE</div>
-          <div id="wobble-bar"><div id="wobble-fill"></div></div>
-          <div id="wobble-label">SPEED WOBBLE</div>
-          <div id="perf-readout">-- fps</div>
+          <div id="score-block">
+            <div id="score-readout">0</div>
+            <div id="chain-readout"></div>
+          </div>
 
-          <!-- Mission timer + objective list. Populated by ui/objectives.js and
-               hidden entirely in modes that have no objectives (free ride), so
-               the HUD does not carry an empty frame around. -->
+          <!-- SPEED WOBBLE, switched off per mode (see systems/scoring.js) and
+               hidden with it. Kept in the markup because the mechanic is opt-in,
+               not deleted. -->
+          <div id="wobble-bar" class="hidden"><div id="wobble-fill"></div></div>
+          <div id="wobble-label" class="hidden">SPEED WOBBLE</div>
+
+          <!-- Mission clock + objective list. Populated by ui/objectives.js and
+               hidden entirely in modes that have none. -->
           <div id="objectives" class="hidden">
             <div id="obj-title">MISSION</div>
             <div id="obj-clock"><div id="obj-clock-fill"></div></div>
@@ -89,16 +102,14 @@
           </div>
         </div>
 
-        <div id="topRight">
-          <div id="score-readout">0</div>
+        <div id="bottomRight">
           <div id="speed-readout">0 km/h</div>
-          <div id="chain-readout"></div>
         </div>
 
         <div id="popups"></div>
         <div id="trick-banner"></div>
         <div id="hint">
-          <b>&larr; &rarr;</b> carve &nbsp;·&nbsp; <b>&uarr;</b> tuck &nbsp;·&nbsp; <b>&darr;</b> brake &nbsp;·&nbsp; <b>L</b> lab
+          <b>&larr; &rarr;</b> carve &nbsp;&middot;&nbsp; <b>&uarr;</b> tuck &nbsp;&middot;&nbsp; <b>&darr;</b> brake &nbsp;&middot;&nbsp; <b>L</b> lab
         </div>
       </div>
 
