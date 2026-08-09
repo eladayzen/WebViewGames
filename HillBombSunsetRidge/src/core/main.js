@@ -22,9 +22,9 @@ import {
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
   THETA_MAX, THETA_GRAVITY, THETA_CARVE_TORQUE, THETA_DAMP, HEIGHT_EXCHANGE,
   TROUGH_RADIUS,
-  AIR_DURATION, AIR_HEIGHT, AIR_DURATION_SPIN, SPIN_LATERAL_MIN, SPIN_MIN_HEIGHT,
+  AIR_DURATION, AIR_HEIGHT, SPIN_MIN_HEIGHT,
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
-  AIR_DURATION_BACKFLIP, AIR_HEIGHT_BACKFLIP_MAX,
+  AIR_HEIGHT_MAX, AIR_TIME_K, AIR_DURATION_MIN, AIR_DURATION_MAX,
   AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO, GRIND_SPARK_RATE,
   GRIND_EXIT_FALL_G,
   LAND_SETTLE_DURATION, LAND_SETTLE_PEAK, LAND_K_FLOOR, LAND_K_GAIN,
@@ -334,23 +334,33 @@ function beginAir(power, points, forcedTrick, launchLabel) {
   const loadBoost = 1 + state.tailLoad * TAIL_LOAD_BOOST;
   const earnedHeight = AIR_HEIGHT_BASE * power * power * speedFactor * loadBoost;
 
-  const canFlip = earnedHeight >= BACKFLIP_MIN_HEIGHT;
-
-  // WHICH way you rotate is decided by how hard you were travelling SIDEWAYS at
-  // takeoff. Carrying real lateral momentum into a launch means angular momentum
-  // about the vertical axis, so the rider goes flat instead of end-over-end --
-  // and it hands the trick choice to something the player is actually doing,
-  // rather than a dice roll. Same quantity the grind angle gate uses:
-  // |thetaVel| * radius, the angular rate around the trough in world units.
-  const lateral = Math.abs(state.thetaVel) * radiusAt(state.s);
-  // SPIN IS CHECKED FIRST, and against its own much lower height bar. Lateral
-  // speed is what selects it, not leftover backflip eligibility -- gating it
-  // behind canFlip made it unreachable, because the height bar wants speed and
-  // the lateral bar wants carving, and carving spends speed.
-  const spinning = lateral >= SPIN_LATERAL_MIN && earnedHeight >= SPIN_MIN_HEIGHT;
+  // THE TRAJECTORY DECIDES THE TRICK, and nothing else does.
+  //
+  // Amit: "whatever height you reached, whatever the trajectory is when you jump
+  // -- that's what determines what stunt you're going to do." So this is a
+  // straight ladder on the one number the launch actually produced. Speed and
+  // ramp shape feed the height; the height picks the trick; no other input gets
+  // a vote.
+  //
+  // The bands are set against what each launcher can actually reach, at
+  // AIR_HEIGHT_BASE 1.6 * power^2 * speedFactor (0.45..1.11) * loadBoost (1..1.55):
+  //
+  //     kicker    power 1.0   0.78 .. 2.75      spin
+  //     bank      power 1.2   1.12 .. 3.96      spin
+  //     bigKicker power 1.5   1.75 .. 6.19      spin (a perfect load nearly flips)
+  //     barrel    power 2.1   3.44 .. 12.1      flip ONLY if carrying speed
+  //
+  // That is the whole point of the change. Every ramp on the course used to
+  // clear the old 2.2 bar, so a backflip came out of a knee-high kicker -- the
+  // rotation was never earned. Now the ordinary ramps spin, and the flip belongs
+  // to the one launcher tall enough to justify it, and only when hit fast.
+  // Sitting the bar at 6.8 means the barrel needs a speedFactor of ~0.96, i.e.
+  // roughly SPEED_REF and up: carve the approach away and you get a spin.
   const trick = forcedTrick !== undefined
     ? forcedTrick
-    : (spinning ? 'spin' : (canFlip ? 'backflip' : null));
+    : earnedHeight >= BACKFLIP_MIN_HEIGHT ? 'backflip'
+      : earnedHeight >= SPIN_MIN_HEIGHT ? 'spin'
+        : null;
   // Spin the way he was already going -- rotating against your own drift reads
   // as the animation fighting the physics.
   if (trick === 'spin') state.spinDir = Math.sign(state.thetaVel) || 1;
@@ -371,27 +381,21 @@ function beginAir(power, points, forcedTrick, launchLabel) {
   // a big ramp's power stretch the duration also silently slowed the flip. The
   // backflip was authored at 0.55s but measured 665-841ms in play for exactly
   // that reason. Tricks should feel the same every time you see them.
-  if (trick === 'backflip') {
-    // The earned height IS the jump -- capped only so a freak launch can't
-    // fling the rider absurdly high.
-    state.airHeight = Math.min(earnedHeight, AIR_HEIGHT_BACKFLIP_MAX);
-    state.airDuration = AIR_DURATION_BACKFLIP;
-  } else if (trick === 'spin') {
-    // Same earned height and cap as the backflip: the spin REPLACES that jump
-    // rather than being a different one, so the same ramp must not produce
-    // wildly different hang time depending on which way you happened to rotate.
-    state.airHeight = Math.min(earnedHeight, AIR_HEIGHT_BACKFLIP_MAX);
-    state.airDuration = AIR_DURATION_SPIN;
-  } else if (trick === 'hop') {
+  if (trick === 'hop') {
     // The hop-over is a fixed, deliberate save move: it has to clear a
     // 0.52-0.62 rail by a believable margin regardless of how fast you hit it.
+    // The only launch whose height is NOT earned, and so the only one whose air
+    // time is still authored.
     state.airHeight = AIR_HEIGHT_HOP;
     state.airDuration = AIR_DURATION_HOP;
   } else {
-    // An ordinary jump also uses the earned height now, so a fast hit off a
-    // kicker still visibly out-jumps a slow one -- it just didn't earn a flip.
-    state.airHeight = earnedHeight;
-    state.airDuration = AIR_DURATION * power;
+    // EVERY other launch: the earned height is the jump, and the hang time
+    // follows from it. One rule for the plain jump, the spin and the flip alike
+    // -- a trick no longer changes the arc it happens inside, it just decides
+    // what the rider does up there. See AIR_TIME_K in constants.js.
+    state.airHeight = Math.min(earnedHeight, AIR_HEIGHT_MAX);
+    state.airDuration = Math.max(AIR_DURATION_MIN,
+      Math.min(AIR_DURATION_MAX, AIR_TIME_K * Math.sqrt(state.airHeight)));
   }
 
   // Reported AFTER height and duration are settled, so a listener sees the

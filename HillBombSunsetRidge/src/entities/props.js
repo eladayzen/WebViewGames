@@ -153,12 +153,55 @@ function rampHeight(profile, h, f) {
     const b = (t - 0.5) / 0.5;
     return h * (1 - b * b); // curved back side
   }
+  // A vert wall: shallow where you meet it, near-vertical at the lip. Squaring
+  // t is what makes it read as a transition rather than a taller wedge -- the
+  // rider is barely lifted for the first half and then thrown.
+  if (profile === 'curve') return h * t * t;
   return h * t;
 }
 
 /** Fraction along a launch prop where the rider leaves it. */
 function apexFrac(profile) {
   return profile === 'hump' ? 0.5 : 1;
+}
+
+// The vert wall. Its rideable face is the concave curve from the base up to the
+// lip; the back is a flat drop the rider never touches. Built as one extruded
+// side profile like the other launchers so it sits in the same basis and the
+// chevrons can use the same helper.
+function buildBarrel(def) {
+  const { w, h, l } = def.size;
+  const g = new THREE.Group();
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  // Control point pulled low and late, so the curve sags BELOW the straight
+  // line from base to lip -- concave, the way a transition actually is. A
+  // control point above that line would bulge it into a dome and launch the
+  // rider early.
+  shape.quadraticCurveTo(l * 0.74, h * 0.07, l, h);
+  shape.lineTo(l, 0);
+  shape.lineTo(0, 0);
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false });
+  geo.rotateY(Math.PI / 2);
+  centreOnXZ(geo);
+  g.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color: def.colour, side: THREE.DoubleSide,
+  })));
+
+  // A bright coping along the lip. This is the one launcher whose top edge the
+  // player has to judge from a distance -- it decides whether they get a flip --
+  // so it gets a marker the wedges do not.
+  const coping = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.16, 0.16, w, 8),
+    new THREE.MeshBasicMaterial({ color: def.accent }),
+  );
+  coping.rotation.z = Math.PI / 2;
+  coping.position.set(0, h, -l / 2);
+  g.add(coping);
+
+  // Chevrons up the face, following the same base->lip line the rider rides.
+  g.add(buildChevrons(w * 0.8, l / 2, 0, -l / 2, h, 4, RAMP_ARROW_COLOR));
+  return g;
 }
 
 function buildRail(def) {
@@ -361,7 +404,7 @@ function buildCrystal(def) {
 }
 
 const BUILDERS = {
-  kicker: buildKicker, bigKicker: buildKicker, bank: buildBank,
+  kicker: buildKicker, bigKicker: buildKicker, bank: buildBank, barrel: buildBarrel,
   rail: buildRail, longRail: buildRail, ledge: buildLedge,
   cone: buildCone, pothole: buildPothole, roadwork: buildRoadwork,
   lamp: buildLamp, hydrant: buildBlob,

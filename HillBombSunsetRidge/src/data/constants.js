@@ -149,7 +149,7 @@ export const AIR_SPEED_GAIN = 0.55;
 // so 2.2 means a bank or a big kicker earns a flip and an ollie or plain kicker
 // never can -- and slowing down takes even the big ramps below it. Speed and
 // ramp choice both matter, which is the point.
-export const BACKFLIP_MIN_HEIGHT = 2.2;
+export const BACKFLIP_MIN_HEIGHT = 6.8;
 
 // SPIN vs BACKFLIP -- decided by how hard you were moving SIDEWAYS at takeoff.
 // Amit: "if my velocity going from side to side is too strong... it won't be a
@@ -176,6 +176,10 @@ export const BACKFLIP_MIN_HEIGHT = 2.2;
 // 15.0 sits between p50 and p90: comfortably above an ordinary committed lean,
 // reached only when genuinely crossing the trough at pace. Ordinary riding
 // never comes close, since neutral is a flat zero.
+// NO LONGER GATES THE SPIN. Which trick you do is now decided by the height you
+// actually reach and nothing else -- see beginAir(). Kept because the value is
+// still the honest answer to "was this rider moving sideways", and the spin's
+// DIRECTION is still taken from that motion.
 export const SPIN_LATERAL_MIN = 15.0;
 
 // The spin has its OWN, much lower height gate. It used to inherit the
@@ -190,7 +194,7 @@ export const SPIN_LATERAL_MIN = 15.0;
 // end-over-end flip -- you can spin off a small pop, but you cannot flip off
 // one. So the spin now asks only for enough air to complete a rotation, and
 // lateral speed is what actually selects it.
-export const SPIN_MIN_HEIGHT = 1.0;
+export const SPIN_MIN_HEIGHT = 1.2;
 
 // The spin gets the SAME earned height and cap as the backflip -- it replaces
 // that jump rather than being a different one, and having the same ramp produce
@@ -199,6 +203,27 @@ export const SPIN_MIN_HEIGHT = 1.0;
 // end-over-end flip at equal duration, so it needs a touch more to land as
 // clearly as the backflip does at 0.55.
 export const AIR_DURATION_SPIN = 0.62;
+
+// --- hang time comes from the HEIGHT -----------------------------------------
+//
+// Air time used to be authored per trick, so every backflip hung for 0.55s
+// whether it came off a kerb or a vert wall. That was a deliberate fix for an
+// older bug (power stretched the duration and silently slowed the flip), but it
+// makes the one thing the player is being asked to read -- how big this jump is
+// -- invisible in the air.
+//
+// A real projectile's hang time goes as sqrt(height), so that is what this is:
+//
+//     duration = AIR_TIME_K * sqrt(height)
+//
+// K is calibrated so a 2.5-unit jump still lasts ~0.62s, which is where the
+// authored spin already sat -- the existing ramps therefore feel unchanged, and
+// only the new taller launches float longer. Clamped at both ends because
+// rotation is locked 1:1 to air time: below the floor a flip becomes a blur,
+// above the ceiling it drifts.
+export const AIR_TIME_K = 0.392;
+export const AIR_DURATION_MIN = 0.42;
+export const AIR_DURATION_MAX = 1.20;
 // BACKFLIP: a SNAPPY up-and-down, "like half a second of a jump" (Amit,
 // after seeing the 1.5s version). Since the rotation is locked 1:1 to air time,
 // halving the duration is exactly what makes the flip itself whip round faster
@@ -209,7 +234,7 @@ export const AIR_DURATION_SPIN = 0.62;
 // EARNED AIR formula above produced, which is what qualified the jump for a
 // flip in the first place. AIR_HEIGHT_BACKFLIP is kept only as the ceiling, so
 // an unusually hot launch can't fling the rider absurdly high.
-export const AIR_HEIGHT_BACKFLIP_MAX = 4.0;
+export const AIR_HEIGHT_MAX = 8.0;
 export const AIR_DURATION_BACKFLIP = 0.55;
 
 // HOP-OVER -- the bail-out when you meet a rail or ledge at a bad angle.

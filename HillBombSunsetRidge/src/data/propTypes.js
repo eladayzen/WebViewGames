@@ -35,6 +35,20 @@ export const PROP_TYPES = {
     launch: { power: 1.5, points: 260, profile: 'wedge' },
     label: 'BIG AIR',
   },
+  // THE ONLY LAUNCHER THAT CAN PRODUCE A BACKFLIP, and only when hit at speed.
+  // A proper vert wall rather than a wedge: tall, narrow, and steepening toward
+  // the lip, so it reads from a distance as something you have to commit to.
+  // power 2.1 puts its range at 3.4-12.1 units against a 6.8 flip bar, which
+  // means roughly SPEED_REF and up flips and a scrubbed-off approach spins --
+  // the speed requirement is the physics, not a separate rule.
+  barrel: {
+    kind: 'launch',
+    size: { w: 5.0, h: 3.6, l: 6.5 },
+    colour: 0xb84fd8,
+    accent: 0xffd166,
+    launch: { power: 2.1, points: 420, profile: 'curve' },
+    label: 'VERT WALL',
+  },
   bank: {
     kind: 'launch',
     // Wide, shallow quarter-pipe style bank -- a gentler launch, and forgiving
@@ -186,6 +200,8 @@ export const PATTERNS = [
       { type: 'kicker', ds: 0, u: -W * 0.25 },
       { type: 'kicker', ds: 26, u: W * 0.25 },
       { type: 'bigKicker', ds: 56, u: 0 },
+      // Far enough past the kicker to get the speed back before committing.
+      { type: 'barrel', ds: 78, u: -W * 0.2 },
       { type: 'cone', ds: 40, u: -W * 0.6 },
       { type: 'cone', ds: 44, u: -W * 0.6 },
       // Parked just past each kicker's lip: reachable in the air, so a jump
@@ -244,7 +260,7 @@ export const PATTERNS = [
     build: (W) => [
       { type: 'bank', ds: 0, u: -W * 0.4 },
       { type: 'bank', ds: 0, u: W * 0.4 },
-      { type: 'bigKicker', ds: 44, u: 0 },
+      { type: 'barrel', ds: 44, u: 0 },
       { type: 'longRail', ds: 66, u: 0 },
       // Over the big kicker's landing: only reachable with real height.
       { type: 'highCrystal', ds: 54, u: 0 },
