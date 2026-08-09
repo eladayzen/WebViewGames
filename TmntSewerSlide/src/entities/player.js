@@ -166,9 +166,20 @@ export function updatePlayerPosition(player) {
   const visualY = c.y + Math.sin(player.theta) * PLAYER_VISUAL_RADIUS;
   player.sprite.position.set(visualX, visualY, PLAYER_Z);
   player.shadow.position.set(visualX, visualY, PLAYER_Z);
-  // Cosmetic bank into the direction of travel (§5.2) -- in-plane billboard
-  // rotation only, never affects collision. Clamped so a hard lean reads as
-  // a clear tilt without ever fully rolling the sprite over.
-  const bank = THREE.MathUtils.clamp(-player.angularVel * 0.16, -0.5, 0.5);
-  player.sprite.material.rotation = bank;
+  // Radial pipe alignment (§5.2), not an arbitrary screen-space tilt: he's
+  // standing on the inside of a curved tube, so his "up" should always point
+  // from his position toward the tube's own central axis -- same as real
+  // gravity/normal-force on a pipe wall -- not just react to how fast he's
+  // turning. In-plane sprite rotation r that makes local "up" (0,1) point
+  // toward the tube center works out to r = theta + PI/2 (derived from the
+  // sprite shader's standard CCW rotation matrix): at the default resting
+  // theta = ARC_CENTER = -PI/2 this is exactly 0 (upright, as before);
+  // moving around the reachable arc continuously re-aligns him to whichever
+  // part of the pipe wall he's currently on.
+  const radialAlign = player.theta + Math.PI / 2;
+  // A small extra lean layered on top for an active turn -- carving a bit
+  // harder than just standing still at that wall position would. Secondary
+  // to the radial alignment above, not the primary source of tilt anymore.
+  const extraLean = THREE.MathUtils.clamp(-player.angularVel * 0.12, -0.35, 0.35);
+  player.sprite.material.rotation = radialAlign + extraLean;
 }

@@ -228,12 +228,14 @@ function tick() {
       setPlayerVisible(player, true);
     }
 
-    // Gentle parallax + lookahead -- camera stays near the tunnel's local
-    // axis (same technique as Astro_Tunnel) while the spline bend baked
-    // into the wall mesh + rail/rings sells the curve.
-    camera.position.x = THREE.MathUtils.lerp(camera.position.x, player.x * 0.1, 0.08);
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, player.y * 0.1, 0.08);
-    camera.lookAt(player.x * 0.05, player.y * 0.05, PLAYER_Z - 10);
+    // Camera position stays fixed on the tunnel's central axis -- no
+    // parallax follow of the player at all. Any camera movement tied to
+    // player position changes the true camera-to-character distance as he
+    // swings around the arc, which changes his apparent screen size; fixing
+    // the camera guarantees he's always rendered the same size regardless
+    // of where he is on the pipe. Only the look-at direction below still
+    // tracks him, which reframes the shot without touching distance/size.
+    camera.lookAt(player.x * 0.05, 4, PLAYER_Z - 10);
     keyLight.position.set(player.x * 1.1, player.y * 1.1, PLAYER_Z + 4);
   }
 

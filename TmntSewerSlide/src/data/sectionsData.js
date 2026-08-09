@@ -15,7 +15,7 @@ export const SECTIONS = [
     key: 'stormDrain',
     label: 'STORM DRAIN',
     startSeconds: 0,
-    crossSection: 'partialArc',
+    crossSection: 'halfPipe', // testing the full 180 arc from run start, per direct request
     themeIndex: 0,
     speed: 0.1,
     obstacleSpacing: 30, // world units between waves
@@ -27,7 +27,7 @@ export const SECTIONS = [
     key: 'mainLine',
     label: 'MAIN LINE',
     startSeconds: 32,
-    crossSection: 'partialArc',
+    crossSection: 'halfPipe', // stays wide -- avoids narrow->wide->narrow whiplash across sections while testing
     themeIndex: 1,
     speed: 0.125,
     obstacleSpacing: 24,
