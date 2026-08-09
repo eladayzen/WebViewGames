@@ -133,8 +133,14 @@ export function createSpeedLines(scene) {
      * @param {THREE.Camera} camera
      * @param {number} dt
      */
-    update(wobble, speed, camera, dt) {
-      const intensity = Math.max(0, Math.min(1, wobble / 100));
+    /**
+     * @param {number} intensity 0..1, how hard to draw. Used to come straight
+     *   off the wobble meter, which meant switching wobble off silently deleted
+     *   the speed lines with it -- they are a SPEED cue, and speed still exists.
+     *   The caller now decides what feeds them.
+     */
+    update(intensity, speed, camera, dt) {
+      intensity = Math.max(0, Math.min(1, intensity));
       if (intensity <= 0) {
         geo.setDrawRange(0, 0);
         return 0;

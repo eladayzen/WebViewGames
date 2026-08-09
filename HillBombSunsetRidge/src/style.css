@@ -511,3 +511,7 @@ html, body {
 #obj-list li.done { opacity: 0.45; text-decoration: line-through; }
 #obj-list li b { font-weight: 700; font-variant-numeric: tabular-nums; }
 #obj-list li.done b { color: #7ef0a8; }
+
+/* The wobble bar and its label are hidden together in modes that don't use the
+   speed fail state -- an always-empty meter reads as broken, not as disabled. */
+#wobble-bar.hidden, #wobble-label.hidden { display: none; }

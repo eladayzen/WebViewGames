@@ -4,6 +4,15 @@
 // kills you. Going fast fills the wobble meter; carving is both the brake and
 // the thing that settles it. So the player is continuously trading points
 // against survival, using only the axis the board is comfortable with.
+//
+// WOBBLE IS OFF BY DEFAULT. It is kept whole rather than deleted, because the
+// question of whether a run should have a speed-based fail state is a MODE
+// question, not a physics one: a mission on a hard clock does not need a second
+// way to lose, but a survival mode would be nothing without one. So a mode opts
+// in (`wobble: true` on its definition) and everything below simply idles when
+// it is off -- the meter never fills, nothing ever dies, and the HUD bar hides
+// itself. Nothing about how the board FEELS changes either way; the wobble
+// meter never fed back into the physics.
 
 import { SPEED_REF } from '../data/constants.js';
 
@@ -34,6 +43,9 @@ export function createScoring() {
     lastEvent: null, // { text, points } consumed by the HUD for popups
   };
 
+  // Opt-in, per mode. Off means the meter is inert, not that it is absent.
+  let wobbleEnabled = false;
+
   function bumpChain() {
     s.chain = Math.min(9, s.chain + 1);
     s.chainTimer = CHAIN_WINDOW;
@@ -41,6 +53,16 @@ export function createScoring() {
 
   return {
     state: s,
+
+    /** @param {boolean} on -- called by the mode host when a run starts. */
+    setWobbleEnabled(on) {
+      wobbleEnabled = !!on;
+      if (!on) {
+        s.wobble = 0;
+        s.dead = false;
+      }
+    },
+    get wobbleEnabled() { return wobbleEnabled; },
 
     reset() {
       s.score = 0;
@@ -62,7 +84,7 @@ export function createScoring() {
 
     /** Clipping something: wobble spike, and the chain resets. */
     hit(wobble, text) {
-      s.wobble = Math.min(100, s.wobble + wobble);
+      if (wobbleEnabled) s.wobble = Math.min(100, s.wobble + wobble);
       s.chain = 1;
       s.chainTimer = 0;
       s.lastEvent = { text, points: 0, chain: 1 };
@@ -70,7 +92,7 @@ export function createScoring() {
 
     /** A clean landing settles the board a little. */
     land() {
-      s.wobble = Math.max(0, s.wobble - WOBBLE_LAND_DRAIN);
+      if (wobbleEnabled) s.wobble = Math.max(0, s.wobble - WOBBLE_LAND_DRAIN);
     },
 
     update(dt, speed, carve, grinding) {
@@ -82,20 +104,22 @@ export function createScoring() {
       s.score += speed * dt * 1.4;
       if (speed > s.topSpeed) s.topSpeed = speed;
 
-      const over = speed / SPEED_REF - WOBBLE_THRESHOLD;
-      if (over > 0) {
-        s.wobble += over * WOBBLE_FILL_RATE * dt;
-      } else {
-        s.wobble -= WOBBLE_SELF_DRAIN * dt;
-      }
-      // Carving settles the board: physically what a real rider does, and
-      // mechanically it makes the safe act and the slow act the same act.
-      s.wobble -= Math.abs(carve) * WOBBLE_CARVE_DRAIN * dt;
-      // A grind is a committed, balanced moment -- hold it and you steady up.
-      if (grinding) s.wobble -= 8 * dt;
+      if (wobbleEnabled) {
+        const over = speed / SPEED_REF - WOBBLE_THRESHOLD;
+        if (over > 0) {
+          s.wobble += over * WOBBLE_FILL_RATE * dt;
+        } else {
+          s.wobble -= WOBBLE_SELF_DRAIN * dt;
+        }
+        // Carving settles the board: physically what a real rider does, and
+        // mechanically it makes the safe act and the slow act the same act.
+        s.wobble -= Math.abs(carve) * WOBBLE_CARVE_DRAIN * dt;
+        // A grind is a committed, balanced moment -- hold it and you steady up.
+        if (grinding) s.wobble -= 8 * dt;
 
-      s.wobble = Math.max(0, Math.min(100, s.wobble));
-      if (s.wobble >= 100) s.dead = true;
+        s.wobble = Math.max(0, Math.min(100, s.wobble));
+        if (s.wobble >= 100) s.dead = true;
+      }
 
       if (s.chainTimer > 0) {
         s.chainTimer -= dt;

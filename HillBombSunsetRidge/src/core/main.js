@@ -421,6 +421,11 @@ function startRun(id) {
   // as a hard-coded filter inside the spawner.
   const course = getCourse(def.course || DEFAULT_COURSE);
   props.setAllowedKinds(course.allowedKinds);
+  // The speed-based fail state is opt-in per mode, and no mode wants it today.
+  // Kept whole rather than deleted so a survival mode can switch it back on
+  // with one flag -- see systems/scoring.js for why it is a mode question.
+  scoring.setWobbleEnabled(!!def.wobble);
+  hud.setWobbleVisible(!!def.wobble);
   running = true;
   reset();
   modes.start(id);
@@ -992,7 +997,13 @@ function frame() {
 
   // Camera shake ramps with the wobble meter, so the fail state is FELT coming
   // for a couple of seconds rather than sprung (build doc §5.3's warning ramp).
-  view.shake = Math.max(0, (scoring.state.wobble - 55) / 45);
+  // With wobble ON, shake is a DANGER read: it ramps as the meter approaches
+  // the kill. With it off there is no danger to telegraph, so a much gentler
+  // tremble comes off raw overspeed instead -- speed should still feel like
+  // something, it just no longer means you are about to die.
+  view.shake = scoring.wobbleEnabled
+    ? Math.max(0, (scoring.state.wobble - 55) / 45)
+    : Math.min(0.35, Math.max(0, (state.speed / SPEED_REF - 1.0) / 0.4));
 
   rider.update(view, dt);
 
@@ -1026,7 +1037,13 @@ function frame() {
   // Speed lines last, AFTER the camera rig has moved this frame -- they're
   // built from the camera's matrix, so reading it a frame stale would leave
   // them lagging behind every turn.
-  speedLines.update(scoring.state.wobble, state.speed, camera, paused ? 0 : dt);
+  // Speed lines are a SPEED cue and are now fed as one. They used to read the
+  // wobble meter, which happened to correlate with speed -- so with wobble off
+  // they would have vanished entirely at exactly the moment the rider is
+  // fastest. Zero below ~0.78x reference, full a little past the tuck terminal.
+  speedLines.update(
+    (state.speed / SPEED_REF - 0.78) / 0.42, state.speed, camera, paused ? 0 : dt,
+  );
 
   sky.update(camera.position);
   renderer.render(scene, camera);

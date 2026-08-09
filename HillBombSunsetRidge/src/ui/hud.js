@@ -35,6 +35,17 @@ export function createHud() {
   return {
     popup,
 
+    /**
+     * Show or hide the SPEED WOBBLE bar. A meter that is always empty is worse
+     * than no meter: it reads as a mechanic that is broken rather than one that
+     * is switched off, so modes without wobble drop it from the HUD entirely.
+     */
+    setWobbleVisible(on) {
+      if (el.wobbleBar) el.wobbleBar.classList.toggle('hidden', !on);
+      const label = document.getElementById('wobble-label');
+      if (label) label.classList.toggle('hidden', !on);
+    },
+
     banner(text) {
       if (!el.trickBanner) return;
       el.trickBanner.textContent = text;
