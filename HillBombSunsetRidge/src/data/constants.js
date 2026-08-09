@@ -25,6 +25,14 @@ export const TUCK_BONUS = 5.2; // extra accel at full tuck, world units/s^2
 // How fast the tuck engages and releases. Deliberately unhurried -- a tuck that
 // snaps on reads as a button, and Amit asked for speed that arrives naturally.
 export const TUCK_SMOOTH = 3.2;
+// How fast tuck and brake RELEASE when a higher-priority state takes over.
+// Much quicker than they engage: a takeoff or a rail catch should look like the
+// rider committing to that, not like he is slowly giving up on the tuck.
+// 11 measured 215ms to hand over, which is ~40% of a 0.55s backflip -- the
+// tuck was still visibly present well into the jump. 26 gives ~88ms: fast
+// enough to read as the new state taking over outright, still eased rather
+// than a single-frame pop.
+export const GROUND_CTRL_RELEASE = 26.0;
 
 // Braking. Scales with speed rather than being a flat subtraction, so it bites
 // hard when you are flying and cannot yank a slow rider to a dead stop.

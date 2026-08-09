@@ -17,7 +17,7 @@
 import * as THREE from 'three';
 import {
   GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED,
-  BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE,
+  BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE, GROUND_CTRL_RELEASE,
   TAIL_LOAD_RATE, TAIL_LOAD_DECAY, TAIL_LOAD_BOOST,
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
   THETA_MAX, THETA_GRAVITY, THETA_CARVE_TORQUE, THETA_DAMP, HEIGHT_EXCHANGE,
@@ -495,8 +495,28 @@ function frame() {
     // switching between two states -- "gaining speed in a natural way, not
     // stepped".
     const absCarve = Math.abs(state.carve);
-    state.tucking += (tuck - state.tucking) * (1 - Math.exp(-TUCK_SMOOTH * dt));
-    state.braking += (brake - state.braking) * (1 - Math.exp(-BRAKE_SMOOTH * dt));
+
+    // STATE PRIORITY. Tuck and brake are GROUND controls, and they yield
+    // completely whenever a bigger state owns the rider: airborne, mid-grind,
+    // or absorbing a landing. Amit: gliding, jumping and landing should each
+    // take over completely rather than being something the tuck pose is mixed
+    // into.
+    //
+    // Gating at the SOURCE rather than in the poses is what makes that true
+    // everywhere at once -- `tucking` and `braking` drive the accel bonus, the
+    // brake drag, the tail load, the tail sparks, the deck pitch AND the body
+    // pose, so suppressing them here covers the physics as well as the look.
+    // Suppressing only the poses would have left an airborne rider silently
+    // still accelerating.
+    const groundControl = !state.airActive && !state.grind && state.landT <= 0;
+    const tuckTarget = groundControl ? tuck : 0;
+    const brakeTarget = groundControl ? brake : 0;
+    // Release faster than it engages, so handing over to a jump or a grind
+    // reads as committing to that rather than as the tuck fading out.
+    const tuckRate = groundControl ? TUCK_SMOOTH : GROUND_CTRL_RELEASE;
+    const brakeRate = groundControl ? BRAKE_SMOOTH : GROUND_CTRL_RELEASE;
+    state.tucking += (tuckTarget - state.tucking) * (1 - Math.exp(-tuckRate * dt));
+    state.braking += (brakeTarget - state.braking) * (1 - Math.exp(-brakeRate * dt));
 
     // TAIL LOAD: braking compresses the board, and the stored load boosts the
     // next launch (see beginAir). Charges while braking, bleeds once released,
