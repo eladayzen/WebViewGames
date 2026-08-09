@@ -221,7 +221,7 @@ html, body {
   flex-direction: row;
   justify-content: center;
   align-items: flex-end;
-  gap: 8px;
+  gap: 6px; /* -20% (2026-08-09, was 8px), matches the chips shrinking below */
 }
 
 .box-chip {
@@ -255,12 +255,12 @@ html, body {
   display: flex;
   align-items: center;
   gap: 0; /* touches the icon (feedback 2026-08-04, was 3px) */
-  width: 58px; /* matches .box-graphic's width so it reads as "belonging" to the chip below it */
-  margin-bottom: 3px;
+  width: 46px; /* -20% (2026-08-09, was 58px), matches .box-graphic's new width so it reads as "belonging" to the chip below it */
+  margin-bottom: 0; /* flush against .box-graphic (2026-08-09 feedback: "touching", was 3px) */
 }
 
 .box-timer-icon {
-  font-size: 20px; /* bumped again per feedback 2026-08-04 (was 13px) */
+  font-size: 16px; /* -20% (2026-08-09, was 20px) */
   line-height: 1;
   flex-shrink: 0;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
@@ -268,7 +268,7 @@ html, body {
 
 .box-timer-track {
   flex: 1;
-  height: 8px; /* thicker/taller (feedback 2026-08-04, was 5px) */
+  height: 6px; /* -20% (2026-08-09, was 8px) */
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.55);
   border: 1px solid rgba(255, 255, 255, 0.25);
@@ -284,8 +284,8 @@ html, body {
 
 .box-graphic {
   position: relative;
-  width: 58px;
-  height: 58px;
+  width: 46px; /* -20% (2026-08-09, was 58px) -- the whole box-chip UI was crowding the character's feet on mobile */
+  height: 46px;
   /* Outer glow so the chip pops off the busy floor (2026-08-03). border-radius
      matches the rounded panel so the halo hugs its shape; the dark drop adds
      separation. Colored per --box-color. */
@@ -298,8 +298,8 @@ html, body {
 .box-ring {
   position: absolute;
   inset: 0;
-  width: 58px;
-  height: 58px;
+  width: 46px; /* -20% (2026-08-09, was 58px), matches .box-graphic */
+  height: 46px;
   overflow: visible;
 }
 
@@ -321,11 +321,11 @@ html, body {
 .box-ghost,
 .box-fill {
   position: absolute;
-  top: 6px;
+  top: 5px; /* -20% (2026-08-09, was 6px) */
   left: 50%;
   transform: translateX(-50%);
-  width: 40px;
-  height: 40px;
+  width: 32px; /* -20% (2026-08-09, was 40px) */
+  height: 32px;
   object-fit: contain;
   pointer-events: none;
 }
@@ -348,10 +348,10 @@ html, body {
 .box-count {
   position: absolute;
   left: 50%;
-  bottom: 3px;
+  bottom: 2px; /* -20% (2026-08-09, was 3px) */
   transform: translateX(-50%);
   font-weight: 900;
-  font-size: 13px;
+  font-size: 10px; /* -20% (2026-08-09, was 13px) */
   color: #fff;
   letter-spacing: 0.3px;
   -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.8);
