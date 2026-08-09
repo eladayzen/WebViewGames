@@ -108,6 +108,41 @@ export const PROP_TYPES = {
   // removed: they were flat-road furniture and looked absurd sprouting from the
   // rim of a half-pipe in the sky.
   lamp: { kind: 'scenery', size: { w: 0.24, h: 6.5, l: 0.24 }, colour: 0x5b4f9e, accent: 0xd8f4ff },
+
+  // --- pickups -------------------------------------------------------------
+  // What the missions mode asks you to collect. Given their own KIND rather
+  // than being scenery you happen to touch, so a mode can switch them on and
+  // off with the same allowed-kinds filter that turns hazards off, and so a
+  // pickup can never be mistaken for something you ride.
+  //
+  // Colour follows the palette's functional rule -- every hue already means
+  // something (cyan paint, green grindable, magenta boundary, violet launcher,
+  // yellow hazard, red player), so pickups take WHITE-GOLD, the one bright
+  // value left, and they glow rather than sitting flat so they read as
+  // "collect me" rather than "avoid me".
+  crystal: {
+    kind: 'pickup',
+    size: { w: 0.55, h: 0.9, l: 0.55 },
+    colour: 0xffb43c,
+    accent: 0xffe89a,
+    // `height` is where it floats above the surface, and `reach` how far above
+    // or below that the rider may be and still take it. Chest height with a
+    // generous reach: a crystal on the deck should not need a hop.
+    pickup: { type: 'crystal', points: 120, catchWidth: 2.0, height: 0.85, reach: 1.5 },
+    label: 'CRYSTAL',
+  },
+
+  // Same crystal, parked out of reach of a rider on the ground. This is a
+  // separate TYPE rather than a per-instance height so the reward stays legible
+  // -- you can see from the road that it is up there, and only real air gets it.
+  highCrystal: {
+    kind: 'pickup',
+    size: { w: 0.55, h: 0.9, l: 0.55 },
+    colour: 0xffb43c,
+    accent: 0xffe89a,
+    pickup: { type: 'crystal', points: 260, catchWidth: 2.2, height: 3.1, reach: 1.6 },
+    label: 'HIGH CRYSTAL',
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -130,6 +165,13 @@ export const PATTERNS = [
       { type: 'rail', ds: 0, u: -W * 0.35 },
       { type: 'rail', ds: 26, u: W * 0.35 },
       { type: 'cone', ds: 14, u: 0 },
+      // Strung ALONG the rail line, drifting from one rail to the next, so the
+      // reward for taking the crystals is the same carve that sets up the
+      // second rail. Crystals sitting on the centreline collect themselves.
+      { type: 'crystal', ds: 10, u: -W * 0.34 },
+      { type: 'crystal', ds: 16, u: -W * 0.14 },
+      { type: 'crystal', ds: 21, u: W * 0.1 },
+      { type: 'crystal', ds: 40, u: W * 0.3 },
       { type: 'kicker', ds: 50, u: -W * 0.35 },
     ],
   },
@@ -142,6 +184,11 @@ export const PATTERNS = [
       { type: 'bigKicker', ds: 56, u: 0 },
       { type: 'cone', ds: 40, u: -W * 0.6 },
       { type: 'cone', ds: 44, u: -W * 0.6 },
+      // Parked just past each kicker's lip: reachable in the air, so a jump
+      // taken properly pays twice.
+      { type: 'crystal', ds: 9, u: -W * 0.25 },
+      { type: 'highCrystal', ds: 35, u: W * 0.25 },
+      { type: 'crystal', ds: 67, u: 0 },
     ],
   },
   {
@@ -151,6 +198,7 @@ export const PATTERNS = [
       const out = [];
       for (let i = 0; i < 7; i++) {
         out.push({ type: 'cone', ds: i * 10, u: (i % 2 ? 1 : -1) * W * 0.28 });
+        out.push({ type: 'crystal', ds: i * 10 + 5, u: (i % 2 ? -1 : 1) * W * 0.3 });
       }
       out.push({ type: 'pothole', ds: 34, u: 0 });
       return out;
@@ -166,6 +214,8 @@ export const PATTERNS = [
       { type: 'hydrant', ds: 20, u: -W * 0.78 },
       { type: 'hydrant', ds: 60, u: W * 0.78 },
       { type: 'roadwork', ds: 68, u: -W * 0.2 },
+      { type: 'crystal', ds: 12, u: -W * 0.5 },
+      { type: 'crystal', ds: 52, u: W * 0.5 },
     ],
   },
   {
@@ -179,6 +229,9 @@ export const PATTERNS = [
       { type: 'cone', ds: 70, u: -W * 0.2 },
       { type: 'cone', ds: 74, u: W * 0.05 },
       { type: 'pothole', ds: 78, u: -W * 0.15 },
+      // On the rail itself -- take the grind and they come free.
+      { type: 'crystal', ds: 26, u: W * 0.1 },
+      { type: 'crystal', ds: 34, u: W * 0.1 },
     ],
   },
   {
@@ -189,6 +242,9 @@ export const PATTERNS = [
       { type: 'bank', ds: 0, u: W * 0.4 },
       { type: 'bigKicker', ds: 44, u: 0 },
       { type: 'longRail', ds: 66, u: 0 },
+      // Over the big kicker's landing: only reachable with real height.
+      { type: 'highCrystal', ds: 54, u: 0 },
+      { type: 'highCrystal', ds: 60, u: 0 },
     ],
   },
   {

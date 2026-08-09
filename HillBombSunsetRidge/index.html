@@ -77,6 +77,16 @@
           <div id="wobble-bar"><div id="wobble-fill"></div></div>
           <div id="wobble-label">SPEED WOBBLE</div>
           <div id="perf-readout">-- fps</div>
+
+          <!-- Mission timer + objective list. Populated by ui/objectives.js and
+               hidden entirely in modes that have no objectives (free ride), so
+               the HUD does not carry an empty frame around. -->
+          <div id="objectives" class="hidden">
+            <div id="obj-title">MISSION</div>
+            <div id="obj-clock"><div id="obj-clock-fill"></div></div>
+            <div id="obj-time">0:00</div>
+            <ul id="obj-list"></ul>
+          </div>
         </div>
 
         <div id="topRight">
@@ -108,6 +118,21 @@
           <div id="final-breakdown"></div>
           <button id="restart-button">CONTINUE</button>
           <div class="go-hint">or press <b>SPACE</b> / <b>ENTER</b></div>
+        </div>
+      </div>
+
+      <!-- THE FRONT DOOR. Amit: "as the game starts you will have a game lobby
+           UI and the only thing to select there is what game mode you want to
+           enter." So this screen offers modes and nothing else -- every render
+           and tuning switch lives behind the gear, where it does not stand
+           between a player and a run. Buttons are built from the mode registry
+           by src/ui/modeSelect.js, not written here, so registering a mode is
+           the only step needed to make it playable. -->
+      <div id="mode-select" class="overlay">
+        <div class="ms-inner">
+          <h1>Hill Bomb <span>· Sunset Ridge</span></h1>
+          <p class="sub">Choose a mode</p>
+          <div id="mode-list"></div>
         </div>
       </div>
 

@@ -47,6 +47,16 @@ import { createScoring } from '../systems/scoring.js';
 import { createHud } from '../ui/hud.js';
 import { CONTROLS, setControlPreset } from '../data/controlPresets.js';
 import { createEvents, RIDE_EVENTS as EV } from './events.js';
+import { createModeHost, getMode } from '../modes/mode.js';
+// Importing a mode module is what REGISTERS it -- and the registry is what the
+// lobby builds its buttons from. So this list is the single place that decides
+// which modes exist; there is no second list to keep in sync. Order here is the
+// order they appear on the front door.
+import '../modes/freeride.js';
+import '../modes/missions.js';
+import { createModeSelect } from '../ui/modeSelect.js';
+import { createObjectives } from '../ui/objectives.js';
+import { getCourse, DEFAULT_COURSE } from '../data/courses.js';
 
 // --- renderer / scene -------------------------------------------------------
 const app = document.getElementById('app');
@@ -98,6 +108,17 @@ const rig = createCameraRig(camera);
 // The controller reports what happened; game modes listen. Nothing downstream
 // of this line may reach back into the simulation -- see core/events.js.
 const events = createEvents();
+const objectivesUi = createObjectives();
+
+// The mode is handed a read-only view of the ride and a way to END it, and
+// nothing else. Everything it wants to know arrives through `events`.
+const modes = createModeHost({
+  events,
+  scoring,
+  hud,
+  getState: () => ({ s: state.s, speed: state.speed, airborne: state.airActive }),
+  endRun: (reason, card) => showGameOver(reason, card),
+});
 
 // --- run state --------------------------------------------------------------
 const state = {
@@ -382,11 +403,38 @@ const lobby = createLobby(
     );
     renderer.setSize(window.innerWidth, window.innerHeight);
   },
-  () => {
-    running = true;
-    reset();
-  },
+  // The lab lobby no longer starts runs -- the mode front door does. Closing
+  // the lab mid-run must not restart the run underneath it, and closing it at
+  // boot must not skip the mode choice.
+  () => {},
 );
+
+// --- the front door ---------------------------------------------------------
+// Only choice here is the mode. Picking one starts a run of it.
+const modeSelect = createModeSelect((id) => startRun(id));
+
+/** @param {string} id a registered mode id */
+function startRun(id) {
+  const def = getMode(id);
+  // The course decides what may spawn -- hazards are absent from every course
+  // today, which is how "no cones by default" is expressed as data rather than
+  // as a hard-coded filter inside the spawner.
+  const course = getCourse(def.course || DEFAULT_COURSE);
+  props.setAllowedKinds(course.allowedKinds);
+  running = true;
+  reset();
+  modes.start(id);
+}
+
+// Automation and quick iteration: ?gamemode=missions drops straight into a run.
+// (`?mode=` is already taken by the rider render mode, hence the longer name.)
+{
+  const wanted = new URLSearchParams(location.search).get('gamemode');
+  if (wanted) {
+    modeSelect.close();
+    startRun(wanted);
+  }
+}
 
 // --- game over --------------------------------------------------------------
 // Death used to banner "WIPEOUT" and call reset() on the same frame, so a run
@@ -400,16 +448,27 @@ const gameoverEl = document.getElementById('gameover-overlay');
 const finalScoreEl = document.getElementById('final-score');
 const finalBreakdownEl = document.getElementById('final-breakdown');
 
-function showGameOver() {
+const goTitleEl = document.querySelector('.go-title');
+
+/**
+ * @param {'wipeout'|'timeup'|'complete'} [reason]
+ * @param {{title:string, detail:string}} [card] what the mode wants said. A
+ *   mode ending a run for its own reasons (time up, objectives cleared) owns
+ *   the wording; a wipeout is the ride's own ending and keeps the default.
+ */
+function showGameOver(reason = 'wipeout', card = null) {
   if (gameOver) return; // the death flag stays set; only fire the screen once
   gameOver = true;
   const sc = scoring.state;
   finalScoreEl.textContent = Math.round(sc.score).toLocaleString();
   const km = (state.s / 1000).toFixed(2);
-  finalBreakdownEl.textContent = `${km} km ridden  \u00b7  top ${Math.round(sc.topSpeed * 2.6)} km/h`;
+  goTitleEl.textContent = card ? card.title : 'WIPEOUT';
+  finalBreakdownEl.textContent = card
+    ? card.detail
+    : `${km} km ridden  \u00b7  top ${Math.round(sc.topSpeed * 2.6)} km/h`;
   gameoverEl.classList.remove('hidden');
   events.emit(EV.RUN_END, {
-    reason: 'wipeout', score: Math.round(sc.score), distance: state.s,
+    reason, score: Math.round(sc.score), distance: state.s,
   });
 }
 
@@ -418,6 +477,10 @@ function restart() {
   gameOver = false;
   gameoverEl.classList.add('hidden');
   reset();
+  // Same mode again -- and a fresh instance of it, so a mission's counters and
+  // clock start clean rather than resuming a run that already ended. Missions
+  // advance their own index on success, so "again" lands on the next one.
+  modes.restart();
 }
 
 document.getElementById('restart-button').addEventListener('click', restart);
@@ -468,7 +531,7 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, clock.getDelta());
 
-  if (running && !paused && !gameOver && !lobby.isOpen() && !isPanelOpen()) {
+  if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !isPanelOpen()) {
     const { carve, tuck, brake, pop } = readInput();
 
     // SOFT tilt response (see constants.js). Two stages:
@@ -734,9 +797,18 @@ function frame() {
     // advances (build doc §6) -- without this call every frame, the world
     // stops generating past the first SPAWN_AHEAD stretch, which is exactly
     // the "I see stuff at the start, then nothing" symptom.
-    props.update(state.s);
+    props.update(state.s, dt);
     if (!state.grind) {
-      const hit = props.probe(state.s, state.theta, state.airActive, state.sPrev);
+      // How high off the surface the rider actually is. The same three offsets
+      // the render pass adds below -- air arc, ramp deck, rail top -- because a
+      // pickup floating overhead has to be judged against where the rider IS,
+      // not where their (s, theta) is. NOTE state.height is the TROUGH WALL's
+      // height at this position, a different quantity entirely; using it here
+      // was the first version of this line and it is always 0 at the bottom.
+      const lift = (state.airActive ? Math.sin(state.airT * Math.PI) * state.airHeight : 0)
+        + state.rampLift
+        + state.grindLift * state.grindLiftHeight;
+      const hit = props.probe(state.s, state.theta, state.airActive, state.sPrev, lift);
       if (hit) {
         if (hit.def.kind === 'launch') {
           // Ramps and banks auto-launch on contact -- no button, no tap. This
@@ -815,6 +887,14 @@ function frame() {
             }
             hud.banner(hit.def.label);
           }
+        } else if (hit.def.kind === 'pickup') {
+          // Collected. Hidden rather than recycled immediately so the pool and
+          // the recycle pass stay in charge of its lifetime -- `spent` already
+          // means "no longer interactive" everywhere else in this file.
+          events.emit(EV.PICKUP, { type: hit.def.pickup.type, points: hit.def.pickup.points });
+          scoring.award(hit.def.pickup.points, hit.def.label);
+          hit.mesh.visible = false;
+          hit.spent = true;
         } else if (hit.def.kind === 'hazard') {
           events.emit(EV.HAZARD, { label: hit.def.label, wobble: hit.def.hazard.wobble });
           scoring.hit(hit.def.hazard.wobble, hit.def.label);
@@ -831,7 +911,14 @@ function frame() {
       hud.popup(e.text, e.points);
       scoring.state.lastEvent = null;
     }
-    if (scoring.state.dead) showGameOver();
+    if (scoring.state.dead) showGameOver('wipeout');
+
+    // The mode ticks LAST, after everything the ride reports this frame has
+    // already been emitted -- so a mission that completes on this frame's
+    // pickup ends now rather than a frame late, and its clock never runs on a
+    // frame the rider was not actually riding (pause, lobby, game over all
+    // skip this whole block).
+    modes.update(dt);
 
     trough.update(state.s);
   }
@@ -954,6 +1041,7 @@ function frame() {
     fpsFrames = 0;
     fpsTimer = 0;
   }
+  objectivesUi.update(modes.panel());
   hud.update(dt, {
     speed: state.speed,
     score: scoring.state.score,
@@ -966,7 +1054,7 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events };
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);

@@ -442,3 +442,72 @@ html, body {
   opacity: 0.45;
 }
 .go-hint b { color: var(--paper); opacity: 0.8; }
+
+/* --- mode select (the front door) ----------------------------------------
+   Deliberately sparse. This screen exists to answer ONE question, so it shows
+   one question: large touch targets, no toggles, no columns. Everything else
+   that used to greet a player is behind the gear now. */
+.ms-inner { width: min(560px, 100%); color: var(--paper); text-align: center; }
+.ms-inner h1 {
+  font-size: 40px; letter-spacing: 1px; margin: 0 0 4px;
+  text-transform: uppercase; font-weight: 800;
+}
+.ms-inner h1 span { color: var(--hot); font-weight: 700; }
+.ms-inner .sub {
+  margin: 0 0 26px; opacity: 0.6; letter-spacing: 3px;
+  font-size: 12px; text-transform: uppercase;
+}
+#mode-list { display: flex; flex-direction: column; gap: 12px; }
+.ms-opt {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 18px 20px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  color: var(--paper); font: inherit;
+  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+}
+.ms-opt:hover, .ms-opt:focus-visible {
+  border-color: var(--hot); background: rgba(255, 122, 61, 0.12);
+  transform: translateY(-2px); outline: none;
+}
+.ms-opt b {
+  display: block; font-size: 22px; font-weight: 800;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+.ms-opt small { display: block; margin-top: 4px; opacity: 0.62; font-size: 13px; }
+
+/* --- objectives panel -----------------------------------------------------
+   Sits under the wobble bar, top-left, so the two things that can end a run
+   (falling over, running out of time) read in one glance without crossing the
+   screen. */
+#objectives {
+  margin-top: 14px; width: 216px;
+  font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
+}
+#objectives.hidden { display: none; }
+#obj-title { font-weight: 800; font-size: 13px; opacity: 0.92; margin-bottom: 6px; }
+#obj-clock {
+  height: 5px; border-radius: 3px; overflow: hidden;
+  background: rgba(255, 255, 255, 0.16);
+}
+#obj-clock-fill {
+  height: 100%; width: 100%; border-radius: 3px;
+  background: var(--paper); transition: background 0.2s;
+}
+/* The clock only shouts at the end. A timer that is red for its whole second
+   half stops meaning anything. */
+#objectives.warn #obj-clock-fill { background: #ffcf4d; }
+#objectives.critical #obj-clock-fill { background: var(--hot); }
+#obj-time {
+  font-size: 20px; font-weight: 800; letter-spacing: 1px;
+  margin: 4px 0 8px; font-variant-numeric: tabular-nums;
+}
+#objectives.critical #obj-time { color: var(--hot); }
+#obj-list { list-style: none; margin: 0; padding: 0; }
+#obj-list li {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 3px 0; opacity: 0.82;
+}
+#obj-list li.done { opacity: 0.45; text-decoration: line-through; }
+#obj-list li b { font-weight: 700; font-variant-numeric: tabular-nums; }
+#obj-list li.done b { color: #7ef0a8; }

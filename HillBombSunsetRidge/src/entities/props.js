@@ -300,11 +300,64 @@ function buildBlob(def) {
   return g;
 }
 
+// A floating gem. The scene is UNLIT, so a plain octahedron in one flat colour
+// renders as a featureless silhouette -- on screen it read as a pale card, not
+// as a faceted crystal. Facet brightness is therefore baked into VERTEX COLOURS
+// from each face's own normal, which buys real gem shading with no light in the
+// scene and no second material.
+function buildCrystal(def) {
+  const { w, h } = def.size;
+  const g = new THREE.Group();
+
+  const geo = new THREE.OctahedronGeometry(w * 0.68, 0);
+  geo.scale(1, h / w, 1);
+  // OctahedronGeometry is non-indexed, so every triangle owns its 3 vertices --
+  // exactly what flat per-face shading needs.
+  const pos = geo.attributes.position;
+  const colours = new Float32Array(pos.count * 3);
+  const c = new THREE.Color(def.accent);
+  const a = new THREE.Vector3(); const b = new THREE.Vector3(); const cc = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  // A fixed key direction rather than the camera's: the crystal spins, so a
+  // camera-relative key would make every facet flicker at the same rate and
+  // cancel the sense of rotation this shading is meant to sell.
+  const key = new THREE.Vector3(0.4, 0.75, 0.53).normalize();
+  for (let i = 0; i < pos.count; i += 3) {
+    a.fromBufferAttribute(pos, i);
+    b.fromBufferAttribute(pos, i + 1);
+    cc.fromBufferAttribute(pos, i + 2);
+    n.crossVectors(b.sub(a), cc.sub(a)).normalize();
+    const k = 0.55 + 0.45 * Math.max(0, n.dot(key));
+    for (let j = 0; j < 3; j++) {
+      colours[(i + j) * 3] = c.r * k;
+      colours[(i + j) * 3 + 1] = c.g * k;
+      colours[(i + j) * 3 + 2] = c.b * k;
+    }
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colours, 3));
+  g.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true })));
+
+  // Larger, dimmer shell: a cheap glow that needs no post-processing, and the
+  // thing that separates a crystal from the white chevrons painted on the ramps
+  // at a glance.
+  const halo = new THREE.Mesh(
+    new THREE.OctahedronGeometry(w * 1.05, 0),
+    new THREE.MeshBasicMaterial({
+      color: def.colour, transparent: true, opacity: 0.3,
+      depthWrite: false, side: THREE.BackSide,
+    }),
+  );
+  halo.scale.y = h / w;
+  g.add(halo);
+  return g;
+}
+
 const BUILDERS = {
   kicker: buildKicker, bigKicker: buildKicker, bank: buildBank,
   rail: buildRail, longRail: buildRail, ledge: buildLedge,
   cone: buildCone, pothole: buildPothole, roadwork: buildRoadwork,
   lamp: buildLamp, hydrant: buildBlob,
+  crystal: buildCrystal, highCrystal: buildCrystal,
 };
 
 export function createProps(scene) {
@@ -314,8 +367,9 @@ export function createProps(scene) {
   const pools = {}; // type -> array of free meshes
   const active = []; // { type, def, s, u, mesh, spent }
   // Which prop kinds may spawn. Hazards excluded by default; see add().
-  let allowedKinds = new Set(['launch', 'grind', 'scenery']);
+  let allowedKinds = new Set(['launch', 'grind', 'scenery', 'pickup']);
   let nextPatternS = 60; // leave the opening stretch clear
+  let spinT = 0; // drives the pickup spin/bob
   let patternIndex = 0;
 
   const _v = new THREE.Vector3();
@@ -324,6 +378,7 @@ export function createProps(scene) {
   const _z = new THREE.Vector3();
   const _basis = new THREE.Matrix4();
   const _frame = makeFrame();
+  const _spin = new THREE.Quaternion(); // pickup spin, composed onto the basis
 
   function acquire(type) {
     const pool = pools[type] || (pools[type] = []);
@@ -397,7 +452,8 @@ export function createProps(scene) {
     },
 
     /** Keep the field populated ahead and recycled behind. */
-    update(riderS) {
+    update(riderS, dt = 0) {
+      spinT += dt;
       while (nextPatternS < riderS + SPAWN_AHEAD) emitPattern();
       for (let i = active.length - 1; i >= 0; i--) {
         const it = active[i];
@@ -428,6 +484,23 @@ export function createProps(scene) {
         _x.crossVectors(_up, _z).normalize();
         _basis.makeBasis(_x, _up, _z);
         it.mesh.quaternion.setFromRotationMatrix(_basis);
+
+        // Pickups turn and bob. Motion is what separates "collect me" from
+        // "part of the scenery" at a glance, and it costs one rotation per
+        // frame. Phase is derived from the prop's own position so neighbouring
+        // crystals are not locked in step.
+        if (it.def.kind === 'pickup') {
+          // Spin about the SURFACE normal, composed onto the basis above --
+          // writing mesh.rotation.y here instead would overwrite the whole
+          // quaternion and stand the crystal world-upright on a rolled section.
+          _spin.setFromAxisAngle(_up, spinT * 1.8 + it.s * 0.7);
+          it.mesh.quaternion.premultiply(_spin);
+          // Float it off the surface, along that same normal. The height is the
+          // one the probe tests against, so what you see is what you can reach.
+          it.mesh.position.addScaledVector(
+            _up, it.def.pickup.height + Math.sin(spinT * 2.2 + it.s) * 0.16,
+          );
+        }
       }
     },
 
@@ -437,6 +510,9 @@ export function createProps(scene) {
      * air is exactly what clears hazards.
      *
      * @param {number} s @param {number} theta @param {boolean} airborne
+     * @param {number} sPrev @param {number} height rider's height above the
+     *   surface -- pickups are the only kind that cares, but a low crystal and
+     *   a high one are otherwise indistinguishable to this test.
      * @param {number} sPrev where the rider was last frame, for the ramp-lip
      *   crossing test below
      */
@@ -449,7 +525,7 @@ export function createProps(scene) {
       allowedKinds = new Set(kinds);
     },
 
-    probe(s, theta, airborne, sPrev) {
+    probe(s, theta, airborne, sPrev, height = 0) {
       for (const it of active) {
         if (it.spent || it.def.kind === 'scenery') continue;
         const { l, w } = it.def.size;
@@ -470,11 +546,21 @@ export function createProps(scene) {
           // speed or frame rate.
           const takeoff = it.s - halfL + 2 * halfL * apexFrac(it.def.launch.profile);
           if (!(sPrev < takeoff && s >= takeoff)) continue;
+        } else if (it.def.kind === 'pickup') {
+          // A SPHERE, not a slice. A crystal is barely half a metre long, and at
+          // 30 u/s the rider covers half a metre per frame -- an overlap test on
+          // a window that small collected nothing at all over 890 m (measured),
+          // and a bare crossing test is worse, because it gives exactly ONE
+          // frame in which the rider must also happen to be laterally on it.
+          // Using the catch width along the road as well turns that into a
+          // grab radius roughly six frames wide, which is what makes reaching
+          // for a crystal a question of carving rather than of frame timing.
+          if (Math.abs(s - it.s) > it.def.pickup.catchWidth) continue;
         } else if (s < it.s - halfL || s > it.s + halfL) {
           continue;
         }
-        const catchW = it.def.kind === 'grind'
-          ? it.def.grind.catchWidth
+        const catchW = it.def.kind === 'grind' ? it.def.grind.catchWidth
+          : it.def.kind === 'pickup' ? it.def.pickup.catchWidth
           : w / 2 + 0.45;
         // Prop sizes stay authored in WORLD units; convert the angular gap to an
         // arc length so a prop is the same physical size wherever it sits on the
@@ -482,8 +568,12 @@ export function createProps(scene) {
         const arcGap = Math.abs(theta - it.theta) * TROUGH_RADIUS;
         if (arcGap > catchW) continue;
         // Airborne clears hazards and launchers, but you can still land INTO a
-        // grind -- that's the good kind of accident.
-        if (airborne && it.def.kind !== 'grind') continue;
+        // grind -- that's the good kind of accident -- and you can still collect
+        // PICKUPS, which is the entire point of placing them off a ramp.
+        if (airborne && it.def.kind !== 'grind' && it.def.kind !== 'pickup') continue;
+        // A pickup floating three metres up is not collectable from the road.
+        if (it.def.kind === 'pickup'
+            && Math.abs(height - it.def.pickup.height) > it.def.pickup.reach) continue;
         return it;
       }
       return null;
