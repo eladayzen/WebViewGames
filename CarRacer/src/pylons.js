@@ -11,9 +11,12 @@ import { SPAWN_Z, DESPAWN_Z, LANE_WIDTH } from './constants.js';
 // free, just from being farther away) instead of the world feeling like a
 // narrow strip hugging the road. Both scroll faster than actual road
 // speed -- pure background flair, not gameplay.
+// Color is a per-instance {colorIdx} lookup into a `palette` array of two
+// hex colors, passed in fresh each frame by main.js (driven by the current
+// zone blend in zones.js) rather than a fixed constant -- this is what lets
+// the whole pillar field shift color as the run progresses.
 const SPEED_MULT = 2.4;
 const BASE_DEPTH = -140; // pillar bottom, always far below frame
-const NEON_COLORS = [0x6ff0ff, 0xff6ff0]; // cyan, magenta
 
 // perSide cut ~40% (too dense per feedback); spacing raised to compensate
 // so the same overall depth range is still covered, just with fewer, more
@@ -83,25 +86,25 @@ function makeAccentSlots() {
 const dummy = new THREE.Object3D();
 const color = new THREE.Color();
 
-function applyPillarTransform(mesh, index, slot, band) {
+function applyPillarTransform(mesh, index, slot, band, palette) {
   const x = slot.side * (band.roadGap + slot.xOffset);
   dummy.position.set(x, BASE_DEPTH, slot.z);
   dummy.rotation.set(0, 0, 0);
   dummy.scale.set(slot.radius, slot.top - BASE_DEPTH, slot.radius);
   dummy.updateMatrix();
   mesh.setMatrixAt(index, dummy.matrix);
-  color.setHex(NEON_COLORS[slot.colorIdx]);
+  color.setHex(palette[slot.colorIdx]);
   mesh.setColorAt(index, color);
 }
 
-function applyAccentTransform(mesh, index, slot) {
+function applyAccentTransform(mesh, index, slot, palette) {
   const x = slot.side * slot.xOffset;
   dummy.position.set(x, slot.y, slot.z);
   dummy.rotation.set(slot.rotX, 0, slot.rotZ);
   dummy.scale.set(slot.radius, slot.length, slot.radius);
   dummy.updateMatrix();
   mesh.setMatrixAt(index, dummy.matrix);
-  color.setHex(NEON_COLORS[slot.colorIdx]);
+  color.setHex(palette[slot.colorIdx]);
   mesh.setColorAt(index, color);
 }
 
@@ -109,57 +112,57 @@ function neonMaterial() {
   return new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
 }
 
-function createPillarBand(scene, band) {
+function createPillarBand(scene, band, palette) {
   const mesh = new THREE.InstancedMesh(makePillarGeometry(), neonMaterial(), band.perSide * 2);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(mesh);
 
   const slots = makePillarSlots(band);
-  slots.forEach((slot, i) => applyPillarTransform(mesh, i, slot, band));
+  slots.forEach((slot, i) => applyPillarTransform(mesh, i, slot, band, palette));
   mesh.instanceMatrix.needsUpdate = true;
   mesh.instanceColor.needsUpdate = true;
 
   return { slots, mesh, band };
 }
 
-function updatePillarBand(pillarBand, scroll) {
+function updatePillarBand(pillarBand, scroll, palette) {
   const { slots, mesh, band } = pillarBand;
   const span = (slots.length / 2) * band.spacing;
   for (const slot of slots) {
     slot.z += scroll;
     if (slot.z > DESPAWN_Z) slot.z -= span;
   }
-  slots.forEach((slot, i) => applyPillarTransform(mesh, i, slot, band));
+  slots.forEach((slot, i) => applyPillarTransform(mesh, i, slot, band, palette));
   mesh.instanceMatrix.needsUpdate = true;
 }
 
-export function createPylons(scene) {
-  const nearPillars = createPillarBand(scene, NEAR_BAND);
-  const farPillars = createPillarBand(scene, FAR_BAND);
+export function createPylons(scene, palette) {
+  const nearPillars = createPillarBand(scene, NEAR_BAND, palette);
+  const farPillars = createPillarBand(scene, FAR_BAND, palette);
 
   const accentMesh = new THREE.InstancedMesh(makeAccentGeometry(), neonMaterial(), ACCENT_COUNT);
   accentMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(accentMesh);
   const accentSlots = makeAccentSlots();
-  accentSlots.forEach((slot, i) => applyAccentTransform(accentMesh, i, slot));
+  accentSlots.forEach((slot, i) => applyAccentTransform(accentMesh, i, slot, palette));
   accentMesh.instanceMatrix.needsUpdate = true;
   accentMesh.instanceColor.needsUpdate = true;
 
   return { nearPillars, farPillars, accentSlots, meshes: { accentMesh } };
 }
 
-export function updatePylons(pylons, dt, speed) {
+export function updatePylons(pylons, dt, speed, palette) {
   const { nearPillars, farPillars, accentSlots, meshes } = pylons;
   const scroll = speed * SPEED_MULT * dt;
 
-  updatePillarBand(nearPillars, scroll);
-  updatePillarBand(farPillars, scroll);
+  updatePillarBand(nearPillars, scroll, palette);
+  updatePillarBand(farPillars, scroll, palette);
 
   const accentSpan = accentSlots.length * ACCENT_SPACING;
   for (const slot of accentSlots) {
     slot.z += scroll;
     if (slot.z > DESPAWN_Z) slot.z -= accentSpan;
   }
-  accentSlots.forEach((slot, i) => applyAccentTransform(meshes.accentMesh, i, slot));
+  accentSlots.forEach((slot, i) => applyAccentTransform(meshes.accentMesh, i, slot, palette));
   meshes.accentMesh.instanceMatrix.needsUpdate = true;
 }

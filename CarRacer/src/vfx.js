@@ -124,18 +124,27 @@ export function spawnCrashBurst(pool, x, y, z) {
   pool.spawn(x, y, z, 0xffb347, { count: 14, speed: 6, life: 0.7, gravity: 4, spread: 0.4, dirSpread: Math.PI });
 }
 
-const TRAIL_COLOR = 0x5fe0ff;
-let trailAccum = 0;
-export function emitTrail(pool, x, y, z, dt) {
-  trailAccum += dt;
-  const interval = 1 / 40; // ~40 particles/sec while moving
-  while (trailAccum >= interval) {
-    trailAccum -= interval;
-    pool.spawn(x, y, z, TRAIL_COLOR, {
-      count: 1, speed: 0.6, life: 0.35, gravity: 0.5, spread: 0.25,
-      dirX: 0, dirY: 0.3, dirZ: 1, dirSpread: 0.6,
-    });
-  }
+// Factory, not a bare function with module-level state: every car (player
+// and each traffic slot) needs its own independent emission accumulator --
+// a single shared timer would couple all their spawn rates together the
+// moment more than one caller emits in the same frame.
+export function createTrailEmitter(pool, {
+  color = 0x5fe0ff, rate = 40, speed = 0.6, life = 0.35, gravity = 0.5, spread = 0.25,
+} = {}) {
+  let accum = 0;
+  const interval = 1 / rate;
+  return {
+    emit(x, y, z, dt) {
+      accum += dt;
+      while (accum >= interval) {
+        accum -= interval;
+        pool.spawn(x, y, z, color, {
+          count: 1, speed, life, gravity, spread,
+          dirX: 0, dirY: 0.3, dirZ: 1, dirSpread: 0.6,
+        });
+      }
+    },
+  };
 }
 
 // --- Ribbon trail ----------------------------------------------------

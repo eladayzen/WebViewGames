@@ -3,13 +3,15 @@ import { initPointerInput, initButtonInput, pollLaneStep, getSteerHold, pollSens
 import {
   createPlayerCar, setPlayerLane, updatePlayerCarDiscrete, updatePlayerCarContinuous,
 } from './player-car.js';
+import { preloadCarAsset } from './car-model.js';
 import { createTrafficField, spawnTraffic, updateTrafficField } from './traffic.js';
 import { createCoinField, spawnCoin, updateCoinField } from './coins.js';
 import { createRoad } from './road.js';
 import { createPylons, updatePylons } from './pylons.js';
 import { createSkyBackground } from './sky.js';
+import { getZoneBlend } from './zones.js';
 import {
-  ParticlePool, spawnCoinBurst, spawnCrashBurst, emitTrail,
+  ParticlePool, spawnCoinBurst, spawnCrashBurst, createTrailEmitter,
   createSpeedStreaks, updateSpeedStreaks, createRibbonTrail,
 } from './vfx.js';
 import { createCameraRig, updateCameraRig, triggerShake } from './camera-rig.js';
@@ -28,7 +30,16 @@ if (document.readyState === 'loading') {
   boot();
 }
 
-function boot() {
+async function boot() {
+  // Falls back to the primitive-built car automatically (car-model.js
+  // checks whether the shared geometry/texture ever loaded) if this fails
+  // -- a network hiccup shouldn't hard-crash the game.
+  try {
+    await preloadCarAsset();
+  } catch (err) {
+    if (window.Unity) window.Unity.call('CAR ASSET LOAD FAILED: ' + err.message);
+    else console.error('car asset preload failed, falling back to primitive car', err);
+  }
 
 const ASPECT_W = 16;
 const ASPECT_H = 9;
@@ -50,8 +61,22 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 app.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = createSkyBackground();
+const sky = createSkyBackground();
+scene.background = sky.texture;
 scene.fog = new THREE.Fog(0x0a0e1e, 70, 190);
+
+// In-run visual zone progression (zones.js): pylon/fog/sky colors shift as
+// distance increases. Two scratch THREE.Colors reused every frame -- no
+// per-frame allocation for something called continuously.
+const zoneScratchA = new THREE.Color();
+const zoneScratchB = new THREE.Color();
+function paletteFromZones(zoneA, zoneB, blend) {
+  zoneScratchA.setHex(zoneA.neonA).lerp(zoneScratchB.setHex(zoneB.neonA), blend);
+  const colorA = zoneScratchA.getHex();
+  zoneScratchA.setHex(zoneA.neonB).lerp(zoneScratchB.setHex(zoneB.neonB), blend);
+  const colorB = zoneScratchA.getHex();
+  return [colorA, colorB];
+}
 
 const camera = new THREE.PerspectiveCamera(62, ASPECT_W / ASPECT_H, 0.1, 220);
 
@@ -64,17 +89,21 @@ scene.add(fill);
 const road = createRoad();
 scene.add(road);
 
-const pylons = createPylons(scene);
+const initialZoneBlend = getZoneBlend(0);
+const pylons = createPylons(scene, paletteFromZones(
+  initialZoneBlend.zoneA, initialZoneBlend.zoneB, initialZoneBlend.blend
+));
 
 const player = createPlayerCar();
 scene.add(player);
 
-const trafficField = createTrafficField(scene);
+const burstPool = new ParticlePool(scene, 400, 0.14);
+const trafficField = createTrafficField(scene, burstPool);
 const coinField = createCoinField(scene);
 
-const burstPool = new ParticlePool(scene, 400, 0.14);
 const speedStreaks = createSpeedStreaks(scene);
 const ribbonTrail = createRibbonTrail(scene, { color: 0x5fe0ff, width: 0.85, opacity: 0.5, maxPoints: 14 });
+const playerTrailEmitter = createTrailEmitter(burstPool, { color: 0x5fe0ff });
 const cameraRig = createCameraRig(camera);
 const trailWorldPos = new THREE.Vector3();
 
@@ -276,11 +305,18 @@ function tick() {
 
     updateTrafficField(trafficField, dt, speed);
     updateCoinField(coinField, dt, speed);
-    updatePylons(pylons, dt, speed);
+
+    const { zoneA, zoneB, blend } = getZoneBlend(distance);
+    const palette = paletteFromZones(zoneA, zoneB, blend);
+    sky.update(zoneA, zoneB, blend);
+    zoneScratchA.setHex(zoneA.fog).lerp(zoneScratchB.setHex(zoneB.fog), blend);
+    scene.fog.color.copy(zoneScratchA);
+    updatePylons(pylons, dt, speed, palette);
+
     updateSpeedStreaks(speedStreaks, dt, speed);
 
     player.userData.trailAnchor.getWorldPosition(trailWorldPos);
-    emitTrail(burstPool, trailWorldPos.x, trailWorldPos.y, trailWorldPos.z, dt);
+    playerTrailEmitter.emit(trailWorldPos.x, trailWorldPos.y, trailWorldPos.z, dt);
     ribbonTrail.update(trailWorldPos.x, trailWorldPos.y, trailWorldPos.z, dt, speed);
 
     if (distanceSinceSpawn >= currentSpawnGap()) {
