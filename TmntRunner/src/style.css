@@ -1,0 +1,175 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #1a1020;
+  font-family: 'Arial Narrow', Arial, system-ui, sans-serif;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+#renderCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  color: #fff;
+}
+
+/* --- Top-left chase meter --- */
+#chase-meter {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  background: rgba(15, 10, 25, 0.65);
+  border: 2px solid rgba(255, 220, 80, 0.5);
+  border-radius: 10px;
+  padding: 6px 10px;
+  min-width: 170px;
+}
+
+#chase-meter.hidden {
+  display: none;
+}
+
+.chase-label {
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: 1px;
+  color: #ffde50;
+  text-shadow: 0 0 6px rgba(255, 200, 40, 0.8), 1px 1px 0 #402800;
+}
+
+.chase-bar {
+  margin-top: 4px;
+  height: 10px;
+  border-radius: 5px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.12) 0 14px,
+    rgba(0, 0, 0, 0.2) 14px 16px
+  );
+  overflow: hidden;
+}
+
+.chase-fill {
+  height: 100%;
+  width: 30%;
+  background: linear-gradient(90deg, #ff5a3c, #ffb23c);
+  box-shadow: 0 0 8px rgba(255, 120, 40, 0.9);
+}
+
+/* --- Top-right score / coins --- */
+#topRight {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  text-align: right;
+}
+
+#score, #coins {
+  font-weight: 900;
+  font-size: 26px;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  -webkit-text-stroke: 2px #2a1a00;
+  paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+#coins {
+  color: #ffe066;
+  font-size: 22px;
+}
+
+/* --- Bottom-left power-up tray --- */
+#powerupTray {
+  position: absolute;
+  bottom: 16px;
+  left: 14px;
+  display: flex;
+  gap: 8px;
+}
+
+.powerup-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: rgba(15, 10, 25, 0.7);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  filter: saturate(1.2);
+}
+
+/* --- Game-over overlay --- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: rgba(10, 5, 15, 0.82);
+  pointer-events: auto;
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+.overlay .title {
+  font-weight: 900;
+  font-size: 44px;
+  color: #ff5a3c;
+  letter-spacing: 2px;
+  -webkit-text-stroke: 2px #2a0a00;
+  paint-order: stroke fill;
+}
+
+#finalScore {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffe066;
+}
+
+#restart-button {
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 1px;
+  padding: 14px 36px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffde50, #ffa93c);
+  color: #2a1a00;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #a86800, 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+#restart-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
