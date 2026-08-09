@@ -201,13 +201,26 @@ function aimBone(bone, childBone, dirWorld) {
   bone.updateMatrixWorld(true);
 }
 
+const _ikCurPole = new THREE.Vector3();
+
 /**
  * @param {THREE.Bone} upLeg thigh  @param {THREE.Bone} lowLeg shin
  * @param {THREE.Bone} foot ankle
  * @param {THREE.Vector3} targetWorld where the ankle must end up
- * @param {THREE.Vector3} poleWorld which way the knee should break
+ * @param {THREE.Vector3} poleWorld which way the knee should break at full blend
+ * @param {number} poleBlend 0 = keep the knee exactly where the CLIP has it,
+ *   1 = fully at poleWorld.
+ *
+ * THE POLE BLEND IS WHAT STOPS THE KNEE SNAPPING. IK is otherwise binary: the
+ * frame it engages it places the knee wherever its own pole says, which is
+ * nowhere near where the animation had it, so the knee jumped in a single frame
+ * no matter how small the tuck weight was. Starting from the CLIP's own pole
+ * and rotating outward as the tuck engages means the solve is an identity at
+ * weight zero -- and, unlike blending the finished bone rotations, it keeps the
+ * ankle exactly on target at every intermediate weight instead of half-planting
+ * the foot.
  */
-function solveLegIK(upLeg, lowLeg, foot, targetWorld, poleWorld) {
+function solveLegIK(upLeg, lowLeg, foot, targetWorld, poleWorld, poleBlend) {
   upLeg.getWorldPosition(_ikHip);
   lowLeg.getWorldPosition(_ikKnee);
   foot.getWorldPosition(_ikAnkle);
@@ -226,9 +239,19 @@ function solveLegIK(upLeg, lowLeg, foot, targetWorld, poleWorld) {
   d = Math.max(dMin, Math.min(dMax, d));
   _ikTo.normalize();
 
+  // The CLIP's own pole: where the animation currently has the knee, expressed
+  // perpendicular to the hip->ankle line. This is the zero-blend anchor.
+  _ikCurPole.copy(_ikKnee).sub(_ikHip);
+  _ikCurPole.addScaledVector(_ikTo, -_ikCurPole.dot(_ikTo));
+  if (_ikCurPole.lengthSq() > 1e-8) _ikCurPole.normalize();
+  else _ikCurPole.copy(poleWorld);
+
   // Pole, projected perpendicular to the hip->ankle line: this is the plane the
-  // knee breaks in, so pointing it outward splays the knees.
-  _ikSide.copy(poleWorld).addScaledVector(_ikTo, -poleWorld.dot(_ikTo));
+  // knee breaks in, so pointing it outward splays the knees. Blended from the
+  // clip's own pole so engaging the tuck rotates the knee out smoothly rather
+  // than teleporting it.
+  _ikSide.copy(_ikCurPole).lerp(poleWorld, Math.max(0, Math.min(1, poleBlend)));
+  _ikSide.addScaledVector(_ikTo, -_ikSide.dot(_ikTo));
   if (_ikSide.lengthSq() < 1e-8) {
     // Pole parallel to the limb: pick any perpendicular rather than bailing.
     // Returning here would leave the leg UNSOLVED after the body has already
@@ -388,6 +411,7 @@ export function createRider(scene, camera) {
   let hasRestAnkle = false;
   const _tgt = new THREE.Vector3();
   const _pole = new THREE.Vector3();
+  const _poseNow = new THREE.Vector3();
   // Push is an OCCASIONAL ONE-SHOT layered over idle by weight (see update()).
   let pushing = false;
   let pushTimer = 2.5 + Math.random() * 2.5;
@@ -745,7 +769,15 @@ export function createRider(scene, camera) {
         // afterwards, so the clip is barred during the grind AND for a second
         // after it. Amit asked for the tail specifically -- a kick-push firing
         // the instant the rider drops off a rail reads as a stumble.
-        if (s.grinding) pushLockT = GRIND_PUSH_LOCKOUT;
+        // THE KICK-PUSH STANDS DOWN during every custom pose, not just grinds.
+        // Amit: it should not play while any of these are happening. It is a
+        // full-body clip that swings a leg off the deck, so it fights whatever
+        // the procedural pose is doing -- and during a tuck or a brake it also
+        // fights the leg IK, which is solving those same bones against planted
+        // ankles.
+        const customPose = s.grinding || s.airActive || (s.landPose || 0) > 0.001
+          || (s.tucking || 0) > 0.02 || (s.braking || 0) > 0.02;
+        if (customPose) pushLockT = GRIND_PUSH_LOCKOUT;
         else if (pushLockT > 0) pushLockT = Math.max(0, pushLockT - dt);
 
         // A landing absorb bars it too. Partly because kick-pushing while
@@ -1049,6 +1081,12 @@ export function createRider(scene, camera) {
             // Pole sign is per-leg and MEASURED, not assumed: a shared
             // convention broke the right knee inward (-0.095) while the left
             // went correctly outward (+0.077).
+            // Blend the TARGET from wherever the clip currently has the ankle
+            // toward its resting position. This is the second discontinuity:
+            // the idle clip keeps moving the feet, so a target captured earlier
+            // is NOT where the foot is when the IK engages, and snapping it
+            // there jerked the whole leg. Lerping means the solve is an
+            // identity at zero weight and fully planted at one.
             for (const [up, low, ft, rest, sgn] of [
               [upLegL, legL, footL, restAnkleL, -1],
               // MIRRORED. A shared sign swings BOTH knees the same way -- the
@@ -1062,8 +1100,10 @@ export function createRider(scene, camera) {
             ]) {
               _tgt.copy(rest);
               root.localToWorld(_tgt);
+              ft.getWorldPosition(_poseNow);
+              _tgt.lerpVectors(_poseNow, _tgt, tk);
               _pole.set(sgn * splay, 0, -1).normalize().applyQuaternion(q);
-              solveLegIK(up, low, ft, _tgt, _pole);
+              solveLegIK(up, low, ft, _tgt, _pole, tk);
             }
           } else if (hasRestAnkle === false && footL && footR) {
             // nothing to solve against yet

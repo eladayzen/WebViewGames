@@ -17,7 +17,7 @@
 import * as THREE from 'three';
 import {
   GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED,
-  BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE, GROUND_CTRL_RELEASE,
+  BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE, GROUND_CTRL_RELEASE, GROUND_CTRL_LETGO,
   TAIL_LOAD_RATE, TAIL_LOAD_DECAY, TAIL_LOAD_BOOST,
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
   THETA_MAX, THETA_GRAVITY, THETA_CARVE_TORQUE, THETA_DAMP, HEIGHT_EXCHANGE,
@@ -513,8 +513,13 @@ function frame() {
     const brakeTarget = groundControl ? brake : 0;
     // Release faster than it engages, so handing over to a jump or a grind
     // reads as committing to that rather than as the tuck fading out.
-    const tuckRate = groundControl ? TUCK_SMOOTH : GROUND_CTRL_RELEASE;
-    const brakeRate = groundControl ? BRAKE_SMOOTH : GROUND_CTRL_RELEASE;
+    // Three distinct rates, because the three transitions mean different things:
+    // engaging is a build, letting go should visibly end it, and being
+    // overridden should look like the rider committing to the new state.
+    const tuckRate = !groundControl ? GROUND_CTRL_RELEASE
+      : (tuck > state.tucking ? TUCK_SMOOTH : GROUND_CTRL_LETGO);
+    const brakeRate = !groundControl ? GROUND_CTRL_RELEASE
+      : (brake > state.braking ? BRAKE_SMOOTH : GROUND_CTRL_LETGO);
     state.tucking += (tuckTarget - state.tucking) * (1 - Math.exp(-tuckRate * dt));
     state.braking += (brakeTarget - state.braking) * (1 - Math.exp(-brakeRate * dt));
 

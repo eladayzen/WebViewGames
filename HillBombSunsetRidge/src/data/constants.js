@@ -25,6 +25,10 @@ export const TUCK_BONUS = 5.2; // extra accel at full tuck, world units/s^2
 // How fast the tuck engages and releases. Deliberately unhurried -- a tuck that
 // snaps on reads as a button, and Amit asked for speed that arrives naturally.
 export const TUCK_SMOOTH = 3.2;
+// Release when the INPUT simply stops. Faster than the engage, because letting
+// go should visibly end the pose rather than have it linger -- but nowhere near
+// instant, which would be a one-frame pop.
+export const GROUND_CTRL_LETGO = 9.0;
 // How fast tuck and brake RELEASE when a higher-priority state takes over.
 // Much quicker than they engage: a takeoff or a rail catch should look like the
 // rider committing to that, not like he is slowly giving up on the tuck.
@@ -728,7 +732,10 @@ export const TUCK_SPINE = 0.44;
 // 0.30 was far too deep -- against a ~0.9 leg it drove the knees down onto the
 // deck and read as crawling rather than tucking. This is the drop that gives an
 // aero crouch while the legs still look like legs.
-export const TUCK_SINK = 0.15;
+// Reduced again. The pelvis drop is what forces the knee to bend, so a smaller
+// sink is directly a gentler knee -- Amit's own suggestion, and it costs little
+// since the spine curl carries most of the read anyway.
+export const TUCK_SINK = 0.10;
 // Knees out to the sides, so the crouch reads as a wide aero stance rather than
 // a squat. Applied about the PARENT Z axis and MIRRORED between the legs --
 // measured: left +Z and right -Z both push the knee outward (-0.070 and +0.101
