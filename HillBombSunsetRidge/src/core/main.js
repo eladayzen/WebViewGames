@@ -24,7 +24,8 @@ import {
   TROUGH_RADIUS,
   AIR_DURATION, AIR_HEIGHT, SPIN_MIN_HEIGHT,
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
-  AIR_HEIGHT_MAX, AIR_TIME_K, AIR_DURATION_MIN, AIR_DURATION_MAX,
+  AIR_HEIGHT_MAX, AIR_TIME_K, AIR_DURATION_MIN, AIR_DURATION_MAX, SPIN_720_HEIGHT,
+  GRAB_MIN_HEIGHT, GRAB_ENABLED,
   AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO, GRIND_SPARK_RATE,
   GRIND_EXIT_FALL_G,
   LAND_SETTLE_DURATION, LAND_SETTLE_PEAK, LAND_K_FLOOR, LAND_K_GAIN,
@@ -165,6 +166,7 @@ const state = {
   // his momentum instead of snapping against it; +1 if he arrived dead straight.
   grindYawSign: 1,
   spinDir: 1, // which way a spin rotates -- set from lateral drift at takeoff
+  spinTurns: 1, // whole revolutions this spin does -- see SPIN_720_HEIGHT
   // Height of the launch ramp deck the rider is standing on right now.
   rampLift: 0,
   // Landing absorb. landT counts down from LAND_SETTLE_DURATION; landAmount is
@@ -293,6 +295,7 @@ function reset() {
   state.grindLiftHeight = 0;
   state.grindFallVel = 0;
   state.spinDir = 1;
+  state.spinTurns = 1;
   state.rampLift = 0;
   state.landT = 0;
   state.landAmount = 0;
@@ -343,27 +346,47 @@ function beginAir(power, points, forcedTrick, launchLabel) {
   // a vote.
   //
   // The bands are set against what each launcher can actually reach, at
-  // AIR_HEIGHT_BASE 1.6 * power^2 * speedFactor (0.45..1.11) * loadBoost (1..1.55):
+  // AIR_HEIGHT_BASE 1.40 * power^2 * speedFactor (0.45..1.11) * loadBoost (1..1.22):
   //
-  //     kicker    power 1.0   0.78 .. 2.75      spin
-  //     bank      power 1.2   1.12 .. 3.96      spin
-  //     bigKicker power 1.5   1.75 .. 6.19      spin (a perfect load nearly flips)
-  //     barrel    power 2.1   3.44 .. 12.1      flip ONLY if carrying speed
+  //     kicker    power 1.0    0.63 .. 1.90     plain, or a spin if hit well
+  //     bank      power 1.2    0.91 .. 2.73     plain when slow, else spin
+  //     bigKicker power 1.42   1.27 .. 3.83     spin (360, or 720 above 2.6)
+  //     barrel    power 1.9    2.27 .. 6.73     flip ONLY if carrying speed
+  //
+  // The full ladder, by height: nothing under 1.6, a 360 to 2.6, a 720 to 4.4,
+  // a backflip above that. A GRAB tier sits below the spin at 0.95 but is
+  // switched off -- the ladder is right, the pose is not yet. See GRAB_ENABLED.
+  //
+  // Note the bands OVERLAP on purpose. Which trick you get is not a property of
+  // the ramp you hit -- it is a property of how you hit it, which is the only
+  // version of this that rewards the approach.
   //
   // That is the whole point of the change. Every ramp on the course used to
   // clear the old 2.2 bar, so a backflip came out of a knee-high kicker -- the
   // rotation was never earned. Now the ordinary ramps spin, and the flip belongs
   // to the one launcher tall enough to justify it, and only when hit fast.
-  // Sitting the bar at 6.8 means the barrel needs a speedFactor of ~0.96, i.e.
-  // roughly SPEED_REF and up: carve the approach away and you get a spin.
+  //
+  // THE WHOLE SCALE CAME DOWN with the bar. A first pass put the flip at 6.8,
+  // which worked but launched the rider ~7.6 units up -- far too high to read as
+  // a skateboard trick. The binding constraint was the tail-load boost pushing a
+  // loaded big kicker to 6.19, so the bar had to clear that; trimming the boost
+  // and the base height lets the bar sit at 4.4 with a typical flip around 5.0.
+  // The barrel needs a speedFactor of ~0.87 to clear it -- about 23 u/s -- so
+  // carving the approach away still leaves you spinning.
   const trick = forcedTrick !== undefined
     ? forcedTrick
     : earnedHeight >= BACKFLIP_MIN_HEIGHT ? 'backflip'
       : earnedHeight >= SPIN_MIN_HEIGHT ? 'spin'
-        : null;
+        : (GRAB_ENABLED && earnedHeight >= GRAB_MIN_HEIGHT) ? 'grab'
+          : null;
   // Spin the way he was already going -- rotating against your own drift reads
   // as the animation fighting the physics.
-  if (trick === 'spin') state.spinDir = Math.sign(state.thetaVel) || 1;
+  if (trick === 'spin') {
+    state.spinDir = Math.sign(state.thetaVel) || 1;
+    // Rotation from the same height that chose the trick. A bank scrape turns
+    // once; a full-speed big kicker turns twice.
+    state.spinTurns = earnedHeight >= SPIN_720_HEIGHT ? 2 : 1;
+  }
 
   state.airActive = true;
   state.airT = 0;
@@ -796,9 +819,14 @@ function frame() {
         // Captured BEFORE the reset below, because the LAND event further down
         // reports it and state.airPoints is zeroed here.
         const airPoints = state.airPoints;
+        const landedTrick = state.airTrick;
+        const landedSpinTurns = landedTrick === 'spin' ? state.spinTurns : 0;
         const huge = airPoints >= HUGE_AIR_POINTS;
         if (state.airPoints > 0) {
-          scoring.award(state.airPoints, huge ? 'HUGE AIR' : 'AIR');
+          const airLabel = landedSpinTurns ? `${landedSpinTurns * 360}`
+            : landedTrick === 'grab' ? 'GRAB'
+              : (huge ? 'HUGE AIR' : 'AIR');
+          scoring.award(state.airPoints, airLabel);
           state.airPoints = 0;
         }
         // A trick's rotation is synced 1:1 to airT, so it lands exactly as it
@@ -806,7 +834,6 @@ function frame() {
         // absorb-and-recover wobble, ordinary jumps don't get.
         // ABSORB ON EVERY LANDING, not just tricks. Scale by what was just
         // pulled off -- a backflip lands hardest, a hop barely at all.
-        const landedTrick = state.airTrick;
         beginLanding(landedTrick === 'backflip' ? LAND_AMOUNT_BACKFLIP
           : landedTrick === 'spin' ? LAND_AMOUNT_SPIN
           : landedTrick === 'hop' ? LAND_AMOUNT_HOP
@@ -814,7 +841,9 @@ function frame() {
         // A rotation only counts once it has actually been landed -- reporting
         // it at launch would credit a trick the rider never completed.
         if (landedTrick && landedTrick !== 'hop') {
-          events.emit(EV.TRICK, { type: landedTrick, height: state.airHeight });
+          events.emit(EV.TRICK, {
+            type: landedTrick, height: state.airHeight, turns: landedSpinTurns,
+          });
         }
         // HEIGHT AND POINTS TRAVEL WITH THE LANDING. Without them a mode could
         // only ask "did you land", never "did you land something big" -- and the
@@ -1099,6 +1128,7 @@ function frame() {
     grindPose: state.grindLift,
     grindYawSign: state.grindYawSign,
     spinDir: state.spinDir,
+    spinTurns: state.spinTurns,
     grinding: !!state.grind,
   };
 

@@ -55,7 +55,12 @@ export const BRAKE_SPARK_RATE = 95;
 // slow down -- time the compression into the lip and you go higher.
 export const TAIL_LOAD_RATE = 1.9;  // how fast braking charges it
 export const TAIL_LOAD_DECAY = 2.6; // and how fast it bleeds away once released
-export const TAIL_LOAD_BOOST = 0.55; // extra jump height at full load, as a fraction
+// Extra jump height at full load, as a fraction. Cut from 0.55 because a
+// perfectly loaded big kicker was reaching 6.19 units, which forced the backflip
+// bar above it and dragged the whole flip absurdly high with it. Still worth
+// setting up for -- a fifth more air is plainly visible -- just no longer enough
+// to turn a wedge into a vert wall.
+export const TAIL_LOAD_BOOST = 0.22;
 export const START_SPEED = 11;
 
 // --- lateral motion (build doc §5.1) ---
@@ -137,7 +142,7 @@ export const AIR_HEIGHT = 1.2;
 // kicker 1.5) and it's SQUARED so the ramps spread out properly instead of
 // bunching -- linear left every launcher within a whisker of every other, which
 // makes a height threshold meaningless as a gate.
-export const AIR_HEIGHT_BASE = 1.6;
+export const AIR_HEIGHT_BASE = 1.40;
 // Speed's contribution, as a fraction of SPEED_REF. Never drops to zero: even a
 // crawling rider gets some pop off a ramp, they just can't reach a flip.
 export const AIR_SPEED_FLOOR = 0.45;
@@ -149,7 +154,7 @@ export const AIR_SPEED_GAIN = 0.55;
 // so 2.2 means a bank or a big kicker earns a flip and an ollie or plain kicker
 // never can -- and slowing down takes even the big ramps below it. Speed and
 // ramp choice both matter, which is the point.
-export const BACKFLIP_MIN_HEIGHT = 6.8;
+export const BACKFLIP_MIN_HEIGHT = 4.4;
 
 // SPIN vs BACKFLIP -- decided by how hard you were moving SIDEWAYS at takeoff.
 // Amit: "if my velocity going from side to side is too strong... it won't be a
@@ -194,7 +199,83 @@ export const SPIN_LATERAL_MIN = 15.0;
 // end-over-end flip -- you can spin off a small pop, but you cannot flip off
 // one. So the spin now asks only for enough air to complete a rotation, and
 // lateral speed is what actually selects it.
-export const SPIN_MIN_HEIGHT = 1.2;
+// --- the GRAB, one tier below the spin ---------------------------------------
+//
+// Amit's suggestion: "he can crouch a little bit, one arm touching the board,
+// the other one raised to the sky." It fills the gap the spin floor opened up --
+// without it, everything between "too small to spin" and "spins" was a plain
+// jump with no character at all, and a low ramp taken at a sensible speed did
+// nothing.
+//
+// Deliberately NOT a rotation. Every other trick on the ladder turns the whole
+// body, so the one move that just holds a shape reads as a different KIND of
+// thing rather than a smaller version of the same thing.
+// OFF until the pose is right. The tier and the ladder work -- what does not
+// work yet is the pose itself. Measured mid-air with the current values: the
+// two hands sit 0.01 apart vertically and the reaching hand is 1.02 above the
+// deck with its upper arm crossing the torso, so on screen it reads as both
+// arms flailing forward rather than one arm down to the board and one to the
+// sky. Shipping that would be worse than the plain jump it replaces.
+//
+// What the probing established, for whoever picks this up: on this rig
+// armR/foreR parent +Z is the only pairing that moves the hand down AND away
+// from the body, and the left arm cannot be raised past ~1.4 rad of abduction
+// before the hand starts coming back down. Getting the hand to the deck almost
+// certainly needs the reach solved as IK against a target on the board -- the
+// same conclusion the tuck reached for the feet -- rather than as FK angles.
+export const GRAB_ENABLED = false;
+export const GRAB_MIN_HEIGHT = 0.95;
+// AXES AND MAGNITUDES ARE MEASURED, not chosen -- this rig's arm bones are
+// near-degenerate in their local frames and the obvious axis is wrong as often
+// as it is right. Probing each bone's response at 0.8 rad gave, as hand
+// displacement (up / clearance from the torso axis):
+//
+//     armL  -Y  +0.191 / -0.102     the only axis that really raises a hand
+//     armR  +Z  -0.066 / +0.033     down AND away from the body
+//     foreR +Z  -0.190 / +0.059     the main lever for dropping the hand
+//
+// The first attempt used -Z on the forearm, which the sweep showed moves the
+// hand UP (+0.154) -- the pose was inverted and the measurement caught it.
+export const GRAB_CROUCH_HIP = 0.34;   // thigh toward the chest
+export const GRAB_CROUCH_KNEE = 0.55;  // heel folded back under
+export const GRAB_SKY_ARM = 1.40;      // left arm, through the abduction path
+export const GRAB_REACH_ARM = 0.90;    // right upper arm, parent +Z
+export const GRAB_REACH_ELBOW = 2.20;  // right forearm, parent +Z
+
+// Below this, no rotation at all -- just a jump.
+//
+// The floor existed before but sat at 1.0, which after the height rescale was
+// under almost everything the course could launch: a bank hit at walking pace
+// still cleared it, so the plain jump had effectively stopped existing. At 1.6
+// it separates the launchers by approach rather than by type:
+//
+//     kicker    0.63 .. 1.90   plain unless fast or tail-loaded
+//     bank      0.91 .. 2.73   plain when slow, spins at speed
+//     bigKicker 1.27 .. 3.83   spins
+//
+// Which is the same rule as everything else here -- the trajectory decides, so
+// rolling up to a low ramp with no speed gets you a hop over it and nothing
+// more, and that is a legible consequence rather than a dead input.
+export const SPIN_MIN_HEIGHT = 1.6;
+
+// --- how much a spin actually spins ------------------------------------------
+//
+// Every spin used to be exactly one revolution, so a scrape off a bank and a
+// full-speed big-kicker air looked like the same move played at two speeds --
+// which is precisely what made the whole category feel like one trick.
+//
+// Turns come from the height, the same quantity that chose the trick in the
+// first place, so the ladder stays honest: earn more air, get more rotation.
+// WHOLE revolutions only. A 540 lands the rider facing backwards, and with no
+// switch stance to land in, the yaw would have to snap round on touchdown --
+// exactly the one-frame snap this rig has been fighting all along.
+export const SPIN_720_HEIGHT = 2.6;
+
+// How far the rider leans OUT of vertical while spinning, in radians, at one
+// revolution. A perfectly flat spin reads as a turntable; a real one is thrown
+// off-axis by the rotation. Scales with turns, and eases in and out with the
+// arc so the rider is upright at takeoff and upright again to land.
+export const SPIN_LEAN = 0.30;
 
 // The spin gets the SAME earned height and cap as the backflip -- it replaces
 // that jump rather than being a different one, and having the same ramp produce
@@ -234,7 +315,7 @@ export const AIR_DURATION_MAX = 1.20;
 // EARNED AIR formula above produced, which is what qualified the jump for a
 // flip in the first place. AIR_HEIGHT_BACKFLIP is kept only as the ceiling, so
 // an unusually hot launch can't fling the rider absurdly high.
-export const AIR_HEIGHT_MAX = 8.0;
+export const AIR_HEIGHT_MAX = 6.2;
 export const AIR_DURATION_BACKFLIP = 0.55;
 
 // HOP-OVER -- the bail-out when you meet a rail or ledge at a bad angle.

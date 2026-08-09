@@ -53,6 +53,9 @@ import {
   RIM_COLOR, RIM_STRENGTH, RIM_POWER,
   BALANCE_CARVE, BALANCE_LATERAL, BALANCE_LATERAL_REF, BALANCE_SMOOTH,
   BALANCE_LIFT_BASE, BALANCE_LIFT_ASYM, ARM_LIFT_MAX,
+  SPIN_LEAN,
+  GRAB_CROUCH_HIP, GRAB_CROUCH_KNEE,
+  GRAB_SKY_ARM, GRAB_REACH_ARM, GRAB_REACH_ELBOW,
 } from '../data/constants.js';
 
 const RIDER_HEIGHT = 1.85;
@@ -704,6 +707,7 @@ export function createRider(scene, camera) {
       // decoupling the spin from the landing.
       let pitchExtra = 0;
       let yawExtra = 0;
+      let spinLean = 0;
       if (s.airActive && s.airTrick === 'backflip') {
         // POSITIVE, not negative -- the original sign rotated the character
         // forward-over (a front flip); Amit confirmed it needs to go backward.
@@ -712,12 +716,23 @@ export function createRider(scene, camera) {
       if (s.airActive && s.airTrick === 'spin') {
         // Signed by the drift direction captured at takeoff (main.js), so the
         // rotation continues the rider's own momentum instead of fighting it.
-        yawExtra = s.airT * Math.PI * 2 * (s.spinDir || 1);
+        // TURNS comes from the launch height, so a scrape off a bank and a
+        // full-speed kicker air are visibly different moves rather than the same
+        // one at two speeds. Always whole revolutions -- see SPIN_720_HEIGHT.
+        const turns = s.spinTurns || 1;
+        yawExtra = s.airT * Math.PI * 2 * turns * (s.spinDir || 1);
+        // Thrown off vertical by the rotation, hardest in the middle of the arc
+        // and back upright to land. sin() rather than a constant because a lean
+        // still present at touchdown would put the board down on its edge; this
+        // is exactly zero at both ends by construction.
+        spinLean = Math.sin(s.airT * Math.PI) * SPIN_LEAN * turns * (s.spinDir || 1);
       }
       // HOP-OVER has NO whole-body rotation -- it's a leg tuck applied directly
       // to the rig's bones after the mixer runs (further down). The barrel roll
       // that used to live here "didn't make a lot of sense" and is gone.
-      const rollExtra = 0;
+      // Only a spin rolls the body now; the barrel roll that used to live here
+      // "didn't make a lot of sense" and is gone.
+      const rollExtra = spinLean;
 
       // The landing absorb used to live here as a pitch on `tilt`. It doesn't
       // any more: rotating this group tips the BOARD with it, and an impact is
@@ -857,8 +872,14 @@ export function createRider(scene, camera) {
           // and it hands straight over to the landing absorb with no jump.
           const fold = Math.sin(Math.min(1, s.airT) * Math.PI);
           const hopping = s.airTrick === 'hop';
-          const hip = fold * Math.max(AIR_TUCK_HIP, hopping ? HOP_HIP_FOLD : 0);
-          const knee = fold * Math.max(AIR_TUCK_KNEE, hopping ? HOP_KNEE_FOLD : 0);
+          const grabbing = s.airTrick === 'grab';
+          // max() rather than sum, for the same reason the hop uses it: these
+          // all drive the same two joints in the same direction, and adding
+          // them would double the fold.
+          const hip = fold * Math.max(AIR_TUCK_HIP,
+            hopping ? HOP_HIP_FOLD : 0, grabbing ? GRAB_CROUCH_HIP : 0);
+          const knee = fold * Math.max(AIR_TUCK_KNEE,
+            hopping ? HOP_KNEE_FOLD : 0, grabbing ? GRAB_CROUCH_KNEE : 0);
           // Signs are opposed between the two joints: the thigh swings the knee
           // UP toward the chest, the shin folds the heel BACK under the thigh.
           upLegL.rotation.x -= hip;
@@ -1061,6 +1082,40 @@ export function createRider(scene, camera) {
             if (foreL) foreL.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(1, 0, 0), -fold));
             if (foreR) foreR.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(0, 0, 1), -fold));
           }
+          // THE GRAB. One arm to the sky, one down to the board -- and the
+          // reaching arm is the whole reason this needs its own path. Every
+          // other arm pose in this file only ever abducts (negative parent X,
+          // hand away from the body), because that is the one direction the
+          // hand cannot clip through the torso. Reaching DOWN is the forbidden
+          // direction, so it is done in three parts that keep the hand outside
+          // the hip the whole way: swing CLEAR of the body first, carry it
+          // FORWARD over the deck, and only then fold the ELBOW to drop the
+          // hand. The upper arm never has to point down through the ribs.
+          const grabEnv = (s.airActive && s.airTrick === 'grab')
+            ? Math.sin(Math.min(1, s.airT) * Math.PI) : 0;
+          if (grabEnv > 0.001) {
+            // Reaching arm: parent +Z on BOTH the upper arm and the forearm.
+            // Measured as the only combination that takes the hand down and
+            // AWAY from the torso at the same time -- every other axis either
+            // lifts it or drags it through the ribs. See constants.js.
+            armR.quaternion.premultiply(
+              _q.setFromAxisAngle(_ax.set(0, 0, 1), grabEnv * GRAB_REACH_ARM));
+            if (foreR) {
+              foreR.quaternion.premultiply(
+                _q.setFromAxisAngle(_ax.set(0, 0, 1), grabEnv * GRAB_REACH_ELBOW));
+            }
+            // Sky arm goes through the EXISTING abduction path rather than a
+            // new axis of its own. A static probe suggested parent -Y raised the
+            // hand further, but in play it measured level with the hips: that
+            // probe was taken on a frozen frame, and it did not account for the
+            // clip the mixer is still driving underneath. The abduction path is
+            // the one that demonstrably lifts a hand every jump, so the grab
+            // borrows it and just pushes it harder.
+            liftL = Math.min(ARM_LIFT_MAX, Math.max(liftL, grabEnv * GRAB_SKY_ARM));
+            // The reaching arm is posed above; no abduction on top of it.
+            liftR = 0;
+          }
+
           if (liftL > 0.001) {
             armL.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(1, 0, 0), -liftL));
           }

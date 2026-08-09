@@ -32,21 +32,21 @@ export const PROP_TYPES = {
     size: { w: 5.6, h: 1.6, l: 5.0 },
     colour: 0x8a4fe8,
     accent: 0x5427b6,
-    launch: { power: 1.5, points: 260, profile: 'wedge' },
+    launch: { power: 1.42, points: 260, profile: 'wedge' },
     label: 'BIG AIR',
   },
   // THE ONLY LAUNCHER THAT CAN PRODUCE A BACKFLIP, and only when hit at speed.
   // A proper vert wall rather than a wedge: tall, narrow, and steepening toward
   // the lip, so it reads from a distance as something you have to commit to.
-  // power 2.1 puts its range at 3.4-12.1 units against a 6.8 flip bar, which
-  // means roughly SPEED_REF and up flips and a scrubbed-off approach spins --
+  // power 1.9 puts its range at 2.3-6.7 units against a 4.4 flip bar, so it
+  // needs roughly 23 u/s and up to flip and a scrubbed-off approach spins --
   // the speed requirement is the physics, not a separate rule.
   barrel: {
     kind: 'launch',
     size: { w: 5.0, h: 3.6, l: 6.5 },
     colour: 0xb84fd8,
     accent: 0xffd166,
-    launch: { power: 2.1, points: 420, profile: 'curve' },
+    launch: { power: 1.9, points: 420, profile: 'curve' },
     label: 'VERT WALL',
   },
   bank: {
