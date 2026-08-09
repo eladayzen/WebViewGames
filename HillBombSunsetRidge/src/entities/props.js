@@ -327,7 +327,13 @@ function buildCrystal(def) {
     b.fromBufferAttribute(pos, i + 1);
     cc.fromBufferAttribute(pos, i + 2);
     n.crossVectors(b.sub(a), cc.sub(a)).normalize();
-    const k = 0.55 + 0.45 * Math.max(0, n.dot(key));
+    // The FLOOR matters more than the range. Shading down to 0.55 was fine on a
+    // small gem, but once the crystal doubled in size its dark faces filled
+    // enough screen to set the whole read -- amber at 55% against a near-black
+    // playfield lands as brown, and it looked like a cardboard box. Keeping the
+    // darkest facet at 0.74 preserves the faceting while never letting any face
+    // fall out of the gold.
+    const k = 0.74 + 0.26 * Math.max(0, n.dot(key));
     for (let j = 0; j < 3; j++) {
       colours[(i + j) * 3] = c.r * k;
       colours[(i + j) * 3 + 1] = c.g * k;
@@ -340,10 +346,12 @@ function buildCrystal(def) {
   // Larger, dimmer shell: a cheap glow that needs no post-processing, and the
   // thing that separates a crystal from the white chevrons painted on the ramps
   // at a glance.
+  // Sized just proud of the core (0.68 -> 0.82). At 1.05 it stood far enough off
+  // the gem to read as a dull solid shell of its own rather than as a glow.
   const halo = new THREE.Mesh(
-    new THREE.OctahedronGeometry(w * 1.05, 0),
+    new THREE.OctahedronGeometry(w * 0.82, 0),
     new THREE.MeshBasicMaterial({
-      color: def.colour, transparent: true, opacity: 0.3,
+      color: def.colour, transparent: true, opacity: 0.42,
       depthWrite: false, side: THREE.BackSide,
     }),
   );

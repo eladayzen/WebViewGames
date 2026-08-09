@@ -34,9 +34,11 @@ export const MISSIONS = [
     name: 'FIRST DROP',
     brief: 'Learn the ridge. Grab what shines.',
     seconds: 70,
+    // ONE objective. The first mission teaches one thing -- go and get the
+    // crystals -- and a second line beside it would split the attention of a
+    // player still working out how the board turns.
     objectives: [
-      { kind: 'pickup', type: 'crystal', count: 6 },
-      { kind: 'launch', count: 3 },
+      { kind: 'pickup', type: 'crystal', count: 10 },
     ],
   },
   {

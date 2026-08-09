@@ -122,13 +122,17 @@ export const PROP_TYPES = {
   // "collect me" rather than "avoid me".
   crystal: {
     kind: 'pickup',
-    size: { w: 0.55, h: 0.9, l: 0.55 },
+    // WIDE rather than tall. The rider approaches along the road and reaches
+    // laterally, so width is what makes a crystal look catchable and height is
+    // mostly wasted on it -- a narrow gem read as a distant speck at the range
+    // you actually have to commit to the carve.
+    size: { w: 1.15, h: 1.25, l: 1.15 },
     colour: 0xffb43c,
     accent: 0xffe89a,
     // `height` is where it floats above the surface, and `reach` how far above
     // or below that the rider may be and still take it. Chest height with a
     // generous reach: a crystal on the deck should not need a hop.
-    pickup: { type: 'crystal', points: 120, catchWidth: 2.0, height: 0.85, reach: 1.5 },
+    pickup: { type: 'crystal', points: 120, catchWidth: 3.4, height: 0.9, reach: 2.2 },
     label: 'CRYSTAL',
   },
 
@@ -137,10 +141,10 @@ export const PROP_TYPES = {
   // -- you can see from the road that it is up there, and only real air gets it.
   highCrystal: {
     kind: 'pickup',
-    size: { w: 0.55, h: 0.9, l: 0.55 },
+    size: { w: 1.15, h: 1.25, l: 1.15 },
     colour: 0xffb43c,
     accent: 0xffe89a,
-    pickup: { type: 'crystal', points: 260, catchWidth: 2.2, height: 3.1, reach: 1.6 },
+    pickup: { type: 'crystal', points: 260, catchWidth: 3.6, height: 3.1, reach: 2.0 },
     label: 'HIGH CRYSTAL',
   },
 };
