@@ -33,6 +33,12 @@ pipeline/macro-briefs/**/concepts/*.webp
 */art/mixamo-upload/*
 !*/art/mixamo-upload/README.md
 
+# Agent worktrees. `.claude/worktrees/<name>` is a live git worktree -- a full
+# second checkout of this repo (370MB at the time of writing). Committing it
+# would nest the repo inside itself; it is scratch belonging to whichever
+# session is using it, and `git worktree` already tracks it properly elsewhere.
+.claude/worktrees/
+
 # Logs
 logs
 *.log
