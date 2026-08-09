@@ -24,7 +24,9 @@ export const CARVE_SCRUB = 0.10;
 export const TUCK_BONUS = 5.2; // extra accel at full tuck, world units/s^2
 // How fast the tuck engages and releases. Deliberately unhurried -- a tuck that
 // snaps on reads as a button, and Amit asked for speed that arrives naturally.
-export const TUCK_SMOOTH = 3.2;
+// Halved the time to reach full tuck (3.2 -> 6.4 is twice the rate). The build
+// should still be felt rather than switched, just sooner.
+export const TUCK_SMOOTH = 6.4;
 // Release when the INPUT simply stops. Faster than the engage, because letting
 // go should visibly end the pose rather than have it linger -- but nowhere near
 // instant, which would be a one-frame pop.
@@ -745,6 +747,17 @@ export const TUCK_SINK = 0.10;
 // nothing. That is the whole reason the splay is free now: as FK it swung the
 // thigh and dragged the foot on a long lever (measured 0.47 of foot movement).
 export const TUCK_KNEE_SPLAY = 0.55;
+// The LEFT knee splays far harder than the right on this rig -- measured -0.277
+// against -0.064 -- so it swung well out to the side when it should point down
+// the lane. Scaling only that leg's lateral pole keeps the pair looking even; a
+// single shared value cannot, because the two legs do not respond equally in a
+// skate stance.
+export const TUCK_SPLAY_LEFT_SCALE = 0.0; // pole dead ahead for that leg
+// Elbows fold so the forearms point ahead, down the lane. Per-arm axes, because
+// the chains are asymmetric: the left forearm carries the hand forward best on
+// parent -X (-0.087 of Z) and the right on parent -Z (-0.154), while a shared
+// axis sends one of them backwards.
+export const TUCK_ELBOW_FOLD = 0.9;
 // Arms reach forward, in front of the body. Parent Y, also mirrored: left -Y
 // and right +Y each carry the hand forward (-0.177 and -0.105 of Z at 0.6 rad).
 // This composes with the balance lift's abduction rather than replacing it, so

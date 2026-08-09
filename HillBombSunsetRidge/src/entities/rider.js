@@ -45,7 +45,8 @@ import {
   HOP_HIP_FOLD, HOP_KNEE_FOLD,
   AIR_TUCK_HIP, AIR_TUCK_KNEE, AIR_ARM_LIFT, LAND_ARM_LIFT,
   LAND_HIP_BEND, LAND_KNEE_BEND, LAND_SPINE_CURL,
-  TUCK_SPINE, TUCK_SINK, TUCK_KNEE_SPLAY, TUCK_ARM_FORWARD,
+  TUCK_SPINE, TUCK_SINK, TUCK_KNEE_SPLAY, TUCK_SPLAY_LEFT_SCALE,
+  TUCK_ARM_FORWARD, TUCK_ELBOW_FOLD,
   BRAKE_SPINE, BRAKE_BOARD_PITCH,
   GRIND_YAW, GRIND_HIP_BEND, GRIND_KNEE_BEND,
   GRIND_ARM_SPREAD, GRIND_ELBOW_OPEN, GRIND_PUSH_LOCKOUT,
@@ -1051,6 +1052,14 @@ export function createRider(scene, camera) {
           if (fwd > 0.001) {
             armL.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(0, 1, 0), -fwd));
             armR.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(0, 1, 0), fwd));
+            // ELBOWS FOLD so the forearms point ahead down the lane, rather
+            // than the arms reaching forward straight. Separate axis per arm --
+            // measured, these chains are not mirror images: the left carries
+            // the hand forward on parent -X and the right on parent -Z, and a
+            // shared axis sends one of them backwards.
+            const fold = (s.tucking || 0) * TUCK_ELBOW_FOLD;
+            if (foreL) foreL.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(1, 0, 0), -fold));
+            if (foreR) foreR.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(0, 0, 1), -fold));
           }
           if (liftL > 0.001) {
             armL.quaternion.premultiply(_q.setFromAxisAngle(_ax.set(1, 0, 0), -liftL));
@@ -1102,7 +1111,11 @@ export function createRider(scene, camera) {
               root.localToWorld(_tgt);
               ft.getWorldPosition(_poseNow);
               _tgt.lerpVectors(_poseNow, _tgt, tk);
-              _pole.set(sgn * splay, 0, -1).normalize().applyQuaternion(q);
+              // The left leg's lateral component is scaled down: it responds
+              // far more strongly than the right, and unscaled it swung the
+              // knee out to the side instead of pointing down the lane.
+              const lat = sgn * splay * (sgn < 0 ? TUCK_SPLAY_LEFT_SCALE : 1);
+              _pole.set(lat, 0, -1).normalize().applyQuaternion(q);
               solveLegIK(up, low, ft, _tgt, _pole, tk);
             }
           } else if (hasRestAnkle === false && footL && footR) {
