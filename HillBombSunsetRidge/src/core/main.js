@@ -46,6 +46,7 @@ import { createSpeedLines } from '../entities/speedLines.js';
 import { createScoring } from '../systems/scoring.js';
 import { createHud } from '../ui/hud.js';
 import { CONTROLS, setControlPreset } from '../data/controlPresets.js';
+import { createEvents, RIDE_EVENTS as EV } from './events.js';
 
 // --- renderer / scene -------------------------------------------------------
 const app = document.getElementById('app');
@@ -94,6 +95,9 @@ const scoring = createScoring();
 const hud = createHud();
 const rider = createRider(scene, camera);
 const rig = createCameraRig(camera);
+// The controller reports what happened; game modes listen. Nothing downstream
+// of this line may reach back into the simulation -- see core/events.js.
+const events = createEvents();
 
 // --- run state --------------------------------------------------------------
 const state = {
@@ -284,7 +288,7 @@ function reset() {
  * backflip do a backflip". The random/conditional layer he mentioned wanting
  * later goes exactly here, gated behind the same `canFlip` check.
  */
-function beginAir(power, points, forcedTrick) {
+function beginAir(power, points, forcedTrick, launchLabel) {
   // How much air this launch earned. Speed never contributes zero -- a crawling
   // rider still gets some pop, just never enough to reach the flip threshold.
   const speedFactor = AIR_SPEED_FLOOR
@@ -353,6 +357,13 @@ function beginAir(power, points, forcedTrick) {
     state.airHeight = earnedHeight;
     state.airDuration = AIR_DURATION * power;
   }
+
+  // Reported AFTER height and duration are settled, so a listener sees the
+  // finished jump rather than a half-decided one.
+  events.emit(EV.LAUNCH, {
+    launcher: launchLabel, power, height: state.airHeight, trick,
+  });
+  if (trick === 'hop') events.emit(EV.HOP, { label: launchLabel });
 }
 
 // --- lobby ------------------------------------------------------------------
@@ -397,6 +408,9 @@ function showGameOver() {
   const km = (state.s / 1000).toFixed(2);
   finalBreakdownEl.textContent = `${km} km ridden  \u00b7  top ${Math.round(sc.topSpeed * 2.6)} km/h`;
   gameoverEl.classList.remove('hidden');
+  events.emit(EV.RUN_END, {
+    reason: 'wipeout', score: Math.round(sc.score), distance: state.s,
+  });
 }
 
 function restart() {
@@ -624,10 +638,17 @@ function frame() {
         // absorb-and-recover wobble, ordinary jumps don't get.
         // ABSORB ON EVERY LANDING, not just tricks. Scale by what was just
         // pulled off -- a backflip lands hardest, a hop barely at all.
-        beginLanding(state.airTrick === 'backflip' ? LAND_AMOUNT_BACKFLIP
-          : state.airTrick === 'spin' ? LAND_AMOUNT_SPIN
-          : state.airTrick === 'hop' ? LAND_AMOUNT_HOP
+        const landedTrick = state.airTrick;
+        beginLanding(landedTrick === 'backflip' ? LAND_AMOUNT_BACKFLIP
+          : landedTrick === 'spin' ? LAND_AMOUNT_SPIN
+          : landedTrick === 'hop' ? LAND_AMOUNT_HOP
           : LAND_AMOUNT_PLAIN);
+        // A rotation only counts once it has actually been landed -- reporting
+        // it at launch would credit a trick the rider never completed.
+        if (landedTrick && landedTrick !== 'hop') {
+          events.emit(EV.TRICK, { type: landedTrick, height: state.airHeight });
+        }
+        events.emit(EV.LAND, { trick: landedTrick, amount: state.landAmount });
         state.airTrick = null;
       }
     }
@@ -643,6 +664,10 @@ function frame() {
       state.grindTime += dt;
       state.grindPoints += g.def.grind.pointsPerSecond * dt;
       if (state.s > g.s + half) {
+        events.emit(EV.GRIND, {
+          label: g.def.label, seconds: state.grindTime,
+          points: Math.round(state.grindPoints),
+        });
         scoring.award(Math.round(state.grindPoints), g.def.label);
         g.spent = true;
         state.grind = null;
@@ -719,7 +744,7 @@ function frame() {
           // does something cool" behaviour: kickers/banks are the "something
           // cool happens" case, cones/potholes/barriers are the "that hurts"
           // case, and the two are told apart by kind, not by a player input.
-          beginAir(hit.def.launch.power, hit.def.launch.points);
+          beginAir(hit.def.launch.power, hit.def.launch.points, undefined, hit.def.label);
           // Take off from the FULL lip height. The crossing test fires on the
           // first frame at or past the takeoff, which can be up to ~0.5 units
           // beyond it at speed -- by which point rampHeightAt() already reads
@@ -751,7 +776,7 @@ function frame() {
           const lateralSpeed = Math.abs(state.thetaVel) * radiusAt(state.s);
           const crossRatio = lateralSpeed / Math.max(1, state.speed);
           if (crossRatio > GRIND_MAX_CROSS_RATIO) {
-            beginAir(1.0, 90, 'hop');
+            beginAir(1.0, 90, 'hop', hit.def.label);
             // DELIBERATELY NOT `spent`. Hopping a rail must not consume it:
             // `spent` is permanent and drops the prop from probe() entirely, so
             // a rail you skipped over crosswise lost its collider for good and
@@ -791,6 +816,7 @@ function frame() {
             hud.banner(hit.def.label);
           }
         } else if (hit.def.kind === 'hazard') {
+          events.emit(EV.HAZARD, { label: hit.def.label, wobble: hit.def.hazard.wobble });
           scoring.hit(hit.def.hazard.wobble, hit.def.label);
           state.speed *= 1 - hit.def.hazard.scrub;
           hit.spent = true;
@@ -940,7 +966,7 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines };
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);
