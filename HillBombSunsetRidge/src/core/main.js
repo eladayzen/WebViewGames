@@ -204,6 +204,26 @@ const HUGE_AIR_POINTS = 250;
 
 let swingScale = 1;
 let running = false;
+let paused = false;
+/**
+ * Pause state lives across runs unless something clears it, and nothing did:
+ * quitting while paused left the flag set, so the NEXT run opened frozen with
+ * the paused badge up and the board doing nothing -- which reads as the game
+ * being broken rather than as a pause. Every entry to and exit from a run now
+ * goes through here.
+ */
+function setPaused(next) {
+  paused = next;
+  const pauseButton = document.getElementById('pause-button');
+  const pausedBadge = document.getElementById('paused-badge');
+  if (pauseButton) pauseButton.innerHTML = paused ? '&#9654;' : '&#9208;';
+  if (pausedBadge) pausedBadge.classList.toggle('hidden', !paused);
+}
+{
+  const pauseButton = document.getElementById('pause-button');
+  if (pauseButton) pauseButton.addEventListener('click', () => setPaused(!paused));
+}
+
 let autoTrick = false;
 let autoTrickTimer = 0;
 
@@ -500,6 +520,7 @@ function startRun(id) {
   // Modes opt OUT of the score readout; everything shows it by default.
   hud.setScoreVisible(def.showsScore !== false);
   running = true;
+  setPaused(false);
   reset();
   modes.start(id);
 }
@@ -606,19 +627,73 @@ function showGameOver(reason = 'wipeout', card = null) {
   });
 }
 
+// --- navigation -------------------------------------------------------------
+//
+// ONE STACK, ONE RULE: back goes up a level, and finishing a run goes up a
+// level. The levels are
+//
+//     SDK games list
+//       -> pick a mode
+//            -> pick a mission        (missions only)
+//                 -> the run
+//
+// so a mission returns to the mission list and everything else returns to the
+// mode lobby, and the back button at the top calls the host's nav:back. Writing
+// it as a stack rather than as a per-screen rule is what stops the two ways OUT
+// of a run -- finishing it and quitting it -- drifting apart, which they had:
+// results went to the mode lobby while the back button did nothing at all.
+
+/** The screen above a run, which depends on whether the mode has levels. */
+function leaveRun() {
+  // Read the mode BEFORE tearing it down. The host happens to keep its `def`
+  // after stop() so `modes.id` would still answer, but relying on that makes
+  // this correct by accident.
+  const wasMissions = modes.id === 'missions';
+  modes.stop();
+  running = false;
+  setPaused(false);
+  if (wasMissions) missionSelect.open();
+  else modeSelect.open();
+}
+
 function restart() {
   if (!gameOver) return;
   gameOver = false;
   gameoverEl.classList.add('hidden');
-  // EVERY run ends back at the front door. Restarting in place, or dropping
-  // straight back into a mission list, left the mode itself unreachable once a
-  // run had started -- the only way to change what you were playing was to
-  // reload the page. Picking the mode is the first decision of a session and it
-  // should be available at the start of every session, not just the first.
-  modes.stop();
-  running = false;
-  modeSelect.open();
+  leaveRun();
 }
+
+// --- quit confirm -----------------------------------------------------------
+const confirmEl = document.getElementById('confirm-overlay');
+function isConfirmOpen() { return !confirmEl.classList.contains('hidden'); }
+document.getElementById('confirm-no').addEventListener('click', () => {
+  confirmEl.classList.add('hidden');
+});
+document.getElementById('confirm-yes').addEventListener('click', () => {
+  confirmEl.classList.add('hidden');
+  leaveRun();
+});
+
+/**
+ * The back button. Its meaning is positional, which is why it cannot stay an
+ * inline onclick in the markup: only the game knows which screen is above.
+ */
+document.getElementById('gb-back').addEventListener('click', () => {
+  if (isConfirmOpen()) {                       // already asking -- treat as "no"
+    confirmEl.classList.add('hidden');
+  } else if (missionSelect.isOpen()) {         // mission list -> mode lobby
+    missionSelect.close();
+    modeSelect.open();
+  } else if (modeSelect.isOpen()) {            // top of OUR stack -> leave the game
+    if (window.Unity) window.Unity.call('nav:back');
+  } else if (gameOver) {                       // results -> up a level
+    restart();
+  } else if (running) {                        // mid-run -> ask first
+    confirmEl.classList.remove('hidden');
+  } else if (window.Unity) {
+    window.Unity.call('nav:back');
+  }
+});
 
 restartButton.addEventListener('click', restart);
 // Space/Enter restart too: they're the only keys the host forwards, and the
@@ -636,18 +711,6 @@ window.addEventListener('keydown', (e) => {
 // Freezes the simulation but keeps rendering, so the frozen frame stays on
 // screen rather than going black. dt still advances the clock; the sim block
 // below is simply skipped.
-let paused = false;
-{
-  const pauseButton = document.getElementById('pause-button');
-  const pausedBadge = document.getElementById('paused-badge');
-  if (pauseButton) {
-    pauseButton.addEventListener('click', () => {
-      paused = !paused;
-      pauseButton.innerHTML = paused ? '&#9654;' : '&#9208;';
-      if (pausedBadge) pausedBadge.classList.toggle('hidden', !paused);
-    });
-  }
-}
 
 // Live settings panel. Initialised AFTER the lobby on purpose: the lobby's
 // onChange fires once during its own construction and writes the control
@@ -668,7 +731,8 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, clock.getDelta());
 
-  if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !missionSelect.isOpen() && !isPanelOpen()) {
+  if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !missionSelect.isOpen()
+      && !isConfirmOpen() && !isPanelOpen()) {
     const { carve, tuck, brake, pop } = readInput();
 
     // SOFT tilt response (see constants.js). Two stages:

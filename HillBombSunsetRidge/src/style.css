@@ -873,3 +873,37 @@ html, body {
 
 /* The score block hides in modes that are not decided by points (SPEED RACE). */
 #score-block.hidden { display: none; }
+
+/* --- quit confirm ---------------------------------------------------------
+   A question, not a screen: the run stays visible behind it so it is obvious
+   what you are about to throw away. */
+#confirm-overlay { background: rgba(12, 8, 16, 0.72); z-index: 9600; }
+.confirm-box {
+  width: min(26em, 84vw);
+  font-size: clamp(9px, 1.34vw, 13px);
+  padding: 1.6em 1.6em 1.4em;
+  border-radius: 1em;
+  background: rgba(28, 20, 34, 0.96);
+  border: 1.5px solid rgba(255, 233, 214, 0.18);
+  color: var(--paper);
+  text-align: center;
+}
+.confirm-title {
+  font: 900 1.7em/1.1 system-ui, sans-serif;
+  letter-spacing: 0.06em;
+}
+.confirm-sub { margin-top: 0.4em; font: 500 1em system-ui, sans-serif; opacity: 0.55; }
+.confirm-row { display: flex; gap: 0.7em; margin-top: 1.3em; }
+.confirm-row button {
+  flex: 1 1 0;
+  padding: 0.95em 0.6em;
+  border: none; border-radius: 999px;
+  font: 800 1.05em system-ui, sans-serif;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+/* KEEP RIDING is the safe answer, so it is the prominent one -- the destructive
+   choice should never be the easiest thing to hit by accident. */
+#confirm-no { background: var(--hot); color: #23150c; }
+#confirm-yes { background: rgba(255, 255, 255, 0.1); color: var(--paper); }
+#confirm-no:hover, #confirm-yes:hover { filter: brightness(1.12); }

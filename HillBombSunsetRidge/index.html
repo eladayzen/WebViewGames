@@ -53,10 +53,15 @@
            X), Pause sits to its left, the settings gear left of that. Icon-only
            38px circles. -->
 
-      <!-- GoBalance SDK: native-bridge Back button. Returns to the games list. -->
-      <button id="gb-back"
-        onclick="if(window.Unity)window.Unity.call('nav:back');"
-        title="Back">&times;</button>
+      <!-- BACK. One button, one meaning: go up a level.
+           From the mode lobby that means leaving the game entirely, which is
+           the SDK's native bridge (`nav:back`). From anywhere inside the game it
+           means the screen above -- the mission list, then the mode lobby. The
+           handler lives in core/main.js rather than inline here, because "up"
+           depends on where you are and only the game knows that. It still calls
+           nav:back at the top of the stack, which is the contract the host
+           cares about (GOBALANCE_SDK.md). -->
+      <button id="gb-back" title="Back">&times;</button>
 
       <!-- Placeholder glyph icon (real icon art later); swaps to ▶ when paused. -->
       <button id="pause-button" title="Pause">&#9208;</button>
@@ -154,6 +159,21 @@
           <h1>Hill Bomb <span>· Sunset Ridge</span></h1>
           <p class="sub">Choose a mode</p>
           <div id="mode-list"></div>
+        </div>
+      </div>
+
+      <!-- QUIT CONFIRM. Leaving a run mid-ride throws away the run, and on a
+           balance board the back button is easy to catch by accident, so it
+           asks. Deliberately small and centred rather than a full takeover --
+           it is a question, not a screen. -->
+      <div id="confirm-overlay" class="overlay hidden">
+        <div class="confirm-box">
+          <div class="confirm-title">QUIT THIS RUN?</div>
+          <div class="confirm-sub">Your progress in this run will be lost.</div>
+          <div class="confirm-row">
+            <button id="confirm-no">KEEP RIDING</button>
+            <button id="confirm-yes">QUIT</button>
+          </div>
         </div>
       </div>
 
