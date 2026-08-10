@@ -181,6 +181,7 @@ const state = {
   spinTurns: 1, // whole revolutions this spin does -- see SPIN_720_HEIGHT
   boostT: 0, // seconds left on a boost pad's burst
   boostFloor: 0, // speed held for that burst -- see the boost pickup
+  airFrom: null, // the ramp this air launched from, excluded from ramp collision
   // Height of the launch ramp deck the rider is standing on right now.
   rampLift: 0,
   // Landing absorb. landT counts down from LAND_SETTLE_DURATION; landAmount is
@@ -312,6 +313,7 @@ function reset() {
   state.spinTurns = 1;
   state.boostT = 0;
   state.boostFloor = 0;
+  state.airFrom = null;
   state.rampLift = 0;
   state.landT = 0;
   state.landAmount = 0;
@@ -937,9 +939,40 @@ function frame() {
     // instant they go airborne. The ease-down is hidden under the air arc,
     // which is already climbing over the same moment.
     {
-      const rampTarget = state.airActive || state.grind
-        ? 0
-        : props.rampHeightAt(state.s, state.theta);
+      // THE RAMP IS SOLID IN THE AIR TOO. This used to read the surface as 0
+      // whenever airActive was set, which is where "I fly straight through the
+      // next ramp" came from -- nothing was lifting the rider, so the arc just
+      // passed through the geometry. The surface is now queried every frame,
+      // and an arc that is BELOW it has hit the ramp face.
+      //
+      // The ramp that launched this jump is excluded: a bank's takeoff is its
+      // middle, so for a moment after leaving one the rider is still over its
+      // back half and would collide with the ramp they had just left.
+      const surfaceH = props.rampHeightAt(state.s, state.theta, state.airFrom);
+      const arcLift = state.airActive
+        ? Math.sin(state.airT * Math.PI) * state.airHeight : 0;
+
+      if (state.airActive && !state.grind && surfaceH > arcLift + 0.05) {
+        // Struck the face. Plant on it and let the ordinary ride-up take over --
+        // the rider now runs up this ramp and launches off its lip like any
+        // other approach, which is what "I do not want to go through it" should
+        // feel like. The trick is ended the same way a touchdown ends it.
+        const landedTrick = state.airTrick;
+        state.airActive = false;
+        state.airT = 0;
+        state.airTrick = null;
+        state.airPoints = 0;
+        rig.onLand();
+        scoring.land();
+        beginLanding(landedTrick ? LAND_AMOUNT_SPIN : LAND_AMOUNT_PLAIN);
+        events.emit(EV.LAND, {
+          trick: landedTrick, amount: state.landAmount,
+          height: arcLift, points: 0, huge: false,
+        });
+        state.rampLift = surfaceH;
+      }
+
+      const rampTarget = state.airActive || state.grind ? 0 : surfaceH;
       if (rampTarget >= state.rampLift) state.rampLift = rampTarget;
       else state.rampLift += (rampTarget - state.rampLift) * Math.min(1, dt * (1 / 0.16));
     }
@@ -980,6 +1013,8 @@ function frame() {
           // cool happens" case, cones/potholes/barriers are the "that hurts"
           // case, and the two are told apart by kind, not by a player input.
           beginAir(hit.def.launch.power, hit.def.launch.points, undefined, hit.def.label);
+          // So the arc-vs-ramp test below can ignore the ramp we just left.
+          state.airFrom = hit;
           // Take off from the FULL lip height. The crossing test fires on the
           // first frame at or past the takeoff, which can be up to ~0.5 units
           // beyond it at speed -- by which point rampHeightAt() already reads

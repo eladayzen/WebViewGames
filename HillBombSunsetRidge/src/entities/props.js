@@ -721,9 +721,17 @@ export function createProps(scene) {
      *
      * @param {number} s @param {number} theta
      */
-    rampHeightAt(s, theta) {
+    /**
+     * Height of the tallest ramp surface under (s, theta), or 0.
+     * @param {object} [ignore] a prop to skip -- the ramp the rider just
+     *   launched FROM. A bank's takeoff is its middle, so the rider is still
+     *   over its back half for a moment afterwards; without this they would
+     *   collide with the ramp they had just left, on the frame they left it.
+     */
+    rampHeightAt(s, theta, ignore) {
       let best = 0;
       for (const it of active) {
+        if (it === ignore) continue;
         if (it.def.kind !== 'launch') continue;
         const { l, w, h } = it.def.size;
         const halfL = Math.max(l, 1.2) / 2;
