@@ -150,6 +150,57 @@ export const PROP_TYPES = {
     label: 'CRYSTAL',
   },
 
+  // --- speed boost -------------------------------------------------------
+  // Its OWN kind, not another pickup. Kinds are how a course decides what may
+  // spawn, so giving the boost its own means the race can have boosts without
+  // crystals and the missions can have crystals without boosts -- no mode has
+  // to filter anything itself.
+  //
+  // Read as a PAD on the road rather than a floating object: it is something
+  // you steer onto, and a thing at chest height would compete with the crystals
+  // for what "collectable" looks like.
+  boostPad: {
+    kind: 'boost',
+    // Width IS the gap between the gate posts, and the catch width matches it
+    // -- what you see is what you have to ride through.
+    size: { w: 4.2, h: 2.9, l: 3.2 },
+    colour: 0x00e5ff,
+    accent: 0xffffff,
+    // A SUSTAINED overspeed, not a spike. Measured: a one-off +11 u/s was worth
+    // 14 m over three seconds because drag ate it almost immediately, while
+    // carving for the same three seconds costs 44.7 m -- so steering for a pad
+    // was strictly worse than ignoring it, and a bot that chased them finished
+    // last by 1.3 km. Held for `seconds`, +13 is worth roughly 35 m, which is
+    // worth roughly 55 m. That number is not a preference, it is solved against
+    // two measurements: carving costs ~15 m per second of progress, and a pad at
+    // 0.2W needs about a second of carve each way to reach, so anything under
+    // ~30 m is a trap. At 13 u/s it WAS a trap -- a bot that took 18 pads
+    // finished a place BELOW one that ignored them.
+    //
+    // `ceiling` is the absolute cap, and it is not optional: the floor is set
+    // from the CURRENT speed, so back-to-back pads compounded without bound --
+    // 38 -> 51 -> 64 -> 77 -- and a bot that simply held forward covered 8.4 km
+    // in ninety seconds and beat the field by nearly five kilometres.
+    boost: { speed: 20, seconds: 2.8, points: 60, catchWidth: 2.4, ceiling: 58, height: 0 },
+    label: 'BOOST',
+  },
+
+  // The same gate, hung in the AIR just past a ramp lip. `height` is what makes
+  // it a different thing: a gate on the road is taken by steering, and this one
+  // can only be taken by being airborne at the right moment, so the reward for
+  // committing to a ramp is not just the trick.
+  airGate: {
+    kind: 'boost',
+    size: { w: 4.2, h: 2.9, l: 3.2 },
+    colour: 0xffd166,
+    accent: 0xffffff,
+    boost: {
+      speed: 22, seconds: 3.0, points: 120, catchWidth: 2.6, ceiling: 58,
+      height: 2.6, reach: 1.7,
+    },
+    label: 'AIR GATE',
+  },
+
   // Same crystal, parked out of reach of a rider on the ground. This is a
   // separate TYPE rather than a per-instance height so the reward stays legible
   // -- you can see from the road that it is up there, and only real air gets it.
@@ -191,6 +242,8 @@ export const PATTERNS = [
       { type: 'crystal', ds: 21, u: W * 0.1 },
       { type: 'crystal', ds: 40, u: W * 0.3 },
       { type: 'kicker', ds: 50, u: -W * 0.35 },
+      { type: 'boostPad', ds: 20, u: W * 0.20 },
+      { type: 'boostPad', ds: 58, u: -W * 0.24 },
     ],
   },
   {
@@ -200,6 +253,10 @@ export const PATTERNS = [
       { type: 'kicker', ds: 0, u: -W * 0.25 },
       { type: 'kicker', ds: 26, u: W * 0.25 },
       { type: 'bigKicker', ds: 56, u: 0 },
+      { type: 'boostPad', ds: 14, u: -W * 0.19 },
+      // Just past the big kicker's lip, where the arc actually is.
+      { type: 'airGate', ds: 64, u: 0 },
+      { type: 'boostPad', ds: 88, u: W * 0.22 },
       // Far enough past the kicker to get the speed back before committing.
       { type: 'barrel', ds: 78, u: -W * 0.2 },
       { type: 'cone', ds: 40, u: -W * 0.6 },
@@ -221,6 +278,9 @@ export const PATTERNS = [
         out.push({ type: 'crystal', ds: i * 10 + 5, u: (i % 2 ? -1 : 1) * W * 0.3 });
       }
       out.push({ type: 'pothole', ds: 34, u: 0 });
+      out.push({ type: 'boostPad', ds: 22, u: W * 0.20 });
+      out.push({ type: 'boostPad', ds: 45, u: -W * 0.21 });
+      out.push({ type: 'boostPad', ds: 68, u: W * 0.23 });
       return out;
     },
   },
@@ -231,6 +291,8 @@ export const PATTERNS = [
       { type: 'ledge', ds: 0, u: -W * 0.5 },
       { type: 'ledge', ds: 0, u: W * 0.5 },
       { type: 'bank', ds: 40, u: 0 },
+      { type: 'boostPad', ds: 26, u: -W * 0.22 },
+      { type: 'boostPad', ds: 74, u: W * 0.20 },
       { type: 'hydrant', ds: 20, u: -W * 0.78 },
       { type: 'hydrant', ds: 60, u: W * 0.78 },
       { type: 'roadwork', ds: 68, u: -W * 0.2 },
@@ -245,6 +307,8 @@ export const PATTERNS = [
       { type: 'roadwork', ds: 0, u: -W * 0.55 },
       { type: 'roadwork', ds: 30, u: W * 0.5 },
       { type: 'longRail', ds: 20, u: W * 0.1 },
+      { type: 'boostPad', ds: 48, u: -W * 0.22 },
+      { type: 'boostPad', ds: 84, u: W * 0.21 },
       { type: 'pothole', ds: 62, u: -W * 0.45 },
       { type: 'cone', ds: 70, u: -W * 0.2 },
       { type: 'cone', ds: 74, u: W * 0.05 },
@@ -262,6 +326,9 @@ export const PATTERNS = [
       { type: 'bank', ds: 0, u: W * 0.4 },
       { type: 'barrel', ds: 44, u: 0 },
       { type: 'longRail', ds: 66, u: 0 },
+      { type: 'boostPad', ds: 24, u: W * 0.19 },
+      // Off the vert wall, which is the biggest arc on the course.
+      { type: 'airGate', ds: 56, u: 0 },
       // Over the big kicker's landing: only reachable with real height.
       { type: 'highCrystal', ds: 54, u: 0 },
       { type: 'highCrystal', ds: 60, u: 0 },
@@ -272,6 +339,6 @@ export const PATTERNS = [
     // Deliberate empty stretch. Density everywhere is exhausting and leaves the
     // player no room to just feel the speed, which is the point of the game.
     length: 55,
-    build: () => [],
+    build: (W) => [{ type: 'boostPad', ds: 28, u: W * 0.18 }],
   },
 ];

@@ -365,6 +365,10 @@ export function createRider(scene, camera) {
   tilt.add(rigHolder);
   let rigLoaded = false;
   let mixer = null;
+  // The loaded rig and its clips, kept so the AI field can clone the same
+  // prefab instead of a second art path -- see rigPrefab() on the API below.
+  let rigObject = null;
+  const rigClips = {};
   const actions = {};
   let currentClip = null;
   const rigLitMats = [];
@@ -512,6 +516,7 @@ export function createRider(scene, camera) {
 
         fitToRider(obj, true, 'rigged');
         rigHolder.add(obj);
+        rigObject = obj;
 
         mixer = new THREE.AnimationMixer(obj);
 
@@ -521,6 +526,7 @@ export function createRider(scene, camera) {
             if (clip) {
               const n = stripRootMotion(clip, obj);
               clip.name = name;
+              rigClips[name] = clip;
               const action = mixer.clipAction(clip);
               action.setLoop(THREE.LoopRepeat);
               actions[name] = action;
@@ -642,6 +648,19 @@ export function createRider(scene, camera) {
   return {
     root,
     ready,
+
+    /**
+     * The loaded rig and its clips, for anything that needs a SECOND character
+     * on screen. Returns null until the FBX has loaded.
+     *
+     * Handing out the prefab rather than a second art path is what keeps the AI
+     * field looking like the player instead of like a different game -- and it
+     * means a change to the character is a change in one place. Callers are
+     * expected to SkeletonUtils.clone() it; the object itself is the player's.
+     */
+    rigPrefab() {
+      return rigObject ? { object: rigObject, clips: rigClips } : null;
+    },
 
     setMode(next) {
       mode = next;

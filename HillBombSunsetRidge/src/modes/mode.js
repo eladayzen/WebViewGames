@@ -34,8 +34,15 @@ export function registerMode(def) {
   return def;
 }
 
+/**
+ * The modes the lobby offers. A mode marked `hidden` stays registered and stays
+ * reachable by id (?gamemode=..., and any saved reference to it), it just is not
+ * offered -- which is what "lock it out" should mean for something being parked
+ * rather than deleted. Deleting it would throw away working code and make
+ * bringing it back a rewrite.
+ */
 export function listModes() {
-  return [...registry.values()];
+  return [...registry.values()].filter((m) => !m.hidden);
 }
 
 export function getMode(id) {

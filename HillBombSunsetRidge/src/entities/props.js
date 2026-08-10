@@ -403,12 +403,54 @@ function buildCrystal(def) {
   return g;
 }
 
+// A SPEED GATE. Two lit pylons and an arch you ride through, with a stack of
+// floating chevrons inside it and a glowing strip on the road beneath.
+//
+// It started as a flat chevroned decal painted on the road, which was legible
+// from directly above and almost invisible from where the player actually
+// looks -- a shallow forward camera flattens anything lying on the ground to a
+// sliver by about thirty metres. Anything the player has to STEER FOR has to be
+// readable at the range where the decision is still available, and that means
+// vertical geometry: an arch breaks the horizon and keeps its silhouette all the
+// way in. The arch is also the collider made visible -- ride between the posts
+// and you have it -- rather than a shape you have to learn the hitbox of.
+function buildBoostPad(def) {
+  const { w, l } = def.size;
+  const h = 2.9;
+  const g = new THREE.Group();
+  const glow = new THREE.MeshBasicMaterial({ color: def.colour });
+
+  // Posts, set at the catch width so the gap you can see IS the gap that counts.
+  for (const side of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, h, 0.22), glow);
+    post.position.set(side * w * 0.5, h / 2, 0);
+    g.add(post);
+  }
+  // Lintel across the top.
+  const top = new THREE.Mesh(new THREE.BoxGeometry(w + 0.22, 0.22, 0.22), glow);
+  top.position.y = h;
+  g.add(top);
+
+  // THREE ARROWS GOING UP, in the plane of the gate. buildChevrons lays its
+  // chevrons along the line (z0,y0)->(z1,y1), so the previous call -- which ran
+  // from z=+0.35 to z=-0.35 at y=0 -- laid them flat on the ROAD, which is
+  // exactly where they were still being seen. A line with no z component and a
+  // rising y puts them upright in the gap instead, which is the only place they
+  // read as "go through here, fast".
+  g.add(buildChevrons(w * 0.55, 0, 0.55, 0, h - 0.5, 3, def.accent));
+
+  // Nothing on the floor. The gate IS the sign; a decal underneath only
+  // competes with it and is invisible from the angle the player rides at.
+  return g;
+}
+
 const BUILDERS = {
   kicker: buildKicker, bigKicker: buildKicker, bank: buildBank, barrel: buildBarrel,
+  airGate: buildBoostPad,
   rail: buildRail, longRail: buildRail, ledge: buildLedge,
   cone: buildCone, pothole: buildPothole, roadwork: buildRoadwork,
   lamp: buildLamp, hydrant: buildBlob,
-  crystal: buildCrystal, highCrystal: buildCrystal,
+  crystal: buildCrystal, highCrystal: buildCrystal, boostPad: buildBoostPad,
 };
 
 export function createProps(scene) {
@@ -540,6 +582,12 @@ export function createProps(scene) {
         // "part of the scenery" at a glance, and it costs one rotation per
         // frame. Phase is derived from the prop's own position so neighbouring
         // crystals are not locked in step.
+        if (it.def.kind === 'boost' && it.def.boost.height > 0) {
+          // Hung at the height the probe tests against, so what you see is what
+          // you have to fly through.
+          it.mesh.position.addScaledVector(_up, it.def.boost.height);
+        }
+
         if (it.def.kind === 'pickup') {
           // Spin about the SURFACE normal, composed onto the basis above --
           // writing mesh.rotation.y here instead would overwrite the whole
@@ -577,6 +625,23 @@ export function createProps(scene) {
     },
 
     probe(s, theta, airborne, sPrev, height = 0) {
+      // AIR GATES GET FIRST REFUSAL while airborne. probe() returns the first
+      // match in spawn order, so anything else occupying the same stretch of
+      // road -- a long rail under the landing, most obviously -- masked the gate
+      // entirely and it could never be collected. An airborne rider passing
+      // through a gate at the gate's own height is unambiguously taking the
+      // gate; whatever is on the ground beneath is not what they are touching.
+      if (airborne) {
+        for (const it of active) {
+          if (it.spent || it.def.kind !== 'boost') continue;
+          const gateH = it.def.boost.height || 0;
+          if (gateH <= 0) continue;
+          if (Math.abs(s - it.s) > it.def.boost.catchWidth) continue;
+          if (Math.abs(theta - it.theta) * TROUGH_RADIUS > it.def.boost.catchWidth) continue;
+          if (Math.abs(height - gateH) > (it.def.boost.reach || 1.5)) continue;
+          return it;
+        }
+      }
       for (const it of active) {
         if (it.spent || it.def.kind === 'scenery') continue;
         const { l, w } = it.def.size;
@@ -597,6 +662,8 @@ export function createProps(scene) {
           // speed or frame rate.
           const takeoff = it.s - halfL + 2 * halfL * apexFrac(it.def.launch.profile);
           if (!(sPrev < takeoff && s >= takeoff)) continue;
+        } else if (it.def.kind === 'boost') {
+          if (Math.abs(s - it.s) > it.def.boost.catchWidth) continue;
         } else if (it.def.kind === 'pickup') {
           // A SPHERE, not a slice. A crystal is barely half a metre long, and at
           // 30 u/s the rider covers half a metre per frame -- an overlap test on
@@ -612,6 +679,7 @@ export function createProps(scene) {
         }
         const catchW = it.def.kind === 'grind' ? it.def.grind.catchWidth
           : it.def.kind === 'pickup' ? it.def.pickup.catchWidth
+          : it.def.kind === 'boost' ? it.def.boost.catchWidth
           : w / 2 + 0.45;
         // Prop sizes stay authored in WORLD units; convert the angular gap to an
         // arc length so a prop is the same physical size wherever it sits on the
@@ -621,7 +689,17 @@ export function createProps(scene) {
         // Airborne clears hazards and launchers, but you can still land INTO a
         // grind -- that's the good kind of accident -- and you can still collect
         // PICKUPS, which is the entire point of placing them off a ramp.
-        if (airborne && it.def.kind !== 'grind' && it.def.kind !== 'pickup') continue;
+        // A GROUND gate is on the road and an AIR gate is not. Height is what
+        // separates them: a gate hung over a ramp's landing can only be taken by
+        // being airborne at the right moment, which is the whole point of it.
+        if (it.def.kind === 'boost') {
+          const gateH = it.def.boost.height || 0;
+          if (gateH > 0) {
+            if (Math.abs(height - gateH) > (it.def.boost.reach || 1.5)) continue;
+          } else if (airborne) {
+            continue;
+          }
+        } else if (airborne && it.def.kind !== 'grind' && it.def.kind !== 'pickup') continue;
         // A pickup floating three metres up is not collectable from the road.
         if (it.def.kind === 'pickup'
             && Math.abs(height - it.def.pickup.height) > it.def.pickup.reach) continue;

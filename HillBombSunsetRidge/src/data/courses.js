@@ -31,9 +31,23 @@ export const COURSES = {
     /** Which prop kinds may spawn. Hazards deliberately absent -- see props.js. */
     allowedKinds: ['launch', 'grind', 'scenery', 'pickup'],
   },
+
+  /**
+   * The same hill, dressed for a race. Crystals are OUT and boost pads are IN --
+   * a contest decided by speed should not also be asking you to detour for
+   * points, and the two pickups would compete for the same glance.
+   */
+  sunsetRidgeRace: {
+    id: 'sunsetRidgeRace',
+    name: 'Sunset Ridge · Race',
+    kind: COURSE_ENDLESS,
+    length: null,
+    allowedKinds: ['launch', 'grind', 'scenery', 'boost'],
+  },
 };
 
 export const DEFAULT_COURSE = 'sunsetRidge';
+export const RACE_COURSE = 'sunsetRidgeRace';
 
 /**
  * @param {string} id

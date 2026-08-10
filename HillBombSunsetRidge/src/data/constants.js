@@ -302,6 +302,13 @@ export const AIR_DURATION_SPIN = 0.62;
 // only the new taller launches float longer. Clamped at both ends because
 // rotation is locked 1:1 to air time: below the floor a flip becomes a blur,
 // above the ceiling it drifts.
+// How fast a boost's speed comes ON, as an exponential approach rate. The boost
+// used to be applied as a floor with Math.max(), which snapped the rider to the
+// new speed inside one frame -- it read as a teleport rather than as thrust.
+// ~4.5 puts most of the gain in the first half second: quick enough to feel like
+// a kick, slow enough to see the acceleration happen.
+export const BOOST_RAMP = 4.5;
+
 export const AIR_TIME_K = 0.392;
 export const AIR_DURATION_MIN = 0.42;
 export const AIR_DURATION_MAX = 1.20;

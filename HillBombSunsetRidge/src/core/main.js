@@ -25,6 +25,7 @@ import {
   AIR_DURATION, AIR_HEIGHT, SPIN_MIN_HEIGHT,
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
   AIR_HEIGHT_MAX, AIR_TIME_K, AIR_DURATION_MIN, AIR_DURATION_MAX, SPIN_720_HEIGHT,
+  BOOST_RAMP,
   GRAB_MIN_HEIGHT, GRAB_ENABLED,
   AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO, GRIND_SPARK_RATE,
   GRIND_EXIT_FALL_G,
@@ -42,6 +43,7 @@ import { createLobby } from '../ui/lobby.js';
 import { initSettingsPanel, isPanelOpen, FEEL } from '../ui/settingsPanel.js';
 import { createSky } from '../world/sky.js';
 import { createProps } from '../entities/props.js';
+import { createRivals } from '../entities/rivals.js';
 import { createSparks } from '../entities/sparks.js';
 import { createSpeedLines } from '../entities/speedLines.js';
 import { createScoring } from '../systems/scoring.js';
@@ -55,6 +57,8 @@ import { createModeHost, getMode } from '../modes/mode.js';
 // order they appear on the front door.
 import '../modes/freeride.js';
 import { setPendingMission } from '../modes/missions.js';
+import '../modes/rivals.js';
+import '../modes/speedRace.js';
 import { MISSIONS } from '../data/missions.js';
 import { createProgress } from '../systems/progress.js';
 import { createModeSelect } from '../ui/modeSelect.js';
@@ -109,6 +113,8 @@ const scoring = createScoring();
 const hud = createHud();
 const rider = createRider(scene, camera);
 const rig = createCameraRig(camera);
+// After the rider: the AI field clones the player's rig, so it needs one.
+const rivals = createRivals(scene, rider);
 // The controller reports what happened; game modes listen. Nothing downstream
 // of this line may reach back into the simulation -- see core/events.js.
 const events = createEvents();
@@ -126,6 +132,9 @@ const modes = createModeHost({
   hud,
   getState: () => ({ s: state.s, speed: state.speed, airborne: state.airActive }),
   progress,
+  // The AI field. Handed to the mode rather than owned by it, so its lifetime
+  // is the run's and nothing survives into free ride.
+  rivals,
   endRun: (reason, card) => showGameOver(reason, card),
 });
 
@@ -167,6 +176,8 @@ const state = {
   grindYawSign: 1,
   spinDir: 1, // which way a spin rotates -- set from lateral drift at takeoff
   spinTurns: 1, // whole revolutions this spin does -- see SPIN_720_HEIGHT
+  boostT: 0, // seconds left on a boost pad's burst
+  boostFloor: 0, // speed held for that burst -- see the boost pickup
   // Height of the launch ramp deck the rider is standing on right now.
   rampLift: 0,
   // Landing absorb. landT counts down from LAND_SETTLE_DURATION; landAmount is
@@ -296,6 +307,8 @@ function reset() {
   state.grindFallVel = 0;
   state.spinDir = 1;
   state.spinTurns = 1;
+  state.boostT = 0;
+  state.boostFloor = 0;
   state.rampLift = 0;
   state.landT = 0;
   state.landAmount = 0;
@@ -479,6 +492,8 @@ function startRun(id) {
   // with one flag -- see systems/scoring.js for why it is a mode question.
   scoring.setWobbleEnabled(!!def.wobble);
   hud.setWobbleVisible(!!def.wobble);
+  // Modes opt OUT of the score readout; everything shows it by default.
+  hud.setScoreVisible(def.showsScore !== false);
   running = true;
   reset();
   modes.start(id);
@@ -576,10 +591,9 @@ function showGameOver(reason = 'wipeout', card = null) {
 
   // The button names the action, not the screen. After a failure the honest
   // word is RETRY -- you are doing the same mission again, not moving on.
-  // Name the destination, not the mood: in missions this button opens the
-  // mission list, so RETRY would be a lie -- you land on a screen, not a run.
-  restartButton.textContent = modes.id === 'missions' ? 'CONTINUE'
-    : tone === 'success' ? 'CONTINUE' : 'RETRY';
+  // Name the destination, not the mood. This button goes to the mode lobby, so
+  // RETRY would be a lie -- you land on a screen, not another run.
+  restartButton.textContent = 'CONTINUE';
 
   gameoverEl.classList.remove('hidden');
   events.emit(EV.RUN_END, {
@@ -591,20 +605,14 @@ function restart() {
   if (!gameOver) return;
   gameOver = false;
   gameoverEl.classList.add('hidden');
-  if (modes.id === 'missions') {
-    // Back to the list, not straight into another run. Finishing a mission
-    // should show what it unlocked, and it is the only place to choose a
-    // different one -- a result screen that restarts in place gives the player
-    // no way out except the back button.
-    modes.stop();
-    running = false;
-    missionSelect.open();
-    return;
-  }
-  reset();
-  // Same mode again -- and a fresh instance of it, so counters and clocks start
-  // clean rather than resuming a run that already ended.
-  modes.restart();
+  // EVERY run ends back at the front door. Restarting in place, or dropping
+  // straight back into a mission list, left the mode itself unreachable once a
+  // run had started -- the only way to change what you were playing was to
+  // reload the page. Picking the mode is the first decision of a session and it
+  // should be available at the start of every session, not just the first.
+  modes.stop();
+  running = false;
+  modeSelect.open();
 }
 
 restartButton.addEventListener('click', restart);
@@ -938,6 +946,17 @@ function frame() {
     // advances (build doc §6) -- without this call every frame, the world
     // stops generating past the first SPAWN_AHEAD stretch, which is exactly
     // the "I see stuff at the start, then nothing" symptom.
+    if (state.boostT > 0) {
+      state.boostT = Math.max(0, state.boostT - dt);
+      // EASED UP TO the floor, not snapped onto it. Math.max() put the whole
+      // gain in on the frame you touched the gate, which reads as a teleport --
+      // "I immediately get super fast". Approaching it exponentially puts most
+      // of the gain in the first half second and lets you SEE the acceleration.
+      // Still only ever upward, so a boost never slows a faster rider.
+      if (state.speed < state.boostFloor) {
+        state.speed += (state.boostFloor - state.speed) * Math.min(1, dt * BOOST_RAMP);
+      }
+    }
     props.update(state.s, dt);
     if (!state.grind) {
       // How high off the surface the rider actually is. The same three offsets
@@ -1036,6 +1055,23 @@ function frame() {
           scoring.award(hit.def.pickup.points, hit.def.label);
           hit.mesh.visible = false;
           hit.spent = true;
+        } else if (hit.def.kind === 'boost') {
+          // A real speed change, not a score bonus dressed up as one: the whole
+          // point is that it moves you up the road. Added to the CURRENT speed
+          // rather than setting a target, so hitting one while already fast is
+          // still worth something -- drag will bleed it back down on its own,
+          // which is what makes the boost a burst rather than a new cruise.
+          // A FLOOR held for the duration, not a one-off addition. Adding to
+          // the speed put drag straight to work on it and the whole boost was
+          // gone in under a second -- worth 14 m against a 45 m carve cost, so
+          // going for a pad actively lost the race.
+          state.boostFloor = Math.min(
+            hit.def.boost.ceiling, state.speed + hit.def.boost.speed);
+          state.boostT = hit.def.boost.seconds;
+          scoring.award(hit.def.boost.points, hit.def.label);
+          events.emit(EV.PICKUP, { type: 'boost', points: hit.def.boost.points });
+          hit.mesh.visible = false;
+          hit.spent = true;
         } else if (hit.def.kind === 'hazard') {
           events.emit(EV.HAZARD, { label: hit.def.label, wobble: hit.def.hazard.wobble });
           scoring.hit(hit.def.hazard.wobble, hit.def.label);
@@ -1059,6 +1095,7 @@ function frame() {
     // pickup ends now rather than a frame late, and its clock never runs on a
     // frame the rider was not actually riding (pause, lobby, game over all
     // skip this whole block).
+    rivals.update(dt, state.s, props);
     modes.update(dt);
 
     trough.update(state.s);
@@ -1179,7 +1216,13 @@ function frame() {
   // they would have vanished entirely at exactly the moment the rider is
   // fastest. Zero below ~0.78x reference, full a little past the tuck terminal.
   speedLines.update(
-    (state.speed / SPEED_REF - 0.78) / 0.42, state.speed, camera, paused ? 0 : dt,
+    Math.max(
+      (state.speed / SPEED_REF - 0.78) / 0.42,
+      // A boost floors them regardless of the speed it produced -- the burst
+      // has to be FELT, and the raw speed curve alone under-sells it.
+      state.boostT > 0 ? 1 : 0,
+    ),
+    state.speed, camera, paused ? 0 : dt,
   );
 
   sky.update(camera.position);
@@ -1208,7 +1251,7 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect };
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);

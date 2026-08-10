@@ -870,3 +870,6 @@ html, body {
   opacity: 0.45;
 }
 .msel-hint b { color: var(--paper); opacity: 0.8; }
+
+/* The score block hides in modes that are not decided by points (SPEED RACE). */
+#score-block.hidden { display: none; }

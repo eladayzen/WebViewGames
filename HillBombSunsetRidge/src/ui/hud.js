@@ -64,6 +64,15 @@ export function createHud() {
     },
 
     /**
+     * Show or hide the score and its chain multiplier. A mode that is not
+     * decided by points should not display a running total of them.
+     */
+    setScoreVisible(on) {
+      const block = document.getElementById('score-block');
+      if (block) block.classList.toggle('hidden', !on);
+    },
+
+    /**
      * Show or hide the SPEED WOBBLE bar. A meter that is always empty is worse
      * than no meter: it reads as a mechanic that is broken rather than one that
      * is switched off, so modes without wobble drop it from the HUD entirely.
