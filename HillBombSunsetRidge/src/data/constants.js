@@ -5,7 +5,23 @@
 
 // --- speed model (build doc §5.1) ---
 // accel = GRADE_ACCEL - DRAG*v^2 - CARVE_SCRUB*|carve|*v
-export const GRADE_ACCEL = 9.0; // gravity down the grade, world units/s^2
+// THE RANGE IS COMPRESSED FROM BOTH ENDS, which is two requests that sound
+// opposed and are not. The START had to come up (13.2, +20%) so the opening
+// seconds are not a crawl; the unassisted TOP had to come down a long way so a
+// boost gate actually means something. Raising the grade did the first and
+// undid the second -- cruise measured 38.7 u/s, and a booster on top of that is
+// barely a change of pace.
+//
+// So the grade now sets a fairly low ceiling and the rolling bonus supplies the
+// rest, which also gives the top speed to the rider who earns it:
+//
+//     base terminal      sqrt(5.45/0.0095)  = 24.0 u/s   (~62 km/h)
+//     with full roll     sqrt(7.45/0.0095)  = 28.0 u/s   (~73 km/h)
+//     on a boost pad                          up to 44   (~114 km/h)
+//
+// A gate is now worth roughly half again your best unassisted speed, which is
+// the gap that makes one worth steering for.
+export const GRADE_ACCEL = 5.45; // gravity down the grade, world units/s^2
 // Aero drag. Terminal speed = sqrt(GRADE_ACCEL/DRAG) ~= 31 u/s (~80 km/h),
 // deliberately in the same ballpark as the reference build's 56 km/h opening
 // district. An earlier 0.0016 gave ~75 u/s (~195 km/h), which was an unreadable
@@ -16,12 +32,37 @@ export const DRAG = 0.0095;
 // and the climb takes the speed. Keeping both double-counted it: a 3.3-unit
 // climb cost 20 u/s when the energy exchange only justified 0.7. The geometry
 // is the brake now.
-export const CARVE_SCRUB = 0.10;
+// Cut from 0.10. Turning was costing far too much: measured, three seconds of
+// carving covered 62.6 m against 107.3 m in a straight line -- a 42% loss, which
+// made steering something you paid dearly for rather than the main thing the
+// board does. At 0.022 a full carve costs roughly a tenth of that, enough to
+// feel the line matter and not enough to punish using the controller. SLOWING
+// DOWN IS THE BRAKE'S JOB now, not the steering's.
+export const CARVE_SCRUB = 0.022;
 // --- TUCK AND BRAKE (the fore/aft axis) -------------------------------------
 // Lean forward to tuck and gain speed, lean back to drag the tail and slow.
 // Both are CONTINUOUS: the input scales the effect and the effect is eased in,
 // so speed builds and bleeds smoothly rather than switching between two states.
-export const TUCK_BONUS = 5.2; // extra accel at full tuck, world units/s^2
+// OFF. Holding forward for speed made the optimal line "lean forward and never
+// stop", which flattened every other decision -- and in the race it meant a
+// player who simply held one input beat a field that could not. The tuck POSE
+// stays; it just does not pay any more. The speed it used to provide has gone
+// into the base grade and into ROLL_GAIN below, where it is earned by riding
+// cleanly rather than by holding a button.
+export const TUCK_BONUS = 0.0; // extra accel at full tuck, world units/s^2
+
+// --- rolling momentum --------------------------------------------------------
+//
+// A slow, continuous gain for staying off the brake. Amit: "as long as you don't
+// brake it too much you're always gaining speed a little bit."
+//
+// It is a bonus to TERMINAL speed rather than a push, so it cannot run away --
+// drag still bounds it, the ceiling just moves. It builds over about half a
+// minute of clean riding and the brake takes it back fast, which is what makes
+// braking a real decision instead of a free way to slow down.
+export const ROLL_GAIN = 0.075;     // extra terminal per second of clean riding
+export const ROLL_MAX = 2.0;        // ceiling on that bonus, world units/s
+export const ROLL_BRAKE_LOSS = 2.2; // bonus lost per second of full braking
 // How fast the tuck engages and releases. Deliberately unhurried -- a tuck that
 // snaps on reads as a button, and Amit asked for speed that arrives naturally.
 // Halved the time to reach full tuck (3.2 -> 6.4 is twice the rate). The build
@@ -44,7 +85,16 @@ export const GROUND_CTRL_RELEASE = 26.0;
 // hard when you are flying and cannot yank a slow rider to a dead stop.
 export const BRAKE_DRAG = 1.35; // fraction of speed shed per second at full brake
 export const BRAKE_SMOOTH = 5.0;
-export const BRAKE_MIN_SPEED = 4.0; // never drag below this -- a stall is not a brake
+// Raised from 4.0. A rider dragged down to walking pace has nothing to steer
+// with -- the pendulum needs speed to carve at all -- so the brake bottomed out
+// in a state the controller could not get out of. 12 is slow enough to read as
+// braking hard and fast enough to still ride.
+export const BRAKE_MIN_SPEED = 10.0; // never drag below this -- a stall is not a brake
+
+// The floor for everything ELSE that costs speed (carving, scrub, wall climbs).
+// Separate from the brake's floor on purpose: the brake is a deliberate act and
+// may take you lower than merely riding badly ever should.
+export const MIN_SPEED = 12.0;
 // Tail sparks, quieter than a grind's: this is friction on a surface, not steel
 // on steel.
 export const BRAKE_SPARK_RATE = 95;
@@ -61,7 +111,7 @@ export const TAIL_LOAD_DECAY = 2.6; // and how fast it bleeds away once released
 // setting up for -- a fifth more air is plainly visible -- just no longer enough
 // to turn a wedge into a vert wall.
 export const TAIL_LOAD_BOOST = 0.22;
-export const START_SPEED = 11;
+export const START_SPEED = 13.2; // +20%, matching the raised grade
 
 // --- lateral motion (build doc §5.1) ---
 export const LATERAL_SPEED = 13.0; // world units/s of sideways travel at full carve

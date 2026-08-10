@@ -181,7 +181,7 @@ export const PROP_TYPES = {
     // from the CURRENT speed, so back-to-back pads compounded without bound --
     // 38 -> 51 -> 64 -> 77 -- and a bot that simply held forward covered 8.4 km
     // in ninety seconds and beat the field by nearly five kilometres.
-    boost: { speed: 20, seconds: 2.8, points: 60, catchWidth: 2.4, ceiling: 58, height: 0 },
+    boost: { speed: 16, seconds: 2.8, points: 60, catchWidth: 2.4, ceiling: 44, height: 0 },
     label: 'BOOST',
   },
 
@@ -195,7 +195,7 @@ export const PROP_TYPES = {
     colour: 0xffd166,
     accent: 0xffffff,
     boost: {
-      speed: 22, seconds: 3.0, points: 120, catchWidth: 2.6, ceiling: 58,
+      speed: 18, seconds: 3.0, points: 120, catchWidth: 2.6, ceiling: 48,
       height: 2.6, reach: 1.7,
     },
     label: 'AIR GATE',

@@ -34,6 +34,21 @@ export const STEER_REGULAR = 'regular';
 export const STEER_ANALOG = 'analog';
 export const STEER_MODES = [STEER_REGULAR, STEER_ANALOG];
 
+// FORWARD LEAN IS OFF. Amit, on the board: "I cannot do this move." Leaning
+// forward on a balance board is genuinely hard -- it is the same ergonomic fact
+// that put the whole core loop on the lateral axis in the first place -- and an
+// input the player physically cannot produce is worse than no input, because
+// everything built on it silently never happens.
+//
+// BACK is untouched: the brake still works, and it is the only thing on this
+// axis now. Analog mode is covered too, further down, since a forward LEAN
+// would otherwise still produce a tuck where the key does not.
+//
+// A flag rather than deletion. The tuck pose and every constant behind it stay
+// exactly as they are -- Amit: "the animation is not disabled for now" -- so
+// re-enabling this is one boolean if the hardware or the ergonomics change.
+const FORWARD_INPUT = false;
+
 const keys = new Set();
 // A trick can still be fired programmatically (the lab's auto-trick, and the
 // 'T' key) even though the manual pop input is gone -- see forcePop.
@@ -114,11 +129,15 @@ export function readInput() {
   // ArrowUp/ArrowDown, which the host only dispatches when forwardVerticalAxis
   // is ticked on the scene -- it is off by DEFAULT and fails silently, so a
   // build with it unticked simply has no tuck and no brake at all.
-  if (keys.has('ArrowUp') || keys.has('KeyW')) y += 1;
+  if (FORWARD_INPUT && (keys.has('ArrowUp') || keys.has('KeyW'))) y += 1;
   if (keys.has('ArrowDown') || keys.has('KeyS')) y -= 1;
 
   const carve = applyDeadzone(Math.max(-1, Math.min(1, x)));
-  const ay = applyDeadzone(Math.max(-1, Math.min(1, y)));
+  let ay = applyDeadzone(Math.max(-1, Math.min(1, y)));
+  // Clamp the ANALOG lean as well: gating only the key above would leave a board
+  // in analog mode still producing a tuck from a forward lean, which is exactly
+  // the move that cannot be made.
+  if (!FORWARD_INPUT && ay > 0) ay = 0;
 
   const pop = popEdge;
   popEdge = false;

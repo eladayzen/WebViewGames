@@ -475,7 +475,21 @@ export function createProps(scene) {
 
   function acquire(type) {
     const pool = pools[type] || (pools[type] = []);
-    if (pool.length) return pool.pop();
+    if (pool.length) {
+      const reused = pool.pop();
+      // RESET THE MESH, not just the record. Collecting a pickup hides its mesh
+      // (`mesh.visible = false`) and marks the record spent; the record is
+      // rebuilt on the next spawn but the MESH is pooled and comes back exactly
+      // as it was left. So a replayed mission handed out invisible crystals that
+      // still scored -- collectable, and impossible to see.
+      //
+      // Anything a collision may mutate on a pooled mesh has to be undone here.
+      // Position and orientation are rewritten every frame by update(), so
+      // visibility is the only survivor today; the point of doing it in acquire()
+      // is that it stays the one place to add to.
+      reused.visible = true;
+      return reused;
+    }
     const mesh = BUILDERS[type](PROP_TYPES[type]);
     mesh.frustumCulled = false;
     return mesh;

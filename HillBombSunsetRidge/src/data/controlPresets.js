@@ -17,7 +17,7 @@ export const CONTROL_PRESETS = {
     carveTorque: 1.7,
     damp: 0.9,
     heightExchange: 18.0,
-    carveScrub: 0.10,
+    carveScrub: 0.022,
   },
 
   // Pre-retune. A heavier board: weaker carve torque, more damping, and a real
@@ -29,7 +29,7 @@ export const CONTROL_PRESETS = {
     carveTorque: 1.15,
     damp: 1.35,
     heightExchange: 7.5,
-    carveScrub: 0.85,
+    carveScrub: 0.19,
   },
 };
 

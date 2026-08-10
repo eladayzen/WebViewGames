@@ -907,3 +907,34 @@ html, body {
 #confirm-no { background: var(--hot); color: #23150c; }
 #confirm-yes { background: rgba(255, 255, 255, 0.1); color: var(--paper); }
 #confirm-no:hover, #confirm-yes:hover { filter: brightness(1.12); }
+
+/* --- boost timer ----------------------------------------------------------
+   Only present while a boost is running, and it drains left-to-right so the
+   thing being counted (time left) is the thing that shrinks. Cyan to match the
+   gates -- a boost's colour should be the same wherever it appears. */
+#boost-meter { margin-bottom: 0.45em; text-align: right; }
+#boost-meter.hidden { display: none; }
+#boost-label {
+  font: 900 0.85em/1 system-ui, sans-serif;
+  letter-spacing: 0.22em;
+  color: #4bd6ff;
+  margin-bottom: 0.28em;
+  animation: boostPulse 0.55s ease-in-out infinite;
+}
+#boost-bar {
+  width: 7.5em; height: 0.4em;
+  margin-left: auto;
+  border-radius: 0.2em;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+#boost-fill {
+  height: 100%; width: 100%;
+  border-radius: 0.2em;
+  background: linear-gradient(90deg, #4bd6ff, #d6f6ff);
+  transform-origin: right center;
+}
+@keyframes boostPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+/* The speed readout goes cyan while boosting, so the number and the timer read
+   as one event rather than two unrelated widgets. */
+#bottomRight.boosting #speed-readout { color: #9fe9ff; }

@@ -135,14 +135,14 @@ export function createRivals(scene, rider) {
         // all on a balance board, so in practice the field simply left and never
         // came back. Amit: "I lose them and cannot catch up after 3 seconds."
         //
-        // Anchored to a COASTING rider instead. Terminal speed without tucking
-        // is sqrt(GRADE_ACCEL/DRAG) ~= 30.8 u/s, and the field now straddles it:
-        // 24.0 / 26.6 / 29.2 / 31.8. Coast and you sit mid-pack with the leader
-        // in sight, tuck and you reel them in, make a mess of a section and they
-        // get away. The first attempt at this put the whole field UNDER a coast
-        // (top 28.8) and a player giving no input at all won by 151 m -- slower
-        // than "too fast" is not the same as right.
-        pace: 0.80 + (i / Math.max(1, count - 1)) * 0.26,
+        // Anchored to the player's UNASSISTED range, which is now 24 u/s at
+        // cruise and 28 with a full rolling bonus. The field straddles it:
+        // 18.6 / 21.0 / 23.4 / 25.8. Ride clean and you pull away; brake a lot,
+        // or bleed speed on the walls, and they come back. Re-anchoring matters
+        // more than the numbers -- these are a FRACTION of SPEED_REF, so every
+        // change to the grade silently re-tunes the whole field unless they are
+        // brought back to what the player can actually do.
+        pace: 0.62 + (i / Math.max(1, count - 1)) * 0.24,
         // SKILL decides how much of the course a rival converts into points.
         // Spread wide so the leaderboard is not just the pace ladder again.
         skill: 0.62 + ((i * 7) % 5) / 5 * 0.5,

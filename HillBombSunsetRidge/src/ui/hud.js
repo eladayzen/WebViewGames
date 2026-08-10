@@ -64,6 +64,22 @@ export function createHud() {
     },
 
     /**
+     * The boost timer. Hidden entirely when no boost is running -- an empty bar
+     * sitting there permanently would read as a mechanic that is broken rather
+     * than one that is not currently active.
+     * @param {number} frac 0..1 of the boost remaining, or 0 for none.
+     */
+    boost(frac) {
+      const meter = document.getElementById('boost-meter');
+      const fill = document.getElementById('boost-fill');
+      const right = document.getElementById('bottomRight');
+      const on = frac > 0;
+      if (meter) meter.classList.toggle('hidden', !on);
+      if (right) right.classList.toggle('boosting', on);
+      if (fill && on) fill.style.width = `${Math.min(1, frac) * 100}%`;
+    },
+
+    /**
      * Show or hide the score and its chain multiplier. A mode that is not
      * decided by points should not display a running total of them.
      */

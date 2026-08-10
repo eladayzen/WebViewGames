@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import {
   GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED,
+  ROLL_GAIN, ROLL_MAX, ROLL_BRAKE_LOSS, MIN_SPEED,
   BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE, GROUND_CTRL_RELEASE, GROUND_CTRL_LETGO,
   TAIL_LOAD_RATE, TAIL_LOAD_DECAY, TAIL_LOAD_BOOST,
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
@@ -191,6 +192,8 @@ const state = {
   spinTurns: 1, // whole revolutions this spin does -- see SPIN_720_HEIGHT
   boostT: 0, // seconds left on a boost pad's burst
   boostFloor: 0, // speed held for that burst -- see the boost pickup
+  roll: 0, // rolling-momentum bonus to terminal speed -- see ROLL_GAIN
+  boostDuration: 1, // the boost's full length, for the HUD timer
   airFrom: null, // the ramp this air launched from, excluded from ramp collision
   // Height of the launch ramp deck the rider is standing on right now.
   rampLift: 0,
@@ -343,6 +346,8 @@ function reset() {
   state.spinTurns = 1;
   state.boostT = 0;
   state.boostFloor = 0;
+  state.roll = 0;
+  state.boostDuration = 1;
   state.airFrom = null;
   state.rampLift = 0;
   state.landT = 0;
@@ -845,12 +850,26 @@ function frame() {
       state.tailLoad = Math.max(0, state.tailLoad - TAIL_LOAD_DECAY * dt);
     }
 
+    // ROLLING MOMENTUM. Ride clean and the ceiling creeps up; brake and it drops
+    // away several times faster. Applied as a bonus to the GRADE rather than as
+    // a push, so drag still bounds the result -- it moves terminal speed, it
+    // cannot run away.
+    if (state.braking > 0.01) {
+      state.roll = Math.max(0, state.roll - ROLL_BRAKE_LOSS * state.braking * dt);
+    } else if (!state.airActive) {
+      state.roll = Math.min(ROLL_MAX, state.roll + ROLL_GAIN * dt);
+    }
+
     const accel =
       GRADE_ACCEL
       + TUCK_BONUS * state.tucking
+      + state.roll
       - DRAG * state.speed * state.speed
       - CONTROLS.carveScrub * absCarve * state.speed;
-    state.speed = Math.max(2, state.speed + accel * dt);
+    // MIN_SPEED, not 2. Being dragged to walking pace by carving left the rider
+    // with nothing to steer with -- the pendulum needs speed to carve at all --
+    // so a bad line put you in a state the controller could not recover from.
+    state.speed = Math.max(MIN_SPEED, state.speed + accel * dt);
     // Brake drag is PROPORTIONAL to speed, so it bites hard when you're flying
     // and can't yank a slow rider to a standstill; the floor stops it stalling
     // him entirely, since a dead stop is a fail state, not a brake.
@@ -1205,6 +1224,10 @@ function frame() {
           state.boostFloor = Math.min(
             hit.def.boost.ceiling, state.speed + hit.def.boost.speed);
           state.boostT = hit.def.boost.seconds;
+          // Remembered so the HUD timer has something to divide by -- gates do
+          // not all last the same time, and a bar drawn against a constant
+          // would be wrong for the air gates.
+          state.boostDuration = hit.def.boost.seconds;
           scoring.award(hit.def.boost.points, hit.def.label);
           events.emit(EV.PICKUP, { type: 'boost', points: hit.def.boost.points });
           hit.mesh.visible = false;
@@ -1376,6 +1399,7 @@ function frame() {
     fpsTimer = 0;
   }
   objectivesUi.update(modes.panel());
+  hud.boost(state.boostT > 0 ? state.boostT / state.boostDuration : 0);
   hud.update(dt, {
     speed: state.speed,
     score: scoring.state.score,

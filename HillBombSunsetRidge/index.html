@@ -108,13 +108,23 @@
         </div>
 
         <div id="bottomRight">
+          <!-- BOOST TIMER. Sits directly above the speed readout because that is
+               where the eye already goes to ask "how fast am I" -- the answer to
+               "and for how much longer" belongs in the same glance. -->
+          <div id="boost-meter" class="hidden">
+            <div id="boost-label">BOOST</div>
+            <div id="boost-bar"><div id="boost-fill"></div></div>
+          </div>
           <div id="speed-readout">0 km/h</div>
         </div>
 
         <div id="popups"></div>
         <div id="trick-banner"></div>
         <div id="hint">
-          <b>&larr; &rarr;</b> carve &nbsp;&middot;&nbsp; <b>&uarr;</b> tuck &nbsp;&middot;&nbsp; <b>&darr;</b> brake &nbsp;&middot;&nbsp; <b>L</b> lab
+          <!-- No TUCK here any more: the forward lean is disabled (see
+               input/input.js), and a hint advertising a control that does
+               nothing is worse than no hint. -->
+          <b>&larr; &rarr;</b> carve &nbsp;&middot;&nbsp; <b>&darr;</b> brake &nbsp;&middot;&nbsp; <b>L</b> lab
         </div>
       </div>
 
