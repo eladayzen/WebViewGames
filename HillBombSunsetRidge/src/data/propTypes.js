@@ -243,7 +243,6 @@ export const PATTERNS = [
       { type: 'crystal', ds: 40, u: W * 0.3 },
       { type: 'kicker', ds: 50, u: -W * 0.35 },
       { type: 'boostPad', ds: 20, u: W * 0.20 },
-      { type: 'boostPad', ds: 58, u: -W * 0.24 },
     ],
   },
   {
@@ -256,7 +255,6 @@ export const PATTERNS = [
       { type: 'boostPad', ds: 14, u: -W * 0.19 },
       // Just past the big kicker's lip, where the arc actually is.
       { type: 'airGate', ds: 64, u: 0 },
-      { type: 'boostPad', ds: 88, u: W * 0.22 },
       // Far enough past the kicker to get the speed back before committing.
       { type: 'barrel', ds: 78, u: -W * 0.2 },
       { type: 'cone', ds: 40, u: -W * 0.6 },
@@ -280,7 +278,6 @@ export const PATTERNS = [
       out.push({ type: 'pothole', ds: 34, u: 0 });
       out.push({ type: 'boostPad', ds: 22, u: W * 0.20 });
       out.push({ type: 'boostPad', ds: 45, u: -W * 0.21 });
-      out.push({ type: 'boostPad', ds: 68, u: W * 0.23 });
       return out;
     },
   },
@@ -291,7 +288,6 @@ export const PATTERNS = [
       { type: 'ledge', ds: 0, u: -W * 0.5 },
       { type: 'ledge', ds: 0, u: W * 0.5 },
       { type: 'bank', ds: 40, u: 0 },
-      { type: 'boostPad', ds: 26, u: -W * 0.22 },
       { type: 'boostPad', ds: 74, u: W * 0.20 },
       { type: 'hydrant', ds: 20, u: -W * 0.78 },
       { type: 'hydrant', ds: 60, u: W * 0.78 },
@@ -308,7 +304,6 @@ export const PATTERNS = [
       { type: 'roadwork', ds: 30, u: W * 0.5 },
       { type: 'longRail', ds: 20, u: W * 0.1 },
       { type: 'boostPad', ds: 48, u: -W * 0.22 },
-      { type: 'boostPad', ds: 84, u: W * 0.21 },
       { type: 'pothole', ds: 62, u: -W * 0.45 },
       { type: 'cone', ds: 70, u: -W * 0.2 },
       { type: 'cone', ds: 74, u: W * 0.05 },

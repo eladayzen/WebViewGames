@@ -6,10 +6,21 @@
 // something you feel while riding. Placement by DISTANCE is legible without
 // reading anything -- the people ahead of you are literally ahead of you.
 //
-// It is timed rather than run to a finish line because a finish line needs a
-// finite course and there isn't one yet (courses.js declares that kind and
-// throws if used). Ninety seconds, furthest down the hill wins. When the finite
-// course arrives, the finish line goes here and the timer becomes the fallback.
+// IT RUNS TO A FINISH LINE. It was on a clock while the finite course was still
+// a hook -- "furthest down the hill after ninety seconds" -- which works but
+// ends the race with a buzzer rather than with an arrival, and gives the player
+// nothing to aim at. The course now carries a length, there is a line across the
+// road at it, and the race ends when you reach it.
+//
+// PLACEMENT IS CROSSING ORDER. Everyone who reaches the line before you beat
+// you, full stop; anyone still out on the course when you finish is behind you
+// and is ordered by how far they got. That is the same rule a real race uses and
+// it needs no explaining on screen.
+//
+// The clock is still here, as a CAP rather than as the goal: a rider who stops
+// riding must not sit on the hill forever, and on a balance board "I fell off
+// and wandered away" is a real state. It is generous enough that finishing is
+// the normal ending and the cap is the exception.
 //
 // BOOST PADS are what stop it being "hold forward and wait". They are their own
 // prop kind on their own course, so this mode gets pads and no crystals while
@@ -17,9 +28,10 @@
 // The line through them is not the straight line, so there is a route to ride.
 
 import { registerMode } from './mode.js';
-import { RACE_COURSE } from '../data/courses.js';
+import { RACE_COURSE, getCourse } from '../data/courses.js';
 
-const RACE_SECONDS = 90;
+/** Safety cap, not the goal -- see the note above. */
+const RACE_TIMEOUT = 180;
 const FIELD_SIZE = 4;
 
 export default registerMode({
@@ -34,19 +46,35 @@ export default registerMode({
   showsScore: false,
 
   create(ctx) {
-    let left = RACE_SECONDS;
-    let finished = false;
+    const course = getCourse(RACE_COURSE);
     const rivals = ctx.rivals;
+    let left = RACE_TIMEOUT;
+    let finished = false;
+    let startS = 0;
+    let finishS = 0;
+    /** Finish order, filled as each racer crosses. */
+    const crossed = [];
+
+    function distanceOf(r) { return r.s; }
 
     /**
-     * Everyone in the race by distance. The player is a row like any other
-     * rather than a special case, so the standings cannot disagree with
+     * Everyone in the race. Anyone who has CROSSED is ordered by when they did
+     * it; anyone still out is ordered by distance and sits behind all finishers.
+     * The player is a row like any other so the standings cannot disagree with
      * themselves about who is where.
      */
     function standings() {
-      const rows = rivals.field.map((r) => ({ name: r.name, s: r.s, you: false }));
-      rows.push({ name: 'YOU', s: ctx.getState().s, you: true });
-      rows.sort((a, b) => b.s - a.s);
+      const me = { name: 'YOU', s: ctx.getState().s, you: true };
+      const rows = rivals.field.map((r) => ({ name: r.name, s: distanceOf(r), you: false }));
+      rows.push(me);
+      for (const row of rows) row.finishedAt = crossed.indexOf(row.name);
+      rows.sort((a, b) => {
+        const af = a.finishedAt, bf = b.finishedAt;
+        if (af >= 0 && bf >= 0) return af - bf;   // both home: who first
+        if (af >= 0) return -1;                    // a is home, b is not
+        if (bf >= 0) return 1;
+        return b.s - a.s;                          // neither home: who is closer
+      });
       return rows.map((r, i) => ({ ...r, place: i + 1 }));
     }
 
@@ -54,61 +82,84 @@ export default registerMode({
       return n === 1 ? '1ST' : n === 2 ? '2ND' : n === 3 ? '3RD' : `${n}TH`;
     }
 
+    function end(reason) {
+      finished = true;
+      const rows = standings();
+      const me = rows.find((r) => r.you);
+      const won = me.place === 1;
+      const homeCount = crossed.length;
+      ctx.finishLine.hide();
+      ctx.endRun(won ? 'complete' : 'timeup', {
+        tone: won ? 'success' : 'fail',
+        title: won ? 'WINNER' : `FINISHED ${ordinal(me.place)}`,
+        subtitle: 'SPEED RACE',
+        detail: reason === 'timeout'
+          ? `time cap  ·  ${Math.round(finishS - me.s)} m short of the line`
+          : `${(course.length / 1000).toFixed(1)} km  ·  ${homeCount} of ${FIELD_SIZE + 1} home`,
+        stars: me.place === 1 ? 3 : me.place === 2 ? 2 : me.place === 3 ? 1 : 0,
+        rows: rows.map((r) => ({
+          label: r.name,
+          // Finishers get their place; anyone still out gets how far short they
+          // were, which is more use than a place they never actually reached.
+          text: r.finishedAt >= 0 ? ordinal(r.place) : `${Math.round(finishS - r.s)} m`,
+          done: r.you,
+        })),
+      });
+    }
+
     return {
       start() {
-        rivals.spawn(FIELD_SIZE, ctx.getState().s);
+        startS = ctx.getState().s;
+        finishS = startS + course.length;
+        rivals.spawn(FIELD_SIZE, startS);
+        ctx.finishLine.place(finishS);
         ctx.hud.banner('RACE');
       },
 
       stop() {
-        // The field belongs to the run. Leaving it alive would put four skaters
-        // on the hill in free ride.
         rivals.despawn();
+        ctx.finishLine.hide();
         finished = true;
       },
 
       update(dt) {
         if (finished) return;
-        left -= dt;
-        if (left <= 0) {
-          left = 0;
-          finished = true;
-          const rows = standings();
-          const me = rows.find((r) => r.you);
-          const won = me.place === 1;
-          const leader = rows[0];
-          ctx.endRun(won ? 'complete' : 'timeup', {
-            tone: won ? 'success' : 'fail',
-            title: won ? 'WINNER' : `FINISHED ${ordinal(me.place)}`,
-            subtitle: 'SPEED RACE',
-            detail: won
-              ? `${(me.s / 1000).toFixed(2)} km`
-              // The gap, not just the position: "3rd" does not tell you whether
-              // you were beaten by a board length or by half the hill.
-              : `${Math.round(leader.s - me.s)} m behind ${leader.name}`,
-            stars: me.place === 1 ? 3 : me.place === 2 ? 2 : me.place === 3 ? 1 : 0,
-            rows: rows.map((r) => ({
-              label: r.name,
-              text: ordinal(r.place),
-              done: r.you,
-            })),
-          });
+
+        // Record crossings in the order they happen. Rivals first so a rival
+        // that crosses on the same frame as the player is ahead of them -- it
+        // was ahead on the road, and the alternative silently favours the
+        // player on a tie.
+        for (const r of rivals.field) {
+          if (r.s >= finishS && !crossed.includes(r.name)) crossed.push(r.name);
         }
+        const meS = ctx.getState().s;
+        if (meS >= finishS && !crossed.includes('YOU')) {
+          crossed.push('YOU');
+          end('finish');
+          return;
+        }
+
+        left -= dt;
+        if (left <= 0) end('timeout');
       },
 
       panel: () => {
         const rows = standings();
         const me = rows.find((r) => r.you);
+        const togo = Math.max(0, finishS - ctx.getState().s);
         return {
           title: `${ordinal(me.place)} PLACE`,
-          seconds: left,
-          limit: RACE_SECONDS,
-          // POSITION, not a gap and not a score. A race is a ladder of places;
-          // metres are a number you have to interpret, and the score is not what
-          // this mode is even about -- see `showsScore` on the definition.
+          // The bar is DISTANCE now, not time: it fills as you approach the
+          // line, which is the thing the player is actually racing toward.
+          meter: {
+            frac: 1 - togo / course.length,
+            text: togo > 0 ? `${Math.round(togo)} m` : 'FINISH',
+            warn: togo < course.length * 0.25,
+            critical: togo < course.length * 0.1,
+          },
           objectives: rows.map((r) => ({
             label: r.name,
-            text: ordinal(r.place),
+            text: r.finishedAt >= 0 ? ordinal(r.place) : ordinal(r.place),
             done: r.you,
           })),
         };

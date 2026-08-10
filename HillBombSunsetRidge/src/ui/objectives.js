@@ -26,6 +26,7 @@ export function createObjectives() {
   /** Last frame's values, so a change can be detected rather than a state. */
   let prev = [];
   let prevSecond = -1;
+  let prevMeterText = null;
 
   function retrigger(node, cls) {
     if (!node) return;
@@ -53,6 +54,7 @@ export function createObjectives() {
         root.classList.add('hidden');
         signature = '';
         prevSecond = -1;
+        prevMeterText = null;
         return;
       }
       root.classList.remove('hidden');
@@ -86,7 +88,21 @@ export function createObjectives() {
         was.done = o.done;
       }
 
-      if (panel.limit > 0) {
+      // TWO KINDS OF PROGRESS, one bar. A mission counts DOWN a clock; a race
+      // counts UP to a finish line. Rather than give the race its own panel,
+      // a mode can hand over a `meter` instead of seconds and drive the same
+      // bar and readout with whatever it is actually measuring.
+      if (panel.meter) {
+        const m = panel.meter;
+        fillEl.style.width = `${Math.max(0, Math.min(1, m.frac)) * 100}%`;
+        root.classList.toggle('warn', !!m.warn);
+        root.classList.toggle('critical', !!m.critical);
+        if (m.text !== prevMeterText) {
+          timeEl.textContent = m.text;
+          retrigger(timeEl, 'tick');
+          prevMeterText = m.text;
+        }
+      } else if (panel.limit > 0) {
         const frac = Math.max(0, panel.seconds) / panel.limit;
         fillEl.style.width = `${frac * 100}%`;
         // Thresholds are in SECONDS, not fractions: ten seconds left is the same
@@ -96,14 +112,16 @@ export function createObjectives() {
         root.classList.toggle('critical', panel.seconds <= 10);
       }
 
-      const t = Math.max(0, Math.ceil(panel.seconds));
-      if (t !== prevSecond) {
-        timeEl.textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-        // Tick audibly-in-vision for the last ten seconds only. Pulsing the
-        // whole way down would make the clock ambient and the ending mean
-        // nothing; starting at ten is where it earns attention.
-        if (t <= 10 && t > 0) retrigger(timeEl, 'tick');
-        prevSecond = t;
+      if (!panel.meter) {
+        const t = Math.max(0, Math.ceil(panel.seconds));
+        if (t !== prevSecond) {
+          timeEl.textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+          // Tick audibly-in-vision for the last ten seconds only. Pulsing the
+          // whole way down would make the clock ambient and the ending mean
+          // nothing; starting at ten is where it earns attention.
+          if (t <= 10 && t > 0) retrigger(timeEl, 'tick');
+          prevSecond = t;
+        }
       }
     },
   };

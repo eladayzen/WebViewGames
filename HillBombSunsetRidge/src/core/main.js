@@ -44,6 +44,7 @@ import { initSettingsPanel, isPanelOpen, FEEL } from '../ui/settingsPanel.js';
 import { createSky } from '../world/sky.js';
 import { createProps } from '../entities/props.js';
 import { createRivals } from '../entities/rivals.js';
+import { createFinishLine } from '../entities/finishLine.js';
 import { createSparks } from '../entities/sparks.js';
 import { createSpeedLines } from '../entities/speedLines.js';
 import { createScoring } from '../systems/scoring.js';
@@ -115,6 +116,7 @@ const rider = createRider(scene, camera);
 const rig = createCameraRig(camera);
 // After the rider: the AI field clones the player's rig, so it needs one.
 const rivals = createRivals(scene, rider);
+const finishLine = createFinishLine(scene);
 // The controller reports what happened; game modes listen. Nothing downstream
 // of this line may reach back into the simulation -- see core/events.js.
 const events = createEvents();
@@ -135,6 +137,7 @@ const modes = createModeHost({
   // The AI field. Handed to the mode rather than owned by it, so its lifetime
   // is the run's and nothing survives into free ride.
   rivals,
+  finishLine,
   endRun: (reason, card) => showGameOver(reason, card),
 });
 
@@ -1251,7 +1254,7 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals };
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals, finishLine };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);
