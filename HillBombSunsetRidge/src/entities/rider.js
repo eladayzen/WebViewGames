@@ -367,6 +367,7 @@ export function createRider(scene, camera) {
   let mixer = null;
   // The loaded rig and its clips, kept so the AI field can clone the same
   // prefab instead of a second art path -- see rigPrefab() on the API below.
+  const rimUniforms = [];
   let rigObject = null;
   const rigClips = {};
   const actions = {};
@@ -492,6 +493,9 @@ export function createRider(scene, camera) {
           // is genuinely available here. It would NOT be on an unskinned mesh.
           unlit.onBeforeCompile = (shader) => {
             shader.uniforms.uRimColor = { value: new THREE.Color(RIM_COLOR) };
+            // Remembered so setTheme() can move the rim without rebuilding the
+            // material -- onBeforeCompile only runs once, on first compile.
+            rimUniforms.push(shader.uniforms.uRimColor);
             shader.uniforms.uRimStrength = { value: RIM_STRENGTH };
             shader.uniforms.uRimPower = { value: RIM_POWER };
             shader.vertexShader = shader.vertexShader
@@ -658,6 +662,16 @@ export function createRider(scene, camera) {
      * means a change to the character is a change in one place. Callers are
      * expected to SkeletonUtils.clone() it; the object itself is the player's.
      */
+    /**
+     * Move the rim light for a theme. The rim exists so the character separates
+     * from ANY background by value rather than by hue, so it has to follow the
+     * background it is separating from -- an ice-blue rim on an ember-red world
+     * is the one combination that would undo the whole point of it.
+     */
+    setTheme(theme) {
+      for (const u of rimUniforms) u.value.setHex(theme.rim);
+    },
+
     rigPrefab() {
       return rigObject ? { object: rigObject, clips: rigClips } : null;
     },

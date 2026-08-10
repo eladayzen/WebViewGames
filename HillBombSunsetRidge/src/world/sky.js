@@ -76,8 +76,10 @@ export function createSky(scene) {
     // Colour the caps from the painting's own edges once it's actually decoded,
     // rather than guessing a constant -- if the art changes, this follows it.
     const img = loaded.image;
-    topCap.material.color.setHex(edgeColour(img, true));
-    botCap.material.color.setHex(edgeColour(img, false));
+    capTop = edgeColour(img, true);
+    capBot = edgeColour(img, false);
+    topCap.material.color.setHex(capTop).multiply(mat.color);
+    botCap.material.color.setHex(capBot).multiply(mat.color);
   });
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
@@ -113,8 +115,31 @@ export function createSky(scene) {
   botCap.rotation.x = Math.PI;
   scene.add(topCap, botCap);
 
+  // Cap colours are sampled from the painting's own edges once it decodes. The
+  // tint multiplies on top, so they have to be remembered rather than read back
+  // off the material -- reading back would compound the tint every time one was
+  // applied and the sky would march toward black over a few runs.
+  let capTop = 0xffffff;
+  let capBot = 0xffffff;
+
   return {
     mesh,
+
+    /**
+     * Tint the painted panorama for a theme.
+     *
+     * MULTIPLY, do not replace. The matte is a real painting with towers and
+     * cloud banks in it; swapping in a flat gradient would throw away the only
+     * piece of actual art in the sky, whereas a tint keeps its structure and
+     * moves the time of day.
+     */
+    setTint(hex) {
+      mat.color.setHex(hex);
+      const t = new THREE.Color(hex);
+      topCap.material.color.setHex(capTop).multiply(t);
+      botCap.material.color.setHex(capBot).multiply(t);
+    },
+
     /** Keep everything centred on the camera so it behaves as infinitely far. */
     update(cameraPos) {
       mesh.position.set(cameraPos.x, cameraPos.y + VERTICAL_OFFSET, cameraPos.z);

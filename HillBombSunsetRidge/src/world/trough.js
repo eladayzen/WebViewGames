@@ -251,24 +251,25 @@ export function createTrough(scene) {
   // The ridable surface, plus a floor stripe so the fast line reads clearly, and
   // a lip band past THETA_MAX that marks where the wall stops being ridable.
   const centreLine = new TroughSurface(-0.035, 0.035, TROUGH_FLOOR_COLOR, 0.06);
+  centreLine.role = 'floorLine';
   centreLine.dashed = true;
 
   const surfaces = [
-    new TroughSurface(-THETA_MAX, THETA_MAX, TROUGH_COLOR),
+    Object.assign(new TroughSurface(-THETA_MAX, THETA_MAX, TROUGH_COLOR), { role: 'trough' }),
     centreLine,
     // The lip must be a VALUE break, not just a different hue -- at luminance 60
     // against a wall at 61 it was invisible, which is a large part of why the
     // trough was hard to read at all.
-    new TroughSurface(THETA_MAX, THETA_MAX + 0.20, LIP_COLOR),
-    new TroughSurface(-THETA_MAX - 0.20, -THETA_MAX, LIP_COLOR),
+    Object.assign(new TroughSurface(THETA_MAX, THETA_MAX + 0.20, LIP_COLOR), { role: 'lip' }),
+    Object.assign(new TroughSurface(-THETA_MAX - 0.20, -THETA_MAX, LIP_COLOR), { role: 'lip' }),
   ];
   // Guide stripes up both walls -- the only way to read curvature and speed off
   // an otherwise flat-coloured surface.
   for (const { theta, halfWidth } of GUIDE_STRIPES) {
     for (const sign of [-1, 1]) {
-      surfaces.push(new TroughSurface(
+      surfaces.push(Object.assign(new TroughSurface(
         sign * (theta - halfWidth), sign * (theta + halfWidth), GUIDE_COLOR, 0.05,
-      ));
+      ), { role: 'guide' }));
     }
   }
   surfaces.forEach((s) => group.add(s.mesh));
@@ -280,6 +281,22 @@ export function createTrough(scene) {
     update(riderS) {
       surfaces.forEach((s) => s.update(riderS));
     },
+    /**
+     * Recolour the world for a theme. By ROLE, not by index -- the surfaces
+     * array is built in several loops and an index-based mapping would silently
+     * attach the wrong colour the first time one was added.
+     *
+     * The vertex colours are left alone on purpose: they carry the painted
+     * cross-section shading that makes the trough read as curved rather than as
+     * one flat field, and they multiply whatever base colour is set here.
+     */
+    setTheme(theme) {
+      for (const s of surfaces) {
+        const c = theme[s.role];
+        if (c !== undefined) s.material.color.setHex(c);
+      }
+    },
+
     setLit(lit) {
       surfaces.forEach((s) => {
         const color = s.material.color.getHex();

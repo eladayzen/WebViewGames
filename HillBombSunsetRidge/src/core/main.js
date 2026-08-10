@@ -66,6 +66,7 @@ import { createModeSelect } from '../ui/modeSelect.js';
 import { createMissionSelect } from '../ui/missionSelect.js';
 import { createObjectives } from '../ui/objectives.js';
 import { getCourse, DEFAULT_COURSE } from '../data/courses.js';
+import { pickRandomTheme, getTheme, DEFAULT_THEME } from '../data/themes.js';
 
 // --- renderer / scene -------------------------------------------------------
 const app = document.getElementById('app');
@@ -83,20 +84,29 @@ const camera = new THREE.PerspectiveCamera(FOV_BASE, window.innerWidth / window.
 // Sky as a big vertical-gradient backdrop. fog:false so it stays visible at
 // distance, the way a skybox is conventionally exempted from scene fog
 // (HalfShellHustle does the same for its skyline matte).
-{
+// A baked canvas gradient, so a theme change has to REDRAW it rather than
+// recolour it -- hence a function rather than an inline block.
+let skyGradientTex = null;
+function makeSkyGradient(top, bottom) {
   const c = document.createElement('canvas');
   c.width = 4;
   c.height = 256;
-  const g = c.getContext('2d').createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, '#' + SKY_TOP.toString(16).padStart(6, '0'));
-  g.addColorStop(1, '#' + SKY_BOTTOM.toString(16).padStart(6, '0'));
   const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#' + top.toString(16).padStart(6, '0'));
+  g.addColorStop(1, '#' + bottom.toString(16).padStart(6, '0'));
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 4, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  scene.background = tex;
+  // The previous one is not referenced by anything else once it is replaced,
+  // and a run picks a new theme every time -- without this the GPU accumulates
+  // one texture per run for the whole session.
+  if (skyGradientTex) skyGradientTex.dispose();
+  skyGradientTex = tex;
+  return tex;
 }
+scene.background = makeSkyGradient(SKY_TOP, SKY_BOTTOM);
 
 // Lights exist for the 'lit' toggle only; unlit materials ignore them.
 scene.add(new THREE.HemisphereLight(0xffe0b0, 0x6a5a44, 2.1));
@@ -504,6 +514,27 @@ const missionSelect = createMissionSelect(MISSIONS, progress, (missionId) => {
   startRun('missions');
 });
 
+// --- theme ------------------------------------------------------------------
+//
+// ONE PLACE APPLIES A PALETTE. Every consumer was handed its colours as import
+// constants at construction time, which is fine for a game with one look and
+// useless for one with five -- so each now takes a setTheme() and this is the
+// only caller. Adding a themed system means adding a line here, not threading a
+// palette through the call graph.
+let activeTheme = getTheme(DEFAULT_THEME);
+
+function applyTheme(theme) {
+  activeTheme = theme;
+  scene.fog.color.setHex(theme.fog);
+  // The background is a baked canvas gradient, so it has to be redrawn rather
+  // than recoloured.
+  scene.background = makeSkyGradient(theme.skyTop, theme.skyBottom);
+  sky.setTint(theme.skyTint);
+  trough.setTheme(theme);
+  speedLines.setTheme(theme);
+  rider.setTheme(theme);
+}
+
 /** @param {string} id a registered mode id */
 function startRun(id) {
   const def = getMode(id);
@@ -519,6 +550,10 @@ function startRun(id) {
   hud.setWobbleVisible(!!def.wobble);
   // Modes opt OUT of the score readout; everything shows it by default.
   hud.setScoreVisible(def.showsScore !== false);
+  // A FRESH LOOK EVERY RUN. The point is that the hill does not feel like the
+  // same hill twice; picking here rather than per-mode means free ride, missions
+  // and the race all get it for free.
+  applyTheme(pickRandomTheme());
   running = true;
   setPaused(false);
   reset();
@@ -1353,7 +1388,7 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals, finishLine };
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals, finishLine, trough, sky, applyTheme };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);

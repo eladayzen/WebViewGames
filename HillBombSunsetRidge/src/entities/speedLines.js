@@ -124,6 +124,15 @@ export function createSpeedLines(scene) {
   scene.add(lines);
 
   return {
+    /** Theme colour for the streaks. See data/themes.js. */
+    setTheme(theme) {
+      if (mat && mat.uniforms && mat.uniforms.uColor) {
+        mat.uniforms.uColor.value.setHex(theme.speedLine);
+      } else if (mat && mat.color) {
+        mat.color.setHex(theme.speedLine);
+      }
+    },
+
     lines,
     /**
      * @param {number} wobble  the speed-wobble meter, 0..100
