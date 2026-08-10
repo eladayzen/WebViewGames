@@ -12,6 +12,7 @@
 
 import { progressAt, tierName } from '../systems/progression.js';
 import { PLAYER_RUN_FRAMES, PLAYER_JUMP_FRAMES } from '../data/playerSprite.js';
+import { getVfxEnabled } from '../systems/vfxSettings.js';
 
 // #points-value itself is unused here -- it's still the flight target
 // ui/pointsFly.js measures/lands labels on (grabbed directly by main.js),
@@ -89,9 +90,26 @@ let pointsPunchDuration = 0;
 let pointsPunchVariant = 'coin';
 let pointsBurstTimer = 0;
 let pointsBurstActive = false;
+let pointsBurstVariant = 'coin';
 const POINTS_PUNCH_COIN_DURATION_SEC = 0.26;
 const POINTS_PUNCH_ENEMY_DURATION_SEC = 0.32;
 const POINTS_BURST_DURATION_SEC = 0.55;
+// Coin landings now ALSO get a burst, not just the punch -- direct feedback:
+// "something very small for coins, something bigger for enemy points."
+// Reuses the same 12 pre-built pieces/angles as the enemy burst (below)
+// rather than a second pool: only every other one fires (evenly spread,
+// since the 12 are laid out at 30 degree steps -- taking every 2nd keeps 60
+// degree spacing), travelling a fraction of the enemy burst's distance, for
+// a shorter time, with a smaller peak scale.
+const POINTS_BURST_COIN_DURATION_SEC = 0.32;
+// 0.4 measured as too small in an actual render check: at that distance the
+// pieces never clear the "65"-sized counter's own glyph glow before fading
+// -- same warm gold tone as the number itself, so they read as invisible
+// rather than small. 0.75 was the smallest multiplier that visibly cleared
+// it (final reach ~4.1-6.75vmin against the counter's own ~8.6vmin
+// font-size).
+const POINTS_BURST_COIN_DIST_MULT = 0.75;
+const POINTS_BURST_COIN_PEAK_SCALE = 1.0;
 
 function lerp(a, b, t) { return a + (b - a) * t; }
 
@@ -138,10 +156,14 @@ function buildPointsBurst() {
 }
 buildPointsBurst();
 
-function playPointsBurst() {
-  if (!pointsBurstEl) return;
+function playPointsBurst(variant) {
+  // VFX toggle (ui/steeringPanel.js's VFX row): the counter's own squeeze
+  // (punchPoints, below) stays regardless -- it's the landing feedback
+  // itself -- only the decorative particle spray is gated.
+  if (!pointsBurstEl || !getVfxEnabled()) return;
   pointsBurstActive = true;
   pointsBurstTimer = 0;
+  pointsBurstVariant = variant;
 }
 
 // Fires the counter's punch. Two variants (src/style.css still carries the
@@ -149,7 +171,8 @@ function playPointsBurst() {
 // direct feedback: a coin should squeeze the counter LESS than it used to, a
 // kill should squeeze it MORE and throw particles. 'coin' is also the
 // fallback for any variant without its own rule (bonus coins included --
-// still a coin).
+// still a coin). Both variants now burst (updateHudEffects scales the coin
+// one down) -- see the state block above.
 function punchPoints(variant) {
   if (!pointsHudEl) return;
   pointsPunchVariant = variant === 'enemy' ? 'enemy' : 'coin';
@@ -157,7 +180,7 @@ function punchPoints(variant) {
     ? POINTS_PUNCH_ENEMY_DURATION_SEC
     : POINTS_PUNCH_COIN_DURATION_SEC;
   pointsPunchTimer = 0;
-  if (variant === 'enemy') playPointsBurst();
+  playPointsBurst(pointsPunchVariant);
 }
 
 // Called every frame from core/main.js's tick, right alongside
@@ -178,31 +201,59 @@ export function updateHudEffects(dt) {
   }
 
   if (pointsBurstActive) {
+    const isCoin = pointsBurstVariant !== 'enemy';
     pointsBurstTimer += dt;
-    const p = Math.min(1, pointsBurstTimer / POINTS_BURST_DURATION_SEC);
-    for (const piece of pointsBurstPieces) {
-      let opacity;
-      let scale;
-      let q;
-      let tx;
-      let ty;
-      if (p < 0.2) {
-        q = p / 0.2;
-        opacity = 1;
-        scale = lerp(1.6, 1.3, q);
-        tx = piece.bx * 0.35 * q;
-        ty = piece.by * 0.35 * q;
-      } else {
-        q = (p - 0.2) / 0.8;
-        opacity = lerp(1, 0, q);
-        scale = lerp(1.3, 0.3, q);
-        tx = lerp(piece.bx * 0.35, piece.bx, q);
-        ty = lerp(piece.by * 0.35, piece.by, q);
+    if (isCoin) {
+      // Own curve, not a scaled-down reuse of the enemy one below: the
+      // enemy curve spends its first 20% held near the origin before flying
+      // out, which reads fine over its slower 0.55s but on the coin's much
+      // shorter 0.3s left the pieces still sitting almost exactly on top of
+      // the counter digits -- same warm color as the glowing text itself --
+      // for most of the burst, effectively invisible. This one moves
+      // outward from frame 1 instead, so it actually clears the number
+      // early enough to read as a small burst rather than nothing.
+      const p = Math.min(1, pointsBurstTimer / POINTS_BURST_COIN_DURATION_SEC);
+      pointsBurstPieces.forEach((piece, idx) => {
+        // Only every OTHER piece fires (still an even spread -- the 12 are
+        // laid out at 30 degree steps, so every 2nd keeps 60 degree
+        // spacing); the rest stay at rest.
+        if (idx % 2 !== 0) {
+          piece.el.style.opacity = '0';
+          return;
+        }
+        const tx = piece.bx * POINTS_BURST_COIN_DIST_MULT * p;
+        const ty = piece.by * POINTS_BURST_COIN_DIST_MULT * p;
+        const scale = lerp(POINTS_BURST_COIN_PEAK_SCALE, POINTS_BURST_COIN_PEAK_SCALE * 0.25, p);
+        piece.el.style.transform = `translate(${tx.toFixed(2)}vmin, ${ty.toFixed(2)}vmin) scale(${scale.toFixed(3)})`;
+        piece.el.style.opacity = lerp(1, 0, p).toFixed(3);
+      });
+      if (p >= 1) pointsBurstActive = false;
+    } else {
+      const p = Math.min(1, pointsBurstTimer / POINTS_BURST_DURATION_SEC);
+      for (const piece of pointsBurstPieces) {
+        let opacity;
+        let scale;
+        let q;
+        let tx;
+        let ty;
+        if (p < 0.2) {
+          q = p / 0.2;
+          opacity = 1;
+          scale = lerp(1.6, 1.3, q);
+          tx = piece.bx * 0.35 * q;
+          ty = piece.by * 0.35 * q;
+        } else {
+          q = (p - 0.2) / 0.8;
+          opacity = lerp(1, 0, q);
+          scale = lerp(1.3, 0.3, q);
+          tx = lerp(piece.bx * 0.35, piece.bx, q);
+          ty = lerp(piece.by * 0.35, piece.by, q);
+        }
+        piece.el.style.transform = `translate(${tx.toFixed(2)}vmin, ${ty.toFixed(2)}vmin) scale(${scale.toFixed(3)})`;
+        piece.el.style.opacity = opacity.toFixed(3);
       }
-      piece.el.style.transform = `translate(${tx.toFixed(2)}vmin, ${ty.toFixed(2)}vmin) scale(${scale.toFixed(3)})`;
-      piece.el.style.opacity = opacity.toFixed(3);
+      if (p >= 1) pointsBurstActive = false;
     }
-    if (p >= 1) pointsBurstActive = false;
   }
 }
 
@@ -288,9 +339,18 @@ function buildConfetti() {
 buildConfetti();
 
 export function showLevelComplete(nextTier) {
-  tierBarEl.classList.remove('tier-bar-celebrate');
-  void tierBarEl.offsetWidth;
-  tierBarEl.classList.add('tier-bar-celebrate');
+  // VFX toggle (ui/steeringPanel.js's VFX row): the tier-bar sweep and
+  // confetti are pure celebration flourish, gated; the headline text pop
+  // below stays regardless -- it's the actual "what's next" announcement.
+  if (getVfxEnabled()) {
+    tierBarEl.classList.remove('tier-bar-celebrate');
+    void tierBarEl.offsetWidth;
+    tierBarEl.classList.add('tier-bar-celebrate');
+
+    lcConfettiEl.classList.remove('lc-confetti-play');
+    void lcConfettiEl.offsetWidth;
+    lcConfettiEl.classList.add('lc-confetti-play');
+  }
 
   // Same remove/reflow/re-add restart idiom as the tier flash and countdown
   // tick -- without the forced reflow, back-to-back level-ups (or a fast
@@ -299,10 +359,6 @@ export function showLevelComplete(nextTier) {
   lcHeadlineEl.classList.remove('lc-headline-play');
   void lcHeadlineEl.offsetWidth;
   lcHeadlineEl.classList.add('lc-headline-play');
-
-  lcConfettiEl.classList.remove('lc-confetti-play');
-  void lcConfettiEl.offsetWidth;
-  lcConfettiEl.classList.add('lc-confetti-play');
 
   lcNextEl.textContent = `NEXT: ${tierName(nextTier)}`;
   lastCountdownShown = null;

@@ -70,13 +70,16 @@
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&#9208;</button>
 
-      <!-- Board steering tuning (gear, left of Pause). Every value that
-           decides how the board feels -- mode, lane zones, hysteresis, jump
-           tilt, host sensitivity -- adjustable live and mid-run, because the
-           board is the only place any of it can be judged and you can't edit a
-           Unity Inspector field while standing on one. Rows are built by
-           src/ui/steeringPanel.js, not written here. -->
-      <button id="steering-button" title="Board steering"
+      <!-- Settings (gear, left of Pause): board steering tuning -- mode, lane
+           zones, hysteresis, jump tilt, host sensitivity, adjustable live and
+           mid-run, because the board is the only place any of it can be
+           judged and you can't edit a Unity Inspector field while standing on
+           one -- plus SFX/MUSIC on-off. One panel for both rather than a
+           second button+panel, since this is the only touch-and-key-
+           navigable settings surface the game has (see src/ui/
+           steeringPanel.js's header for why). Rows are built there, not
+           written here. -->
+      <button id="steering-button" title="Settings"
         style="position:absolute;top:12px;right:108px;z-index:9999;width:38px;height:38px;border:none;
                border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
                font:600 17px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;

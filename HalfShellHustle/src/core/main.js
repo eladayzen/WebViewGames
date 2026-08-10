@@ -64,6 +64,10 @@ import {
 import * as hud from '../ui/hud.js';
 import { initSteeringPanel } from '../ui/steeringPanel.js';
 import {
+  initAudio, playSfx, pauseMusic, resumeMusic,
+} from '../systems/audio.js';
+import { getVfxEnabled } from '../systems/vfxSettings.js';
+import {
   LANE_X, CENTER_LANE, ASPECT_W, ASPECT_H, CAMERA_FOV, LIVES_START, LIVES_SOFTCAP, SPAWN_Z,
 } from '../data/constants.js';
 import {
@@ -453,9 +457,11 @@ function boot() {
   }
 
   document.getElementById('intro-next-button').addEventListener('click', () => {
+    playSfx('sfx_ui_tap');
     if (gs.current === 'intro' && introStep === 1) advanceIntroStep();
   });
   document.getElementById('intro-start-button').addEventListener('click', () => {
+    playSfx('sfx_ui_tap');
     if (gs.current === 'intro' && introStep === 2) dismissIntro();
   });
 
@@ -466,6 +472,11 @@ function boot() {
   // next level is built.
   function beginLevelComplete(nextTier) {
     triggerLevelComplete(gs);
+    playSfx('sfx_level_complete');
+    // Experiment, direct request: silence the music bed across the whole
+    // transition so the fanfare/countdown gets the moment to itself, then
+    // bring it back once the next level actually starts (startNextLevel).
+    pauseMusic();
     // Credit anything still in the air. Without this the transition would
     // display a total lower than the one that triggered it, and those points
     // would then land during the NEXT level.
@@ -485,6 +496,7 @@ function boot() {
     levelIndex = pendingLevelTier;
     resetLevelWorld(false);
     restartToRunning(gs);
+    resumeMusic();
     // The environment swap (if any) already happened when the curtains
     // closed, below -- just reveal it, rather than popping straight to it.
     hud.openLevelCurtains();
@@ -492,6 +504,7 @@ function boot() {
 
   function endRun() {
     triggerGameOver(gs);
+    playSfx('sfx_gameover');
     // The blink lives inside tick()'s running guard, so once the state flips
     // it stops being recomputed -- without this the sprite (and its shadow)
     // can freeze mid-blink and sit INVISIBLE on the game-over screen.
@@ -520,6 +533,7 @@ function boot() {
     hud.updateLives(livesState.lives);
     triggerCameraShake(cameraRig, DAMAGE_SHAKE_INTENSITY);
     damageFlashTimer = DAMAGE_FLASH_DURATION_SEC;
+    playSfx('sfx_hit');
 
     if (result.dead) {
       endRun();
@@ -563,10 +577,26 @@ function boot() {
   let paused = false;
   const pauseButton = document.getElementById('pause-button');
   pauseButton.addEventListener('click', () => {
+    playSfx('sfx_ui_tap');
     paused = !paused;
     pauseButton.innerHTML = paused ? '&#9654;' : '&#9208;';
     hud.setPausedBadge(paused);
+    // Direct request: "pause should pause music as well." Guarded on
+    // gs.current === 'levelcomplete' on the RESUME side only -- that state
+    // already owns muting the music itself (beginLevelComplete/
+    // startNextLevel), so unpausing mid-transition must not resume it early
+    // and race startNextLevel's own resumeMusic call.
+    if (paused) pauseMusic();
+    else if (gs.current !== 'levelcomplete') resumeMusic();
   });
+
+  // SFX + music (systems/audio.js). Called early and unconditionally --
+  // GOBALANCE_SDK.md requires the game reach a playable state on load with
+  // no key needed, so this can't block boot: it kicks off buffer loading in
+  // the background and installs a one-time gesture listener to unlock
+  // playback, both fire-and-forget. The intro tutorial's own first tap/key
+  // is the natural first gesture that satisfies it.
+  initAudio();
 
   // Board steering panel (ui/steeringPanel.js): steering mode + every tilt
   // threshold, tunable live. Also re-sends the stored host sensitivity at boot
@@ -799,7 +829,14 @@ function boot() {
         // (jumpElapsed !== null) at the moment of contact, read directly by
         // entities/player.js's updatePlayer and checkPlatformKillBarrierHit
         // below.
+        //
+        // startPlayerJump itself no-ops while already airborne (jumpElapsed
+        // !== null) -- the SFX has to check the SAME condition explicitly,
+        // direct feedback: it was firing on every press of the button, not
+        // only when a jump actually started.
+        const jumpStarting = player.jumpElapsed === null;
         startPlayerJump(player);
+        if (jumpStarting) playSfx('sfx_jump');
       }
       updatePlayer(player, dt, platformField);
       // updateRibbon(ribbon, dt, getPlayerHeadAnchor(player)); -- disabled, see above
@@ -812,14 +849,17 @@ function boot() {
         && (player.frameIndex === 1 || player.frameIndex === 3)
         && player.jumpElapsed === null;
       lastContactFrame = player.frameIndex;
+      const vfxOn = getVfxEnabled();
       if (enteredContact) {
         pulseContactShadow(contactShadow);
         // + player.elevationY: same reasoning as entities/contactShadow.js's
         // own elevation follow -- otherwise dust puffs on a platform deck
         // spawned down at street level instead of at his actual feet.
-        spawnDustPuff(
-          dustPool, player.sprite.position.x, 0.05 + player.elevationY, player.sprite.position.z - DUST_AHEAD_OFFSET,
-        );
+        if (vfxOn) {
+          spawnDustPuff(
+            dustPool, player.sprite.position.x, 0.05 + player.elevationY, player.sprite.position.z - DUST_AHEAD_OFFSET,
+          );
+        }
       }
       // Post-hit blink -- fast enough to read as "intangible right now", and
       // recomputed from scratch every frame (with an explicit visible-true
@@ -840,9 +880,18 @@ function boot() {
       }
 
       updateContactShadow(contactShadow, player, dt);
-      dustPool.update(dt);
-      dustPool.scrollZ(currentSpeed * dt, DUST_FAN_RATE);
-      updateSpeedStreaks(speedStreaks, dt, currentSpeed);
+      // VFX toggle (ui/steeringPanel.js's VFX row, systems/vfxSettings.js):
+      // hide the whole pool/mesh rather than just skipping spawns above --
+      // otherwise particles already in flight at the moment of toggling OFF
+      // would sit frozen on screen (update/scrollZ stop touching them) and
+      // the streak mesh would freeze mid-cycle instead of disappearing.
+      dustPool.points.visible = vfxOn;
+      speedStreaks.mesh.visible = vfxOn;
+      if (vfxOn) {
+        dustPool.update(dt);
+        dustPool.scrollZ(currentSpeed * dt, DUST_FAN_RATE);
+        updateSpeedStreaks(speedStreaks, dt, currentSpeed);
+      }
 
       // Frame-count HUD readout disabled -- re-enable (uncomment) if a
       // specific frame needs calling out again during playtest feedback.
@@ -961,22 +1010,26 @@ function boot() {
       updateEnemyPool(enemyField, dt, currentSpeed, platformField);
       const hitEnemy = checkEnemyHit(player, enemyField);
       if (hitEnemy) {
-        spawnEnemyPoof(
-          enemyPoofPool,
-          hitEnemy.sprite.position.x, hitEnemy.sprite.position.y, hitEnemy.sprite.position.z,
-          hitEnemy.sprite.scale.x, hitEnemy.sprite.scale.y, hitEnemy.type.poofColors,
-        );
+        if (vfxOn) {
+          spawnEnemyPoof(
+            enemyPoofPool,
+            hitEnemy.sprite.position.x, hitEnemy.sprite.position.y, hitEnemy.sprite.position.z,
+            hitEnemy.sprite.scale.x, hitEnemy.sprite.scale.y, hitEnemy.type.poofColors,
+          );
+        }
         // Read the position BEFORE killEnemy hides the sprite -- the label
         // has to launch from where the kill visibly happened.
         const killX = hitEnemy.sprite.position.x;
         const killY = hitEnemy.sprite.position.y;
         const killZ = hitEnemy.sprite.position.z;
         killEnemy(hitEnemy);
+        playSfx('sfx_enemy_kill');
         startPlayerAttack(player, attackSequenceIndex);
         attackSequenceIndex += 1;
         spawnPointsFly(killX, killY, killZ, camera, awardEnemyKill(score), 'enemy');
       }
-      enemyPoofPool.update(dt);
+      enemyPoofPool.points.visible = vfxOn;
+      if (vfxOn) enemyPoofPool.update(dt);
 
       if (PLATFORM_ENABLED) {
         updateSpawner(platformSpawnerState, dt, () => {
@@ -1009,11 +1062,14 @@ function boot() {
       applyMagnetPull(coinField, player, dt, isMagnetActive(player));
       const collected = collectCoins(player, coinField, platformField);
       for (const slot of collected) {
-        spawnCoinSparkle(
-          coinSparklePool,
-          slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
-          slot.type.sparkleColor,
-        );
+        playSfx('sfx_coin');
+        if (vfxOn) {
+          spawnCoinSparkle(
+            coinSparklePool,
+            slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
+            slot.type.sparkleColor,
+          );
+        }
         spawnPointsFly(
           slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
           camera, awardCoin(score, slot.type),
@@ -1021,7 +1077,8 @@ function boot() {
         );
         despawnCoin(slot);
       }
-      coinSparklePool.update(dt);
+      coinSparklePool.points.visible = vfxOn;
+      if (vfxOn) coinSparklePool.update(dt);
 
       // Ability pickups (entities/pickups.js). ONE attempt per interval that
       // then rolls for what it produces, rather than two competing spawners --
@@ -1052,11 +1109,13 @@ function boot() {
         // Reuses the coin sparkle, tinted to the pickup's own halo colour --
         // same burst, so a pickup reads as "a collect, but bigger" rather than
         // as an unrelated effect.
-        spawnCoinSparkle(
-          coinSparklePool,
-          slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
-          slot.type.sparkleColor,
-        );
+        if (vfxOn) {
+          spawnCoinSparkle(
+            coinSparklePool,
+            slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
+            slot.type.sparkleColor,
+          );
+        }
         if (slot.type.effect === 'magnet') {
           grantMagnet(player);
         } else if (slot.type.effect === 'life') {

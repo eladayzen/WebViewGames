@@ -22,7 +22,14 @@
 // WHO OWNS WHAT: input/input.js owns the actual steering values and logic; this
 // file only renders controls and pushes changes into it. The one exception is
 // SENSITIVITY, which tunes thresholds living on the Unity side and so goes over
-// the gb:sensitivity bridge instead -- see its row below.
+// the gb:sensitivity bridge instead -- see its row below. The SFX/MUSIC/VFX
+// rows follow the identical split with systems/audio.js and systems/
+// vfxSettings.js: those files own their enabled state (and, for audio, all
+// the WebAudio plumbing), this one only renders the toggles. They live in
+// THIS panel rather than a second button+panel of their own because this is
+// the only touch-and-key-navigable settings surface in the game (see the
+// two-key note above) -- a second one would have to duplicate the whole
+// row/selection/key-routing model just to hold three rows.
 
 import {
   STEERING_MODES, STEERING_ABSOLUTE, DEFAULT_STEERING_MODE,
@@ -32,6 +39,10 @@ import {
   setSteeringMode, setLaneZoneThreshold, setLaneZoneHysteresis,
   setJumpTiltThreshold, recenterBoard,
 } from '../input/input.js';
+import {
+  getSfxEnabled, setSfxEnabled, getMusicEnabled, setMusicEnabled, playSfx,
+} from '../systems/audio.js';
+import { getVfxEnabled, setVfxEnabled } from '../systems/vfxSettings.js';
 
 const STORAGE_KEY = 'hsh:steering';
 
@@ -193,6 +204,7 @@ function addAction({ label, run }) {
     el,
     refresh: () => {},
     activate: () => {
+      playSfx('sfx_ui_tap');
       const msg = run();
       if (!msg) return;
       // Confirm in place: with no other feedback channel there's otherwise no
@@ -239,7 +251,10 @@ export function initSteeringPanel() {
   panelEl = document.getElementById('steering-panel');
   if (!button || !panelEl) return;
 
-  button.addEventListener('click', () => setPanelOpen(panelEl.classList.contains('hidden')));
+  button.addEventListener('click', () => {
+    playSfx('sfx_ui_tap');
+    setPanelOpen(panelEl.classList.contains('hidden'));
+  });
 
   // The key scheme is not discoverable, and inside Unity it's the only way to
   // drive this at all -- so it's stated on the panel rather than left to be
@@ -299,6 +314,24 @@ export function initSteeringPanel() {
     fmt: (v) => `${Math.round(v)}`,
     note: 'stepped mode only -- tunes the HOST thresholds',
   });
+  addChoice({
+    label: 'SFX',
+    values: ['ON', 'OFF'],
+    get: () => (getSfxEnabled() ? 'ON' : 'OFF'),
+    set: (v) => setSfxEnabled(v === 'ON'),
+  });
+  addChoice({
+    label: 'MUSIC',
+    values: ['ON', 'OFF'],
+    get: () => (getMusicEnabled() ? 'ON' : 'OFF'),
+    set: (v) => setMusicEnabled(v === 'ON'),
+  });
+  addChoice({
+    label: 'VFX',
+    values: ['ON', 'OFF'],
+    get: () => (getVfxEnabled() ? 'ON' : 'OFF'),
+    set: (v) => setVfxEnabled(v === 'ON'),
+  });
   addAction({
     label: 'RECENTRE BOARD',
     run: () => (recenterBoard() ? 'CENTRED ✓' : 'NO SENSOR (BROWSER)'),
@@ -337,6 +370,7 @@ export function initSteeringPanel() {
       // this is the sole way in there.
       if (e.code !== 'Enter') return;
       e.preventDefault();
+      playSfx('sfx_ui_tap');
       setPanelOpen(true);
       return;
     }
