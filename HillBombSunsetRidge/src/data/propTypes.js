@@ -255,7 +255,6 @@ export const PATTERNS = [
       { type: 'crystal', ds: 21, u: W * 0.1 },
       { type: 'crystal', ds: 40, u: W * 0.3 },
       { type: 'kicker', ds: 50, u: -W * 0.35 },
-      { type: 'boostPad', ds: 20, u: W * 0.20 },
     ],
   },
   {
@@ -265,7 +264,7 @@ export const PATTERNS = [
       { type: 'kicker', ds: 0, u: -W * 0.25 },
       { type: 'kicker', ds: 26, u: W * 0.25 },
       { type: 'bigKicker', ds: 56, u: 0 },
-      { type: 'boostPad', ds: 14, u: -W * 0.19 },
+      { type: 'boostPad', ds: 14, u: -W * 0.15 },
       // Just past the big kicker's lip, where the arc actually is.
       { type: 'airGate', ds: 64, u: 0 },
       // Far enough past the kicker to get the speed back before committing.
@@ -289,8 +288,7 @@ export const PATTERNS = [
         out.push({ type: 'crystal', ds: i * 10 + 5, u: (i % 2 ? -1 : 1) * W * 0.3 });
       }
       out.push({ type: 'pothole', ds: 34, u: 0 });
-      out.push({ type: 'boostPad', ds: 22, u: W * 0.20 });
-      out.push({ type: 'boostPad', ds: 45, u: -W * 0.21 });
+      out.push({ type: 'boostPad', ds: 45, u: -W * 0.33 });
       return out;
     },
   },
@@ -301,7 +299,7 @@ export const PATTERNS = [
       { type: 'ledge', ds: 0, u: -W * 0.5 },
       { type: 'ledge', ds: 0, u: W * 0.5 },
       { type: 'bank', ds: 40, u: 0 },
-      { type: 'boostPad', ds: 74, u: W * 0.20 },
+      { type: 'boostPad', ds: 74, u: W * 0.30 },
       { type: 'hydrant', ds: 20, u: -W * 0.78 },
       { type: 'hydrant', ds: 60, u: W * 0.78 },
       { type: 'roadwork', ds: 68, u: -W * 0.2 },
@@ -316,7 +314,7 @@ export const PATTERNS = [
       { type: 'roadwork', ds: 0, u: -W * 0.55 },
       { type: 'roadwork', ds: 30, u: W * 0.5 },
       { type: 'longRail', ds: 20, u: W * 0.1 },
-      { type: 'boostPad', ds: 48, u: -W * 0.22 },
+      { type: 'boostPad', ds: 48, u: -W * 0.16 },
       { type: 'pothole', ds: 62, u: -W * 0.45 },
       { type: 'cone', ds: 70, u: -W * 0.2 },
       { type: 'cone', ds: 74, u: W * 0.05 },
@@ -334,7 +332,7 @@ export const PATTERNS = [
       { type: 'bank', ds: 0, u: W * 0.4 },
       { type: 'barrel', ds: 44, u: 0 },
       { type: 'longRail', ds: 66, u: 0 },
-      { type: 'boostPad', ds: 24, u: W * 0.19 },
+      { type: 'boostPad', ds: 24, u: W * 0.34 },
       // Off the vert wall, which is the biggest arc on the course.
       { type: 'airGate', ds: 56, u: 0 },
       // Over the big kicker's landing: only reachable with real height.
@@ -347,6 +345,6 @@ export const PATTERNS = [
     // Deliberate empty stretch. Density everywhere is exhausting and leaves the
     // player no room to just feel the speed, which is the point of the game.
     length: 55,
-    build: (W) => [{ type: 'boostPad', ds: 28, u: W * 0.18 }],
+    build: (W) => [{ type: 'boostPad', ds: 28, u: W * 0.26 }],
   },
 ];

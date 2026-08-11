@@ -186,6 +186,24 @@
         </div>
       </div>
 
+      <!-- MISSION BRIEFING. Held on screen BEFORE the run starts, because a
+           checklist that appears in the corner at the same moment the hill
+           starts moving is a checklist nobody reads -- Amit: "I start the
+           mission, I don't understand what I should do."
+           It shows the objectives at a size you cannot miss and then flies them
+           into the HUD panel's own position, so the thing you just read and the
+           thing you will be glancing at for the rest of the run are visibly the
+           same object. -->
+      <div id="briefing" class="overlay hidden">
+        <div id="brief-card">
+          <div id="brief-num">01</div>
+          <div id="brief-name">FIRST DROP</div>
+          <div id="brief-sub"></div>
+          <ul id="brief-list"></ul>
+          <div id="brief-go">READY</div>
+        </div>
+      </div>
+
       <!-- QUIT CONFIRM. Leaving a run mid-ride throws away the run, and on a
            balance board the back button is easy to catch by accident, so it
            asks. Deliberately small and centred rather than a full takeover --

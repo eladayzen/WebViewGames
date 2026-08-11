@@ -16,7 +16,7 @@
 
 import * as THREE from 'three';
 import {
-  GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED,
+  GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED, FUNNEL_SPACING,
   ROLL_GAIN, ROLL_MAX, ROLL_BRAKE_LOSS, MIN_SPEED,
   NATURAL_TOP_SPEED, SHAKE_SPAN, SHAKE_MAX,
   BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE, GROUND_CTRL_RELEASE, GROUND_CTRL_LETGO,
@@ -67,6 +67,7 @@ import { createProgress } from '../systems/progress.js';
 import { createModeSelect } from '../ui/modeSelect.js';
 import { createMissionSelect } from '../ui/missionSelect.js';
 import { createObjectives } from '../ui/objectives.js';
+import { createBriefing } from '../ui/briefing.js';
 import { getCourse, DEFAULT_COURSE } from '../data/courses.js';
 import { pickRandomTheme, getTheme, DEFAULT_THEME } from '../data/themes.js';
 
@@ -133,6 +134,7 @@ const finishLine = createFinishLine(scene);
 // of this line may reach back into the simulation -- see core/events.js.
 const events = createEvents();
 const objectivesUi = createObjectives();
+const briefing = createBriefing();
 // Stars and unlocks. Local today, account data in the shipped product -- the
 // whole point of it being a module is that swapping the backing store touches
 // only that file (see systems/progress.js).
@@ -217,6 +219,8 @@ const state = {
 const HUGE_AIR_POINTS = 250;
 
 let swingScale = 1;
+// Where this run begins on the hill -- 0 for fixed courses. See startRun().
+let runStartS = 0;
 let running = false;
 let paused = false;
 /**
@@ -319,7 +323,7 @@ function beginLanding(amount) {
 }
 
 function reset() {
-  state.s = 0;
+  state.s = runStartS;
   state.sPrev = 0;
   state.theta = 0;
   state.thetaVel = 0;
@@ -357,10 +361,13 @@ function reset() {
   state.grindLanding = false;
   autoTrickTimer = 0;
   rig.reset();
-  props.reset();
+  props.reset(runStartS);
   scoring.reset();
   hud.reset(); // the score readout counts UP, so a new run must start it at zero
-  props.update(0);
+  // The RUN'S start, not 0. A varying course begins hundreds of metres down the
+  // hill, and seeding the spawner at 0 populated nothing at all -- the world was
+  // empty until the game loop's first update happened to cover for it.
+  props.update(runStartS);
 }
 
 /**
@@ -549,6 +556,15 @@ function startRun(id) {
   // as a hard-coded filter inside the spawner.
   const course = getCourse(def.course || DEFAULT_COURSE);
   props.setAllowedKinds(course.allowedKinds);
+  // ROUTE VARIATION. One seed decides the whole run's layout, and the biggest
+  // thing it moves is where on the hill you START: the trough's funnels and
+  // roll are functions of absolute distance, so a different starting distance
+  // is a different road, not just different props on the same road. Multiplied
+  // by the funnel period so consecutive runs land in genuinely different
+  // stretches rather than a few metres apart.
+  const seed = course.variation ? Math.random() : 0;
+  runStartS = course.variation ? Math.floor(seed * 5 * FUNNEL_SPACING) : 0;
+  props.setVariation(!!course.variation, seed);
   // The speed-based fail state is opt-in per mode, and no mode wants it today.
   // Kept whole rather than deleted so a survival mode can switch it back on
   // with one flag -- see systems/scoring.js for why it is a mode question.
@@ -566,6 +582,11 @@ function startRun(id) {
   setPaused(false);
   reset();
   modes.start(id);
+  // BRIEF FIRST, RIDE SECOND. The loop is gated on the briefing below, so the
+  // hill genuinely does not move until the card has landed -- a freeze frame
+  // rather than a card floating over a run already in progress.
+  const brief = modes.briefing();
+  if (brief) briefing.show(brief);
 }
 
 // Automation and quick iteration: ?gamemode=missions drops straight into a run.
@@ -692,6 +713,7 @@ function leaveRun() {
   // after stop() so `modes.id` would still answer, but relying on that makes
   // this correct by accident.
   const wasMissions = modes.id === 'missions';
+  briefing.cancel();
   modes.stop();
   running = false;
   setPaused(false);
@@ -775,7 +797,7 @@ function frame() {
   const dt = Math.min(0.05, clock.getDelta());
 
   if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !missionSelect.isOpen()
-      && !isConfirmOpen() && !isPanelOpen()) {
+      && !isConfirmOpen() && !briefing.isOpen() && !isPanelOpen()) {
     const { carve, tuck, brake, pop } = readInput();
 
     // SOFT tilt response (see constants.js). Two stages:
@@ -1402,7 +1424,11 @@ function frame() {
     fpsFrames = 0;
     fpsTimer = 0;
   }
-  objectivesUi.update(modes.panel());
+  // The panel stays hidden while the briefing is up, or the card would fly to a
+  // destination that is already sitting there in plain sight -- which is the one
+  // thing that would make the flight pointless. briefing.fly() reveals it for
+  // long enough to measure and hands it back.
+  objectivesUi.update(briefing.isOpen() ? null : modes.panel());
   hud.boost(state.boostT > 0 ? state.boostT / state.boostDuration : 0, state.boostT);
   hud.update(dt, {
     speed: state.speed,

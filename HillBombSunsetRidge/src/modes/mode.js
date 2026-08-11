@@ -92,5 +92,10 @@ export function createModeHost(ctx) {
     panel() {
       return active && active.panel ? active.panel() : null;
     },
+
+    /** What to show before the run starts, or null for no briefing. */
+    briefing() {
+      return active && active.briefing ? active.briefing() : null;
+    },
   };
 }

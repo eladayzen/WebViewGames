@@ -985,3 +985,74 @@ html, body {
 #boost-top.ending #bt-label, #boost-top.ending #bt-time { color: #ffd166; }
 #boost-top.ending { animation: btEnding 0.32s ease-in-out infinite; }
 @keyframes btEnding { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+/* --- mission briefing -----------------------------------------------------
+   Big, centred, and then it FLIES INTO the HUD panel rather than cutting to it.
+   The flight is the whole point: it says "this thing you just read is that
+   thing in the corner", which a fade cannot. */
+#briefing { background: rgba(10, 7, 16, 0.72); z-index: 9400; }
+#brief-card {
+  width: min(30em, 86vw);
+  font-size: clamp(9px, 1.34vw, 13px);
+  padding: 1.5em 1.6em 1.3em;
+  border-radius: 1em;
+  background: rgba(26, 19, 34, 0.96);
+  border: 2px solid rgba(255, 122, 61, 0.55);
+  color: var(--paper);
+  /* Transform-origin at the top left so the flight to the HUD panel -- which is
+     anchored top-left -- is a straight scale-and-translate with no drift. */
+  transform-origin: top left;
+  will-change: transform, opacity;
+}
+#brief-card.intro { animation: briefIn 0.34s cubic-bezier(.2,1.3,.35,1); }
+@keyframes briefIn {
+  0% { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+/* The flight itself is driven from JS (it needs the panel's measured rect), so
+   this only supplies the timing. */
+#brief-card.flying { transition: transform 0.52s cubic-bezier(.4,0,.2,1), opacity 0.52s ease-in; }
+
+#brief-num {
+  font: 900 1.15em/1 system-ui, sans-serif;
+  letter-spacing: 0.35em;
+  color: var(--hot);
+  opacity: 0.85;
+}
+#brief-name {
+  font: 900 2.6em/1.05 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  margin-top: 0.12em;
+}
+#brief-sub {
+  font: 500 1.05em/1.4 system-ui, sans-serif;
+  opacity: 0.6;
+  margin-top: 0.35em;
+}
+#brief-list { list-style: none; margin: 1.2em 0 0; padding: 0; }
+#brief-list li {
+  display: flex; justify-content: space-between; align-items: center; gap: 1em;
+  padding: 0.6em 0.9em;
+  border-radius: 0.55em;
+  background: rgba(255, 255, 255, 0.07);
+  font: 800 1.15em/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* Rows arrive one after another, so the list reads as a list of things to do
+     rather than as a block of text that appeared. */
+  animation: briefRow 0.4s ease-out backwards;
+}
+#brief-list li + li { margin-top: 0.45em; }
+#brief-list li b { font-variant-numeric: tabular-nums; color: var(--hot); }
+@keyframes briefRow {
+  0% { opacity: 0; transform: translateX(-1.2em); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+#brief-go {
+  margin-top: 1.3em; text-align: center;
+  font: 800 0.95em system-ui, sans-serif;
+  letter-spacing: 0.3em;
+  color: var(--hot);
+  animation: briefPulse 1.1s ease-in-out infinite;
+}
+@keyframes briefPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }

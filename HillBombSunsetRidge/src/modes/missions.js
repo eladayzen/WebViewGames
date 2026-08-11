@@ -177,7 +177,9 @@ export default registerMode({
 
     return {
       start() {
-        ctx.hud.banner(mission.name);
+        // No banner: the briefing card names the mission far more clearly, and
+        // firing both put the name on screen twice at once.
+
         for (const o of objectives) {
           if (!o.spec || !o.spec.event) continue;
           unsubs.push(ctx.events.on(o.spec.event, (p) => {
@@ -224,6 +226,22 @@ export default registerMode({
           });
         }
       },
+
+      /**
+       * What the pre-run briefing shows. Built from the SAME objectives the
+       * panel will show, so the card the player reads and the panel they glance
+       * at are the same list -- which is exactly what the flight into the HUD
+       * is claiming.
+       */
+      briefing: () => ({
+        number: mission.number,
+        name: mission.name,
+        sub: mission.brief,
+        rows: objectives.map((o) => ({
+          label: o.spec ? o.spec.label(o) : o.kind,
+          text: o.spec && o.spec.fmt ? `${o.count.toLocaleString()}` : `${o.count}`,
+        })),
+      }),
 
       panel: () => ({
         title: mission.name,

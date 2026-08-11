@@ -31,6 +31,13 @@ export const COURSES = {
     length: null,
     /** Which prop kinds may spawn. Hazards deliberately absent -- see props.js. */
     allowedKinds: ['launch', 'grind', 'scenery', 'pickup'],
+    /**
+     * FIXED LAYOUT. Missions are measured against this course -- star
+     * thresholds came from timed runs on it -- and a replayed mission has to be
+     * the same mission. Rolling an easier or harder layout would make a star
+     * mean nothing.
+     */
+    variation: false,
   },
 
   /**
@@ -50,6 +57,13 @@ export const COURSES = {
      */
     length: 2600,
     allowedKinds: ['launch', 'grind', 'scenery', 'boost'],
+    /**
+     * A DIFFERENT HILL EVERY RUN. Nothing here is scored against a fixed
+     * benchmark -- you are racing the riders beside you, and they ride whatever
+     * you ride -- so the layout is free to change, and it should: the whole
+     * point of a race is not knowing what is round the next bend.
+     */
+    variation: true,
   },
 };
 

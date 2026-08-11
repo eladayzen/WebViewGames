@@ -24,6 +24,22 @@ function hash(n) {
   return x - Math.floor(x);
 }
 
+/**
+ * A seeded generator, so a run's layout is decided once and then replayed
+ * identically for the rest of that run -- patterns are emitted lazily as the
+ * road unrolls, and an unseeded Math.random() would make the course depend on
+ * WHEN a pattern happened to spawn rather than on the run itself.
+ */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // --- geometry builders, one per visual family -------------------------------
 
 /**
@@ -482,6 +498,14 @@ export function createProps(scene) {
   // Which prop kinds may spawn. Hazards excluded by default; see add().
   let allowedKinds = new Set(['launch', 'grind', 'scenery', 'pickup']);
   let nextPatternS = 60; // leave the opening stretch clear
+  // --- route variation ------------------------------------------------------
+  // Off unless the course asks for it (see data/courses.js). When off, every
+  // one of these is inert and the course is byte-for-byte the fixed layout the
+  // missions were measured on.
+  let vary = false;
+  let rng = mulberry32(1);
+  /** Indices left in the current shuffled bag -- see nextPattern(). */
+  let bag = [];
   let spinT = 0; // drives the pickup spin/bob
   let patternIndex = 0;
 
@@ -535,13 +559,38 @@ export function createProps(scene) {
     active.push({ type, def, s, theta, mesh, spent: false });
   }
 
+  /**
+   * Which set-piece comes next.
+   *
+   * Fixed courses walk the list in order, which is what makes a mission the
+   * same mission every time. A varying course draws from a BAG -- a shuffled
+   * copy of the list, refilled when empty -- rather than picking at random each
+   * time, so every pattern still appears once per cycle and you never get the
+   * same one twice running. Pure random would happily deal 'breather' three
+   * times in a row and hide 'big air' for a whole race.
+   */
+  function nextPattern() {
+    if (!vary) return PATTERNS[patternIndex++ % PATTERNS.length];
+    if (!bag.length) {
+      bag = PATTERNS.map((_, i) => i);
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [bag[i], bag[j]] = [bag[j], bag[i]];
+      }
+    }
+    return PATTERNS[bag.pop()];
+  }
+
   /** Emit the next authored pattern, plus roadside scenery for that stretch. */
   function emitPattern() {
-    const p = PATTERNS[patternIndex % PATTERNS.length];
-    patternIndex++;
+    const p = nextPattern();
     const start = nextPatternS;
+    // MIRRORED half the time. Free variety, and it means recognising a pattern
+    // still does not tell you which side of the road to be on -- the shape is
+    // familiar, the line through it is not.
+    const flip = vary && rng() < 0.5 ? -1 : 1;
     for (const item of p.build(THETA_MAX)) {
-      add(item.type, start + item.ds, item.u);  // item.u is authored as an ANGLE now
+      add(item.type, start + item.ds, item.u * flip);  // item.u is an ANGLE
     }
 
     // Roadside dressing across the same stretch. Deterministic per index so the
@@ -572,10 +621,31 @@ export function createProps(scene) {
     group,
     active,
 
-    reset() {
+    /**
+     * @param {number} [startS] where this run begins on the hill.
+     *
+     * A varying course starts at a DIFFERENT DISTANCE each run, and that one
+     * number changes more than the props: the trough's funnels (760 m period),
+     * its roll wave and all the roadside dressing are functions of ABSOLUTE s,
+     * so a different start puts the pinches, the banking and the scenery
+     * somewhere else entirely. The same set-piece sits on different road.
+     */
+    reset(startS = 0) {
       while (active.length) release(active.pop());
-      nextPatternS = 60;
+      nextPatternS = startS + 60; // leave the opening stretch clear
       patternIndex = 0;
+      bag = [];
+    },
+
+    /**
+     * @param {boolean} on
+     * @param {number} seed
+     * Called once per run, before reset().
+     */
+    setVariation(on, seed) {
+      vary = !!on;
+      rng = mulberry32(Math.floor(seed * 0xffffffff) || 1);
+      bag = [];
     },
 
     /** Keep the field populated ahead and recycled behind. */
