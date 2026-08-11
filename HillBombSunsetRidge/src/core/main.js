@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import {
   GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED,
   ROLL_GAIN, ROLL_MAX, ROLL_BRAKE_LOSS, MIN_SPEED,
+  NATURAL_TOP_SPEED, SHAKE_SPAN, SHAKE_MAX,
   BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE, GROUND_CTRL_RELEASE, GROUND_CTRL_LETGO,
   TAIL_LOAD_RATE, TAIL_LOAD_DECAY, TAIL_LOAD_BOOST,
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
@@ -1332,12 +1333,13 @@ function frame() {
   // Camera shake ramps with the wobble meter, so the fail state is FELT coming
   // for a couple of seconds rather than sprung (build doc §5.3's warning ramp).
   // With wobble ON, shake is a DANGER read: it ramps as the meter approaches
-  // the kill. With it off there is no danger to telegraph, so a much gentler
-  // tremble comes off raw overspeed instead -- speed should still feel like
-  // something, it just no longer means you are about to die.
+  // the kill. With it off it marks speed you did not get on your own -- zero at
+  // or below the natural ceiling, so riding well at the top is calm, and only a
+  // boost shakes the frame. It was measured off SPEED_REF before, which sat
+  // BELOW the natural top and so shook the screen at ordinary cruise.
   view.shake = scoring.wobbleEnabled
     ? Math.max(0, (scoring.state.wobble - 55) / 45)
-    : Math.min(0.35, Math.max(0, (state.speed / SPEED_REF - 1.0) / 0.4));
+    : Math.min(SHAKE_MAX, Math.max(0, (state.speed - NATURAL_TOP_SPEED) / SHAKE_SPAN));
 
   rider.update(view, dt);
 

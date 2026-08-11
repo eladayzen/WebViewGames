@@ -181,6 +181,10 @@ export const PROP_TYPES = {
     // from the CURRENT speed, so back-to-back pads compounded without bound --
     // 38 -> 51 -> 64 -> 77 -- and a bot that simply held forward covered 8.4 km
     // in ninety seconds and beat the field by nearly five kilometres.
+    // catchWidth is the gate's own half-width plus a little: the posts sit at
+    // +-w/2, so anything that touches the FRAME counts. Tying it to the size
+    // rather than typing a number keeps the collider and the thing you can see
+    // from drifting apart.
     boost: { speed: 16, seconds: 2.8, points: 60, catchWidth: 2.4, ceiling: 44, height: 0 },
     label: 'BOOST',
   },

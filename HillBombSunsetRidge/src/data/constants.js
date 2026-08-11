@@ -15,18 +15,27 @@
 // So the grade now sets a fairly low ceiling and the rolling bonus supplies the
 // rest, which also gives the top speed to the rider who earns it:
 //
-//     base terminal      sqrt(5.45/0.0095)  = 24.0 u/s   (~62 km/h)
-//     with full roll     sqrt(7.45/0.0095)  = 28.0 u/s   (~73 km/h)
-//     on a boost pad                          up to 44   (~114 km/h)
+//     base terminal      sqrt(12.5/0.0175)  = 26.7 u/s   (~69 km/h)
+//     with full roll     sqrt(15.25/0.0175) = 29.5 u/s   (~77 km/h)
+//     on a boost pad                          up to 44    (~114 km/h)
+//
+// Trimmed ~8% off the unassisted top (was 32.0) while leaving DRAG alone, so
+// the ~1 s ramp to terminal is unchanged -- the ceiling moved, not the feel of
+// getting there.
 //
 // A gate is now worth roughly half again your best unassisted speed, which is
 // the gap that makes one worth steering for.
-export const GRADE_ACCEL = 5.45; // gravity down the grade, world units/s^2
-// Aero drag. Terminal speed = sqrt(GRADE_ACCEL/DRAG) ~= 31 u/s (~80 km/h),
-// deliberately in the same ballpark as the reference build's 56 km/h opening
-// district. An earlier 0.0016 gave ~75 u/s (~195 km/h), which was an unreadable
-// blur -- the rider has to be legible for this harness to be worth anything.
-export const DRAG = 0.0095;
+export const GRADE_ACCEL = 12.5; // gravity down the grade, world units/s^2
+// Aero drag, and it is the knob that decides HOW FAST you reach terminal, not
+// just where terminal is. Approach to terminal has a time constant of roughly
+// 1/(2*DRAG*v_terminal), so raising drag and raising the grade to match keeps
+// the same top speed and gets there sooner. Nearly doubled (0.0095 -> 0.0175)
+// against a matching grade rise: the ride settles in about 1.0 s instead of
+// 2.2 s, which is what "get to the maximum speed twice as fast" asks for.
+//
+// Raising the GRADE alone would have done the opposite -- a higher ceiling
+// reached no quicker, and a longer wait before the run feels like anything.
+export const DRAG = 0.0175;
 // Residual tyre scrub only. On the flat road this was THE brake (0.85), but in
 // the trough the cost of turning is paid physically -- carving climbs the wall,
 // and the climb takes the speed. Keeping both double-counted it: a 3.3-unit
@@ -60,8 +69,11 @@ export const TUCK_BONUS = 0.0; // extra accel at full tuck, world units/s^2
 // drag still bounds it, the ceiling just moves. It builds over about half a
 // minute of clean riding and the brake takes it back fast, which is what makes
 // braking a real decision instead of a free way to slow down.
-export const ROLL_GAIN = 0.075;     // extra terminal per second of clean riding
-export const ROLL_MAX = 2.0;        // ceiling on that bonus, world units/s
+// Doubled too, so the EARNED half of the top speed arrives on the same
+// timescale as the rest of it -- a ceiling that takes forty seconds to reach is
+// not a ceiling the player ever meets in a ninety-second race.
+export const ROLL_GAIN = 0.16;      // extra terminal per second of clean riding
+export const ROLL_MAX = 2.75;       // ceiling on that bonus, world units/s
 export const ROLL_BRAKE_LOSS = 2.2; // bonus lost per second of full braking
 // How fast the tuck engages and releases. Deliberately unhurried -- a tuck that
 // snaps on reads as a button, and Amit asked for speed that arrives naturally.
@@ -814,6 +826,21 @@ export const SPEEDLINE_COLOR = 0x9fe9ff; // pale cyan -- finally glows against a
 // A bright fresnel edge on the character so his silhouette separates from the
 // background regardless of palette. Cool white with a cyan bias, so it reads as
 // the scene's own neon bouncing off him rather than as an arbitrary outline.
+// --- camera shake -------------------------------------------------------------
+//
+// SHAKE IS RESERVED FOR SPEED YOU DID NOT GET ON YOUR OWN. It used to ramp off
+// raw speed, so simply riding well at the natural top shook the screen
+// constantly -- which spends the effect on the ordinary case and leaves nothing
+// for the extraordinary one.
+//
+// The threshold is the natural ceiling, DERIVED rather than typed: anything at
+// or under what the hill alone can give you is calm by construction, and only a
+// boost puts you above it. Deriving it means retuning the grade or the rolling
+// bonus cannot silently leave the shake firing at cruise again.
+export const NATURAL_TOP_SPEED = Math.sqrt((GRADE_ACCEL + ROLL_MAX) / DRAG);
+export const SHAKE_SPAN = 12.0; // u/s above the natural top for full shake
+export const SHAKE_MAX = 0.38;
+
 export const RIM_COLOR = 0xa8ecff;
 export const RIM_STRENGTH = 0.55;
 export const RIM_POWER = 2.2; // higher = tighter edge, less wash over the body

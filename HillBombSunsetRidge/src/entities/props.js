@@ -10,8 +10,8 @@
 
 import * as THREE from 'three';
 import { PROP_TYPES, PATTERNS } from '../data/propTypes.js';
-import { toWorld, surfaceUp, frameAt, makeFrame } from '../world/trough.js';
-import { THETA_MAX, TROUGH_RADIUS, RAMP_ARROW_COLOR } from '../data/constants.js';
+import { toWorld, surfaceUp, frameAt, makeFrame, radiusAt } from '../world/trough.js';
+import { THETA_MAX, RAMP_ARROW_COLOR } from '../data/constants.js';
 
 const SPAWN_AHEAD = 340; // keep the field populated this far down the road
 const RECYCLE_BEHIND = 40;
@@ -651,7 +651,7 @@ export function createProps(scene) {
           const gateH = it.def.boost.height || 0;
           if (gateH <= 0) continue;
           if (Math.abs(s - it.s) > it.def.boost.catchWidth) continue;
-          if (Math.abs(theta - it.theta) * TROUGH_RADIUS > it.def.boost.catchWidth) continue;
+          if (Math.abs(theta - it.theta) * radiusAt(it.s) > it.def.boost.catchWidth) continue;
           if (Math.abs(height - gateH) > (it.def.boost.reach || 1.5)) continue;
           return it;
         }
@@ -698,7 +698,14 @@ export function createProps(scene) {
         // Prop sizes stay authored in WORLD units; convert the angular gap to an
         // arc length so a prop is the same physical size wherever it sits on the
         // wall (and stays correct if the radius varies for funnels later).
-        const arcGap = Math.abs(theta - it.theta) * TROUGH_RADIUS;
+        // THE TROUGH IS NOT A CONSTANT RADIUS. It funnels -- radiusAt() pinches
+        // to 0.46 of full at a throat -- so converting the angular gap with the
+        // nominal TROUGH_RADIUS overstated the real distance by up to 2.2x
+        // wherever the road narrows. The visible effect was that a prop had to
+        // be hit dead centre to register: you would ride through the frame of a
+        // boost gate and collect nothing. Worse, it came and went with the
+        // funnels, so it read as flaky rather than as wrong.
+        const arcGap = Math.abs(theta - it.theta) * radiusAt(it.s);
         if (arcGap > catchW) continue;
         // Airborne clears hazards and launchers, but you can still land INTO a
         // grind -- that's the good kind of accident -- and you can still collect
@@ -751,7 +758,7 @@ export function createProps(scene) {
         const halfL = Math.max(l, 1.2) / 2;
         const base = it.s - halfL;
         if (s < base || s > it.s + halfL) continue;
-        const arcGap = Math.abs(theta - it.theta) * TROUGH_RADIUS;
+        const arcGap = Math.abs(theta - it.theta) * radiusAt(it.s);
         if (arcGap > w / 2 + 0.45) continue;
         // Overlapping ramps are not authored today, but taking the highest
         // keeps this correct if a pattern ever stacks them.
