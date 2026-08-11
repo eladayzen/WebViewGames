@@ -138,7 +138,10 @@
           <!-- No TUCK here any more: the forward lean is disabled (see
                input/input.js), and a hint advertising a control that does
                nothing is worse than no hint. -->
-          <b>&larr; &rarr;</b> carve &nbsp;&middot;&nbsp; <b>&darr;</b> brake &nbsp;&middot;&nbsp; <b>L</b> lab
+          <!-- Arrows stay: on the board they read as LEAN directions, not as
+               keys. "L lab" was a developer shortcut being advertised to
+               players, and the L handler is still there for us. -->
+          <b>&larr; &rarr;</b> carve &nbsp;&middot;&nbsp; <b>&darr;</b> brake
         </div>
       </div>
 
@@ -167,7 +170,10 @@
           <div id="final-score">0</div>
           <div id="final-breakdown"></div>
           <button id="restart-button">CONTINUE</button>
-          <div class="go-hint">or press <b>SPACE</b> / <b>ENTER</b></div>
+          <!-- No key prompt: this ships on a balance board. The Space/Enter
+               handler stays in main.js -- the host forwards those and a desktop
+               tester needs them -- but telling a player to press a key they do
+               not have is worse than saying nothing. -->
         </div>
       </div>
 
@@ -232,7 +238,7 @@
           </div>
           <div id="mission-list"></div>
           <button id="msel-next">NEXT MISSION</button>
-          <div class="msel-hint">or press <b>SPACE</b> / <b>ENTER</b></div>
+          <!-- Key prompt removed; the handler in ui/missionSelect.js stays. -->
         </div>
       </div>
 

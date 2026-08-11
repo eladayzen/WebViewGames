@@ -18,6 +18,13 @@ export default registerMode({
   id: 'freeride',
   name: 'FREE RIDE',
   tagline: 'No clock. No list. Just the hill.',
+  // OFF THE FRONT DOOR, not deleted. A mode with no goal and no ending is a
+  // hard thing to put in front of a player -- it answers "what am I meant to be
+  // doing" with "nothing" -- so the lobby offers the two modes that have an
+  // answer. It stays REGISTERED because it is the cleanest possible harness for
+  // working on the controller: no clock, no rivals, no objectives to satisfy,
+  // just the board. Reachable at ?gamemode=freeride.
+  hidden: true,
   course: DEFAULT_COURSE,
 
   create() {

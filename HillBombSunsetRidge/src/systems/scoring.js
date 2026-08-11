@@ -74,12 +74,30 @@ export function createScoring() {
       s.lastEvent = null;
     },
 
-    /** Award trick points, scaled by the live chain multiplier. */
-    award(points, text) {
-      const total = Math.round(points * s.chain);
+    /**
+     * Award points.
+     *
+     * @param {boolean} [chained] does this take part in the multiplier at all?
+     *
+     * THE CHAIN IS FOR TRICKS AND NOTHING ELSE. Every award used to feed it:
+     * collecting a crystal or clipping a boost gate bumped the multiplier
+     * exactly as landing a 720 did, so the highest-scoring line was to hoover up
+     * pickups and never leave the ground. The multiplier means "you are
+     * stringing skating together", and a pickup is not skating -- it is being in
+     * the right place.
+     *
+     * `chained: false` opts out COMPLETELY: such an award neither extends the
+     * chain nor is multiplied by it. Half-measures were considered and rejected
+     * -- letting pickups ride a trick-built multiplier still makes the best way
+     * to cash a streak "go and collect something", which is the behaviour this
+     * is meant to stop.
+     */
+    award(points, text, chained = true) {
+      const mult = chained ? s.chain : 1;
+      const total = Math.round(points * mult);
       s.score += total;
-      s.lastEvent = { text, points: total, chain: s.chain };
-      bumpChain();
+      s.lastEvent = { text, points: total, chain: mult };
+      if (chained) bumpChain();
     },
 
     /** Clipping something: wobble spike, and the chain resets. */

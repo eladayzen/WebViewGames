@@ -142,7 +142,9 @@ export default registerMode({
       // Bank the remaining seconds: it rewards route planning over grinding out
       // the clock, which is the behaviour a hard cap is meant to encourage.
       const bonus = Math.round(left * 25);
-      ctx.scoring.award(bonus, 'TIME BONUS');
+      // Neither of a mission's own payouts is a trick, so neither builds the
+      // chain -- the run is over by the time the bonus lands anyway.
+      ctx.scoring.award(bonus, 'TIME BONUS', false);
       // Read the score AFTER the bonus lands, so banking time can be what
       // carries a run over a star threshold.
       const earned = starsFor(ctx.scoring.state.score);
@@ -170,7 +172,7 @@ export default registerMode({
         // and the paired award(250, null) printed it as literally "null".
         // The popup gets the full phrasing -- it has the room, and unlike the
         // panel row there is no counter beside it to supply the number.
-        ctx.scoring.award(250, `${o.count} ${o.spec.label(o)}`);
+        ctx.scoring.award(250, `${o.count} ${o.spec.label(o)}`, false);
         checkComplete();
       }
     }

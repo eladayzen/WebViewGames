@@ -30,8 +30,15 @@ export function createBriefing() {
 
   /** Minimum time on screen before an input can skip it. */
   const MIN_HOLD = 0.45;
-  /** Auto-advance if the player does nothing. */
-  const AUTO_AFTER = 3.2;
+  /**
+   * How long the card holds. There is no "press to start" any more -- this is a
+   * balance board, not a keyboard, and telling a player to press something they
+   * do not have is worse than saying nothing. A visible countdown does the same
+   * job without asking for anything: you can see exactly how long you have to
+   * read. A second longer than the prompted version, since nobody can now cut
+   * it short deliberately.
+   */
+  const AUTO_AFTER = 4.2;
   let shownAt = 0;
 
   function finish() {
@@ -88,8 +95,9 @@ export function createBriefing() {
     setTimeout(land, 900);
   }
 
-  // Space/Enter and a tap all skip ahead. On the board these are the only inputs
-  // the host forwards, so without them the briefing would be unskippable there.
+  // Space/Enter and a tap still skip ahead -- the SUPPORT stays, only the text
+  // advertising it is gone. On the board these are the only inputs the host
+  // forwards, so a desktop tester and the SDK's synthetic clicks both work.
   window.addEventListener('keydown', (e) => {
     if (dismissed) return;
     if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); fly(); }
@@ -118,7 +126,7 @@ export function createBriefing() {
         li.style.animationDelay = `${0.12 + i * 0.09}s`;
         listEl.appendChild(li);
       });
-      goEl.textContent = 'PRESS TO START';
+      goEl.textContent = '';
 
       dismissed = false;
       shownAt = performance.now();
@@ -138,6 +146,12 @@ export function createBriefing() {
           if (dismissed) return;
           const t = (performance.now() - shownAt) / 1000;
           if (t >= AUTO_AFTER) { fly(); return; }
+          // The countdown IS the prompt. Seconds remaining, plus a bar draining
+          // beneath it, so the wait is visibly finite rather than a card that
+          // might sit there forever.
+          const left = Math.max(0, AUTO_AFTER - t);
+          goEl.textContent = String(Math.ceil(left));
+          goEl.style.setProperty('--brief-left', String(left / AUTO_AFTER));
           requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);

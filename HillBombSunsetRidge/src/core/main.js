@@ -1233,7 +1233,8 @@ function frame() {
           // the recycle pass stay in charge of its lifetime -- `spent` already
           // means "no longer interactive" everywhere else in this file.
           events.emit(EV.PICKUP, { type: hit.def.pickup.type, points: hit.def.pickup.points });
-          scoring.award(hit.def.pickup.points, hit.def.label);
+          // Pickups sit OUTSIDE the multiplier entirely -- see scoring.award().
+          scoring.award(hit.def.pickup.points, hit.def.label, false);
           hit.mesh.visible = false;
           hit.spent = true;
         } else if (hit.def.kind === 'boost') {
@@ -1253,7 +1254,7 @@ function frame() {
           // not all last the same time, and a bar drawn against a constant
           // would be wrong for the air gates.
           state.boostDuration = hit.def.boost.seconds;
-          scoring.award(hit.def.boost.points, hit.def.label);
+          scoring.award(hit.def.boost.points, hit.def.label, false);
           events.emit(EV.PICKUP, { type: 'boost', points: hit.def.boost.points });
           hit.mesh.visible = false;
           hit.spent = true;

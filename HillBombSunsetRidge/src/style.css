@@ -1048,11 +1048,26 @@ html, body {
   0% { opacity: 0; transform: translateX(-1.2em); }
   100% { opacity: 1; transform: translateX(0); }
 }
+/* The countdown, and the bar under it. No instruction text: this ships on a
+   balance board, and prompting for a key the player does not have is worse than
+   saying nothing. A number counting down says "it starts shortly" by itself. */
 #brief-go {
-  margin-top: 1.3em; text-align: center;
-  font: 800 0.95em system-ui, sans-serif;
-  letter-spacing: 0.3em;
+  position: relative;
+  margin-top: 1.2em;
+  padding-bottom: 0.55em;
+  text-align: center;
+  font: 900 1.9em/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   color: var(--hot);
-  animation: briefPulse 1.1s ease-in-out infinite;
 }
-@keyframes briefPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+#brief-go::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 0.16em;
+  border-radius: 0.1em;
+  background: var(--hot);
+  opacity: 0.75;
+  transform: scaleX(var(--brief-left, 1));
+  transform-origin: center;
+}

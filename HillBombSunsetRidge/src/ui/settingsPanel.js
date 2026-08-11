@@ -231,7 +231,8 @@ export function initSettingsPanel(hooks = {}) {
   // remembered.
   const keyHint = document.createElement('div');
   keyHint.className = 'sp-keyhint';
-  keyHint.textContent = 'ENTER = next row   SPACE = change';
+  // Key hint removed -- no keyboard on the board. The handlers stay.
+  keyHint.textContent = '';
   panelEl.appendChild(keyHint);
 
   addChoice({

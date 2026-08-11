@@ -23,11 +23,22 @@
 // mission settled on 14k/26k, which is where `starTiers` below comes from.
 //
 // OBJECTIVE TARGETS ARE ALSO MEASURED, and this is what stops the list being
-// wishful. An automated run that chases crystals and rails while tucking for
-// speed produces, per minute of clock:
+// wishful. Re-measured after the controller retune, because the ceilings moved
+// and that is exactly why the list had become too easy -- carving costs 8% of
+// your distance now instead of 42%, so steering for a pickup is a fraction of
+// what it used to be. Per minute of clock, with a bot that is actually trying:
 //
-//     crystals  13     launches  15     grinds  3 (rail-focused; 1 while
-//     score  ~25,000                            also chasing crystals)
+//                     when first set    now
+//     crystals             13            26
+//     score            ~25,000        ~47,500
+//     launches             15            19  (ramp-focused)
+//     grinds                3             4  (rail-focused)
+//
+// So crystals and score genuinely support DOUBLING; launches and grinds do not,
+// and were raised by about a third instead. Doubling those would have asked for
+// more rails than the course contains. Every target below is checked against
+// rate x duration and kept at or under ~80% of it -- above that a mission stops
+// being demanding and starts depending on a perfect course roll.
 //
 // Grinds are by far the scarcest -- rails are sparse and entering one needs a
 // committed line -- so rail targets stay near 2 per minute and never above 3.
@@ -77,26 +88,26 @@ function starTiers(seconds) {
  * impossible.
  */
 const AUTHORED = [
-  ['firstDrop',   'FIRST DROP',    'Learn the ridge. Grab what shines.',        70, { pickup: 10 }],
-  ['railRunner',  'RAIL RUNNER',   'The metal is faster than the paint.',       90, { grind: 3, pickup: 8 }],
-  ['bigScore',    'BIG SCORE',     'Everything pays. Go and get paid.',         80, { score: 20000, launch: 5 }],
-  ['sunsetRun',   'SUNSET RUN',    'Everything you know, before the light goes.', 90, { pickup: 12, grind: 2, score: 25000 }],
-  ['airTime',     'AIR TIME',      'Feet off the ground as much as possible.',  75, { launch: 10 }],
-  ['crystalHaul', 'CRYSTAL HAUL',  'Leave nothing shining behind you.',         85, { pickup: 13 }],
-  ['ironLine',    'IRON LINE',     'Find the rails. Ride them properly.',      100, { grind: 4, launch: 6 }],
-  ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',    75, { score: 24000 }],
-  ['fullPlate',   'FULL PLATE',    'A bit of everything, and no time to spare.', 95, { pickup: 12, grind: 3, launch: 8 }],
-  ['ridgeMaster', 'RIDGE MASTER',  'Prove you have learned the whole ridge.',  100, { score: 32000, pickup: 14 }],
-  ['doubleDown',  'DOUBLE DOWN',   'Twice the crystals, twice the ramps.',      90, { pickup: 15, launch: 10 }],
-  ['steelRush',   'STEEL RUSH',    'Rails pay, and they pay while you are on them.', 105, { grind: 4, score: 35000 }],
-  ['highRoller',  'HIGH ROLLER',   'One number matters. Make it big.',          85, { score: 30000 }],
-  ['sweep',       'SWEEP',         'Clean the hill out on the way down.',      100, { pickup: 18, grind: 4 }],
-  ['launchParty', 'LAUNCH PARTY',  'Hit every ramp you can find.',              95, { launch: 18 }],
-  ['goldRush',    'GOLD RUSH',     'The ridge is paved with the stuff.',       105, { pickup: 20 }],
-  ['grindCity',   'GRIND CITY',    'Metal first, everything else after.',      110, { grind: 4, pickup: 18 }],
-  ['topSpeed',    'TOP SPEED',     'No brakes. No hesitation.',                 90, { score: 32000 }],
-  ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 20, grind: 4, launch: 14 }],
-  ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { score: 42000, pickup: 18, grind: 4 }],
+  ['firstDrop',   'FIRST DROP',    'Learn the ridge. Grab what shines.',        70, { pickup: 20 }],
+  ['railRunner',  'RAIL RUNNER',   'The metal is faster than the paint.',       90, { grind: 4, pickup: 16 }],
+  ['bigScore',    'BIG SCORE',     'Everything pays. Go and get paid.',         80, { score: 38000, launch: 7 }],
+  ['sunsetRun',   'SUNSET RUN',    'Everything you know, before the light goes.', 90, { pickup: 24, grind: 3, score: 48000 }],
+  ['airTime',     'AIR TIME',      'Feet off the ground as much as possible.',  75, { launch: 13 }],
+  ['crystalHaul', 'CRYSTAL HAUL',  'Leave nothing shining behind you.',         85, { pickup: 26 }],
+  ['ironLine',    'IRON LINE',     'Find the rails. Ride them properly.',      100, { grind: 5, launch: 8 }],
+  ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',    75, { score: 44000 }],
+  ['fullPlate',   'FULL PLATE',    'A bit of everything, and no time to spare.', 95, { pickup: 24, grind: 4, launch: 10 }],
+  ['ridgeMaster', 'RIDGE MASTER',  'Prove you have learned the whole ridge.',  100, { score: 60000, pickup: 28 }],
+  ['doubleDown',  'DOUBLE DOWN',   'Twice the crystals, twice the ramps.',      90, { pickup: 29, launch: 13 }],
+  ['steelRush',   'STEEL RUSH',    'Rails pay, and they pay while you are on them.', 105, { grind: 5, score: 64000 }],
+  ['highRoller',  'HIGH ROLLER',   'One number matters. Make it big.',          85, { score: 52000 }],
+  ['sweep',       'SWEEP',         'Clean the hill out on the way down.',      100, { pickup: 33, grind: 5 }],
+  ['launchParty', 'LAUNCH PARTY',  'Hit every ramp you can find.',              95, { launch: 23 }],
+  ['goldRush',    'GOLD RUSH',     'The ridge is paved with the stuff.',       105, { pickup: 36 }],
+  ['grindCity',   'GRIND CITY',    'Metal first, everything else after.',      110, { grind: 5, pickup: 36 }],
+  ['topSpeed',    'TOP SPEED',     'No brakes. No hesitation.',                 90, { score: 56000 }],
+  ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 36, grind: 5, launch: 18 }],
+  ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { score: 74000, pickup: 36, grind: 5 }],
 ];
 
 // Objective order on screen: collect, ride, launch, score. Consistent across
