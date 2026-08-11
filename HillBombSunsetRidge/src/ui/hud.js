@@ -24,6 +24,7 @@ export function createHud() {
   let shownScore = 0; // what the readout currently reads, for the count-up
   let lastChain = 1;
   let lastTarget = 0; // last frame's score, for edge-detecting an award
+  let bigBoostBar = false;
 
   /**
    * Restart a CSS animation that may already be running. Toggling the class
@@ -69,7 +70,7 @@ export function createHud() {
      * than one that is not currently active.
      * @param {number} frac 0..1 of the boost remaining, or 0 for none.
      */
-    boost(frac) {
+    boost(frac, secondsLeft = 0) {
       const meter = document.getElementById('boost-meter');
       const fill = document.getElementById('boost-fill');
       const right = document.getElementById('bottomRight');
@@ -77,6 +78,28 @@ export function createHud() {
       if (meter) meter.classList.toggle('hidden', !on);
       if (right) right.classList.toggle('boosting', on);
       if (fill && on) fill.style.width = `${Math.min(1, frac) * 100}%`;
+
+      // The big one, top centre. Only present in modes that asked for it, and
+      // only while a boost is actually running.
+      const top = document.getElementById('boost-top');
+      if (!top || !bigBoostBar) {
+        if (top) top.classList.add('hidden');
+        return;
+      }
+      top.classList.toggle('hidden', !on);
+      if (!on) return;
+      document.getElementById('bt-fill').style.width = `${Math.min(1, frac) * 100}%`;
+      document.getElementById('bt-time').textContent = `${secondsLeft.toFixed(1)}s`;
+      // Under a second is where "it is about to end" stops being information
+      // and starts being urgency.
+      top.classList.toggle('ending', secondsLeft <= 1.0);
+    },
+
+    /** Modes opt in to the big top-centre timer -- see showsBoostBar. */
+    setBoostBarVisible(on) {
+      bigBoostBar = on;
+      const top = document.getElementById('boost-top');
+      if (top && !on) top.classList.add('hidden');
     },
 
     /**

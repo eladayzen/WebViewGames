@@ -118,6 +118,20 @@
           <div id="speed-readout">0 km/h</div>
         </div>
 
+        <!-- BIG BOOST TIMER, top centre. The small one bottom-right sits beside
+             the speed readout and answers "how much longer" for someone already
+             looking there; in a race against other riders the boost is the
+             thing you are spending, and it belongs where the eye rests -- top
+             centre, above the road, where nothing else lives. Only shown in
+             modes that opt in (see showsBoostBar). -->
+        <div id="boost-top" class="hidden">
+          <div id="bt-row">
+            <span id="bt-label">BOOST</span>
+            <span id="bt-time">0.0s</span>
+          </div>
+          <div id="bt-track"><div id="bt-fill"></div></div>
+        </div>
+
         <div id="popups"></div>
         <div id="trick-banner"></div>
         <div id="hint">

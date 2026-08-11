@@ -556,6 +556,8 @@ function startRun(id) {
   hud.setWobbleVisible(!!def.wobble);
   // Modes opt OUT of the score readout; everything shows it by default.
   hud.setScoreVisible(def.showsScore !== false);
+  // The big top-centre boost timer: opt-in, for the modes raced against rivals.
+  hud.setBoostBarVisible(!!def.showsBoostBar);
   // A FRESH LOOK EVERY RUN. The point is that the hill does not feel like the
   // same hill twice; picking here rather than per-mode means free ride, missions
   // and the race all get it for free.
@@ -1401,7 +1403,7 @@ function frame() {
     fpsTimer = 0;
   }
   objectivesUi.update(modes.panel());
-  hud.boost(state.boostT > 0 ? state.boostT / state.boostDuration : 0);
+  hud.boost(state.boostT > 0 ? state.boostT / state.boostDuration : 0, state.boostT);
   hud.update(dt, {
     speed: state.speed,
     score: scoring.state.score,

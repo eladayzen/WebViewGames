@@ -938,3 +938,50 @@ html, body {
 /* The speed readout goes cyan while boosting, so the number and the timer read
    as one event rather than two unrelated widgets. */
 #bottomRight.boosting #speed-readout { color: #9fe9ff; }
+
+/* --- big boost timer (top centre, versus modes) ---------------------------
+   Deliberately the loudest thing on the HUD while it runs, and completely
+   absent when it does not: a boost is short and the whole question is "how much
+   is left", so it earns the centre of the screen for those few seconds. */
+#boost-top {
+  position: absolute;
+  top: 0.9em; left: 50%;
+  transform: translateX(-50%);
+  width: min(26em, 46vw);
+  font-size: clamp(9px, 1.34vw, 13px);
+  color: #d6f6ff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+#boost-top.hidden { display: none; }
+#bt-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 0.3em;
+}
+#bt-label {
+  font: 900 1.25em/1 system-ui, sans-serif;
+  letter-spacing: 0.3em;
+  color: #4bd6ff;
+}
+#bt-time {
+  font: 900 1.35em/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+#bt-track {
+  height: 0.72em;
+  border-radius: 0.4em;
+  background: rgba(10, 20, 30, 0.55);
+  border: 1.5px solid rgba(107, 224, 255, 0.45);
+  overflow: hidden;
+}
+#bt-fill {
+  height: 100%; width: 100%;
+  border-radius: 0.4em;
+  background: linear-gradient(90deg, #4bd6ff, #d6f6ff);
+  box-shadow: 0 0 0.9em rgba(75, 214, 255, 0.8);
+}
+/* The last second is the one that matters -- it goes amber and pulses so the
+   end of the boost is something you feel coming rather than notice afterwards. */
+#boost-top.ending #bt-fill { background: linear-gradient(90deg, #ffb43c, #ffe89a); }
+#boost-top.ending #bt-label, #boost-top.ending #bt-time { color: #ffd166; }
+#boost-top.ending { animation: btEnding 0.32s ease-in-out infinite; }
+@keyframes btEnding { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }

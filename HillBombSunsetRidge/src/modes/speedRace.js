@@ -44,6 +44,9 @@ export default registerMode({
   // bearing on whether you are winning is worse than showing nothing: it reads
   // as the thing you are being judged on.
   showsScore: false,
+  // Racing other riders is where a boost is something you SPEND, so its
+  // countdown gets the top of the screen rather than a corner.
+  showsBoostBar: true,
 
   create(ctx) {
     const course = getCourse(RACE_COURSE);
