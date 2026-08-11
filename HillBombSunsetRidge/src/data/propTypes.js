@@ -199,8 +199,11 @@ export const PROP_TYPES = {
     colour: 0xffd166,
     accent: 0xffffff,
     boost: {
+      // `height` is where the arch's BASE hangs; its top is height + size.h,
+      // and that whole span is what counts as passing through it (see
+      // withinGateArch). There is no separate reach to drift out of step.
       speed: 18, seconds: 3.0, points: 120, catchWidth: 2.6, ceiling: 48,
-      height: 2.6, reach: 1.7,
+      height: 2.6,
     },
     label: 'AIR GATE',
   },
@@ -213,7 +216,13 @@ export const PROP_TYPES = {
     size: { w: 1.15, h: 1.25, l: 1.15 },
     colour: 0xffb43c,
     accent: 0xffe89a,
-    pickup: { type: 'crystal', points: 260, catchWidth: 3.6, height: 3.1, reach: 2.0 },
+    // The reach has to cover the arcs that actually reach it. These are placed
+    // over ramp landings to be taken IN THE AIR, and a backflip now peaks around
+    // 5.0-5.6 -- against height 3.1 the old reach of 2.0 topped out at 5.1, so
+    // taking one at the apex of a flip failed by a couple of tenths. That is the
+    // same mismatch the boost gates had: a collider tuned before the air heights
+    // moved, and intermittent because it depends where in the arc you cross.
+    pickup: { type: 'crystal', points: 260, catchWidth: 3.6, height: 3.1, reach: 2.7 },
     label: 'HIGH CRYSTAL',
   },
 };

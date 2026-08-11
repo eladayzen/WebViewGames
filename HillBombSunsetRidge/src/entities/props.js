@@ -165,6 +165,26 @@ function apexFrac(profile) {
   return profile === 'hump' ? 0.5 : 1;
 }
 
+/**
+ * Is the rider inside a boost gate's ARCH, vertically?
+ *
+ * Derived from the gate's own geometry rather than a separately tuned reach.
+ * The two had drifted: an air gate hangs at 2.6 with a 2.9-tall arch, so it
+ * VISUALLY spans 2.6 to 5.5, while the old symmetric test accepted 0.9 to 4.3.
+ * A backflip peaks around 5.0-5.6, which put the rider squarely inside the arch
+ * on screen and outside the collider.
+ *
+ * One rule for both kinds: a gate is taken by passing through its arch, and
+ * whether that arch sits on the road or hangs over a landing is just where its
+ * base is. The margin is generous on purpose -- clipping the frame counts, the
+ * same way it does laterally.
+ */
+function withinGateArch(def, height) {
+  const base = def.boost.height || 0;
+  const margin = 0.55;
+  return height >= base - margin && height <= base + def.size.h + margin;
+}
+
 // The vert wall. Its rideable face is the concave curve from the base up to the
 // lip; the back is a flat drop the rider never touches. Built as one extruded
 // side profile like the other launchers so it sits in the same basis and the
@@ -639,25 +659,31 @@ export function createProps(scene) {
     },
 
     probe(s, theta, airborne, sPrev, height = 0) {
-      // AIR GATES GET FIRST REFUSAL while airborne. probe() returns the first
-      // match in spawn order, so anything else occupying the same stretch of
-      // road -- a long rail under the landing, most obviously -- masked the gate
-      // entirely and it could never be collected. An airborne rider passing
-      // through a gate at the gate's own height is unambiguously taking the
-      // gate; whatever is on the ground beneath is not what they are touching.
-      if (airborne) {
-        for (const it of active) {
-          if (it.spent || it.def.kind !== 'boost') continue;
-          const gateH = it.def.boost.height || 0;
-          if (gateH <= 0) continue;
-          if (Math.abs(s - it.s) > it.def.boost.catchWidth) continue;
-          if (Math.abs(theta - it.theta) * radiusAt(it.s) > it.def.boost.catchWidth) continue;
-          if (Math.abs(height - gateH) > (it.def.boost.reach || 1.5)) continue;
-          return it;
-        }
-      }
+      let collectablesFirst;
+      // COLLECTABLES GET FIRST REFUSAL.
+      //
+      // probe() returns the first match in SPAWN ORDER, which is arbitrary, so
+      // whichever prop happens to share a stretch of road wins. A long rail's
+      // window is +-7 m -- wide enough to sit under a crystal or a gate hanging
+      // twenty feet above it -- and being earlier in the array was enough to
+      // mask them completely. Measured: probing a high crystal's exact position
+      // returned "longRail". That is where "collecting the yellow pickup during
+      // a backflip sometimes does not work" actually came from; the height band
+      // was a second, smaller bug on top of it.
+      //
+      // A pickup or a gate is something you pass THROUGH; a rail or a ramp is
+      // something you land ON. When both are in range, the collectable is
+      // unambiguously what the rider touched.
+      //
+      // Deliberately a PRE-PASS over the same loop rather than a sort: the tests
+      // below are the definition of a hit, and a second copy of them here is
+      // exactly how the gate rule drifted out of step in the first place.
+      collectablesFirst = true;
+      for (let pass = 0; pass < 2; pass++, collectablesFirst = false) {
       for (const it of active) {
         if (it.spent || it.def.kind === 'scenery') continue;
+        const collectable = it.def.kind === 'pickup' || it.def.kind === 'boost';
+        if (collectable !== collectablesFirst) continue;
         const { l, w } = it.def.size;
         const halfL = (it.def.kind === 'grind' ? l : Math.max(l, 1.2)) / 2;
         if (it.def.kind === 'launch') {
@@ -714,17 +740,13 @@ export function createProps(scene) {
         // separates them: a gate hung over a ramp's landing can only be taken by
         // being airborne at the right moment, which is the whole point of it.
         if (it.def.kind === 'boost') {
-          const gateH = it.def.boost.height || 0;
-          if (gateH > 0) {
-            if (Math.abs(height - gateH) > (it.def.boost.reach || 1.5)) continue;
-          } else if (airborne) {
-            continue;
-          }
+          if (!withinGateArch(it.def, height)) continue;
         } else if (airborne && it.def.kind !== 'grind' && it.def.kind !== 'pickup') continue;
         // A pickup floating three metres up is not collectable from the road.
         if (it.def.kind === 'pickup'
             && Math.abs(height - it.def.pickup.height) > it.def.pickup.reach) continue;
         return it;
+      }
       }
       return null;
     },
