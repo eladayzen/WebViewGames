@@ -60,8 +60,17 @@
            handler lives in core/main.js rather than inline here, because "up"
            depends on where you are and only the game knows that. It still calls
            nav:back at the top of the stack, which is the contract the host
-           cares about (GOBALANCE_SDK.md). -->
-      <button id="gb-back" title="Back">&times;</button>
+           cares about (GOBALANCE_SDK.md).
+
+           THE INLINE FALLBACK IS DELIBERATE. Moving the handler into the bundle
+           made this button dependent on the bundle initialising -- and on the
+           board, back is the only way out of the game. If anything throws during
+           boot, an inline nav:back still leaves the player a door. main.js
+           replaces window.__gbBack with the positional handler once it is
+           ready; until then, and if it never is, X exits to the games list. -->
+      <button id="gb-back" title="Back"
+        onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
+      >&times;</button>
 
       <!-- Placeholder glyph icon (real icon art later); swaps to ▶ when paused. -->
       <button id="pause-button" title="Pause">&#9208;</button>
