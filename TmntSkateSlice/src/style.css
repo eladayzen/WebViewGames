@@ -222,6 +222,14 @@ html, body {
   justify-content: center;
   align-items: flex-end;
   gap: 6px; /* -20% (2026-08-09, was 8px), matches the chips shrinking below */
+  /* Scale up on tall viewports -- big Android tablets -- so the tray
+     doesn't read as tiny relative to the screen (2026-08-16 feedback).
+     --hud-scale is set every frame in core/main.js from window.innerHeight
+     (see ui.js's setHudScale); falls back to 1 (unscaled, today's exact
+     phone sizing) if unset. bottom-center origin keeps it anchored to the
+     tray's own bottom edge while it grows, instead of drifting off-screen. */
+  transform: scale(var(--hud-scale, 1));
+  transform-origin: bottom center;
 }
 
 .box-chip {

@@ -430,6 +430,7 @@ export function createUI() {
   let lastBombKillKey = null; // bomb-kill chip last-written key
   let lastIntroRunFrame = null; // intro step 2's run-cycle frame last-written index
   let lastStageCountdownShown = null; // stage-complete countdown last-written whole-second
+  let lastHudScale = null; // setHudScale's last-written value
 
   // Snaps both curtain panels back to open (off-screen) with NO animation --
   // called at the START of every showStageComplete (defensive, in case a
@@ -626,6 +627,22 @@ export function createUI() {
       chip.classList.remove('bloop');
       void chip.offsetWidth;
       chip.classList.add('bloop');
+    },
+
+    // Scales the box-tray HUD up on tall viewports (big tablets) so it
+    // doesn't read as tiny relative to the screen (2026-08-16 feedback) --
+    // fixed-px DOM sizing looks "right" at phone size but shrinks toward
+    // nothing, proportionally, on a much taller device. Called every frame
+    // (see core/main.js's frame()) rather than only on a `resize` event,
+    // same reasoning as render.js's per-frame width/height read: Unity
+    // doesn't reliably fire `resize` inside the real WebView. Dirty-checked
+    // like every other setter here so a steady viewport costs one number
+    // comparison, not a style write, 60x/sec.
+    setHudScale(scale) {
+      const rounded = scale.toFixed(3);
+      if (rounded === lastHudScale) return;
+      lastHudScale = rounded;
+      document.documentElement.style.setProperty('--hud-scale', rounded);
     },
 
     // Shows "<score>/<next level threshold>" (no "SCORE:" label) with a

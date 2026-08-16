@@ -105,3 +105,18 @@ export const HIT_INVULNERABILITY_SEC = 1.2;
 
 // --- Countdown ---
 export const COUNTDOWN_SEC = 3;
+
+// --- HUD scale (2026-08-16) ---
+// The box-tray HUD is fixed-px DOM sizing (unlike the canvas world, which
+// is fraction-of-height and already resolution-independent) -- it reads
+// right on a phone but shrinks toward nothing, proportionally, on a much
+// taller device. Scales it up via window.innerHeight (see ui.js's
+// setHudScale). Reference ~380px covers real phone landscape heights
+// (Galaxy S24 360px, Pixel 8 412px) with zero/near-zero scale-up; MAX is
+// capped well below the raw device-height ratio (phone ~380px vs. the
+// biggest current Android tablet, a 14.6" Galaxy Tab Ultra, ~924px --
+// almost 2.5x) since scaling that literally would look oversized, not
+// just "readable." Both numbers are first-pass/directional, same as every
+// other tunable here -- worth eyeballing on a real tablet once built.
+export const HUD_SCALE_REFERENCE_HEIGHT_PX = 380;
+export const HUD_SCALE_MAX = 1.45;

@@ -47,7 +47,7 @@ import {
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
-import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, BOX_COMPLETE_FLY_MS } from '../data/constants.js';
+import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, BOX_COMPLETE_FLY_MS, HUD_SCALE_REFERENCE_HEIGHT_PX, HUD_SCALE_MAX } from '../data/constants.js';
 
 // Clamp so a tab-resume/frame-hitch never simulates a huge leap. Raised
 // 1/20 -> 1/10 (2026-07-30): the old 1/20 meant any frame slower than 20fps
@@ -484,6 +484,17 @@ async function boot() {
     try {
       const dt = Math.min(MAX_DT, (frame.lastTime ? (now - frame.lastTime) / 1000 : 1 / 60));
       frame.lastTime = now;
+
+      // HUD scale (2026-08-16): unconditional, every frame, same reasoning
+      // as render.js's per-frame window.innerWidth/innerHeight read --
+      // Unity doesn't reliably fire a `resize` DOM event inside the real
+      // WebView. Runs regardless of gs.paused/gs.current so the HUD reads
+      // correctly even on the intro/countdown/gameover screens.
+      const hudScale = Math.min(
+        HUD_SCALE_MAX,
+        Math.max(1, window.innerHeight / HUD_SCALE_REFERENCE_HEIGHT_PX)
+      );
+      ui.setHudScale(hudScale);
 
       let stage = getStage(difficulty);
 
