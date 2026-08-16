@@ -480,12 +480,24 @@ export const AIR_TUCK_KNEE = 0.55;
 export const AIR_ARM_LIFT = 0.98;  // at the apex of a jump
 export const LAND_ARM_LIFT = 1.50; // still high through the absorb
 
-// How crosswise is too crosswise to grind. The rider's lateral speed is
-// |thetaVel| * R (angular rate around the trough, times local radius); compare
-// it to forward speed and the ratio is the tangent of the approach angle.
-// 0.30 ~= 17 degrees: drifting gently onto a rail still grinds, deliberately
-// carving across one flips over it instead.
-export const GRIND_MAX_CROSS_RATIO = 0.30;
+// --- catching a rail ---------------------------------------------------------
+//
+// There is no longer an angle at which a rail refuses you: touching one always
+// grinds it. What used to be a yes/no gate is now a question of HOW LONG the
+// rider takes to settle onto the line, which is the thing the gate was really
+// protecting -- snapping a hard crossing straight onto the rail is what read as
+// the obstacle grabbing you, not the fact of grinding it.
+//
+// GRIND_EASE_REF is the crossing ratio treated as "fully crosswise" when scaling
+// that settle. 0.65 because that is what a deliberate aiming carve actually
+// measures at contact -- the old gate rejected anything past 0.30, which is why
+// aiming at a rail disqualified you from riding it.
+export const GRIND_EASE_REF = 0.65;
+// How fast the rider comes onto the rail's line, in exponential rate. The first
+// is for an approach already aligned -- effectively instant -- and the second
+// for the hardest cut, which takes about a fifth of a second to come round.
+export const GRIND_SNAP_RATE = 22.0;
+export const GRIND_EASE_RATE = 5.5;
 
 // --- BOARDSLIDE POSE -------------------------------------------------------
 // The grind used to be pure physics: the rider held his ordinary ride pose and

@@ -29,7 +29,8 @@ import {
   AIR_HEIGHT_MAX, AIR_TIME_K, AIR_DURATION_MIN, AIR_DURATION_MAX, SPIN_720_HEIGHT,
   BOOST_RAMP,
   GRAB_MIN_HEIGHT, GRAB_ENABLED,
-  AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO, GRIND_SPARK_RATE,
+  AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_SPARK_RATE,
+  GRIND_EASE_REF, GRIND_SNAP_RATE, GRIND_EASE_RATE,
   GRIND_EXIT_FALL_G,
   LAND_SETTLE_DURATION, LAND_SETTLE_PEAK, LAND_K_FLOOR, LAND_K_GAIN,
   LAND_DURATION_FLOOR, LAND_DURATION_GAIN,
@@ -210,6 +211,7 @@ const state = {
   // this flags that the rider is still settling off a rail, and the absorb
   // fires when grindLift has actually decayed back to the surface.
   grindLanding: false,
+  grindEase: 0, // how crosswise the catch was, decaying -- see GRIND_EASE_REF
 };
 
 // What separates a HUGE AIR from an ordinary one, in launch points. Defined
@@ -359,6 +361,7 @@ function reset() {
   state.landAmount = 0;
   state.landDuration = LAND_SETTLE_DURATION;
   state.grindLanding = false;
+  state.grindEase = 0;
   autoTrickTimer = 0;
   rig.reset();
   props.reset(runStartS);
@@ -466,6 +469,12 @@ function beginAir(power, points, forcedTrick, launchLabel) {
   // backflip was authored at 0.55s but measured 665-841ms in play for exactly
   // that reason. Tricks should feel the same every time you see them.
   if (trick === 'hop') {
+    // PARKED. Nothing calls this any more -- its only caller was the grind
+    // approach-angle gate, which is gone (see the grind branch below). Kept
+    // whole rather than deleted: the pose, height and landing weight behind it
+    // are tuned, and it is the obvious basis for a deliberate hop on an input
+    // if one is ever wanted. Reachable by passing 'hop' to beginAir().
+    //
     // The hop-over is a fixed, deliberate save move: it has to clear a
     // 0.52-0.62 rail by a believable margin regardless of how fast you hit it.
     // The only launch whose height is NOT earned, and so the only one whose air
@@ -1018,9 +1027,22 @@ function frame() {
     if (state.grind) {
       const g = state.grind;
       const half = g.def.size.l / 2;
-      // Locked to the rail's line while on it -- that's what a grind IS.
-      state.theta += (g.theta - state.theta) * Math.min(1, dt * 12);
-      state.thetaVel = 0;
+      // Locked to the rail's line while on it -- that's what a grind IS. But
+      // HOW FAST it locks depends on how hard the rider was cutting across when
+      // they caught it: already aligned and it is effectively instant, a hard
+      // cut takes about a fifth of a second to come round. That difference is
+      // the whole of what the old approach-angle gate was defending, and it
+      // belongs here -- in how the rider settles -- rather than in a rule about
+      // whether they are allowed to grind at all.
+      const ease = state.grindEase || 0;
+      const rate = GRIND_SNAP_RATE + (GRIND_EASE_RATE - GRIND_SNAP_RATE) * ease;
+      state.theta += (g.theta - state.theta) * Math.min(1, dt * rate);
+      // Bled out rather than zeroed. Killing the lateral velocity on the entry
+      // frame is precisely the "magnetic grab" -- the rider stops dead sideways
+      // in the same frame they touch the rail. Decaying it lets the crossing
+      // momentum carry through and die off, which reads as catching the rail.
+      state.thetaVel -= state.thetaVel * Math.min(1, dt * rate);
+      state.grindEase = Math.max(0, ease - dt * 4);
       state.grindTime += dt;
       state.grindPoints += g.def.grind.pointsPerSecond * dt;
       if (state.s > g.s + half) {
@@ -1137,7 +1159,20 @@ function frame() {
       }
     }
     props.update(state.s, dt);
-    if (!state.grind) {
+    {
+      // PROBING RUNS DURING A GRIND TOO, for collectables only.
+      //
+      // This whole block used to be skipped while on a rail, which is why a
+      // crystal sitting ON a rail could never be taken -- the one place a pickup
+      // is most obviously meant to be collected, since the rail carries you
+      // straight through it. Nothing was wrong with the pickup or its collider;
+      // the game simply was not looking.
+      //
+      // Only collectables are honoured while grinding. A launcher, another rail
+      // or a hazard is suppressed: the rider is locked to this rail's line and
+      // cannot meaningfully meet any of them, and re-entering a grind while
+      // already grinding is exactly the loop the original guard existed to
+      // prevent. This keeps that protection and drops the collateral.
       // How high off the surface the rider actually is. The same three offsets
       // the render pass adds below -- air arc, ramp deck, rail top -- because a
       // pickup floating overhead has to be judged against where the rider IS,
@@ -1147,7 +1182,10 @@ function frame() {
       const lift = (state.airActive ? Math.sin(state.airT * Math.PI) * state.airHeight : 0)
         + state.rampLift
         + state.grindLift * state.grindLiftHeight;
-      const hit = props.probe(state.s, state.theta, state.airActive, state.sPrev, lift);
+      const found = props.probe(state.s, state.theta, state.airActive, state.sPrev, lift);
+      const collectable = found
+        && (found.def.kind === 'pickup' || found.def.kind === 'boost');
+      const hit = (state.grind && !collectable) ? null : found;
       if (hit) {
         if (hit.def.kind === 'launch') {
           // Ramps and banks auto-launch on contact -- no button, no tap. This
@@ -1177,40 +1215,36 @@ function frame() {
           // jump flips it would be constant. Let the flip finish; the rail is
           // still there to be caught on a later pass.
         } else if (hit.def.kind === 'grind') {
-          // APPROACH ANGLE GATE. Gliding a rail/ledge only makes sense if you
-          // arrive roughly along it; snapping into a grind while cutting hard
-          // across it reads as the obstacle magnetically grabbing you. So:
-          // measure the crossing angle and, if it's too steep, flip sideways
-          // OVER the obstacle instead of grinding it.
+          // TOUCHING A RAIL ALWAYS GRINDS IT. There used to be an approach-angle
+          // gate here: arrive too crosswise and the rider hopped OVER the rail
+          // instead, on the reasoning that snapping into a grind mid-cut reads
+          // as the obstacle magnetically grabbing you.
           //
-          // lateral speed = |thetaVel| * local radius (angular rate around the
-          // trough converted to world units); over forward speed that ratio is
-          // tan(approach angle).
-          const lateralSpeed = Math.abs(state.thetaVel) * radiusAt(state.s);
-          const crossRatio = lateralSpeed / Math.max(1, state.speed);
-          if (crossRatio > GRIND_MAX_CROSS_RATIO) {
-            beginAir(1.0, 90, 'hop', hit.def.label);
-            // DELIBERATELY NOT `spent`. Hopping a rail must not consume it:
-            // `spent` is permanent and drops the prop from probe() entirely, so
-            // a rail you skipped over crosswise lost its collider for good and
-            // could never be grinded on a later approach -- and rails are 14-28
-            // units long while a hop only covers ~10-17, so landing back on the
-            // same one is routine, not a corner case.
-            //
-            // The debounce that flag was standing in for is already handled,
-            // and more precisely: the mid-trick branch above refuses grind
-            // entry for as long as a trick is rotating, and airActive/airTrick
-            // are cleared in the SAME frame on landing, so there is no gap
-            // where a hop could re-trigger itself. Once he's down, a crosswise
-            // approach hops again and an aligned one grinds -- which is the
-            // whole point of the angle gate.
-            hud.banner('HOP OVER');
-          } else {
+          // The reasoning was sound and the rule was unusable, because it
+          // punished the only way to reach a rail. Measured with a bot steering
+          // at rails deliberately: the approach ratio at contact runs 0.60-0.65
+          // against a 0.30 limit, and 2 of every 6 attempts were rejected. The
+          // input required to GET to a rail is the input that disqualified you
+          // from riding it. No threshold fixes that -- anything loose enough to
+          // let you aim is loose enough to let everything through.
+          //
+          // So contact attaches, always, and the grab-feel the gate was guarding
+          // against is handled where it belongs: in HOW the rider settles onto
+          // the line (see grindEase below) rather than in whether they may.
+          {
             state.grind = hit;
             state.grindPoints = 0;
             state.grindTime = 0;
             state.airActive = false;
             state.airT = 0;
+            // How hard the rider was cutting across at the moment of contact.
+            // Kept, not discarded, because the SETTLE is what sells the catch:
+            // a gentle drift should lock on immediately, a hard cut should take
+            // a beat to come round. Zeroing thetaVel on this frame -- which is
+            // what used to happen -- is the actual "magnetic grab".
+            state.grindEase = Math.min(1,
+              (Math.abs(state.thetaVel) * radiusAt(state.s)) / Math.max(1, state.speed)
+              / GRIND_EASE_REF);
             // The rail's own mesh sits at y=h in buildRail (props.js) -- that's
             // how high its bar actually is off the trough surface. Without this,
             // the rider stood at plain surface height while the rail bar
