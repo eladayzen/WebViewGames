@@ -180,6 +180,21 @@ export const THETA_DAMP = 0.9; // livelier, so pumping is possible
 export const HEIGHT_EXCHANGE = 18.0;
 
 // --- input (build doc §4) ---
+// --- the brake needs a bigger commitment than the steering ------------------
+//
+// On the real board a rider's body weight drifts onto the brake axis without
+// them meaning it -- you shift your weight to stay balanced, not to brake, and
+// the board cannot tell the difference. Steering wants to be sensitive; braking
+// wants to be deliberate. So the brake gets its own, much larger deadzone, and
+// has to be HELD before it counts at all.
+//
+// The hold is the half that matters on the board. A weight shift is transient
+// and a decision is sustained, so time separates them where magnitude alone
+// cannot -- and unlike a deadzone, it works in digital mode too, where the game
+// never sees the tilt angle at all and only gets a key.
+export const BRAKE_DEADZONE = 0.42; // vs DEADZONE for steering, far larger
+export const BRAKE_HOLD_MS = 200;   // sustained before any braking registers
+
 export const DEADZONE = 0.08; // "board sitting level" must be comfortably reachable
 export const POP_PRESS = 0.30; // deliberately MORE forgiving than the SDK's 0.35
 export const POP_RELEASE = 0.16; // ...and 0.20, because back-lean is the hard axis

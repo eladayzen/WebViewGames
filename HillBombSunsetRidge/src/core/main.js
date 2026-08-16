@@ -37,7 +37,7 @@ import {
   LAND_AMOUNT_HOP, LAND_AMOUNT_PLAIN,
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
 } from '../data/constants.js';
-import { initInput, readInput, forcePop } from '../input/input.js';
+import { initInput, readInput, forcePop, setStance, getStance } from '../input/input.js';
 import { createTrough, toWorld, surfaceUp, heightAt, frameAt, makeFrame, radiusAt } from '../world/trough.js';
 import { createRider } from '../entities/rider.js';
 import { createCameraRig } from '../camera/cameraRig.js';
@@ -743,7 +743,7 @@ document.getElementById('confirm-yes').addEventListener('click', () => {
  * The back button. Its meaning is positional, which is why it cannot stay an
  * inline onclick in the markup: only the game knows which screen is above.
  */
-document.getElementById('gb-back').addEventListener('click', () => {
+window.__gbBack = () => {
   if (isConfirmOpen()) {                       // already asking -- treat as "no"
     confirmEl.classList.add('hidden');
   } else if (missionSelect.isOpen()) {         // mission list -> mode lobby
@@ -758,7 +758,7 @@ document.getElementById('gb-back').addEventListener('click', () => {
   } else if (window.Unity) {
     window.Unity.call('nav:back');
   }
-});
+};
 
 restartButton.addEventListener('click', restart);
 // Space/Enter restart too: they're the only keys the host forwards, and the
@@ -1443,7 +1443,11 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals, finishLine, trough, sky, applyTheme };
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals, finishLine, trough, sky, applyTheme,
+  // The LIVE input instance. A dynamic import() of the module gives a second
+  // copy whose initInput() never ran, so its key set stays empty and every
+  // reading is zero -- which looks exactly like a broken mapping.
+  input: { readInput, setStance, getStance } };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);

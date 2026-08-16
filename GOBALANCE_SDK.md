@@ -303,6 +303,38 @@ If instead a game is fine with `forwardSteeringKeys = true` (digital, default), 
 entirely — as long as it listens for real `keydown`/`keyup` on `ArrowLeft`/`ArrowRight` keyed
 on `e.code`, Unity's synthetic key events just work with no game code changes at all.
 
+## Brake / vertical-axis threshold (Hill Bomb, and likely any board game)
+
+On the physical board a rider's body weight drifts onto whichever axis is doing
+"brake" without them meaning it — you shift to stay balanced, not to brake, and
+the board cannot tell the difference. Amit, riding it: *"you unintentionally
+press on it because of your body weight."*
+
+A game can only defend against half of this. Hill Bomb's `src/input/input.js`
+does what it can:
+
+- a much larger deadzone on the brake axis than on the steering axis — **analog
+  mode only**, since it needs the tilt magnitude that `window.__gbSensor` gives;
+- a ~200 ms **hold** before any braking registers, which works in *both* modes,
+  because it needs no angle, only time.
+
+**What the game cannot do.** In `regular` (digital) mode the host decides when a
+tilt becomes a keystroke. The game receives `ArrowUp`/`ArrowDown` and never
+learns how far the board leaned, so it can delay that key but never raise the
+angle that produced it. If accidental braking survives the game-side defences,
+**the host needs a higher tilt threshold on the brake axis than on the steering
+axis** — steering should stay light, since carving is the game.
+
+One catch worth stating plainly: **which physical axis is the brake depends on
+the player's stance.** Hill Bomb defaults to a "skate" stance — standing across
+the board, as its shape invites — which rotates the mapping a quarter turn, so
+the brake lands on the board's *lateral* axis and steering on its fore/aft one.
+Raising the wrong axis makes steering unusable and changes nothing about the
+brake.
+
+`gb:sensitivity` currently tunes the host's thresholds as a single dial for both
+axes; separating them is the change this is asking for.
+
 ## Gotchas
 
 - **Stale filenames.** Content hashes change every build. Always delete old `assets/*` + their

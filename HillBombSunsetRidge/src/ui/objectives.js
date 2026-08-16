@@ -27,6 +27,31 @@ export function createObjectives() {
   let prev = [];
   let prevSecond = -1;
   let prevMeterText = null;
+  let reported = false;
+
+  /**
+   * Report the panel's real geometry once per run, through the SDK bridge.
+   *
+   * There is no console on the board, so a HUD that does not appear there and
+   * does appear in a browser is otherwise pure guesswork -- this turns the next
+   * device run into data: whether the element is being shown at all, where it
+   * actually is, how big it resolved to, and what font-size it inherited. Silent
+   * in a browser, since window.Unity only exists inside the WebView.
+   */
+  function reportOnce() {
+    if (reported || !window.Unity) return;
+    reported = true;
+    try {
+      const r = root.getBoundingClientRect();
+      const cs = getComputedStyle(root);
+      window.Unity.call(
+        `HUD objectives: ${Math.round(r.left)},${Math.round(r.top)} `
+        + `${Math.round(r.width)}x${Math.round(r.height)} `
+        + `font=${cs.fontSize} vis=${cs.visibility} op=${cs.opacity} `
+        + `disp=${cs.display} vp=${window.innerWidth}x${window.innerHeight}`,
+      );
+    } catch (e) { /* a diagnostic must never be the thing that breaks */ }
+  }
 
   function retrigger(node, cls) {
     if (!node) return;
@@ -44,8 +69,7 @@ export function createObjectives() {
       return li;
     });
     prev = objectives.map(() => ({ text: null, done: false }));
-    retrigger(titleEl, 'intro');
-    retrigger(root, 'intro');
+    // No entrance animation -- see the CSS. The panel is simply there.
   }
 
   return {
@@ -58,6 +82,12 @@ export function createObjectives() {
         return;
       }
       root.classList.remove('hidden');
+      // Defensive: the briefing hides this panel while it measures its position
+      // for the fly-in. If that hand-off is ever missed -- an interrupted run, a
+      // transitionend the WebView never fires -- the panel would stay invisible
+      // for the whole run with nothing to say why. Clearing it every frame means
+      // the worst case is one bad frame instead of a HUD that never appears.
+      reportOnce();
       titleEl.textContent = panel.title;
 
       const sig = panel.title + '|' + panel.objectives.map((o) => o.label).join('|');

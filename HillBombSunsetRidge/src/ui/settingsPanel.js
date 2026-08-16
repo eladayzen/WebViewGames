@@ -22,6 +22,7 @@
 
 import {
   STEER_MODES, STEER_REGULAR, setSteerMode, recentreBoard,
+  STANCE_MODES, STANCE_SKATE, setStance,
 } from '../input/input.js';
 import { CONTROL_PRESETS, CONTROLS, setControlPreset } from '../data/controlPresets.js';
 import { CARVE_SMOOTH, CARVE_CURVE } from '../data/constants.js';
@@ -41,6 +42,9 @@ export const FEEL = {
 };
 
 const state = {
+  // SKATE by default -- the board is shaped like a skateboard, so standing
+  // across it is what the hardware invites. See input/input.js.
+  stance: STANCE_SKATE,
   mode: STEER_REGULAR,
   preset: CONTROLS.key,
   carveSmooth: CARVE_SMOOTH,
@@ -62,6 +66,7 @@ function load() {
     if (!raw) return;
     const saved = JSON.parse(raw);
     if (STEER_MODES.includes(saved.mode)) state.mode = saved.mode;
+    if (STANCE_MODES.includes(saved.stance)) state.stance = saved.stance;
     if (CONTROL_PRESETS[saved.preset]) state.preset = saved.preset;
     for (const k of ['carveSmooth', 'carveCurve', 'sensitivity']) {
       if (typeof saved[k] === 'number' && Number.isFinite(saved[k])) state[k] = saved[k];
@@ -89,6 +94,7 @@ function pushSensitivity() {
 
 function applyAll() {
   setSteerMode(state.mode);
+  setStance(state.stance);
   setControlPreset(state.preset);
   FEEL.carveSmooth = state.carveSmooth;
   FEEL.carveCurve = state.carveCurve;
@@ -233,8 +239,21 @@ export function initSettingsPanel(hooks = {}) {
   keyHint.className = 'sp-keyhint';
   // Key hint removed -- no keyboard on the board. The handlers stay.
   keyHint.textContent = '';
-  panelEl.appendChild(keyHint);
+  // Not appended: with no text in it, it was an empty row of padding at the
+  // bottom of the panel. Kept as an element so re-adding a hint is one line.
+  void keyHint;
 
+  addChoice({
+    label: 'STANCE',
+    values: STANCE_MODES,
+    get: () => state.stance,
+    set: (v) => { state.stance = v; },
+    // The one setting that describes the PLAYER rather than the game: which way
+    // they are standing on a board shaped like a skateboard.
+    // The deployment-critical half: in SKATE, carve arrives on ArrowUp/Down,
+    // and the host only dispatches those when forwardVerticalAxis is ticked.
+    note: 'skate needs forwardVerticalAxis = ON, or it will not steer',
+  });
   addChoice({
     label: 'MODE',
     values: STEER_MODES,

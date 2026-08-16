@@ -28,11 +28,36 @@
 // needs no special casing. Tuning decided on a keyboard will still overstate how
 // easy the pop is -- see §12.
 
-import { DEADZONE } from '../data/constants.js';
+import { DEADZONE, BRAKE_DEADZONE, BRAKE_HOLD_MS } from '../data/constants.js';
 
 export const STEER_REGULAR = 'regular';
 export const STEER_ANALOG = 'analog';
 export const STEER_MODES = [STEER_REGULAR, STEER_ANALOG];
+
+// --- STANCE: which way the rider is standing on the board --------------------
+//
+// The GoBalance board is shaped like a skateboard, so the natural thing to do
+// with it is stand ACROSS it, the way you stand on a skateboard -- and once you
+// do, the board's axes are rotated ninety degrees against your body. What the
+// sensor calls forward is your left, and what it calls right is your forward.
+//
+// SKATE is the default because it is what the hardware invites. Standing square
+// to the board is the odd case now, not the normal one.
+//
+// ONE DEPLOYMENT CONSEQUENCE, and it is not optional. In 'regular' steering the
+// host turns board tilt into synthetic arrow keys, and it only dispatches
+// ArrowUp/ArrowDown when `forwardVerticalAxis` is ticked on the scene -- which
+// is OFF by default and fails silently. In SKATE stance, carve arrives on
+// exactly those keys. So a build shipped with that box unticked does not steer
+// at all: not badly, not partially, not at all. Braking is unaffected, since it
+// lands on the lateral keys the host always sends.
+//
+// Everything downstream of readInput() is expressed in PLAYER terms -- carve,
+// tuck, brake -- and never sees the board's axes at all, which is what makes
+// this a change to one mapping rather than a change to the controller.
+export const STANCE_SKATE = 'skate';
+export const STANCE_SQUARE = 'square';
+export const STANCE_MODES = [STANCE_SKATE, STANCE_SQUARE];
 
 // FORWARD LEAN IS OFF. Amit, on the board: "I cannot do this move." Leaning
 // forward on a balance board is genuinely hard -- it is the same ergonomic fact
@@ -54,9 +79,13 @@ const keys = new Set();
 // 'T' key) even though the manual pop input is gone -- see forcePop.
 let popEdge = false;
 let steerMode = STEER_REGULAR;
+let stance = STANCE_SKATE;
 // Board zero. A rider isn't necessarily standing level when the scene loads, so
 // analog mode subtracts a captured centre rather than trusting raw zero.
 let centre = { x: 0, y: 0 };
+// When the brake input first went past its threshold, or 0 if it is not held.
+// See BRAKE_HOLD_MS: an accidental weight shift is brief, a decision is not.
+let brakeSince = 0;
 
 export function initInput() {
   window.addEventListener('keydown', (e) => {
@@ -74,6 +103,13 @@ export function setSteerMode(mode) {
 }
 export function getSteerMode() {
   return steerMode;
+}
+
+export function setStance(next) {
+  if (STANCE_MODES.includes(next)) stance = next;
+}
+export function getStance() {
+  return stance;
 }
 
 /**
@@ -107,7 +143,46 @@ function applyDeadzone(v) {
  * ramps, and asking for a sharp forward JAB to distinguish "trick" from a
  * sustained "tuck" is not something to ask of someone balancing on a board.
  */
+// ============================================================================
+// FOR WHOEVER WIRES THIS INTO THE GOBALANCE SCENE -- the brake's threshold
+// ============================================================================
+//
+// THE PROBLEM. On the physical board a rider's weight drifts onto the brake axis
+// without them intending it. You shift to stay balanced, not to brake, and the
+// board cannot tell the difference. Reported from the board: "you unintentionally
+// press on it because of your body weight."
+//
+// WHAT THIS FILE ALREADY DOES. Two game-side defences, both above:
+//   * BRAKE_DEADZONE -- the brake ignores anything under ~0.42 of full tilt,
+//     several times the steering deadzone. ANALOG MODE ONLY: it needs the tilt
+//     magnitude, which only window.__gbSensor provides.
+//   * BRAKE_HOLD_MS -- the input must be sustained ~200 ms before any braking is
+//     reported at all. This one works in BOTH modes, because it needs no angle,
+//     only time, and a weight shift is brief where a decision is not.
+//
+// WHAT THE GAME CANNOT DO, AND WHY THIS NOTE EXISTS. In 'regular' (digital)
+// mode the HOST decides when a tilt becomes a key and sends ArrowUp/ArrowDown;
+// the game is handed a keystroke and never learns how far the board leaned. So
+// the game can delay that key, but it can never raise the angle that produced
+// it. If the brake still fires accidentally on the board, the fix is host-side:
+//
+//   the vertical axis needs a HIGHER tilt threshold than the lateral one.
+//
+// Steering should stay light -- carving is the whole game and wants to be
+// sensitive. It is specifically the brake axis that should demand a deliberate,
+// larger lean before it triggers, and in SKATE stance that axis is the board's
+// LATERAL one (see the stance note above), not its fore/aft one. Whoever tunes
+// the host's thresholds needs to know which physical axis they are raising,
+// because the stance changes the answer.
+//
+// The gb:sensitivity message the settings panel sends tunes the host's
+// thresholds today, but it is a single dial for both axes -- separating them is
+// the change being asked for here.
+// ============================================================================
+
 export function readInput() {
+  // Raw BOARD axes. +x is the board's right, +y is the board's forward. Nothing
+  // outside this function should ever see them.
   let x = 0;
   let y = 0;
 
@@ -121,27 +196,64 @@ export function readInput() {
   }
 
   // Always read: in 'regular' mode these ARE the board (the host dispatches
-  // them), and on a desktop they're the keyboard. Keyed on e.code, which is
-  // what the host's synthetic events set.
+  // them), and on a desktop they're the keyboard. Keyed on e.code, which is what
+  // the host's synthetic events set.
   if (keys.has('ArrowLeft') || keys.has('KeyA')) x -= 1;
   if (keys.has('ArrowRight') || keys.has('KeyD')) x += 1;
-  // +y is FORWARD (tuck), -y is BACK (brake). In 'regular' mode these arrive as
-  // ArrowUp/ArrowDown, which the host only dispatches when forwardVerticalAxis
-  // is ticked on the scene -- it is off by DEFAULT and fails silently, so a
-  // build with it unticked simply has no tuck and no brake at all.
-  if (FORWARD_INPUT && (keys.has('ArrowUp') || keys.has('KeyW'))) y += 1;
+  if (keys.has('ArrowUp') || keys.has('KeyW')) y += 1;
   if (keys.has('ArrowDown') || keys.has('KeyS')) y -= 1;
 
-  const carve = applyDeadzone(Math.max(-1, Math.min(1, x)));
-  let ay = applyDeadzone(Math.max(-1, Math.min(1, y)));
-  // Clamp the ANALOG lean as well: gating only the key above would leave a board
-  // in analog mode still producing a tuck from a forward lean, which is exactly
-  // the move that cannot be made.
+  // --- board axes -> PLAYER axes ---------------------------------------------
+  //
+  // SKATE stance is the board rotated a quarter turn under the rider, so the
+  // mapping is a rotation and nothing more:
+  //
+  //     board right (+x)  ->  player forward
+  //     board forward (+y) ->  player right
+  //
+  // which inverts to lateral = y, fore = -x. SQUARE stance is the identity, and
+  // is what every measurement in this game was originally taken against.
+  //
+  // Doing the rotation HERE, on two numbers, is the whole point: the pendulum,
+  // the brake, the poses and every constant behind them keep working in player
+  // terms and never learn that a stance exists.
+  const lateral = stance === STANCE_SKATE ? y : x;
+  const fore = stance === STANCE_SKATE ? -x : y;
+
+  const carve = applyDeadzone(Math.max(-1, Math.min(1, lateral)));
+  let ay = applyDeadzone(Math.max(-1, Math.min(1, fore)));
+  // The forward lean is disabled (see FORWARD_INPUT). Applied to the PLAYER's
+  // forward, not the board's, so it stays the same physical move whichever way
+  // the rider is standing -- and the brake, which is the other half of this
+  // axis, keeps working in both stances.
   if (!FORWARD_INPUT && ay > 0) ay = 0;
+
+  // --- the brake, which has to be meant -------------------------------------
+  //
+  // Its own deadzone, well above the steering one, and then a hold: the input
+  // must be sustained for BRAKE_HOLD_MS before ANY braking is reported. On the
+  // board, a rider's weight wanders onto this axis constantly without them
+  // meaning it; time is what separates a shift from a decision, and it is the
+  // only thing that works in digital mode, where the game is handed a key and
+  // never sees how far the board actually tilted.
+  //
+  // Rescaled after the gate so the brake still starts from zero at the moment it
+  // engages -- otherwise crossing the threshold would snap straight to 42%.
+  const rawBrake = Math.max(0, -ay);
+  let brake = 0;
+  if (rawBrake > BRAKE_DEADZONE) {
+    const now = performance.now();
+    if (!brakeSince) brakeSince = now;
+    if (now - brakeSince >= BRAKE_HOLD_MS) {
+      brake = Math.min(1, (rawBrake - BRAKE_DEADZONE) / (1 - BRAKE_DEADZONE));
+    }
+  } else {
+    brakeSince = 0;
+  }
 
   const pop = popEdge;
   popEdge = false;
-  return { carve, tuck: Math.max(0, ay), brake: Math.max(0, -ay), pop };
+  return { carve, tuck: Math.max(0, ay), brake, pop };
 }
 
 /** Lets the lobby fire a trick programmatically (auto-trick toggle). */

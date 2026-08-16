@@ -15,6 +15,16 @@ html, body {
   overflow: hidden;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-tap-highlight-color: transparent;
+  /* TURN OFF WEBVIEW FONT BOOSTING.
+     Android's WebView inflates the text size of blocks it decides are
+     text-heavy, which is invisible on desktop Chrome and very much not on a
+     device. It did not matter while the HUD was sized in fixed pixels; it
+     matters enormously now that the whole left panel derives every dimension --
+     its width, its padding, its offsets -- from a single font-size in `em`. One
+     boosted font-size scales the entire panel, which is exactly the shape of
+     "the left panel is not there" on device and fine in a browser. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 #stage {
@@ -183,6 +193,7 @@ html, body {
   position: absolute;
   top: 1.1em;
   left: 1.3em;
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
   color: #fff3e4;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
@@ -217,6 +228,7 @@ html, body {
    player is actually trying to do. */
 #bottomRight {
   position: absolute;
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
   right: 1.4em;
   bottom: 1.2em;
@@ -467,6 +479,7 @@ html, body {
   color: var(--paper);
   /* Same viewport-relative scale as the HUD -- this screen is read on the same
      ~788px-wide phone, and sizing it in fixed px made it a wall of text there. */
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
 }
 
@@ -634,21 +647,25 @@ html, body {
 #objectives {
   margin-top: 1.15em;
   width: 14.6em;
+  /* Belt and braces: whatever the font-size resolves to, the panel cannot grow
+     wider than the screen or off the bottom of it. */
+  max-width: 42vw;
+  max-height: 60vh;
+  overflow: hidden;
   padding: 0.72em 0.82em 0.62em;
   border-radius: 0.75em;
-  background: rgba(24, 18, 30, 0.44);
+  background: rgba(24, 18, 30, 0.72);
   border: 1px solid rgba(255, 233, 214, 0.16);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  /* NO backdrop-filter. It looked good in Chrome and is a known way to get a
+     blank or black box out of an Android System WebView, which is what the SDK
+     ships on -- a blurred panel is not worth a HUD that sometimes does not draw.
+     The background alpha is raised to compensate for the lost separation. */
 }
 #objectives.hidden { display: none; }
-/* The panel slides in when a mission starts, so the list is something that
-   ARRIVES rather than something that was always there. */
-#objectives.intro { animation: panelIn 0.42s cubic-bezier(.2,1.2,.35,1); }
-@keyframes panelIn {
-  0% { opacity: 0; transform: translateX(-18px); }
-  100% { opacity: 1; transform: translateX(0); }
-}
+/* NO ENTRANCE ANIMATION. It began at opacity 0 and animated up, which is fine
+   until the animation does not run -- then the panel is present, laid out, and
+   invisible, with nothing to say why. Nothing that has to appear should start
+   from a state where failure looks like absence. */
 
 #obj-title {
   font: 900 1.02em/1 system-ui, sans-serif;
@@ -656,12 +673,6 @@ html, body {
   text-transform: uppercase;
   color: var(--hot);
   margin-bottom: 0.55em;
-}
-#obj-title.intro { animation: titleIn 0.5s cubic-bezier(.2,1.5,.35,1); }
-@keyframes titleIn {
-  0% { opacity: 0; transform: scale(0.82); }
-  55% { opacity: 1; transform: scale(1.08); }
-  100% { transform: scale(1); }
 }
 
 #obj-clock {
@@ -752,6 +763,7 @@ html, body {
 .msel-inner {
   width: min(34em, 92vw);
   color: var(--paper);
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
 }
 .msel-head {
@@ -880,6 +892,7 @@ html, body {
 #confirm-overlay { background: rgba(12, 8, 16, 0.72); z-index: 9600; }
 .confirm-box {
   width: min(26em, 84vw);
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
   padding: 1.6em 1.6em 1.4em;
   border-radius: 1em;
@@ -948,6 +961,7 @@ html, body {
   top: 0.9em; left: 50%;
   transform: translateX(-50%);
   width: min(26em, 46vw);
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
   color: #d6f6ff;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
@@ -993,25 +1007,14 @@ html, body {
 #briefing { background: rgba(10, 7, 16, 0.72); z-index: 9400; }
 #brief-card {
   width: min(30em, 86vw);
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
   padding: 1.5em 1.6em 1.3em;
   border-radius: 1em;
   background: rgba(26, 19, 34, 0.96);
   border: 2px solid rgba(255, 122, 61, 0.55);
   color: var(--paper);
-  /* Transform-origin at the top left so the flight to the HUD panel -- which is
-     anchored top-left -- is a straight scale-and-translate with no drift. */
-  transform-origin: top left;
-  will-change: transform, opacity;
 }
-#brief-card.intro { animation: briefIn 0.34s cubic-bezier(.2,1.3,.35,1); }
-@keyframes briefIn {
-  0% { opacity: 0; transform: scale(0.9); }
-  100% { opacity: 1; transform: scale(1); }
-}
-/* The flight itself is driven from JS (it needs the panel's measured rect), so
-   this only supplies the timing. */
-#brief-card.flying { transition: transform 0.52s cubic-bezier(.4,0,.2,1), opacity 0.52s ease-in; }
 
 #brief-num {
   font: 900 1.15em/1 system-ui, sans-serif;
@@ -1071,3 +1074,4 @@ html, body {
   transform: scaleX(var(--brief-left, 1));
   transform-origin: center;
 }
+

@@ -4,17 +4,19 @@
 // started, which is the one moment the player is least able to read anything.
 // Amit: "I start the mission, I don't understand what I should do."
 //
-// So the run waits. The objectives are shown centre-screen at a size that cannot
-// be missed, and then they FLY INTO the HUD panel's own position and shrink to
-// its size. That flight is the point of the whole thing: a cut, or a fade, would
-// leave the player to work out that the small thing in the corner is the same
-// list they just read. Moving it says so without words.
+// So the run waits: the objectives are shown centre-screen at a size that cannot
+// be missed, and then the card simply closes and the HUD panel takes over.
 //
-// TECHNIQUE. The card is animated from its own measured rectangle to the live
-// panel's measured rectangle -- FLIP, in the usual jargon. The panel has to be
-// laid out and measurable for that, so it is made visible-but-transparent for
-// the duration rather than being left display:none, which would have no rect to
-// aim at.
+// IT USED TO FLY INTO THE PANEL -- a measured transform from the card's rect to
+// the panel's, so the list visibly became the thing in the corner. That read
+// well in a browser and is gone, because on the SDK's WebView the left panel did
+// not appear at all and this was the only thing standing between "the mode says
+// show it" and "it is on screen": a transform that had to land, a transitionend
+// that had to fire, and the panel held at opacity 0 until both did. Three ways
+// to fail, all silent, none reproducible in Chrome.
+//
+// A cut looks worse and is strictly more reliable. A HUD that always appears
+// beats one that arrives elegantly when it arrives at all.
 
 export function createBriefing() {
   const el = document.getElementById('briefing');
@@ -45,54 +47,18 @@ export function createBriefing() {
     const done = resolveShow;
     resolveShow = null;
     el.classList.add('hidden');
-    card.classList.remove('flying');
-    card.style.transform = '';
-    card.style.opacity = '';
-    const panel = document.getElementById('objectives');
-    if (panel) panel.style.opacity = '';
     if (done) done();
   }
 
+  /**
+   * Close the card and hand over. No animation, no measuring, no waiting on an
+   * event: the panel is shown by its own update() on the very next frame, which
+   * is the moment the run starts.
+   */
   function fly() {
     if (dismissed) return;
     dismissed = true;
-    const panel = document.getElementById('objectives');
-    if (!panel) { finish(); return; }
-
-    // The panel must be laid out to have a rectangle to aim at. It is shown but
-    // transparent, so it occupies its real position without appearing early.
-    panel.classList.remove('hidden');
-    panel.style.opacity = '0';
-
-    const from = card.getBoundingClientRect();
-    const to = panel.getBoundingClientRect();
-    if (to.width < 1 || from.width < 1) { finish(); return; }
-
-    // Uniform scale from the width alone: the two elements have different
-    // aspect ratios, and scaling each axis independently would visibly squash
-    // the text on the way across.
-    const scale = to.width / from.width;
-    const dx = to.left - from.left;
-    const dy = to.top - from.top;
-
-    card.classList.add('flying');
-    // Both transforms are relative to the card's top-left origin, so translate
-    // then scale lands its corner exactly on the panel's corner.
-    card.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
-    card.style.opacity = '0';
-
-    let settled = false;
-    const land = () => {
-      if (settled) return;
-      settled = true;
-      card.removeEventListener('transitionend', land);
-      panel.style.opacity = '';
-      finish();
-    };
-    card.addEventListener('transitionend', land);
-    // A transition that never fires -- an interrupted run, a backgrounded tab --
-    // would leave the game frozen behind a hidden card forever.
-    setTimeout(land, 900);
+    finish();
   }
 
   // Space/Enter and a tap still skip ahead -- the SUPPORT stays, only the text
@@ -110,7 +76,7 @@ export function createBriefing() {
     /**
      * @param {{number?:number, name:string, sub?:string,
      *          rows:Array<{label:string,text:string}>}} data
-     * @returns {Promise<void>} resolves once the card has landed on the HUD.
+     * @returns {Promise<void>} resolves once the card has closed.
      */
     show(data) {
       numEl.textContent = data.number != null
@@ -131,12 +97,6 @@ export function createBriefing() {
       dismissed = false;
       shownAt = performance.now();
       el.classList.remove('hidden');
-      card.classList.remove('flying');
-      card.style.transform = '';
-      card.style.opacity = '';
-      card.classList.remove('intro');
-      void card.offsetWidth;
-      card.classList.add('intro');
 
       return new Promise((resolve) => {
         resolveShow = resolve;
