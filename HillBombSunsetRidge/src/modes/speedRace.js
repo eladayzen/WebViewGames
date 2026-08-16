@@ -146,6 +146,27 @@ export default registerMode({
         if (left <= 0) end('timeout');
       },
 
+      /**
+       * The pre-race card. Built from the same constants the race is actually
+       * run with -- the course's own length and the real field size -- so it
+       * cannot drift into describing a race that is not the one about to start.
+       *
+       * It exists because the race began with no explanation at all: four
+       * skaters set off and the player was left to infer both the goal and the
+       * mechanic from a leaderboard. Amit: "I don't understand what it should
+       * do." Three lines answer it -- where the finish is, who you are racing,
+       * and what the gates are for.
+       */
+      briefing: () => ({
+        name: 'SPEED RACE',
+        sub: 'First to the finish line wins.',
+        rows: [
+          { label: 'FINISH', text: `${(course.length / 1000).toFixed(1)} KM` },
+          { label: 'RIVALS', text: `${FIELD_SIZE}` },
+          { label: 'BOOST GATES', text: 'RIDE THROUGH' },
+        ],
+      }),
+
       panel: () => {
         const rows = standings();
         const me = rows.find((r) => r.you);
