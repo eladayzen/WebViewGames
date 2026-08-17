@@ -48,6 +48,8 @@ import {
 import { bossDef, bossIsHullBoss } from '../data/bosses.js';
 import { cfg } from '../core/mode.js';
 import { createEmitter } from '../patterns/patterns.js';
+import { spawnFragment } from './enemies.js';
+import { liveCount } from '../core/state.js';
 
 const TWO_PI = Math.PI * 2;
 
@@ -133,6 +135,7 @@ export function beginBoss(w, bossId, aspect) {
   // everywhere. Nothing downstream looks at the id or at the def again.
   b.hullBoss = bossIsHullBoss(def);
   b.coreDx = def.coreDx === undefined ? 0.5 : def.coreDx;
+  b.podNoun = def.podNoun || 'BATTERY';
 
   b.x = DESIGN_W * 0.5;
   b.y = BOSS.entryFromY * DESIGN_H;
@@ -145,11 +148,23 @@ export function beginBoss(w, bossId, aspect) {
   b.entryS = Math.max(BOSS.entryMinS, drop / cfg().patternDescentCap);
 
   b.pods.length = 0;
+  b.launched = 0;
   for (let i = 0; i < (def.pods || []).length; i++) {
     const p = def.pods[i];
     b.pods.push({
       index: i,
       dx: p.dx,
+      // --- launch-bay fields (§6.4, BOSS.bay) ---------------------------
+      // Only a boss whose row asks for it has any of this. A pod that does
+      // not launch is permanently `open`, which is what makes every existing
+      // pod-boss rule read unchanged: `open` gates damage and firing, and a
+      // non-bay pod is simply always open.
+      launches: !!p.launches,
+      phase: p.phase || 0,
+      open: true,
+      // 0..1 door travel, so /render can slide the doors rather than cut.
+      doorK: 1,
+      launchT: 0,
       // LIVE WORLD POSITION, refreshed every frame in updateBoss.
       //
       // A pod is an emitter OWNER, exactly as an Emitter craft is, and
@@ -193,7 +208,11 @@ export function beginBoss(w, bossId, aspect) {
   // plausible-looking number from the previous fight.
   b.maxHullHp = b.hullBoss ? def.hullHp : 0;
   b.hullHp = b.maxHullHp;
-  b.maxCoreHp = b.hullBoss ? 0 : BOSS.coreHp;
+  // Core size is per-boss where the row says so. Boss two's bays are only
+  // shootable for roughly half the fight, so 24 points of pods cannot carry its
+  // length -- the core is where the fight's duration actually lives, and that
+  // is a property of THIS boss's shape rather than of the framework.
+  b.maxCoreHp = b.hullBoss ? 0 : (def.coreHp || BOSS.coreHp);
   b.coreHp = b.maxCoreHp;
   b.coreHitFlashT = 0;
   b.hullSparkT = 0;
@@ -310,7 +329,11 @@ export function updateBoss(w, dt, fx, banners) {
     if (live < b.lastPodsRemaining) {
       b.lastPodsRemaining = live;
       if (live > 0) {
-        banners.push(`BATTERY DOWN — ${live} LEFT`, 1.1);
+        // The noun is per boss: Cinderjaw's pods would have been batteries,
+        // Brood Gantry's are bays, Nadir Coil's will be segments. Naming the
+        // thing the player just destroyed after what it looks like is most of
+        // what makes a banner worth the gutter it occupies (§7.1).
+        banners.push(`${b.podNoun} DOWN — ${live} LEFT`, 1.1);
       } else {
         banners.push('CORE EXPOSED', 1.5, true);
       }
@@ -339,6 +362,7 @@ export function updateBoss(w, dt, fx, banners) {
 
     case BossPhase.FIGHTING:
       b.y = BOSS.stationY * DESIGN_H;
+      updateBays(w, dt, fx);
       // The vulnerable window is a PROPERTY OF THE CORE, so a boss with no core
       // does not have one -- no announcement banner, no climb line, no reward
       // geometry. That is the whole of "no tricks" for boss one, and it falls
@@ -356,6 +380,105 @@ export function updateBoss(w, dt, fx, banners) {
 }
 
 /**
+ * Launch bays (§6.4, BOSS.bay) -- boss two's mechanic, and the reason boss two
+ * is more than a bigger boss one.
+ *
+ * THE RULE, in one sentence the player never has to be told: THE BAY THAT IS
+ * LAUNCHING AT YOU IS THE BAY YOU CAN KILL. An open bay is lit, reticled,
+ * disgorging drones, running its bullet pattern, and takes damage. A shut bay
+ * is a flat armoured disc that rings bolts off with the same deflect burst the
+ * player already learned on boss one's hull. Nothing explains this; the two
+ * states look nothing alike and the feedback is immediate either way.
+ *
+ * That last clause is the whole design constraint, inherited from boss one's
+ * failure. Boss one was mechanically correct and unplayable because its pods
+ * were unmarked and hull hits were silent, so a working fight read as
+ * invulnerable. A cycling weak point is exactly the mechanic most at risk of
+ * repeating that -- so it is only safe alongside three things this build
+ * already has and one it adds:
+ *   * the shot channels, carets and reticles that mark what is shootable;
+ *   * the deflect burst that says a shot went nowhere;
+ *   * per-pod HP pips that show progress on what is;
+ *   * and here, the guarantee that SOMETHING IS ALWAYS OPEN -- four bays
+ *     evenly phased at openFrac 0.55 leave two or three open at any instant,
+ *     and /systems/constraints.js proves it rather than hoping.
+ *
+ * The endgame is guarded separately: once BOSS.bay.alwaysOpenAtOrBelow bays
+ * remain they jam open permanently, because a last bay that spent 45% of the
+ * fight's tail invulnerable would be the same "nothing is happening" failure
+ * wearing a timer.
+ */
+function updateBays(w, dt, fx) {
+  const b = w.boss;
+  const B = BOSS.bay;
+  let live = 0;
+  let bays = 0;
+  for (const p of b.pods) {
+    if (!p.alive) continue;
+    live++;
+    if (p.launches) bays++;
+  }
+  if (!bays) return;
+
+  // Live brood, recounted rather than tracked. A decrement ledger would drift
+  // the first time a craft died by a path that forgot to decrement it, and the
+  // symptom would be a carrier that silently stops launching for the rest of
+  // the fight.
+  let brood = 0;
+  for (let i = 0; i < w.enemies.length; i++) {
+    if (w.enemies[i].alive && w.enemies[i].fromBay) brood++;
+  }
+  b.launched = brood;
+
+  const jam = live <= B.alwaysOpenAtOrBelow;
+  const doorRate = dt / Math.max(0.01, B.doorS);
+
+  for (const p of b.pods) {
+    if (!p.alive || !p.launches) continue;
+
+    // Where this bay is in its own cycle. Phase-shifted per pod, so the four
+    // never move together -- a carrier whose bays opened in unison would read
+    // as one shutter, and the choice of which one to stand under would vanish.
+    const k = ((w.time / B.cycleS) + p.phase) % 1;
+    const wantOpen = jam || k < B.openFrac;
+
+    const before = p.open;
+    p.doorK = Math.max(0, Math.min(1, p.doorK + (wantOpen ? doorRate : -doorRate)));
+    // Damage follows the DOORS, not the clock: a bay counts as open once it is
+    // past halfway, so what the player sees and what the bolt meets agree.
+    p.open = p.doorK >= 0.5;
+    // Re-deal the firing slots the moment a bay changes state, so the pattern
+    // pressure tracks which bays are actually open rather than lagging a
+    // rotation behind it.
+    if (p.open !== before) rotatePods(w);
+
+    if (!p.open) continue;
+
+    // The stream. §6.4: "launch bays that emit drones on a timer; killing a bay
+    // stops its stream" -- which is literally true here, because a dead pod
+    // never reaches this line.
+    p.launchT -= dt;
+    if (p.launchT > 0) continue;
+    p.launchT = B.launchIntervalS;
+    if (brood >= B.maxLaunched) continue;
+    if (liveCount(w.enemies) >= w.caps.enemies) continue;
+
+    const pp = podPosition(b, p);
+    // Outward, away from the hull's centre, so the brood clears the ship rather
+    // than crossing under it. The arc itself is ENEMY.fragment's -- lateral,
+    // floored at y = 0.58, never a dive (§5.5's do-not-port list).
+    const dir = pp.x < DESIGN_W * 0.5 ? -1 : 1;
+    const e = spawnFragment(w, pp.x, pp.y + BOSS.podRadius * 0.6, dir, 'drone',
+      B.launchScore);
+    if (e) {
+      e.fromBay = true;
+      brood++;
+      fx.impact(pp.x, pp.y + BOSS.podRadius * 0.6);
+    }
+  }
+}
+
+/**
  * Hand the firing slots round the surviving pods.
  *
  * §6.4 gives every pod its own pattern; §5.3 caps simultaneous patterns at 2
@@ -368,7 +491,14 @@ export function updateBoss(w, dt, fx, banners) {
 function rotatePods(w) {
   const b = w.boss;
   b.rotateT = BOSS.podRotateS;
-  const live = b.pods.filter((p) => p.alive);
+  // OPEN pods get the firing slots. That is the mechanic stated as scheduling:
+  // a shut bay is not shooting at you, which is exactly why it is also not
+  // killable, and the player reads the two facts as one fact. The fallback to
+  // any live pod exists so a boss with no bays at all (Cinderjaw's shape, and
+  // Nadir Coil's segments) behaves precisely as it did before -- their pods are
+  // permanently `open`, so the filter is a no-op for them.
+  let live = b.pods.filter((p) => p.alive && p.open);
+  if (!live.length) live = b.pods.filter((p) => p.alive);
   const slots = Math.min(w.caps.simultaneousPatterns, live.length);
   for (const p of b.pods) p.firing = false;
   if (!live.length) return;
@@ -401,7 +531,9 @@ export function bossEmitters(w, out) {
     return out;
   }
   for (const p of b.pods) {
-    if (p.alive && p.firing && p.emitter) out.push(p.emitter);
+    // `open` is the bay gate and is permanently true for a pod that is not a
+    // bay, so this reads unchanged for every other boss shape.
+    if (p.alive && p.open && p.firing && p.emitter) out.push(p.emitter);
   }
   return out;
 }
@@ -544,6 +676,21 @@ export function boltHitsBoss(w, x, y, r, amount, fx) {
       // ~24px per frame against a 2*(43+9) = 104px tall acceptance window, so
       // it cannot tunnel past.
       if (y > pp.y + BOSS.podRadius + r) return null;
+
+      // A SHUT BAY IS ARMOUR (§6.4, BOSS.bay). The bolt rings off the closed
+      // doors, ON THE BAY -- not on anonymous plating 200 px away -- which is
+      // the same lesson boss one's sealed core taught: feedback located at the
+      // thing you were aiming at says "this is the target, it is just shut",
+      // where a spark somewhere else says "this game is broken".
+      //
+      // `open` is permanently true for a pod that is not a bay, so every other
+      // boss shape never reaches this branch.
+      if (!p.open) {
+        p.hitFlashT = 0.1;
+        fx.deflect(x, Math.min(y, pp.y + BOSS.podRadius));
+        return 'shut';
+      }
+
       p.hp -= amount;
       p.hitFlashT = 0.14;
       if (p.hp <= 0) {

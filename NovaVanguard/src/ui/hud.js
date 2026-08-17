@@ -14,7 +14,14 @@
 // formation physically overlapping the score readout, and in a shallow frame
 // that is much worse.
 
-import { PLAYER, BANNERS, BOSS, DESIGN_W, DESIGN_H } from '../data/tuning.js';
+import {
+  PLAYER,
+  BANNERS,
+  BOSS,
+  DESIGN_W,
+  DESIGN_H,
+  weaponDef,
+} from '../data/tuning.js';
 import { RunPhase } from '../core/state.js';
 import {
   bossHullHpFraction,
@@ -52,6 +59,10 @@ export function createHud(root) {
     hpFill: root.querySelector('#boss-hp-fill'),
     hpChip: root.querySelector('#boss-hp-chip'),
     hpValue: root.querySelector('#boss-hp-value'),
+    // The temporary weapon's clock (§5.6).
+    weapon: root.querySelector('#weapon-timer'),
+    weaponName: root.querySelector('#weapon-name'),
+    weaponFill: root.querySelector('#weapon-fill'),
   };
 
   // Build the 6 segments once. Cyan segmented gauge per concept-01.
@@ -227,8 +238,11 @@ export function createHud(root) {
 
     const live = b.pods.reduce((n, p) => n + (p.alive ? 1 : 0), 0);
     const open = live === 0;
+    // Named after what the boss actually has -- BAYS on the carrier, BATTERIES
+    // on a gun platform. A readout that calls a launch bay a "pod" is a readout
+    // the player has to translate before they can use it.
     const state =
-      `${b.name} · PODS ${live}/${b.pods.length} · ` +
+      `${b.name} · ${b.podNoun}S ${live}/${b.pods.length} · ` +
       (open ? 'CORE EXPOSED' : b.windowOpen ? 'CORE OPEN — CLIMB' : 'CORE SEALED');
     if (state !== lastStateText) {
       lastStateText = state;
@@ -241,9 +255,48 @@ export function createHud(root) {
     for (let i = 0; i < pipEls.length; i++) {
       const pod = b.pods[i];
       pipEls[i].wrap.classList.toggle('dead', !pod.alive);
-      pipEls[i].wrap.classList.toggle('firing', pod.alive && pod.firing);
+      pipEls[i].wrap.classList.toggle('firing', pod.alive && pod.firing && pod.open);
+      // A SHUT BAY IS MARKED HERE TOO (§6.4, BOSS.bay). The gauge is positioned
+      // at the bay's own x, so a player who has looked up at the bar can map
+      // "that one is closed" onto the frame without looking for it -- and a
+      // gauge that stayed bright on an immune target would be the top-edge
+      // version of the lit-but-invulnerable lie the playfield is careful not to
+      // tell. Non-bay bosses are permanently `open`, so nothing changes for
+      // them.
+      pipEls[i].wrap.classList.toggle('shut', pod.alive && !pod.open);
       pipEls[i].fill.style.transform = `scaleX(${bossPodHpFraction(pod).toFixed(3)})`;
     }
+  }
+
+  /**
+   * The temporary weapon's remaining time (§5.6: "for limited time").
+   *
+   * Present ONLY while a pickup weapon is running. §7.3 is explicit that the
+   * HUD does not carry threat legibility and §5.1 keeps the margins spare, so a
+   * permanently-visible slot that says "BOLT" for 95% of a level would be
+   * chrome. It appears when there is something to say and leaves when there is
+   * not.
+   */
+  let lastWeapon = '';
+  function updateWeapon(w) {
+    const p = w.player;
+    if (p.weaponT <= 0 || p.weapon === 'standard') {
+      el.weapon.classList.add('hidden');
+      el.weapon.classList.remove('expiring');
+      lastWeapon = '';
+      return;
+    }
+    const def = weaponDef(p.weapon);
+    el.weapon.classList.remove('hidden');
+    if (lastWeapon !== def.id) {
+      lastWeapon = def.id;
+      el.weaponName.textContent = def.name;
+    }
+    const frac = Math.max(0, Math.min(1, p.weaponT / def.durationS));
+    // scaleX, not width: this runs every frame for eleven seconds and a width
+    // change would force layout on each one.
+    el.weaponFill.style.transform = `scaleX(${frac.toFixed(4)})`;
+    el.weapon.classList.toggle('expiring', p.weaponT <= 2.0);
   }
 
   function updateBoss(w) {
@@ -284,6 +337,7 @@ export function createHud(root) {
           el.shieldSegs[i].classList.toggle('low', s <= 2 && i < s);
         }
       }
+      updateWeapon(w);
       updateBoss(w);
     },
 

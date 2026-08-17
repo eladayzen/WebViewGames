@@ -78,6 +78,20 @@ export function createWorld() {
       fireT: 0,
       alive: true,
       hitFlashT: 0,
+      // The temporary alternate weapon (§5.6, WEAPONS in tuning.js). `weapon`
+      // is a key into WEAPONS and `weaponT` is what is left of it; when the
+      // clock runs out the key goes back to 'standard'. Rank is untouched --
+      // §8.1's ladder and this are different axes, and a pickup must never
+      // interact with rank (a hit already never costs rank, §5.10).
+      weapon: 'standard',
+      weaponT: 0,
+      // The empty-screen fire hold (FIRE_HOLD). `holdT` counts the grace before
+      // the guns actually stop; `holding` is the resulting state, which /render
+      // reads to draw the idle tell. Resume clears both on the same frame the
+      // target appears -- there is deliberately no counterpart timer on the way
+      // back up.
+      holdT: 0,
+      holding: false,
     },
 
     // --- pooled entity arrays -------------------------------------------
@@ -127,6 +141,23 @@ export function createWorld() {
       sizeMul: 1,
       tint: 0xffffff,
       cadenceMul: 1,
+      // The Warden's shimmer shield (§6.2): whole bolts absorbed before the
+      // hull takes any. Does not regenerate.
+      shield: 0,
+      shieldFlashT: 0,
+      // The exit arc, for Splitter fragments and bay-launched drones
+      // (ENEMY.fragment). `fx` is the lateral direction; `ft` is the phase
+      // clock for the initial rise.
+      fx: 1,
+      ft: 0,
+      // Score for a craft that was not authored into a wave. Set by the
+      // spawner because the same exit arc serves a Splitter's pair (worth a
+      // drone) and a Brood Gantry bay launch (worth much less).
+      fragScore: 0,
+      // Launched by a Brood Gantry bay rather than authored into a wave, so
+      // the boss can count its own live brood against BOSS.bay.maxLaunched
+      // without keeping a decrement ledger that a missed death would corrupt.
+      fromBay: false,
     })),
 
     enemyBullets: makePool(96, () => ({
@@ -148,9 +179,49 @@ export function createWorld() {
       alive: false,
       x: 0,
       y: 0,
+      // A bolt now carries its own vx and damage rather than the collision
+      // layer reading PLAYER.fire. That is what lets a temporary weapon change
+      // shape without any system downstream knowing weapons exist -- and it is
+      // the only reason a 3-round fan is not a special case in collision, the
+      // boss, or the renderer.
+      vx: 0,
       vy: 0,
       r: 0,
+      dmg: 1,
+      // Which WEAPONS row fired it, for the sprite and tint only.
+      weapon: 'standard',
     })),
+
+    // --- pickups (§5.6) ---------------------------------------------------
+    // Pooled like everything else. §5.6 caps what may be on screen at once
+    // (PICKUPS.maxOnScreen) so this is generously oversized on purpose: an
+    // exhausted pool would be a bug, never a normal condition.
+    pickups: makePool(8, () => ({
+      alive: false,
+      kind: 'scatter',
+      x: 0,
+      y: 0,
+      vy: 0,
+      t: 0,
+      // How many times this drop may still be re-offered after scrolling past
+      // uncollected (§5.6's "re-offered within 8 s"), and the clock for it.
+      reOffers: 0,
+      reOfferT: 0,
+      // Where it will come back, if it comes back. Stored at drop time so the
+      // re-offer honours the same lateral-lure rules the original did.
+      reOfferX: 0,
+    })),
+
+    // Drop bookkeeping (PICKUPS). Lives on the world rather than in the pickup
+    // module so a restart clears it with everything else.
+    pickup: {
+      // Kills since the last drop, against PICKUPS.maxKillsWithoutDrop -- the
+      // floor that turns "about two per level" from an average into a promise.
+      killsSinceDrop: 0,
+      lastDropT: -999,
+      dropped: 0,
+      collected: 0,
+    },
 
     // Telegraph markers for anything arriving from the top edge (§5.3).
     // POC has no top-edge spawns (no ground targets), but the band and the
@@ -228,6 +299,8 @@ export function createWorld() {
       // zeroed rather than left stale, so a readout that asks the wrong question
       // gets 0 instead of a plausible number from the previous fight.
       hullBoss: false,
+      // What this boss calls its pods, for the shed-a-pod banner (§7.1).
+      podNoun: 'BATTERY',
       hullHp: 0,
       maxHullHp: 0,
       // Patterns a hull boss owns directly, since it has no pods to own them.
@@ -243,6 +316,9 @@ export function createWorld() {
       // Deflect-burst cooldown (BOSS.hullSparkCooldownS) and the pod-count edge
       // the banner lines are driven off.
       hullSparkT: 0,
+      // Bay-launched craft currently alive (BOSS.bay.maxLaunched), so a
+      // carrier boss can never fill §5.3's enemy cap by itself.
+      launched: 0,
       lastPodsRemaining: undefined,
       rotateT: 0,
       rotateHead: 0,

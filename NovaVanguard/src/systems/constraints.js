@@ -44,6 +44,11 @@ import {
   FX,
   DESIGN_W,
   DESIGN_H,
+  PICKUPS,
+  TELEGRAPH,
+  WEAPONS,
+  FIRE_HOLD,
+  LEVELS,
 } from '../data/tuning.js';
 // Pure geometry, no world state -- the validator runs at boot, before a world
 // exists, and calls these exactly as the game does so the two cannot diverge.
@@ -338,6 +343,9 @@ export function validateAll(opts = {}) {
       tallest = Math.max(tallest, ENEMY.types[id].spriteHeight);
       fattest = Math.max(fattest, ENEMY.types[id].radius);
     }
+    // No bob term: per-craft vertical motion was tried and removed because the
+    // authored rows have ~2 px of slack (see ENEMY.vary). If it is ever
+    // reintroduced, its amplitude belongs in this number.
     const halfH = tallest * 0.5;
     const bandTop = BANDS.formation.top * DESIGN_H;
     const bandBottom = BANDS.formation.bottom * DESIGN_H;
@@ -531,11 +539,117 @@ export function validateAll(opts = {}) {
         `${LATERAL_ONLY_TEST_Y} — a player holding that line could not avoid contact`
     );
   }
-  notes.push(
-    'R5: no pickups authored at POC, so the offset/height caps have nothing ' +
-      'to check yet. The y=0.82 lateral-only clearance is a POC-8 on-device ' +
-      'item (§10), not statically checkable.'
-  );
+
+  // --- pickups (§5.6) -----------------------------------------------------
+  // These now exist, so the rule that was written as a placeholder gets teeth.
+  // §12 names Mode S's specific failure mode as vertical drift-chasing, and the
+  // POC-8 decision note records that it "has not been measured, only
+  // not-noticed" -- so every one of §5.6's mitigations is asserted rather than
+  // trusted, because the thing they prevent is the most expensive input this
+  // product has (§0.5).
+  {
+    if (PICKUPS.maxOffsetFrac > 0.35 + 1e-9) {
+      err(
+        `R5: pickup offset cap ${PICKUPS.maxOffsetFrac} exceeds §5.6's 0.35 of ` +
+          `the width — a lure past that is a sprint, not a decision`
+      );
+    }
+    // The offset must be crossable well inside the time a canister takes to
+    // fall past the player, or the "decision" is one the player cannot act on.
+    const travelS = (PICKUPS.maxOffsetFrac * DESIGN_W) / INPUT.lateralMax;
+    for (const id of Object.keys(MODES)) {
+      const m = MODES[id];
+      const fall = m.scrollSpeed > 0 ? m.scrollSpeed : PICKUPS.driftSpeedA;
+      // Worst case: born at the bottom of the formation band, collectable
+      // until it passes the player's lowest reachable y.
+      const dropPx =
+        (PLAYER_CLAMP_Y.max - BANDS.formation.bottom) * DESIGN_H +
+        PICKUPS.collectRadius;
+      const windowS = dropPx / fall;
+      if (windowS < travelS + 0.6) {
+        err(
+          `R5[${id}]: a canister is reachable for ${windowS.toFixed(2)}s but the ` +
+            `capped lateral offset takes ${travelS.toFixed(2)}s to cross — the ` +
+            `offer would be a sprint`
+        );
+      }
+    }
+    // THE VERTICAL RULE, stated as the thing it actually guarantees. A pickup
+    // is never a target above y = 0.62; it is born at a kill site and DESCENDS
+    // past every y the player can occupy, so collecting one is purely a
+    // question of x and no vertical input helps at all.
+    if (PICKUPS.maxLureY > BOSS.window.rewardY + 1e-9) {
+      err(
+        `R5: PICKUPS.maxLureY ${PICKUPS.maxLureY} is above §5.6's y = 0.62 line`
+      );
+    }
+    // Falling past the bottom of the frame is what makes the previous sentence
+    // true; a canister that stopped anywhere would become a thing to climb to.
+    for (const id of Object.keys(MODES)) {
+      const m = MODES[id];
+      const fall = m.scrollSpeed > 0 ? m.scrollSpeed : PICKUPS.driftSpeedA;
+      if (fall <= 0) {
+        err(
+          `R5[${id}]: pickups do not descend, so one could come to rest above ` +
+            `the player and become a climb`
+        );
+      }
+      if (fall + 0 > APPROACH_BUDGET) {
+        err(`R5[${id}]: pickup descent ${fall} exceeds the approach budget`);
+      }
+    }
+    if (PICKUPS.reOfferS > 8 + 1e-9) {
+      err(
+        `R5: re-offer delay ${PICKUPS.reOfferS}s exceeds §5.6's 8 s — "anything ` +
+          `that scrolls past uncollected is re-offered within 8 s"`
+      );
+    }
+    // A re-offered canister enters from the TOP EDGE, which §5.3 requires a
+    // telegraph for. The lead has to fit inside the re-offer delay or the
+    // marker would fire before the canister was even scheduled.
+    if (TELEGRAPH.leadS >= PICKUPS.reOfferS) {
+      err(
+        `R5: the entry telegraph's ${TELEGRAPH.leadS}s lead does not fit inside ` +
+          `the ${PICKUPS.reOfferS}s re-offer delay`
+      );
+    }
+    // The expected yield, printed rather than asserted -- "about two in level
+    // one" is a design target that depends on how many craft the player
+    // actually kills, so a hard bound would be a lie. Printing it means a
+    // retune that quietly triples the rate is visible on the next boot.
+    {
+      let craft = 0;
+      const byType = {};
+      for (const wave of POC_SCENARIO.waves) {
+        for (const sq of wave.squadrons) {
+          craft += sq.count;
+          const named = sq.types ? Object.values(sq.types) : [];
+          for (const t of named) byType[t] = (byType[t] || 0) + 1;
+        }
+      }
+      let expected = 0;
+      let drones = craft;
+      for (const t of Object.keys(byType)) {
+        drones -= byType[t];
+        expected += byType[t] * (PICKUPS.dropChance[t] || 0);
+      }
+      expected += drones * (PICKUPS.dropChance.drone || 0);
+      notes.push(
+        `R5: level one authors ${craft} craft (${drones} drones + ` +
+          `${craft - drones} named), so PICKUPS.dropChance expects ` +
+          `${expected.toFixed(2)} drops per full clear, with ` +
+          `PICKUPS.maxKillsWithoutDrop=${PICKUPS.maxKillsWithoutDrop} ` +
+          `guaranteeing ${Math.floor(craft / PICKUPS.maxKillsWithoutDrop)} as a ` +
+          `floor. Target per Amit: "like two chances".`
+      );
+      if (expected < 1.2 || expected > 3.5) {
+        warn(
+          `R5: expected level-one pickup yield ${expected.toFixed(2)} is outside ` +
+            `the 1.2-3.5 band the "about two" target implies`
+        );
+      }
+    }
+  }
 
   // =========================================================================
   // Rule 6 -- the air-enemy type table (§6.2)
@@ -560,6 +674,30 @@ export function validateAll(opts = {}) {
     }
     if (t.pattern && !PATTERNS[t.pattern]) {
       err(`R6[${id}]: owns pattern '${t.pattern}', which is not authored`);
+    }
+    // EVERY per-craft pattern variant must be an authored, validated row.
+    //
+    // This is the check that makes the per-craft-variation thread safe to
+    // finish. The previous pass refused to vary a pattern's ORB COUNT or aisle
+    // per craft, because §5.3's guarantees are proved per PATTERN and a runtime
+    // variation would be a pattern this validator cannot see. Selecting between
+    // authored rows is the honest version -- and it only stays honest if every
+    // selectable row is one of the rows rule 2 above walked.
+    for (const pid of t.patternVariants || []) {
+      if (!PATTERNS[pid]) {
+        err(
+          `R6[${id}]: pattern variant '${pid}' is not authored in PATTERNS, so ` +
+            `§5.3's aisle and descent guarantees were never proved for it`
+        );
+      }
+    }
+    // The Splitter's fragments must be a real type, or a kill would silently
+    // produce nothing and the whole point of the type would evaporate.
+    if (t.splitsInto && !ENEMY.types[t.splitsInto]) {
+      err(`R6[${id}]: splits into '${t.splitsInto}', which is not a type`);
+    }
+    if (t.shieldHits !== undefined && t.shieldHits < 1) {
+      err(`R6[${id}]: shieldHits ${t.shieldHits} is not a positive count`);
     }
     // Slot separation is checked against the DRONE's radius in R4; a fatter
     // type in the same slots would overlap its neighbours.
@@ -611,6 +749,267 @@ export function validateAll(opts = {}) {
           `does.`
       );
     }
+  }
+
+  // PER-CRAFT VARIATION MUST STAY PRESENTATION AND CADENCE. `size` scales the
+  // drawn sprite only, `tint` skews inside §5.4's enemy family, `cadence`
+  // shifts when an owned emitter fires, and `patternVariants` selects between
+  // authored patterns -- not one of them moves a craft or changes a pattern's
+  // geometry.
+  //
+  // A per-craft hover bob WAS built here and was rejected by R4 at boot, which
+  // is the check earning its keep: the authored formation rows clear the band
+  // ceiling by 1.7 px, so any vertical excursion breaches §5.1 -- and the rows
+  // that would have to move are level one's, which is locked. The assertion
+  // stays so the idea cannot come back silently; if the rows are ever
+  // re-authored, the amplitude also belongs in R4's halfH above.
+  if (ENEMY.vary.bobAmp) {
+    err(
+      `R6: ENEMY.vary.bobAmp is set again. Per-craft vertical motion breaches ` +
+        `§5.1 band discipline at the authored row positions (F1's top row ` +
+        `clears the ceiling by 1.7px). Re-author the rows — which are level ` +
+        `one's, and locked — or leave it off.`
+    );
+  }
+
+  // THE EXIT ARC (ENEMY.fragment) -- Splitter fragments and Brood Gantry's
+  // bay launches share it, and it is the one place in the game where a craft is
+  // born ABOVE the player mid-fight. §5.5's do-not-port list forbids
+  // straight-down plunges and anything that would demand an emergency vertical
+  // lean (§0.5), so the arc's floor is asserted rather than described.
+  {
+    const F = ENEMY.fragment;
+    if (F.floorY > ENEMY.swoop.minY + 1e-9) {
+      err(
+        `R6: the exit arc bottoms out at y=${F.floorY}, below the swoop's own ` +
+          `${ENEMY.swoop.minY} floor — a craft born mid-fight would reach ` +
+          `deeper into the frame than the one dive shape this game has`
+      );
+    }
+    if (F.floorY >= BANDS.player.top) {
+      err(
+        `R6: the exit arc reaches the player band top ${BANDS.player.top} — ` +
+          `nothing born above the player may enter it`
+      );
+    }
+    for (const id of Object.keys(MODES)) {
+      const m = MODES[id];
+      if (F.descentSpeed + m.scrollSpeed > APPROACH_BUDGET) {
+        err(
+          `R6[${id}]: exit-arc descent ${F.descentSpeed}+${m.scrollSpeed} ` +
+            `exceeds the ${APPROACH_BUDGET} approach budget`
+        );
+      }
+    }
+  }
+
+  // =========================================================================
+  // Rule 8 -- levels (§5.7's campaign ramp)
+  //
+  // New with the per-level content table. §5.7 is explicit about which levers a
+  // campaign ramp may pull -- "formation size and shape complexity, number of
+  // simultaneous patterns, enemy HP, ground-target count, and swoop frequency"
+  // -- and equally explicit that it "NEVER scales by raising SCROLL_SPEED past
+  // its cap, exceeding APPROACH_BUDGET, narrowing AISLE_MIN, or introducing any
+  // required vertical move. Those four are floors, not levers." A level table is
+  // exactly the place someone will eventually reach for one of the four, so the
+  // rule says so out loud on every boot.
+  // =========================================================================
+
+  {
+    const capsL = { ...DENSITY_CAPS.normal, enemies: POC_ENEMY_CAP_OVERRIDE };
+    // LEVEL ONE IS LOCKED. Asserted by identity, not by comparison: its wave
+    // list must BE POC_SCENARIO.waves, so a copy-paste that forked it is a boot
+    // error rather than a slow divergence nobody notices until the demo.
+    if (LEVELS[0].waves !== POC_SCENARIO.waves) {
+      err(
+        `R8: level one's wave list is no longer POC_SCENARIO.waves by ` +
+          `reference. Level one is locked; forking its content is the thing ` +
+          `this check exists to catch.`
+      );
+    }
+    if (LEVELS[0].hp) {
+      err(`R8: level one authors HP overrides, which changes locked content`);
+    }
+
+    for (let li = 0; li < LEVELS.length; li++) {
+      const L = LEVELS[li];
+      if (!L.waves) {
+        notes.push(
+          `R8: ${L.name} (${L.id}) has no authored waves yet and falls back to ` +
+            `level two's — a declared gap, not a silent loop.`
+        );
+        continue;
+      }
+      for (const wave of L.waves) {
+        let craft = 0;
+        for (const sq of wave.squadrons) craft += sq.count;
+        // Splitters answer their own death with more craft, so a wave packed to
+        // the cap would drop a fragment on the floor and the type's whole
+        // promise would fail in exactly the wave it matters most.
+        let extra = 0;
+        for (const sq of wave.squadrons) {
+          if (!sq.types) continue;
+          for (const k of Object.keys(sq.types)) {
+            const t = ENEMY.types[sq.types[k]];
+            if (t && t.splitsInto) extra += t.splitCount || 2;
+          }
+        }
+        if (craft > capsL.enemies) {
+          err(
+            `R8[${L.id}/${wave.name}]: ${craft} authored craft > enemy cap ` +
+              `${capsL.enemies}`
+          );
+        } else if (extra && craft + extra > capsL.enemies) {
+          warn(
+            `R8[${L.id}/${wave.name}]: ${craft} craft + ${extra} possible ` +
+              `Splitter fragments would exceed the ${capsL.enemies} cap, so ` +
+              `some fragments will be dropped — leave headroom or the type ` +
+              `stops meaning anything here`
+          );
+        }
+        if (wave.patterns.length > capsL.simultaneousPatterns) {
+          err(
+            `R8[${L.id}/${wave.name}]: ${wave.patterns.length} wave patterns > ` +
+              `cap ${capsL.simultaneousPatterns}`
+          );
+        }
+        // Every slot a squadron claims must exist in the formation it names, or
+        // craft are silently dropped and the wave is quietly smaller than it
+        // reads on the page.
+        const n = slotCount(wave.formation || 'F1');
+        for (const sq of wave.squadrons) {
+          if ((sq.slot || 0) + sq.count > n) {
+            err(
+              `R8[${L.id}/${wave.name}]: a squadron claims slots ` +
+                `${sq.slot || 0}..${(sq.slot || 0) + sq.count - 1} of ` +
+                `${wave.formation}, which has only ${n}`
+            );
+          }
+          for (const k of Object.keys(sq.types || {})) {
+            if (!ENEMY.types[sq.types[k]]) {
+              err(
+                `R8[${L.id}/${wave.name}]: unknown craft type '${sq.types[k]}'`
+              );
+            }
+          }
+        }
+      }
+      // Per-level HP is a sanctioned lever; a level that doubled everything
+      // would still be legal by §5.7 but is worth saying out loud, and a level
+      // that made the drone tougher than the Emitter would be a mistake.
+      for (const t of Object.keys(L.hp || {})) {
+        if (!ENEMY.types[t]) {
+          err(`R8[${L.id}]: HP override for unknown type '${t}'`);
+        } else if (L.hp[t] > ENEMY.types[t].hp * 3) {
+          warn(
+            `R8[${L.id}]: ${t} HP override ${L.hp[t]} is over 3x §6.2's ` +
+              `authored ${ENEMY.types[t].hp} — that is a different type, not a ramp`
+          );
+        }
+      }
+      if (L.hp) {
+        notes.push(
+          `R8[${L.id}]: HP overrides ` +
+            Object.keys(L.hp).map((t) => `${t} ${ENEMY.types[t].hp}→${L.hp[t]}`).join(', ') +
+            ` (§5.7 lists enemy HP as a sanctioned campaign lever).`
+        );
+      }
+    }
+    if (LEVELS.length !== SURFACES.length) {
+      warn(
+        `R8: ${LEVELS.length} levels against ${SURFACES.length} surfaces — the ` +
+          `two are indexed by the same number and must stay 1:1`
+      );
+    }
+  }
+
+  // =========================================================================
+  // Rule 9 -- weapons and the empty-screen fire hold (§4, §5.4, §5.6)
+  //
+  // Both are new, and both touch rules that are stated as absolutes elsewhere,
+  // which is exactly when an assertion is worth more than a comment.
+  // =========================================================================
+
+  {
+    for (const id of Object.keys(WEAPONS)) {
+      const wd = WEAPONS[id];
+      if (wd.id !== id) err(`R9[${id}]: weapon id '${wd.id}' does not match its key`);
+      if (!wd.shots || !wd.shots.length) {
+        err(`R9[${id}]: authors no shots, so auto-fire would produce nothing`);
+      }
+      if (wd.intervalS <= 0) err(`R9[${id}]: fire interval ${wd.intervalS} is not positive`);
+      // §5.4's ownership coding is absolute -- "player fire is cyan-white,
+      // enemy fire is orange/magenta [...] No exceptions, including for
+      // bosses." A temporary weapon may change shape, count, speed and size,
+      // and may never change side. Checked as a real constraint on the tint:
+      // blue must lead and red must not.
+      const t = wd.tint;
+      const r = (t >> 16) & 0xff;
+      const g = (t >> 8) & 0xff;
+      const bch = t & 0xff;
+      if (!(bch >= g && g >= r)) {
+        err(
+          `R9[${id}]: tint #${t.toString(16).padStart(6, '0')} is not cyan-white ` +
+            `(needs blue >= green >= red). §5.4 colour-codes bullet OWNERSHIP ` +
+            `and admits no exceptions.`
+        );
+      }
+      // A round the player could not see coming out is not a weapon change.
+      if (wd.radius < 6) warn(`R9[${id}]: round radius ${wd.radius} is very small`);
+      // A spread's outer rounds must still be able to reach the formation band
+      // from the player's own clamp, or the extra rounds would be decoration.
+      for (const s of wd.shots) {
+        if (Math.abs(s.angle) > 0.45) {
+          warn(
+            `R9[${id}]: a round at ${(s.angle * 57.3).toFixed(0)}° leaves the ` +
+              `frame before it reaches the formation band`
+          );
+        }
+      }
+      // Fire rate against the simultaneous-bolt pool: a weapon that outran the
+      // pool would silently drop rounds.
+      const inFlight =
+        (wd.shots.length * (DESIGN_H / wd.speed)) / wd.intervalS;
+      if (inFlight > 80) {
+        warn(
+          `R9[${id}]: ~${inFlight.toFixed(0)} rounds in flight at once, close to ` +
+            `the 96-slot bolt pool`
+        );
+      }
+    }
+    if (!WEAPONS.standard) err('R9: there is no standard weapon to fall back to');
+
+    // THE FIRE HOLD. Its scope is its safety margin, so the margin is asserted.
+    // §5.5 spawns entering craft at ±0.07 of the width outside the frame; the
+    // hold's margin must comfortably exceed that or fire would resume AFTER the
+    // first craft is already visible, which would shorten the pre-lock kill
+    // window §5.3 sizes against a stream that is already in the air.
+    const spawnOut = 0.07 * DESIGN_W;
+    if (FIRE_HOLD.marginPx <= spawnOut) {
+      err(
+        `R9: FIRE_HOLD.marginPx ${FIRE_HOLD.marginPx} does not cover the ` +
+          `${spawnOut.toFixed(0)}px entry spawn offset — fire would resume ` +
+          `after the first craft is drawn, not before`
+      );
+    } else if (FIRE_HOLD.marginPx < spawnOut * 2) {
+      warn(
+        `R9: FIRE_HOLD.marginPx ${FIRE_HOLD.marginPx} is under 2x the ` +
+          `${spawnOut.toFixed(0)}px entry spawn offset; err generous here`
+      );
+    }
+    if (FIRE_HOLD.holdDelayS <= 0) {
+      warn(
+        `R9: FIRE_HOLD.holdDelayS ${FIRE_HOLD.holdDelayS} gives no grace, so a ` +
+          `half-second gap between kills would chop the stream`
+      );
+    }
+    notes.push(
+      `R9: fire holds only on a genuinely empty playfield — a ` +
+        `${FIRE_HOLD.marginPx}px margin, a ${FIRE_HOLD.leadS}s launch lead, ` +
+        `enemy bullets and every boss phase all count as "not empty". Resume ` +
+        `is same-frame; only stopping has a ${FIRE_HOLD.holdDelayS}s grace.`
+    );
   }
 
   // =========================================================================
@@ -827,6 +1226,104 @@ export function validateAll(opts = {}) {
       if (podCount && podCount !== 4) {
         warn(`R7[${id}]: §6.4 specifies 4 destructible pods, found ${podCount}`);
       }
+
+      // PER-BOSS EXTENT, against THIS boss's own hull art.
+      //
+      // The extent check above runs on a single aspect handed in by the caller,
+      // which used to be the only built boss's. With two built bosses of
+      // visibly different proportions (2.72 vs 3.35), checking one and trusting
+      // the other is how §6.4's "never enters the player band" quietly stops
+      // being true for the boss nobody measured.
+      {
+        const a = (opts.bossAspects && opts.bossAspects[id]) || aspect;
+        const gb = bossGeometry(a);
+        if (gb.bottom > BOSS.maxExtentY * DESIGN_H + 0.5) {
+          err(
+            `R7[${id}]: extends to y=${gb.bottom.toFixed(0)} at its own aspect ` +
+              `${a.toFixed(2)}, past §6.4's ` +
+              `${(BOSS.maxExtentY * DESIGN_H).toFixed(0)} floor`
+          );
+        }
+        if (gb.bottom >= gb.playerBandTop) {
+          err(`R7[${id}]: reaches the player band top`);
+        }
+      }
+
+      // --- launch bays (§6.4, BOSS.bay) ------------------------------------
+      // Boss two's mechanic, and the two things that make a cycling weak point
+      // safe rather than a repeat of boss one's unreadable fight.
+      {
+        const bays = (b.pods || []).filter((p) => p.launches);
+        if (bays.length) {
+          const B = BOSS.bay;
+          // GUARANTEE 1: SOMETHING IS ALWAYS OPEN. With n bays evenly phased,
+          // the number open at any instant is floor(n*openFrac) at worst. A
+          // fight with a reachable state where nothing can be damaged is the
+          // exact failure boss one shipped with -- it must be unreachable, not
+          // unlikely, so it is arithmetic rather than a play-test note.
+          const phases = bays.map((p) => p.phase || 0).sort((x, y) => x - y);
+          let worst = bays.length;
+          // Sample the cycle finely; the open set only changes at phase
+          // boundaries, so this is exact for any authored phase list.
+          for (let s = 0; s < 720; s++) {
+            const k = s / 720;
+            let open = 0;
+            for (const ph of phases) {
+              if (((k + ph) % 1) < B.openFrac) open++;
+            }
+            worst = Math.min(worst, open);
+          }
+          if (worst < 1) {
+            err(
+              `R7[${id}]: its ${bays.length} bays can all be shut at once ` +
+                `(openFrac ${B.openFrac}, phases ${phases.join('/')}) — there ` +
+                `would be a moment with nothing on the boss to shoot, which is ` +
+                `exactly how a working fight reads as invulnerable`
+            );
+          } else {
+            notes.push(
+              `R7[${id}]: at least ${worst} of ${bays.length} bays are open at ` +
+                `every instant (openFrac ${B.openFrac}), so there is never a ` +
+                `beat with nothing to shoot. Below ` +
+                `${B.alwaysOpenAtOrBelow} survivors they jam open.`
+            );
+          }
+          // GUARANTEE 2: THE ENDGAME NEVER WAITS.
+          if (B.alwaysOpenAtOrBelow < 1) {
+            err(
+              `R7[${id}]: alwaysOpenAtOrBelow ${B.alwaysOpenAtOrBelow} means the ` +
+                `last bay still cycles, so the fight's tail would be ` +
+                `${((1 - B.openFrac) * 100).toFixed(0)}% invulnerable waiting`
+            );
+          }
+          // The door travel has to be visible AND has to finish well inside the
+          // open window, or "open" would be a state the bay is never fully in.
+          if (B.doorS * 2 >= B.cycleS * B.openFrac) {
+            err(
+              `R7[${id}]: doors take ${B.doorS}s each way against a ` +
+                `${(B.cycleS * B.openFrac).toFixed(2)}s open window — the bay ` +
+                `would spend most of "open" opening`
+            );
+          }
+          // A bay that could not launch inside its own open window would be a
+          // carrier that never disgorges anything.
+          if (B.launchIntervalS > B.cycleS * B.openFrac) {
+            warn(
+              `R7[${id}]: launch interval ${B.launchIntervalS}s exceeds the ` +
+                `${(B.cycleS * B.openFrac).toFixed(2)}s open window, so a bay ` +
+                `may open and shut without launching`
+            );
+          }
+          // The brood must not be able to fill §5.3's enemy cap by itself.
+          if (B.maxLaunched >= POC_ENEMY_CAP_OVERRIDE) {
+            err(
+              `R7[${id}]: maxLaunched ${B.maxLaunched} is at or over the ` +
+                `${POC_ENEMY_CAP_OVERRIDE} enemy cap — the carrier could fill ` +
+                `the frame on its own`
+            );
+          }
+        }
+      }
       for (const pod of b.pods || []) {
         if (!PATTERNS[pod.pattern]) {
           err(`R7[${id}]: pod at dx=${pod.dx} owns unauthored pattern '${pod.pattern}'`);
@@ -924,8 +1421,8 @@ export function validateAll(opts = {}) {
  * Errors also go over the Unity bridge, which is the only channel that exists
  * on-device.
  */
-export function runValidator({ onReport, bossAspect } = {}) {
-  const res = validateAll({ bossAspect });
+export function runValidator({ onReport, bossAspect, bossAspects } = {}) {
+  const res = validateAll({ bossAspect, bossAspects });
   const tag = '[NovaVanguard/constraints]';
 
   for (const n of res.notes) console.info(`${tag} note: ${n}`);

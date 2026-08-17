@@ -15,6 +15,9 @@ import {
 } from '../data/tuning.js';
 import { damagePlayer } from '../player/player.js';
 import { boltHitsBoss } from '../enemies/boss.js';
+import { spawnFragment } from '../enemies/enemies.js';
+import { maybeDropPickup } from './pickups.js';
+import { liveCount } from '../core/state.js';
 
 function hits(ax, ay, ar, bx, by, br) {
   const dx = ax - bx;
@@ -45,9 +48,11 @@ export function resolveCollisions(w, fx, instr) {
     // is that the stop and the damage can never disagree about where the bolt
     // was.
     if (w.boss.active) {
-      const what = boltHitsBoss(
-        w, b.x, b.y, b.r, PLAYER.fire.boltDamage, fx
-      );
+      // The bolt's OWN damage, not the standard weapon's. A temporary weapon
+      // (WEAPONS, §5.6) changes what comes out of the guns, and every consumer
+      // downstream reads the round rather than the config -- which is why a
+      // 3-round fan needed no change here at all.
+      const what = boltHitsBoss(w, b.x, b.y, b.r, b.dmg, fx);
       if (what) {
         b.alive = false;
         // Only landed damage counts as a hit. Armour deflections used to count,
@@ -77,9 +82,27 @@ export function resolveCollisions(w, fx, instr) {
       if (!hits(b.x, b.y, b.r, e.x, e.y, def.radius)) continue;
 
       b.alive = false;
-      e.hp -= PLAYER.fire.boltDamage;
-      e.hitFlashT = 0.09;
       w.stats.hits++;
+
+      // THE WARDEN'S SHIMMER SHIELD (§6.2), resolved before hull damage.
+      //
+      // "Absorbs 3 hits before its body takes damage. Forces focus fire." Whole
+      // bolts, not points -- a bolt that meets the shield is spent on it and
+      // none of it carries through, which is what makes the third hit a
+      // milestone the player can see coming. It does not regenerate, so partial
+      // progress is kept and spraying across a formation genuinely is worse
+      // than committing to one craft. That is the entire behavioural claim of
+      // the type, and it is these four lines.
+      if (e.shield > 0) {
+        e.shield--;
+        e.shieldFlashT = 0.16;
+        e.hitFlashT = 0.06;
+        fx.deflect(e.x, e.y + 18);
+        break;
+      }
+
+      e.hp -= b.dmg;
+      e.hitFlashT = 0.09;
       if (e.hp <= 0) {
         killEnemy(w, e, fx, instr);
       } else {
@@ -148,6 +171,9 @@ export function resolveCollisions(w, fx, instr) {
 export function killEnemy(w, e, fx, instr) {
   const preLock = !e.locked;
   const def = enemyDef(e.type);
+  const wasFragment = e.mode === 'fragment';
+  const x = e.x;
+  const y = e.y;
   e.alive = false;
   // The craft takes its pattern with it. For an Emitter this IS the reward --
   // the sweep it was running stops because the thing running it is gone
@@ -160,10 +186,49 @@ export function killEnemy(w, e, fx, instr) {
   // because "killing them mid-entry is both the skill play and the score play"
   // is the loop's central claim and POC-8 wants to know whether players
   // actually find it.
-  if (preLock) w.stats.preLockKills++;
-  w.stats.score += def.score * (preLock ? ENEMY.preLockScoreMultiplier : 1);
-  instr.kill(preLock);
-  fx.explosion(e.x, e.y);
+  if (preLock && !wasFragment) w.stats.preLockKills++;
+  // A craft on the exit arc carries its own value (a bay launch is worth far
+  // less than the drone it looks like); everything else is priced by type.
+  const base = wasFragment ? e.fragScore : def.score;
+  w.stats.score += base * (preLock && !wasFragment ? ENEMY.preLockScoreMultiplier : 1);
+  instr.kill(preLock && !wasFragment);
+  fx.explosion(x, y);
+
+  // --- the pickup drop (§5.6) ---------------------------------------------
+  // "when the enemy dies he gives birth to like a pick up item." The chance
+  // lives in PICKUPS.dropChance in /data/tuning.js, one row per type; nothing
+  // here decides frequency. Fragments are excluded by their own zero row
+  // rather than by a condition, so the table stays the single source of truth.
+  //
+  // RESOLVED BEFORE THE SPLIT, and the ordering is a real bug rather than a
+  // preference: the pools are recycled in place, so spawnFragment below can
+  // hand back THIS VERY SLOT. Reading e.type or e.x after that point would
+  // price the drop off the fragment that replaced the craft.
+  maybeDropPickup(w, e.type, x, y);
+
+  // --- the Splitter (§6.2) ------------------------------------------------
+  // "On death, breaks into 2 drones that immediately fly a short exit arc --
+  // never a surprise dive."
+  //
+  // THIS IS THE ANSWER TO "I can kill the whole wave before it even gets to
+  // their positions", from the direction the Warden does not cover: a
+  // pre-emptive kill here does not shrink the wave, it grows it. There is no
+  // parking spot that empties a squadron containing these.
+  //
+  // The cap is checked per fragment rather than up front, and deliberately so.
+  // §5.3's simultaneous-enemy cap is a floor of the pacing contract, not a
+  // budget to be borrowed against -- so a split into a full frame yields one
+  // craft or none rather than briefly exceeding it. Level two's wave 6 is
+  // authored two craft under the cap precisely so this path is not the one
+  // that usually runs.
+  if (def.splitsInto && !wasFragment) {
+    for (let i = 0; i < (def.splitCount || 2); i++) {
+      if (liveCount(w.enemies) >= w.caps.enemies) break;
+      spawnFragment(
+        w, x, y, i % 2 === 0 ? 1 : -1, def.splitsInto, def.fragmentScore || 50
+      );
+    }
+  }
 }
 
 /** Runtime assertions on the invariants the pacing contract depends on

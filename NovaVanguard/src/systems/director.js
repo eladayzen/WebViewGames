@@ -12,10 +12,22 @@
 // the mode mid-session therefore replays the same squadrons in the same
 // places, which is what makes the A/B an A/B rather than two different games.
 
-import { POC_SCENARIO, ENEMY, BOSS, enemyDef } from '../data/tuning.js';
+import {
+  POC_SCENARIO,
+  ENEMY,
+  BOSS,
+  enemyDef,
+  levelAt,
+  levelWaves,
+} from '../data/tuning.js';
 import { cfg } from '../core/mode.js';
 import { RunPhase } from '../core/state.js';
-import { spawnEntering, fleeAll, slotCount } from '../enemies/enemies.js';
+import {
+  spawnEntering,
+  fleeAll,
+  slotCount,
+  craftPatternId,
+} from '../enemies/enemies.js';
 import { createEmitters, createEmitter } from '../patterns/patterns.js';
 import { triggerSurfaceEvent } from '../surface/surface.js';
 import { surfaceAt } from '../data/surfaces.js';
@@ -33,8 +45,35 @@ export function startScenario(w, rng, banners) {
   beginWaveBanner(w, banners);
 }
 
+/**
+ * The wave list this level runs (LEVELS in /data/tuning.js).
+ *
+ * The one structural change of this slice, and it is small on purpose: the
+ * director used to run POC_SCENARIO.waves on every surface, so all three levels
+ * were the same fight over different art. A level now owns its own list, keyed
+ * by the same index /data/surfaces.js uses.
+ *
+ * LEVEL ONE'S LIST IS STILL POC_SCENARIO.waves, by reference (see LEVELS), so
+ * nothing about its content can move without editing POC_SCENARIO -- which is
+ * exactly the property "level one is locked" needs. The wave-taxonomy rename
+ * (POC-8 decision note, playtest round 2 §1) is still pending and deliberately
+ * untouched here: these are `waves`, four-to-a-wave nesting is a later edit.
+ */
+function waveList(w) {
+  return levelWaves(w.surfaceIndex);
+}
+
 function currentWave(w) {
-  return POC_SCENARIO.waves[w.director.waveIndex % POC_SCENARIO.waves.length];
+  const list = waveList(w);
+  return list[w.director.waveIndex % list.length];
+}
+
+/** Per-level wave timeout. Level two's waves take genuinely longer to clear
+ *  (2 HP drones, Wardens behind shields), and a wave that times out makes its
+ *  survivors flee -- which would read as the game giving up rather than as the
+ *  player being slow. */
+function waveTimeout(w) {
+  return levelAt(w.surfaceIndex).waveTimeoutS || POC_SCENARIO.waveTimeoutS;
 }
 
 function beginWaveBanner(w, banners) {
@@ -211,8 +250,14 @@ export function updateDirector(w, rng, dt, banners, fx) {
     // /enemies for B1's shooter list, and constructing an emitter there would
     // close that into an import cycle.
     if (e) {
-      const def = enemyDef(e.type);
-      if (def.pattern) e.emitter = createEmitter(def.pattern, e);
+      // WHICH pattern is per craft, not per type. §6.2's Emitter declares
+      // `patternVariants` and craftPatternId picks one from the craft's stable
+      // identity hash, so two Emitters in a formation run visibly different
+      // rhythms. Both variants are authored rows that /systems/constraints.js
+      // proves at boot -- the variation is which validated pattern a craft
+      // carries, never what is inside one (see craftPatternId).
+      const pid = craftPatternId(w, e);
+      if (pid) e.emitter = createEmitter(pid, e);
     }
     d.spawnedThisWave++;
     d.pending.splice(i, 1);
@@ -227,7 +272,7 @@ export function updateDirector(w, rng, dt, banners, fx) {
   }
 
   const cleared = d.pending.length === 0 && live === 0;
-  const expired = d.waveT >= POC_SCENARIO.waveTimeoutS;
+  const expired = d.waveT >= waveTimeout(w);
 
   if (expired && !cleared) {
     fleeAll(w);
@@ -237,7 +282,7 @@ export function updateDirector(w, rng, dt, banners, fx) {
   if (cleared || (expired && live === 0)) {
     d.waveIndex++;
     d.emitters = [];
-    if (d.waveIndex % POC_SCENARIO.waves.length === 0) {
+    if (d.waveIndex % waveList(w).length === 0) {
       d.cycle++;
       // The authored content has run once end to end. If this surface has a
       // boss that is actually built, it ends the level; if it does not (levels

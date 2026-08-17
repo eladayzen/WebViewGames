@@ -28,6 +28,8 @@ import {
   BANDS,
   DESIGN_W,
   DESIGN_H,
+  levelHp,
+  levelAt,
 } from '../data/tuning.js';
 import { cfg } from '../core/mode.js';
 import { alloc } from '../core/state.js';
@@ -255,8 +257,18 @@ export function spawnEntering(w, rng, side, slot, squadron, formationId, pace, t
 
   e.alive = true;
   e.type = def.id;
-  e.hp = def.hp;
-  e.maxHp = def.hp;
+  // PER-LEVEL HP (§5.7's sanctioned campaign lever, LEVELS in tuning.js).
+  // Level one authors no overrides, so every craft in it has exactly §6.2's
+  // HP and its content is bit-for-bit what it was; level two takes the drone
+  // to 2. Read here rather than at the type table so the SAME type can be a
+  // different toughness in a different level without a second row.
+  const hp = levelHp(w.surfaceIndex, def.id);
+  e.hp = hp;
+  e.maxHp = hp;
+  // The Warden's shimmer shield (§6.2): whole bolts absorbed before the hull
+  // takes any, no regeneration. Every other type gets 0 and never asks again.
+  e.shield = def.shieldHits || 0;
+  e.shieldFlashT = 0;
   e.mode = 'entering';
   e.locked = false;
   e.slot = slot;
@@ -361,10 +373,14 @@ export function updateEnemies(w, rng, dt) {
       case 'swooping':
         stepSwooping(e, dt, driftX);
         break;
+      case 'fragment':
+        stepFragment(e, dt);
+        break;
       case 'fleeing':
         stepFleeing(e, dt);
         break;
     }
+    if (e.shieldFlashT > 0) e.shieldFlashT = Math.max(0, e.shieldFlashT - dt);
   }
 }
 
@@ -416,6 +432,10 @@ function stepPeeling(e, dt, driftX) {
 function stepLocked(e, dt, driftX) {
   const target = slotPosition(e.formation, e.slot);
   e.x = target.x + driftX;
+  // Held exactly on the slot. A per-craft hover bob was built here and removed
+  // -- the authored formations have ~2 px of vertical slack and the rows that
+  // would have to move are level one's, which is locked. See ENEMY.vary in
+  // tuning.js for the arithmetic and for why a lateral version is no better.
   e.y = target.y;
   // Locked craft face down-screen, toward the player.
   e.heading = Math.PI / 2;
@@ -423,6 +443,73 @@ function stepLocked(e, dt, driftX) {
   // Locked formations hold station in SCREEN space in both modes -- they do
   // not scroll with the surface in Mode S. That is what makes the art shared
   // and the mode toggle cheap (§5.5).
+}
+
+/**
+ * Launch one craft onto the exit arc (ENEMY.fragment) -- a Splitter's pair
+ * (§6.2) or one of Brood Gantry's bay drones (§6.4).
+ *
+ * "Never a surprise dive" is the whole contract, and it is geometry rather than
+ * intent: the arc rises briefly, then descends at ENEMY.fragment.descentSpeed
+ * and STOPS at ENEMY.fragment.floorY -- the same 0.58 line §6.4 keeps the boss
+ * above and just above the swoop's own floor. So nothing born mid-fight can
+ * ever reach the player band, there is no straight-down plunge (§5.5's
+ * do-not-port list), and the answer to one is always lateral.
+ *
+ * It stays a real craft the whole way: shootable, scoreable, and contact-
+ * damaging if the player flies into it. A fragment that were merely scenery
+ * would make killing a Splitter free, which is exactly the property it exists
+ * to remove.
+ */
+export function spawnFragment(w, x, y, dir, type, score) {
+  const e = alloc(w.enemies);
+  if (!e) return null;
+  const def = enemyDef(type);
+  const hp = levelHp(w.surfaceIndex, def.id);
+  e.alive = true;
+  e.type = def.id;
+  e.hp = hp;
+  e.maxHp = hp;
+  e.shield = def.shieldHits || 0;
+  e.shieldFlashT = 0;
+  e.mode = 'fragment';
+  e.locked = false;
+  e.emitter = null;
+  e.slot = -1;
+  e.squadron = -1;
+  e.formation = 'F1';
+  e.swoopCooldown = Infinity;
+  e.hitFlashT = 0;
+  e.t = 0;
+  e.ft = 0;
+  e.fx = dir >= 0 ? 1 : -1;
+  e.x = x;
+  e.y = y;
+  e.heading = dir >= 0 ? 0 : Math.PI;
+  e.sizeMul = 1;
+  e.tint = 0xffffff;
+  e.cadenceMul = 1;
+  // Score is the CALLER's, because the same arc serves two very different
+  // things: a Splitter fragment is a drone and is worth a drone, while a bay
+  // drone is worth BOSS.bay.launchScore -- less, because a carrier that paid
+  // full price per launch would be a score fountain rather than a fight.
+  e.fragScore = score;
+  return e;
+}
+
+function stepFragment(e, dt) {
+  const F = ENEMY.fragment;
+  e.ft += dt;
+  e.x += e.fx * F.lateralSpeed * dt;
+  if (e.ft < F.riseS) {
+    // A short kick upward out of the parent, so a Splitter's pair visibly
+    // separates before either starts drifting down.
+    e.y -= F.riseSpeed * dt;
+  } else {
+    e.y = Math.min(F.floorY * DESIGN_H, e.y + F.descentSpeed * dt);
+  }
+  e.heading = e.fx > 0 ? 0 : Math.PI;
+  if (e.x < -160 || e.x > DESIGN_W + 160) e.alive = false;
 }
 
 function beginSwoop(e, rng, m) {
@@ -566,6 +653,41 @@ export function lockedShooters(w, out) {
     out.push(e);
   }
   return out;
+}
+
+/**
+ * Which authored bullet pattern this particular craft owns.
+ *
+ * A type may declare `patternVariants` as well as `pattern`; if it does, the
+ * craft picks one by its stable identity hash. §6.2's Emitter does, and the
+ * reason is the half-finished per-craft-variation thread this completes: the
+ * previous pass established that variation must never change a pattern's
+ * geometry at runtime, because /systems/constraints.js proves §5.3's aisle,
+ * descent and density guarantees per PATTERN, statically. So the variation is
+ * WHICH authored, validated pattern a craft carries -- never what is inside
+ * one. Both B2 and B2T are proved at boot; picking between them cannot escape
+ * the contract.
+ *
+ * Hashed rather than drawn from the seeded stream, for the same reason
+ * varyHash exists: a draw here would advance the run's RNG and reshuffle every
+ * downstream entry-timing decision, which would rewrite level one's locked
+ * choreography.
+ */
+export function craftPatternId(w, e) {
+  const def = enemyDef(e.type);
+  const list = def.patternVariants;
+  // GATED PER LEVEL, and level one does not opt in.
+  //
+  // Without this gate the variants would reach level one's seven Emitters and
+  // some of them would start running B2T -- which is new bullet content in a
+  // level that is locked for a demo. "Do not change level one's enemies, waves
+  // or boss" covers what its craft SHOOT, not just how many there are, so the
+  // opt-in lives on the level row rather than on the type.
+  if (!list || !list.length || !levelAt(w.surfaceIndex).craftVariants) {
+    return def.pattern;
+  }
+  const h = varyHash(e.slot, e.squadron, 7, e.formation);
+  return list[Math.floor(h * list.length) % list.length];
 }
 
 export function isInFormationBand(y) {

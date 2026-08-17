@@ -152,13 +152,57 @@ for name, (x0, _x1) in zip(['ship-roll-l', 'ship-level', 'ship-roll-r'], cells):
 # nothing else on the playfield (player fire is cyan-white, enemy fire is
 # orange/magenta, the three surface accents are orange, cyan and violet).
 # ===========================================================================
+#
+# LEVEL TWO adds two more (6.2's Warden and Splitter), chosen against a
+# specific complaint rather than off the list in order: "the simple enemies are
+# just blown up with one super rocket fire of mine. And if I move or stand in
+# the right place I can kill the whole wave before it even gets to their
+# positions." Both new types attack that directly --
+#   * the WARDEN carries a shimmer shield that eats three bolts before its body
+#     takes any, so a single craft cannot be melted on approach at all;
+#   * the SPLITTER answers a pre-emptive kill by BECOMING TWO MORE CRAFT, so
+#     clearing early does not empty the wave.
+# (Lancer and Spoke were the alternatives and neither does: a Lancer is a
+# tougher drone, and a Spoke is a second thing that sits still like the
+# Emitter already does.)
+#
+# COLOUR IS BEHAVIOUR HERE, same as the Emitter's acid jade. Four hulls now
+# share the top band, so the palette has to keep them apart at a glance:
+# player blue-and-white, drone purple, Emitter green, WARDEN oxblood crimson
+# (the only red thing on the playfield), SPLITTER bone-ivory (the only pale
+# one). Neither reuses an existing hue and neither collides with the
+# orange/magenta 5.4 reserves for enemy FIRE.
+#
+# `largest` is off for the splitter and that is not a detail: the craft is
+# authored as two mirrored halves separated by its own split seam, so it keys
+# out as TWO connected components. keep_largest_component would silently ship
+# half a ship -- verified, it crops to (269,5,1014,2037), the left half alone.
 print('enemies')
 ENEMIES = [
-    ('drone-raw-01.png',   'enemy-drone.png',   224),
-    ('emitter-raw-01.png', 'enemy-emitter.png', 232),
+    # (raw file,             out name,             target long edge, largest)
+    ('drone-raw-01.png',     'enemy-drone.png',    224, True),
+    ('emitter-raw-01.png',   'enemy-emitter.png',  232, True),
+    ('warden-raw-01.png',    'enemy-warden.png',   248, True),
+    ('splitter-raw-01.png',  'enemy-splitter.png', 236, False),
 ]
-for raw, name, target in ENEMIES:
-    save(cut(Image.open(RAW + raw), target), name)
+for raw, name, target, largest in ENEMIES:
+    save(cut(Image.open(RAW + raw), target, largest=largest), name)
+
+# ===========================================================================
+# 3b. PICKUP (5.6, plus Amit's explicit ask: "when the enemy dies he gives
+#     birth to like a pick up item. If I pick it up I have some abilities").
+#
+# ONE sprite, spun and pulsed at runtime -- 5.6 says exactly that ("all
+# spun/pulsed at runtime from a single static sprite each"), so there is no
+# frame set here and there must never be one.
+#
+# It is deliberately CYAN-WHITE, which is the player's own ownership colour
+# (5.4). A collectable is the one object on the playfield that must never be
+# mistaken for something to dodge, and the frame's entire orange/magenta
+# vocabulary already means "this will hurt you". Reading as "yours" is the
+# whole job.
+print('pickup')
+save(cut(Image.open(RAW + 'pickup-raw-01.png'), 256), 'pickup-weapon.png')
 
 # ===========================================================================
 # 4. PROJECTILES -- drawn with blendMode 'add', so they stay on a BLACK field
@@ -171,6 +215,19 @@ bo = bo.crop(luma_bbox(bo, 8))
 # authored aspect IS the on-screen shape: 1:2.8 gives the ~23x65 shard the
 # concept frame shows, where the raw's 1:9 filament would be 200px long.
 save(bo.resize((64, 179), Image.LANCZOS), 'proj-player-bolt.png')
+
+# The temporary alternate weapon's round (the SCATTER pickup, 5.6 + Amit's
+# "another weapon like a fire different kind of projectiles for limited time").
+#
+# It stays CYAN-WHITE. 5.4's ownership coding is absolute -- "player fire is
+# cyan-white, enemy fire is orange/magenta [...] No exceptions" -- so a
+# temporary weapon may change SHAPE and never colour. What separates it from the
+# standard bolt is that it is short, fat and blunt against the bolt's 1:2.8
+# shard: at a glance the stream visibly thickens, which is the read the pickup
+# has to deliver in the first half second.
+sp = Image.open(RAW + 'spreadbolt-raw-01.png').convert('RGB')
+sp = sp.crop(luma_bbox(sp, 26))
+save(sp.resize((104, 168), Image.LANCZOS), 'proj-player-spread.png')
 
 ob = Image.open(RAW + 'orb-raw-01.png').convert('RGB')
 l, t, r, b = luma_bbox(ob, 8)
@@ -333,6 +390,70 @@ for name, (x0, _x1) in zip(['boss-pod', 'boss-pod-dead'], pcells):
     cell = keep_largest_component(pods.crop((x0 + plx, pty, x0 + prx, pby)))
     k = POD_W / cell.width
     save(cell.resize((POD_W, round(cell.height * k)), Image.LANCZOS), name + '.png')
+
+# ===========================================================================
+# 6b. BOSS TWO -- Brood Gantry (6.4, level two's carrier).
+#
+# 6.4: "Brood Gantry -- carrier disgorging drones from bays across the width",
+# "pods are launch bays that emit drones on a timer; killing a bay stops its
+# stream". So this is FOUR SPRITES against Cinderjaw's three, and the extra one
+# is the whole mechanic: a bay has an OPEN state and a SHUT state as well as a
+# destroyed one, because the fight's rule is "the bay that is launching at you
+# is the bay you can hurt".
+#
+# THREE STATES THROUGH ONE SHARED CELL RECT (9.5 rule 2), and here it matters
+# more than anywhere else in the game. A bay is pinned to a fixed socket on the
+# hull and swaps state IN PLACE several times per fight -- a centre shift
+# between open and shut would read as the socket sliding, which is precisely the
+# kind of "is this thing even working" ambiguity that made boss one unplayable.
+#
+# THE HULL IS CROPPED BEFORE KEYING, and that is not cosmetic tidying. The
+# generator returned a soft out-of-focus grey band across the top ~340 rows,
+# whose min channel sits just under the near-white key -- so it survives the
+# cutout AS PART OF THE HULL'S OWN CONNECTED COMPONENT (verified: the keyed
+# component runs y 0..1213, i.e. the haze and the ship are one blob, so
+# keep_largest_component cannot separate them). Cropping is the only step that
+# can, and 345 is measured: the hull's topmost plating starts at ~344.
+print('boss two')
+BG_CROP_TOP = 392
+bg = Image.open(RAW + 'boss-broodgantry-raw-01.jpg').convert('RGB')
+bg = bg.crop((0, BG_CROP_TOP, bg.width, 1300))
+bg = keep_largest_component(cutout_white(bg))
+bg = bg.crop(alpha_bbox(bg))
+k = 1200 / bg.width
+bg = bg.resize((1200, round(bg.height * k)), Image.LANCZOS)
+save(bg, 'boss-broodgantry-hull.png')
+print(f'  hull aspect {bg.width / bg.height:.3f} '
+      f'(4 empty launch sockets on the centreline + a shuttered core hatch)')
+
+# The bay sheet is three equal panels. Its subject is a disc set in a vertical
+# hull strut, and only the DISC is wanted: the strut belongs to the hull art
+# underneath and drawing it twice would put a second set of plating over the
+# first. So the shared cell rect is followed by a CIRCULAR MASK -- measured at
+# radius 300 against a disc whose outer collar reaches ~295 -- which is also
+# what makes the three states drop into the hull's socket without a seam.
+BAY_CX, BAY_CY, BAY_HALF, BAY_MASK_R = 453, 729, 345, 290
+bays = Image.open(RAW + 'boss-bays-raw-01.jpg').convert('RGB')
+PANEL = bays.width / 3.0
+BAY_W = 256
+for i, name in enumerate(['boss-bay-open', 'boss-bay-shut', 'boss-bay-dead']):
+    x0 = int(round(i * PANEL))
+    cell = bays.crop((x0 + BAY_CX - BAY_HALF, BAY_CY - BAY_HALF,
+                      x0 + BAY_CX + BAY_HALF, BAY_CY + BAY_HALF))
+    cell = cutout_white(cell).convert('RGBA')
+    # Circular alpha mask, 4px feathered, centred on the shared cell rect.
+    px = cell.load()
+    n = cell.width
+    c = (n - 1) / 2.0
+    for y in range(n):
+        for x in range(n):
+            d = ((x - c) ** 2 + (y - c) ** 2) ** 0.5
+            if d <= BAY_MASK_R:
+                continue
+            r, g, b, a = px[x, y]
+            f = max(0.0, 1.0 - (d - BAY_MASK_R) / 4.0)
+            px[x, y] = (r, g, b, int(a * f))
+    save(cell.resize((BAY_W, BAY_W), Image.LANCZOS), name + '.png')
 
 # ===========================================================================
 # 7. DAMAGE OVERLAY (6.2: "one shared damaged/scorched overlay per type").

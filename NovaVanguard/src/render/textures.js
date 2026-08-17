@@ -42,12 +42,31 @@ export const ASSET_MANIFEST = {
   // Air enemies (§6.2). One image per body, rotated at runtime to heading.
   drone: 'assets/enemy-drone.png',
   emitter: 'assets/enemy-emitter.png',
+  // Level two's two types (§6.2). Chromatically separated from everything
+  // already on the playfield: crimson and bone-ivory against the player's
+  // blue-and-white, the drone's purple and the Emitter's acid jade.
+  warden: 'assets/enemy-warden.png',
+  splitter: 'assets/enemy-splitter.png',
   bolt: 'assets/proj-player-bolt.png',
+  // The pickup weapon's round (WEAPONS.scatter). Cyan-white like every other
+  // player projectile -- §5.4's ownership coding admits no exceptions, so a
+  // temporary weapon changes shape and never side.
+  spread: 'assets/proj-player-spread.png',
   orb: 'assets/proj-enemy-orb.png',
+  // The pickup itself (§5.6). One static sprite, spun and pulsed at runtime.
+  pickupWeapon: 'assets/pickup-weapon.png',
   // Boss (§6.4): one hull + one pod + one blown pod, instanced four times.
   bossCinderjawHull: 'assets/boss-cinderjaw-hull.png',
   bossPod: 'assets/boss-pod.png',
   bossPodDead: 'assets/boss-pod-dead.png',
+  // Boss two -- Brood Gantry. One hull plus THREE bay states, because the
+  // fight's mechanic is a bay that opens and shuts: the shut state is the
+  // difference between "this is armour" and "this is a target that is closed",
+  // and a fight that cannot say which is the fight boss one shipped as.
+  bossBroodGantryHull: 'assets/boss-broodgantry-hull.png',
+  bossBayOpen: 'assets/boss-bay-open.png',
+  bossBayShut: 'assets/boss-bay-shut.png',
+  bossBayDead: 'assets/boss-bay-dead.png',
   // The shared damage overlay (§6.2), tinted and scaled per entity.
   scorch: 'assets/fx-scorch.png',
   // Props, ONE SET PER SURFACE. Keys are named through /data/surfaces.js and
@@ -181,6 +200,59 @@ function placeholderEmitter() {
   });
 }
 
+/** Heavy, slab-sided, four shield nacelles -- even the placeholder has to read
+ *  as the craft that does NOT die on approach, because that is the whole type
+ *  (§6.2). Oxblood crimson: the only red hull on the playfield. */
+function placeholderWarden() {
+  return canvasTexture(132, 156, (g, w, h) => {
+    g.translate(w / 2, h / 2);
+    g.beginPath();
+    g.moveTo(0, -h / 2 + 6);
+    g.lineTo(26, -h / 2 + 34);
+    g.lineTo(w / 2 - 6, 10);
+    g.lineTo(28, h / 2 - 8);
+    g.lineTo(-28, h / 2 - 8);
+    g.lineTo(-w / 2 + 6, 10);
+    g.lineTo(-26, -h / 2 + 34);
+    g.closePath();
+    g.fillStyle = '#5a1420';
+    g.fill();
+    g.strokeStyle = '#2a2026';
+    g.lineWidth = 5;
+    g.stroke();
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      g.beginPath();
+      g.arc(sx * 48, sy * 34, 13, 0, Math.PI * 2);
+      g.fillStyle = '#ffab3c';
+      g.fill();
+    }
+  });
+}
+
+/** A clam-shell split down the centre, halves already parting -- the
+ *  silhouette has to say "this comes apart" before it does (§6.2). Bone ivory
+ *  with a hot magenta seam: the only pale hull in the game. */
+function placeholderSplitter() {
+  return canvasTexture(120, 160, (g, w, h) => {
+    g.translate(w / 2, h / 2);
+    for (const s of [-1, 1]) {
+      g.beginPath();
+      g.moveTo(s * 4, -h / 2 + 6);
+      g.lineTo(s * (w / 2 - 6), 18);
+      g.lineTo(s * (w / 2 - 20), h / 2 - 10);
+      g.lineTo(s * 6, h / 2 - 10);
+      g.closePath();
+      g.fillStyle = '#ded6c6';
+      g.fill();
+      g.strokeStyle = '#8f8676';
+      g.lineWidth = 3;
+      g.stroke();
+    }
+    g.fillStyle = '#ff3fd0';
+    g.fillRect(-2, -h / 2 + 6, 4, h - 16);
+  });
+}
+
 /** Wide capital hull lying lengthwise, with four empty pod sockets (§6.4). */
 function placeholderBossHull() {
   return canvasTexture(1024, 376, (g, w, h) => {
@@ -255,6 +327,87 @@ function placeholderOrb() {
   });
 }
 
+/** The pickup canister (§5.6) -- a bright hexagonal pod with a cyan-white
+ *  core and an up-chevron on its face. It has to read as YOURS at a glance:
+ *  the frame's whole orange/magenta vocabulary means "this will hurt you", so
+ *  a collectable that is not obviously cyan-white is a collectable the player
+ *  will dodge. */
+function placeholderPickup() {
+  return canvasTexture(160, 160, (g, w, h) => {
+    g.translate(w / 2, h / 2);
+    g.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+      const x = Math.cos(a) * 64;
+      const y = Math.sin(a) * 64;
+      if (i === 0) g.moveTo(x, y);
+      else g.lineTo(x, y);
+    }
+    g.closePath();
+    g.fillStyle = '#b9c3ce';
+    g.fill();
+    g.strokeStyle = '#f0c66a';
+    g.lineWidth = 6;
+    g.stroke();
+    const grad = g.createRadialGradient(0, 0, 2, 0, 0, 40);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.5, 'rgba(120,240,255,0.95)');
+    grad.addColorStop(1, 'rgba(120,240,255,0)');
+    g.fillStyle = grad;
+    g.beginPath();
+    g.arc(0, 0, 40, 0, Math.PI * 2);
+    g.fill();
+  });
+}
+
+/** The pickup weapon's round: short, fat, blunt -- deliberately unlike the
+ *  standard bolt's 1:2.8 shard, so the stream visibly thickens on collection
+ *  (WEAPONS.scatter). Drawn on black, like every projectile, because it is
+ *  composited additively. */
+function placeholderSpread() {
+  return canvasTexture(64, 104, (g, w, h) => {
+    const grad = g.createRadialGradient(w / 2, h * 0.36, 2, w / 2, h * 0.45, h * 0.5);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.4, 'rgba(200,248,255,0.9)');
+    grad.addColorStop(1, 'rgba(140,220,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+  });
+}
+
+/** Brood Gantry's bays (§6.4). Three states that must be unmistakable from
+ *  each other at 126 px, because telling them apart IS the fight's rule. */
+function placeholderBay(state) {
+  return canvasTexture(256, 256, (g, w, h) => {
+    g.translate(w / 2, h / 2);
+    g.beginPath();
+    g.arc(0, 0, w / 2 - 10, 0, Math.PI * 2);
+    g.fillStyle = '#1b1b22';
+    g.fill();
+    g.strokeStyle = '#5c5c68';
+    g.lineWidth = 12;
+    g.stroke();
+    if (state === 'open') {
+      g.beginPath();
+      g.arc(0, 0, w / 2 - 44, 0, Math.PI * 2);
+      g.fillStyle = '#ff2fc8';
+      g.fill();
+    } else if (state === 'shut') {
+      g.strokeStyle = '#3a3a44';
+      g.lineWidth = 6;
+      g.beginPath();
+      g.moveTo(-(w / 2 - 26), 0);
+      g.lineTo(w / 2 - 26, 0);
+      g.stroke();
+    } else {
+      g.fillStyle = '#000000';
+      g.beginPath();
+      g.arc(0, 0, w / 2 - 48, 0, Math.PI * 2);
+      g.fill();
+    }
+  });
+}
+
 function placeholderProp(i) {
   const cols = ['#4a4b55', '#3a3b44', '#55474a', '#43484f'];
   return canvasTexture(120, 90, (g, w, h) => {
@@ -300,11 +453,19 @@ const PLACEHOLDERS = {
   shipRollR: () => placeholderShip(1),
   drone: placeholderDrone,
   emitter: placeholderEmitter,
+  warden: placeholderWarden,
+  splitter: placeholderSplitter,
   bolt: placeholderBolt,
+  spread: placeholderSpread,
   orb: placeholderOrb,
+  pickupWeapon: placeholderPickup,
   bossCinderjawHull: placeholderBossHull,
   bossPod: () => placeholderPod(false),
   bossPodDead: () => placeholderPod(true),
+  bossBroodGantryHull: placeholderBossHull,
+  bossBayOpen: () => placeholderBay('open'),
+  bossBayShut: () => placeholderBay('shut'),
+  bossBayDead: () => placeholderBay('dead'),
   scorch: placeholderScorch,
 };
 // Every prop falls back to the same flat programmer-art block, keyed by

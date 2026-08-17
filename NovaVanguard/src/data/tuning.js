@@ -363,6 +363,236 @@ export const PLAYER = {
 };
 
 // ---------------------------------------------------------------------------
+// Weapons (§4, §8.1) -- what auto-fire actually puts out.
+//
+// §4 fixes the INPUT side of this permanently: "Firing is automatic and
+// unconditional. It never stops, has no cooldown the player can affect, and
+// there is no input that changes it. Rank changes what comes out; nothing else
+// does." A pickup is not an input, so a temporary weapon swap is a change to
+// what comes out -- the same category as rank -- and it leaves that rule whole.
+//
+// Everything here is a ROW, and the player carries `weapon` + `weaponT`. Adding
+// a second temporary weapon is a row plus a pickup kind; /player has no idea
+// what weapons exist.
+// ---------------------------------------------------------------------------
+
+export const WEAPONS = {
+  // Rank 1's single bolt (§8.1). Identical to PLAYER.fire, read through the
+  // same accessor so there is exactly one code path for firing.
+  standard: {
+    id: 'standard',
+    name: 'BOLT',
+    intervalS: PLAYER.fire.rank1IntervalS,
+    // One bolt, straight up. §0.2: the guns always fire straight up; there is
+    // no aim in this game, and an angled shot is a SPREAD, never an aim.
+    shots: [{ angle: 0 }],
+    speed: PLAYER.fire.boltSpeed,
+    radius: PLAYER.fire.boltRadius,
+    damage: PLAYER.fire.boltDamage,
+    textureKey: 'bolt',
+    tint: 0xd8fbff,
+    // On-screen length multiplier over the radius, matching /render's existing
+    // r*2.6 rule for the standard bolt.
+    drawScale: 2.6,
+  },
+
+  // The pickup weapon (§5.6, and Amit's ask: "the simplest one is another
+  // weapon like a fire different kind of projectiles for limited time").
+  //
+  // WHAT MAKES IT A DIFFERENT WEAPON RATHER THAN A BIGGER ONE. It fires THREE
+  // fat slow rounds in a shallow fan instead of one fast needle. Against a
+  // single small craft directly overhead it is worth roughly what the bolt is;
+  // against a wide formation, a swooping pair or a boss hull it covers ground
+  // the bolt cannot. So it changes WHERE you can be effective from rather than
+  // how hard you hit, which is the only axis this game has (§3: "the only verb
+  // is where do I stand").
+  //
+  // IT IS NOT STRICTLY BETTER, deliberately. The rounds travel at 0.72x the
+  // bolt's speed, so at boss range the lead time is visibly longer, and the
+  // angled pair miss a narrow target the centre round would have hit. A
+  // temporary weapon that is simply "more damage" teaches nothing and makes the
+  // base weapon feel bad for the other 90% of the level.
+  //
+  // COLOUR IS NOT NEGOTIABLE. §5.4 colour-codes bullet OWNERSHIP -- player
+  // cyan-white, enemy orange/magenta, "no exceptions" -- so the alternate
+  // weapon may change shape, count, speed and size, and may never change side.
+  scatter: {
+    id: 'scatter',
+    name: 'SCATTER',
+    intervalS: 0.145,
+    // ±9.5°. Wide enough that the outer rounds clear a neighbouring formation
+    // slot by the time they reach the band, narrow enough that all three still
+    // land on a boss hull from directly underneath.
+    shots: [{ angle: -0.166 }, { angle: 0 }, { angle: 0.166 }],
+    speed: 1040,
+    radius: 15,
+    damage: 1,
+    textureKey: 'spread',
+    tint: 0xeafcff,
+    drawScale: 3.0,
+    // How long a pickup grants it. Long enough to span two squadron arrivals at
+    // level two's pace, short enough that the loss is felt and the next drop is
+    // wanted (§5.6 -- a temporary weapon is a lure, not a state).
+    durationS: 11.0,
+    // Picking a second one up while it is running tops the clock back up rather
+    // than stacking, so two drops in quick succession are never wasted.
+    refresh: true,
+  },
+};
+
+export function weaponDef(id) {
+  return WEAPONS[id] || WEAPONS.standard;
+}
+
+// ---------------------------------------------------------------------------
+// The empty-screen fire hold (Amit, playtest round 4)
+//
+//   "just for the composition of the pause shooting, nothing, if anything is
+//    near the screen, like everything is inside the screen, there's no way I'm
+//    not shooting. It's only for those times where like there's nothing on the
+//    screen and I keep on shooting, it looks a bit bad."
+//
+// THE SCOPE IS THE SAFETY MARGIN, so it is stated as an invariant rather than
+// left to the implementation: if ANYTHING shootable exists -- an enemy in any
+// state, a boss in any phase including its warning band, an enemy bullet still
+// in the air, or a squadron whose launch is imminent -- the guns fire. Only a
+// genuinely empty playfield holds them.
+//
+// WHY THE MARGIN IS GENEROUS. §5.5 enters squadrons from the side edges, and
+// bolts already climbing are part of how fast the first row dies -- §5.3 sizes
+// the pre-lock kill window against a stream that is ALREADY in the air, so a
+// late resume would quietly shorten it. Erring wide costs nothing (a few
+// unnecessary bolts) and erring narrow costs the pacing contract.
+//
+// WHY THERE IS AN IDLE TELL. Auto-fire is why this game has no action button
+// (§4), which means the fire stream is the player's ONLY passive confirmation
+// that the game is still reading their lean. Stopping it silently is
+// indistinguishable from a frozen game on a board, so the hold has to LOOK
+// deliberate: /render draws a charged muzzle glow that breathes while held.
+// ---------------------------------------------------------------------------
+
+export const FIRE_HOLD = {
+  // Anything within this many pixels of the frame counts as on screen. 520 px
+  // is comfortably beyond §5.5's entry spawn x (±0.07 of the width = 134 px
+  // outside the frame), so fire is already running before the first craft is
+  // drawn rather than starting when it appears.
+  marginPx: 520,
+  // A squadron whose queued launch is this close also counts. Covers the beat
+  // between "the wave started" and "the first craft exists".
+  leadS: 1.0,
+  // Grace before the guns actually stop, so a half-second gap between the last
+  // kill and the next arrival does not chop the stream. RESUME IS NEVER
+  // DELAYED -- there is no counterpart to this on the way back up, by design.
+  holdDelayS: 0.45,
+};
+
+// ---------------------------------------------------------------------------
+// Pickups (§5.6) -- and the drop rule Amit asked for by name:
+//
+//   "add some pickups that every now and then when an enemy dies we should
+//    have a value to control it on what's the chances of getting a pick up.
+//    Basically when the enemy dies he gives birth to like a pick up item."
+//
+// THE VALUE HE ASKED FOR IS `dropChance`, ONE ROW PER ENEMY TYPE, right here.
+// Nothing in /systems/pickups.js decides whether a drop happens; it reads this
+// table. Retuning how often pickups appear is editing numbers in this block and
+// nothing else.
+//
+// §5.6's flight-path rules are honoured in full and they are not style points:
+// lateral-only lures, offset capped at 0.35 of the width, never above y = 0.62,
+// re-offered if they scroll past. Every one of them exists so that a pickup can
+// never induce a vertical dash -- the expensive lean on a balance board (§0.5),
+// and the single failure mode §12 says the Mode S decision is most exposed to.
+// ---------------------------------------------------------------------------
+
+export const PICKUPS = {
+  // --- THE KNOB -----------------------------------------------------------
+  // Probability that a kill of this type drops a pickup. Tuned so that a
+  // normal level-one run yields ABOUT TWO, which is the explicit ask: "in the
+  // first level I need like two chances to pick up some new weapon so I can
+  // understand where this game is going."
+  //
+  // The arithmetic, so the next person retuning it knows what they are moving:
+  // level one authors 88 craft across its six waves -- 81 drones and 7
+  // Emitters -- so the expectation is 81*0.018 + 7*0.10 = 2.2 drops.
+  //
+  // Level two's roster is worth more per kill because its craft cost more to
+  // kill: a Warden eats eight bolts behind its shield and a Splitter answers
+  // its own death with two more craft, so a drop is the fight paying for the
+  // commitment rather than a lottery ticket.
+  dropChance: {
+    drone: 0.018,
+    emitter: 0.10,
+    warden: 0.22,
+    splitter: 0.13,
+    // Anything not named above (splitter fragments, bay-launched drones).
+    // Zero on purpose: a Splitter that could drop twice through its own
+    // fragments would make the type the best farm in the game, which is a
+    // strategy nobody asked for.
+    default: 0,
+  },
+
+  // The floor under the randomness, and the reason it exists: "about two" and
+  // "sometimes zero" are different promises. An independent 2% roll per kill
+  // has a real chance of producing NO drop across a whole level, and the run
+  // where a first-time player never sees the mechanic is the run that fails
+  // the brief. After this many kills with nothing, the next kill drops --
+  // which converts a 0-to-5 distribution into a reliable 2.
+  //
+  // It is a second knob in the same block rather than logic buried in the
+  // system, for exactly the reason the first one is.
+  maxKillsWithoutDrop: 42,
+
+  // At most one on screen, and never two inside this window. Both are anti-
+  // clutter rather than anti-generosity: two canisters drifting at once turn a
+  // lure into a scatter of choices, and §5.6's offset cap only means something
+  // if there is one thing to be offset FROM.
+  maxOnScreen: 1,
+  minGapS: 11.0,
+
+  // --- §5.6's flight-path rules, verbatim ---------------------------------
+  // "A pickup's lateral offset from the player is capped at 0.35 of the width,
+  // which is ~1.1 s of travel at LATERAL_MAX. Enough to be a decision, never a
+  // sprint."
+  maxOffsetFrac: 0.35,
+  // "No pickup ever sits above y = 0.62." The drop is born at the kill site,
+  // which is up in the formation band -- so it is not COLLECTABLE until it has
+  // descended past this line, and it is not a lure until then either. That is
+  // the honest reading: what §5.6 forbids is a reward the player must climb
+  // for, and a canister falling toward you is the opposite of one.
+  maxLureY: 0.62,
+  // Mode A has no scrolling surface to ride, so §5.6 gives pickups their own
+  // descent there. In Mode S they ride the surface at SCROLL_SPEED, which is
+  // what "ground pickups ride the surface" means literally.
+  driftSpeedA: 90,
+  // "Collected by a generous radius (72 px), so a near-miss is a hit."
+  collectRadius: 72,
+
+  // "Anything that scrolls past uncollected is either optional or re-offered
+  // within 8 s." Re-offered ONCE: the weapon is a bonus, not an entitlement,
+  // and an infinitely re-offered pickup would eventually be collected by a
+  // player standing still, which is the opposite of a lure.
+  reOfferS: 6.5,
+  reOffers: 1,
+
+  // Presentation. §5.6: "all spun/pulsed at runtime from a single static
+  // sprite each" -- so this is the whole animation budget for the type.
+  spriteWidth: 62,
+  spinHz: 0.42,
+  pulseHz: 1.6,
+  pulseAmp: 0.12,
+  // A soft additive halo under the canister so it reads as hot against a dark
+  // surface without needing a second texture.
+  haloScale: 2.5,
+  haloAlpha: 0.34,
+  // Which weapon a canister grants. One kind today; a second is a row here
+  // plus a row in WEAPONS.
+  kinds: {
+    scatter: { id: 'scatter', weapon: 'scatter', tint: 0xffffff },
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Air enemies (§5.5, §6.2). POC ships the Drone only.
 // ---------------------------------------------------------------------------
 
@@ -433,7 +663,129 @@ export const ENEMY = {
       // not by the wave, which is what makes "kill it and the sweep stops"
       // literally true rather than a flavour claim (see /patterns).
       pattern: 'B2',
+      // ...but WHICH sweep is per craft. Two authored rows, picked by the
+      // craft's stable identity hash (see varyHash in /enemies/enemies.js), so
+      // two Emitters in one formation are audibly and visibly running different
+      // rhythms rather than the same metronome twice.
+      //
+      // THIS IS THE HONEST VERSION OF THE "TWIN-SHOT VOLLEY" IDEA the previous
+      // pass flagged and refused to smuggle in. Its objection was exact:
+      // varying a craft's ORB COUNT or aisle geometry at runtime would be a
+      // bullet pattern that /systems/constraints.js -- which proves §5.3's
+      // guarantees per PATTERN, statically -- cannot see. So the variation is
+      // expressed as a second authored pattern that gets validated exactly like
+      // B1 and B2, and the per-craft part is only which of the two it owns.
+      // Both are proved; neither can drift out of contract.
+      patternVariants: ['B2', 'B2T'],
       tint: 0xffffff,
+    },
+
+    // §6.2: "Warden | 5 | Carries a shimmer shield that absorbs 3 hits before
+    // its body takes damage. Forces focus fire."
+    //
+    // CHOSEN AGAINST A NAMED COMPLAINT, not off the list in order. Amit:
+    // "the simple enemies are just blown up with one super rocket fire of mine.
+    // And if I move or stand in the right place I can kill the whole wave
+    // before it even gets to their positions." The real fault underneath is
+    // that the FORMATION-ARRIVAL MOMENT -- the thing the whole Galaga lineage
+    // is built on, and the thing §5.5's fly-in exists to stage -- never
+    // happens. HP alone does not fix that; it just moves the number.
+    //
+    // The shield does, because it changes the SHAPE of an approach kill rather
+    // than its price. Eight bolts (3 shield + 5 hull) is 0.84 s of unbroken
+    // on-target fire at rank 1, so a parked player can still take ONE Warden
+    // out of a squadron mid-entry -- and while they are doing it, the other
+    // eleven craft arrive and lock. The pre-lock window stays a real offer;
+    // it just stops being a free wave-clear.
+    warden: {
+      id: 'warden',
+      hp: 5,
+      // 44, not 46, and the two pixels are not arbitrary: R6 requires a type's
+      // radius to fit twice inside the tightest slot separation of any
+      // formation, and F2's lens has slots 90 px apart. A 46 px Warden would
+      // have overlapped its neighbours on the ellipse -- the validator caught
+      // it at boot rather than it being noticed, or not, in a screenshot.
+      radius: 44,
+      // SIZED BY THE BAND, NOT BY THE ART, and this is the one place level
+      // one's lock actually constrained level two's design.
+      //
+      // The shipped art is 209x248 -- a tall craft -- and at the ~124 px width
+      // its bulk wants, it stands 147 px and its top edge lands at y = 51,
+      // inside the entry-telegraph band and nearly into the HUD strip. §5.1's
+      // band discipline is a hard container for a locked craft's sprite, and
+      // the previous pass established the precedent by nudging the formation
+      // rows DOWN rather than relaxing the rule. Those rows are level one's,
+      // and level one is locked -- so the craft moves, not the band.
+      //
+      // 98 x 116 puts it exactly inside the drone's 117 px envelope, which
+      // means the R4 margin (~1.7 px at the top row) is unchanged by adding
+      // this type at all. What carries "heaviest craft in the fleet" instead is
+      // its shield ring (120 px across while up), its dense crimson-and-
+      // charcoal art against the drone's thin purple dart, and its pip row.
+      // Flagged rather than fudged: see the report.
+      spriteWidth: 98,
+      spriteHeight: 116,
+      // 3x a drone: it costs 8x the fire time and it is the craft that decides
+      // whether a squadron gets to form up at all.
+      score: 400,
+      contactDamage: PLAYER.damage.enemyCollision,
+      // It swoops. That is the other half of the answer -- a Warden that
+      // reached formation and then came down at you is a threat the player has
+      // to actually deal with, rather than a wall to be ground through.
+      swoops: true,
+      pattern: null,
+      tint: 0xffffff,
+      // THE SHIELD. Absorbs whole bolts before the hull takes any damage, and
+      // does NOT regenerate: partial progress is kept, so focus fire is
+      // rewarded and spraying is not. /render draws one arc per remaining hit,
+      // so "three more, then it starts dying" is readable with no tutorial.
+      shieldHits: 3,
+    },
+
+    // §6.2: "Splitter | 3 | On death, breaks into 2 drones that immediately fly
+    // a short exit arc -- never a surprise dive."
+    //
+    // THE OTHER HALF OF THE SAME ANSWER, from the opposite direction. The
+    // Warden makes an early kill expensive; the Splitter makes it
+    // COUNTERPRODUCTIVE -- kill it during the fly-in and the squadron that
+    // arrives is bigger than the one that left. There is no parking spot that
+    // empties a wave containing these, which is precisely the property the
+    // complaint says level one lacks.
+    //
+    // "NEVER A SURPRISE DIVE" IS LOAD-BEARING, not flavour. The fragments are
+    // born in the formation band, above the player, at the moment the player is
+    // committed to a lateral position -- so anything that fell straight down
+    // out of a kill would be an unavoidable hit and an emergency vertical lean,
+    // which is the worst thing this product can ask for (§0.5, §5.5's
+    // do-not-port list). They arc laterally out of the frame instead: shootable
+    // for score, contact-damaging if you fly into them, and never descending
+    // past the swoop floor.
+    splitter: {
+      id: 'splitter',
+      hp: 3,
+      radius: 40,
+      // Same constraint as the Warden's, from the same locked rows: the art is
+      // 175x236, so a 112 px-wide Splitter would stand 151 px and overhang the
+      // formation band's ceiling. 86 x 116 fits inside the drone's envelope, so
+      // adding the type costs the band budget nothing.
+      spriteWidth: 86,
+      spriteHeight: 116,
+      // The pair it leaves behind are worth 100 each on top (§8.2 prices a
+      // splitter at 200 "+50 per fragment"; the fragments here are real drones
+      // and are scored as drones, which is simpler and pays the same order).
+      score: 240,
+      contactDamage: PLAYER.damage.enemyCollision,
+      swoops: true,
+      pattern: null,
+      tint: 0xffffff,
+      // What it becomes, and how many. Read by /systems/collision.js on death.
+      splitsInto: 'drone',
+      splitCount: 2,
+      // §8.2 prices this type at "splitter 200 (+50 per fragment)", so the pair
+      // is worth 50 each rather than a drone's 100 -- otherwise killing one
+      // Splitter would out-score killing three drones, and the type would read
+      // as a bonus instead of as a cost.
+      fragmentScore: 50,
     },
   },
   // Entry (§5.5): craft enter in file from the left or right edge only.
@@ -479,6 +831,30 @@ export const ENEMY = {
   // has no scoring UI (§2).
   preLockScoreMultiplier: 2,
 
+  // THE EXIT ARC -- shared by Splitter fragments and by Brood Gantry's
+  // bay-launched drones (§6.2, §6.4). One behaviour, two sources, because it is
+  // the same promise in both cases: something new appeared above you and it is
+  // LEAVING, not coming for you.
+  //
+  // Every number here is bounded by the do-not-port list (§5.5) rather than
+  // chosen for feel. `descentSpeed` is a downward component and obeys §5.3's
+  // approach budget like everything else; `floorY` stops the arc at the same
+  // line the swoop bottoms out at, so nothing born mid-fight can ever reach the
+  // player band. The craft stays shootable and contact-damaging the whole way,
+  // which is what stops it being scenery.
+  fragment: {
+    lateralSpeed: 340,
+    descentSpeed: 78,
+    floorY: 0.58,
+    // A little upward kick out of the parent, so the pair visibly separates
+    // before it starts drifting down.
+    riseS: 0.35,
+    riseSpeed: 90,
+    // Spread of the two halves, in fractions of the width per second, applied
+    // as opposite lateral directions.
+    spreadJitter: 0.22,
+  },
+
   // PER-CRAFT RUNTIME VARIATION -- the cheap half of playtest round 2's
   // "feels a bit too repetitive".
   //
@@ -514,6 +890,33 @@ export const ENEMY = {
     // look, every replay and both modes (§0.1), with the RNG sequence §10's
     // instrumentation samples were collected against left exactly where it was.
     sizeRange: [0.90, 1.10],
+    // NO HOVER BOB, AND THE REASON IS WORTH KEEPING -- it is a finding about
+    // the authored layout, not a taste call, and the next person to reach for
+    // this idea should not have to rediscover it.
+    //
+    // A slow out-of-phase vertical bob on locked craft is the cheapest possible
+    // answer to "at some point it feels a bit too repetitive": twenty sprites
+    // pinned to twenty fixed points read as a decal, and a few pixels of
+    // out-of-phase motion make the same twenty read as individually flying. It
+    // was built, and the boot validator rejected it immediately.
+    //
+    // THE AUTHORED FORMATIONS HAVE ABOUT 2 PX OF VERTICAL SLACK. F1's top row
+    // sits at y = 125 with a 117 px craft, so its top edge is 66.5 against a
+    // band ceiling of 64.8. F2's lower arc clears the gutter by ~3.5 px. Any
+    // vertical excursion at all, in either direction, breaches §5.1's band
+    // discipline -- and the fix would be to re-author the rows, which are level
+    // one's and are locked.
+    //
+    // A LATERAL bob was the obvious alternative and it is no better: the
+    // whole-formation drift already spends the entire lateral margin (the
+    // outermost slot at x = 192 drifts 76.8 px against a 115.2 px HUD margin,
+    // i.e. exactly to the line), so per-craft lateral sway would push craft
+    // under a gauge.
+    //
+    // So per-craft motion is genuinely blocked by the current layout, and it is
+    // flagged rather than forced. What the variation thread got instead is
+    // patternVariants below -- the honest version of the "twin-shot volley"
+    // idea the previous pass refused to smuggle in.
     // Small multiplicative skews on the texture's own colour. Kept subtle: the
     // silhouette is doing the work, and a strong tint would start to read as a
     // TYPE distinction, which would be a lie about what the craft does.
@@ -592,6 +995,44 @@ export const PATTERNS = {
     // AISLE_MOVE_MAX so following it is a committed lean, not a chase.
     guaranteedAisle: AISLE_MIN * 1.9,
     aisleMoveSpeed: 300,
+  },
+  // B2T -- the twin-tempo sweep. §5.5's B2 with a different RHYTHM, authored as
+  // its own row so the validator proves it like any other pattern.
+  //
+  // WHY IT EXISTS. Per-craft variation was left half-built: size, tint and
+  // cadence skew were in, and "twin-shot volleys" was flagged as the thing that
+  // must NOT be done per-craft, because varying orb count or aisle geometry at
+  // runtime hides a real pattern from the static checker that exists to prove
+  // §5.3's guarantees. The flag also named the honest version -- "a new
+  // authored pattern row (say B2T) that gets validated like B1 and B2" -- and
+  // this is it. An Emitter owns B2 or B2T by its identity hash; both are
+  // proved; nothing varies inside a pattern.
+  //
+  // HOW IT READS DIFFERENT. B2 is two evenly-spaced rows. B2T fires its four
+  // rows as TWO PAIRS -- bang-bang, a beat, bang-bang -- with wider orb spacing
+  // so the volley is no denser than B2's. Standing in an aisle that has just
+  // gone quiet and finding it has not finished with you is a genuinely
+  // different thing to survive, at the same bullet cost.
+  B2T: {
+    id: 'B2T',
+    name: 'Twin-tempo sweep',
+    rows: 4,
+    // Read in order, last value repeated: 0.16 s inside a pair, 0.9 s between
+    // pairs. /patterns reads `rowIntervalsS` when present and `rowIntervalS`
+    // otherwise, so B2 is untouched.
+    rowIntervalsS: [0.16, 0.9, 0.16],
+    rowIntervalS: 0.16,
+    // Wider than B2's 300 precisely so four rows cost what two of B2's do: the
+    // simultaneous-bullet cap is a floor of the pacing contract (§5.3), never a
+    // thing to spend on a rhythm change.
+    orbSpacing: 520,
+    orbRadius: 22,
+    volleyIntervalS: 9.5,
+    guaranteedAisle: AISLE_MIN * 2.0,
+    // Slower than B2's gap, because the pair-gap-pair rhythm already moves the
+    // aisle in visible steps and adding speed on top would make it a chase
+    // rather than the committed lean §5.3 requires.
+    aisleMoveSpeed: 260,
   },
 };
 
@@ -836,6 +1277,263 @@ export const FORMATIONS = {
 };
 
 // ---------------------------------------------------------------------------
+// LEVELS -- per-level content, indexed by surface (§5.7's campaign ramp).
+//
+// WHAT THIS IS NOT. It is not the wave-taxonomy re-cut. The POC-8 decision note
+// (playtest round 2 §1) renames today's `waves[]` to `subWaves[]` and nests
+// four of them inside a `wave`, four waves to a level -- and that rename is
+// still pending because it forces a session-length call that is Amit's. So the
+// vocabulary here is deliberately UNCHANGED: a level owns a `waves` list
+// exactly as POC_SCENARIO always did. When the taxonomy lands it renests these
+// lists; nothing else about this table has to move.
+//
+// WHAT IT IS. The one dimension the code was missing: /systems/director.js used
+// to run POC_SCENARIO.waves on every surface, so all three levels were the same
+// fight over different art. A level is now a row.
+//
+// LEVEL ONE IS LOCKED and this is where that is enforced structurally. Its
+// `waves` is POC_SCENARIO.waves BY REFERENCE, not a copy -- so it is impossible
+// to "tune level two" and silently move level one, and a diff that touches
+// level one's content is a diff that edits POC_SCENARIO, which is loud. It
+// authors no HP overrides, so every craft in it has exactly the HP §6.2 gives
+// it, unchanged.
+// ---------------------------------------------------------------------------
+
+export const LEVELS = [
+  {
+    id: 'ashfall',
+    name: 'LEVEL 1',
+    // LOCKED (Amit is demoing it). By reference, on purpose -- see above.
+    waves: POC_SCENARIO.waves,
+    hp: null,
+    waveTimeoutS: POC_SCENARIO.waveTimeoutS,
+    // NOT opted in. Per-craft pattern variants (§6.2's `patternVariants`) would
+    // put B2T -- a bullet pattern level one has never had -- into some of its
+    // seven Emitters. "Level one is locked" covers what its craft SHOOT, not
+    // just how many of them there are, so the opt-in is per level and this row
+    // says no.
+    craftVariants: false,
+  },
+
+  // -------------------------------------------------------------------------
+  // LEVEL 2 -- the difficulty ramp, authored against a specific report:
+  //
+  //   "the simple enemies are just blown up with one super rocket fire of mine.
+  //    And if I move or stand in the right place I can kill the whole wave
+  //    before it even gets to their positions. So on level 2 I should be
+  //    starting to see more stronger enemies. Basically just higher HP 2 or 3.
+  //    You can use much more the green enemy and probably a good idea to kick
+  //    off two new enemies."
+  //
+  // Three separate things are wrong in that sentence and the table answers each
+  // one, in order of how much it matters:
+  //
+  //   1. THE WAVE DIES BEFORE IT ARRIVES. This is the real fault -- §5.5 stages
+  //      the fly-in as the game's central beat ("killing craft mid-entry, before
+  //      they settle, is both the skill play and the score play") and a wave
+  //      that never reaches formation deletes the beat entirely. Fixed by the
+  //      two new types: the WARDEN cannot be melted on approach (3-hit shield +
+  //      5 HP = 0.84 s of unbroken on-target fire for ONE craft), and the
+  //      SPLITTER makes an early kill produce more craft rather than fewer.
+  //      Neither is a bigger number; both change what a parked player's fire
+  //      can accomplish.
+  //   2. HIGHER HP. Drones go to 2 (`hp` below). Emitters stay at §6.2's 3.
+  //      That is the whole of the numeric ramp, and it is deliberately the
+  //      smallest part of the answer -- see (1).
+  //   3. MUCH MORE OF THE GREEN ENEMY. Level one authors 7 Emitters across six
+  //      waves; level two authors 11, and every wave has at least one.
+  //
+  // §5.7 sanctions exactly these levers and no others: "Difficulty scales only
+  // through: formation size and shape complexity, number of simultaneous
+  // patterns, enemy HP, ground-target count, and swoop frequency. It NEVER
+  // scales by raising SCROLL_SPEED past its cap, exceeding APPROACH_BUDGET,
+  // narrowing AISLE_MIN, or introducing any required vertical move."
+  // Nothing below touches any of those four.
+  // -------------------------------------------------------------------------
+  {
+    id: 'kesselring',
+    name: 'LEVEL 2',
+    // Per-type HP for this level only. §5.7 lists enemy HP as a sanctioned
+    // campaign lever; this is that lever, expressed as a table rather than as a
+    // multiplier -- a multiplier would have taken the Emitter from 3 to 6 as a
+    // side effect of wanting the drone at 2.
+    hp: { drone: 2 },
+    // Emitters here pick B2 or B2T from their own identity hash, so two of them
+    // in one formation run visibly different rhythms (§6.2's patternVariants).
+    // Both are authored, validated rows -- the variation is WHICH proved
+    // pattern a craft carries, never what is inside one.
+    craftVariants: true,
+    // Longer than level one's 46 s, because its waves genuinely take longer to
+    // clear now (a 22-craft wave at 2 HP with two Wardens is ~73 bolts of
+    // committed fire). A wave that times out makes its survivors flee, which
+    // would read as the game giving up rather than as the player being slow.
+    // This is also the direction playtest round 2 §4 asked for ("sub-waves
+    // themselves should run a bit longer") -- the duration half of it, not the
+    // taxonomy half, which stays pending.
+    waveTimeoutS: 58,
+    waves: [
+      {
+        // MORE EMITTERS FROM THE FIRST BEAT. Level one introduced one Emitter
+        // in its second wave; level two opens with two, spaced across the grid
+        // so their sweeps overlap from different origins. Nothing new to learn
+        // yet -- this wave's only job is "the same shapes, and they do not die
+        // as fast".
+        name: 'WAVE 1',
+        formation: 'F1',
+        squadrons: [
+          { side: 'L', count: 12, slot: 0, pace: 'normal',
+            types: { 2: 'emitter', 9: 'emitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // THE WARDEN'S INTRODUCTION, at the chevron's APEX.
+        //
+        // §5.5 says the apex "is the natural focus-fire target" -- it is the
+        // lowest point of the V, the nearest craft to the player, the one the
+        // guns are already pointed at. Putting the shielded craft exactly there
+        // is the cheapest possible way to teach the type with no text: the
+        // player shoots the thing they were always going to shoot, sees three
+        // arcs break off it one at a time, and then sees it start to burn. The
+        // mechanic explains itself in the first two seconds of contact.
+        name: 'WAVE 2',
+        formation: 'F3',
+        squadrons: [
+          { side: 'R', count: 11, slot: 0, pace: 'normal',
+            types: { 0: 'emitter', 5: 'warden', 10: 'emitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // THE SPLITTER'S INTRODUCTION, buried in the lens.
+        //
+        // Two of them, one in each arc, so the lesson lands twice from opposite
+        // sides in one wave. The lens is the right shape for it: 18 craft on a
+        // wide ellipse means a Splitter's pair is born into a crowd, which is
+        // when "clearing early made this worse" is most legible.
+        name: 'WAVE 3',
+        formation: 'F2',
+        squadrons: [
+          { side: 'L', count: 9, slot: 0, pace: 'normal',
+            types: { 3: 'splitter', 7: 'emitter' } },
+          { side: 'R', count: 9, slot: 9, delayS: 1.6, pace: 'brisk',
+            types: { 2: 'splitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // F5 SPLIT PODS with a Warden in EACH block, which is the wave the two
+        // new types were chosen to make possible.
+        //
+        // The blocks are 806 px apart and the guns only point one way, so
+        // covering one is choosing not to cover the other -- that was already
+        // true in level one. What changes is that the side you commit to now
+        // takes real time to clear, so the choice has a duration rather than
+        // being resolved in a second and a half. That duration IS the
+        // difficulty.
+        name: 'WAVE 4',
+        formation: 'F5',
+        squadrons: [
+          { side: 'L', count: 6, slot: 0, pace: 'normal',
+            types: { 1: 'emitter', 4: 'warden' } },
+          { side: 'R', count: 6, slot: 6, delayS: 1.3, pace: 'brisk',
+            types: { 1: 'warden', 4: 'emitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // Fewer craft, more pattern pressure -- the same design move level
+        // one's wave 5 makes, so the two levels rhyme rather than just
+        // escalate. Three Emitters on eleven craft is the densest sweep
+        // coverage in the game; the Splitter at the apex means the obvious
+        // focus-fire target answers back.
+        name: 'WAVE 5',
+        formation: 'F3',
+        squadrons: [
+          { side: 'L', count: 11, slot: 0, pace: 'lazy',
+            types: { 0: 'emitter', 5: 'splitter', 10: 'emitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // The level's peak: a 22-craft grid from both sides carrying two
+        // Wardens, two Emitters and a Splitter.
+        //
+        // TWENTY-TWO, NOT TWENTY-FOUR, and the two empty slots are the point.
+        // The cap is 24 and a Splitter's death adds two craft, so a full grid
+        // would silently drop a fragment on the floor -- the type's whole
+        // promise ("killing it makes more") would fail exactly in the wave it
+        // matters most. Two slots of headroom is the fix, and it also leaves
+        // the grid visibly gapped, which reads as a formation already taking
+        // losses rather than as a missing squadron.
+        //
+        // NOT FLAGGED `hardest`. That flag selects which wave §10's
+        // lateral-corrections metric samples, and level one's wave 6 owns it --
+        // POC-8's collected samples were measured against that specific grid,
+        // and quietly adding a second, harder source would make the series
+        // incomparable with itself. The mode decision is settled, but the
+        // measurement should still mean one thing.
+        name: 'WAVE 6',
+        formation: 'F1',
+        squadrons: [
+          { side: 'R', count: 12, slot: 0, pace: 'normal',
+            types: { 3: 'emitter', 8: 'warden' } },
+          { side: 'L', count: 10, slot: 12, delayS: 1.2, pace: 'brisk',
+            types: { 2: 'warden', 6: 'emitter', 9: 'splitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+    ],
+  },
+
+  // -------------------------------------------------------------------------
+  // LEVEL 3 -- The Bulwark. NOT AUTHORED YET, and saying so out loud is the
+  // point of the row: its boss (Nadir Coil) is also unbuilt, so a player who
+  // reaches it gets level two's choreography over the third surface and then
+  // loops. That is a declared gap the validator reports on every boot, not a
+  // silent fallback. `waves: null` is what makes it declared.
+  // -------------------------------------------------------------------------
+  {
+    id: 'bulwark',
+    name: 'LEVEL 3',
+    waves: null,
+    hp: null,
+    waveTimeoutS: 58,
+    craftVariants: true,
+  },
+];
+
+/** The level record for a surface index. Levels and surfaces are 1:1 by
+ *  construction (§5.7 gives every sector its own surface), so this is the same
+ *  index /data/surfaces.js uses. */
+export function levelAt(i) {
+  return LEVELS[((i % LEVELS.length) + LEVELS.length) % LEVELS.length];
+}
+
+/** The wave list a level actually runs, with the unauthored-level fallback
+ *  made explicit rather than implicit. */
+export function levelWaves(i) {
+  const L = levelAt(i);
+  return L.waves || LEVELS[1].waves;
+}
+
+/** Per-level HP for a type (§5.7's sanctioned campaign lever). Falls through to
+ *  §6.2's authored value when the level overrides nothing. */
+export function levelHp(i, type) {
+  const L = levelAt(i);
+  const base = enemyDef(type).hp;
+  if (!L.hp) return base;
+  const o = L.hp[type];
+  return o === undefined ? base : o;
+}
+
+// ---------------------------------------------------------------------------
 // Bosses (§6.4) -- the SHARED framework. Per-boss flavour is /data/bosses.js.
 //
 // §6.4: "Per-boss flavour is in the pod layout and pattern assignment, not in
@@ -946,6 +1644,71 @@ export const BOSS = {
     caretW: 20,
     caretH: 15,
     pulseHz: 2.2,
+  },
+
+  // LAUNCH BAYS -- boss two's mechanic (§6.4: "Brood Gantry | Pods are launch
+  // bays that emit drones on a timer; killing a bay stops its stream").
+  //
+  // Only bosses whose row asks for it use any of this; Cinderjaw's pods do not
+  // exist and Nadir Coil's will be segments. It lives in the shared block
+  // because it is a MODE a pod can be in, not a boss.
+  //
+  // -------------------------------------------------------------------------
+  // WHAT THE MECHANIC IS, AND THE LESSON IT IS BUILT AROUND.
+  //
+  // Boss one is a plain HP sponge on purpose -- "no tricks, nothing super
+  // interesting to see" -- and its job was to teach "shoot the big thing". Boss
+  // two has to be more than that. But the thing boss one actually failed at
+  // first time was not its mechanic, it was LEGIBILITY: the pods were unmarked
+  // and hull hits gave no feedback, so a fight that was mechanically correct
+  // read as invulnerable and shipped unplayable.
+  //
+  // So the rule for boss two is: the mechanic must be discoverable BY PLAYING,
+  // with no tutorial line. A bay cycles between OPEN and SHUT. An open bay is
+  // launching drones at you, is lit, is reticled, and takes damage. A shut bay
+  // is dark, its reticle is dimmed, and bolts visibly ring off it. The thing
+  // hurting you is the thing you can hurt, and the two states look nothing
+  // alike -- which means the player learns the rule by shooting for four
+  // seconds, which is the only teaching method this product can rely on.
+  //
+  // TWO GUARANTEES MAKE IT SAFE, and both are asserted in
+  // /systems/constraints.js rather than left to the phase arithmetic:
+  //   * THERE IS ALWAYS SOMETHING TO SHOOT. With four bays evenly phased and
+  //     openFrac 0.55, between two and three are open at any instant. A state
+  //     where the player can do nothing is exactly the state that made boss one
+  //     read as broken, so it must be unreachable, not unlikely.
+  //   * THE ENDGAME NEVER WAITS. Once `alwaysOpenAtOrBelow` bays remain, they
+  //     jam open permanently -- otherwise the last bay would spend 45% of the
+  //     fight's tail invulnerable, which is the same failure wearing a timer.
+  //
+  // IT ASKS FOR NOTHING ON THE VERTICAL AXIS. Aiming at a bay is lining up
+  // under it and holding (BOSS.podHitHalfW's shot-channel model), so the whole
+  // mechanic is expressed on the lateral axis a board is actually good at
+  // (§0.5). The open/shut cycle is a decision about WHERE to stand, and
+  // auto-fire means there is no timing input at all.
+  // -------------------------------------------------------------------------
+  bay: {
+    // Full open+shut period, and the share of it spent open.
+    cycleS: 7.2,
+    openFrac: 0.55,
+    // Doors take this long to slide, so the state change is a visible event
+    // rather than a texture swap. Damage follows the DOORS, not the clock: a
+    // bay counts as open once it is past halfway.
+    doorS: 0.45,
+    alwaysOpenAtOrBelow: 2,
+
+    // Drone launching. An open bay disgorges on this interval; a dead one
+    // never does, which is §6.4's "killing a bay stops its stream" as a
+    // property of the object rather than a flag.
+    launchIntervalS: 2.6,
+    // Hard ceiling on bay-born craft alive at once, on top of the global enemy
+    // cap. The cap is a floor of the pacing contract (§5.3) and a boss that
+    // could fill it by itself would leave nothing for the fight.
+    maxLaunched: 5,
+    // Launched drones fly ENEMY.fragment's exit arc -- never a dive (§5.5's
+    // do-not-port list). They are worth shooting and they can be flown into;
+    // they can never reach the player band.
+    launchScore: 60,
   },
 
   // Per-pod HP pips, drawn on the playfield directly above each pod. Same

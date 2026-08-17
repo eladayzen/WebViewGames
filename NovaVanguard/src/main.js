@@ -32,7 +32,7 @@ import {
   updateTransition,
 } from './surface/transition.js';
 import { surfaceAt, SURFACES } from './data/surfaces.js';
-import { BOSSES } from './data/bosses.js';
+import { BOSSES, bossIsBuilt } from './data/bosses.js';
 import { createSectorTransitionUi } from './ui/sectorTransition.js';
 import {
   updateDirector,
@@ -42,6 +42,11 @@ import {
   forceBossWarning,
 } from './systems/director.js';
 import { resolveCollisions, assertRuntimeInvariants } from './systems/collision.js';
+import {
+  resetPickups,
+  updatePickups,
+  updateTelegraphs,
+} from './systems/pickups.js';
 import { runValidator } from './systems/constraints.js';
 import { createHud } from './ui/hud.js';
 import { createInstrumentation } from './debug/instrumentation.js';
@@ -79,9 +84,22 @@ async function boot() {
   // The boss hull's measured aspect is handed in so §6.4's "lowest extent
   // y = 0.58" is checked against the art that actually loaded, rather than
   // against a number someone wrote down next to it.
+  // EVERY built boss's real aspect, not just the first one's.
+  //
+  // §6.4's "never enters the player band" is derived from (authored width /
+  // hull aspect), so it is a claim about the ART. With two built bosses of
+  // visibly different proportions, handing the validator only surface zero's
+  // would leave boss two's extent unchecked -- and the failure mode is a hull
+  // that reaches into the player band, which on a machine where the player
+  // cannot dodge upward is unrecoverable rather than merely wrong.
+  const bossAspects = {};
+  for (const s of SURFACES) {
+    if (bossIsBuilt(s.boss)) bossAspects[s.boss] = renderer.bossHullAspect(s.boss);
+  }
   const report = runValidator({
     onReport: (res) => hud.showConstraintReport(res),
     bossAspect: renderer.bossHullAspect(surfaceAt(0).boss),
+    bossAspects,
   });
 
   const panel = createPanel(document, instr, {});
@@ -132,6 +150,10 @@ async function boot() {
     sectorUi.hide();
     renderer.setSurface(surfaceAt(world.surfaceIndex));
     rng.reseed(POC_SCENARIO.seed);
+    // Pickups roll on their OWN stream (see /systems/pickups.js) so that adding
+    // drops cannot shift a single draw of the scenario's stream -- which is
+    // what keeps level one's locked squadron script byte-identical.
+    resetPickups(world, POC_SCENARIO.seed);
     initSurface(world, rng);
     startScenario(world, rng, hud.banners);
     instr.runStart(world);
@@ -168,6 +190,14 @@ async function boot() {
     for (const e of world.enemies) e.alive = false;
     for (const b of world.enemyBullets) b.alive = false;
     for (const b of world.playerBolts) b.alive = false;
+    // Canisters and pending re-offers go with the playfield: one left drifting
+    // would arrive over the new surface with no kill behind it, and a re-offer
+    // clock would fire a telegraph for a drop the player never saw.
+    // The RUNNING WEAPON is deliberately NOT cleared -- the transition is a
+    // continuation, not a restart (the player keeps shield and position too),
+    // and taking a timed pickup away at a screen wipe would read as a bug.
+    for (const q of world.pickups) q.alive = false;
+    for (const t of world.telegraphs) t.alive = false;
     // Re-scatter the props and reset the scroll under the cover. The player's
     // shield and position are deliberately NOT reset -- this is a continuation,
     // not a restart, which is the whole point of the decision note's "the
@@ -332,6 +362,11 @@ async function boot() {
     updateEnemies(world, rng, dt);
     updateEmitters(world, dt);
     updateEnemyBullets(world, dt);
+    // AFTER the director and the enemies, BEFORE collisions: a canister that
+    // drops this frame is placed relative to where the player is now, and the
+    // collect test then runs in the same frame's collision pass.
+    updatePickups(world, dt);
+    updateTelegraphs(world, dt);
     resolveCollisions(world, renderer.fx, instr);
 
     if (world.fx.shakeT > 0) world.fx.shakeT = Math.max(0, world.fx.shakeT - dt);

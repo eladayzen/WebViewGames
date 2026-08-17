@@ -111,6 +111,22 @@
         <div id="shield-glyph">&#128737;</div>
       </div>
 
+      <!-- The temporary weapon's remaining time (§5.6, and Amit's "for limited
+           time"). LEFT MARGIN, directly under the shield gauge, because §7.1
+           groups the "how strong am I" readouts together there and this is one
+           of them — it sits where the weapon-rank ladder will go at MVP.
+
+           A NAME PLUS A DRAINING BAR, not a number. The player is standing on a
+           balance board reading the centre of the screen; "how much is left" is
+           a shape, not a digit, and the bar is legible peripherally in a way a
+           countdown is not. The name is there for the first pickup only —
+           after that the bar carries it. Hidden entirely while the standard
+           weapon is running, so it is never chrome. -->
+      <div id="weapon-timer" class="hidden">
+        <div id="weapon-name"></div>
+        <div id="weapon-track"><div id="weapon-fill"></div></div>
+      </div>
+
       <!-- THE BOSS HP READOUT, AND WHY THERE ARE TWO OF THEM.
 
            §6.4/§7.1 specify "a full-width HP bar along the very top edge, plus

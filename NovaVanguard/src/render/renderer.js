@@ -30,7 +30,11 @@ import {
   SURFACE,
   FX,
   AISLE_MIN,
+  PICKUPS,
+  TELEGRAPH,
+  weaponDef,
 } from '../data/tuning.js';
+import { pickupVisible } from '../systems/pickups.js';
 import { surfaceAt } from '../data/surfaces.js';
 import { bossDef } from '../data/bosses.js';
 import { loadTextures, T } from './textures.js';
@@ -80,6 +84,11 @@ export async function createRenderer(mountEl) {
     surfaceEmissive: new Container(),
     ambient: new Container(),
     airShadows: new Container(),
+    // §9.1's layer order puts pickups between the air shadows and the player,
+    // which is also the only place they can go: under the craft (so the hull is
+    // never hidden by a collectable) and over the surface (so a canister on a
+    // busy deck is still legible).
+    pickups: new Container(),
     player: new Container(),
     // The boss sits UNDER the ordinary enemy layer. It is the largest thing on
     // screen and it is drawn as a single wide hull, so anything sharing the
@@ -192,6 +201,28 @@ export async function createRenderer(mountEl) {
   });
   const pipGraphics = new Graphics();
   layers.enemyOverlays.addChild(pipGraphics);
+  // The Warden's shimmer shield (§6.2), drawn as one arc per remaining hit.
+  // Vector rather than a sprite because it is a COUNT -- "three more, then it
+  // starts dying" has to be readable at a glance, and an arc that disappears is
+  // a far clearer statement than a ring that dims.
+  const shieldGraphics = new Graphics();
+  layers.enemyOverlays.addChild(shieldGraphics);
+
+  // --- pickups (§5.6) ------------------------------------------------------
+  // One static sprite each, spun and pulsed at runtime -- §5.6 specifies
+  // exactly that, and it is why a pickup type costs one image. The halo under
+  // it is the shared additive particle texture, so it costs nothing at all.
+  const pickupHalos = bank(layers.pickups, 8, () => {
+    const s = new Sprite(T('particle'));
+    s.blendMode = 'add';
+    return s;
+  });
+  const pickupSprites = bank(layers.pickups, 8, () => new Sprite(T('pickupWeapon')));
+  // Entry-band telegraph markers (§5.3). The band and the pool have existed
+  // since POC-1 with nothing to put in them; a re-offered pickup is the game's
+  // first top-edge arrival, so this is that system going live.
+  const telegraphGraphics = new Graphics();
+  layers.pickups.addChild(telegraphGraphics);
 
   // --- boss (§6.4) ---------------------------------------------------------
   // One hull + four pod instances of ONE pod sprite. Nothing here is created
@@ -236,6 +267,27 @@ export async function createRenderer(mountEl) {
   const ship = new Sprite(T('shipLevel'));
   ship.anchor.set(0.5);
   layers.player.addChild(ship);
+
+  // THE IDLE TELL for the empty-screen fire hold (FIRE_HOLD).
+  //
+  // This is the mitigation for the one real risk in holding fire at all. §4
+  // removed the fire button on purpose -- "there is no fire button and no bomb
+  // button; the entire input budget goes to lateral position" -- which means
+  // the player has NO way to test whether the game is still reading their lean
+  // except by watching what the ship does. The gun stream is that. Stopping it
+  // silently is indistinguishable from a frozen game, on a device where the
+  // player is standing on a board and cannot poke anything to check.
+  //
+  // So the hold has to look deliberate: a charged glow gathers at the muzzle
+  // and breathes while the guns are held, and vanishes the instant they resume.
+  // Cyan-white, because it is the player's own weapon (§5.4), and additive over
+  // the existing particle texture, so it costs one sprite and no new art.
+  const muzzleGlow = new Sprite(T('particle'));
+  muzzleGlow.anchor.set(0.5);
+  muzzleGlow.blendMode = 'add';
+  muzzleGlow.tint = 0x9ff0ff;
+  muzzleGlow.visible = false;
+  layers.player.addChild(muzzleGlow);
 
   const particles = createParticles(layers.particles, T('particle'));
 
@@ -344,6 +396,8 @@ export async function createRenderer(mountEl) {
     }
     for (; si < shadowSprites.length; si++) shadowSprites[si].visible = false;
 
+    drawPickups(w);
+    drawTelegraphs(w);
     drawBoss(w);
 
     // Enemies -- one image per body, ROTATED AT RUNTIME to heading (§9.5
@@ -358,6 +412,7 @@ export async function createRenderer(mountEl) {
     let ei2 = 0;
     let sci = 0;
     pipGraphics.clear();
+    shieldGraphics.clear();
     for (let i = 0; i < w.enemies.length; i++) {
       const e = w.enemies[i];
       if (!e.alive || ei2 >= enemySprites.length) continue;
@@ -401,6 +456,14 @@ export async function createRenderer(mountEl) {
         }
         drawHpPips(pipGraphics, e, def, dmg);
       }
+
+      // The Warden's shimmer shield (§6.2). One arc per remaining hit, around
+      // the craft, breaking off as they are spent -- so "three more and then it
+      // starts dying" is countable rather than inferred, and the moment the
+      // last one goes is a visible event rather than a change in a hidden
+      // number. That legibility is the entire reason the type is safe to add:
+      // an invisible damage gate is the exact failure boss one shipped with.
+      if (e.shield > 0) drawShield(shieldGraphics, e, def, w.time);
     }
     for (; ei2 < enemySprites.length; ei2++) enemySprites[ei2].visible = false;
     for (; sci < scorchSprites.length; sci++) scorchSprites[sci].visible = false;
@@ -419,22 +482,49 @@ export async function createRenderer(mountEl) {
     // i-frame flicker, so a bullet cluster visibly cannot strip three
     // segments in a frame (§5.10).
     ship.alpha = p.invulnT > 0 ? 0.45 + 0.55 * Math.abs(Math.sin(w.time * 26)) : 1;
+    // The plume never stops, held or not: it is the other half of "the game is
+    // still reading you", and cutting it alongside the guns would make an empty
+    // screen look like a dead one.
     if (p.alive) particles.thrust(p.x, p.y + 54, p.roll);
+
+    // Charged muzzle glow while fire is held (FIRE_HOLD). Breathing, not
+    // static -- a still glow reads as a UI decal, a breathing one reads as a
+    // weapon holding a charge.
+    muzzleGlow.visible = p.alive && p.holding;
+    if (muzzleGlow.visible) {
+      const beat = 0.5 + 0.5 * Math.sin(w.time * 4.4);
+      muzzleGlow.x = p.x;
+      muzzleGlow.y = p.y + PLAYER.fire.muzzleOffsetY + 8;
+      muzzleGlow.scale.set(
+        ((34 + beat * 12) / Math.max(1, muzzleGlow.texture.width)) * 2
+      );
+      muzzleGlow.alpha = 0.38 + beat * 0.34;
+    }
 
     // Projectiles. Colour-coded ownership, carried over verbatim: player fire
     // is cyan-white, enemy fire is orange/magenta, over a dark ground. "No
     // exceptions, including for bosses." (§5.4)
+    //
+    // A bolt now names its own WEAPONS row, so the temporary weapon's fatter
+    // round draws itself with no branch here -- and the angled rounds of a fan
+    // are ROTATED TO THEIR OWN TRAVEL DIRECTION, which is the one rotation in
+    // this game that is not forbidden: §0.2 rule 3 fixes the CRAFT's heading
+    // north, and a projectile pointing the way it is going is what makes a
+    // spread read as a spread rather than as three bolts that missed.
     let bi = 0;
     for (let i = 0; i < w.playerBolts.length; i++) {
       const b = w.playerBolts[i];
       if (!b.alive || bi >= boltSprites.length) continue;
+      const def = weaponDef(b.weapon);
       const sp = boltSprites[bi++];
       sp.visible = true;
+      sp.texture = T(def.textureKey);
       sp.anchor.set(0.5);
       sp.x = b.x;
       sp.y = b.y;
-      sp.scale.set((b.r * 2.6) / Math.max(1, sp.texture.width));
-      sp.tint = 0xd8fbff;
+      sp.rotation = b.vx === 0 ? 0 : Math.atan2(b.vx, -b.vy);
+      sp.scale.set((b.r * def.drawScale) / Math.max(1, sp.texture.width));
+      sp.tint = def.tint;
     }
     for (; bi < boltSprites.length; bi++) boltSprites[bi].visible = false;
 
@@ -493,6 +583,85 @@ export async function createRenderer(mountEl) {
   }
 
   /**
+   * Pickups (§5.6). "All spun/pulsed at runtime from a single static sprite
+   * each" -- so the whole animation budget for the type is the two lines below,
+   * plus an additive halo off the shared particle texture.
+   *
+   * The spin is slow and the pulse is small on purpose. A pickup is the one
+   * object on the playfield the player is meant to want, and the frame is
+   * already full of things that flash and sweep; something that turns steadily
+   * and glows reads as valuable, while something that strobes reads as
+   * dangerous, which is the exact wrong signal.
+   */
+  function drawPickups(w) {
+    const P = PICKUPS;
+    let pi = 0;
+    for (let i = 0; i < w.pickups.length; i++) {
+      const q = w.pickups[i];
+      if (!pickupVisible(q) || pi >= pickupSprites.length) continue;
+      const kind = P.kinds[q.kind] || P.kinds.scatter;
+      const beat = 0.5 + 0.5 * Math.sin(w.time * P.pulseHz * TWO_PI);
+      const sp = pickupSprites[pi];
+      const halo = pickupHalos[pi];
+      pi++;
+      sp.visible = true;
+      sp.texture = T('pickupWeapon');
+      sp.anchor.set(0.5);
+      sp.x = q.x;
+      sp.y = q.y;
+      // A SPIN, NOT A TUMBLE. The canister is a top-down object seen from
+      // directly above (§0.2), so rotating it in the frame plane is the only
+      // rotation that does not imply a camera that does not exist.
+      sp.rotation = w.time * P.spinHz * TWO_PI;
+      sp.scale.set(
+        ((P.spriteWidth * (1 + P.pulseAmp * beat)) / Math.max(1, sp.texture.width))
+      );
+      sp.tint = kind.tint;
+      halo.visible = true;
+      halo.x = q.x;
+      halo.y = q.y;
+      halo.tint = 0x7fe8ff;
+      halo.scale.set(
+        (P.spriteWidth * P.haloScale * (0.92 + beat * 0.16)) /
+          Math.max(1, halo.texture.width)
+      );
+      halo.alpha = P.haloAlpha * (0.75 + beat * 0.35);
+    }
+    for (; pi < pickupSprites.length; pi++) {
+      pickupSprites[pi].visible = false;
+      pickupHalos[pi].visible = false;
+    }
+  }
+
+  /**
+   * The entry-band telegraph (§5.3): a marker at an arrival's x, 1.0 s ahead,
+   * "fading in over 0.2 s and pulsing".
+   *
+   * In Mode S this is explicitly what "buys back the reading time the scroll
+   * consumes", and what it buys here is lateral: the player learns WHICH x a
+   * re-offered pickup is coming back at while there is still a second to lean,
+   * which is the difference between a lure and a thing that went past.
+   */
+  function drawTelegraphs(w) {
+    const g = telegraphGraphics;
+    g.clear();
+    const top = BANDS.entryTelegraph.top * DESIGN_H;
+    const h = (BANDS.entryTelegraph.bottom - BANDS.entryTelegraph.top) * DESIGN_H;
+    for (let i = 0; i < w.telegraphs.length; i++) {
+      const t = w.telegraphs[i];
+      if (!t.alive) continue;
+      const fade = Math.min(1, t.t / TELEGRAPH.fadeInS);
+      const pulse = 0.55 + 0.45 * Math.abs(Math.sin(w.time * 6));
+      const a = fade * pulse;
+      g.rect(t.x - 34, top, 68, h).fill({ color: 0x7fe8ff, alpha: a * 0.30 });
+      g.moveTo(t.x - 16, top + h)
+        .lineTo(t.x, top + h + 14)
+        .lineTo(t.x + 16, top + h)
+        .stroke({ color: 0x7fe8ff, width: 3, alpha: a });
+    }
+  }
+
+  /**
    * The boss (§6.4). One wide hull, four pod instances of one pod sprite, and
    * an additive core that only lights when the core is actually takeable --
    * the light IS the tell, so it must never be on decoratively.
@@ -541,13 +710,24 @@ export async function createRenderer(mountEl) {
     // A HULL BOSS HAS NONE, and this loop simply runs zero times -- there is no
     // "if hull boss" here. That is the point of expressing the difference as a
     // row rather than a branch.
+    const podW = def.podSpriteWidth || BOSS.podSpriteWidth;
     let pi = 0;
     for (const pod of b.pods) {
       if (pi >= podSprites.length) break;
       const sp = podSprites[pi++];
       const pp = podPosition(b, pod);
       sp.visible = true;
-      sp.texture = T(pod.alive ? def.podKey : def.podDeadKey);
+      // THREE STATES, NOT TWO, on a boss whose row authors a shut texture.
+      // §6.4's bays are open or closed as well as alive or dead, and the
+      // difference has to be unmistakable at 126 px -- it is the fight's whole
+      // rule. A boss without `podShutKey` never has a shut pod (its `open` is
+      // permanently true), so this reads exactly as it did for every other
+      // shape.
+      sp.texture = T(
+        !pod.alive ? def.podDeadKey
+          : pod.open || !def.podShutKey ? def.podKey
+            : def.podShutKey
+      );
       sp.anchor.set(0.5);
       sp.x = pp.x;
       sp.y = pp.y;
@@ -556,15 +736,27 @@ export async function createRenderer(mountEl) {
       // 1340px hull full of highlights is easy to miss, a silhouette that jumps
       // is not.
       const pop = pod.hitFlashT > 0 ? 1 + 0.12 * (pod.hitFlashT / 0.14) : 1;
-      sp.scale.set((BOSS.podSpriteWidth / Math.max(1, sp.texture.width)) * pop);
+      // The doors SLIDE rather than cut: the sprite squeezes through the swap
+      // so an opening bay is a visible event. Damage follows `open`, which
+      // trips at halfway, so what the player sees and what the bolt meets never
+      // disagree by more than a frame.
+      const door = def.podShutKey && pod.alive
+        ? 0.9 + 0.1 * Math.abs(pod.doorK * 2 - 1)
+        : 1;
+      sp.scale.set((podW / Math.max(1, sp.texture.width)) * pop * door);
       sp.rotation = 0;
       // A pod in the firing rotation pulses, so the player can see WHICH pod
       // is producing the pattern they are dodging. That is the whole reason
       // pod-owned patterns are worth building: the fight is legible enough to
       // have a target priority.
-      if (pod.alive && pod.firing) {
+      if (pod.alive && pod.firing && pod.open) {
         sp.tint = pod.hitFlashT > 0 ? 0xffffff : 0xffd0ee;
         sp.alpha = 0.9 + 0.1 * Math.sin(w.time * 7);
+      } else if (pod.alive && !pod.open) {
+        // Shut: visibly cold and inert. It has to look like armour, because
+        // for as long as it is shut it IS armour.
+        sp.tint = pod.hitFlashT > 0 ? 0xffffff : 0x8e8a96;
+        sp.alpha = 1;
       } else {
         sp.tint = pod.hitFlashT > 0 ? 0xffffff : 0xbfb4c4;
         sp.alpha = 1;
@@ -598,23 +790,29 @@ export async function createRenderer(mountEl) {
         const pp = podPosition(b, pod);
         const half = BOSS.podHitHalfW;
         const top = pp.y;
-        // The lane itself: barely-there fill, legible edges. It has to read as
-        // an opening in the armour, not as a beam.
+        // A SHUT BAY'S LANE GOES NEARLY DARK. The lane is a promise that a
+        // bolt fired here will land, and while the doors are closed that
+        // promise is false -- leaving it lit would be exactly the lie that made
+        // boss one read as invulnerable, only worse, because here it would be
+        // lit on a target that is genuinely immune. Dimmed rather than removed:
+        // the player still needs to see WHERE the bay is so they can be under
+        // it when it opens.
+        const k = pod.open ? 1 : 0.24;
         bossChannels
           .rect(pp.x - half, top, half * 2, skirt - top)
-          .fill({ color: TG.color, alpha: TG.channelFillAlpha });
+          .fill({ color: TG.color, alpha: TG.channelFillAlpha * k });
         bossChannels
           .moveTo(pp.x - half, top)
           .lineTo(pp.x - half, skirt)
           .moveTo(pp.x + half, top)
           .lineTo(pp.x + half, skirt)
-          .stroke({ color: TG.color, width: 2, alpha: TG.channelEdgeAlpha });
+          .stroke({ color: TG.color, width: 2, alpha: TG.channelEdgeAlpha * k });
         // The caret at the lane's mouth, pointing up into it.
         bossChannels
           .moveTo(pp.x - TG.caretW, skirt)
           .lineTo(pp.x, skirt - TG.caretH)
           .lineTo(pp.x + TG.caretW, skirt)
-          .stroke({ color: TG.color, width: 3, alpha: 0.5 + pulse * 0.4 });
+          .stroke({ color: TG.color, width: 3, alpha: (0.5 + pulse * 0.4) * k });
       }
     }
 
@@ -669,13 +867,21 @@ export async function createRenderer(mountEl) {
         if (!pod.alive) continue;
         const pp = podPosition(b, pod);
         const hx = BOSS.podHitHalfW;
-        const hy = BOSS.podRadius + 8;
+        // Sized off the DRAWN pod so the bracket frames the thing it points at
+        // rather than sitting inside it -- Brood Gantry's bays are wider than
+        // Cinderjaw's batteries, and a reticle drawn on top of its own target
+        // stops reading as a reticle.
+        const hy = podW * 0.5 + 8;
         const c = TG.reticleCorner;
         const hit = pod.hitFlashT > 0;
+        // Dimmed while shut, for the same reason the lane is: a bright reticle
+        // on something that cannot be hurt is a lie, and it is the specific
+        // lie this whole boss was designed around not telling.
+        const k = pod.open ? 1 : 0.26;
         const stroke = {
           color: hit ? 0xffffff : TG.color,
           width: TG.reticleWidth,
-          alpha: hit ? 1 : TG.reticleAlpha * pulse,
+          alpha: hit ? 1 : TG.reticleAlpha * pulse * k,
         };
         // Four corner brackets rather than a closed box: the bracket reads as a
         // reticle at a glance, and leaving the sides open keeps the pod's own
@@ -853,6 +1059,44 @@ function drawHpPips(g, e, def, dmg) {
     g.rect(x0 + i * (dmg.pipW + dmg.pipGap), y, dmg.pipW, dmg.pipH).fill({
       color: i < e.hp ? dmg.pipOnColor : dmg.pipOffColor,
       alpha: i < e.hp ? 0.95 : 0.65,
+    });
+  }
+}
+
+/**
+ * The Warden's shimmer shield (§6.2), as one arc per remaining hit.
+ *
+ * A COUNT, drawn as countable things. The type's promise is "three bolts and
+ * then it starts dying", and a player who cannot see the count is a player
+ * shooting at something that looks unkillable -- which is precisely the state
+ * boss one shipped in and the reason this is vector arcs rather than a ring
+ * that dims. Arcs break off one at a time; when the last one goes the craft's
+ * own HP pips take over, so the two readouts hand off cleanly.
+ *
+ * Amber, matching the craft's own emitter lenses and separated from both
+ * ownership colours (§5.4): it is neither the player's cyan-white ordnance nor
+ * the enemy's orange/magenta fire, so a shield arc can never be misread as
+ * something in flight.
+ */
+function drawShield(g, e, def, time) {
+  const n = def.shieldHits || 0;
+  if (!n || e.shield <= 0) return;
+  const r = def.radius + 16;
+  const gap = 0.22;
+  const span = (Math.PI * 2) / n - gap;
+  // Rotating slowly, so the shield reads as active rather than painted on.
+  const spin = time * 0.5;
+  const hit = e.shieldFlashT > 0;
+  for (let i = 0; i < e.shield; i++) {
+    const a0 = spin + i * ((Math.PI * 2) / n);
+    // moveTo before every arc: without it the path stays open between arcs and
+    // Pixi joins them with a chord, which turns three separate shield segments
+    // into a triangle.
+    g.moveTo(e.x + Math.cos(a0) * r, e.y + Math.sin(a0) * r);
+    g.arc(e.x, e.y, r, a0, a0 + span).stroke({
+      color: hit ? 0xffffff : 0xffc25a,
+      width: hit ? 7 : 5,
+      alpha: hit ? 1 : 0.72 + 0.18 * Math.sin(time * 3 + i),
     });
   }
 }

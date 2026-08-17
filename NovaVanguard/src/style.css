@@ -405,6 +405,23 @@ body {
   box-shadow: 0 0 1vmin rgba(255, 208, 238, 0.75);
 }
 
+/* A SHUT LAUNCH BAY (§6.4, BOSS.bay). Alive, at full HP, and immune for as
+   long as the doors are closed -- so its gauge goes cold and its fill goes
+   grey. It must not look like a healthy target, because for these few seconds
+   it is not one, and a bright bar over an immune bay is the readout telling the
+   same lie the playfield is careful not to. It also must not look DEAD, or the
+   player would stop watching for it to open. Grey-and-present is the only
+   correct third state. */
+.boss-pod-gauge.shut {
+  border-color: rgba(150, 150, 170, 0.55);
+  box-shadow: none;
+}
+
+.boss-pod-gauge.shut .boss-pod-fill {
+  background: #6b6b7a;
+  box-shadow: none;
+}
+
 /* ---------------------------------------------------------------------------
    WARNING band (§6.4) -- 2.0 s before the boss arrives.
 --------------------------------------------------------------------------- */
@@ -686,4 +703,65 @@ body {
 
 #restart-button:hover {
   background: rgba(30, 100, 128, 0.95);
+}
+
+/* ---------------------------------------------------------------------------
+   The temporary weapon's remaining time (§5.6, WEAPONS.scatter)
+
+   Left margin, under the shield gauge, in the "how strong am I" group §7.1
+   puts there. CYAN, like every other player-owned readout and like the weapon's
+   own rounds -- §5.4 colour-codes ownership and the HUD has no business
+   disagreeing with the playfield about whose thing this is.
+
+   The bar drains right-to-left via a transform rather than a width, so it never
+   forces layout: this updates every frame for eleven seconds at a time.
+--------------------------------------------------------------------------- */
+#weapon-timer {
+  position: absolute;
+  left: 1.1%;
+  top: 73.5%;
+  width: 3.6%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5vmin;
+  z-index: 20;
+  pointer-events: none;
+}
+
+#weapon-name {
+  font: 700 1.05vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.12vmin;
+  color: #b7f4ff;
+  text-shadow: 0 0 1vmin rgba(111, 232, 255, 0.8);
+  white-space: nowrap;
+}
+
+#weapon-track {
+  width: 100%;
+  height: 1.1vmin;
+  border: 0.24vmin solid var(--cyan, #6fe8ff);
+  border-radius: 0.7vmin;
+  background: rgba(4, 18, 26, 0.55);
+  overflow: hidden;
+  box-shadow: 0 0 1.2vmin rgba(111, 232, 255, 0.35);
+}
+
+#weapon-fill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #37c8e6, #d8fbff);
+  box-shadow: 0 0 0.9vmin rgba(111, 232, 255, 0.8);
+}
+
+/* The last two seconds pulse, so "it is about to go" is readable without
+   reading anything. */
+#weapon-timer.expiring #weapon-fill {
+  animation: weapon-expiring 0.42s ease-in-out infinite alternate;
+}
+
+@keyframes weapon-expiring {
+  from { opacity: 1; }
+  to { opacity: 0.35; }
 }
