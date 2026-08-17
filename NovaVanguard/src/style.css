@@ -1,0 +1,689 @@
+/* Nova Vanguard HUD (§7.1). DOM/CSS overlay on top of the canvas -- not drawn
+   into the render layer, so text stays crisp and updates stay cheap.
+
+   Everything is sized in `vmin`-relative or percentage units, never fixed px,
+   because the SDK's WebView is a small viewport and a px-sized control that
+   looks right in a dev window dominates the screen there. That is a lesson
+   already paid for in this repo (see WEB_MINIGAME_TECH_RETROSPECTIVE.md's
+   note 4 on the intro-overlay work).
+
+   Every element sits in the MARGINS. The centre of the frame stays clear
+   (§5.1) -- no persistent readout above y = 0.34 in the middle 60%. */
+
+:root {
+  --cyan: #6fe8ff;
+  --cyan-dim: #1d5f74;
+  --hot: #ff8a3c;
+  --magenta: #ee40c4;
+  --ink: #05060a;
+  --panel: rgba(8, 12, 22, 0.82);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #eafcff;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The letterboxed 16:9 frame. Sized by JS from the renderer's own box, so the
+   HUD and the playfield agree on where the frame edges are. */
+#stage {
+  position: absolute;
+  overflow: hidden;
+}
+
+#app canvas {
+  display: block;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Left margin: the shield gauge (§7.1). Vertical, 6 segments, cyan, with a
+   shield glyph at its foot -- per concept-01.
+   The outer 6% of the frame is HUD margin, so it sits inside that band.
+--------------------------------------------------------------------------- */
+
+#shield-wrap {
+  position: absolute;
+  left: 1.1%;
+  top: 26%;
+  height: 46%;
+  width: 3.6%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6vmin;
+  z-index: 20;
+}
+
+#shield-gauge {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.55vmin;
+  padding: 0.5vmin;
+  border: 0.28vmin solid var(--cyan);
+  border-radius: 1.4vmin;
+  background: rgba(4, 18, 26, 0.55);
+  box-shadow: 0 0 1.6vmin rgba(111, 232, 255, 0.35);
+}
+
+.shield-seg {
+  flex: 1;
+  border-radius: 0.5vmin;
+  background: linear-gradient(90deg, #37c8e6, #9df4ff);
+  box-shadow: 0 0 0.9vmin rgba(111, 232, 255, 0.75);
+  transition: opacity 0.14s linear, background 0.14s linear;
+}
+
+.shield-seg.off {
+  background: #102a33;
+  box-shadow: none;
+  opacity: 0.5;
+}
+
+/* Nearly-out reads hot from the centre of the screen, so the player does not
+   have to look at the gauge to know (§7.3). */
+.shield-seg.low {
+  background: linear-gradient(90deg, #ff6a2a, #ffc48a);
+  box-shadow: 0 0 1.2vmin rgba(255, 122, 42, 0.9);
+}
+
+#shield-glyph {
+  font-size: 2.1vmin;
+  color: var(--cyan);
+  filter: drop-shadow(0 0 0.6vmin rgba(111, 232, 255, 0.8));
+}
+
+/* ---------------------------------------------------------------------------
+   Top-left: the framing-mode switch.
+
+   THE ELEMENT IS NO LONGER IN index.html -- Mode S is decided, so the on-screen
+   A/B control was removed (playtest round 3). These rules are kept
+   deliberately, not overlooked: the decision note requires Mode A's code path
+   to stay available for comparison, and `M` and ?mode= still swap modes, so
+   putting the switch back is a few lines of HTML and no CSS work. Delete this
+   block only if Mode A itself is ever dropped, which the decision note says it
+   is not.
+--------------------------------------------------------------------------- */
+
+#mode-switch {
+  position: absolute;
+  left: 1.1%;
+  top: 2.2%;
+  z-index: 9998;
+}
+
+.mode-label {
+  font-size: 1.25vmin;
+  letter-spacing: 0.28em;
+  color: #7f93a8;
+  margin-bottom: 0.5vmin;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 0.5vmin;
+}
+
+.mode-buttons button {
+  font: 600 1.5vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  padding: 0.9vmin 1.3vmin;
+  border-radius: 0.8vmin;
+  border: 0.22vmin solid #2b4457;
+  background: rgba(10, 18, 30, 0.8);
+  color: #7f93a8;
+  cursor: pointer;
+}
+
+.mode-buttons button.on {
+  border-color: var(--cyan);
+  color: #eafcff;
+  background: rgba(20, 70, 92, 0.9);
+  box-shadow: 0 0 1.4vmin rgba(111, 232, 255, 0.5);
+}
+
+/* ---------------------------------------------------------------------------
+   Banner: full-width band centred in the gutter at y ~= 0.42 (§7.1), so it
+   never sits over the formation band or the player band.
+--------------------------------------------------------------------------- */
+
+#banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 42%;
+  transform: translateY(-50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 30;
+}
+
+/* WHILE A BOSS HULL IS ON SCREEN, the band steps down out of the hull.
+   BANNER_Y_BOSS in /data/tuning.js carries the full reasoning and the two
+   clearances the number is picked from; the short version is that §7.1's 0.42
+   and §6.4's hull extent are both authored and they overlap, so the one line
+   telling the player what to do was being printed on armour. /ui/hud.js adds
+   this class for exactly as long as w.boss.active. */
+#banner.on-boss {
+  top: 57.5%;
+}
+
+/* Slightly smaller type in the boss position: the band there has the hull's
+   mast above it and the player's own reachable ceiling below it, and losing a
+   few percent of cap height buys clearance at both edges without costing
+   legibility at arm's length. */
+#banner.on-boss #banner-text {
+  font-size: 2.8vmin;
+  padding: 0.85vmin 3.4vmin;
+}
+
+#banner-text {
+  display: inline-block;
+  padding: 1vmin 4vmin;
+  font: 700 3.2vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.42em;
+  color: #eafcff;
+  background: linear-gradient(
+    90deg,
+    rgba(8, 20, 34, 0) 0%,
+    rgba(8, 30, 48, 0.86) 18%,
+    rgba(8, 30, 48, 0.86) 82%,
+    rgba(8, 20, 34, 0) 100%
+  );
+  text-shadow: 0 0 2vmin rgba(111, 232, 255, 0.8);
+}
+
+/* ---------------------------------------------------------------------------
+   #boss-hp -- the HULL BOSS's HP bar, riding directly above the hull.
+
+   Position and width are written per frame by /ui/hud.js from the boss's live
+   design-space geometry; everything here is appearance only. The stage is the
+   letterboxed 16:9 frame and the Pixi canvas fills exactly the same box, so a
+   percentage here and a design-space coordinate there mean the same place --
+   which is what lets a DOM bar sit convincingly on a rendered object.
+
+   Deliberately NOT styled like the top-edge chrome: it has a solid backing
+   plate and a heavy border so it reads as a thing attached to the boss rather
+   than as a screen rule. That distinction is the entire fix.
+--------------------------------------------------------------------------- */
+
+#boss-hp {
+  position: absolute;
+  pointer-events: none;
+  z-index: 32;
+  text-align: center;
+}
+
+#boss-hp-name {
+  font: 800 1.9vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.34em;
+  color: #ffe6f7;
+  text-shadow: 0 0 1.6vmin rgba(255, 79, 191, 0.9), 0 0.2vmin 0.3vmin #000;
+  margin-bottom: 0.5vmin;
+}
+
+#boss-hp-row {
+  display: flex;
+  align-items: center;
+  gap: 1vmin;
+}
+
+#boss-hp-track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 2.2vmin;
+  border: 0.28vmin solid rgba(255, 150, 215, 0.85);
+  border-radius: 0.4vmin;
+  /* Opaque, not translucent: it sits over the hull art, and a see-through bar
+     over a busy metallic surface is exactly the kind of low-contrast readout
+     §7.3 says the playfield must not need decoding. */
+  background: #1a0512;
+  box-shadow: 0 0 1.6vmin rgba(0, 0, 0, 0.85), inset 0 0 0.8vmin rgba(0, 0, 0, 0.9);
+  overflow: hidden;
+}
+
+#boss-hp-fill,
+#boss-hp-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  transform-origin: left center;
+}
+
+#boss-hp-fill {
+  background: linear-gradient(90deg, #ff7a2a, #ff4fbf);
+  box-shadow: 0 0 1.4vmin rgba(255, 79, 191, 0.75);
+}
+
+/* The chip is the slice lost in the last instant, drawn UNDER the fill and
+   slightly wider, so it shows as a bright leading edge. It is the only reason a
+   single bolt against a 240-point pool is visible at all. */
+#boss-hp-chip {
+  background: #fff4fb;
+  box-shadow: 0 0 1.2vmin rgba(255, 255, 255, 0.9);
+}
+
+/* The number. Tabular figures so the digits do not jitter as it counts down --
+   at 9.5 hits/second a proportional font makes the whole readout wobble. */
+#boss-hp-value {
+  flex: 0 0 auto;
+  min-width: 7ch;
+  text-align: right;
+  font: 800 1.9vmin/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  color: #ffe6f7;
+  text-shadow: 0 0 1.2vmin rgba(255, 79, 191, 0.85), 0 0.2vmin 0.3vmin #000;
+}
+
+/* ---------------------------------------------------------------------------
+   Boss bar (§6.4, §7.1) -- full width along the very top edge, plus small
+   individual pod pips. POD BOSSES ONLY (two and three); boss one uses #boss-hp.
+
+   Sized to sit ENTIRELY inside the top HUD strip (y 0.000-0.050), which §5.1
+   reserves for the boss bar and forbids to every entity. 5% of 1080 is 54px,
+   so the whole stack (name + track + pips) is budgeted against that rather
+   than being allowed to grow into the entry telegraph band beneath it.
+--------------------------------------------------------------------------- */
+
+#boss-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 5%;
+  padding: 0.5% 6% 0;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 34;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35vmin;
+}
+
+/* Carries the whole state line now ("CINDERJAW · PODS 3/4 · CORE SEALED"), so
+   the tracking is tightened from 0.34em -- at the old spacing the string ran
+   past the 6% HUD margins §5.1 reserves. */
+#boss-bar-name {
+  font: 700 1.5vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.16em;
+  color: #ffd0ee;
+  text-shadow: 0 0 1.4vmin rgba(255, 90, 200, 0.75);
+}
+
+#boss-bar-track {
+  width: 100%;
+  height: 1.1vmin;
+  border: 0.2vmin solid rgba(255, 120, 205, 0.65);
+  border-radius: 0.6vmin;
+  background: rgba(30, 6, 22, 0.78);
+  overflow: hidden;
+}
+
+#boss-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ff7a2a, #ff4fbf);
+  box-shadow: 0 0 1.6vmin rgba(255, 79, 191, 0.7);
+  transform-origin: left center;
+}
+
+/* The core's own gauge greys out while it is sealed, so "not yet" is a state of
+   the readout rather than something the player has to infer from it not moving. */
+#boss-bar.core-sealed #boss-bar-fill {
+  background: #6b4a5e;
+  box-shadow: none;
+}
+
+/* ONE GAUGE PER POD, POSITIONED OVER THE POD IT BELONGS TO.
+
+   The old version was a flex row of five identical pips in the middle of the
+   top strip: nothing tied pip 3 to the pod at hull-x 0.452, and each pip was
+   binary, so six bolts into a pod showed no progress and then the pip blinked
+   out. /ui/hud.js sets `left` from each pod's own dx, and each gauge has its own
+   fill -- so the readout is a map of the boss, and every bolt moves something. */
+#boss-pips {
+  position: relative;
+  width: 100%;
+  height: 0.9vmin;
+}
+
+.boss-pod-gauge {
+  position: absolute;
+  top: 0;
+  /* Centred on the authored left%, so the gauge straddles its pod's x. */
+  transform: translateX(-50%);
+  width: 5.2vmin;
+  height: 0.9vmin;
+  border: 0.16vmin solid rgba(255, 150, 215, 0.7);
+  border-radius: 0.25vmin;
+  background: rgba(30, 6, 22, 0.85);
+  overflow: hidden;
+}
+
+.boss-pod-fill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: #ff4fbf;
+  box-shadow: 0 0 0.9vmin rgba(255, 79, 191, 0.8);
+}
+
+/* A destroyed pod's gauge stays on the readout as an empty socket rather than
+   disappearing -- the player needs to see what they have already done (§6.4). */
+.boss-pod-gauge.dead {
+  border-color: rgba(120, 90, 110, 0.6);
+  background: #241820;
+}
+
+/* The pod currently in the firing rotation, matched to the pulse on the pod
+   sprite itself so the bar and the playfield agree about who is shooting. */
+.boss-pod-gauge.firing {
+  border-color: #ffd0ee;
+  box-shadow: 0 0 1vmin rgba(255, 208, 238, 0.75);
+}
+
+/* ---------------------------------------------------------------------------
+   WARNING band (§6.4) -- 2.0 s before the boss arrives.
+--------------------------------------------------------------------------- */
+
+#boss-warning {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 42%;
+  transform: translateY(-50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 33;
+  padding: 1.6vmin 0;
+  background: linear-gradient(
+    90deg,
+    rgba(120, 8, 8, 0) 0%,
+    rgba(150, 10, 18, 0.88) 20%,
+    rgba(150, 10, 18, 0.88) 80%,
+    rgba(120, 8, 8, 0) 100%
+  );
+  border-top: 0.25vmin solid rgba(255, 90, 90, 0.9);
+  border-bottom: 0.25vmin solid rgba(255, 90, 90, 0.9);
+  animation: boss-warn 0.62s steps(1, end) infinite;
+}
+
+#boss-warning span {
+  font: 800 3.4vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.5em;
+  color: #ffe2e2;
+  text-shadow: 0 0 2.2vmin rgba(255, 70, 70, 0.95);
+}
+
+@keyframes boss-warn {
+  0% { opacity: 1; }
+  50% { opacity: 0.42; }
+}
+
+/* ---------------------------------------------------------------------------
+   Validator report (§9.4) -- loud, on-screen, because there is no console
+   inside the WebView.
+--------------------------------------------------------------------------- */
+
+#constraint-warning {
+  position: absolute;
+  left: 50%;
+  bottom: 1.5%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 0.7vmin 1.6vmin;
+  border-radius: 0.7vmin;
+  font: 600 1.35vmin/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+  background: rgba(70, 60, 10, 0.9);
+  border: 0.2vmin solid #d8b93c;
+  color: #ffe9a8;
+}
+
+#constraint-warning.is-error {
+  background: rgba(80, 12, 12, 0.92);
+  border-color: #ff5a5a;
+  color: #ffd6d6;
+}
+
+/* ---------------------------------------------------------------------------
+   POC-7 instrumentation panel. Right margin, two columns, both modes always
+   visible -- POC-8 is a comparison (§10).
+--------------------------------------------------------------------------- */
+
+#instr-panel {
+  position: absolute;
+  right: 0.8%;
+  top: 2.2%;
+  width: 30%;
+  max-width: 34vmin;
+  z-index: 9997;
+  background: var(--panel);
+  border: 0.2vmin solid #21374a;
+  border-radius: 1vmin;
+  padding: 1vmin 1.2vmin;
+  font: 500 1.28vmin/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #b9cddd;
+  pointer-events: none;
+}
+
+#instr-title {
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--cyan);
+  margin-bottom: 0.7vmin;
+  font-size: 1.3vmin;
+}
+
+#instr-panel table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#instr-panel th,
+#instr-panel td {
+  text-align: right;
+  padding: 0.18vmin 0.3vmin;
+  white-space: nowrap;
+}
+
+#instr-panel tr > th:first-child {
+  text-align: left;
+  font-weight: 500;
+  color: #7f93a8;
+}
+
+#instr-panel tr:first-child th {
+  color: #55708a;
+  font-size: 1.15vmin;
+  letter-spacing: 0.1em;
+  border-bottom: 0.15vmin solid #21374a;
+}
+
+#instr-panel tr:first-child th.active {
+  color: var(--cyan);
+}
+
+/* The drift-chasing detector -- the metric Mode S most has to pass. */
+#instr-panel tr.key-metric th,
+#instr-panel tr.key-metric td {
+  color: var(--hot);
+  font-weight: 700;
+}
+
+#instr-live {
+  margin-top: 0.7vmin;
+  padding-top: 0.6vmin;
+  border-top: 0.15vmin solid #21374a;
+  color: #8fb4cc;
+  font-size: 1.18vmin;
+  word-break: break-word;
+  white-space: normal;
+}
+
+#instr-hint {
+  margin-top: 0.5vmin;
+  color: #55708a;
+  font-size: 1.1vmin;
+  white-space: normal;
+}
+
+/* ---------------------------------------------------------------------------
+   Sector surface transition -- the screen-covered swap (§5.4, POC-8 decision
+   note §3). A placeholder covering beat; §7.2's tally / console / briefing are
+   MVP item 9 and are not here.
+
+   Below the game-over overlay's z-index on purpose: if the player dies on the
+   same frame a transition starts, the SDK's overlay contract still wins the
+   screen.
+--------------------------------------------------------------------------- */
+
+/* Above the instrumentation panel and the framing switch -- a cover with the
+   mode switch punched through it reads as a bug rather than as a transition --
+   but below the SDK's own chrome (back / pause at 9999) and below the
+   game-over overlay at 10000, whose DOM contract must always win the screen. */
+#sector-transition {
+  position: absolute;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Two shutters closing over the frame. Positioned just outside their own edge
+   and translated in by JS, so at rest they cover nothing. */
+.shutter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 52%; /* >50% so the two overlap slightly and never leave a hairline */
+  background: linear-gradient(180deg, #070c14 0%, #0b131f 78%, #101a28 100%);
+  will-change: transform;
+}
+
+#shutter-top {
+  top: -52%;
+  border-bottom: 0.25vmin solid rgba(111, 232, 255, 0.5);
+  box-shadow: 0 0.4vmin 2.4vmin rgba(0, 0, 0, 0.8);
+}
+
+#shutter-bottom {
+  bottom: -52%;
+  border-top: 0.25vmin solid rgba(111, 232, 255, 0.5);
+  box-shadow: 0 -0.4vmin 2.4vmin rgba(0, 0, 0, 0.8);
+}
+
+#sector-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  will-change: opacity;
+}
+
+#sector-kicker {
+  font: 600 1.4vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.5em;
+  color: #6d8598;
+  margin-bottom: 1.4vmin;
+}
+
+/* Readable at arm's length, by someone standing on a balance board. */
+#sector-name {
+  font: 700 4.4vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.34em;
+  color: #eafcff;
+  text-shadow: 0 0 3vmin rgba(111, 232, 255, 0.55);
+}
+
+/* A short rule under the name, tinted to the destination surface's accent, so
+   the beat previews where you are going instead of just hiding where you were.
+   Width is animated, so the hold reads as progress rather than as a freeze. */
+#sector-rule {
+  height: 0.3vmin;
+  margin: 1.8vmin auto 0;
+  width: 0;
+  background: currentColor;
+  box-shadow: 0 0 1.6vmin currentColor;
+}
+
+/* ---------------------------------------------------------------------------
+   Game-over overlay -- the SDK's DOM contract (§7.4). The ids and the
+   `hidden` class name are fixed by GOBALANCE_SDK.md; the styling is ours.
+--------------------------------------------------------------------------- */
+
+#gameover-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+#gameover-card {
+  text-align: center;
+  padding: 4vmin 6vmin;
+  border: 0.25vmin solid var(--cyan);
+  border-radius: 1.6vmin;
+  background: rgba(6, 14, 26, 0.94);
+  box-shadow: 0 0 5vmin rgba(111, 232, 255, 0.28);
+}
+
+#gameover-card h1 {
+  margin: 0 0 1vmin;
+  font-size: 4.6vmin;
+  letter-spacing: 0.3em;
+  color: #ff8a3c;
+  text-shadow: 0 0 2.4vmin rgba(255, 138, 60, 0.7);
+}
+
+#gameover-stats {
+  margin: 0 0 2.4vmin;
+  font-size: 1.8vmin;
+  color: #9fc0d4;
+  letter-spacing: 0.1em;
+}
+
+/* Sized in vmin, not px -- see the header note. */
+#restart-button {
+  font: 700 2vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.24em;
+  padding: 1.4vmin 4vmin;
+  border-radius: 1vmin;
+  border: 0.22vmin solid var(--cyan);
+  background: rgba(20, 70, 92, 0.9);
+  color: #eafcff;
+  cursor: pointer;
+}
+
+#restart-button:hover {
+  background: rgba(30, 100, 128, 0.95);
+}

@@ -1,0 +1,8 @@
+Model: nano-banana-pro | num_images: 4 | aspect_ratio: 16:9
+
+reference_images (style/mood guidance only, uploaded from /Users/eladayzen/Documents/tmnt/):
+  - Michelangelo2023.webp
+  - tmnt-mutant-mayhem-character-posters_3ef5.jpg
+  - tmnt-mutant-mayhem.avif
+
+Wide 16:9 landscape video-game key art in the rough, painterly, hand-drawn-over-CG illustration style of the Mutant Mayhem-era Teenage Mutant Ninja Turtles movie: sketchy visible linework, smudged marker-and-pencil texture, teenage-doodle energy, grimy neon palette. High aerial view over a moonlit Manhattan rooftop skyline at night: water towers, tar-paper roofs, crooked satellite dishes, laundry lines and billboard haze, all painted in low-contrast desaturated blues and purples so the action layer reads clearly on top of it. In the bottom third of the frame, Michelangelo, orange mask tails streaming, rides a jury-rigged hoverboard hacked together from a delivery scooter and stolen drone tech, crouched and leaning hard to his left, flinging a fan of glowing throwing stars straight upward. Across the top of the frame, a wide shallow formation of twelve Foot Clan quadcopter drones locked in two neat rows, red sensor eyes glowing. Enemy fire is large, slow, individually readable orange-red energy bolts, sparse, with one clear wide gap through them. Looming across the upper right, the huge silhouette of Wingnut, a giant mutant bat, wings spanning most of the frame's width. A glowing pizza-slice power-up drifts down toward Mikey. HUD lives in the margins only: a vertical green shell-shaped health gauge up the far left edge, a vertical mission-progress percentage meter up the far right edge, a thin full-width health bar along the very top edge. The centre of the frame is kept uncluttered.

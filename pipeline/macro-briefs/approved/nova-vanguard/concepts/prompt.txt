@@ -1,0 +1,31 @@
+Model: nano-banana-pro | aspect_ratio: 16:9 | 2 calls x num_images: 2 (64 credits total)
+
+reference_images (uploaded from pipeline/videos-inbox/airPlanes/, style + camera guidance):
+  - sky-force-reloaded-for-pc.jpg   (primary target: rendered craft, strict overhead, dark scrolling terrain)
+  - unnamed.webp                    (1941 Air Attack: 16:9 landscape top-down layout precedent)
+  - Batsugan1.jpg                   (Batsugun: arcade ancestor, top-down craft over scrolling water)
+
+Both prompts below are deliberately written as PLAYFIELD MOCKS, not key art, and both
+carry the hard perspective rule (strict orthographic overhead, player nose pointing north).
+
+=== concept-01.png and concept-02.png — surface: alien planetary crust ===
+
+In-game playfield screenshot mock for a 16:9 landscape top-down arcade shoot-em-up. STRICT ORTHOGRAPHIC OVERHEAD CAMERA looking straight down at the ground: no horizon line, no sky, no vanishing point, no three-quarter view, no perspective tilt. Every object is seen from directly above — wing top surfaces, hull spines and engine nacelles viewed from overhead.
+
+Art idiom: modern rendered 3D-look sci-fi, glossy hard-surface hulls with crisp bevels and metallic highlights, saturated neon energy glow, bloom, particle sparks. NOT pixel art.
+
+Ground layer filling the whole frame: a dark alien planetary crust scrolling beneath the action — cracked black rock with glowing magma fissures, scattered metal cargo containers, small hexagonal ground installations and gun emplacements, a crashed hull half-buried in the crust. The terrain is deep and desaturated so the bright action layer above it pops.
+
+In the bottom third, centred: one sleek blue-and-white player interceptor seen from directly overhead, its NOSE POINTING STRAIGHT UP toward the top of the frame, perfectly vertically aligned, banking conveyed only by a slight roll of the wings. Twin engine nacelles glow cyan behind it. It fires a stream of bright cyan-white energy bolts straight up the screen.
+
+Across the top third: a wide shallow formation of twelve insectoid alien fighters in two neat rows spanning the full width, all seen from directly overhead with their noses pointing down toward the player. Their fire is large, slow, individually readable orange-magenta plasma orbs with glow halos, sparse, with one clear wide gap through the pattern.
+
+A glowing chevron weapon-rank pickup and a couple of gold score pips drift down over the terrain. Small explosion bursts with sparks and debris where bolts hit a ground emplacement.
+
+HUD in the margins only: vertical segmented shield gauge up the far left edge, vertical mission-progress percentage meter up the far right edge, thin full-width boss health bar along the very top edge, small score readout top-left. Centre of the frame kept uncluttered.
+
+=== concept-03.png and concept-04.png — surface: megastructure hull / shipyard deck ===
+
+(identical to the above except the ground layer paragraph)
+
+Ground layer filling the whole frame: the outer hull of a colossal alien megastructure scrolling beneath the action — dark riveted armour plating, deep trenches and service channels, glowing violet coolant seams, docking clamps, antenna masts, hexagonal turret emplacements and a shipyard cradle holding a half-built hull. Deep and desaturated so the bright action layer above it pops.

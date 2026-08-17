@@ -24,6 +24,13 @@ pipeline/macro-briefs/**/concepts/*.jpg
 pipeline/macro-briefs/**/concepts/*.jpeg
 pipeline/macro-briefs/**/concepts/*.webp
 
+# Raw Kolbo generations for game art (~33MB for Nova Vanguard alone). Same
+# reasoning as the concept frames above: these are the unprocessed inputs, and
+# the recipe that turns them into shipped assets is tracked -- each game's
+# art/build_assets.py plus its prompt records. The processed output in
+# public/assets/ is what the game actually loads and stays tracked.
+*/art/raw/
+
 # Mixamo rigging staging assets — the T-posed mesh uploaded to Mixamo's
 # auto-rigger plus its source renders (~23MB). One-shot inputs: the rigged
 # output that the game actually loads lives in src/assets/rig/, and each
@@ -58,3 +65,7 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Python bytecode from the art build scripts
+__pycache__/
+*.pyc

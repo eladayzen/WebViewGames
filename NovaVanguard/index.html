@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script>
+      // GoBalance SDK integration — see ../GOBALANCE_SDK.md for the full contract this depends
+      // on. Everything below is a no-op outside the Unity WebView (guarded by
+      // `if (window.Unity)` / feature checks), so it's always safe to ship, including when
+      // testing in a normal browser.
+
+      // The only channel for JS errors on-device — there's no devtools console inside the
+      // WebView, so surface them through the native bridge instead.
+      window.addEventListener('error', function (e) {
+        if (window.Unity) window.Unity.call('JS ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        if (window.Unity) window.Unity.call('JS UNHANDLED REJECTION: ' + e.reason);
+      });
+
+      // rAF shim: WKWebView treats the occluded Unity overlay as a background tab and
+      // suspends requestAnimationFrame entirely. Queue callbacks instead of scheduling them
+      // natively; Unity's WebGameController flushes the queue via window.__pumpFrames() every
+      // frame (~60Hz) regardless of tab visibility. A real native rAF loop keeps running
+      // underneath too, so a normal browser (testing outside Unity) behaves exactly as before.
+      (function () {
+        var nativeRAF = window.requestAnimationFrame.bind(window);
+        window.__rafQueue = [];
+        window.requestAnimationFrame = function (cb) { window.__rafQueue.push(cb); return window.__rafQueue.length; };
+        window.cancelAnimationFrame = function () {};
+        window.__pumpFrames = function () {
+          var q = window.__rafQueue;
+          if (!q.length) return;
+          window.__rafQueue = [];
+          var t = performance.now();
+          for (var i = 0; i < q.length; i++) {
+            try { q[i](t); }
+            catch (e) {
+              // ON-DEVICE this is the only channel there is: no console exists
+              // inside the WebView, so the native bridge is it.
+              if (window.Unity) window.Unity.call('RAF CB ERROR: ' + e.message);
+              // IN A BROWSER, `window.Unity` is undefined, so this catch used to
+              // discard the exception entirely -- every frame, forever. A typo in
+              // the frame callback then presented as a game that simply stopped
+              // advancing with a clean console, which is indistinguishable from a
+              // design problem and is exactly how a broken build gets waved
+              // through on a dev server. Re-raising is not an option (it would
+              // break the pump), so it is logged instead.
+              else if (typeof console !== 'undefined' && console.error) {
+                console.error('RAF CB ERROR:', e);
+              }
+            }
+          }
+        };
+        (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+      })();
+    </script>
+    <title>Nova Vanguard</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- #stage is the letterboxed 16:9 box. The Pixi canvas is sized to
+         exactly this box by render/renderer.js, and every HUD element is
+         positioned inside it as a percentage of the frame — so the DOM HUD
+         and the playfield agree on where the margins are, which is what makes
+         §5.1's HUD-exclusion rule enforceable rather than aspirational. -->
+    <div id="stage">
+      <div id="app"></div>
+
+      <!-- GoBalance SDK: native-bridge Back button. Returns to the SDK games list.
+           Cross-game HUD convention (BUILD_NOTES.md): back + pause live top-right as
+           icon-only circular buttons, back is a plain X, status lives top-left.
+           `absolute`, not `fixed`, so it anchors to the visible game frame rather
+           than the raw viewport. -->
+      <button id="gb-back"
+        onclick="if(window.Unity)window.Unity.call('nav:back');"
+        style="position:absolute;top:12px;right:12px;z-index:9999;width:38px;height:38px;border:none;
+               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
+               font:600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               line-height:1;display:flex;align-items:center;justify-content:center;
+               -webkit-tap-highlight-color:transparent;">&times;</button>
+
+      <!-- Pause — placeholder glyph icon per the same convention. -->
+      <button id="pause-button"
+        style="position:absolute;top:12px;right:60px;z-index:9999;width:38px;height:38px;border:none;
+               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
+               font:600 16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               line-height:1;display:flex;align-items:center;justify-content:center;
+               -webkit-tap-highlight-color:transparent;">&#9208;</button>
+
+      <!-- THE FRAMING-MODE SWITCH IS GONE FROM THE SCREEN, and only from the
+           screen (Amit, playtest round 3).
+
+           §5.2 required an on-screen two-state switch because the POC's entire
+           job was an A/B the player had to be able to run mid-session. That
+           experiment is over: the POC-8 decision note records Mode S as the
+           chosen mode, so a permanent control for re-running a settled
+           question is just clutter in the margin where §7.1 wants score.
+
+           What is deliberately NOT removed: the `M` key still swaps modes, the
+           ?mode=S|A query param still works, and Mode A's whole code path
+           stays behind the one config flag — the decision note is explicit
+           that "Mode A's code path is not deleted [...] keeping it costs
+           nothing and it remains available for comparison". This is a UI
+           removal, not a feature removal. -->
+
+      <!-- Left margin: the 6-segment shield gauge — the whole fail model at
+           POC (§2, §5.10). Cyan, shield glyph at its foot, per concept-01. -->
+      <div id="shield-wrap">
+        <div id="shield-gauge"></div>
+        <div id="shield-glyph">&#128737;</div>
+      </div>
+
+      <!-- THE BOSS HP READOUT, AND WHY THERE ARE TWO OF THEM.
+
+           §6.4/§7.1 specify "a full-width HP bar along the very top edge, plus
+           small individual pod pips", and that is what #boss-bar below is. It
+           did not work. Amit, after fighting boss one: "the UI of it, like where
+           is its HP, it's not clear, maybe it's the line up there, but I don't
+           know because I cannot inflict damage." Two separate failures were
+           stacked — nothing was taking damage at all, AND the readout was a
+           screen-edge rule with no visible connection to the huge object in the
+           middle of the frame.
+
+           His fix, for boss one: "one big HP thing […] has its own HP bar above
+           it". So #boss-hp is a bar that RIDES THE HULL — resolved every frame
+           from the boss's live geometry, so it enters with it, sways with it,
+           and cannot be mistaken for chrome. It carries the boss name, a fat
+           track, a bright chip showing the damage from the last instant, and a
+           ticking integer, because one bolt is 0.42% of a 240-point pool and a
+           bar alone cannot show that.
+
+           #boss-bar stays for POD BOSSES (two and three, still specced with pods
+           and pod pips in §6.4) and is simply never shown for a hull boss. One
+           readout per boss, chosen by the row — not both at once. -->
+      <div id="boss-hp" class="hidden">
+        <div id="boss-hp-name"></div>
+        <div id="boss-hp-row">
+          <div id="boss-hp-track">
+            <div id="boss-hp-chip"></div>
+            <div id="boss-hp-fill"></div>
+          </div>
+          <div id="boss-hp-value"></div>
+        </div>
+      </div>
+
+      <!-- Pod-boss readout (§6.4, §7.1): "Full-width HP bar along the very top
+           edge, plus small individual pod pips." It lives in the top HUD strip
+           (y 0.000–0.050), which §5.1 reserves for exactly this and nothing
+           else — "Boss HP bar only. No entity ever occupies it." The pod pips
+           sit just under the bar, still inside the strip, so the whole readout
+           obeys the band budget without a special case.
+
+           Unused by boss one, which is a hull boss. Kept, not deleted: bosses
+           two and three are pod bosses. -->
+      <div id="boss-bar" class="hidden">
+        <div id="boss-bar-name"></div>
+        <div id="boss-bar-track"><div id="boss-bar-fill"></div></div>
+        <div id="boss-pips"></div>
+      </div>
+
+      <!-- The WARNING band (§6.4): "full-width red WARNING band 2.0 s before"
+           the boss arrives. Separate from the banner queue's element on
+           purpose — it is a full-width field rather than a line of text — but
+           it is DRIVEN by a critical banner, which is the one class that
+           preempts, so it still cannot collide with anything (§7.1). -->
+      <div id="boss-warning" class="hidden"><span>WARNING</span></div>
+
+      <!-- Banners: full-width band centred in the gutter at y ≈ 0.42, so a
+           banner never sits over the formation or the player (§7.1). -->
+      <div id="banner" class="hidden"><span id="banner-text"></span></div>
+
+      <!-- The screen-covered surface transition (§5.4, POC-8 decision note §3).
+           A PLACEHOLDER covering beat, not §7.2's inter-sector sequence: no
+           results tally, no loading console, no sector briefing, no CONTINUE
+           countdown — those are MVP item 9. Its only job is to hide the frame
+           long enough for the surface underneath to be exchanged, so the change
+           of place can be judged before that UI exists.
+
+           Two shutters closing over the frame rather than a plain fade: a fade
+           to black is indistinguishable from a stall or a dropped frame, and
+           this beat has to read as *a deliberate transition* at a glance from
+           across a room, standing on a board. Driven per-frame from JS on the
+           simulation clock, not by CSS transitions, so it stays in step with
+           the frozen sim and with the SDK's rAF shim. -->
+      <div id="sector-transition" class="hidden" aria-hidden="true">
+        <div class="shutter" id="shutter-top"></div>
+        <div class="shutter" id="shutter-bottom"></div>
+        <div id="sector-card">
+          <div id="sector-kicker">SURFACE TRANSITION</div>
+          <div id="sector-name"></div>
+          <div id="sector-rule"></div>
+        </div>
+      </div>
+
+      <!-- The constraints validator fails loudly (§9.4). There is no console
+           on-device, so a violation has to be visible on the screen itself. -->
+      <div id="constraint-warning" class="hidden"></div>
+
+      <!-- POC-7 instrumentation panel. Two columns, both modes always
+           visible, because POC-8 is a comparison (§10). -->
+      <div id="instr-panel">
+        <div id="instr-title">POC-8 · MODE EXPERIMENT</div>
+        <div id="instr-body"></div>
+        <div id="instr-live"></div>
+        <div id="instr-hint"></div>
+      </div>
+
+      <!-- GoBalance SDK DOM contract (§7.4): the host checks for this exact
+           `hidden` class before synthetically clicking #restart-button, and
+           the id must be hyphenated exactly like this. -->
+      <div id="gameover-overlay" class="hidden">
+        <div id="gameover-card">
+          <h1>SHIELD DOWN</h1>
+          <p id="gameover-stats"></p>
+          <button id="restart-button">RESTART</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

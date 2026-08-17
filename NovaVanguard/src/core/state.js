@@ -1,0 +1,342 @@
+// The world state. PLAIN DATA ONLY -- no renderer objects, no Pixi imports,
+// no DOM nodes (§9.1, §9.2).
+//
+// "game state is plain data, systems mutate plain data, and the render layer
+// reads it." That isolation is what keeps the PixiJS-vs-raw-Canvas question
+// (§9.1, §12) a cheap swap rather than a rewrite, so it is load-bearing even
+// though nothing in this file knows about it.
+//
+// Everything that spawns is POOLED (§9.1): entities carry an `alive` flag and
+// are reused in place. Nothing in the hot loop allocates.
+
+import {
+  PLAYER,
+  POC_SCENARIO,
+  DENSITY_CAPS,
+  POC_ENEMY_CAP_OVERRIDE,
+  DESIGN_W,
+  DESIGN_H,
+} from '../data/tuning.js';
+
+/** The explicit state machine (§9.2). POC uses a strict subset of the MVP
+ *  graph: boot -> running -> failed. No title gate, no sector select, no
+ *  results -- POC has none of those (§2), and the SDK contract requires the
+ *  first playable state to be reached on load with no key press. */
+export const GameState = {
+  BOOT: 'boot',
+  RUNNING: 'running',
+  FAILED: 'failed',
+};
+
+/** Sub-states inside `running`, gated by a single enum rather than by flags
+ *  scattered through the loop (§9.2).
+ *
+ *  §9.2 lists exactly these: "`running` has sub-states `wave`, `waveBanner`,
+ *  `bossWarning`, `boss`, `bossDeath` -- all inside one update path, gated by
+ *  a single enum, not by flags scattered through the loop." The three boss
+ *  states land here now that there is a boss; nothing else about the shape
+ *  changes. */
+export const RunPhase = {
+  WAVE: 'wave',
+  WAVE_BANNER: 'waveBanner',
+  BOSS_WARNING: 'bossWarning',
+  BOSS: 'boss',
+  BOSS_DEATH: 'bossDeath',
+};
+
+function makePool(size, factory) {
+  const arr = new Array(size);
+  for (let i = 0; i < size; i++) arr[i] = factory();
+  return arr;
+}
+
+export function createWorld() {
+  // Normal caps, with the one documented, validator-reported deviation for
+  // the 12 x 2 formation's slot count -- see POC_ENEMY_CAP_OVERRIDE's comment
+  // in tuning.js for the doc conflict this resolves and what stage 3 owes us.
+  const caps = { ...DENSITY_CAPS.normal, enemies: POC_ENEMY_CAP_OVERRIDE };
+  return {
+    state: GameState.BOOT,
+    phase: RunPhase.WAVE_BANNER,
+    // Wall-clock seconds of simulated time since the run started. Drives
+    // instrumentation and every timer; never read performance.now() in a
+    // system, or the fixed timestep stops being fixed.
+    time: 0,
+    paused: false,
+
+    player: {
+      x: PLAYER.spawnX * DESIGN_W,
+      y: PLAYER.spawnY * DESIGN_H,
+      vx: 0,
+      vy: 0,
+      // Presentational only: never affects hitbox, heading or gun direction.
+      // The nose stays north; the guns always fire straight up (§0.2, §4).
+      roll: 0, // -1 | 0 | 1
+      rank: 1, // pinned at 1 for POC -- no chevrons (§2)
+      shield: PLAYER.shieldSegments,
+      invulnT: 0,
+      fireT: 0,
+      alive: true,
+      hitFlashT: 0,
+    },
+
+    // --- pooled entity arrays -------------------------------------------
+    // Sized generously above the density caps so a pool exhaustion is a bug,
+    // not a normal condition. The caps themselves are enforced by the
+    // spawners, not by the pool size.
+    enemies: makePool(64, () => ({
+      alive: false,
+      // Which of §6.2's types this craft is. Behaviour is composed from the
+      // type's data (entry path, whether it swoops, which pattern it owns) --
+      // nothing in /enemies branches on the name.
+      type: 'drone',
+      x: 0,
+      y: 0,
+      hp: 0,
+      maxHp: 0,
+      // A pattern instance this craft owns and dies with, or null. The Emitter
+      // carries a B2; a drone carries nothing and fires through the wave's own
+      // B1 (§6.2).
+      emitter: null,
+      // 'entering' | 'peeling' | 'locked' | 'swooping' | 'fleeing'
+      mode: 'entering',
+      // Heading, for runtime rotation of a flat top-down body (§6.2, §9.5).
+      heading: Math.PI / 2,
+      slot: -1,
+      // Which §5.5 shape this craft's slot belongs to. Carried per craft, not
+      // per wave, so two formations can legally overlap in time later without
+      // the geometry needing to know about the director.
+      formation: 'F1',
+      squadron: -1,
+      t: 0, // phase-local timer
+      dur: 0, // phase-local duration
+      // Entry path parameters (all plain numbers -- no closures, so the
+      // entity stays poolable and the whole array stays cache-friendly).
+      p: { x0: 0, x1: 0, y0: 0, amp: 0, side: 1, loops: 1 },
+      // Swoop parameters.
+      s: { x0: 0, y0: 0, x1: 0, outY: 0, outS: 0, dipY: 0, descentS: 0, returnS: 0 },
+      swoopCooldown: 0,
+      hitFlashT: 0,
+      // Set once the craft has settled: killing before this is the pre-lock
+      // kill window and is worth double (§5.5, §8.2).
+      locked: false,
+      // Per-craft runtime variation (ENEMY.vary), rolled from the seeded stream
+      // at spawn. PRESENTATION AND CADENCE ONLY -- `sizeMul` scales the drawn
+      // sprite and never the hitbox, `tint` stays inside §5.4's enemy family,
+      // and `cadenceMul` shifts when an owned pattern fires, never its shape.
+      sizeMul: 1,
+      tint: 0xffffff,
+      cadenceMul: 1,
+    })),
+
+    enemyBullets: makePool(96, () => ({
+      alive: false,
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      r: 0,
+      pattern: '',
+      counted: false, // near-miss bookkeeping
+      // Pulse phase for the breathing scale/glow (FX.enemyBulletPulse). Purely
+      // presentational -- collision reads `r` and never this -- and stamped at
+      // spawn so a volley does not pulse in lockstep.
+      phase: 0,
+    })),
+
+    playerBolts: makePool(96, () => ({
+      alive: false,
+      x: 0,
+      y: 0,
+      vy: 0,
+      r: 0,
+    })),
+
+    // Telegraph markers for anything arriving from the top edge (§5.3).
+    // POC has no top-edge spawns (no ground targets), but the band and the
+    // marker system exist so MVP does not have to retrofit them.
+    telegraphs: makePool(12, () => ({ alive: false, x: 0, t: 0, lead: 0 })),
+
+    // --- surface (§5.4) ---------------------------------------------------
+    surface: {
+      // Total scrolled distance. In Mode A this stays 0 forever; the progress
+      // meter reads a different source there (§5.2) -- not built at POC.
+      scroll: 0,
+      // Ambient overlay offsets, one per parallax layer.
+      overlay: [0, 0],
+      overlayX: [0, 0],
+      props: makePool(24, () => ({
+        alive: false,
+        kind: 0,
+        x: 0,
+        y: 0,
+        rot: 0,
+        scale: 1,
+      })),
+      // Mode A's scheduled surface activity (§5.2 anti-deadness).
+      event: { active: false, x: 0, y: 0, t: 0, dur: 0 },
+      emissivePhase: 0,
+    },
+
+    // Which of §5.4's surfaces is under the action. An index into
+    // /data/surfaces.js, NOT a sector number -- there is no sector campaign at
+    // POC (§2) and this is not the sector/wave director (MVP item 9).
+    surfaceIndex: 0,
+
+    // The boss hull texture's width/height, published here by /render at boot.
+    // State holds no renderer objects (§9.1), but the hull's real proportions
+    // decide its on-screen extent and the 0.58 rule is checked against them,
+    // so the NUMBER lives in state where the systems can read it.
+    bossAspect: 2.7,
+
+    // --- the screen-covered surface transition ----------------------------
+    // A phase of the run, not a pause: `paused` above keeps meaning exactly
+    // what it meant, and this freezes the simulation for its own reason (the
+    // playfield is hidden, so nothing may hit the player behind the cover).
+    // See /surface/transition.js.
+    transition: {
+      active: false,
+      phase: 'coverIn',
+      t: 0,
+      fromIndex: 0,
+      toIndex: 0,
+      swapped: false,
+    },
+    // Bumped once per completed transition. Drives the beat's caption only.
+    sectorsCrossed: 0,
+
+    // --- boss (§6.4) ------------------------------------------------------
+    // NOT pooled: there is exactly one boss at a time, by definition. Pods are
+    // a plain array rebuilt per fight from /data/bosses.js -- they are
+    // authored content, not spawned entities, and there are four of them.
+    boss: {
+      active: false,
+      id: '',
+      name: '',
+      phase: 'done',
+      // Hull texture aspect, handed in by /render at fight start. State holds
+      // no renderer objects (§9.1), but the hull's real proportions decide its
+      // on-screen extent, so the number itself lives here.
+      aspect: 2.7,
+      x: 0,
+      y: 0,
+      t: 0,
+      entryS: 0,
+      pods: [],
+      // TWO SHAPES OF BOSS OVER ONE RECORD (/data/bosses.js). `hullBoss` is
+      // resolved from the row at arm time; the pool the fight does not use is
+      // zeroed rather than left stale, so a readout that asks the wrong question
+      // gets 0 instead of a plausible number from the previous fight.
+      hullBoss: false,
+      hullHp: 0,
+      maxHullHp: 0,
+      // Patterns a hull boss owns directly, since it has no pods to own them.
+      hullEmitters: [],
+      // The hull's own hit flash, and the HP bar's bright "just lost this much"
+      // chip -- the two things that make one bolt visible against 240 points.
+      hitFlashT: 0,
+      chipHp: 0,
+      coreDx: 0.5,
+      coreHp: 0,
+      maxCoreHp: 0,
+      coreHitFlashT: 0,
+      // Deflect-burst cooldown (BOSS.hullSparkCooldownS) and the pod-count edge
+      // the banner lines are driven off.
+      hullSparkT: 0,
+      lastPodsRemaining: undefined,
+      rotateT: 0,
+      rotateHead: 0,
+      // The vulnerable window (§6.4). `windowT` counts down to the next state
+      // change, whichever that is.
+      windowT: 0,
+      windowOpen: false,
+      windowAnnounced: false,
+      deathT: 0,
+      deathPodsFired: 0,
+      // Hull offsets the staged death detonations walk -- the pods if there are
+      // any, otherwise evenly spaced points along the hull.
+      deathPoints: null,
+      breakT: 0,
+    },
+
+    // --- director (§5.7, POC subset) --------------------------------------
+    director: {
+      waveIndex: 0,
+      cycle: 0,
+      // Edge-tracking for "the sector just ended", which has two triggers
+      // depending on whether this surface's boss is built -- see
+      // /systems/director.js sectorComplete().
+      lastReportedCycle: 0,
+      bossCleared: false,
+      waveT: 0,
+      phaseT: 0,
+      // Pending squadron launches for the current wave.
+      pending: [],
+      // Active pattern emitters, one record per pattern id in the wave.
+      emitters: [],
+      spawnedThisWave: 0,
+      killedThisWave: 0,
+      hitsThisWave: 0,
+    },
+
+    // --- run stats (no scoring UI at POC -- these feed instrumentation) ---
+    stats: {
+      score: 0,
+      kills: 0,
+      preLockKills: 0,
+      shotsFired: 0,
+      hits: 0,
+      // Bolts stopped by boss armour without damaging anything. Counted
+      // separately from `hits` so accuracy cannot flatter a fight in which
+      // nothing is actually being hurt -- which is how the unkillable boss
+      // survived instrumentation.
+      deflects: 0,
+      damageTaken: 0,
+    },
+
+    // --- transient presentation state the renderer reads ------------------
+    fx: {
+      shakeT: 0,
+      shakeMag: 0,
+      flashT: 0,
+    },
+
+    caps,
+    // Dev-only overlays (§10 POC-1's band guide, §5.4's black-surface toggle).
+    debug: {
+      bands: false,
+      blackSurface: false,
+      hitboxes: false,
+      aisle: false,
+    },
+  };
+}
+
+/** Grab a free slot from a pool, or null if exhausted. */
+export function alloc(pool) {
+  for (let i = 0; i < pool.length; i++) {
+    if (!pool[i].alive) return pool[i];
+  }
+  return null;
+}
+
+/** Count of live entries in a pool. */
+export function liveCount(pool) {
+  let n = 0;
+  for (let i = 0; i < pool.length; i++) if (pool[i].alive) n++;
+  return n;
+}
+
+/** Reset the world in place for a scenario (re)start. Preserves nothing, per
+ *  §5.2's toggle requirement. */
+export function resetWorld(w) {
+  const fresh = createWorld();
+  // Copy field-by-field into the existing object so any renderer binding that
+  // holds a reference to `world` keeps working across a restart.
+  for (const k of Object.keys(fresh)) w[k] = fresh[k];
+  w.state = GameState.RUNNING;
+  return w;
+}
+
+export const bounds = { w: DESIGN_W, h: DESIGN_H };
+export { POC_SCENARIO };
