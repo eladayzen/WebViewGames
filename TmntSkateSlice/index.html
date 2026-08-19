@@ -79,14 +79,23 @@
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&#9208;</button>
 
-      <!-- Mute button -- sits left of Pause, same icon-button convention.
-           Placeholder glyph icon; starts unmuted (speaker-on). -->
-      <button id="mute-button"
+      <!-- Settings button -- sits left of Pause, same icon-button convention.
+           Gear glyph; opens #settings-panel (src/ui/settingsPanel.js) with
+           SENSITIVITY/MUSIC/SFX (2026-08-19, replaces the old single
+           mute-button -- see systems/audio.js). -->
+      <button id="settings-button" title="Settings"
         style="position:absolute;top:12px;right:108px;z-index:9999;width:38px;height:38px;border:none;
                border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
-               font:600 16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               font:600 17px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
-               -webkit-tap-highlight-color:transparent;">&#128266;</button>
+               -webkit-tap-highlight-color:transparent;">&#9881;</button>
+
+      <!-- Settings panel -- rows built in JS (src/ui/settingsPanel.js), same
+           touch+two-key (Enter=next row, Space=change) model as
+           HalfShellHustle's steering panel, since inside the real Unity
+           WebView there is no pointer at all in this game's analog
+           steering mode -- see that file's header for the full contract. -->
+      <div id="settings-panel" class="hidden"></div>
 
       <div id="hud">
         <div id="countdown-overlay" class="hidden">3</div>

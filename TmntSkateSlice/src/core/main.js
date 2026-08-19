@@ -9,7 +9,8 @@ import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, 
 import { INTRO_STEP1_AUTO_ADVANCE_SEC, INTRO_STEP2_AUTO_ADVANCE_SEC, INTRO_RUN_FRAME_DURATION_SEC } from '../data/introTutorial.js';
 import { STAGE_COMPLETE_COUNTDOWN_SEC, STAGE_CURTAIN_CLOSE_DELAY_SEC, STAGE_CURTAIN_TRANSITION_SEC } from '../data/stageTransition.js';
 import { getSteerAxis } from '../input/input.js';
-import { createAudio, playSfx, startMusic, pauseMusic, resumeMusic, toggleMuted } from '../systems/audio.js';
+import { createAudio, playSfx, startMusic, pauseMusic, resumeMusic } from '../systems/audio.js';
+import { initSettingsPanel } from '../ui/settingsPanel.js';
 import {
   createPlayer,
   resetPlayer,
@@ -100,12 +101,14 @@ async function boot() {
   let stageCurtainsClosed = false;
   let stageSwapped = false;
 
-  // Background music defaults OFF for now (per request 2026-07-30) -- SFX
-  // still play. Flip MUSIC_ON to re-enable the ambient bed (it loops
-  // continuously across countdown/running/restart; pause is the only thing
-  // that stops it -- see the pause-button handler below).
-  const MUSIC_ON = false;
-  if (MUSIC_ON) startMusic(audio, sfx.music_bed);
+  // Background music is back on by default (2026-08-19, was off since
+  // 2026-07-30's "annoying" feedback -- replaced with a new track + real
+  // SFX/MUSIC toggles, see the settings panel below). Safe to call
+  // unconditionally: startMusic itself checks the persisted musicEnabled
+  // preference and no-ops if it's off, while still remembering the buffer
+  // for the settings panel to restart later. Loops continuously across
+  // countdown/running/restart; pause is the only thing that stops it.
+  startMusic(audio, sfx.music_bed);
 
   function fullReset() {
     resetPlayer(player);
@@ -199,11 +202,11 @@ async function boot() {
     else resumeMusic();
   });
 
-  document.getElementById('mute-button').addEventListener('click', () => {
-    const isMuted = toggleMuted(audio);
-    ui.setMuted(isMuted);
-    playSfx(audio, sfx.sfx_ui_tap); // no-ops silently when now muted, per playSfx's own muted check
-  });
+  // Settings panel (gear button, 2026-08-19) -- SENSITIVITY/MUSIC/SFX,
+  // replaces the old single mute-button. See ui/settingsPanel.js's header
+  // for why it's driven by touch AND Enter/Space (no pointer is forwarded
+  // inside the real Unity WebView in this game's analog steering mode).
+  initSettingsPanel(() => playSfx(audio, sfx.sfx_ui_tap));
 
   // Apply a booster effect (shield / magnet / wave "blow up"), from either a
   // caught falling pickup OR a box-completion reward (2026-08-02). xFrac/yFrac

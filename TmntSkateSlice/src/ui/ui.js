@@ -98,7 +98,6 @@ export function createUI() {
     finalCombo: document.getElementById('final-combo'),
     pauseButton: document.getElementById('pause-button'),
     pausedBadge: document.getElementById('paused-badge'),
-    muteButton: document.getElementById('mute-button'),
     introOverlay: document.getElementById('intro-tutorial-overlay'),
     introStepItems: document.getElementById('intro-step-items'),
     introStepSteer: document.getElementById('intro-step-steer'),
@@ -769,10 +768,6 @@ export function createUI() {
     setPaused(isPaused) {
       el.pauseButton.innerHTML = isPaused ? '&#9654;' : '&#9208;'; // play : pause glyph
       el.pausedBadge.classList.toggle('hidden', !isPaused);
-    },
-
-    setMuted(isMuted) {
-      el.muteButton.innerHTML = isMuted ? '&#128263;' : '&#128266;'; // muted : speaker-on glyph
     },
 
     // First-run onboarding tutorial (see core/gameState.js's 'intro' state
