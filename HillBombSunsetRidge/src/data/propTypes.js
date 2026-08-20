@@ -92,6 +92,33 @@ export const PROP_TYPES = {
     label: 'LEDGE',
   },
 
+  // --- real obstacles ------------------------------------------------------
+  //
+  // A WALL IS NOT A HAZARD. The old hazard kind (cones, potholes) nudges the
+  // wobble meter and scrubs a little speed -- a tap on the wrist. This is the
+  // other thing entirely: hit it and the run stops. Its own kind because that
+  // difference has to be visible to a course: a mode can have walls without
+  // cones, and today only the race has either.
+  //
+  // Built to be AVOIDED, which is the whole design. It is narrow enough to go
+  // round, tall enough to read from a distance, and made of planks in a warm
+  // timber that nothing else on the course uses -- the palette is otherwise
+  // violet launchers, green rails, cyan and gold gates, amber crystals, and a
+  // red rider. A thing that ends your run should not have to be identified.
+  woodWall: {
+    kind: 'wall',
+    size: { w: 3.6, h: 1.15, l: 0.5 },
+    colour: 0x9c6b3f,
+    accent: 0x6b4526,
+    wall: {
+      catchWidth: 1.9,   // half-width of the collider, in world units
+      clearHeight: 1.3,  // an arc above this sails over it
+      stopSpeed: 6.0,    // what you are left with after hitting it
+      downSeconds: 1.1,  // how long the rider is out of control
+    },
+    label: 'WALL',
+  },
+
   // --- hazards -----------------------------------------------------------
   cone: {
     kind: 'hazard',
@@ -265,6 +292,7 @@ export const PATTERNS = [
       { type: 'kicker', ds: 26, u: W * 0.25 },
       { type: 'bigKicker', ds: 56, u: 0 },
       { type: 'boostPad', ds: 14, u: -W * 0.15 },
+      { type: 'woodWall', ds: 40, u: W * 0.26 },
       // Just past the big kicker's lip, where the arc actually is.
       { type: 'airGate', ds: 64, u: 0 },
       // Far enough past the kicker to get the speed back before committing.
@@ -300,6 +328,7 @@ export const PATTERNS = [
       { type: 'ledge', ds: 0, u: W * 0.5 },
       { type: 'bank', ds: 40, u: 0 },
       { type: 'boostPad', ds: 74, u: W * 0.30 },
+      { type: 'woodWall', ds: 46, u: -W * 0.28 },
       { type: 'hydrant', ds: 20, u: -W * 0.78 },
       { type: 'hydrant', ds: 60, u: W * 0.78 },
       { type: 'roadwork', ds: 68, u: -W * 0.2 },
@@ -315,6 +344,7 @@ export const PATTERNS = [
       { type: 'roadwork', ds: 30, u: W * 0.5 },
       { type: 'longRail', ds: 20, u: W * 0.1 },
       { type: 'boostPad', ds: 48, u: -W * 0.16 },
+      { type: 'woodWall', ds: 12, u: W * 0.30 },
       { type: 'pothole', ds: 62, u: -W * 0.45 },
       { type: 'cone', ds: 70, u: -W * 0.2 },
       { type: 'cone', ds: 74, u: W * 0.05 },
@@ -333,6 +363,7 @@ export const PATTERNS = [
       { type: 'barrel', ds: 44, u: 0 },
       { type: 'longRail', ds: 66, u: 0 },
       { type: 'boostPad', ds: 24, u: W * 0.34 },
+      { type: 'woodWall', ds: 76, u: -W * 0.24 },
       // Off the vert wall, which is the biggest arc on the course.
       { type: 'airGate', ds: 56, u: 0 },
       // Over the big kicker's landing: only reachable with real height.

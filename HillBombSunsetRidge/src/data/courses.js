@@ -56,7 +56,11 @@ export const COURSES = {
      * by arriving somewhere instead of by a clock running out.
      */
     length: 2600,
-    allowedKinds: ['launch', 'grind', 'scenery', 'boost'],
+    // 'wall' is here and nowhere else: real obstacles are a race idea for now.
+    // A mission is a checklist against a clock and being stopped dead by a wall
+    // makes its targets a lottery; a race already has rivals to lose ground to,
+    // which is exactly what a wall should cost you.
+    allowedKinds: ['launch', 'grind', 'scenery', 'boost', 'wall'],
     /**
      * A DIFFERENT HILL EVERY RUN. Nothing here is scored against a fixed
      * benchmark -- you are racing the riders beside you, and they ride whatever

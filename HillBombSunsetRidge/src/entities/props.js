@@ -480,6 +480,30 @@ function buildBoostPad(def) {
   return g;
 }
 
+// A plank wall. Horizontal boards with a visible gap between them and two
+// uprights, because a solid slab reads as scenery at speed while boards read as
+// something built to stop you.
+function buildWall(def) {
+  const { w, h, l } = def.size;
+  const g = new THREE.Group();
+  const plank = new THREE.MeshBasicMaterial({ color: def.colour });
+  const post = new THREE.MeshBasicMaterial({ color: def.accent });
+
+  const boards = 3;
+  const boardH = h / (boards + (boards - 1) * 0.35);
+  for (let i = 0; i < boards; i++) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, boardH, l), plank);
+    b.position.y = boardH / 2 + i * boardH * 1.35;
+    g.add(b);
+  }
+  for (const side of [-1, 1]) {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.22, h, l * 1.3), post);
+    p.position.set(side * (w / 2 - 0.11), h / 2, 0);
+    g.add(p);
+  }
+  return g;
+}
+
 const BUILDERS = {
   kicker: buildKicker, bigKicker: buildKicker, bank: buildBank, barrel: buildBarrel,
   airGate: buildBoostPad,
@@ -487,6 +511,7 @@ const BUILDERS = {
   cone: buildCone, pothole: buildPothole, roadwork: buildRoadwork,
   lamp: buildLamp, hydrant: buildBlob,
   crystal: buildCrystal, highCrystal: buildCrystal, boostPad: buildBoostPad,
+  woodWall: buildWall,
 };
 
 export function createProps(scene) {
@@ -772,6 +797,12 @@ export function createProps(scene) {
           // speed or frame rate.
           const takeoff = it.s - halfL + 2 * halfL * apexFrac(it.def.launch.profile);
           if (!(sPrev < takeoff && s >= takeoff)) continue;
+        } else if (it.def.kind === 'wall') {
+          // A wall is a thin slab across the road -- half a metre deep -- so an
+          // overlap test on its own length is barely one frame wide at 30 u/s.
+          // Its catch width is used along s as well, for the same reason a
+          // pickup's is: an obstacle that can be stepped clean over is not one.
+          if (Math.abs(s - it.s) > it.def.wall.catchWidth) continue;
         } else if (it.def.kind === 'boost') {
           if (Math.abs(s - it.s) > it.def.boost.catchWidth) continue;
         } else if (it.def.kind === 'pickup') {
@@ -787,7 +818,8 @@ export function createProps(scene) {
         } else if (s < it.s - halfL || s > it.s + halfL) {
           continue;
         }
-        const catchW = it.def.kind === 'grind' ? it.def.grind.catchWidth
+        const catchW = it.def.kind === 'wall' ? it.def.wall.catchWidth
+          : it.def.kind === 'grind' ? it.def.grind.catchWidth
           : it.def.kind === 'pickup' ? it.def.pickup.catchWidth
           : it.def.kind === 'boost' ? it.def.boost.catchWidth
           : w / 2 + 0.45;
@@ -811,6 +843,13 @@ export function createProps(scene) {
         // being airborne at the right moment, which is the whole point of it.
         if (it.def.kind === 'boost') {
           if (!withinGateArch(it.def, height)) continue;
+        } else if (it.def.kind === 'wall') {
+          // YOU CAN JUMP IT, and height is what decides -- not the airborne
+          // flag. Being airborne at all would clear a wall you had only just
+          // left the ground for, and a ramp deck that carries you over one
+          // would not count at all. Above its clear height you are over it;
+          // below, you hit it, arc or no arc.
+          if (height > it.def.wall.clearHeight) continue;
         } else if (airborne && it.def.kind !== 'grind' && it.def.kind !== 'pickup') continue;
         // A pickup floating three metres up is not collectable from the road.
         if (it.def.kind === 'pickup'

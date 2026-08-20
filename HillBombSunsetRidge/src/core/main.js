@@ -198,6 +198,9 @@ const state = {
   boostFloor: 0, // speed held for that burst -- see the boost pickup
   roll: 0, // rolling-momentum bonus to terminal speed -- see ROLL_GAIN
   boostDuration: 1, // the boost's full length, for the HUD timer
+  // Seconds left face-down after hitting a wall. While this is above zero the
+  // rider has no control at all -- see the wall branch in the prop interaction.
+  tripT: 0,
   airFrom: null, // the ramp this air launched from, excluded from ramp collision
   // Height of the launch ramp deck the rider is standing on right now.
   rampLift: 0,
@@ -355,6 +358,7 @@ function reset() {
   state.boostFloor = 0;
   state.roll = 0;
   state.boostDuration = 1;
+  state.tripT = 0;
   state.airFrom = null;
   state.rampLift = 0;
   state.landT = 0;
@@ -807,7 +811,15 @@ function frame() {
 
   if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !missionSelect.isOpen()
       && !isConfirmOpen() && !briefing.isOpen() && !isPanelOpen()) {
-    const { carve, tuck, brake, pop } = readInput();
+    let { carve, tuck, brake, pop } = readInput();
+    // NO CONTROL WHILE DOWN. Steering out of a crash before the rider has got
+    // up would make the wall a speed penalty rather than a crash -- the cost is
+    // the seconds, not the speed. Input is dropped rather than the loop being
+    // frozen, so the world keeps moving past you and the rivals keep going.
+    if (state.tripT > 0) {
+      state.tripT = Math.max(0, state.tripT - dt);
+      carve = 0; tuck = 0; brake = 0; pop = false;
+    }
 
     // SOFT tilt response (see constants.js). Two stages:
     //   1. shape it   -- |carve|^CARVE_CURVE, sign kept. Flattens the region
@@ -1291,6 +1303,35 @@ function frame() {
           scoring.award(hit.def.boost.points, hit.def.label, false);
           events.emit(EV.PICKUP, { type: 'boost', points: hit.def.boost.points });
           hit.mesh.visible = false;
+          hit.spent = true;
+        } else if (hit.def.kind === 'wall') {
+          // A REAL CRASH. Not a wobble and not a speed scrub -- the run stops.
+          // Speed goes to almost nothing, the rider is out of control for a
+          // beat, and everything they had going is gone: the boost, the rolling
+          // momentum they had built, and any grind they were on.
+          //
+          // In a race this is the most expensive thing on the course, and it
+          // should be: the field does not stop, so every metre they take while
+          // you are down is a metre you have to win back.
+          state.speed = hit.def.wall.stopSpeed;
+          state.tripT = hit.def.wall.downSeconds;
+          state.roll = 0;          // the momentum bonus, earned and now lost
+          state.boostT = 0;
+          state.grind = null;      // knocked off a rail if you were on one
+          state.airActive = false;
+          state.airT = 0;
+          state.airTrick = null;
+          state.thetaVel = 0;
+          // The heaviest absorb the rider has, held for the whole time they are
+          // down -- it is the closest thing to a fall this rig can do without
+          // new animation, and it reads as being folded up by the impact.
+          beginLanding(LAND_AMOUNT_BACKFLIP);
+          state.landDuration = hit.def.wall.downSeconds;
+          state.landT = hit.def.wall.downSeconds;
+          rig.onLand();
+          scoring.hit(0, hit.def.label);
+          events.emit(EV.HAZARD, { label: hit.def.label, wobble: 0 });
+          hud.banner('CRASH');
           hit.spent = true;
         } else if (hit.def.kind === 'hazard') {
           events.emit(EV.HAZARD, { label: hit.def.label, wobble: hit.def.hazard.wobble });

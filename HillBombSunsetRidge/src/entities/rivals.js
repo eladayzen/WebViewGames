@@ -152,6 +152,7 @@ export function createRivals(scene, rider) {
         t: 0,
         boostT: 0,
         boostSpeed: 0,
+        downT: 0, // seconds left crashed after a wall
       };
       field.push(rival);
       attachBody(rival, i);
@@ -205,6 +206,15 @@ export function createRivals(scene, rider) {
         // while the player's decayed slowly through drag alone. Measured with
         // the naive version: the player won by 257 m without even steering for
         // the pads.
+        // Down after a wall: no pace-seeking at all, just the clock running out
+        // on them, exactly as the player's trip works.
+        if (r.downT > 0) {
+          r.downT = Math.max(0, r.downT - dt);
+          r.s += r.speed * dt;
+          r.holder.visible = r.s > playerS - 120 && r.s < playerS + 300;
+          if (r.mixer && r.holder.visible) r.mixer.update(dt);
+          continue;
+        }
         if (r.boostT > 0) r.boostT = Math.max(0, r.boostT - dt);
         const target = SPEED_REF * r.pace + (r.boostT > 0 ? r.boostSpeed : 0);
         // EASE STRAIGHT TO THE TARGET. This used to run the player's own
@@ -258,6 +268,19 @@ export function createRivals(scene, rider) {
                 // ceiling -- an uncapped stack ran away on both sides.
                 r.boostSpeed = Math.min(
                   def.boost.ceiling - SPEED_REF * r.pace, def.boost.speed * r.skill);
+              }
+            }
+            else if (def.kind === 'wall') {
+              // RIVALS CRASH TOO, or the wall is a tax the player alone pays and
+              // the race stops being one. Gated on their line and on skill, so a
+              // good rival mostly threads them and a poor one does not -- the
+              // same deterministic hash the gates use, so a rival hits the same
+              // walls every run and stays the character it was.
+              const gap = Math.abs(it.theta - r.theta);
+              if (gap < 0.13 && hash01(it.s, r.index + 7) > r.skill * 0.62) {
+                r.speed = def.wall.stopSpeed;
+                r.boostT = 0;
+                r.downT = def.wall.downSeconds;
               }
             }
             else if (def.kind === 'pickup') {
