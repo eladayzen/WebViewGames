@@ -16,7 +16,7 @@
 
 import * as THREE from 'three';
 import {
-  GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED, FUNNEL_SPACING,
+  GRADE, GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED, FUNNEL_SPACING,
   ROLL_GAIN, ROLL_MAX, ROLL_BRAKE_LOSS, MIN_SPEED,
   NATURAL_TOP_SPEED, SHAKE_SPAN, SHAKE_MAX,
   BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE, GROUND_CTRL_RELEASE, GROUND_CTRL_LETGO,
@@ -39,7 +39,7 @@ import {
 import { initInput, readInput, forcePop, setStance, getStance } from '../input/input.js';
 import {
   createTrough, toWorld, surfaceUp, heightAt, frameAt, makeFrame, radiusAt,
-  elevAt, slopeAt, curvatureAt,
+  elevAt, slopeAt, curvatureAt, dropLipsBetween,
 } from '../world/trough.js';
 import { createRider } from '../entities/rider.js';
 import { createCameraRig } from '../camera/cameraRig.js';
@@ -1131,21 +1131,25 @@ function frame() {
       // Held at exactly 1 rather than allowed to run on, because airT drives
       // the rotation animation 1:1: letting it pass 1 would start a second
       // backflip on the way down.
+      //
+      // TOUCHDOWN IS ITS OWN FLAG, not a value smuggled through airT. Signalling
+      // it by nudging airT past 1 meant the landing test immediately below --
+      // `airT >= 1` -- was already true on the very frame the hang STARTED,
+      // since holding airT at exactly 1 satisfies it. The rider landed the
+      // instant the arc ended and the ground-fell-away hang never ran at all:
+      // measured 0.33s of air over a drop that should give 1.08s.
+      let touchdown = false;
       if (state.airT >= 1) {
         state.airT = 1;
         state.airFallT += dt;
         const gap = groundGap(state.s);
         // 0.5*g*t^2 from the tangent line the rider was travelling on.
         const fallen = 0.5 * TERRAIN.fallG * state.airFallT * state.airFallT;
-        if (fallen < gap) {
-          state.airHang = gap - fallen;
-        } else {
-          state.airHang = 0;
-          state.airT = 1.0001; // fall through to the landing below
-        }
+        if (fallen < gap) state.airHang = gap - fallen;
+        else { state.airHang = 0; touchdown = true; }
       }
 
-      if (state.airT >= 1) {
+      if (touchdown) {
         state.airActive = false;
         state.airT = 0;
         state.airFallT = 0;
@@ -1702,17 +1706,22 @@ window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, ra
    * `__lab.toDrop()` for the next one, `__lab.toDrop(2)` to skip ahead.
    */
   toDrop(n = 1) {
-    const sp = TERRAIN.dropSpacing;
-    if (!(TERRAIN.dropDepth > 0)) return 'this terrain has no drops';
-    // The lip sits at the leading edge of the drop window; back off 60m so the
-    // approach is ridden rather than started on top of it.
-    const lip = sp * (0.5 - TERRAIN.dropWidth / 2);
-    const target = (Math.floor(state.s / sp) + n) * sp + lip - 60;
+    if (!TERRAIN.dropCycle || TERRAIN.dropCycle.length === 0) return 'this terrain has no drops';
+    // Ask the terrain where its lips actually are rather than re-deriving them.
+    // The first version computed the lip from a single dropWidth, which stopped
+    // existing when drops became a varied cycle -- so it quietly produced NaN
+    // and teleported the rider out of the world.
+    const lips = dropLipsBetween(state.s + 20, state.s + 20 + TERRAIN.dropSpacing * TERRAIN.dropCycle.length * 2);
+    const lip = lips[Math.max(0, Math.min(lips.length - 1, n - 1))];
+    if (!lip) return 'no lip found ahead';
+    const target = lip.s - 60; // ride the approach rather than start on the edge
     state.s = target;
     state.sPrev = target;
     props.reset(target);
-    return `at ${target.toFixed(0)}m, lip in 60m`;
+    return `${lip.drop.profile} drop, depth ${lip.drop.depth} over ${lip.len.toFixed(0)}m -- lip in 60m`;
   },
+  /** Every drop lip in a stretch, for measuring. */
+  dropLips: (from, to) => dropLipsBetween(from, to),
   // The LIVE input instance. A dynamic import() of the module gives a second
   // copy whose initInput() never ran, so its key set stays empty and every
   // reading is zero -- which looks exactly like a broken mapping.

@@ -104,7 +104,11 @@ export const COURSES = {
     kind: COURSE_FINITE,
     length: 1800,
     terrain: 'openFace',
-    allowedKinds: ['launch', 'grind', 'scenery', 'pickup'],
+    // 'wall' is what lets boulders exist here. On the race course that kind is
+    // a run-ending plank; on the face it is rock, with much gentler numbers
+    // (see boulder in propTypes.js), and it is the only thing that makes riding
+    // down the middle cost anything at all.
+    allowedKinds: ['launch', 'grind', 'scenery', 'pickup', 'wall'],
     variation: true,
   },
 };

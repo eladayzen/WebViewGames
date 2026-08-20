@@ -122,6 +122,40 @@ export const PROP_TYPES = {
     label: 'WALL',
   },
 
+  /**
+   * THE BLOCKER -- what makes the middle of the hill cost something.
+   *
+   * Amit, riding the open face: "I can just stay in the middle and go through
+   * the ride." He was right, and measurably so: 17% of every placement sat at
+   * exactly theta 0, which the spread multiplier cannot move (0 x 1.75 is still
+   * 0), so the centreline was a route that collected crystals and hit ramps and
+   * was never once punished for it. Spreading the REWARDS outward does not fix
+   * that on its own -- it makes the middle boring, and boring is not a cost.
+   * Something has to be in the way.
+   *
+   * It was a low-poly rock first, and looked wrong: every other object here is
+   * flat unlit colour and hard edges, and a naturalistic stone read as an import
+   * from another game. Same bones as woodWall now, restyled -- see buildBlocker.
+   *
+   * GENTLER THAN woodWall on purpose. That one drops you to 6 u/s for 1.1s,
+   * which is a run-ending mistake -- correct as one authored hazard in a race,
+   * far too harsh when these are the standard furniture of every pattern.
+   * Clipping one should cost you a line and some speed, not the descent.
+   */
+  blocker: {
+    kind: 'wall',
+    size: { w: 3.4, h: 1.6, l: 0.4 },
+    colour: 0x241a3d, // near-black indigo, so the lit parts carry it
+    accent: 0xff3ea5, // the boundary magenta, same hue as the coping
+    wall: {
+      catchWidth: 2.0,
+      clearHeight: 1.9,  // a real drop's air clears it; an ollie does not
+      stopSpeed: 15.0,   // knocked down to a crawl, not stopped dead
+      downSeconds: 0.55,
+    },
+    label: 'BLOCKED',
+  },
+
   // --- hazards -----------------------------------------------------------
   cone: {
     kind: 'hazard',
@@ -178,6 +212,35 @@ export const PROP_TYPES = {
     // generous reach: a crystal on the deck should not need a hop.
     pickup: { type: 'crystal', points: 120, catchWidth: 3.4, height: 0.9, reach: 2.2 },
     label: 'CRYSTAL',
+  },
+
+  /**
+   * A STONE IDOL -- the rare one.
+   *
+   * Amit, on what missions should ask for: "the mission needs to introduce new
+   * content every time... I need to collect some statues or big stuff. But it's
+   * not every second that you can get one, it's every now and then."
+   *
+   * That second sentence is the whole design and it is the part a normal pickup
+   * cannot express. A crystal is texture -- there are twenty of them in every
+   * pattern and collecting one is a rhythm, not a decision. This is the
+   * opposite: roughly one every three or four patterns, worth fifteen crystals,
+   * and always placed somewhere that costs you something to reach. Seeing one is
+   * meant to change your line for the next four seconds.
+   *
+   * A SEPARATE pickup `type`, not just a bigger crystal, so a mission can count
+   * idols without counting crystals -- which is what makes "collect 3 idols" a
+   * different objective from "collect 30 crystals" rather than a scaled one.
+   */
+  statue: {
+    kind: 'pickup',
+    // Far bigger than a crystal. It has to be readable from most of a hill
+    // away, because the whole point is deciding to go for it early.
+    size: { w: 2.6, h: 4.4, l: 2.6 },
+    colour: 0x7fe3ff,
+    accent: 0xfff1c0,
+    pickup: { type: 'statue', points: 1800, catchWidth: 4.2, height: 2.2, reach: 3.4 },
+    label: 'IDOL',
   },
 
   // --- speed boost -------------------------------------------------------
@@ -386,5 +449,134 @@ export const PATTERNS = [
     // player no room to just feel the speed, which is the point of the game.
     length: 55,
     build: (W) => [{ type: 'boostPad', ds: 28, u: W * 0.26 }],
+  },
+];
+
+/**
+ * FACE PATTERNS -- content authored FOR a wide hill, not scaled onto one.
+ *
+ * The patterns above were laid out for the half-pipe and pushed outward with a
+ * multiplier. That got the distribution most of the way there and then hit a
+ * wall it could never clear: anything authored at u = 0 stays at 0 however
+ * large the multiplier, and 17% of every placement was exactly there. So the
+ * centreline kept its ramps, its crystals and its boost gates, and Amit's read
+ * of the result was the correct one -- "I can just stay in the middle and go
+ * through the ride."
+ *
+ * THREE RULES, and they are what makes this a different table rather than the
+ * old one with bigger numbers:
+ *
+ *   1. NOTHING REWARDING ON THE CENTRELINE. No crystal, ramp or gate is placed
+ *      within 0.2 of centre. The middle is the one place on the hill that pays
+ *      nothing.
+ *   2. THE MIDDLE IS OCCUPIED, not merely empty. Boredom is not a cost -- a
+ *      player holding a straight line through an empty corridor is still having
+ *      an easy time of it. Every pattern here puts something solid in the
+ *      centre that has to be gone around.
+ *   3. EVERY PATTERN HAS A LINE THROUGH IT, and it is never straight. The
+ *      reward chains run diagonally or from rim to rim, so taking them means
+ *      committing to a traverse and starting it early -- which, on a face where
+ *      a full crossing takes four seconds, is the actual skill.
+ *
+ * Authored against the true rim, so `spread` must be 1 on any terrain using
+ * this set -- scaling a table that already reaches 0.95 would only clamp it.
+ */
+export const FACE_PATTERNS = [
+  {
+    // A chain arcing all the way across, with the direct route blocked. Taking
+    // the whole chain is one committed traverse begun before you can see it.
+    name: 'the crossing',
+    length: 120,
+    build: (W) => [
+      { type: 'blocker', ds: 40, u: 0 },
+      { type: 'blocker', ds: 44, u: W * 0.16 },
+      { type: 'crystal', ds: 8, u: -W * 0.86 },
+      { type: 'crystal', ds: 26, u: -W * 0.62 },
+      { type: 'crystal', ds: 44, u: -W * 0.34 },
+      { type: 'crystal', ds: 64, u: W * 0.30 },
+      { type: 'crystal', ds: 84, u: W * 0.58 },
+      { type: 'crystal', ds: 102, u: W * 0.84 },
+      { type: 'kicker', ds: 74, u: W * 0.46 },
+      { type: 'rail', ds: 96, u: -W * 0.72 },
+      // At the far end of the crossing, so the idol is the reason to finish the
+      // traverse rather than bailing out of it halfway.
+      { type: 'statue', ds: 110, u: W * 0.92, rare: 2 },
+    ],
+  },
+  {
+    // Two doors, and they are not equal. The wide one is easy and pays nothing;
+    // the narrow one is off at the rim with the crystals stacked behind it.
+    name: 'two doors',
+    length: 110,
+    build: (W) => [
+      { type: 'blocker', ds: 30, u: 0 },
+      { type: 'blocker', ds: 34, u: -W * 0.20 },
+      { type: 'blocker', ds: 34, u: W * 0.22 },
+      { type: 'blocker', ds: 30, u: W * 0.46 },
+      { type: 'crystal', ds: 58, u: W * 0.74 },
+      { type: 'crystal', ds: 72, u: W * 0.80 },
+      { type: 'crystal', ds: 86, u: W * 0.86 },
+      { type: 'bigKicker', ds: 96, u: W * 0.80 },
+      { type: 'cone', ds: 62, u: -W * 0.44 },
+      // Behind the narrow door, which is the whole point of there being two.
+      { type: 'statue', ds: 78, u: W * 0.90, rare: 2, rarePhase: 1 },
+    ],
+  },
+  {
+    // Everything on one rim. The centre is walled off for its whole length, so
+    // there is no version of this pattern you ride straight through.
+    name: 'rim run',
+    length: 130,
+    build: (W) => [
+      { type: 'blocker', ds: 20, u: -W * 0.06 },
+      { type: 'blocker', ds: 62, u: W * 0.10 },
+      { type: 'blocker', ds: 104, u: -W * 0.12 },
+      { type: 'longRail', ds: 34, u: -W * 0.78 },
+      { type: 'crystal', ds: 30, u: -W * 0.78 },
+      { type: 'crystal', ds: 48, u: -W * 0.80 },
+      { type: 'crystal', ds: 66, u: -W * 0.82 },
+      { type: 'kicker', ds: 88, u: -W * 0.76 },
+      { type: 'crystal', ds: 112, u: W * 0.88 },
+      // The opposite rim from everything else in this pattern: taking it means
+      // giving up the crystal run you just committed to.
+      { type: 'statue', ds: 120, u: W * 0.94, rare: 3, rarePhase: 1 },
+    ],
+  },
+  {
+    // A slalom that never lets you settle: rocks alternating close to centre,
+    // crystals hung on the outside of each turn so the fast line and the
+    // scoring line are the same one.
+    name: 'slalom',
+    length: 140,
+    build: (W) => {
+      const out = [];
+      for (let i = 0; i < 5; i++) {
+        const side = i % 2 ? 1 : -1;
+        out.push({ type: 'blocker', ds: 16 + i * 26, u: side * W * 0.14 });
+        out.push({ type: 'crystal', ds: 26 + i * 26, u: -side * W * 0.56 });
+      }
+      out.push({ type: 'kicker', ds: 70, u: W * 0.62 });
+      out.push({ type: 'kicker', ds: 122, u: -W * 0.64 });
+      return out;
+    },
+  },
+  {
+    // Wide open, and that IS the pattern -- one big rock field in the middle
+    // with a long reward run round either edge. Gives the sequence somewhere to
+    // breathe so the slalom and the crossing read as events.
+    name: 'rock field',
+    length: 120,
+    build: (W) => [
+      { type: 'blocker', ds: 34, u: -W * 0.10 },
+      { type: 'blocker', ds: 40, u: W * 0.12 },
+      { type: 'blocker', ds: 56, u: 0 },
+      { type: 'blocker', ds: 60, u: -W * 0.26 },
+      { type: 'blocker', ds: 64, u: W * 0.30 },
+      { type: 'crystal', ds: 44, u: -W * 0.70 },
+      { type: 'crystal', ds: 62, u: -W * 0.76 },
+      { type: 'crystal', ds: 80, u: W * 0.72 },
+      { type: 'crystal', ds: 98, u: W * 0.78 },
+      { type: 'rail', ds: 86, u: W * 0.74 },
+    ],
   },
 ];

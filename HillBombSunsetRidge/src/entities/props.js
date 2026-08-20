@@ -9,8 +9,10 @@
 // allocated per frame: meshes come from a pool keyed by prop type.
 
 import * as THREE from 'three';
-import { PROP_TYPES, PATTERNS } from '../data/propTypes.js';
-import { toWorld, surfaceUp, frameAt, makeFrame, radiusAt } from '../world/trough.js';
+import { PROP_TYPES, PATTERNS, FACE_PATTERNS } from '../data/propTypes.js';
+import {
+  toWorld, surfaceUp, frameAt, makeFrame, radiusAt, dropLipsBetween,
+} from '../world/trough.js';
 import { RAMP_ARROW_COLOR } from '../data/constants.js';
 // Patterns are authored as FRACTIONS of the ridable half-width, so the rim angle
 // they are handed has to be the live one -- a pattern laid out against the
@@ -24,6 +26,17 @@ const RECYCLE_BEHIND = 40;
 // Deterministic per-index shuffle so the descent varies but a given run is
 // reproducible. Math.random would also work, but this keeps the layout stable
 // if the same stretch is ever regenerated.
+/**
+ * Which content table this terrain plays. The street set was authored for the
+ * half-pipe; the face set is authored for a wide hill and must not also be
+ * scaled (see FACE_PATTERNS). Read per call rather than cached, for the same
+ * reason everything else here reads TERRAIN live -- a course change must not
+ * leave the previous hill's content table in place.
+ */
+function patternSet() {
+  return TERRAIN.patternSet === 'face' ? FACE_PATTERNS : PATTERNS;
+}
+
 function hash(n) {
   let x = Math.sin(n * 127.1) * 43758.5453;
   return x - Math.floor(x);
@@ -488,6 +501,95 @@ function buildBoostPad(def) {
 // A plank wall. Horizontal boards with a visible gap between them and two
 // uprights, because a solid slab reads as scenery at speed while boards read as
 // something built to stop you.
+/**
+ * A carved stone idol: a tapered plinth, a body, shoulders and a head. Built
+ * from boxes rather than a mesh because it has to read as a SILHOUETTE from
+ * several hundred units away -- the decision to go for one is made long before
+ * any detail resolves -- and a tall stepped shape against a wide empty hill is
+ * about as legible as a silhouette gets.
+ */
+function buildStatue(def) {
+  const { w, h, l } = def.size;
+  const g = new THREE.Group();
+  const stone = new THREE.MeshBasicMaterial({ color: def.colour });
+  const lit = new THREE.MeshBasicMaterial({ color: def.accent });
+  const parts = [
+    { w: w, h: h * 0.16, l: l, y: h * 0.08, m: lit },
+    { w: w * 0.62, h: h * 0.52, l: l * 0.62, y: h * 0.42, m: stone },
+    { w: w * 0.80, h: h * 0.10, l: l * 0.80, y: h * 0.73, m: lit },
+    { w: w * 0.44, h: h * 0.24, l: l * 0.44, y: h * 0.90, m: stone },
+  ];
+  for (const q of parts) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(q.w, q.h, q.l), q.m);
+    m.position.y = q.y;
+    g.add(m);
+  }
+  return g;
+}
+
+/**
+ * THE BLOCKER -- a lit barrier with a hard X across it.
+ *
+ * This replaces a set of low-poly rocks. Amit: "I think the rocks look bad. I
+ * prefer using the blockers that we've built before... you can have like a big
+ * X on them, something in the vibe of this neon-like style we've built." He is
+ * right about the rocks for a reason worth writing down: everything else on this
+ * hill is flat unlit colour and hard edges, and a jittered stone lump is the one
+ * object trying to be naturalistic. It read as an asset from a different game.
+ *
+ * SAME BONES AS woodWall -- two posts and a panel between them, because that
+ * silhouette already means "you do not go through this" here. What changes is
+ * the surface: a dark slab carrying a bright X, with a lit rail along the top.
+ *
+ * MAGENTA, and not a new hue. The palette assigns meaning by colour -- cyan
+ * paint, violet launcher, green grindable, gold pickup -- and magenta is already
+ * the BOUNDARY, the coping at the edge of the ridable world. A barrier planted
+ * mid-hill is exactly that: the edge of where you may go, in a place you did not
+ * expect one. Inventing a seventh hue for it would be teaching the player a new
+ * word for something the language already says.
+ *
+ * The X does the work at distance. By the time the panel resolves you have
+ * already had to choose a side, so what matters is the shape read at range, and
+ * two crossed bars is about the most unambiguous "not here" there is.
+ */
+function buildBlocker(def) {
+  const { w, h, l } = def.size;
+  const g = new THREE.Group();
+  const slab = new THREE.MeshBasicMaterial({ color: def.colour });
+  const lit = new THREE.MeshBasicMaterial({ color: def.accent });
+
+  // The dark face the X sits on. Kept well darker than the ground so the bright
+  // bars have something to break against rather than glowing off open hillside.
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h * 0.82, l), slab);
+  panel.position.y = h * 0.41;
+  g.add(panel);
+
+  // Crossed bars, on BOTH faces -- the rider sees the front on approach and the
+  // back for as long as it is behind them, and a blank rear face reads as the
+  // barrier having switched off once passed.
+  const diag = Math.hypot(w, h * 0.82);
+  for (const side of [-1, 1]) {
+    for (const dir of [-1, 1]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(diag * 0.98, h * 0.13, 0.06), lit);
+      bar.position.set(0, h * 0.41, side * (l / 2 + 0.04));
+      bar.rotation.z = dir * Math.atan2(h * 0.82, w);
+      g.add(bar);
+    }
+  }
+
+  // Lit rail along the top, and lit post caps: the horizontal line is what
+  // reads first at a distance, before the X resolves.
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(w * 1.06, h * 0.11, l * 1.25), lit);
+  rail.position.y = h * 0.87;
+  g.add(rail);
+  for (const side of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.26, h, l * 1.3), slab);
+    post.position.set(side * (w / 2 + 0.13), h / 2, 0);
+    g.add(post);
+  }
+  return g;
+}
+
 function buildWall(def) {
   const { w, h, l } = def.size;
   const g = new THREE.Group();
@@ -516,7 +618,8 @@ const BUILDERS = {
   cone: buildCone, pothole: buildPothole, roadwork: buildRoadwork,
   lamp: buildLamp, hydrant: buildBlob,
   crystal: buildCrystal, highCrystal: buildCrystal, boostPad: buildBoostPad,
-  woodWall: buildWall,
+  statue: buildStatue,
+  woodWall: buildWall, blocker: buildBlocker,
 };
 
 export function createProps(scene) {
@@ -528,6 +631,13 @@ export function createProps(scene) {
   // Which prop kinds may spawn. Hazards excluded by default; see add().
   let allowedKinds = new Set(['launch', 'grind', 'scenery', 'pickup']);
   let nextPatternS = 60; // leave the opening stretch clear
+  // Separate frontier from the patterns'. Lip ramps are placed against the
+  // TERRAIN, which has its own spacing and knows nothing about how long a
+  // pattern happens to be -- driving both off one cursor would make whether a
+  // drop got a ramp depend on where a pattern boundary happened to fall.
+  let nextLipS = 60;
+  /** Emissions per pattern name this run -- drives the `rare` cadence. */
+  let emitsOf = Object.create(null);
   // --- route variation ------------------------------------------------------
   // Off unless the course asks for it (see data/courses.js). When off, every
   // one of these is inert and the course is byte-for-byte the fixed layout the
@@ -600,15 +710,56 @@ export function createProps(scene) {
    * times in a row and hide 'big air' for a whole race.
    */
   function nextPattern() {
-    if (!vary) return PATTERNS[patternIndex++ % PATTERNS.length];
+    const SET = patternSet();
+    if (!vary) return SET[patternIndex++ % SET.length];
     if (!bag.length) {
-      bag = PATTERNS.map((_, i) => i);
+      // Indices into the ACTIVE set, not into PATTERNS. The face set is
+      // shorter, so a bag built from the street table would deal indices past
+      // its end and hand back undefined.
+      bag = SET.map((_, i) => i);
       for (let i = bag.length - 1; i > 0; i--) {
         const j = Math.floor(rng() * (i + 1));
         [bag[i], bag[j]] = [bag[j], bag[i]];
       }
     }
-    return PATTERNS[bag.pop()];
+    return SET[bag.pop()];
+  }
+
+  /**
+   * A RAMP ON THE EDGE OF A DROP -- the two air systems stacked.
+   *
+   * The launcher throws the rider, and then the ground is not there when they
+   * come down, so the flight is the ramp's arc plus the whole depth of the
+   * drop. It is by a distance the biggest air the game can produce, and it
+   * costs nothing to build because both halves already exist: this only decides
+   * WHERE to put a kicker.
+   *
+   * OFF-CENTRE, ALTERNATING SIDES. A ramp spanning the lip would make the drop a
+   * jump and nothing else; pushed out to a third of the way across, the same
+   * lip is a jump on one side and a clean roll-in on the other, and which one
+   * you get is a line you chose several seconds earlier.
+   *
+   * NOT ON THE WIDE SHALLOW ONES. A drop long enough that the terrain will not
+   * launch you is a drop you are meant to flow over -- putting a kicker on it
+   * takes away the one shape in the cycle that is about carrying speed rather
+   * than leaving the ground.
+   */
+  function emitLipRamps(throughS) {
+    if (nextLipS >= throughS) return;
+    for (const lip of dropLipsBetween(nextLipS, throughS)) {
+      // Deterministic per drop index, so a given lip is the same every time it
+      // is regenerated and does not flicker as the frontier passes it.
+      if (hash(lip.index * 7.3 + 11) > TERRAIN.lipRamps) continue;
+      if (lip.drop.width > 0.24) continue; // the flow ones stay clean
+      const side = lip.index % 2 === 0 ? 1 : -1;
+      const u = side * TERRAIN.thetaMax * 0.34;
+      // A few metres BEFORE the edge, so the rider is leaving the ramp exactly
+      // as the ground goes. On the lip itself the takeoff happens after the
+      // hill has already started to fall and the ramp does half its job.
+      const type = lip.drop.depth >= 6 ? 'bigKicker' : 'kicker';
+      add(type, lip.s - 7, u);
+    }
+    nextLipS = throughS;
   }
 
   /** Emit the next authored pattern, plus roadside scenery for that stretch. */
@@ -620,7 +771,23 @@ export function createProps(scene) {
     // familiar, the line through it is not.
     const flip = vary && rng() < 0.5 ? -1 : 1;
     const rim = TERRAIN.thetaMax;
+    if (emitsOf[p.name] === undefined) emitsOf[p.name] = 0;
     for (const item of p.build(rim)) {
+      // RARE placements appear in one of every `rare` emissions OF THIS
+      // PATTERN. Per-pattern, not global: counted against the global emission
+      // index, a rare:3 inside a pattern that itself only comes up every fifth
+      // emission needs both cadences to coincide, which fires about one time in
+      // fifteen -- measured, that put two idols in an entire 1800m descent with
+      // a 53-second hole between them.
+      //
+      // Counted rather than rolled so the cadence is something a player can
+      // come to feel, instead of a coin that can hide an idol for a whole run
+      // or deal three in a row.
+      // `rarePhase` staggers patterns that share a cadence. Without it every
+      // rare:2 placement in the set fires on the same emissions and they arrive
+      // in clumps -- measured, six idols in a descent landed as three early,
+      // a 1000m gap, then three late.
+      if (item.rare && (emitsOf[p.name] % item.rare) !== (item.rarePhase || 0)) continue;
       // SPREAD pushes an authored layout out toward the edges of a wider hill
       // (see data/terrain.js). Clamped at the rim: on a wall terrain the rim is
       // a solid barrier, and a prop scaled past it would be embedded in it.
@@ -657,6 +824,7 @@ export function createProps(scene) {
       }
     }
     nextPatternS += p.length;
+    emitsOf[p.name] = (emitsOf[p.name] || 0) + 1;
     return p.name;
   }
 
@@ -676,6 +844,8 @@ export function createProps(scene) {
     reset(startS = 0) {
       while (active.length) release(active.pop());
       nextPatternS = startS + 60; // leave the opening stretch clear
+      nextLipS = startS + 60;
+      emitsOf = Object.create(null);
       patternIndex = 0;
       bag = [];
     },
@@ -695,6 +865,7 @@ export function createProps(scene) {
     update(riderS, dt = 0) {
       spinT += dt;
       while (nextPatternS < riderS + SPAWN_AHEAD) emitPattern();
+      emitLipRamps(riderS + SPAWN_AHEAD);
       for (let i = active.length - 1; i >= 0; i--) {
         const it = active[i];
         if (it.s < riderS - RECYCLE_BEHIND) {

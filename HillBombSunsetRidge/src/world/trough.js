@@ -42,33 +42,109 @@ const CROSS_SEGMENTS = 30;
 // --- the spline -------------------------------------------------------------
 
 /**
- * HOW FAR THE HILL HAS FALLEN by distance s. Metres of descent, positive down.
+ * THE HILL'S SHAPE, as a repeating SEQUENCE of drops rather than one hump.
  *
- * This used to be `s * GRADE` -- one constant, so the hill was a perfectly
- * even ramp from top to bottom and the only way to leave the ground was to hit
- * something someone had placed on it. Amit: "the road itself is dropping down
- * and you're flying like you're jumping down."
+ * The first version was a single periodic smoothstep: the same 12-unit
+ * roll-over every 540m, forever. It worked, and Amit's note on riding it was
+ * that it should be "more of them, smaller ones, different lines, different
+ * shapes." One repeated shape is terrain you learn once.
  *
- * So the grade is a PROFILE now: a steady descent plus a smooth step down every
- * `dropSpacing`, each one losing `dropDepth` over a window of `dropWidth`. A
- * smoothstep rather than a straight ramp because the interesting part is the
- * LIP -- the curvature where the ground starts falling away is what throws you,
- * and a linear ramp has all of its curvature in two infinitely sharp corners.
+ * So a terrain now carries a CYCLE -- a short list of drops, each with its own
+ * depth, length and profile, repeating as a group. Five entries at 230m spacing
+ * means a drop roughly every 8 seconds and the same one only every 40, which is
+ * long enough that the sequence reads as landscape rather than as wallpaper.
  *
- * The half-pipe sets dropDepth 0, which makes the whole second term vanish and
- * leaves `GRADE * s` exactly. That is not an approximation: `n` and `sm` still
- * evaluate, they are just multiplied by zero, so the old hill is bit-identical.
+ * SIZE IS NOT THE ONLY VARIABLE, and mostly not the interesting one. Launch
+ * curvature goes as depth/length^2, so a shallow 5-unit drop stretched over 69m
+ * is something you flow across without leaving the ground, while a 3.5-unit one
+ * compressed into 23m throws you clear. Two drops half a metre apart in depth
+ * can be a gentle roll and a hard lip. That is what makes a sequence worth
+ * reading ahead rather than reacting to.
+ *
+ * WHY THE GROUP'S TOTAL DEPTH IS FIXED. Elevation has to be O(1) at any s --
+ * it is read for every vertex of the surface mesh, every frame -- so it cannot
+ * be a sum over every drop since the top of the hill. Repeating a group whose
+ * depths are known lets the accumulated descent be one multiply plus a lookup
+ * into a prefix table. It also keeps the hill's average grade constant, so the
+ * run does not quietly get faster the further down it you are.
  */
-export function elevAt(s) {
-  const d = TERRAIN.dropDepth;
-  if (d === 0) return GRADE * s;
+
+/** Smoothstep and its first two derivatives -- flat lip, steep middle, flat out. */
+function ss(t) { return t * t * (3 - 2 * t); }
+function ssD(t) { return 6 * t * (1 - t); }
+function ssDD(t) { return 6 - 12 * t; }
+
+// A STAIR is two half-drops with a breather between them, and it exists because
+// it is the one shape that gives you a decision in the middle: land the first
+// step and ride the second, or carry enough speed off the first to clear both.
+// Bounds chosen so the two steps do not overlap and each still has a real lip.
+const ST_A = 0.42, ST_B = 0.58, ST_W = 0.42;
+
+/** Shape of a drop, 0 at the lip to 1 at the bottom. */
+function shape(profile, t) {
+  if (profile === 'stair') {
+    const a = Math.min(1, Math.max(0, t / ST_W));
+    const b = Math.min(1, Math.max(0, (t - ST_B) / ST_W));
+    return 0.5 * ss(a) + 0.5 * ss(b);
+  }
+  return ss(t);
+}
+function shapeD(profile, t) {
+  if (profile === 'stair') {
+    const a = t / ST_W, b = (t - ST_B) / ST_W;
+    let d = 0;
+    if (a > 0 && a < 1) d += 0.5 * ssD(a) / ST_W;
+    if (b > 0 && b < 1) d += 0.5 * ssD(b) / ST_W;
+    return d;
+  }
+  return ssD(t);
+}
+function shapeDD(profile, t) {
+  if (profile === 'stair') {
+    const a = t / ST_W, b = (t - ST_B) / ST_W;
+    let d = 0;
+    if (a > 0 && a < 1) d += 0.5 * ssDD(a) / (ST_W * ST_W);
+    if (b > 0 && b < 1) d += 0.5 * ssDD(b) / (ST_W * ST_W);
+    return d;
+  }
+  return ssDD(t);
+}
+
+/**
+ * Which drop we are in at s, and where within it.
+ * @returns {null|{drop:object, t:number, before:number, len:number}}
+ *   `t` is 0..1 across the drop (clamped), `before` the descent accumulated by
+ *   every drop above this one, `len` the drop's length in world units.
+ */
+function dropAt(s) {
+  const cycle = TERRAIN.dropCycle;
+  if (!cycle || cycle.length === 0) return null;
   const sp = TERRAIN.dropSpacing;
-  const w = TERRAIN.dropWidth;
-  const n = Math.floor(s / sp);
-  const phase = (s - n * sp) / sp;
-  const t = Math.min(1, Math.max(0, (phase - (0.5 - w / 2)) / w));
-  const sm = t * t * (3 - 2 * t); // smoothstep: flat lip, steep middle, flat run-out
-  return GRADE * s + d * (n + sm);
+  const n = cycle.length;
+  const groupLen = n * sp;
+  const group = Math.floor(s / groupLen);
+  const inGroup = s - group * groupLen;
+  const i = Math.min(n - 1, Math.floor(inGroup / sp));
+  const drop = cycle[i];
+
+  let before = group * TERRAIN.dropCycleDepth;
+  for (let k = 0; k < i; k++) before += cycle[k].depth;
+
+  const len = drop.width * sp;
+  // Centred in its slot, so consecutive drops always have flat ground between
+  // them however wide they are -- two lips running together would read as one
+  // long slope and lose both.
+  const startInSlot = (sp - len) / 2;
+  const t = (inGroup - i * sp - startInSlot) / len;
+  return { drop, t, before, len };
+}
+
+/** How far the hill has fallen by distance s. Metres of descent, positive down. */
+export function elevAt(s) {
+  const d = dropAt(s);
+  if (!d) return GRADE * s;
+  const t = Math.min(1, Math.max(0, d.t));
+  return GRADE * s + d.before + d.drop.depth * shape(d.drop.profile, t);
 }
 
 /**
@@ -80,15 +156,9 @@ export function elevAt(s) {
  * never actually has.
  */
 export function slopeAt(s) {
-  const d = TERRAIN.dropDepth;
-  if (d === 0) return GRADE;
-  const sp = TERRAIN.dropSpacing;
-  const w = TERRAIN.dropWidth;
-  const phase = (s - Math.floor(s / sp) * sp) / sp;
-  const t = (phase - (0.5 - w / 2)) / w;
-  if (t <= 0 || t >= 1) return GRADE;
-  // d(sm)/dt = 6t(1-t), and dt/ds = 1/(w*sp)
-  return GRADE + d * (6 * t * (1 - t)) / (w * sp);
+  const d = dropAt(s);
+  if (!d || d.t <= 0 || d.t >= 1) return GRADE;
+  return GRADE + d.drop.depth * shapeD(d.drop.profile, d.t) / d.len;
 }
 
 /**
@@ -101,15 +171,34 @@ export function slopeAt(s) {
  * per drop. Ride the same lip slowly and you simply roll down it.
  */
 export function curvatureAt(s) {
-  const d = TERRAIN.dropDepth;
-  if (d === 0) return 0;
+  const d = dropAt(s);
+  if (!d || d.t <= 0 || d.t >= 1) return 0;
+  return d.drop.depth * shapeDD(d.drop.profile, d.t) / (d.len * d.len);
+}
+
+/**
+ * Every drop LIP between two distances, for anything that wants to put
+ * something at the edge of one -- props.js hangs kickers off them.
+ *
+ * Returns the lip position plus the drop's own numbers, so a caller can decide
+ * differently for a gentle roll than for a hard edge without re-deriving the
+ * geometry it already computed here.
+ */
+export function dropLipsBetween(sFrom, sTo) {
+  const cycle = TERRAIN.dropCycle;
+  const out = [];
+  if (!cycle || cycle.length === 0) return out;
   const sp = TERRAIN.dropSpacing;
-  const w = TERRAIN.dropWidth;
-  const phase = (s - Math.floor(s / sp) * sp) / sp;
-  const t = (phase - (0.5 - w / 2)) / w;
-  if (t <= 0 || t >= 1) return 0;
-  // d2(sm)/dt2 = 6 - 12t, over (w*sp)^2
-  return d * (6 - 12 * t) / (w * sp * w * sp);
+  const n = cycle.length;
+  const first = Math.floor(sFrom / sp);
+  const last = Math.ceil(sTo / sp);
+  for (let idx = first; idx <= last; idx++) {
+    const drop = cycle[((idx % n) + n) % n];
+    const len = drop.width * sp;
+    const lip = idx * sp + (sp - len) / 2;
+    if (lip >= sFrom && lip < sTo) out.push({ s: lip, index: idx, drop, len });
+  }
+  return out;
 }
 
 /** Centreline position at distance s. This is the trough FLOOR, not its axis. */

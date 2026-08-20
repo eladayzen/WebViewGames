@@ -92,10 +92,13 @@ export const TERRAIN_PRESETS = {
     wallHeight: 0,
     wallScrub: 0,
     spread: 1,
+    patternSet: 'street',
     // No drops: dropDepth 0 short-circuits the whole elevation profile back to
     // GRADE * s, which is what the pipe has always been.
-    dropSpacing: 1, dropDepth: 0, dropWidth: 1,
-    dropAccelGain: 0, launchG: Infinity,
+    // No drops: an empty cycle short-circuits the elevation profile back to
+    // GRADE * s, which is what the pipe has always been.
+    dropSpacing: 1, dropCycle: [], dropCycleDepth: 0,
+    dropAccelGain: 0, launchG: Infinity, lipRamps: 0,
     // Never read on this terrain -- groundGap is 0 everywhere without drops, so
     // the free-fall phase cannot trigger. Present so the shape of a terrain is
     // the same object everywhere and a missing key can never read as NaN.
@@ -243,27 +246,82 @@ export const TERRAIN_PRESETS = {
      * content at the edges. If the rim still reads thin after a ride, the next
      * step is face-specific patterns rather than a bigger number here.
      */
-    spread: 1.75,
+    // AUTHORED, NOT SCALED. spread is 1 here because the face set already
+    // reaches the rim on its own -- multiplying a table that goes to 0.95 would
+    // only clamp its outermost content into the wall. The multiplier stays in
+    // the codebase for the street set, which is still laid out for the pipe.
+    spread: 1,
+    patternSet: 'face',
 
     /**
-     * THE DROPS. The hill stops being an even ramp and starts having a shape:
-     * a long shallow run, then the ground tips away and falls, then it flattens
-     * out again. Amit: "the road itself is dropping down and you're flying like
-     * you're jumping down."
+     * THE DROPS -- a sequence, not a shape. See world/trough.js for how the
+     * cycle is evaluated; this is the authoring.
      *
-     * 540 apart at 26 u/s is a drop roughly every 20 seconds -- often enough
-     * that a 1800m descent has three of them and they are what you remember,
-     * rare enough that arriving at one is an event rather than the texture of
-     * the whole run.
+     * The first pass was one 12-unit roll-over every 540m. Amit rode it, liked
+     * it, and asked for "more of them, smaller ones, different lines, different
+     * shapes." So: five drops at 230m, repeating as a group -- one every ~8
+     * seconds, and the same one only every ~40.
      *
-     * 12 units down over 9% of the cycle (48.6 units of travel) is a pitch of
-     * about 23 degrees through the steep middle, against the 3 degrees the hill
-     * runs at everywhere else. That contrast is the entire point: the drop has
-     * to read as somewhere the ground gave way, not as the grade drifting.
+     * DEPTH IS THE LEAST INTERESTING COLUMN. Launch curvature goes as
+     * depth/length^2, so `length` is what decides whether a drop throws you:
+     *
+     *   depth 5.5 over 69m  -> needs 45 u/s to launch  -> you never leave it
+     *   depth 3.5 over 23m  -> needs 19 u/s            -> pops you every time
+     *   depth 8.0 over 37m  -> needs 20 u/s            -> the big one
+     *   depth 2.5 over 18m  -> needs 17 u/s            -> a snap off a small edge
+     *
+     * The wide shallow ones are deliberately un-launchable. A hill where every
+     * feature throws you into the air is as monotonous as one where none of
+     * them do -- these are the ones you flow across and set up on, and they are
+     * what make the sharp ones read as events.
+     *
+     * The group falls 24 units over 1150m, so the average grade is the same as
+     * the single-drop version it replaces. That is the point of a fixed cycle
+     * total: the sequence can be re-authored freely without the run quietly
+     * getting faster or slower overall.
      */
-    dropSpacing: 540,
-    dropDepth: 12,
-    dropWidth: 0.09,
+    dropSpacing: 230,
+    dropCycle: [
+      // A long shallow roll. No launch -- terrain you read, not terrain you hit.
+      { depth: 5.5, width: 0.30, profile: 'roll' },
+      // Short and sharp. Small, but the lip is four times the curvature of the
+      // one above it despite being a shallower drop.
+      { depth: 3.5, width: 0.10, profile: 'roll' },
+      // The big one. Deep AND fairly short, so it both throws you and drops the
+      // ground a long way while you are up there.
+      { depth: 8.0, width: 0.16, profile: 'roll' },
+      // Two steps with a breather between -- two small airs in quick
+      // succession rather than one big one. Authored at 0.34 first, which
+      // measured out at needing 33.5 u/s to launch: against a 26.7 cruise that
+      // is a shape you can never leave the ground on, making it a second flow
+      // drop rather than the distinct thing it is meant to be. 0.26 puts both
+      // steps under cruising speed.
+      { depth: 4.5, width: 0.26, profile: 'stair' },
+      // A snap. Barely a drop at all, over almost no distance.
+      { depth: 2.5, width: 0.08, profile: 'roll' },
+    ],
+    /**
+     * The cycle's total descent. Stated rather than summed at import so
+     * elevAt stays O(1); the measurement harness asserts it against the table,
+     * because a stale total here would tilt the entire hill.
+     */
+    dropCycleDepth: 24.0,
+
+    /**
+     * How many drop lips get a ramp planted on them, 0..1. Amit: "maybe
+     * sometimes having a ramp just above them."
+     *
+     * A launcher at the edge of a drop is the two air systems stacking -- the
+     * ramp throws you and then the ground is not there when you come down -- and
+     * it is the biggest air in the game by a distance. SOMETIMES, though: at
+     * every lip it stops being a discovery, and the drops can no longer be read
+     * as terrain because there is always furniture on them.
+     *
+     * Placed off-centre, alternating sides, so a lip with a ramp on it still
+     * has a clean roll-in beside it. That is the "different lines" half -- the
+     * same drop is a jump or a flow depending on where you cross it.
+     */
+    lipRamps: 0.5,
 
     /**
      * How much the steeper ground accelerates you, as a fraction of how much
