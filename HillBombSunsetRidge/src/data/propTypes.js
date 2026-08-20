@@ -83,6 +83,9 @@ export const PROP_TYPES = {
     grind: { pointsPerSecond: 320, catchWidth: 1.5 },
     label: 'LONG RAIL',
   },
+  // NOT CURRENTLY EMITTED -- no pattern places one; see 'rail plaza'. Kept
+  // whole because a replacement wide grindable is coming and this is the shape
+  // of the slot it drops into, not because anything still uses it.
   ledge: {
     kind: 'grind',
     size: { w: 1.5, h: 0.62, l: 14 },
@@ -321,11 +324,17 @@ export const PATTERNS = [
     },
   },
   {
-    name: 'ledge plaza',
+    name: 'rail plaza',
     length: 90,
     build: (W) => [
-      { type: 'ledge', ds: 0, u: -W * 0.5 },
-      { type: 'ledge', ds: 0, u: W * 0.5 },
+      // WAS TWO LEDGES. Amit: "there are two types of glide right now... lose
+      // the wider one for now, I'll replace it with another one." The wide
+      // 1.5-unit block and the thin 0.16 bar read as two grindables that behave
+      // the same, and the block is the one that looks like street furniture on
+      // a mountain face. Its TYPE stays defined and unused -- there is a
+      // replacement coming, and re-adding it should be one word here.
+      { type: 'rail', ds: 0, u: -W * 0.5 },
+      { type: 'rail', ds: 0, u: W * 0.5 },
       { type: 'bank', ds: 40, u: 0 },
       { type: 'boostPad', ds: 74, u: W * 0.30 },
       { type: 'woodWall', ds: 46, u: -W * 0.28 },

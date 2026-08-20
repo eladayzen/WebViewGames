@@ -37,7 +37,10 @@ import {
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
 } from '../data/constants.js';
 import { initInput, readInput, forcePop, setStance, getStance } from '../input/input.js';
-import { createTrough, toWorld, surfaceUp, heightAt, frameAt, makeFrame, radiusAt } from '../world/trough.js';
+import {
+  createTrough, toWorld, surfaceUp, heightAt, frameAt, makeFrame, radiusAt,
+  elevAt, slopeAt, curvatureAt,
+} from '../world/trough.js';
 import { createRider } from '../entities/rider.js';
 import { createCameraRig } from '../camera/cameraRig.js';
 import { createLobby } from '../ui/lobby.js';
@@ -51,7 +54,7 @@ import { createSpeedLines } from '../entities/speedLines.js';
 import { createScoring } from '../systems/scoring.js';
 import { createHud } from '../ui/hud.js';
 import { CONTROLS, setControlPreset } from '../data/controlPresets.js';
-import { TERRAIN, setTerrain, DEFAULT_TERRAIN } from '../data/terrain.js';
+import { TERRAIN, setTerrain, DEFAULT_TERRAIN, LIP_CUSHION, LIP_WALL } from '../data/terrain.js';
 import { createEvents, RIDE_EVENTS as EV } from './events.js';
 import { createModeHost, getMode } from '../modes/mode.js';
 // Importing a mode module is what REGISTERS it -- and the registry is what the
@@ -160,8 +163,16 @@ const modes = createModeHost({
 const state = {
   s: 0, // distance down the trough
   sPrev: 0, // last frame's s -- the ramp-lip crossing test needs the interval
-  theta: 0, // angle around the cross-section; 0 = the floor, +-THETA_MAX = the lip
+  theta: 0, // angle around the cross-section; 0 = the floor, +-TERRAIN.thetaMax = the lip
   thetaVel: 0,
+  // Airborne bookkeeping for hills that drop away beneath the rider. The
+  // trajectory is fixed at launch (see groundGap); airFallT times the free fall
+  // once the scripted arc is spent, and airHang is what is left to fall.
+  airLaunchS: 0, airLaunchElev: 0, airLaunchSlope: 0, airFallT: 0, airHang: 0,
+  // Pinned against the edge barrier this frame, on a terrain that has one.
+  // Read by the sparks so scraping the wall is something you can SEE costing
+  // you, rather than a number quietly draining in the corner.
+  onWall: false,
   height: 0, // R*(1-cos theta) -- how far up the wall, drives speed exchange
   speed: START_SPEED,
   carve: 0,
@@ -332,6 +343,9 @@ function reset() {
   state.sPrev = 0;
   state.theta = 0;
   state.thetaVel = 0;
+  state.onWall = false;
+  state.airFallT = 0;
+  state.airHang = 0;
   state.height = 0;
   state.speed = START_SPEED;
   state.carve = 0;
@@ -395,6 +409,43 @@ function reset() {
  * backflip do a backflip". The random/conditional layer he mentioned wanting
  * later goes exactly here, gated behind the same `canFlip` check.
  */
+/**
+ * How far the ground has fallen BELOW the trajectory the rider launched on, in
+ * world units, at distance s. Zero means the surface is right under them.
+ *
+ * This one function is the whole difference between a hill you are welded to
+ * and a hill you can jump off. The rider's height while airborne used to be
+ * read from the surface directly -- so if the road dropped, the rider dropped
+ * with it and a 12-unit fall produced no air whatsoever. Here the trajectory is
+ * fixed at launch and the GROUND is what moves.
+ *
+ * On a constant grade elevAt(s) is exactly the launch tangent, so this returns
+ * 0 everywhere and every existing hill behaves precisely as before.
+ */
+function groundGap(s) {
+  const tangent = state.airLaunchElev + state.airLaunchSlope * (s - state.airLaunchS);
+  return Math.max(0, elevAt(s) - tangent);
+}
+
+/**
+ * How far above the ground the rider actually is, in world units.
+ *
+ * TWO CONTRIBUTIONS, and forgetting the second is a bug that hides well. The
+ * arc is the jump; the gap is the hill having fallen out from under them. A
+ * rider 12 units up because the ground dropped is exactly as airborne as one 12
+ * units up because they hit a kicker, and every height test in the game -- is
+ * that ramp solid, can I reach that pickup -- has to agree about it. Reading
+ * only the arc means a rider sailing over a drop collides with ramp faces they
+ * are clearing by three body lengths.
+ *
+ * Identically the arc on any terrain without drops.
+ */
+function airLift() {
+  if (!state.airActive) return 0;
+  const arc = Math.sin(state.airT * Math.PI) * state.airHeight;
+  return arc + (state.airT < 1 ? groundGap(state.s) : state.airHang);
+}
+
 function beginAir(power, points, forcedTrick, launchLabel) {
   // How much air this launch earned. Speed never contributes zero -- a crawling
   // rider still gets some pop, just never enough to reach the flip threshold.
@@ -458,6 +509,20 @@ function beginAir(power, points, forcedTrick, launchLabel) {
 
   state.airActive = true;
   state.airT = 0;
+  // THE TRAJECTORY THE RIDER LEFT ON. Once airborne they follow the line they
+  // were already travelling, and the ground does whatever the ground does --
+  // which on a hill with drops in it means the ground can fall away underneath.
+  // Recorded at launch because it must NOT be re-read from the surface later:
+  // reading the current surface every frame is precisely the bug that welds the
+  // rider to the road and makes a drop produce no air at all.
+  //
+  // On a constant grade the tangent IS the surface, so this changes nothing on
+  // the half-pipe -- see the identity check in the elevation regression.
+  state.airFallT = 0;
+  state.airHang = 0;
+  state.airLaunchS = state.s;
+  state.airLaunchElev = elevAt(state.s);
+  state.airLaunchSlope = slopeAt(state.s);
   // Spent, not retained -- otherwise one well-timed compression would boost
   // every launch for the rest of the run.
   state.tailLoad = 0;
@@ -913,8 +978,17 @@ function frame() {
       state.roll = Math.min(ROLL_MAX, state.roll + ROLL_GAIN * dt);
     }
 
+    // STEEPER GROUND PULLS HARDER. The hill has a shape now (world/trough.js),
+    // so the pull down it cannot be one number any more. Deliberately NOT
+    // proportional: GRADE_ACCEL and DRAG are tuned values in tuned units rather
+    // than a real gravity, and scaling the pull by the full 7.7x of a drop's
+    // steepness puts terminal at 74 u/s on a hill balanced for 27. The gain is
+    // the fraction of that we actually take -- see dropAccelGain.
+    const steepness = slopeAt(state.s) / GRADE;
+    const gradePull = GRADE_ACCEL * (1 + TERRAIN.dropAccelGain * (steepness - 1));
+
     const accel =
-      GRADE_ACCEL
+      gradePull
       + TUCK_BONUS * state.tucking
       + state.roll
       - DRAG * state.speed * state.speed
@@ -950,8 +1024,12 @@ function frame() {
       // toward vert, which is what a real half-pipe does -- so running out of
       // wall feels like the wall pushing back rather than hitting a barrier.
       const rim = TERRAIN.thetaMax; // per-course now -- see data/terrain.js
+      // THE CUSHION IS PER-TERRAIN. On the pipe the wall stiffens toward the rim
+      // so running out of road pushes back; on the open face there is no
+      // push-back at all and the whole width rides the same, with a hard
+      // barrier at the edge instead. See LIP_CUSHION / LIP_WALL.
       const over = Math.abs(state.theta) - rim * 0.82;
-      const lipPush = over > 0
+      const lipPush = (TERRAIN.lipMode === LIP_CUSHION && over > 0)
         ? -Math.sign(state.theta) * over * over * 46
         : 0;
       const thetaAcc =
@@ -961,10 +1039,33 @@ function frame() {
         + lipPush;
       state.thetaVel += thetaAcc * dt;
       state.theta += state.thetaVel * dt;
-      // Absolute backstop, well past where the cushion has already taken over.
-      const hardLimit = rim * 1.04;
-      if (state.theta > hardLimit) { state.theta = hardLimit; state.thetaVel = Math.min(0, state.thetaVel); }
-      if (state.theta < -hardLimit) { state.theta = -hardLimit; state.thetaVel = Math.max(0, state.thetaVel); }
+
+      // Where the world ends. In CUSHION mode this is a backstop well past the
+      // point the soft push has already taken over, and reaching it is a bug
+      // you never see. In WALL mode it is the wall itself -- the rider arrives
+      // here often and on purpose, so it has to behave like a surface rather
+      // than like a clamp: stop the outward motion, do NOT bounce, and charge
+      // for leaning on it.
+      const wall = TERRAIN.lipMode === LIP_WALL;
+      const hardLimit = wall ? rim : rim * 1.04;
+      if (Math.abs(state.theta) >= hardLimit) {
+        const dir = Math.sign(state.theta);
+        state.theta = dir * hardLimit;
+        // Kill only the OUTWARD half of the velocity. Zeroing it outright would
+        // make the wall sticky -- you would have to build speed from a dead stop
+        // to peel off it -- and reflecting it would bounce you back across the
+        // hill you were deliberately holding a line on.
+        if (dir > 0) state.thetaVel = Math.min(0, state.thetaVel);
+        else state.thetaVel = Math.max(0, state.thetaVel);
+        // Scraping costs. This is the only thing left standing between "no
+        // speed cost anywhere on the face" and "hold full lean and park".
+        if (wall && TERRAIN.wallScrub > 0) {
+          state.speed = Math.max(MIN_SPEED, state.speed - TERRAIN.wallScrub * dt);
+          state.onWall = true;
+        }
+      } else {
+        state.onWall = false;
+      }
     }
 
     // --- height <-> speed exchange -------------------------------------
@@ -996,11 +1097,59 @@ function frame() {
     if (pop && !state.airActive && !state.grind) {
       beginAir(0.72, 40); // a bare ollie: much smaller than a ramp launch
     }
+
+    // --- the ground giving way -------------------------------------------
+    // A launch with nothing to launch off. Where the hill tips away (see
+    // curvatureAt), staying on the surface would need a downward acceleration
+    // of v^2 * curvature; past what the grade can supply, the rider is already
+    // airborne and the only question is whether the game noticed.
+    //
+    // SPEED IS THE WHOLE TEST, because curvature is fixed by the terrain and v
+    // is the only other term. Arrive at the lip fast and it throws you; crawl
+    // over the same ground and you follow it down. That is a drop behaving like
+    // a drop rather than like a trigger volume someone painted on a hill.
+    if (!state.airActive && !state.grind && state.tripT <= 0) {
+      const need = state.speed * state.speed * curvatureAt(state.s);
+      if (need > TERRAIN.launchG) {
+        // Scaled by how far past the threshold you were, so the same lip pays
+        // out more the harder you hit it -- and capped, because the curvature
+        // spikes at the very start of the lip and an uncapped ratio would make
+        // a marginally faster approach a wildly bigger jump.
+        const over = Math.min(2.2, need / TERRAIN.launchG);
+        beginAir(0.55 * over, 0, undefined, 'DROP');
+      }
+    }
     if (state.airActive) {
       state.airT += dt / state.airDuration; // power is already baked in by beginAir
+
+      // HANG TIME OVER A DROP. The scripted arc says the flight is over; the
+      // ground says otherwise. Where the hill has fallen away beneath the
+      // trajectory the rider left on, the arc finishing only means the trick
+      // is done -- they are still in the air, and they stay there until they
+      // actually meet the surface.
+      //
+      // Held at exactly 1 rather than allowed to run on, because airT drives
+      // the rotation animation 1:1: letting it pass 1 would start a second
+      // backflip on the way down.
+      if (state.airT >= 1) {
+        state.airT = 1;
+        state.airFallT += dt;
+        const gap = groundGap(state.s);
+        // 0.5*g*t^2 from the tangent line the rider was travelling on.
+        const fallen = 0.5 * TERRAIN.fallG * state.airFallT * state.airFallT;
+        if (fallen < gap) {
+          state.airHang = gap - fallen;
+        } else {
+          state.airHang = 0;
+          state.airT = 1.0001; // fall through to the landing below
+        }
+      }
+
       if (state.airT >= 1) {
         state.airActive = false;
         state.airT = 0;
+        state.airFallT = 0;
+        state.airHang = 0;
         rig.onLand();
         scoring.land();
         // Landing clean pays out whatever the launch was worth. Deliberately
@@ -1139,8 +1288,10 @@ function frame() {
       // middle, so for a moment after leaving one the rider is still over its
       // back half and would collide with the ramp they had just left.
       const surfaceH = props.rampHeightAt(state.s, state.theta, state.airFrom);
-      const arcLift = state.airActive
-        ? Math.sin(state.airT * Math.PI) * state.airHeight : 0;
+      // airLift(), not the bare arc: over a drop the rider is also held up by
+      // the ground having fallen away, and a ramp they are clearing easily must
+      // not read as struck. See airLift().
+      const arcLift = airLift();
 
       if (state.airActive && !state.grind && surfaceH > arcLift + 0.05) {
         // Struck the face. Plant on it and let the ordinary ride-up take over --
@@ -1204,7 +1355,7 @@ function frame() {
       // not where their (s, theta) is. NOTE state.height is the TROUGH WALL's
       // height at this position, a different quantity entirely; using it here
       // was the first version of this line and it is always 0 at the bottom.
-      const lift = (state.airActive ? Math.sin(state.airT * Math.PI) * state.airHeight : 0)
+      const lift = airLift()
         + state.rampLift
         + state.grindLift * state.grindLiftHeight;
       const found = props.probe(state.s, state.theta, state.airActive, state.sPrev, lift);
@@ -1383,6 +1534,13 @@ function frame() {
     // makes a corkscrew readable rather than arbitrary.
     surfaceUp(state.s, state.theta, _up);
     _pos.addScaledVector(_up, Math.sin(state.airT * Math.PI) * state.airHeight);
+    // THE GROUND FELL AWAY. Straight world-up, NOT along the surface normal:
+    // this is not the rider being thrown off a ramp, it is the hill going out
+    // from under them, and gravity does not care which way the road is banked.
+    // Zero on any hill without drops, so nothing existing moves.
+    // While the arc runs, the rider holds the launch trajectory (the full gap);
+    // once it is done, airHang is what is left to fall.
+    _pos.y += state.airT < 1 ? groundGap(state.s) : state.airHang;
   }
   if (state.rampLift > 0.001) {
     // Stand the rider on the ramp deck. Added along the SURFACE NORMAL like
@@ -1535,6 +1693,26 @@ window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, ra
   // Live cross-section, plus the setter -- so a terrain can be swapped mid-run
   // from the console and measured, rather than only via a mode's course.
   TERRAIN, setTerrain: (k) => { setTerrain(k); trough.applyTerrain(); },
+  // Terrain probes, for reading the hill's shape from the console.
+  elevAt, slopeAt, curvatureAt,
+  /**
+   * Jump to just before the next drop. Drops are 540m apart and a run is 1800m,
+   * so looking at one otherwise means riding 20 seconds to reach it and another
+   * 20 to see it again -- which is most of the cost of iterating on it.
+   * `__lab.toDrop()` for the next one, `__lab.toDrop(2)` to skip ahead.
+   */
+  toDrop(n = 1) {
+    const sp = TERRAIN.dropSpacing;
+    if (!(TERRAIN.dropDepth > 0)) return 'this terrain has no drops';
+    // The lip sits at the leading edge of the drop window; back off 60m so the
+    // approach is ridden rather than started on top of it.
+    const lip = sp * (0.5 - TERRAIN.dropWidth / 2);
+    const target = (Math.floor(state.s / sp) + n) * sp + lip - 60;
+    state.s = target;
+    state.sPrev = target;
+    props.reset(target);
+    return `at ${target.toFixed(0)}m, lip in 60m`;
+  },
   // The LIVE input instance. A dynamic import() of the module gives a second
   // copy whose initInput() never ran, so its key set stays empty and every
   // reading is zero -- which looks exactly like a broken mapping.

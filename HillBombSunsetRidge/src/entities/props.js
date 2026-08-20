@@ -619,8 +619,16 @@ export function createProps(scene) {
     // still does not tell you which side of the road to be on -- the shape is
     // familiar, the line through it is not.
     const flip = vary && rng() < 0.5 ? -1 : 1;
-    for (const item of p.build(TERRAIN.thetaMax)) {
-      add(item.type, start + item.ds, item.u * flip);  // item.u is an ANGLE
+    const rim = TERRAIN.thetaMax;
+    for (const item of p.build(rim)) {
+      // SPREAD pushes an authored layout out toward the edges of a wider hill
+      // (see data/terrain.js). Clamped at the rim: on a wall terrain the rim is
+      // a solid barrier, and a prop scaled past it would be embedded in it.
+      // Clamping rather than dropping keeps the pattern's shape -- the outermost
+      // items pile onto the edge instead of vanishing, which is what "all the
+      // way across the field" should look like.
+      const u = Math.max(-rim, Math.min(rim, item.u * TERRAIN.spread));
+      add(item.type, start + item.ds, u * flip);  // item.u is an ANGLE
     }
 
     // Roadside dressing across the same stretch. Deterministic per index so the
@@ -638,6 +646,11 @@ export function createProps(scene) {
       // Lamps stay for now: they line the lip like coping lights, which is at
       // least plausible, and they give the eye something to read speed against
       // until the real art lands.
+      // Lamps line the pipe's lip like coping lights. A terrain that ends in a
+      // rendered wall says where the edge is far better than a row of posts
+      // does, and two edge markers is one too many -- so on those hills the
+      // lamps are simply not emitted. Amit: "we can lose the headlights."
+      if (!TERRAIN.lipLamps) continue;
       for (const side of [-1, 1]) {
         const r2 = hash(s * 1.7 + side * 31);
         if (r2 < 0.5) add('lamp', s + r * 8, (W + 0.14) * side);
