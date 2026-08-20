@@ -22,8 +22,6 @@ import {
   BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE, GROUND_CTRL_RELEASE, GROUND_CTRL_LETGO,
   TAIL_LOAD_RATE, TAIL_LOAD_DECAY, TAIL_LOAD_BOOST,
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
-  THETA_MAX, THETA_GRAVITY, THETA_CARVE_TORQUE, THETA_DAMP, HEIGHT_EXCHANGE,
-  TROUGH_RADIUS,
   AIR_DURATION, AIR_HEIGHT, SPIN_MIN_HEIGHT,
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
   AIR_HEIGHT_MAX, AIR_TIME_K, AIR_DURATION_MIN, AIR_DURATION_MAX, SPIN_720_HEIGHT,
@@ -53,6 +51,7 @@ import { createSpeedLines } from '../entities/speedLines.js';
 import { createScoring } from '../systems/scoring.js';
 import { createHud } from '../ui/hud.js';
 import { CONTROLS, setControlPreset } from '../data/controlPresets.js';
+import { TERRAIN, setTerrain, DEFAULT_TERRAIN } from '../data/terrain.js';
 import { createEvents, RIDE_EVENTS as EV } from './events.js';
 import { createModeHost, getMode } from '../modes/mode.js';
 // Importing a mode module is what REGISTERS it -- and the registry is what the
@@ -63,6 +62,7 @@ import '../modes/freeride.js';
 import { setPendingMission } from '../modes/missions.js';
 import '../modes/rivals.js';
 import '../modes/speedRace.js';
+import '../modes/openFace.js';
 import { MISSIONS } from '../data/missions.js';
 import { createProgress } from '../systems/progress.js';
 import { createModeSelect } from '../ui/modeSelect.js';
@@ -568,6 +568,13 @@ function startRun(id) {
   // today, which is how "no cones by default" is expressed as data rather than
   // as a hard-coded filter inside the spawner.
   const course = getCourse(def.course || DEFAULT_COURSE);
+  // THE SHAPE OF THE HILL, before anything is placed on it. Terrain has to land
+  // first: prop placement is expressed in angles out to the rim, and the trough
+  // mesh, the pendulum and the collision arithmetic all read the cross-section
+  // live -- so a course that changed the ground after spawning would scatter its
+  // props against the previous hill's width.
+  setTerrain(course.terrain || DEFAULT_TERRAIN);
+  trough.applyTerrain();
   props.setAllowedKinds(course.allowedKinds);
   // ROUTE VARIATION. One seed decides the whole run's layout, and the biggest
   // thing it moves is where on the hill you START: the trough's funnels and
@@ -942,19 +949,20 @@ function frame() {
       // the wall stiffens as you approach the rim -- a transition steepening
       // toward vert, which is what a real half-pipe does -- so running out of
       // wall feels like the wall pushing back rather than hitting a barrier.
-      const over = Math.abs(state.theta) - THETA_MAX * 0.82;
+      const rim = TERRAIN.thetaMax; // per-course now -- see data/terrain.js
+      const over = Math.abs(state.theta) - rim * 0.82;
       const lipPush = over > 0
         ? -Math.sign(state.theta) * over * over * 46
         : 0;
       const thetaAcc =
-        state.carve * CONTROLS.carveTorque
-        - (THETA_GRAVITY / R) * Math.sin(state.theta)
-        - CONTROLS.damp * state.thetaVel
+        state.carve * CONTROLS.carveTorque * TERRAIN.carveScale
+        - (TERRAIN.thetaGravity / R) * Math.sin(state.theta)
+        - CONTROLS.damp * TERRAIN.dampScale * state.thetaVel
         + lipPush;
       state.thetaVel += thetaAcc * dt;
       state.theta += state.thetaVel * dt;
       // Absolute backstop, well past where the cushion has already taken over.
-      const hardLimit = THETA_MAX * 1.04;
+      const hardLimit = rim * 1.04;
       if (state.theta > hardLimit) { state.theta = hardLimit; state.thetaVel = Math.min(0, state.thetaVel); }
       if (state.theta < -hardLimit) { state.theta = -hardLimit; state.thetaVel = Math.max(0, state.thetaVel); }
     }
@@ -967,7 +975,12 @@ function frame() {
     const newHeight = heightAt(state.s, state.theta);
     const dh = newHeight - state.height;
     state.height = newHeight;
-    const v2 = Math.max(4, state.speed * state.speed - 2 * CONTROLS.heightExchange * dh);
+    // heightScale is what decides whether a WIDE hill is actually usable. On the
+    // open face the whole point is that you can be anywhere across it; at the
+    // pipe's full exchange rate the centreline would still be the only fast
+    // line and the extra width would just be scenery you cannot afford to use.
+    const v2 = Math.max(4, state.speed * state.speed
+      - 2 * CONTROLS.heightExchange * TERRAIN.heightScale * dh);
     state.speed = Math.sqrt(v2);
 
     // --- air / landing ---------------------------------------------------
@@ -1519,6 +1532,9 @@ function frame() {
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
 window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals, finishLine, trough, sky, applyTheme,
+  // Live cross-section, plus the setter -- so a terrain can be swapped mid-run
+  // from the console and measured, rather than only via a mode's course.
+  TERRAIN, setTerrain: (k) => { setTerrain(k); trough.applyTerrain(); },
   // The LIVE input instance. A dynamic import() of the module gives a second
   // copy whose initInput() never ran, so its key set stays empty and every
   // reading is zero -- which looks exactly like a broken mapping.

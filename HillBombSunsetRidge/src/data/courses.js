@@ -1,10 +1,18 @@
 // COURSES -- the shape of the ground a mode is played on.
 //
-// This is the CONTENT half of a location. The other half is the THEME (palette,
-// sky, surface art), which is deliberately a separate axis: a mission may want
-// "dense ramp course" while its theme is assigned, randomised or unlocked
-// independently. Bundling them would force a new course every time you wanted a
-// new look.
+// This is the CONTENT axis of a location. There are three:
+//
+//   COURSE   what is on the ground, and where it ends        (this file)
+//   THEME    what it looks like                              (data/themes.js)
+//   TERRAIN  the shape of the ground itself                  (data/terrain.js)
+//
+// They are separate on purpose. A mission may want "dense ramp course" while
+// its theme is assigned, randomised or unlocked independently, and bundling
+// them would force a new course every time you wanted a new look. TERRAIN
+// joined them when the open face needed a genuinely different cross-section:
+// a course NAMES a terrain (`terrain: 'openFace'`) and inherits the half-pipe
+// if it says nothing, so every course that existed before keeps the exact
+// ground it was tuned on.
 //
 // BOTH KINDS ARE REAL NOW. Finite was a declared hook for a long time -- named,
 // typed, routed through the same descriptor, and throwing if anything touched
@@ -69,10 +77,41 @@ export const COURSES = {
      */
     variation: true,
   },
+
+  /**
+   * THE OPEN FACE -- a different hill, not a different set of props on the same
+   * one. `terrain` is the new third field on a course, and this is the first
+   * course to use it: the cross-section itself changes (data/terrain.js), so the
+   * ground is roughly 40% wider, considerably shallower, and cheap enough to
+   * ride away from the centreline that the whole width is worth using.
+   *
+   * FINITE, because a face is something you descend. 1800m is a little over a
+   * minute at the measured 24-32 u/s -- shorter than the race on purpose: this
+   * is a prototype meant to be ridden repeatedly to answer one question ("does
+   * it stop feeling cramped"), and a 90-second lap between attempts is most of
+   * the cost of asking it.
+   *
+   * No boosts and no walls. Both are race furniture -- one hands you speed you
+   * did not carve for, the other takes it away -- and the thing being tested
+   * here is whether the SHAPE is fun on its own. Crystals stay, because
+   * something has to be worth crossing the face for; on a hill this wide, a
+   * pickup out near the rim is the cheapest possible test of whether the width
+   * reads as an opportunity or as dead ground.
+   */
+  openFace: {
+    id: 'openFace',
+    name: 'Open Face',
+    kind: COURSE_FINITE,
+    length: 1800,
+    terrain: 'openFace',
+    allowedKinds: ['launch', 'grind', 'scenery', 'pickup'],
+    variation: true,
+  },
 };
 
 export const DEFAULT_COURSE = 'sunsetRidge';
 export const RACE_COURSE = 'sunsetRidgeRace';
+export const OPEN_FACE_COURSE = 'openFace';
 
 /**
  * @param {string} id

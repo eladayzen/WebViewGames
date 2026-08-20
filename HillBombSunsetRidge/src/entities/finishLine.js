@@ -14,6 +14,10 @@
 
 import * as THREE from 'three';
 import { toWorld, surfaceUp, frameAt, makeFrame } from '../world/trough.js';
+import { TERRAIN } from '../data/terrain.js';
+// The half-pipe's dimensions, used only as the REFERENCE the gate was authored
+// against -- so the scale below is 1 on the hill it was drawn for.
+import { TROUGH_RADIUS, THETA_MAX } from '../data/constants.js';
 
 export function createFinishLine(scene) {
   const group = new THREE.Group();
@@ -81,6 +85,14 @@ export function createFinishLine(scene) {
       _basis.makeBasis(_right, _up, _fwd);
       group.position.copy(_pos);
       group.quaternion.setFromRotationMatrix(_basis);
+      // WIDEN WITH THE HILL. The gate is authored at 22 units, which is a bit
+      // over a third of the half-pipe's ridable width; left at that on the open
+      // face -- 40% wider again -- it would read as a small marker off in the
+      // middle of a field rather than as the bottom of the run. Scaled on the
+      // local X only, so the towers keep their authored height and only the span
+      // across the hill changes. Nothing depends on this geometrically: crossing
+      // is tested against `s`, so the gate is a landmark, not a collider.
+      group.scale.x = (TERRAIN.radius * TERRAIN.thetaMax) / (TROUGH_RADIUS * THETA_MAX);
       group.visible = true;
     },
 

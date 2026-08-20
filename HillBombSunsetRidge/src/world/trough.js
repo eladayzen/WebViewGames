@@ -25,11 +25,14 @@
 import * as THREE from 'three';
 import {
   SEG_LEN, SEGMENTS_AHEAD, SEGMENTS_BEHIND, GRADE,
-  TROUGH_RADIUS, THETA_MAX, TROUGH_ROLL_AMOUNT, TROUGH_ROLL_WAVELENGTH,
-  FUNNEL_SPACING, FUNNEL_WIDTH, FUNNEL_TIGHTNESS,
+  THETA_MAX,
   TROUGH_COLOR, TROUGH_FLOOR_COLOR, LIP_COLOR,
   GUIDE_STRIPES, GUIDE_COLOR,
 } from '../data/constants.js';
+// The cross-section is TERRAIN's now, not a constant -- see data/terrain.js.
+// Read through the object every call; caching a field off it is what would make
+// the mesh and the physics disagree about where the wall is.
+import { TERRAIN } from '../data/terrain.js';
 
 // Resolution across the U. The concept art reads as a smooth continuous
 // ribbon, so the cross-section needs enough segments not to facet visibly --
@@ -59,15 +62,15 @@ export function centre(s, out = new THREE.Vector3()) {
  * spline, so the join is exact by construction.
  */
 export function radiusAt(s) {
-  const phase = (s % FUNNEL_SPACING) / FUNNEL_SPACING;
+  const phase = (s % TERRAIN.funnelSpacing) / TERRAIN.funnelSpacing;
   // One smooth well per cycle: 0 at the edges, 1 at the throat.
-  const pinch = Math.max(0, Math.cos((phase - 0.5) * Math.PI * 2 / FUNNEL_WIDTH));
-  return TROUGH_RADIUS * (1 - (1 - FUNNEL_TIGHTNESS) * pinch * pinch);
+  const pinch = Math.max(0, Math.cos((phase - 0.5) * Math.PI * 2 / TERRAIN.funnelWidth));
+  return TERRAIN.radius * (1 - (1 - TERRAIN.funnelTightness) * pinch * pinch);
 }
 
 /** Roll of the cross-section frame about the tangent, in radians. */
 export function rollAt(s) {
-  return Math.sin(s / TROUGH_ROLL_WAVELENGTH) * TROUGH_ROLL_AMOUNT;
+  return Math.sin(s / TERRAIN.rollWavelength) * TERRAIN.rollAmount;
 }
 
 // Scratch pools kept strictly per-function. Sharing these is what caused the
@@ -108,7 +111,7 @@ export function makeFrame() {
     tangent: new THREE.Vector3(),
     right: new THREE.Vector3(),
     up: new THREE.Vector3(),
-    radius: TROUGH_RADIUS,
+    radius: TERRAIN.radius,
   };
 }
 
@@ -151,9 +154,18 @@ export function heightAt(s, theta) {
  * two-dimensional across the cross-section instead of a flat strip.
  */
 class TroughSurface {
-  constructor(thetaFrom, thetaTo, colour, radialInset = 0) {
-    this.thetaFrom = thetaFrom;
-    this.thetaTo = thetaTo;
+  /**
+   * @param {(w:number) => [number, number]} band  the theta range this strip
+   *   covers, as a function of the CURRENT rim angle. A function rather than two
+   *   numbers because the cross-section is per-course now: the lip band and the
+   *   guide stripes have to move when the face gets shallower, and a strip that
+   *   kept its construction-time angles would leave the lip painted out in
+   *   space past the edge of a wider, flatter hill.
+   */
+  constructor(band, colour, radialInset = 0) {
+    this.band = band;
+    this.thetaFrom = 0;
+    this.thetaTo = 0;
     this.inset = radialInset;
     this.rows = SEGMENTS_AHEAD + SEGMENTS_BEHIND;
     this.cols = CROSS_SEGMENTS;
@@ -195,6 +207,14 @@ class TroughSurface {
 
     this._frame = makeFrame();
     this._p = new THREE.Vector3();
+    this.applyTerrain();
+  }
+
+  /** Re-read the band from the live terrain. Cheap; no geometry is rebuilt. */
+  applyTerrain() {
+    const [from, to] = this.band(TERRAIN.thetaMax);
+    this.thetaFrom = from;
+    this.thetaTo = to;
   }
 
   update(riderS) {
@@ -250,25 +270,37 @@ export function createTrough(scene) {
 
   // The ridable surface, plus a floor stripe so the fast line reads clearly, and
   // a lip band past THETA_MAX that marks where the wall stops being ridable.
-  const centreLine = new TroughSurface(-0.035, 0.035, TROUGH_FLOOR_COLOR, 0.06);
+  // The centre line is an absolute angular width, not a fraction of the rim: it
+  // is a painted stripe of a fixed physical size, and a wider hill should not
+  // come with a wider stripe down the middle of it.
+  const centreLine = new TroughSurface((w) => [-0.035 * (THETA_MAX / w), 0.035 * (THETA_MAX / w)],
+    TROUGH_FLOOR_COLOR, 0.06);
   centreLine.role = 'floorLine';
   centreLine.dashed = true;
 
   const surfaces = [
-    Object.assign(new TroughSurface(-THETA_MAX, THETA_MAX, TROUGH_COLOR), { role: 'trough' }),
+    Object.assign(new TroughSurface((w) => [-w, w], TROUGH_COLOR), { role: 'trough' }),
     centreLine,
     // The lip must be a VALUE break, not just a different hue -- at luminance 60
     // against a wall at 61 it was invisible, which is a large part of why the
     // trough was hard to read at all.
-    Object.assign(new TroughSurface(THETA_MAX, THETA_MAX + 0.20, LIP_COLOR), { role: 'lip' }),
-    Object.assign(new TroughSurface(-THETA_MAX - 0.20, -THETA_MAX, LIP_COLOR), { role: 'lip' }),
+    Object.assign(new TroughSurface((w) => [w, w + 0.20], LIP_COLOR), { role: 'lip' }),
+    Object.assign(new TroughSurface((w) => [-w - 0.20, -w], LIP_COLOR), { role: 'lip' }),
   ];
   // Guide stripes up both walls -- the only way to read curvature and speed off
   // an otherwise flat-coloured surface.
+  //
+  // Placed as FRACTIONS of the rim angle, derived from the authored angles
+  // rather than restated, so the half-pipe keeps the exact spacing Amit signed
+  // off ("it really helps read and understand where you are on the field") and a
+  // shallower face gets the same four stripes graded across whatever width it
+  // has -- instead of the outermost pair falling off the edge of the hill.
   for (const { theta, halfWidth } of GUIDE_STRIPES) {
+    const f = theta / THETA_MAX;
+    const hw = halfWidth / THETA_MAX;
     for (const sign of [-1, 1]) {
       surfaces.push(Object.assign(new TroughSurface(
-        sign * (theta - halfWidth), sign * (theta + halfWidth), GUIDE_COLOR, 0.05,
+        (w) => [sign * (f - hw) * w, sign * (f + hw) * w], GUIDE_COLOR, 0.05,
       ), { role: 'guide' }));
     }
   }
@@ -280,6 +312,16 @@ export function createTrough(scene) {
     group,
     update(riderS) {
       surfaces.forEach((s) => s.update(riderS));
+    },
+
+    /**
+     * Re-read the cross-section after a terrain change. Called from startRun,
+     * once per run -- the geometry is regenerated from the spline every frame
+     * anyway, so this only has to move the band angles and the next update()
+     * draws the new hill.
+     */
+    applyTerrain() {
+      surfaces.forEach((s) => s.applyTerrain());
     },
     /**
      * Recolour the world for a theme. By ROLE, not by index -- the surfaces

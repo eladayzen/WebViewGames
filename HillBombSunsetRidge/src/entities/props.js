@@ -11,7 +11,12 @@
 import * as THREE from 'three';
 import { PROP_TYPES, PATTERNS } from '../data/propTypes.js';
 import { toWorld, surfaceUp, frameAt, makeFrame, radiusAt } from '../world/trough.js';
-import { THETA_MAX, RAMP_ARROW_COLOR } from '../data/constants.js';
+import { RAMP_ARROW_COLOR } from '../data/constants.js';
+// Patterns are authored as FRACTIONS of the ridable half-width, so the rim angle
+// they are handed has to be the live one -- a pattern laid out against the
+// half-pipe's 1.15 rad would put half its props past the edge of a shallower,
+// wider open face.
+import { TERRAIN } from '../data/terrain.js';
 
 const SPAWN_AHEAD = 340; // keep the field populated this far down the road
 const RECYCLE_BEHIND = 40;
@@ -614,13 +619,13 @@ export function createProps(scene) {
     // still does not tell you which side of the road to be on -- the shape is
     // familiar, the line through it is not.
     const flip = vary && rng() < 0.5 ? -1 : 1;
-    for (const item of p.build(THETA_MAX)) {
+    for (const item of p.build(TERRAIN.thetaMax)) {
       add(item.type, start + item.ds, item.u * flip);  // item.u is an ANGLE
     }
 
     // Roadside dressing across the same stretch. Deterministic per index so the
     // world doesn't reshuffle, but varied enough not to read as a repeat.
-    const W = THETA_MAX;
+    const W = TERRAIN.thetaMax;
     for (let d = 0; d < p.length; d += 16) {
       const s = start + d;
       const r = hash(s);
@@ -833,8 +838,11 @@ export function createProps(scene) {
         // be hit dead centre to register: you would ride through the frame of a
         // boost gate and collect nothing. Worse, it came and went with the
         // funnels, so it read as flaky rather than as wrong.
+        // catchScale keeps an authored collider the same SHARE of the road on a
+        // hill of a different radius -- see data/terrain.js. It is 1 on the
+        // half-pipe, so nothing this was ever tuned against moves.
         const arcGap = Math.abs(theta - it.theta) * radiusAt(it.s);
-        if (arcGap > catchW) continue;
+        if (arcGap > catchW * TERRAIN.catchScale) continue;
         // Airborne clears hazards and launchers, but you can still land INTO a
         // grind -- that's the good kind of accident -- and you can still collect
         // PICKUPS, which is the entire point of placing them off a ramp.
