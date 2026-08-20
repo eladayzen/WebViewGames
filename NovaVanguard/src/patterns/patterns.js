@@ -23,11 +23,16 @@ import {
   PATTERNS,
   PLAYABLE_X,
   AISLE_MIN,
+  AISLE_MOVE_MAX,
+  LATERAL_ONLY_TEST_Y,
+  BULLET,
+  BOSS,
   INPUT,
   FX,
   DESIGN_W,
   DESIGN_H,
   BANDS,
+  levelAt,
 } from '../data/tuning.js';
 import { cfg } from '../core/mode.js';
 import { alloc, liveCount } from '../core/state.js';
@@ -98,7 +103,7 @@ function createB1(owner) {
       }
       this.cooldown -= dt;
       if (this.cooldown <= 0) {
-        this.cooldown = d.volleyIntervalS * cadenceOf(this.owner);
+        this.cooldown = volleyInterval(w, this);
         this.burst = d.orbs;
         this.burstT = 0;
       }
@@ -123,6 +128,32 @@ function createB1(owner) {
  */
 function cadenceOf(owner) {
   return owner && owner.cadenceMul ? owner.cadenceMul : 1;
+}
+
+/**
+ * How long until this emitter's next volley.
+ *
+ * Three multipliers over the authored interval, and each one exists for a
+ * reason that is written down somewhere else:
+ *
+ *   * the owner's per-craft cadence skew (ENEMY.vary) -- so two Emitters in a
+ *     formation are not a metronome played twice;
+ *   * the LEVEL's fire-rate multiplier -- Amit, from the board: "level 1 has
+ *     far too many projectiles on screen, it's too hard". Level one is the
+ *     teaching level and his first run is the benchmark, so it fires slower.
+ *     §5.7 sanctions per-level difficulty scaling and this is the same kind of
+ *     lever as the per-level HP table beside it;
+ *   * the BOSS multiplier -- "the boss fight needs fewer projectiles too".
+ *
+ * NONE OF THEM TOUCHES A FLOOR. Interval is when a volley fires, never how many
+ * orbs it contains, how wide its aisle is or how fast it descends -- so every
+ * §5.3 guarantee /systems/constraints.js proves per pattern is untouched, volley
+ * by volley, exactly as the per-craft cadence skew already was.
+ */
+function volleyInterval(w, st) {
+  const level = levelAt(w.surfaceIndex).fireRateMul || 1;
+  const boss = st.boss ? BOSS.fireRateMul : 1;
+  return st.def.volleyIntervalS * cadenceOf(st.owner) * level * boss;
 }
 
 /** Where a volley comes from. An OWNED emitter (an Emitter craft, a boss pod)
@@ -169,10 +200,124 @@ function fireB1Orb(w, d, owner) {
 // list because in 16:9 it collapses into an instantaneous wall with no
 // readable aisle (§5.5).
 
-function createB2(owner) {
+/**
+ * B2 / B2T -- the lateral sweep fan (§5.5), REWRITTEN AS AN ACTUAL FAN.
+ *
+ * THE BUG THIS REPLACES, reported by Amit from the board: "projectiles are
+ * being fired even when the enemies are gone or dead. So projectiles are being
+ * fired from thin air."
+ *
+ * It was not an ownership leak -- the emitter did die with its craft, and the
+ * ownership audit confirms it. It was the GEOMETRY. The old emitter spawned a
+ * row spanning the entire playable width at the owner's altitude, so a single
+ * Emitter craft sitting at x = 1271 gave birth to orbs at x = 116, 416, 566,
+ * 716... Every orb except the one or two beside the craft was, literally, born
+ * in empty space with no source. Measured on a level-one run: 74 orbs per clear
+ * appeared with no craft within 70 px of them.
+ *
+ * §5.5 asks for something quite different and much better: "A fan from ONE
+ * FORMATION SECTION sweeps sideways across the width [...] One authored gap
+ * >= AISLE_MIN travels with the fan." A fan, from a section -- not a curtain
+ * across the frame. So every orb now leaves the owner's own hull with a lateral
+ * velocity, and the fan spreads as it falls. Three things follow:
+ *
+ *   * EVERY ORB HAS A VISIBLE SOURCE. You can see which craft is shooting at
+ *     you, which is the entire reason §6.2 made B2 the Emitter's own pattern --
+ *     "kill the Emitter and the sweep genuinely stops" only means something if
+ *     the player can tell which craft to kill.
+ *   * DENSITY DROPS. A full-width row at 300 px spacing was ~6 orbs; a 5-slot
+ *     fan minus its gap is 4. Amit's other report -- "level 1 has far too many
+ *     projectiles on screen" -- is substantially this bug.
+ *   * THE AISLE GETS WIDER AND PROVABLE. Omitting one fan slot leaves a gap of
+ *     two adjacent separations at the player's line, and both the width and its
+ *     travel speed are computed from vx and the fall time rather than declared.
+ *
+ * NOT THE DIAGONAL STAIRCASE CURTAIN (§5.5's do-not-port list). That is a wall
+ * of diagonals with no readable aisle; this is five shallow diagonals from one
+ * point with a 500 px hole in the middle. The distinction is the aisle, and the
+ * aisle is asserted at boot.
+ */
+
+/** Where a fan is born: the owner's hull, just below it so the orbs are not
+ *  drawn underneath the craft. An unowned fan (none are authored today) falls
+ *  back to a live locked craft, so even that case has a real muzzle. */
+function fanMuzzle(w, st) {
+  const o = st.owner || sourceFor(w, null);
+  if (!o) return null;
+  return { x: o.x, y: o.y + FAN_MUZZLE_DY };
+}
+
+/** How far below its owner's origin a fan is born. Exported so
+ *  /systems/constraints.js sweeps the same altitudes the game fires from. */
+export const FAN_MUZZLE_DY = 30;
+
+/** Lateral velocity of fan slot `i` of `n`, from -spread to +spread. `spreadVx`
+ *  is derived per shot by fanGeometry, never authored. */
+function fanVx(d, i, spreadVx) {
+  if (d.fanOrbs <= 1) return 0;
+  return spreadVx * ((2 * i) / (d.fanOrbs - 1) - 1);
+}
+
+/**
+ * The fan's geometry for one shot, from the AUTHORED SEPARATION AT THE PLAYER'S
+ * LINE (`fanSepPx`) rather than from an authored lateral velocity.
+ *
+ * That inversion is the whole point and it is worth stating plainly. The aisle
+ * is a distance measured where the player is standing, so it has to be the
+ * authored quantity; spreading at a fixed px/s instead makes it a function of
+ * the fall time, which changes with the muzzle's altitude (a boss fires from
+ * y=370, a formation craft from y=254) and with the mode's descent speed (240
+ * vs 130 px/s). Authoring the velocity put the boss's fan at a 158 px aisle in
+ * Mode A -- under §5.3's 173 px floor, in a pattern whose whole contract is that
+ * floor. Authoring the separation makes the aisle mode- and altitude-invariant
+ * by construction, and leaves the validator something it can actually prove.
+ *
+ * `spreadVx` is what falls out instead, and it is clamped: an implausibly low
+ * muzzle would otherwise demand a near-horizontal spray to hit its separation.
+ * The clamp binding is a real (if currently unreachable) degradation of the
+ * aisle, so it is reported in `clamped` and the validator asserts it never binds
+ * at any altitude the game can actually fire from.
+ */
+export function fanGeometry(d, spawnY, vy) {
+  const fallPx = LATERAL_ONLY_TEST_Y * DESIGN_H - spawnY;
+  const t = Math.max(0.1, fallPx / vy);
+  const n = d.fanOrbs;
+  // Half the fan's total span, divided by the fall time.
+  const wanted = n > 1 ? (d.fanSepPx * (n - 1) * 0.5) / t : 0;
+  const spreadVx = Math.min(wanted, FAN_SPREAD_VX_MAX);
+  const dv = n > 1 ? (2 * spreadVx) / (n - 1) : 0;
+  const sep = dv * t;
+  // Omitting a run of k slots leaves a hole of (k + 1) separations between the
+  // two surviving neighbours, minus their own diameters.
+  const gap = sep * ((d.fanGapSlots || 1) + 1) - 2 * d.orbRadius;
   return {
-    id: 'B2',
-    def: PATTERNS.B2,
+    t,
+    sep,
+    gap,
+    span: sep * (n - 1),
+    spreadVx,
+    clamped: wanted > FAN_SPREAD_VX_MAX,
+  };
+}
+
+/** Ceiling on a fan's outermost lateral speed. Never reached from any altitude
+ *  the game fires from (asserted in /systems/constraints.js); it exists so a
+ *  future low emitter degrades to a narrow fan rather than a horizontal spray
+ *  that would leave the frame before it ever reached the player. */
+export const FAN_SPREAD_VX_MAX = 340;
+
+function rowIntervalAt(d, rowsFired) {
+  if (d.rowIntervalsS && d.rowIntervalsS.length) {
+    return d.rowIntervalsS[Math.min(rowsFired, d.rowIntervalsS.length - 1)];
+  }
+  return d.rowIntervalS;
+}
+
+function createFan(id, owner) {
+  const def = PATTERNS[id];
+  return {
+    id,
+    def,
     // B2 IS THE EMITTER'S PATTERN (§6.2). When owned, the sweep visibly
     // originates at the craft that is emitting it, which is the whole reason
     // the type reads as something to go and deal with rather than as ambient
@@ -181,108 +326,163 @@ function createB2(owner) {
     owner: owner || null,
     cooldown: 3.0,
     row: 0,
+    rowsFired: 0,
     rowT: 0,
-    gapX: DESIGN_W * 0.5,
+    // Which contiguous run of fan slots is omitted. THIS is the aisle.
+    gapSlot: 1,
     gapDir: 1,
-    aisle: { x: DESIGN_W * 0.5, w: PATTERNS.B2.guaranteedAisle, active: false },
+    aisle: { x: DESIGN_W * 0.5, w: def.guaranteedAisle, active: false },
     update(w, dt) {
       const d = this.def;
       if (this.row > 0) {
         this.rowT -= dt;
         if (this.rowT <= 0) {
-          this.rowT += d.rowIntervalS;
+          const interval = rowIntervalAt(d, this.rowsFired);
+          this.rowT += interval;
           this.row--;
-          emitB2Row(w, this, d);
-          // The gap travels with the fan, at the authored speed -- which is
-          // capped below half the player's lateral top speed.
-          this.gapX += this.gapDir * d.aisleMoveSpeed * d.rowIntervalS;
-          const lo = PLAYABLE_X.min * DESIGN_W + d.guaranteedAisle * 0.5;
-          const hi = PLAYABLE_X.max * DESIGN_W - d.guaranteedAisle * 0.5;
-          if (this.gapX < lo) {
-            this.gapX = lo;
-            this.gapDir = 1;
-          }
-          if (this.gapX > hi) {
-            this.gapX = hi;
-            this.gapDir = -1;
-          }
-          this.aisle.x = this.gapX;
+          this.rowsFired++;
+          emitFanRow(w, this, d);
+          advanceGap(w, this, d, rowIntervalAt(d, this.rowsFired));
         }
         if (this.row === 0) this.aisle.active = false;
         return;
       }
       this.cooldown -= dt;
       if (this.cooldown <= 0) {
-        this.cooldown = d.volleyIntervalS * cadenceOf(this.owner);
-        commitB2(w, this, d);
+        this.cooldown = volleyInterval(w, this);
+        commitFan(w, this, d);
       }
     },
   };
 }
 
-/** Where B2's rows are born. An owned sweep leaves the owner's own hull (just
- *  below it, so the orbs are not drawn under the craft); an unowned one uses
- *  the authored band position. Either way the value feeds the reachability
- *  arithmetic below, so the aisle stays answerable from wherever it starts. */
-function b2SpawnY(st) {
-  if (st.owner) return st.owner.y + 30;
-  return BANDS.formation.bottom * DESIGN_H * 0.72;
+/**
+ * Move the aisle one fan slot -- but ONLY if the next row is far enough away in
+ * time that the move stays inside §5.3's AISLE_MOVE_MAX.
+ *
+ * "Patterns that move their aisle must move it no faster than 420 px/s -- half
+ * the player's lateral top speed -- so following it is a committed lean, not a
+ * chase." B2T fires its rows as two fast pairs with a long beat between them,
+ * and shifting the gap across a 0.16 s pair would move it at ~2000 px/s. So the
+ * rule polices itself here rather than being authored per pattern: the pair
+ * shares one aisle, and the aisle steps between pairs. That is also exactly the
+ * rhythm the pattern is for -- two rows through the same hole, then the hole
+ * moves.
+ */
+function advanceGap(w, st, d, nextIntervalS) {
+  const m = cfg();
+  const muzzle = fanMuzzle(w, st);
+  if (!muzzle) return;
+  const g = fanGeometry(d, muzzle.y, m.patternDescentTuned);
+  if (!nextIntervalS || g.sep / nextIntervalS > AISLE_MOVE_MAX) return;
+  const n = d.fanOrbs - (d.fanGapSlots || 1);
+  st.gapSlot += st.gapDir;
+  if (st.gapSlot < 0) {
+    st.gapSlot = 0;
+    st.gapDir = 1;
+  }
+  if (st.gapSlot > n) {
+    st.gapSlot = n;
+    st.gapDir = -1;
+  }
 }
 
 /** Commit the volley: choose a REACHABLE starting aisle (§5.3). */
-function commitB2(w, st, d) {
-  if (!st.owner && !lockedShooters(w, _shooters).length) return;
+function commitFan(w, st, d) {
+  const muzzle = fanMuzzle(w, st);
+  if (!muzzle) return;
   const m = cfg();
   const vy = m.patternDescentTuned;
+  const g = fanGeometry(d, muzzle.y, vy);
 
-  const spawnY = b2SpawnY(st);
-  const timeToImpact = Math.max(0.3, (w.player.y - spawnY) / vy);
-  // Reachability: the nearest aisle edge must be within
+  // Reachability: the aisle's landing x must be within
   // LATERAL_MAX * (timeToImpact - 0.25 s) of the player's current x.
-  const reach = Math.max(0, INPUT.lateralMax * (timeToImpact - 0.25));
-
-  st.gapDir = w.player.x > DESIGN_W * 0.5 ? -1 : 1;
-  // Start the aisle offset from the player -- the pattern should make them
-  // move -- but never further than they can actually get to in time.
-  const desired = w.player.x + st.gapDir * DESIGN_W * 0.22;
-  const lo = Math.max(
-    PLAYABLE_X.min * DESIGN_W + d.guaranteedAisle * 0.5,
-    w.player.x - reach
+  const reach = Math.max(0, INPUT.lateralMax * (g.t - 0.25));
+  const desired = w.player.x;
+  // Pick the fan slot whose omitted hole lands nearest to a spot the player can
+  // actually get to. The aisle should make them MOVE -- so it is offset from
+  // where they are standing -- but never further than they can travel in time.
+  const dir = w.player.x > DESIGN_W * 0.5 ? -1 : 1;
+  const target = Math.max(
+    desired - reach,
+    Math.min(desired + reach, desired + dir * DESIGN_W * 0.18)
   );
-  const hi = Math.min(
-    PLAYABLE_X.max * DESIGN_W - d.guaranteedAisle * 0.5,
-    w.player.x + reach
-  );
-  st.gapX = Math.max(lo, Math.min(hi, desired));
-  st.aisle.x = st.gapX;
-  st.aisle.w = d.guaranteedAisle;
-  st.aisle.active = true;
+  let best = 0;
+  let bestD = Infinity;
+  const n = d.fanOrbs - (d.fanGapSlots || 1);
+  for (let s = 0; s <= n; s++) {
+    const x = gapLandingX(d, st, muzzle, g, s);
+    const dd = Math.abs(x - target);
+    if (dd < bestD) {
+      bestD = dd;
+      best = s;
+    }
+  }
+  st.gapSlot = best;
+  st.gapDir = dir;
   st.row = d.rows;
+  st.rowsFired = 0;
   st.rowT = 0;
+  st.aisle.active = true;
+  updateAisleReadout(w, st, d, muzzle, g);
 }
 
-function emitB2Row(w, st, d) {
+/** Where the omitted hole is by the time it reaches the player's line. */
+function gapLandingX(d, st, muzzle, g, slot) {
+  const k = (d.fanGapSlots || 1);
+  // Centre of the omitted run, in slot space.
+  const centre = slot + (k - 1) * 0.5;
+  const dv = d.fanOrbs > 1 ? (2 * g.spreadVx) / (d.fanOrbs - 1) : 0;
+  const vx = -g.spreadVx + dv * centre;
+  return muzzle.x + vx * g.t;
+}
+
+function updateAisleReadout(w, st, d, muzzle, g) {
+  st.aisle.x = gapLandingX(d, st, muzzle, g, st.gapSlot);
+  st.aisle.w = Math.max(0, g.gap);
+}
+
+function emitFanRow(w, st, d) {
   const m = cfg();
   const vy = m.patternDescentTuned;
-  const y = b2SpawnY(st);
+  const muzzle = fanMuzzle(w, st);
+  if (!muzzle) return;
+  const g = fanGeometry(d, muzzle.y, vy);
+  updateAisleReadout(w, st, d, muzzle, g);
+
+  const k = d.fanGapSlots || 1;
   const lo = PLAYABLE_X.min * DESIGN_W;
   const hi = PLAYABLE_X.max * DESIGN_W;
-  const half = d.guaranteedAisle * 0.5 + d.orbRadius;
+  // How long an orb lives before it is retired, so an orb that would leave the
+  // playable width can be dropped BEFORE it is fired. §5.1: "no bullet [...]
+  // may occupy the margins." Dropping it is the only honest option -- a bullet
+  // that vanished mid-flight, or one that bounced, would both be worse than one
+  // that was never there. It also thins the fan for a craft near an edge, which
+  // is the right answer for density too.
+  const life = Math.max(0.1, (BULLET.despawnY * DESIGN_H - muzzle.y) / vy);
 
-  // Phase the row so successive rows are offset -- otherwise three identical
-  // rows read as one object rather than as a sweep.
-  const phase = ((d.rows - st.row) % 2) * d.orbSpacing * 0.5;
-  for (let x = lo + phase; x <= hi; x += d.orbSpacing) {
-    if (Math.abs(x - st.gapX) < half) continue; // the authored aisle
-    // A small lateral drift in the sweep's direction, so the fan visibly
-    // fans. Well under the aim ratio, and it does not touch vy.
-    spawnOrb(w, x, y, st.gapDir * 26, vy, d.orbRadius, 'B2');
+  let fired = 0;
+  for (let i = 0; i < d.fanOrbs; i++) {
+    if (i >= st.gapSlot && i < st.gapSlot + k) continue; // the authored aisle
+    const vx = fanVx(d, i, g.spreadVx);
+    const endX = muzzle.x + vx * life;
+    if (endX < lo || endX > hi) continue;
+    spawnOrb(w, muzzle.x, muzzle.y, vx, vy, d.orbRadius, st.id);
+    fired++;
   }
+  // A muzzle flash at the source, every row. This is the other half of the
+  // answer to "fired from thin air": the fan now leaves the craft, and the
+  // craft now visibly fires it.
+  if (fired && _fx) _fx.muzzle(muzzle.x, muzzle.y);
 }
 
 // ---------------------------------------------------------------------------
 
-const FACTORIES = { B1: createB1, B2: createB2 };
+const FACTORIES = {
+  B1: createB1,
+  B2: (o) => createFan('B2', o),
+  B2T: (o) => createFan('B2T', o),
+};
 
 /** One pattern instance. `owner` is optional: an Emitter craft (§6.2) or a
  *  boss pod (§6.4) that the pattern belongs to and dies with. */
@@ -328,7 +528,12 @@ export function collectEmitters(w, out) {
   return out;
 }
 
-export function updateEmitters(w, dt) {
+// The FX facade for this frame. Held module-locally rather than on the world,
+// because §9.1 keeps game state plain data and a renderer handle is not that.
+let _fx = null;
+
+export function updateEmitters(w, dt, fx) {
+  _fx = fx || _fx;
   const limit = w.caps.simultaneousPatterns;
   const list = collectEmitters(w, _active);
   for (let i = 0; i < list.length && i < limit; i++) list[i].update(w, dt);
@@ -364,6 +569,49 @@ export function activeAisle(w) {
     }
   }
   return best;
+}
+
+/**
+ * Audit every emitter that would fire this frame and report any whose OWNER is
+ * dead, missing or no longer the thing that carries it.
+ *
+ * Amit, from the board: "projectiles are being fired even when the enemies are
+ * gone or dead. So projectiles are being fired from thin air."
+ *
+ * §6.2's whole claim for the Emitter type is that killing the craft removes the
+ * pattern -- "kill the Emitter and the sweep genuinely stops, because the thing
+ * emitting it is gone" -- and §6.4 makes the same promise for a boss pod. Both
+ * are supposed to hold as a property of the OBJECT GRAPH (the emitter instance
+ * is dropped with its owner) rather than because some code path remembered to
+ * clear a flag. This asserts that the graph actually says so, every half second,
+ * so the claim cannot quietly stop being true.
+ *
+ * Returns a list of human-readable violations rather than logging, so the caller
+ * owns the reporting policy (once each, over the Unity bridge on-device).
+ */
+export function auditEmitterOwnership(w, out) {
+  out.length = 0;
+  for (const em of collectEmitters(w, _aisleScan)) {
+    const o = em.owner;
+    // A wave-level emitter legitimately has no owner: it is the wave's rhythm,
+    // and B1 picks a live locked craft per orb (see sourceFor).
+    if (!o) {
+      if (!w.director.emitters.includes(em)) {
+        out.push(`unowned emitter '${em.id}' is live but is not the wave's`);
+      }
+      continue;
+    }
+    // A craft owner must still be alive AND must still be carrying this exact
+    // instance -- identity, not index, so a recycled pool slot cannot pass.
+    if (o.alive === false) {
+      out.push(`emitter '${em.id}' is live but its owner is dead`);
+    } else if (o.type !== undefined && o.emitter !== em) {
+      out.push(`emitter '${em.id}' is live but its craft no longer carries it`);
+    } else if (o.index !== undefined && o.emitter !== em) {
+      out.push(`emitter '${em.id}' is live but its boss pod no longer carries it`);
+    }
+  }
+  return out;
 }
 
 /** Every live aisle, for the dev guide (`L`). */

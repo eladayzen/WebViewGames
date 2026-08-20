@@ -18,6 +18,10 @@ import { boltHitsBoss } from '../enemies/boss.js';
 import { spawnFragment } from '../enemies/enemies.js';
 import { maybeDropPickup } from './pickups.js';
 import { liveCount } from '../core/state.js';
+import { auditEmitterOwnership } from '../patterns/patterns.js';
+
+// Scratch for the ownership audit -- nothing in the hot loop allocates (§9.1).
+const _audit = [];
 
 function hits(ax, ay, ar, bx, by, br) {
   const dx = ax - bx;
@@ -283,5 +287,10 @@ export function assertRuntimeInvariants(w, report) {
       );
     }
   }
+  // EMITTER OWNERSHIP (§6.2, §6.4). "Kill the Emitter and the sweep genuinely
+  // stops, because the thing emitting it is gone" is a claim about the object
+  // graph; this is the claim being checked rather than assumed.
+  for (const m of auditEmitterOwnership(w, _audit)) report(m);
+
   return { bullets, enemies };
 }

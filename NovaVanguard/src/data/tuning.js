@@ -133,10 +133,54 @@ export const INPUT = {
   // its deadzone -- that asymmetry IS the lean-ergonomics finding (§0.5).
   deadzoneX: 0.08,
   deadzoneY: 0.28,
+
+  // BOARD AXIS SIGNS -- applied to the window.__gbSensor read ONLY, never to
+  // the desktop keyboard fallback.
+  //
+  // THE BUG THESE FIX (Amit, on the real board through the Unity SDK): "right
+  // and left are working properly, but forward and backward are flipped. So
+  // when I press forward in the go balance controller the plane goes backwards.
+  // And when I lean backwards, the plane goes forward."
+  //
+  // GOBALANCE_SDK.md documents that `__gbSensor = {x, y}` is published every
+  // pump but does not state a sign convention for y, and no other shipped game
+  // uses that axis at all -- TmntSkateSlice's build doc says outright that "the
+  // y component of __gbSensor is UNUSED". So Nova Vanguard is the first game to
+  // find out what the board actually reports, and hardware is the authority.
+  // The board reports lean-forward as POSITIVE y; screen space has positive y
+  // pointing DOWN, so the raw value has to be negated for forward to mean
+  // forward.
+  //
+  // WHY IT IS A SIGN ON THE SENSOR AND NOT ON `nudge` OR ON `verticalMax`.
+  // Both of those would also invert the keyboard, where ArrowDown correctly
+  // means "move down the screen" and is not broken. Only the board's y is
+  // wrong, so only the board's y is flipped -- and it is a named constant so
+  // that if hardware ever disagrees again this is a one-character change with a
+  // paper trail, rather than a hunt through the input module.
+  sensorXSign: 1, // lateral is confirmed correct on the board; do not flip
+  sensorYSign: -1,
+
   // Full lateral traverse ~= 1.9 s.
   lateralMax: 840, // px/s
-  // Full player-band traverse ~= 1.6 s.
-  verticalMax: 190, // px/s
+
+  // Vertical. RAISED FROM 190 (Amit, on the board: "vertical movement is too
+  // slow"), and the number he was judging was authored blind against a keyboard.
+  //
+  // THE ASYMMETRY IS KEPT, because it is the lean-ergonomics finding expressed
+  // as two constants (§0.5, §4) and not a tuning accident: lateral is the
+  // comfortable, sustainable axis and forward/back is a more committed, more
+  // tiring motion with worse fine control. What was wrong was the DEGREE.
+  // Vertical was 23% of lateral; it is now 32%, so the axis is still visibly
+  // damped and still heavily deadzoned (0.28 vs 0.08, untouched -- that is the
+  // half of the asymmetry that stops accidental drift while leaning hard
+  // sideways, and it is the half that matters most).
+  //
+  // WHAT IT DOES NOT BREAK, checked by /systems/constraints.js rather than by
+  // eye: §6.4's vulnerable window still asks for a DRIFT and not a dash. The
+  // climb from the lateral-only line to the reward line is 216 px, which was
+  // 1.14 s and is now 0.80 s -- still over the 0.6 s floor R7 warns below, and
+  // the 3.5 s window still leaves ~1.9 s of firing inside a round trip.
+  verticalMax: 270, // px/s
   // Roll-state hysteresis so the sprite doesn't strobe at the deadzone edge
   // (§6.1). Roll engages above `rollOn`, releases below `rollOff`.
   rollOn: 0.22,
@@ -963,6 +1007,40 @@ export function enemyDef(type) {
 // Each declares its guaranteed aisle so /systems/constraints.js can verify it.
 // ---------------------------------------------------------------------------
 
+// THE FAN IS AUTHORED AS A SEPARATION, NOT AS A VELOCITY. Read this before
+// touching a `fanSepPx` below.
+//
+// A fan's aisle is the hole left by the omitted slot MEASURED AT THE PLAYER'S
+// LINE, so its width is (slots omitted + 1) separations minus the two
+// neighbouring orbs' own radii. The first rewrite authored the outermost slot's
+// lateral VELOCITY instead, which makes the separation -- and therefore the
+// aisle -- a function of how long the orbs happen to fall:
+//
+//     sep = spreadVx-derived spacing x (fall distance / descent speed)
+//
+// Both of those vary. A boss fires from y=370 and a formation craft from y=254;
+// Mode A descends at 240 px/s and Mode S at 130. At 96 px/s of spread that
+// spans an aisle of 332 px (Mode S, formation) down to 158 px (Mode A, boss) --
+// and 158 is UNDER AISLE_MIN. §5.3 does not offer a mode or an altitude
+// exemption: "every authored bullet pattern must guarantee a continuously
+// traversable gap of at least 173 px", full stop.
+//
+// So the separation at the player's line is the authored quantity and the
+// lateral velocity is derived from it per shot, from the real muzzle altitude
+// and the real descent speed (see fanGeometry in /patterns/patterns.js). The
+// aisle is then the same width no matter who fires the fan or which mode is
+// running, which is the only version of this pattern the validator can actually
+// prove rather than spot-check.
+const B2_SEP = 190; // px between adjacent slots at LATERAL_ONLY_TEST_Y
+const B2_ORB_R = 24;
+const B2T_SEP = 195;
+const B2T_ORB_R = 22;
+
+/** The hole one omitted run of slots leaves, at the player's line. */
+function fanAisle(sepPx, gapSlots, orbRadius) {
+  return sepPx * (gapSlots + 1) - 2 * orbRadius;
+}
+
 export const PATTERNS = {
   // B1 -- sparse aimed lob. Move and it misses; the aisle is everywhere but
   // where you were.
@@ -982,21 +1060,49 @@ export const PATTERNS = {
     guaranteedAisle: AISLE_MIN * 2.4, // sparse by construction
     aisleMoveSpeed: 0,
   },
-  // B2 -- lateral sweep fan. One authored gap travels with the fan.
+  // B2 -- LATERAL SWEEP FAN, from the craft that fires it.
+  //
+  // §5.5: "A fan from one formation section sweeps sideways across the width at
+  // <= 420 px/s. One authored gap >= AISLE_MIN travels with the fan."
+  //
+  // Read that literally, because the first implementation did not and it cost a
+  // real bug: it emitted a row across the ENTIRE playable width at the emitter's
+  // altitude, so orbs were born up to 1100 px from the craft that fired them.
+  // Amit, from the board: "projectiles are being fired from thin air." They
+  // were. Every orb now leaves the owner's hull with a lateral velocity and the
+  // fan spreads as it falls, so the source is always visible -- which is also
+  // the only thing that makes §6.2's "kill the Emitter and the sweep stops" a
+  // decision the player can actually take.
+  //
+  // THE AISLE IS AUTHORED AT THE PLAYER'S LINE (see the fan note above) and the
+  // lateral velocity is derived from it per shot. `guaranteedAisle` and
+  // `aisleMoveSpeed` below are therefore COMPUTED from the same two numbers the
+  // emitter uses, so the declared floor cannot drift away from the emitted
+  // geometry -- and /systems/constraints.js re-derives both from the real muzzle
+  // altitudes, in both framing modes, rather than trusting either.
   B2: {
     id: 'B2',
     name: 'Lateral sweep fan',
     rows: 2,
     rowIntervalS: 0.7,
-    orbSpacing: 300,
-    orbRadius: 24,
+    orbRadius: B2_ORB_R,
     volleyIntervalS: 7.4,
-    // The authored gap: wider than the floor, and it MOVES no faster than
-    // AISLE_MOVE_MAX so following it is a committed lean, not a chase.
-    guaranteedAisle: AISLE_MIN * 1.9,
-    aisleMoveSpeed: 300,
+    // Five slots, one omitted -- FOUR orbs per row against the old full-width
+    // row's six, which is a third of Amit's "far too many projectiles" answered
+    // by geometry rather than by a rate cut.
+    fanOrbs: 5,
+    // 190 px between adjacent slots at the player's line, so the omitted slot
+    // leaves a 332 px hole against AISLE_MIN's 173 -- and the whole fan spans
+    // 760 px, well under half the playable width. "A fan from one formation
+    // section", not a curtain.
+    fanSepPx: B2_SEP,
+    fanGapSlots: 1,
+    guaranteedAisle: fanAisle(B2_SEP, 1, B2_ORB_R), // 332
+    // The aisle steps one slot per row, so it travels one separation per row
+    // interval: 190 / 0.7 = 271 px/s, inside §5.3's 420.
+    aisleMoveSpeed: B2_SEP / 0.7,
   },
-  // B2T -- the twin-tempo sweep. §5.5's B2 with a different RHYTHM, authored as
+  // B2T -- the twin-tempo sweep. B2's fan with a different RHYTHM, authored as
   // its own row so the validator proves it like any other pattern.
   //
   // WHY IT EXISTS. Per-craft variation was left half-built: size, tint and
@@ -1009,30 +1115,31 @@ export const PATTERNS = {
   // proved; nothing varies inside a pattern.
   //
   // HOW IT READS DIFFERENT. B2 is two evenly-spaced rows. B2T fires its four
-  // rows as TWO PAIRS -- bang-bang, a beat, bang-bang -- with wider orb spacing
-  // so the volley is no denser than B2's. Standing in an aisle that has just
-  // gone quiet and finding it has not finished with you is a genuinely
-  // different thing to survive, at the same bullet cost.
+  // rows as TWO PAIRS -- bang-bang, a beat, bang-bang -- through a NARROWER fan.
+  // The aisle cannot move inside a pair (0.16 s x 315 px would be ~2000 px/s,
+  // five times §5.3's cap), so the pair goes through the same hole and the hole
+  // steps between pairs. /patterns enforces that arithmetically rather than
+  // trusting the numbers here: standing in an aisle that has just gone quiet and
+  // finding it has not finished with you is a genuinely different thing to
+  // survive, at four orbs a pair.
   B2T: {
     id: 'B2T',
     name: 'Twin-tempo sweep',
     rows: 4,
-    // Read in order, last value repeated: 0.16 s inside a pair, 0.9 s between
-    // pairs. /patterns reads `rowIntervalsS` when present and `rowIntervalS`
-    // otherwise, so B2 is untouched.
+    // Read in order, last value repeated: 0.16 s inside a pair, 0.9 s between.
     rowIntervalsS: [0.16, 0.9, 0.16],
     rowIntervalS: 0.16,
-    // Wider than B2's 300 precisely so four rows cost what two of B2's do: the
-    // simultaneous-bullet cap is a floor of the pacing contract (§5.3), never a
-    // thing to spend on a rhythm change.
-    orbSpacing: 520,
-    orbRadius: 22,
+    orbRadius: B2T_ORB_R,
     volleyIntervalS: 9.5,
-    guaranteedAisle: AISLE_MIN * 2.0,
-    // Slower than B2's gap, because the pair-gap-pair rhythm already moves the
-    // aisle in visible steps and adding speed on top would make it a chase
-    // rather than the committed lean §5.3 requires.
-    aisleMoveSpeed: 260,
+    fanOrbs: 4,
+    fanSepPx: B2T_SEP,
+    fanGapSlots: 1,
+    guaranteedAisle: fanAisle(B2T_SEP, 1, B2T_ORB_R), // 346
+    // Measured on the interval the aisle is actually ALLOWED to step across --
+    // the 0.9 s beat between pairs. Stepping inside a 0.16 s pair would be
+    // 1219 px/s, so /patterns refuses it and the pair shares one hole; that
+    // refusal is the pattern's rhythm, not a workaround.
+    aisleMoveSpeed: B2T_SEP / 0.9,
   },
 };
 
@@ -1307,6 +1414,38 @@ export const LEVELS = [
     waves: POC_SCENARIO.waves,
     hp: null,
     waveTimeoutS: POC_SCENARIO.waveTimeoutS,
+    // FIRE RATE, DIALLED BACK -- Amit, from the board: "level 1 has far too
+    // many projectiles on screen, it's too hard."
+    //
+    // SET FROM A MEASUREMENT TAKEN AFTER THE B2 FIX, NOT BEFORE IT. This is the
+    // whole reason the number is 1.15 and not the 1.35 the first pass authored.
+    // Amit's report was made against a build where a single Emitter painted a
+    // six-orb row across the entire frame (see the fan note above), and most of
+    // "far too many projectiles" was that bug rather than the rate. Cutting the
+    // rate on top of the geometry fix without re-measuring would have discounted
+    // the same problem twice and left the teaching level lifeless.
+    //
+    // Measured over a 200 s level-one soak in Mode S, peak / mean concurrent
+    // enemy bullets against §5.3's cap of 22:
+    //
+    //     1.00 (authored rate) ....... 13 / 7.06
+    //     1.15 (here) ................ 12 / 6.08
+    //     1.35 (first pass) .......... 11 / 5.23
+    //
+    // Even at the authored rate the fixed geometry peaks at 13 of 22. So this is
+    // a real but modest easing -- 14% off the mean -- rather than a second full
+    // discount, and level ONE only: this is the teaching level and a first run
+    // is the benchmark it has to pass, while level two is meant to press harder.
+    //
+    // WHAT THE MEASUREMENT IS AND IS NOT. It is a no-input soak, so it measures
+    // DENSITY (what Amit named: "projectiles on screen") and not difficulty --
+    // the craft never dodges. Difficulty is still a board judgement, and this is
+    // the one constant to move for it.
+    //
+    // It touches no floor: interval is WHEN a volley fires, never how many orbs
+    // it holds, how wide its aisle is, or how fast it falls.
+    fireRateMul: 1.15,
+
     // NOT opted in. Per-craft pattern variants (§6.2's `patternVariants`) would
     // put B2T -- a bullet pattern level one has never had -- into some of its
     // seven Emitters. "Level one is locked" covers what its craft SHOOT, not
@@ -1363,6 +1502,8 @@ export const LEVELS = [
     // Both are authored, validated rows -- the variation is WHICH proved
     // pattern a craft carries, never what is inside one.
     craftVariants: true,
+    // Level two presses at the authored rate. The ramp is meant to be felt.
+    fireRateMul: 1.0,
     // Longer than level one's 46 s, because its waves genuinely take longer to
     // clear now (a 22-craft wave at 2 HP with two Wardens is ~73 bolts of
     // committed fire). A wave that times out makes its survivors flee, which
@@ -1506,6 +1647,7 @@ export const LEVELS = [
     hp: null,
     waveTimeoutS: 58,
     craftVariants: true,
+    fireRateMul: 1.0,
   },
 ];
 
@@ -1563,6 +1705,41 @@ export const BOSS = {
   // "full-width red WARNING band 2.0 s before, through the single-slot banner
   // queue so it can never collide with another banner".
   warningS: 2.0,
+
+  // BOSS FIRE RATE -- Amit, from the board: "the boss fight needs fewer
+  // projectiles too."
+  //
+  // A multiplier on every boss-owned emitter's volley interval, on top of the
+  // level's. It is separate from the level knob because a boss is a different
+  // pressure problem: the playfield is otherwise EMPTY during a fight (the
+  // warning band flees every survivor), so all the bullets on screen are the
+  // boss's and there is nothing else competing for the player's read. At 1.5,
+  // Cinderjaw's B1 goes from a volley every 3.8 s to every 7.7 s once level
+  // one's own 1.35 is applied as well.
+  //
+  // Same discipline as every other rate knob here: it changes WHEN, never the
+  // orb count, the aisle or the descent, so §5.3's guarantees are untouched.
+  //
+  // 1.25 RATHER THAN THE 1.5 THE FIRST PASS AUTHORED, and for the same reason
+  // level one's is 1.15: measured after the B2 fix instead of before it.
+  // Measured over Cinderjaw's full 24 s fight, peak / mean concurrent orbs:
+  //
+  //     boss 1.00 ....... 11 / 5.80
+  //     boss 1.25 (here)  11 / 5.30
+  //     boss 1.50 ....... 11 / 5.31
+  //
+  // Two things worth carrying forward from that table. First, the fight is
+  // already sparse once the fan is a fan -- 11 of 22 -- so there is little left
+  // to cut and a deeper cut buys a quieter fight rather than a better one.
+  // Second, the PEAK does not move at all, because it is set by the size of a
+  // single volley (a sweep's 4 orbs x 2 rows, plus B1's 3) and this knob only
+  // changes the gap between volleys. If the boss ever needs a lower peak, the
+  // lever is the pattern, not this.
+  //
+  // NOTE FOR ANYONE TURNING IT: until this pass the knob was INERT. /patterns
+  // reads it off `st.boss` and nothing set that flag, so 1.0 and 1.5 produced
+  // identical fights. See bossOwned() in /enemies/boss.js.
+  fireRateMul: 1.25,
 
   // Pods -----------------------------------------------------------------
   // "Each pod owns ONE attack pattern; destroying it removes that pattern

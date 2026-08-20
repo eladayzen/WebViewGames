@@ -53,6 +53,11 @@ import {
 // Pure geometry, no world state -- the validator runs at boot, before a world
 // exists, and calls these exactly as the game does so the two cannot diverge.
 import { slotPosition, slotCount } from '../enemies/enemies.js';
+import {
+  fanGeometry,
+  FAN_SPREAD_VX_MAX,
+  FAN_MUZZLE_DY,
+} from '../patterns/patterns.js';
 import { bossGeometry } from '../enemies/boss.js';
 import { BOSSES, bossIsHullBoss } from '../data/bosses.js';
 import { SURFACES } from '../data/surfaces.js';
@@ -171,27 +176,112 @@ export function validateAll(opts = {}) {
     }
   }
 
-  // B2's aisle is produced by omitting orbs within half a gap of the gap
-  // centre. Verify the geometry actually yields the declared clear span,
-  // rather than trusting the emitter's arithmetic.
+  // ---------------------------------------------------------------------
+  // THE FAN PATTERNS (B2, B2T), CHECKED AS EMITTED RATHER THAN AS DECLARED.
+  //
+  // This block previously compared `guaranteedAisle` against an expression
+  // derived from `guaranteedAisle`, which is a tautology that passes for any
+  // value, and then read `orbSpacing` -- a field the fan rewrite removed, so
+  // the arithmetic was NaN and every comparison against it was quietly false.
+  // A validator that cannot fail is worse than none, because it is believed.
+  //
+  // What is checked now is the geometry the emitter actually produces, by
+  // calling the SAME fanGeometry() the emitter calls, at the two altitude
+  // extremes a fan can be fired from -- the top of the formation band and the
+  // boss's station line -- in BOTH framing modes. That cross-product is where
+  // the real failure lived: the velocity-authored version held its aisle for a
+  // formation craft in Mode S and lost 47% of it for a boss pod in Mode A.
+  // ---------------------------------------------------------------------
   {
-    const d = PATTERNS.B2;
-    const half = d.guaranteedAisle * 0.5 + d.orbRadius;
-    const clearSpan = 2 * (half - d.orbRadius);
-    if (clearSpan < AISLE_MIN) {
-      err(
-        `R2[B2]: emitted clear span ${clearSpan.toFixed(0)} < AISLE_MIN ${AISLE_MIN}`
-      );
-    }
-    // A row whose orbs are spaced further apart than the authored aisle has
-    // incidental gaps wider than the guaranteed one. That is safe (more ways
-    // through), but worth stating so nobody "fixes" it by tightening spacing.
-    const incidental = d.orbSpacing - 2 * d.orbRadius;
-    if (incidental >= AISLE_MIN) {
+    const bg = bossGeometry(opts.bossAspect || 16 / 9);
+    // Every altitude a fan is fired from. Emitters never swoop (§6.2) so they
+    // are bounded by the formation band; boss pods and hull emitters sit at the
+    // station line. The muzzle offset is the emitter's own.
+    const muzzles = [
+      { what: 'formation band top', y: BANDS.formation.top * DESIGN_H },
+      { what: 'formation band bottom', y: BANDS.formation.bottom * DESIGN_H },
+      { what: 'boss station', y: bg.podY },
+    ].map((s) => ({ ...s, y: s.y + FAN_MUZZLE_DY }));
+
+    for (const key of ['B2', 'B2T']) {
+      const d = PATTERNS[key];
+      if (!d) continue;
+      if (!(d.fanSepPx > 0)) {
+        err(`R2[${key}]: authors no fanSepPx, so its aisle is not defined`);
+        continue;
+      }
+
+      let worst = Infinity;
+      for (const modeKey of Object.keys(MODES)) {
+        const m = MODES[modeKey];
+        for (const src of muzzles) {
+          const g = fanGeometry(d, src.y, m.patternDescentTuned);
+          worst = Math.min(worst, g.gap);
+          if (g.gap < AISLE_MIN) {
+            err(
+              `R2[${key}]: fired from the ${src.what} in ${modeKey}, the aisle ` +
+                `is ${g.gap.toFixed(0)}px < AISLE_MIN ${AISLE_MIN}`
+            );
+          }
+          if (g.clamped) {
+            err(
+              `R2[${key}]: from the ${src.what} in ${modeKey} the fan needs ` +
+                `more than ${FAN_SPREAD_VX_MAX}px/s of spread to hold its ` +
+                `${d.fanSepPx}px separation, so the clamp narrows the aisle`
+            );
+          }
+        }
+      }
+
+      // The declared floor must agree with what is emitted, or content authored
+      // against the declaration is authored against a fiction.
+      if (Math.abs(d.guaranteedAisle - worst) > 1) {
+        err(
+          `R2[${key}]: declares a ${d.guaranteedAisle.toFixed(0)}px aisle but ` +
+            `emits ${worst.toFixed(0)}px`
+        );
+      }
+
+      // How fast the aisle travels. /patterns steps the gap one slot per row
+      // and REFUSES a step whose speed would breach AISLE_MOVE_MAX, so the
+      // meaningful number is the fastest step it will actually take -- and at
+      // least one interval has to permit a step, or the "sweep" never sweeps.
+      const intervals = d.rowIntervalsS && d.rowIntervalsS.length
+        ? d.rowIntervalsS
+        : [d.rowIntervalS];
+      let fastestStep = 0;
+      for (const iv of intervals) {
+        const speed = d.fanSepPx / iv;
+        if (speed <= AISLE_MOVE_MAX) fastestStep = Math.max(fastestStep, speed);
+      }
+      if (fastestStep === 0) {
+        err(
+          `R2[${key}]: every row interval would move the aisle faster than ` +
+            `${AISLE_MOVE_MAX}px/s, so /patterns refuses every step and the ` +
+            `aisle never moves — this is not a sweep`
+        );
+      } else if (Math.abs(d.aisleMoveSpeed - fastestStep) > 1) {
+        err(
+          `R2[${key}]: declares aisleMoveSpeed ${d.aisleMoveSpeed.toFixed(0)} ` +
+            `but its fastest permitted step is ${fastestStep.toFixed(0)}px/s`
+        );
+      }
+
+      const span = d.fanSepPx * (d.fanOrbs - 1);
+      const usable = (PLAYABLE_X.max - PLAYABLE_X.min) * DESIGN_W;
+      if (span > usable * 0.6) {
+        warn(
+          `R2[${key}]: the fan spans ${span.toFixed(0)}px of the ${usable}px ` +
+            `playable width — §5.5 asks for "a fan from one formation section", ` +
+            `and past about 60% it reads as a curtain across the frame`
+        );
+      }
       notes.push(
-        `B2 orb spacing ${d.orbSpacing} leaves incidental ${incidental.toFixed(0)}px ` +
-          `gaps as well as the authored ${d.guaranteedAisle.toFixed(0)}px one — ` +
-          `sparse by construction, which is the intent`
+        `${key}: ${d.fanOrbs - (d.fanGapSlots || 1)} orbs per row leaving a ` +
+          `${worst.toFixed(0)}px aisle (floor ${AISLE_MIN}) travelling at ` +
+          `${fastestStep.toFixed(0)}px/s, identical in both modes and at every ` +
+          `altitude it can be fired from — the separation is authored, the ` +
+          `lateral velocity is derived`
       );
     }
   }
@@ -242,6 +332,11 @@ export function validateAll(opts = {}) {
 
   const caps = { ...DENSITY_CAPS.normal, enemies: POC_ENEMY_CAP_OVERRIDE };
 
+  // POC_SCENARIO.waves IS level one's wave list (LEVELS[0].waves), so its
+  // fire-rate multiplier is the one these waves actually run at.
+  const levelFireRateMul = (LEVELS[0] && LEVELS[0].fireRateMul) || 1;
+  let peakSeen = 0;
+
   for (const id of Object.keys(MODES)) {
     const m = MODES[id];
     for (const wave of POC_SCENARIO.waves) {
@@ -252,42 +347,78 @@ export function validateAll(opts = {}) {
         );
       }
 
+      // Craft-owned patterns count against the simultaneous-pattern cap too
+      // (§5.3), because /patterns pools all three sources into one budget.
+      // An Emitter is a pattern the wave is authoring, whether or not the
+      // wave says so in `patterns`.
+      const ownedIds = [];
+      for (const sq of wave.squadrons) {
+        if (!sq.types) continue;
+        for (const k of Object.keys(sq.types)) {
+          const pat = enemyDef(sq.types[k]).pattern;
+          if (pat) ownedIds.push(pat);
+        }
+      }
+      const owned = ownedIds.length;
+
       // Theoretical peak concurrent bullets: per-volley count x how many
       // volleys can be alive at once (lifetime / interval).
-      let peak = 0;
-      for (const pid of wave.patterns) {
+      //
+      // COUNTED OVER EVERY SOURCE, not just the wave's own patterns. Amit's
+      // report was "level 1 has far too many projectiles on screen", and on
+      // level one the projectiles are overwhelmingly the EMITTERS' -- craft-owned
+      // B2 sweeps that this check used to ignore entirely. Only the highest-yield
+      // `simultaneousPatterns` of them can fire at once (/patterns pools all
+      // three sources into one budget and holds the rest), so the peak is the
+      // worst legal combination rather than the sum of everything authored.
+      const contributions = [];
+      for (const pid of wave.patterns.concat(ownedIds)) {
         const p = PATTERNS[pid];
-        const spawnY =
-          pid === 'B2' ? BANDS.formation.bottom * DESIGN_H * 0.72 : DESIGN_H * 0.13;
-        const lifetime = (1.02 * DESIGN_H - spawnY) / m.patternDescentTuned;
-        let perVolley;
-        if (pid === 'B1') {
-          perVolley = p.orbs;
-        } else {
-          const usable = (PLAYABLE_X.max - PLAYABLE_X.min) * DESIGN_W;
-          const perRow = Math.ceil(usable / p.orbSpacing);
-          perVolley = p.rows * perRow;
+        if (!p) {
+          err(`R3[${id}/${wave.name}]: unknown pattern '${pid}'`);
+          continue;
         }
-        peak += perVolley * Math.max(1, Math.ceil(lifetime / p.volleyIntervalS));
+        const spawnY = p.fanOrbs
+          ? BANDS.formation.bottom * DESIGN_H * 0.72
+          : DESIGN_H * 0.13;
+        const lifetime = (1.02 * DESIGN_H - spawnY) / m.patternDescentTuned;
+        // A fan emits exactly (slots - omitted) orbs per row, and that is now a
+        // property of the pattern rather than of the frame width. The previous
+        // arithmetic divided the playable width by `orbSpacing` -- the field the
+        // fan rewrite removed -- so this whole peak came out NaN and the cap
+        // check below could never fire. That is precisely the check Amit's "far
+        // too many projectiles on screen" needed to have been running.
+        const perVolley = p.fanOrbs
+          ? p.rows * (p.fanOrbs - (p.fanGapSlots || 1))
+          : p.orbs;
+        if (!(perVolley > 0)) {
+          err(
+            `R3[${id}/${wave.name}]: cannot count orbs per volley for '${pid}' — ` +
+              `it authors neither a fan nor an orb count`
+          );
+          continue;
+        }
+        // The level's fire-rate multiplier stretches the interval, so it is
+        // part of the density answer and belongs in the count -- level one's
+        // 1.35 is one of the two levers pulled for "too many projectiles" and
+        // the check has to be able to see it working.
+        const interval = p.volleyIntervalS * (levelFireRateMul || 1);
+        contributions.push(
+          perVolley * Math.max(1, Math.ceil(lifetime / interval))
+        );
       }
+      contributions.sort((a, b) => b - a);
+      const peak = contributions
+        .slice(0, caps.simultaneousPatterns)
+        .reduce((a, b) => a + b, 0);
       if (peak > caps.bullets) {
         err(
           `R3[${id}/${wave.name}]: theoretical peak ${peak} bullets > cap ` +
             `${caps.bullets}`
         );
       }
+      peakSeen = Math.max(peakSeen, peak);
 
-      // Craft-owned patterns count against the simultaneous-pattern cap too
-      // (§5.3), because /patterns pools all three sources into one budget.
-      // An Emitter is a pattern the wave is authoring, whether or not the
-      // wave says so in `patterns`.
-      let owned = 0;
-      for (const sq of wave.squadrons) {
-        if (!sq.types) continue;
-        for (const k of Object.keys(sq.types)) {
-          if (enemyDef(sq.types[k]).pattern) owned++;
-        }
-      }
       if (owned > 0) {
         notes.push(
           `${wave.name} authors ${wave.patterns.length} wave pattern(s) + ` +
@@ -316,6 +447,13 @@ export function validateAll(opts = {}) {
       }
     }
   }
+
+  notes.push(
+    `R3: level one's worst authored wave peaks at ${peakSeen} concurrent enemy ` +
+      `bullets against the ${caps.bullets} cap, counting the Emitters' own ` +
+      `sweeps and level one's ${levelFireRateMul}x fire-rate stretch. The ` +
+      `runtime spawner enforces the cap on top of this (see spawnOrb).`
+  );
 
   // =========================================================================
   // Rule 4 -- band discipline (§5.1, §9.4)
@@ -1262,30 +1400,56 @@ export function validateAll(opts = {}) {
           // exact failure boss one shipped with -- it must be unreachable, not
           // unlikely, so it is arithmetic rather than a play-test note.
           const phases = bays.map((p) => p.phase || 0).sort((x, y) => x - y);
-          let worst = bays.length;
-          // Sample the cycle finely; the open set only changes at phase
-          // boundaries, so this is exact for any authored phase list.
-          for (let s = 0; s < 720; s++) {
-            const k = s / 720;
+
+          // OVER EVERY SURVIVING SUBSET, not just the full set of four. The
+          // check used to sample only the opening frame of the fight and
+          // concluded "at least 2 of 4 open at every instant" -- which is true
+          // for four bays and false the moment one dies. Measured in a played
+          // fight, three survivors with phases 0.00/0.25/0.50 leave exactly ONE
+          // open at k=0.55. Nothing is broken by that (one open bay is still
+          // something to shoot, which is the actual requirement), but a
+          // validator that states a guarantee the fight does not hold is the
+          // same species of problem as the fan's tautology: it would have been
+          // believed by whoever authored boss three's phases.
+          //
+          // Subsets at or below alwaysOpenAtOrBelow are skipped because those
+          // jam permanently open (see updateBays) -- their worst case is "all
+          // of them", by construction.
+          const openAt = (set, k) => {
             let open = 0;
-            for (const ph of phases) {
-              if (((k + ph) % 1) < B.openFrac) open++;
+            for (const ph of set) if (((k + ph) % 1) < B.openFrac) open++;
+            return open;
+          };
+          let worst = bays.length;
+          let worstSet = phases;
+          // Every subset of the authored phases larger than the jam threshold.
+          for (let mask = 1; mask < 1 << phases.length; mask++) {
+            const set = phases.filter((_, i) => mask & (1 << i));
+            if (set.length <= B.alwaysOpenAtOrBelow) continue;
+            for (let s = 0; s < 720; s++) {
+              const open = openAt(set, s / 720);
+              if (open < worst) {
+                worst = open;
+                worstSet = set;
+              }
             }
-            worst = Math.min(worst, open);
           }
           if (worst < 1) {
             err(
-              `R7[${id}]: its ${bays.length} bays can all be shut at once ` +
-                `(openFrac ${B.openFrac}, phases ${phases.join('/')}) — there ` +
-                `would be a moment with nothing on the boss to shoot, which is ` +
-                `exactly how a working fight reads as invulnerable`
+              `R7[${id}]: its ${bays.length} bays can all be shut at once once ` +
+                `the survivors are ${worstSet.join('/')} (openFrac ` +
+                `${B.openFrac}) — there would be a moment with nothing on the ` +
+                `boss to shoot, which is exactly how a working fight reads as ` +
+                `invulnerable`
             );
           } else {
             notes.push(
-              `R7[${id}]: at least ${worst} of ${bays.length} bays are open at ` +
-                `every instant (openFrac ${B.openFrac}), so there is never a ` +
-                `beat with nothing to shoot. Below ` +
-                `${B.alwaysOpenAtOrBelow} survivors they jam open.`
+              `R7[${id}]: at least ${worst} bay is open at every instant of the ` +
+                `fight, checked over every surviving subset of the ` +
+                `${bays.length} (worst: ${worstSet.join('/')} at openFrac ` +
+                `${B.openFrac}), so there is never a beat with nothing to ` +
+                `shoot. At or below ${B.alwaysOpenAtOrBelow} survivors they jam ` +
+                `open.`
             );
           }
           // GUARANTEE 2: THE ENDGAME NEVER WAITS.

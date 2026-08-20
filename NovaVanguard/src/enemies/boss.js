@@ -191,7 +191,7 @@ export function beginBoss(w, bossId, aspect) {
   }
   // Emitters are attached here rather than in the loop above so that the pod
   // record is already complete when it becomes an emitter's owner.
-  for (const pod of b.pods) pod.emitter = createEmitter(pod.patternId, pod);
+  for (const pod of b.pods) pod.emitter = bossOwned(createEmitter(pod.patternId, pod));
 
   // A HULL BOSS OWNS ITS PATTERNS DIRECTLY.
   //
@@ -201,7 +201,9 @@ export function beginBoss(w, bossId, aspect) {
   // fires for itself" needs no new machinery at all: it is the existing emitter
   // ownership with the boss body as the owner. That is why a podless boss is a
   // row rather than a fork.
-  b.hullEmitters = (def.hullPatterns || []).map((id) => createEmitter(id, b));
+  b.hullEmitters = (def.hullPatterns || []).map((id) =>
+    bossOwned(createEmitter(id, b))
+  );
 
   // One pool or a gated core, never both. The unused half is zeroed rather than
   // left stale so a readout that asks the wrong question gets 0 instead of a
@@ -857,6 +859,27 @@ export function bossPodHpFraction(pod) {
 
 export function bossCoreHpFraction(b) {
   return b.maxCoreHp > 0 ? Math.max(0, b.coreHp) / b.maxCoreHp : 0;
+}
+
+/**
+ * Mark an emitter as the boss's, so volleyInterval() applies BOSS.fireRateMul.
+ *
+ * Amit, from the board: "the boss fight needs fewer projectiles too." The
+ * multiplier that answers that lives in /data/tuning.js and /patterns reads it
+ * off `st.boss` -- but nothing set that flag, so the knob was inert and turning
+ * it produced measurably identical fights (1.0, 1.25 and 1.5 all gave a peak of
+ * 11 concurrent orbs). A tuning constant that does nothing is worse than a
+ * missing one, because the next person to find the fight too busy will turn it
+ * further and conclude the fight cannot be calmed.
+ *
+ * Applied at CREATION, at the two places a boss makes an emitter, rather than
+ * inside createEmitter: /patterns has no concept of a boss and should not gain
+ * one -- an owner is an owner. This is the boss saying which of its emitters are
+ * its own, which it is the only thing that knows.
+ */
+function bossOwned(em) {
+  if (em) em.boss = true;
+  return em;
 }
 
 /** Boot-time geometry facts the validator checks. Exported so constraints.js

@@ -83,8 +83,18 @@ export function sampleInput(dt) {
   const sensor = window.__gbSensor;
   if (sensor && typeof sensor.x === 'number') {
     hostDetected = true;
-    rawX += sensor.x;
-    rawY += sensor.y || 0;
+    // SIGNS APPLIED HERE, AND ONLY HERE (INPUT.sensorXSign / sensorYSign).
+    //
+    // Amit, on the real board: "right and left are working properly, but
+    // forward and backward are flipped." The board reports lean-forward as
+    // positive y and screen space has positive y pointing down, so forward came
+    // out as backward. Correcting it on the SENSOR READ rather than on `nudge`,
+    // on `verticalMax`, or in /player is the whole point: the keyboard fallback
+    // below is NOT broken -- ArrowDown correctly means "move down the screen" --
+    // and any fix further downstream would invert that too, trading a board bug
+    // for a desktop one.
+    rawX += sensor.x * INPUT.sensorXSign;
+    rawY += (sensor.y || 0) * INPUT.sensorYSign;
     source = 'board';
   }
 
