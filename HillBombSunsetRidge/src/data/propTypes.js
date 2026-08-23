@@ -496,6 +496,9 @@ export const FACE_PATTERNS = [
       { type: 'crystal', ds: 64, u: W * 0.30 },
       { type: 'crystal', ds: 84, u: W * 0.58 },
       { type: 'crystal', ds: 102, u: W * 0.84 },
+      // Mid-chain, out at the rim: the far half of the traverse has to be
+      // threaded rather than coasted along.
+      { type: 'blocker', ds: 92, u: W * 0.88 },
       // Ramps at BOTH ends of the chain, so the traverse is bookended by
       // something worth arriving at rather than just ending.
       { type: 'kicker', ds: 20, u: -W * 0.72 },
@@ -516,6 +519,13 @@ export const FACE_PATTERNS = [
       { type: 'crystal', ds: 58, u: W * 0.74 },
       { type: 'crystal', ds: 72, u: W * 0.80 },
       { type: 'crystal', ds: 86, u: W * 0.86 },
+      // Inside the reward stack, so the narrow door is a route you ride rather
+      // than a gate you pass and then collect for free behind.
+      { type: 'blocker', ds: 66, u: W * 0.78 },
+      // And the lane OUTSIDE the stack. Blockers at 70-80% out still left the
+      // outermost band -- which carries the most pickups on the hill -- as a
+      // free corridor you could hold hard against the barrier the whole way.
+      { type: 'blocker', ds: 100, u: W * 0.92 },
       { type: 'barrel', ds: 96, u: W * 0.80 },
       // A rail on the EASY side, so the wide door is no longer simply a
       // punishment for taking it -- it pays less, not nothing.
@@ -536,6 +546,10 @@ export const FACE_PATTERNS = [
       { type: 'crystal', ds: 30, u: -W * 0.78 },
       { type: 'crystal', ds: 48, u: -W * 0.80 },
       { type: 'crystal', ds: 66, u: -W * 0.82 },
+      // Halfway along the rim run. This pattern was the clearest case of the
+      // problem: everything good on one edge and nothing in the way of any of it.
+      { type: 'blocker', ds: 56, u: -W * 0.80 },
+      { type: 'blocker', ds: 22, u: -W * 0.90 },
       { type: 'kicker', ds: 88, u: -W * 0.76 },
       { type: 'rail', ds: 104, u: W * 0.66 },
       { type: 'bigKicker', ds: 118, u: W * 0.72 },
@@ -557,6 +571,7 @@ export const FACE_PATTERNS = [
         out.push({ type: 'blocker', ds: 22 + i * 34, u: side * W * 0.14 });
         out.push({ type: 'crystal', ds: 34 + i * 34, u: -side * W * 0.56 });
       }
+      out.push({ type: 'blocker', ds: 92, u: W * 0.58 });
       out.push({ type: 'kicker', ds: 46, u: W * 0.62 });
       out.push({ type: 'rail', ds: 84, u: -W * 0.60 });
       out.push({ type: 'bigKicker', ds: 122, u: -W * 0.64 });
@@ -574,8 +589,10 @@ export const FACE_PATTERNS = [
       { type: 'blocker', ds: 46, u: W * 0.16 },
       { type: 'crystal', ds: 44, u: -W * 0.70 },
       { type: 'crystal', ds: 62, u: -W * 0.76 },
+      { type: 'blocker', ds: 52, u: -W * 0.84 },
       { type: 'crystal', ds: 80, u: W * 0.72 },
       { type: 'crystal', ds: 98, u: W * 0.78 },
+      { type: 'blocker', ds: 90, u: W * 0.86 },
       { type: 'rail', ds: 86, u: W * 0.74 },
       { type: 'longRail', ds: 40, u: -W * 0.74 },
       { type: 'kicker', ds: 68, u: -W * 0.68 },
