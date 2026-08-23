@@ -119,7 +119,15 @@ function beginWave(w, rng, banners) {
       // A squadron's `types` map is keyed by OFFSET WITHIN THE SQUADRON, not
       // by absolute slot, so a squadron can be moved to a different part of a
       // formation without silently relocating its Emitters.
-      const type = (sq.types && sq.types[i]) || 'drone';
+      //
+      // `fill` IS THE SQUADRON'S DEFAULT TYPE, and it exists because of the
+      // HP-tier rule (see ENEMY in /data/tuning.js). Levels two and three used
+      // to get their tougher rank-and-file from `hp: { drone: 2 }`, which made
+      // a craft tougher without making it look tougher; they now author the
+      // LANCER instead. Naming a dozen slots per squadron to say "these are all
+      // Lancers" would have buried the two or three slots that actually differ,
+      // so the bulk type is one field and `types` stays a list of exceptions.
+      const type = (sq.types && sq.types[i]) || sq.fill || 'drone';
       d.pending.push({
         t, side: sq.side, slot, squadron: s, formation, pace: sq.pace, type,
       });

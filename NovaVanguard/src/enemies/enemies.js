@@ -30,6 +30,7 @@ import {
   DESIGN_H,
   levelHp,
   levelAt,
+  levelVariantPatterns,
 } from '../data/tuning.js';
 import { cfg } from '../core/mode.js';
 import { alloc } from '../core/state.js';
@@ -101,6 +102,26 @@ function buildSlots(f) {
         const row = Math.floor(s / f.cols);
         out.push({
           x: (cx + (col - (f.cols - 1) / 2) * f.colGap) * DESIGN_W,
+          y: f.rowY[row] * DESIGN_H,
+        });
+      }
+    }
+    return out;
+  }
+
+  if (f.kind === 'picket') {
+    // F4 STAGGERED PICKET -- two rows offset by half a column, so no two craft
+    // share a column and there is no vertical line the guns can clear in one
+    // pass (§5.5: "reads as depth without using any").
+    //
+    // Slots run ROW-MAJOR, so a squadron filling a contiguous range arrives as
+    // one whole row rather than as a zip through both -- which is what makes the
+    // two-squadron waves in level three read as one rank landing and then the
+    // other sliding in behind it.
+    for (let row = 0; row < f.rows; row++) {
+      for (let col = 0; col < f.cols; col++) {
+        out.push({
+          x: (f.xMin + (f.rowOffset[row] + col) * f.colGap) * DESIGN_W,
           y: f.rowY[row] * DESIGN_H,
         });
       }
@@ -281,9 +302,13 @@ export function spawnEntering(w, rng, side, slot, squadron, formationId, pace, t
   // rather than leaving it low-and-unused means a future edit to the swoop
   // trigger cannot accidentally make an Emitter dive: there is no value of
   // `swooping < maxConcurrent` that lets Infinity <= 0 through.
-  e.swoopCooldown = def.swoops
-    ? rng.range(ENEMY.swoop.cooldownS[0], ENEMY.swoop.cooldownS[1])
-    : Infinity;
+  // PER-TYPE WHERE THE TYPE ASKS FOR IT. §6.2's Lancer is "the swooper, peels
+  // more often than anything else", and that line is a behaviour rather than a
+  // flavour note -- so it authors its own window and everything else takes the
+  // shared one. ENEMY.swoop.maxConcurrent still bounds the whole formation, so
+  // a picket full of Lancers cannot put more than three in the gutter at once.
+  const cool = def.swoopCooldownS || ENEMY.swoop.cooldownS;
+  e.swoopCooldown = def.swoops ? rng.range(cool[0], cool[1]) : Infinity;
   // A craft that owns a bullet pattern carries its own emitter instance, which
   // is what makes killing the craft remove the pattern -- there is no
   // wave-level copy to fall back on (§6.2). The instance itself is attached by
@@ -590,8 +615,8 @@ function stepSwooping(e, dt, driftX) {
 
   if (e.t >= e.dur) {
     e.mode = 'locked';
-    e.swoopCooldown = ENEMY.swoop.cooldownS[0] + Math.random() *
-      (ENEMY.swoop.cooldownS[1] - ENEMY.swoop.cooldownS[0]);
+    const cool = enemyDef(e.type).swoopCooldownS || ENEMY.swoop.cooldownS;
+    e.swoopCooldown = cool[0] + Math.random() * (cool[1] - cool[0]);
   }
 }
 
@@ -675,7 +700,11 @@ export function lockedShooters(w, out) {
  */
 export function craftPatternId(w, e) {
   const def = enemyDef(e.type);
-  const list = def.patternVariants;
+  // The list is the LEVEL's where the level names one (levelVariantPatterns),
+  // and the type's otherwise. Level three adds B4 to its Emitters that way,
+  // without B4 reaching level two's Emitters -- content Amit has already
+  // played -- and without touching the type table at all.
+  const list = levelVariantPatterns(w.surfaceIndex, e.type);
   // GATED PER LEVEL, and level one does not opt in.
   //
   // Without this gate the variants would reach level one's seven Emitters and

@@ -11,8 +11,9 @@ tools/kolbo-assets/remove_white_bg.py cannot do that this set needs:
     roll states must be cropped at the SAME rectangle or the sprite's centre
     shifts between states while the craft is meant to be holding a line.
 """
+import math
 from collections import deque
-from PIL import Image
+from PIL import Image, ImageChops, ImageFilter
 
 
 def _minchan(im):
@@ -409,3 +410,156 @@ def keep_largest_component(im, thresh=24):
                 r, g, b, _ = px[x, y]
                 px[x, y] = (r, g, b, 0)
     return im
+
+
+# ---------------------------------------------------------------------------
+# CRAFT READABILITY OVER A DARK SURFACE (playtest round 5, Amit)
+#
+#   "A lot of the enemies right now are too dark. It's hard to see them on the
+#    dark backgrounds. Mainly actually mainly the one that's like grey dark.
+#    Also the green ones are a little bit too dark. The orange one a little bit
+#    too dark. I need to find a solution for that. I don't know if you have to
+#    change the whole asset maybe or just add some auto-stroke or glow."
+#
+# THIS IS STRUCTURAL, NOT AN ART MISS ON THREE SPRITES. 5.4 requires the surface
+# to be desaturated and low-contrast, and the shipped surfaces measure FAR below
+# even that: rendered luminance means of 0.071 / 0.083 / 0.074 against a 0.45
+# ceiling. The ground is very dark by design -- that darkness is what makes
+# bullets readable and must not be given back -- so ANY craft that is also dark
+# disappears into it, and every enemy added from here hits the same wall.
+#
+# The two functions below are the answer, and they are deliberately the cheap
+# half of the pair 9.5 rule 6 already established for surfaces ("bring it into
+# band with the scrim, not with a regeneration"). Applied at BUILD TIME from the
+# existing raws: no credits, deterministic, and automatic for every future
+# craft rather than a note someone has to remember.
+# ---------------------------------------------------------------------------
+
+
+def median_luma(im, alpha_min=40):
+    """Median luminance over a sprite's OPAQUE pixels, 0..1.
+
+    Median rather than mean, deliberately: a craft is a dark hull with a few hot
+    lights on it, and the mean is dragged up by the lights -- which are exactly
+    the pixels that were never the problem. The median answers "how bright is
+    this craft's BODY", which is the thing that vanishes into a dark surface.
+    """
+    px = im.load()
+    vals = []
+    for y in range(im.height):
+        for x in range(im.width):
+            r, g, b, a = px[x, y]
+            if a < alpha_min:
+                continue
+            vals.append(0.2126 * r + 0.7152 * g + 0.0722 * b)
+    if not vals:
+        return 0.0
+    vals.sort()
+    return vals[len(vals) // 2] / 255.0
+
+
+_median_luma = median_luma
+
+
+def lift_luma(im, target_median, iters=14):
+    """Raise a sprite's median luminance to `target_median`, hue-safe.
+
+    A POWER CURVE ON HSV VALUE, which is the whole reason this is safe to apply
+    to every craft uniformly:
+
+      * HUE AND SATURATION ARE UNTOUCHED, so 5.4's ownership coding survives
+        exactly. A purple drone stays purple, an oxblood Warden stays oxblood.
+        The one thing that could break ownership -- an enemy drifting toward the
+        player's blue-and-white -- is impossible by construction, because the
+        channel RATIOS never change; only the common scale does.
+      * IT IS MONOTONIC, so plate seams, panel lines and specular highlights
+        keep their ordering. A linear gain would clip every highlight to flat
+        white and take the hard-surface bevels 0.3 fixed the idiom for with it.
+      * HIGHLIGHTS BARELY MOVE. v^g with g<1 lifts the dark end hard and the
+        bright end almost not at all, which is precisely the distribution
+        problem: what is invisible on these craft is the ARMOUR, not the lights.
+
+    The exponent is SOLVED by bisection on the measured median rather than
+    authored, because the right lift for a 0.155 Warden and a 0.358 Emitter are
+    very different numbers, and hand-tuning five of them is exactly how the
+    sixth craft gets forgotten.
+    """
+    im = im.convert('RGBA')
+    cur = _median_luma(im)
+    if cur <= 0.001 or target_median <= cur:
+        return im, cur, 1.0
+    lo, hi = 0.05, 1.0
+    best, best_g, best_m = im, 1.0, cur
+    for _ in range(iters):
+        g = (lo + hi) * 0.5
+        out = _apply_value_gamma(im, g)
+        m = _median_luma(out)
+        best, best_g, best_m = out, g, m
+        if abs(m - target_median) < 0.004:
+            break
+        if m < target_median:
+            hi = g          # smaller gamma lifts harder
+        else:
+            lo = g
+    return best, best_m, best_g
+
+
+def _apply_value_gamma(im, gamma):
+    """v -> v**gamma in HSV, alpha and chroma ratios preserved."""
+    px = im.load()
+    out = Image.new('RGBA', im.size)
+    op = out.load()
+    lut = [int(round(255.0 * ((i / 255.0) ** gamma))) for i in range(256)]
+    for y in range(im.height):
+        for x in range(im.width):
+            r, g, b, a = px[x, y]
+            if not a:
+                op[x, y] = (r, g, b, a)
+                continue
+            v = max(r, g, b)
+            if v == 0:
+                op[x, y] = (lut[0], lut[0], lut[0], a)
+                continue
+            nv = lut[v]
+            k = nv / float(v)
+            op[x, y] = (
+                min(255, int(r * k)), min(255, int(g * k)), min(255, int(b * k)), a
+            )
+    return out
+
+
+def rim_from_alpha(im, width=7, feather=5):
+    """A white outline sprite derived from a craft's own alpha.
+
+    WHY AN ALPHA-DERIVED SILHOUETTE RATHER THAN A TINTED COPY OF THE CRAFT. The
+    obvious cheap rim is the craft's own texture drawn additively behind itself
+    at a slightly larger scale -- and it does nothing here, because additive
+    blending adds a pixel's OWN colour: a near-black armour plate contributes
+    near-black, so exactly the craft that needs the rim is the craft that would
+    not get one. The outline has to come from the SHAPE, not from the colour.
+
+    So this walks the alpha channel, keeps the band just inside the silhouette's
+    edge, and feathers it outward. The renderer draws it additively behind the
+    craft, tinted with that craft's own family colour (ENEMY.types[].rimColor),
+    which does three things at once: it separates a dark hull from a dark ground,
+    it reads as the neon idiom 0.3 fixed rather than as a UI outline, and it
+    carries the type's colour identity at a distance where the hull's own detail
+    has stopped being legible.
+
+    ONE ASSET PER CRAFT, generated from the craft. Adding an enemy adds its rim
+    automatically; there is nothing to remember.
+    """
+    im = im.convert('RGBA')
+    a = im.split()[3]
+    # Inner edge band: alpha minus an eroded copy of itself.
+    eroded = a.filter(ImageFilter.MinFilter(max(3, width | 1)))
+    band = ImageChops.subtract(a, eroded)
+    # Push it outward a little and soften, so the rim reads as light bleeding
+    # off the hull rather than as a drawn stroke.
+    grown = band.filter(ImageFilter.MaxFilter(3))
+    soft = grown.filter(ImageFilter.GaussianBlur(feather))
+    rim = Image.new('RGBA', im.size, (255, 255, 255, 0))
+    rim.putalpha(soft)
+    white = Image.new('RGBA', im.size, (255, 255, 255, 255))
+    white.putalpha(soft)
+    return white

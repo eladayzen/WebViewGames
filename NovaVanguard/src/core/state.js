@@ -131,6 +131,11 @@ export function createWorld() {
       s: { x0: 0, y0: 0, x1: 0, outY: 0, outS: 0, dipY: 0, descentS: 0, returnS: 0 },
       swoopCooldown: 0,
       hitFlashT: 0,
+      // The uid of the last piercing round that hit this craft (WEAPONS.lance).
+      // One integer instead of a per-round hit list, which is what keeps the
+      // pierce test allocation-free in the hot loop (§9.1). See `uid` on the
+      // bolt pool below for why the stamp is needed at all.
+      lastPierceUid: -1,
       // Set once the craft has settled: killing before this is the pre-lock
       // kill window and is worth double (§5.5, §8.2).
       locked: false,
@@ -169,6 +174,14 @@ export function createWorld() {
       r: 0,
       pattern: '',
       counted: false, // near-miss bookkeeping
+      // B4's sine curtain (§5.5). `bx` is the straight-line base the velocity
+      // integrates; `x` above is that base plus the sine offset, so collision
+      // and the renderer keep reading one position. Zero on every other pattern.
+      bx: 0,
+      sAmp: 0,
+      sW: 0,
+      sPhase: 0,
+      sT: 0,
       // Pulse phase for the breathing scale/glow (FX.enemyBulletPulse). Purely
       // presentational -- collision reads `r` and never this -- and stamped at
       // spawn so a volley does not pulse in lockstep.
@@ -190,6 +203,32 @@ export function createWorld() {
       dmg: 1,
       // Which WEAPONS row fired it, for the sprite and tint only.
       weapon: 'standard',
+      // --- pickup-weapon behaviour, carried on the ROUND ------------------
+      // Same discipline as `dmg` and `r` above, and for the same reason: every
+      // consumer downstream reads the round rather than looking up the weapon,
+      // which is why a 3-round fan needed no change in collision, the boss or
+      // the renderer. These three keep that true for four weapons.
+      //
+      // How many more craft this round may pass through (WEAPONS.lance). Zero
+      // means it is spent on the first thing it hits, which is every other
+      // weapon in the game.
+      pierce: 0,
+      // Identity stamp, so a piercing round cannot hit the SAME craft twice.
+      // A lance travels ~29 px per frame against a 36 px-radius craft, so it
+      // is inside a given hitbox for two or three consecutive frames; without
+      // a stamp it would spend its whole pierce budget on one drone. Compared
+      // against `lastPierceUid` on the enemy -- an integer test, no allocation
+      // and no per-round hit list (§9.1).
+      uid: 0,
+      // Distance still to travel before the round is spent (WEAPONS.flak's
+      // rangePx). Zero means unlimited, which is every other weapon.
+      lifePx: 0,
+      // Steering (WEAPONS.swarm). `turn` is radians/second; zero means the
+      // round flies straight, which is every other weapon.
+      turn: 0,
+      acquire: 0,
+      retargetT: 0,
+      target: -1,
     })),
 
     // --- pickups (§5.6) ---------------------------------------------------

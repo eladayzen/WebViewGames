@@ -168,14 +168,95 @@ export const BOSSES = {
     coreHp: 80,
   },
 
-  // Not built. Declared so /data/surfaces.js can name it and the validator can
-  // report the gap out loud instead of the campaign quietly looping.
+  // §5.7: sector 3, The Bulwark. §6.4: "Nadir Coil -- segmented hive-serpent
+  // strung horizontally", "the pods are body segments and the serpent visibly
+  // shortens as they die. Runs B4."
   //
-  // §6.4's table gives Nadir Coil body segments that "visibly shorten as they
-  // die", which is "destroying it removes that pattern permanently" by
-  // construction -- so the same pod machine Brood Gantry now exercises is what
-  // it will be authored over: `pods` + `coreDx`, no `hullHp`, no new code.
-  nadirCoil: { id: 'nadirCoil', built: false, name: 'NADIR COIL' },
+  // -------------------------------------------------------------------------
+  // A THIRD MECHANIC, NOT A THIRD BOSS WITH BIGGER NUMBERS.
+  //
+  // Boss one: one HP pool, hit it anywhere. Boss two: four bays on a clock,
+  // shoot whichever is open. Boss three: THE ENDS. Only the two outermost
+  // living segments are exposed; the ones between are clamped behind their
+  // neighbours' couplings. Kill an end and the coil visibly retracts and the
+  // next segment inward opens, so the fight walks from the outside in toward
+  // the core and the player's lateral beat gets shorter as it goes.
+  //
+  // The full reasoning -- why this is a genuinely different question from boss
+  // two's, why it is discoverable with no tutorial line, and the two guarantees
+  // that keep it safe -- is in BOSS.coil in /data/tuning.js, beside the numbers
+  // it is made of. What belongs HERE is what makes it a row:
+  //
+  //   * `gate: 'ends'` picks the ends rule instead of the bay clock. Both are
+  //     modes of the same `open` flag the shared machine already gates damage,
+  //     firing and reticles on, so /enemies/boss.js gained one small update
+  //     function and nothing else. A boss with neither gate has permanently
+  //     open pods, which is Cinderjaw and every future plain pod boss.
+  //   * The segments carry patterns the player has met -- B1, B2, B2T -- plus
+  //     B4, which level three's own Emitters have already been running for six
+  //     waves. So the fight introduces ONE new thing, its mechanic, which is
+  //     the rule boss two established and this one keeps.
+  //
+  // DO-NOT-PORT COMPLIANCE (§5.5): the hull sits entirely above the player band
+  // and never descends, every segment fires downward from the station line, and
+  // there is nothing here that launches craft. No simultaneous top-and-bottom
+  // pressure, no plunge, no diagonal curtain.
+  nadirCoil: {
+    id: 'nadirCoil',
+    built: true,
+    name: 'NADIR COIL',
+    hullKey: 'bossNadirCoilHull',
+
+    // Three segment states through one shared cell rect (art/build_assets.py),
+    // the same three-texture vocabulary Brood Gantry's bays use -- deliberately,
+    // because the player learned "lit = shootable, dark shutter = armoured, char
+    // = dead" on boss two and re-reading it here costs them nothing.
+    podKey: 'bossCoilOpen',
+    podShutKey: 'bossCoilShut',
+    podDeadKey: 'bossCoilDead',
+    // Nested inside the hull's own drawn ring sockets so the socket frames the
+    // segment, and just inside the shot channel's 124 px so what you see is
+    // never wider than what you hit.
+    podSpriteWidth: 118,
+    podNoun: 'SEGMENT',
+    gate: 'ends',
+
+    // MEASURED OFF THE SHIPPED ART, not chosen -- and verified by drawing these
+    // five dx values back onto the keyed hull and looking at where the circles
+    // landed (art/tmp/nadir-marked2.png; the procedure is written up in
+    // art/build_assets.py). The spacing is not even because the generator did
+    // not draw it evenly, and the data has to agree with the picture.
+    coreDx: 0.4949,
+    pods: [
+      { dx: 0.1245, pattern: 'B1' },
+      { dx: 0.3066, pattern: 'B4' },
+      { dx: 0.6982, pattern: 'B4' },
+      { dx: 0.8239, pattern: 'B2' },
+    ],
+
+    // PER-BOSS, and both numbers are set by the shape of THIS fight rather than
+    // by the framework's defaults.
+    //
+    // Segments are 20 HP against the shared 6 because only TWO of the four are
+    // ever shootable at once -- so where Brood Gantry's four bays can be worked
+    // in parallel, the coil is inherently a SERIAL fight and its per-target cost
+    // has to carry that. 4 x 20 = 80 bolts is ~8.4 s of unbroken rank-1 fire
+    // spread across four relocations.
+    //
+    // MEASURED, NOT GUESSED. The first pass authored 14/60 and a perfect-tracking
+    // autopilot -- one that relocates instantly and never dodges -- killed the
+    // whole fight in 18.8 s, which is the floor a real player is slower than but
+    // not by a factor of two. §5.7 wants a boss in the 35-45 s band. At 20/80 the
+    // same autopilot takes ~26 s, which leaves the right amount of room for
+    // relocation and dodging to fill.
+    //
+    // The core is 80, matching Brood Gantry's. Its length is carried by the
+    // segments rather than by the core here (they are shootable for the whole
+    // fight rather than half of it), so the core is the fight's last beat and
+    // not its bulk.
+    podHp: 20,
+    coreHp: 80,
+  },
 };
 
 export function bossDef(id) {

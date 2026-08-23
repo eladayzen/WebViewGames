@@ -136,6 +136,26 @@ export function beginBoss(w, bossId, aspect) {
   b.hullBoss = bossIsHullBoss(def);
   b.coreDx = def.coreDx === undefined ? 0.5 : def.coreDx;
   b.podNoun = def.podNoun || 'BATTERY';
+  // WHICH GATE DECIDES WHETHER A POD IS `open` -- the one flag the shared
+  // machine already uses for damage, firing, reticles and the HUD gauge.
+  //
+  //   'bay'  -- boss two: a per-pod clock, phase-shifted (updateBays).
+  //   'ends' -- boss three: the outermost living segments (updateCoil).
+  //   ''     -- everything else: permanently open, which is boss one's shape
+  //             and the shape any future plain pod boss gets for free.
+  //
+  // Resolved once, here, so nothing downstream ever branches on a boss id --
+  // the same discipline bossIsHullBoss enforces for the other fork.
+  b.gate = def.gate || ((def.pods || []).some((p) => p.launches) ? 'bay' : '');
+  // THE LIVE SPAN of the hull, as fractions of BOSS.width, and the reason it is
+  // on the boss record rather than inside the coil code: three separate things
+  // read it -- the bolt test (armour outside the span is not there any more),
+  // the renderer's hull mask, and the death sequence. A boss with no gate that
+  // shortens keeps 0..1 forever and every one of those reads unchanged.
+  b.spanLo = 0;
+  b.spanHi = 1;
+  b.spanLoT = 0;
+  b.spanHiT = 1;
 
   b.x = DESIGN_W * 0.5;
   b.y = BOSS.entryFromY * DESIGN_H;
@@ -175,8 +195,12 @@ export function beginBoss(w, bossId, aspect) {
       x: 0,
       y: 0,
       alive: true,
-      hp: BOSS.podHp,
-      maxHp: BOSS.podHp,
+      // PER-BOSS where the row says so. A coil segment is 14 HP against the
+      // shared 6 because only two of the four are ever shootable at once, so
+      // the fight is inherently serial and its per-target cost has to carry
+      // that (see /data/bosses.js). Same discipline as coreHp.
+      hp: def.podHp || BOSS.podHp,
+      maxHp: def.podHp || BOSS.podHp,
       hitFlashT: 0,
       deathT: -1,
       patternId: p.pattern,
@@ -232,7 +256,93 @@ export function beginBoss(w, bossId, aspect) {
   b.deathT = 0;
   b.deathPodsFired = 0;
   b.deathPoints = null;
+  // Settle the gate's opening state before the first frame is drawn, so a coil
+  // arrives with its ends already lit rather than opening them on frame two.
+  if (b.gate === 'ends') {
+    updateCoil(w, 999);
+    b.spanLo = b.spanLoT;
+    b.spanHi = b.spanHiT;
+  }
   return true;
+}
+
+/**
+ * THE COIL GATE (§6.4, BOSS.coil) -- boss three's mechanic.
+ *
+ * ONLY THE TWO OUTERMOST LIVING SEGMENTS ARE EXPOSED. Everything between them
+ * is clamped behind its neighbours' couplings, and the coil's drawn hull ends
+ * just past the outermost survivor -- so killing an end genuinely shortens the
+ * serpent, which is §6.4's own word for what this boss does.
+ *
+ * WHY IT IS SIX LINES OF LOGIC. `open` is a flag the shared machine already
+ * gates damage, firing, reticles, the deflect burst and the HUD gauge on; boss
+ * two computes it from a clock and boss three computes it from an index. That
+ * is the whole difference between the two fights, and it is the reason §6.4
+ * could say "per-boss flavour is in the pod layout and pattern assignment, not
+ * in new systems" and be right.
+ *
+ * THE "SOMETHING IS ALWAYS SHOOTABLE" GUARANTEE IS STRUCTURAL HERE rather than
+ * arithmetic. Boss two needed a search over every surviving subset of bay phases
+ * to prove that a moment with nothing open is unreachable; the ends of a
+ * non-empty list always exist, so the same guarantee holds by definition. That
+ * is worth preferring on its own -- the failure it prevents (a working fight
+ * that reads as invulnerable) is the one that shipped once already.
+ */
+function updateCoil(w, dt) {
+  const b = w.boss;
+  const C = BOSS.coil;
+  let lo = -1;
+  let hi = -1;
+  for (let i = 0; i < b.pods.length; i++) {
+    if (!b.pods[i].alive) continue;
+    if (lo < 0) lo = i;
+    hi = i;
+  }
+
+  const doorRate = dt / Math.max(0.01, C.doorS);
+  for (let i = 0; i < b.pods.length; i++) {
+    const p = b.pods[i];
+    if (!p.alive) continue;
+    const wantOpen = i === lo || i === hi;
+    const before = p.open;
+    p.doorK = Math.max(0, Math.min(1, p.doorK + (wantOpen ? doorRate : -doorRate)));
+    // Damage follows the DOORS, not the index: a segment counts as exposed once
+    // its couplings are past halfway, so what the player sees and what the bolt
+    // meets agree. Identical rule to the bay's, deliberately.
+    p.open = p.doorK >= 0.5;
+    if (p.open !== before) rotatePods(w);
+  }
+
+  // THE LIVE SPAN. Unioned with a window around the core so the coil can never
+  // retract past the reactor it is protecting -- with the segments dying from
+  // the outside in, the last survivor is an INTERIOR one, and on this hull the
+  // interior segments sit off-centre. Without the union a coil down to its
+  // second segment would draw a hull that did not contain its own core.
+  if (lo < 0) {
+    b.spanLoT = b.coreDx - C.corePadDx;
+    b.spanHiT = b.coreDx + C.corePadDx;
+  } else {
+    b.spanLoT = Math.min(b.pods[lo].dx - C.endPadDx, b.coreDx - C.corePadDx);
+    b.spanHiT = Math.max(b.pods[hi].dx + C.endPadDx, b.coreDx + C.corePadDx);
+  }
+  b.spanLoT = Math.max(0, b.spanLoT);
+  b.spanHiT = Math.min(1, b.spanHiT);
+
+  // Eased rather than snapped, so the retraction is an event the player watches
+  // rather than a frame where the boss changed size.
+  const step = C.retractPerS * dt;
+  b.spanLo = b.spanLo + Math.max(-step, Math.min(step, b.spanLoT - b.spanLo));
+  b.spanHi = b.spanHi + Math.max(-step, Math.min(step, b.spanHiT - b.spanHi));
+}
+
+/** The hull's live left/right edges in world x. Everything that has to agree
+ *  about how long the boss currently is reads this one function: the bolt test,
+ *  the renderer's hull mask and the death walk. */
+export function bossSpanX(b) {
+  return {
+    left: b.x + (b.spanLo - 0.5) * BOSS.width,
+    right: b.x + (b.spanHi - 0.5) * BOSS.width,
+  };
 }
 
 /** Fraction of the hull pool remaining. Hull bosses only; a pod boss has no
@@ -364,7 +474,11 @@ export function updateBoss(w, dt, fx, banners) {
 
     case BossPhase.FIGHTING:
       b.y = BOSS.stationY * DESIGN_H;
-      updateBays(w, dt, fx);
+      // One gate per boss, never both. Which one is resolved from the row at
+      // arm time (b.gate); a boss with neither has permanently open pods and
+      // reaches neither of these.
+      if (b.gate === 'ends') updateCoil(w, dt);
+      else updateBays(w, dt, fx);
       // The vulnerable window is a PROPERTY OF THE CORE, so a boss with no core
       // does not have one -- no announcement banner, no climb line, no reward
       // geometry. That is the whole of "no tricks" for boss one, and it falls
@@ -631,7 +745,16 @@ export function boltHitsBoss(w, x, y, r, amount, fx) {
   const roof = b.y - halfH;
 
   // Outside the hull's damage silhouette -- the bolt is not the boss's problem.
-  if (Math.abs(x - b.x) > BOSS.width * 0.5 + r) return null;
+  //
+  // MEASURED AGAINST THE LIVE SPAN, not against BOSS.width. For every boss but
+  // the coil the span is the full hull and this is exactly the test it always
+  // was; for the coil it is what makes the shortening REAL rather than a
+  // drawing. A bolt fired where the coil used to be has to fly through empty
+  // sky, because if the retracted tail still deflected shots the player would
+  // be told the boss got smaller and then punished for believing it -- which is
+  // the same species of lie as an unmarked pod.
+  const span = bossSpanX(b);
+  if (x < span.left - r || x > span.right + r) return null;
   if (y > skirt + r || y < roof - r) return null;
 
   // DAMAGE IS LIVE FROM THE MOMENT THE HULL IS ON SCREEN, entry included.
@@ -761,9 +884,10 @@ export function boltHitsBoss(w, x, y, r, amount, fx) {
  *  shot channels, which have to end exactly where deflections happen. */
 export function bossHullBox(b) {
   const halfH = bossHalfH(b) * BOSS.hullHitHalfHFrac;
+  const span = bossSpanX(b);
   return {
-    left: b.x - BOSS.width * 0.5,
-    right: b.x + BOSS.width * 0.5,
+    left: span.left,
+    right: span.right,
     top: b.y - halfH,
     bottom: b.y + halfH,
   };
@@ -793,7 +917,13 @@ function beginDeath(w, fx) {
   // are any and otherwise spaced evenly along the hull. §6.4's "sequence of
   // failures rather than one puff" then holds for both kinds of row.
   if (b.pods.length) {
-    b.deathPoints = b.pods.map((p) => p.dx);
+    // CLAMPED INTO THE LIVE SPAN. On the coil the outer segments are gone by
+    // the time the core dies and the hull has retracted past them, so walking
+    // their original dx would stage the death's opening blasts in empty sky.
+    // A no-op for any boss whose span is still the full hull.
+    b.deathPoints = b.pods.map((p) =>
+      Math.max(b.spanLo, Math.min(b.spanHi, p.dx))
+    );
   } else {
     const n = BOSS.death.hullStages;
     b.deathPoints = [];
@@ -825,8 +955,12 @@ function updateDeath(w, dt, fx) {
       b.breakT = 0;
       const k = Math.min(1, (b.deathT - startS) / D.breakUpS);
       const halfH = bossHalfH(b);
+      // Across whatever hull is actually still drawn -- the full width for
+      // every boss but a retracted coil.
+      const sp = bossSpanX(b);
+      const mid = (sp.left + sp.right) * 0.5;
       fx.explosion(
-        b.x + (Math.random() - 0.5) * BOSS.width * (0.35 + k * 0.65),
+        mid + (Math.random() - 0.5) * (sp.right - sp.left) * (0.35 + k * 0.65),
         b.y + (Math.random() - 0.5) * halfH * 1.5
       );
     }

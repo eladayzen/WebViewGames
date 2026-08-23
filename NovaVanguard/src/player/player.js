@@ -182,6 +182,11 @@ export function shootableOnScreen(w) {
  * aim. Nothing here reads the player's position relative to anything, so there
  * is no aiming code to grow into aiming.
  */
+// Monotonic round identity, for the pierce stamp (WEAPONS.lance). Not a
+// gameplay value and never seeded -- it exists so a round can recognise a craft
+// it has already passed through, which an index into a recycled pool cannot do.
+let _boltUid = 1;
+
 function fireVolley(w, p, weapon) {
   for (let i = 0; i < weapon.shots.length; i++) {
     const b = alloc(w.playerBolts);
@@ -195,8 +200,56 @@ function fireVolley(w, p, weapon) {
     b.r = weapon.radius;
     b.dmg = weapon.damage;
     b.weapon = weapon.id;
+    // EVERYTHING A PICKUP WEAPON DOES DIFFERENTLY IS STAMPED ON THE ROUND HERE,
+    // and nowhere downstream reads WEAPONS again. That is the same property the
+    // three-round fan already relied on -- collision, the boss and the renderer
+    // are weapon-agnostic -- extended to four weapons and three behaviours. A
+    // fifth weapon is a WEAPONS row plus, at most, one field.
+    b.pierce = weapon.pierce || 0;
+    b.uid = _boltUid++;
+    b.lifePx = weapon.rangePx || 0;
+    b.turn = weapon.homing ? weapon.homing.turnRate : 0;
+    b.acquire = weapon.homing ? weapon.homing.acquireRange : 0;
+    b.retargetT = 0;
+    b.target = -1;
     w.stats.shotsFired++;
   }
+}
+
+/**
+ * Which live craft a homing round should steer at (WEAPONS.swarm).
+ *
+ * TWO RULES, AND BOTH ARE SAFETY RATHER THAN TARGETING QUALITY:
+ *
+ *   * ONLY CRAFT ABOVE THE ROUND are eligible. A round that could acquire
+ *     something below it would turn back down through the player band, which
+ *     puts a player-owned object on a collision course with the player's own
+ *     read of the frame -- and §5.4's whole ownership coding exists so that
+ *     nothing cyan is ever something to dodge.
+ *   * NEVER A BOSS. Pods and the core are not in this pool at all, so a swarm
+ *     round is straight-flying during a boss fight. That is the weapon's
+ *     authored weakness (see WEAPONS.swarm) rather than an oversight.
+ *
+ * Returns a POOL INDEX, re-resolved on a timer rather than held, so a target
+ * that dies and has its slot recycled cannot be chased as if it were the same
+ * craft.
+ */
+function acquireTarget(w, b) {
+  let best = -1;
+  let bestD2 = b.acquire * b.acquire;
+  for (let j = 0; j < w.enemies.length; j++) {
+    const e = w.enemies[j];
+    if (!e.alive || e.mode === 'fleeing') continue;
+    if (e.y > b.y - 20) continue; // above the round only
+    const dx = e.x - b.x;
+    const dy = e.y - b.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = j;
+    }
+  }
+  return best;
 }
 
 export function updatePlayerBolts(w, dt) {
@@ -204,8 +257,53 @@ export function updatePlayerBolts(w, dt) {
   for (let i = 0; i < pool.length; i++) {
     const b = pool[i];
     if (!b.alive) continue;
-    b.x += b.vx * dt;
-    b.y += b.vy * dt;
+
+    // --- steering (WEAPONS.swarm) ------------------------------------------
+    // Heading is rotated toward the target at a bounded rate, which is what
+    // makes the round CURVE rather than snap -- a snapping projectile reads as
+    // a rendering bug, and the visible arc is most of what sells the weapon.
+    // Speed is preserved exactly, so the round's own travel time is unchanged
+    // by how hard it is turning.
+    if (b.turn) {
+      b.retargetT -= dt;
+      if (b.target < 0 || b.retargetT <= 0) {
+        b.target = acquireTarget(w, b);
+        b.retargetT = 0.22;
+      }
+      const e = b.target >= 0 ? w.enemies[b.target] : null;
+      if (e && e.alive && e.mode !== 'fleeing' && e.y < b.y) {
+        const speed = Math.hypot(b.vx, b.vy) || 1;
+        const cur = Math.atan2(b.vy, b.vx);
+        let d = Math.atan2(e.y - b.y, e.x - b.x) - cur;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        const max = b.turn * dt;
+        const next = cur + Math.max(-max, Math.min(max, d));
+        b.vx = Math.cos(next) * speed;
+        b.vy = Math.sin(next) * speed;
+      } else {
+        b.target = -1;
+      }
+    }
+
+    const dx = b.vx * dt;
+    const dy = b.vy * dt;
+    b.x += dx;
+    b.y += dy;
+
+    // --- range (WEAPONS.flak) ----------------------------------------------
+    // Measured as DISTANCE TRAVELLED, not as a lifetime, so the limit means the
+    // same thing for a straight round and a curving one and does not change if
+    // the weapon's speed is ever retuned. This is Flak's whole identity: see
+    // the note on WEAPONS.flak before touching rangePx.
+    if (b.lifePx) {
+      b.lifePx -= Math.hypot(dx, dy);
+      if (b.lifePx <= 0) {
+        b.alive = false;
+        continue;
+      }
+    }
+
     // Retire above the HUD strip -- a bolt must never be drawn into the boss
     // bar's band (§5.1) -- and off the sides, which only an angled round can
     // reach.

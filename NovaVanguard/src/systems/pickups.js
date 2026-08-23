@@ -110,8 +110,45 @@ export function maybeDropPickup(w, type, x, y) {
     return false;
   }
 
-  spawnPickup(w, x, y, 'scatter');
+  spawnPickup(w, x, y, rollKind(w));
   return true;
+}
+
+/**
+ * WHICH weapon this canister grants.
+ *
+ * Weighted from PICKUPS.weaponWeights, so "how often do pickups appear" and
+ * "which one do I get" are two separate knobs in the same findable place (§9.3)
+ * rather than one knob and a hardcoded id -- which is what the first version
+ * was, correctly, when there was only one weapon to grant.
+ *
+ * THE RUNNING WEAPON IS EXCLUDED (PICKUPS.excludeRunningWeapon). §5.6's design
+ * is that a canister pulls the player a measured distance out of the safe lane,
+ * and with four kinds an unfiltered draw would make one collection in four
+ * refresh a clock and change nothing on screen. A lure has to be worth the
+ * lean, so every canister visibly changes what comes out of the guns.
+ *
+ * Drawn from the pickup stream, not the scenario's -- see the note at the top
+ * of this file. Level one's choreography must stay byte-for-byte where it is.
+ */
+function rollKind(w) {
+  const running = w.player.weaponT > 0 ? w.player.weapon : '';
+  let total = 0;
+  for (const id of Object.keys(PICKUPS.kinds)) {
+    if (PICKUPS.excludeRunningWeapon && PICKUPS.kinds[id].weapon === running) continue;
+    total += PICKUPS.weaponWeights[id] || 0;
+  }
+  // Every candidate excluded or unweighted: fall back to the introductory one
+  // rather than to nothing. Unreachable with the authored table, and a canister
+  // that granted nothing would be the worst possible failure mode for a lure.
+  if (total <= 0) return 'scatter';
+  let r = prng.next() * total;
+  for (const id of Object.keys(PICKUPS.kinds)) {
+    if (PICKUPS.excludeRunningWeapon && PICKUPS.kinds[id].weapon === running) continue;
+    r -= PICKUPS.weaponWeights[id] || 0;
+    if (r <= 0) return id;
+  }
+  return 'scatter';
 }
 
 /**

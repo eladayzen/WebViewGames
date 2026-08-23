@@ -47,14 +47,44 @@ export const ASSET_MANIFEST = {
   // blue-and-white, the drone's purple and the Emitter's acid jade.
   warden: 'assets/enemy-warden.png',
   splitter: 'assets/enemy-splitter.png',
+  // §6.2's 2 HP tier, and the answer to playtest round 5's only art note. It is
+  // the drone's own violet faction seen UP-ARMOURED -- bolted gunmetal plate
+  // over a violet core -- because the tier language in this game is armour, and
+  // a wholly new hue would have said "different job" rather than "same job,
+  // tougher". See the HP-tier rule above ENEMY in /data/tuning.js.
+  lancer: 'assets/enemy-lancer.png',
+  // THE CRAFT RIMS (ENEMY.rim). One per craft, cut from that craft's own alpha
+  // by art/build_assets.py rather than authored -- so adding an enemy adds its
+  // rim, and there is no step anyone can forget. Drawn additively BEHIND the
+  // hull in the type's family colour; see the note on ENEMY.rim for why an
+  // alpha-derived silhouette is the only version of this that works on a dark
+  // craft.
+  droneRim: 'assets/enemy-drone-rim.png',
+  emitterRim: 'assets/enemy-emitter-rim.png',
+  wardenRim: 'assets/enemy-warden-rim.png',
+  splitterRim: 'assets/enemy-splitter-rim.png',
+  lancerRim: 'assets/enemy-lancer-rim.png',
   bolt: 'assets/proj-player-bolt.png',
   // The pickup weapon's round (WEAPONS.scatter). Cyan-white like every other
   // player projectile -- §5.4's ownership coding admits no exceptions, so a
   // temporary weapon changes shape and never side.
   spread: 'assets/proj-player-spread.png',
+  // The three additional pickup weapons (WEAPONS). Each shape IS its weapon's
+  // behaviour rather than decoration: a needle that goes through, a finned
+  // missile that steers, a crescent shockwave with no reach. All cyan-white --
+  // §5.4's ownership coding admits no exceptions.
+  lance: 'assets/proj-player-lance.png',
+  swarm: 'assets/proj-player-swarm.png',
+  flak: 'assets/proj-player-flak.png',
   orb: 'assets/proj-enemy-orb.png',
-  // The pickup itself (§5.6). One static sprite, spun and pulsed at runtime.
-  pickupWeapon: 'assets/pickup-weapon.png',
+  // The canisters (§5.6). One per weapon: the same casing with a different
+  // emblem on the face, so which weapon is on offer can be read before the
+  // player commits to crossing the frame for it. Spun and pulsed at runtime
+  // from one static sprite each, exactly as §5.6 requires.
+  pickupScatter: 'assets/pickup-scatter.png',
+  pickupLance: 'assets/pickup-lance.png',
+  pickupSwarm: 'assets/pickup-swarm.png',
+  pickupFlak: 'assets/pickup-flak.png',
   // Boss (§6.4): one hull + one pod + one blown pod, instanced four times.
   bossCinderjawHull: 'assets/boss-cinderjaw-hull.png',
   bossPod: 'assets/boss-pod.png',
@@ -67,6 +97,15 @@ export const ASSET_MANIFEST = {
   bossBayOpen: 'assets/boss-bay-open.png',
   bossBayShut: 'assets/boss-bay-shut.png',
   bossBayDead: 'assets/boss-bay-dead.png',
+  // Boss three -- Nadir Coil. One hull plus three segment states, the same
+  // three-texture vocabulary boss two's bays use: the player already knows that
+  // lit means shootable, a dark shutter means armoured and char means dead, so
+  // boss three spends none of its teaching budget on re-establishing it and can
+  // spend all of it on the ends rule instead (§6.4, BOSS.coil).
+  bossNadirCoilHull: 'assets/boss-nadircoil-hull.png',
+  bossCoilOpen: 'assets/boss-coil-open.png',
+  bossCoilShut: 'assets/boss-coil-shut.png',
+  bossCoilDead: 'assets/boss-coil-dead.png',
   // The shared damage overlay (§6.2), tinted and scaled per entity.
   scorch: 'assets/fx-scorch.png',
   // Props, ONE SET PER SURFACE. Keys are named through /data/surfaces.js and
@@ -229,6 +268,46 @@ function placeholderWarden() {
   });
 }
 
+/** Slab-armoured, blunt-prowed, twice the plate area of the drone -- even the
+ *  placeholder has to read as ARMOURED, because that is the whole point of the
+ *  type. The 2 HP tier's job is to be priceable at a glance (see the HP-tier
+ *  rule in /data/tuning.js), and a placeholder that looked like the drone would
+ *  reproduce the exact bug the type exists to fix. Same violet family as the
+ *  drone, over gunmetal: same faction, more of it. */
+function placeholderLancer() {
+  return canvasTexture(124, 148, (g, w, h) => {
+    g.translate(w / 2, h / 2);
+    g.beginPath();
+    g.moveTo(-16, -h / 2 + 4);
+    g.lineTo(16, -h / 2 + 4);
+    g.lineTo(30, -22);
+    g.lineTo(w / 2 - 4, 6);
+    g.lineTo(w / 2 - 16, h / 2 - 8);
+    g.lineTo(-w / 2 + 16, h / 2 - 8);
+    g.lineTo(-w / 2 + 4, 6);
+    g.lineTo(-30, -22);
+    g.closePath();
+    g.fillStyle = '#3a3646';
+    g.fill();
+    g.strokeStyle = '#1d1b24';
+    g.lineWidth = 7;
+    g.stroke();
+    // Bolted plate seams -- the tier language, even in programmer art.
+    g.strokeStyle = '#7d4fd0';
+    g.lineWidth = 4;
+    for (const y of [-30, -4, 22]) {
+      g.beginPath();
+      g.moveTo(-34, y);
+      g.lineTo(34, y);
+      g.stroke();
+    }
+    // The twin forward lance prongs.
+    g.fillStyle = '#c07bff';
+    g.fillRect(-20, -h / 2, 8, 26);
+    g.fillRect(12, -h / 2, 8, 26);
+  });
+}
+
 /** A clam-shell split down the centre, halves already parting -- the
  *  silhouette has to say "this comes apart" before it does (§6.2). Bone ivory
  *  with a hot magenta seam: the only pale hull in the game. */
@@ -290,6 +369,20 @@ function placeholderPod(dead) {
   });
 }
 
+/** A craft rim, when the real alpha-cut outline is missing. A soft ring rather
+ *  than a solid disc: the rim's job is to outline a silhouette, and a filled
+ *  blob behind a craft would read as a muzzle flash instead. */
+function placeholderRim() {
+  return canvasTexture(160, 160, (g, w, h) => {
+    const grad = g.createRadialGradient(w / 2, h / 2, w * 0.26, w / 2, h / 2, w / 2);
+    grad.addColorStop(0, 'rgba(255,255,255,0)');
+    grad.addColorStop(0.55, 'rgba(255,255,255,0.85)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+  });
+}
+
 /** Soft dark blotch. Only ever used if the real scorch decal is absent. */
 function placeholderScorch() {
   return canvasTexture(128, 128, (g, w, h) => {
@@ -332,7 +425,7 @@ function placeholderOrb() {
  *  the frame's whole orange/magenta vocabulary means "this will hurt you", so
  *  a collectable that is not obviously cyan-white is a collectable the player
  *  will dodge. */
-function placeholderPickup() {
+function placeholderPickup(kind) {
   return canvasTexture(160, 160, (g, w, h) => {
     g.translate(w / 2, h / 2);
     g.beginPath();
@@ -357,6 +450,40 @@ function placeholderPickup() {
     g.beginPath();
     g.arc(0, 0, 40, 0, Math.PI * 2);
     g.fill();
+    // The emblem, which is the ONLY thing that differs between the four
+    // canisters -- the casing and the colour are shared, because §5.4's
+    // ownership coding means all four must read as "yours" and only the emblem
+    // is free to carry identity.
+    g.strokeStyle = '#ffffff';
+    g.fillStyle = '#ffffff';
+    g.lineWidth = 6;
+    if (kind === 'lance') {
+      g.fillRect(-4, -30, 8, 58);
+      g.beginPath();
+      g.moveTo(0, -38);
+      g.lineTo(10, -24);
+      g.lineTo(-10, -24);
+      g.closePath();
+      g.fill();
+    } else if (kind === 'swarm') {
+      for (const [dx, dy] of [[0, -16], [-14, 10], [14, 10]]) {
+        g.beginPath();
+        g.arc(dx, dy, 8, 0, Math.PI * 2);
+        g.fill();
+      }
+    } else if (kind === 'flak') {
+      g.beginPath();
+      g.arc(0, -6, 24, 0.15 * Math.PI, 0.85 * Math.PI);
+      g.stroke();
+    } else {
+      for (const dy of [-18, 0, 18]) {
+        g.beginPath();
+        g.moveTo(-18, dy + 8);
+        g.lineTo(0, dy - 6);
+        g.lineTo(18, dy + 8);
+        g.stroke();
+      }
+    }
   });
 }
 
@@ -372,6 +499,33 @@ function placeholderSpread() {
     grad.addColorStop(1, 'rgba(140,220,255,0)');
     g.fillStyle = grad;
     g.fillRect(0, 0, w, h);
+  });
+}
+
+/** The other three pickup rounds. Each placeholder carries its weapon's ASPECT
+ *  rather than a generic blob, because the renderer scales a round off its own
+ *  texture width -- so a placeholder of the wrong shape would make the weapon
+ *  feel wrong even where it worked. Drawn on black, composited additively. */
+function placeholderRound(kind) {
+  const size = kind === 'lance' ? [40, 232] : kind === 'flak' ? [168, 92] : [62, 124];
+  return canvasTexture(size[0], size[1], (g, w, h) => {
+    const grad = g.createRadialGradient(
+      w / 2, h * 0.5, 1, w / 2, h * 0.5, Math.max(w, h) * 0.5
+    );
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.35, 'rgba(200,248,255,0.85)');
+    grad.addColorStop(1, 'rgba(140,220,255,0)');
+    g.fillStyle = grad;
+    if (kind === 'flak') {
+      // A crescent, opening upward -- a wall fragment, not a bullet.
+      g.beginPath();
+      g.ellipse(w / 2, h * 0.72, w * 0.46, h * 0.42, 0, Math.PI, Math.PI * 2);
+      g.fill();
+    } else {
+      g.beginPath();
+      g.ellipse(w / 2, h / 2, w * 0.46, h * 0.48, 0, 0, Math.PI * 2);
+      g.fill();
+    }
   });
 }
 
@@ -455,10 +609,22 @@ const PLACEHOLDERS = {
   emitter: placeholderEmitter,
   warden: placeholderWarden,
   splitter: placeholderSplitter,
+  lancer: placeholderLancer,
+  droneRim: placeholderRim,
+  emitterRim: placeholderRim,
+  wardenRim: placeholderRim,
+  splitterRim: placeholderRim,
+  lancerRim: placeholderRim,
   bolt: placeholderBolt,
   spread: placeholderSpread,
+  lance: () => placeholderRound('lance'),
+  swarm: () => placeholderRound('swarm'),
+  flak: () => placeholderRound('flak'),
   orb: placeholderOrb,
-  pickupWeapon: placeholderPickup,
+  pickupScatter: () => placeholderPickup('scatter'),
+  pickupLance: () => placeholderPickup('lance'),
+  pickupSwarm: () => placeholderPickup('swarm'),
+  pickupFlak: () => placeholderPickup('flak'),
   bossCinderjawHull: placeholderBossHull,
   bossPod: () => placeholderPod(false),
   bossPodDead: () => placeholderPod(true),
@@ -466,6 +632,10 @@ const PLACEHOLDERS = {
   bossBayOpen: () => placeholderBay('open'),
   bossBayShut: () => placeholderBay('shut'),
   bossBayDead: () => placeholderBay('dead'),
+  bossNadirCoilHull: placeholderBossHull,
+  bossCoilOpen: () => placeholderBay('open'),
+  bossCoilShut: () => placeholderBay('shut'),
+  bossCoilDead: () => placeholderBay('dead'),
   scorch: placeholderScorch,
 };
 // Every prop falls back to the same flat programmer-art block, keyed by

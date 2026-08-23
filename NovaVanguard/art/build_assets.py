@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PIL import Image
 from nvlib import (cutout_white, alpha_bbox, make_v_seamless, luma_bbox,
                    keep_largest_component, extract_emissive, recommend_feather,
-                   seam_mismatch, alpha_from_darkness, desaturate_hot)
+                   seam_mismatch, alpha_from_darkness, desaturate_hot,
+                   lift_luma, rim_from_alpha, median_luma)
 
 ART = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(ART, 'raw') + '/'
@@ -177,16 +178,102 @@ for name, (x0, _x1) in zip(['ship-roll-l', 'ship-level', 'ship-roll-r'], cells):
 # authored as two mirrored halves separated by its own split seam, so it keys
 # out as TWO connected components. keep_largest_component would silently ship
 # half a ship -- verified, it crops to (269,5,1014,2037), the left half alone.
+#
+# LEVEL THREE ADDS THE LANCER, AND IT IS AN ART FIX BEFORE IT IS A CONTENT ONE.
+# Amit, playtest round 5:
+#
+#   "The only one which feels he needs a different asset, it's like it's an
+#    enemy with two lives. He can get hit twice. But it looks really really
+#    close or maybe the same sprite even to the ones in level one which have
+#    only one life, one shot and dead."
+#
+# He was looking at level two's `hp: { drone: 2 }` override -- a 2 HP craft
+# WEARING THE 1 HP DRONE'S SPRITE. So the fix is not a tint or a scale, it is
+# that HP IS A PROPERTY OF A TYPE AND EVERY TYPE HAS ITS OWN CHASSIS. 6.2
+# already names the 2 HP tier (Lancer), so this is the authored roster catching
+# up with the rule rather than a new invention.
+#
+# THE TIER LANGUAGE IS ARMOUR PLATING, and that is the part worth reusing. The
+# drone is a thin bright-purple dart with exposed spines; the Lancer is the same
+# violet faction seen UP-ARMOURED -- thick overlapping gunmetal plates bolted
+# over a violet core, a blunt reinforced prow, heavy shoulder pauldrons. Same
+# family, visibly more of it. A player reads "that one is plated, it will take
+# more" before firing, which is the whole requirement.
+#
+# It keeps the drone's violet rather than taking a fifth hue, deliberately: a
+# new colour would say "different job", and the Lancer's job is the drone's job
+# done tougher. The colour that carries the difference is the ARMOUR's gunmetal,
+# which nothing else on the playfield wears.
+#
+# ===========================================================================
+# EVERY CRAFT IS LIFTED AND RIMMED. Amit, playtest round 5:
+#
+#   "A lot of the enemies right now are too dark. It's hard to see them on the
+#    dark backgrounds. Mainly actually mainly the one that's like grey dark.
+#    Also the green ones are a little bit too dark. The orange one a little bit
+#    too dark. [...] I don't know if you have to change the whole asset maybe
+#    or just add some auto-stroke or glow."
+#
+# MEASURED BEFORE IT WAS FIXED, so the three craft he named are named back
+# rather than guessed at. Median luminance of each sprite as shipped, against
+# the surfaces' rendered means of 0.071 (Ashfall) / 0.083 (Kesselring) /
+# 0.074 (Bulwark):
+#
+#     splitter  0.796     bone ivory, the pale one          -- fine
+#     ship      0.458     the player, the reference          -- fine
+#     emitter   0.358     "the green ones"                   -- thin
+#     drone     0.265                                        -- thin
+#     lancer    0.186     "the one that's like grey dark"    -- WORST BY READ
+#     warden    0.155     "the orange one"                   -- WORST BY NUMBER
+#
+# THE PROBLEM IS STRUCTURAL AND WILL RECUR. 5.4 requires a desaturated,
+# low-contrast surface and the shipped ones sit at a sixth of that ceiling, so
+# the ground is very dark BY DESIGN -- and it has to stay dark, because that
+# darkness is what makes bullets readable. Any craft that is also dark
+# disappears, and so will the next one. So the fix is a rule applied to every
+# craft rather than a retouch of three:
+#
+#   1. LIFT the sprite's median luminance to CRAFT_TARGET_MEDIAN with a
+#      hue-preserving power curve (nvlib.lift_luma). 5.4's ownership coding is
+#      untouched by construction -- no channel ratio moves.
+#   2. RIM it with an outline derived from its own alpha (nvlib.rim_from_alpha),
+#      drawn additively behind the craft at runtime and tinted with that type's
+#      family colour. This is the half a lift cannot do: it separates the
+#      silhouette from the ground rather than making the hull brighter, and it
+#      is what answers "or just add some auto-stroke or glow" literally.
+#
+# NEITHER COSTS A GENERATION. This is the same discipline 9.5 rule 6 set for
+# surfaces -- bring it into band in the pipeline, not by regenerating -- applied
+# in the opposite direction, and art/measure_readability.py now emits the
+# measured numbers into src/data/readability.js so the boot validator can
+# assert the contrast rather than trust this comment.
 print('enemies')
+
+# The median luminance every craft is lifted TO. Chosen against the measurement
+# above rather than by eye: it clears the darkest surface's rendered mean
+# (0.083) by 0.28, puts the worst two craft in the same readability class as the
+# Emitter that Amit called only "a little bit" dark, and still sits below the
+# player's own 0.458 -- the interceptor should remain the brightest thing on the
+# playfield that is not an explosion. Craft already above it are left alone.
+CRAFT_TARGET_MEDIAN = 0.36
+
 ENEMIES = [
     # (raw file,             out name,             target long edge, largest)
     ('drone-raw-01.png',     'enemy-drone.png',    224, True),
     ('emitter-raw-01.png',   'enemy-emitter.png',  232, True),
     ('warden-raw-01.png',    'enemy-warden.png',   248, True),
     ('splitter-raw-01.png',  'enemy-splitter.png', 236, False),
+    ('lancer-raw-01.png',    'enemy-lancer.png',   236, True),
 ]
 for raw, name, target, largest in ENEMIES:
-    save(cut(Image.open(RAW + raw), target, largest=largest), name)
+    im = cut(Image.open(RAW + raw), target, largest=largest)
+    lifted, med, gamma = lift_luma(im, CRAFT_TARGET_MEDIAN)
+    save(lifted, name)
+    print(f'    median luma {median_luma(im):.3f} -> {med:.3f} (v^{gamma:.3f})')
+    # The rim is cut from the LIFTED sprite, so its alpha is the same silhouette
+    # the player sees. One per craft, generated from the craft: adding an enemy
+    # adds its rim with no extra row anywhere.
+    save(rim_from_alpha(lifted), name.replace('.png', '-rim.png'))
 
 # ===========================================================================
 # 3b. PICKUP (5.6, plus Amit's explicit ask: "when the enemy dies he gives
@@ -201,8 +288,46 @@ for raw, name, target, largest in ENEMIES:
 # mistaken for something to dodge, and the frame's entire orange/magenta
 # vocabulary already means "this will hurt you". Reading as "yours" is the
 # whole job.
+#
+# FOUR CANISTERS NOW, ONE PER TEMPORARY WEAPON (Amit: "we have one pickup for
+# one special weapon. We need more."). They are the SAME canister -- same
+# casing, same bolts, same lighting, generated as one four-panel edit off the
+# shipped sprite so the lineage is literal -- differing only in the cyan emblem
+# on the face: chevron stack, lance bar, three dots, wide arc.
+#
+# WHY THE EMBLEM AND NOT A TINT. 5.4 colour-codes OWNERSHIP and a collectable
+# has to read as YOURS at a glance; tinting one canister amber to mean "flak"
+# would put an enemy-coloured object on the playfield and the player would dodge
+# it. The casing stays cyan-white in all four and the emblem carries the
+# identity, which is also what lets a player learn "arc = the short-range one"
+# without a legend.
+#
+# ONE SHARED CELL RECT (9.5 rule 2), as with the ship rolls and the boss bays:
+# the four are drawn at one size and one centre, so the spin/pulse the renderer
+# applies is the same motion on all four rather than four slightly different
+# wobbles.
 print('pickup')
-save(cut(Image.open(RAW + 'pickup-raw-01.png'), 256), 'pickup-weapon.png')
+pk = cutout_white(Image.open(RAW + 'pickups4-raw-01.png').convert('RGB'))
+KW, KH = pk.size
+kcells = [(round(i * KW / 4), round((i + 1) * KW / 4)) for i in range(4)]
+kboxes = [alpha_bbox(keep_largest_component(pk.crop((x0, 0, x1, KH))))
+          for x0, x1 in kcells]
+klx = min(b[0] for b in kboxes)
+kty = min(b[1] for b in kboxes)
+krx = max(b[2] for b in kboxes)
+kby = max(b[3] for b in kboxes)
+PAD = 6
+klx, kty = max(0, klx - PAD), max(0, kty - PAD)
+kcw = kcells[0][1] - kcells[0][0]
+krx, kby = min(kcw, krx + PAD), min(KH, kby + PAD)
+print(f'  pickup shared cell rect {klx},{kty} {krx-klx}x{kby-kty} (per-quarter {kboxes})')
+PICKUP_W = 256
+for name, (x0, _x1) in zip(
+    ['pickup-scatter', 'pickup-lance', 'pickup-swarm', 'pickup-flak'], kcells
+):
+    cell = keep_largest_component(pk.crop((x0 + klx, kty, x0 + krx, kby)))
+    k = PICKUP_W / cell.width
+    save(cell.resize((PICKUP_W, round(cell.height * k)), Image.LANCZOS), name + '.png')
 
 # ===========================================================================
 # 4. PROJECTILES -- drawn with blendMode 'add', so they stay on a BLACK field
@@ -228,6 +353,46 @@ save(bo.resize((64, 179), Image.LANCZOS), 'proj-player-bolt.png')
 sp = Image.open(RAW + 'spreadbolt-raw-01.png').convert('RGB')
 sp = sp.crop(luma_bbox(sp, 26))
 save(sp.resize((104, 168), Image.LANCZOS), 'proj-player-spread.png')
+
+# THE THREE ADDITIONAL PICKUP WEAPONS (Amit: "we have one pickup for one
+# special weapon. We need more.").
+#
+# Generated as ONE three-panel sheet on black, for the same reason the ship
+# rolls are one generation: a set drawn together stays one family, and three
+# separate calls would have come back in three different idioms.
+#
+# EACH SHAPE IS ITS WEAPON'S BEHAVIOUR, not decoration -- that is the whole
+# point of giving them art rather than tinting the spread round three ways:
+#   * LANCE  -- a long needle spear. It PIERCES, so it has to look like
+#               something that goes through rather than something that lands.
+#   * SWARM  -- a small finned micro-missile with an exhaust flare. It HOMES,
+#               and a body with fins and a motor is the only shape that makes a
+#               curving projectile read as steering rather than as a bug.
+#   * FLAK   -- a squat crescent shockwave, far wider than it is tall. It has a
+#               short life and a wide fan, so its round is drawn as a wall
+#               fragment rather than a bullet.
+#
+# ALL THREE STAY CYAN-WHITE. 5.4's ownership coding admits no exceptions -- a
+# temporary weapon may change shape, count, speed, size and behaviour, and may
+# never change side.
+#
+# Sliced at equal thirds and luma-cropped per panel rather than through a shared
+# cell rect: these are three DIFFERENT objects (9.5 rule 2 governs states of ONE
+# object), and the renderer scales each off its own texture width, so the
+# authored aspect is the on-screen shape.
+PROJ = [
+    # (panel, out name, target width, target height)
+    (0, 'proj-player-lance.png', 40, 232),
+    (1, 'proj-player-swarm.png', 62, 124),
+    (2, 'proj-player-flak.png', 168, 92),
+]
+pset = Image.open(RAW + 'proj-set-raw-01.png').convert('RGB')
+PPANEL = pset.width / 3.0
+for idx, name, tw, th in PROJ:
+    cell = pset.crop((int(round(idx * PPANEL)), 0,
+                      int(round((idx + 1) * PPANEL)), pset.height))
+    cell = cell.crop(luma_bbox(cell, 16))
+    save(cell.resize((tw, th), Image.LANCZOS), name)
 
 ob = Image.open(RAW + 'orb-raw-01.png').convert('RGB')
 l, t, r, b = luma_bbox(ob, 8)
@@ -454,6 +619,84 @@ for i, name in enumerate(['boss-bay-open', 'boss-bay-shut', 'boss-bay-dead']):
             f = max(0.0, 1.0 - (d - BAY_MASK_R) / 4.0)
             px[x, y] = (r, g, b, int(a * f))
     save(cell.resize((BAY_W, BAY_W), Image.LANCZOS), name + '.png')
+
+# ===========================================================================
+# 6c. BOSS THREE -- Nadir Coil (6.4, level three's segmented hive-serpent).
+#
+# 6.4: "Nadir Coil -- segmented: the pods are body segments and the serpent
+# visibly shortens as they die." That sentence is the mechanic, and it is why
+# the hull art is a CHAIN rather than a silhouette: four identical ring
+# vertebra sockets with a bright reactor core dead centre, so the renderer can
+# crop the hull's ends away as end segments die and the coil literally gets
+# shorter on screen.
+#
+# THE SOCKET POSITIONS ARE MEASURED OFF THE SHIPPED ART, not chosen -- the same
+# discipline Brood Gantry's launch sockets follow. Verified by drawing the four
+# candidate dx values back onto the keyed hull and looking at where the circles
+# landed (art/tmp/nadir-marked2.png): 0.1245 / 0.3066 / 0.6982 / 0.8239, core at
+# 0.4949. The spacing is deliberately NOT even, because the generator did not
+# draw it evenly and the data has to agree with the picture rather than the
+# other way round. /systems/constraints.js re-derives from these that no two
+# shot channels overlap, that none of them overlaps the core's, and that every
+# one sits inside the player's own lateral clamp.
+print('boss three')
+nc = keep_largest_component(
+    cutout_white(Image.open(RAW + 'boss-nadircoil-raw-01.png').convert('RGB'))
+)
+nc = nc.crop(alpha_bbox(nc))
+k = 1400 / nc.width
+nc = nc.resize((1400, round(nc.height * k)), Image.LANCZOS)
+save(nc, 'boss-nadircoil-hull.png')
+print(f'  hull aspect {nc.width / nc.height:.3f} '
+      f'(4 ring sockets + a central reactor core, 6.4)')
+
+# The three segment states, through ONE SHARED CELL RECT (9.5 rule 2). Same
+# reasoning as the launch bay's, and for the same reason it matters most here:
+# a segment is pinned to a fixed socket and swaps state in place the moment its
+# neighbour dies, so a centre shift would read as the coil jittering at exactly
+# the instant the player is being told the target has moved inward.
+#
+# THE DEAD PANEL NEEDS AN INTERIOR KEY AND THE OTHER TWO DO NOT. cutout_white
+# only removes BORDER-CONNECTED background, which is right almost everywhere --
+# but the generator drew both the exposed and the destroyed segment as an
+# annulus with the paper showing through the middle. On the exposed one that
+# reads correctly as a white-hot core and is kept. On the destroyed one it is a
+# bright white disc in the centre of a burnt-out wreck, which is nonsense, so
+# that panel alone gets a second near-white pass that punches the hole through
+# to the hull underneath.
+COIL_STATES = [
+    # (out name, punch the interior white hole through)
+    ('boss-coil-open.png', False),
+    ('boss-coil-shut.png', False),
+    ('boss-coil-dead.png', True),
+]
+coil = cutout_white(Image.open(RAW + 'boss-coil-raw-01.png').convert('RGB'))
+CW, CH = coil.size
+ccells = [(round(i * CW / 3), round((i + 1) * CW / 3)) for i in range(3)]
+cboxes = [alpha_bbox(keep_largest_component(coil.crop((x0, 0, x1, CH))))
+          for x0, x1 in ccells]
+clx = min(b[0] for b in cboxes)
+cty = min(b[1] for b in cboxes)
+crx = max(b[2] for b in cboxes)
+cby = max(b[3] for b in cboxes)
+PAD = 6
+clx, cty = max(0, clx - PAD), max(0, cty - PAD)
+ccw = ccells[0][1] - ccells[0][0]
+crx, cby = min(ccw, crx + PAD), min(CH, cby + PAD)
+print(f'  segment shared cell rect {clx},{cty} {crx-clx}x{cby-cty} (per-third {cboxes})')
+
+COIL_W = 256
+for (name, punch), (x0, _x1) in zip(COIL_STATES, ccells):
+    cell = keep_largest_component(coil.crop((x0 + clx, cty, x0 + crx, cby)))
+    if punch:
+        px = cell.load()
+        for y in range(cell.height):
+            for x in range(cell.width):
+                r, g, b, a = px[x, y]
+                if a and min(r, g, b) >= 236:
+                    px[x, y] = (r, g, b, 0)
+    kk = COIL_W / cell.width
+    save(cell.resize((COIL_W, round(cell.height * kk)), Image.LANCZOS), name)
 
 # ===========================================================================
 # 7. DAMAGE OVERLAY (6.2: "one shared damaged/scorched overlay per type").

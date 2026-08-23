@@ -85,7 +85,22 @@ export function resolveCollisions(w, fx, instr) {
       const def = enemyDef(e.type);
       if (!hits(b.x, b.y, b.r, e.x, e.y, def.radius)) continue;
 
-      b.alive = false;
+      // THE PIERCE STAMP (WEAPONS.lance). A round travelling ~29 px per frame
+      // is inside a 36 px-radius craft for two or three consecutive frames, so
+      // without this a Lance would spend its whole pierce budget on the first
+      // drone it met and never reach the one behind it. One integer on the
+      // craft rather than a hit list on the round, so the hot loop still
+      // allocates nothing (§9.1).
+      if (b.pierce && e.lastPierceUid === b.uid) continue;
+
+      // A piercing round survives the hit and keeps flying; everything else is
+      // spent. `pierce` counts VICTIMS, so it is decremented once per craft.
+      if (b.pierce > 0) {
+        b.pierce--;
+        e.lastPierceUid = b.uid;
+      } else {
+        b.alive = false;
+      }
       w.stats.hits++;
 
       // THE WARDEN'S SHIMMER SHIELD (§6.2), resolved before hull damage.
@@ -97,10 +112,20 @@ export function resolveCollisions(w, fx, instr) {
       // progress is kept and spraying across a formation genuinely is worse
       // than committing to one craft. That is the entire behavioural claim of
       // the type, and it is these four lines.
+      //
+      // A SHIELD STOPS A PIERCING ROUND TOO, and that is the single line that
+      // gives WEAPONS.lance its authored weakness rather than a nerf. "Whole
+      // bolts, not points" applies to every round in the game: a Lance meeting
+      // a shimmer shield is spent on it exactly as a bolt is, so stripping a
+      // Warden takes the same three rounds at a third of the fire rate. The
+      // Lance is therefore the worst weapon in the game against the type levels
+      // two and three lean on hardest, and the player finds that out by
+      // pointing it at one. Nothing was invented to make it true.
       if (e.shield > 0) {
         e.shield--;
         e.shieldFlashT = 0.16;
         e.hitFlashT = 0.06;
+        b.alive = false;
         fx.deflect(e.x, e.y + 18);
         break;
       }

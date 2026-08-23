@@ -46,6 +46,7 @@ import {
   bossHalfH,
   bossSkirtY,
   bossHullBox,
+  bossSpanX,
 } from '../enemies/boss.js';
 import { activeAisles } from '../patterns/patterns.js';
 
@@ -192,6 +193,28 @@ export async function createRenderer(mountEl) {
     s.alpha = SURFACE.shadow.alpha;
     return s;
   });
+  // THE CRAFT RIM (ENEMY.rim), and it is created BEFORE the craft bank so it
+  // draws BEHIND it -- children of a container paint in insertion order.
+  //
+  // Amit, playtest round 5: "a lot of the enemies right now are too dark. It's
+  // hard to see them on the dark backgrounds [...] I don't know if you have to
+  // change the whole asset maybe or just add some auto-stroke or glow." This is
+  // the glow half; the other half is a hue-preserving luminance lift applied to
+  // every craft sprite in art/build_assets.py.
+  //
+  // The texture is an outline cut from the craft's OWN ALPHA, not a tinted copy
+  // of the craft. That distinction is the whole reason it works: additive
+  // blending adds a pixel's own colour, so a near-black armour plate would
+  // contribute near-black and exactly the craft that needs a rim would not get
+  // one. A silhouette carries no colour of its own, so the tint is free -- and
+  // it is set per type to that craft's family colour, which keeps §5.4's
+  // ownership coding intact and makes the type identifiable at a distance where
+  // its hull detail has stopped being legible.
+  const rimSprites = bank(layers.enemies, 64, () => {
+    const s = new Sprite(T('droneRim'));
+    s.blendMode = 'add';
+    return s;
+  });
   const enemySprites = bank(layers.enemies, 64, () => new Sprite(T('drone')));
   // Damage feedback (§6.2). One shared scorch texture, tinted and scaled per
   // craft, plus a small pip row -- both pooled like everything else.
@@ -217,7 +240,7 @@ export async function createRenderer(mountEl) {
     s.blendMode = 'add';
     return s;
   });
-  const pickupSprites = bank(layers.pickups, 8, () => new Sprite(T('pickupWeapon')));
+  const pickupSprites = bank(layers.pickups, 8, () => new Sprite(T('pickupScatter')));
   // Entry-band telegraph markers (§5.3). The band and the pool have existed
   // since POC-1 with nothing to put in them; a re-offered pickup is the game's
   // first top-edge arrival, so this is that system going live.
@@ -228,10 +251,25 @@ export async function createRenderer(mountEl) {
   // One hull + four pod instances of ONE pod sprite. Nothing here is created
   // per fight: a second boss swaps three textures exactly as a surface swap
   // does, which is what makes "the other two are data over it" true.
+  //
+  // THE HULL LIVES IN ITS OWN MASKED GROUP, which exists for exactly one boss.
+  // §6.4 says Nadir Coil "visibly shortens as [its segments] die", and the only
+  // honest way to draw that is to stop drawing the parts that are gone -- a
+  // retracted tail that was still painted would be a boss telling the player it
+  // got smaller while its armour still ate their shots. So the hull group is
+  // clipped to the boss's LIVE SPAN (bossSpanX), which is the same span
+  // /enemies/boss.js tests bolts against, so what is drawn and what is solid can
+  // never disagree. For every other boss the span is the full hull and the mask
+  // is a rectangle larger than the sprite, i.e. a no-op.
+  const bossHullGroup = new Container();
+  layers.boss.addChild(bossHullGroup);
+  const bossHullMask = new Graphics();
+  layers.boss.addChild(bossHullMask);
+  bossHullGroup.mask = bossHullMask;
   const bossHull = new Sprite(T('bossCinderjawHull'));
   bossHull.anchor.set(0.5);
   bossHull.visible = false;
-  layers.boss.addChild(bossHull);
+  bossHullGroup.addChild(bossHull);
   // The hull's own hit acknowledgement: one additive copy of the hull texture,
   // faded in for BOSS.hullHitFlashS on each landed bolt. A tint would fight the
   // death-sequence darkening and, at 9.5 hits/second, would simply never
@@ -240,7 +278,7 @@ export async function createRenderer(mountEl) {
   bossHullFlash.anchor.set(0.5);
   bossHullFlash.blendMode = 'add';
   bossHullFlash.visible = false;
-  layers.boss.addChild(bossHullFlash);
+  bossHullGroup.addChild(bossHullFlash);
   // Shot channels and the core shutter, UNDER the pods and the core glow so the
   // targeting furniture never draws over the thing it is pointing at.
   const bossChannels = new Graphics();
@@ -409,6 +447,7 @@ export async function createRenderer(mountEl) {
     // type name, which is the property that makes the remaining four types
     // data rather than render code.
     const dmg = ENEMY.damage;
+    const RIM = ENEMY.rim;
     let ei2 = 0;
     let sci = 0;
     pipGraphics.clear();
@@ -417,9 +456,10 @@ export async function createRenderer(mountEl) {
       const e = w.enemies[i];
       if (!e.alive || ei2 >= enemySprites.length) continue;
       const def = enemyDef(e.type);
+      const idx = ei2;
       const sp = enemySprites[ei2++];
       sp.visible = true;
-      sp.texture = T(def.id);
+      sp.texture = T(def.textureKey || def.id);
       sp.anchor.set(0.5);
       sp.x = e.x;
       sp.y = e.y;
@@ -435,6 +475,26 @@ export async function createRenderer(mountEl) {
       // a skew within it rather than a free colour.
       sp.tint = e.hitFlashT > 0 ? 0xffd9ff : (e.tint || def.tint);
       sp.alpha = e.mode === 'fleeing' ? 0.75 : 1;
+
+      // The rim, behind the hull, in the craft's own family colour (ENEMY.rim).
+      // Scaled a little past the hull so the outline reads as light coming off
+      // the edge rather than as a stroke drawn on it, and PULSED faintly so it
+      // reads as the same live neon idiom the enemy orbs breathe with rather
+      // than as a UI decal. A hit whites it out along with the hull, which
+      // makes the flash carry further across a busy frame.
+      const rm = rimSprites[idx];
+      rm.visible = true;
+      rm.texture = T((def.textureKey || def.id) + 'Rim');
+      rm.anchor.set(0.5);
+      rm.x = e.x;
+      rm.y = e.y;
+      rm.rotation = sp.rotation;
+      rm.scale.set((k * sp.texture.width * RIM.scale) / Math.max(1, rm.texture.width));
+      rm.tint = e.hitFlashT > 0 ? 0xffffff : (def.rimColor || 0xc46bff);
+      rm.alpha =
+        (e.mode === 'fleeing' ? 0.5 : 1) *
+        RIM.alpha *
+        (1 - RIM.pulseAmp + RIM.pulseAmp * (0.5 + 0.5 * Math.sin(w.time * RIM.pulseHz * TWO_PI + i)));
 
       // --- damage feedback (§6.2), for types that can take a hit at all ----
       if (e.maxHp >= dmg.pipMinMaxHp) {
@@ -465,7 +525,10 @@ export async function createRenderer(mountEl) {
       // an invisible damage gate is the exact failure boss one shipped with.
       if (e.shield > 0) drawShield(shieldGraphics, e, def, w.time);
     }
-    for (; ei2 < enemySprites.length; ei2++) enemySprites[ei2].visible = false;
+    for (; ei2 < enemySprites.length; ei2++) {
+      enemySprites[ei2].visible = false;
+      rimSprites[ei2].visible = false;
+    }
     for (; sci < scorchSprites.length; sci++) scorchSprites[sci].visible = false;
 
     // Player. Roll is a SPRITE SWAP and nothing else -- never a rotation, or
@@ -605,7 +668,13 @@ export async function createRenderer(mountEl) {
       const halo = pickupHalos[pi];
       pi++;
       sp.visible = true;
-      sp.texture = T('pickupWeapon');
+      // ONE SPRITE PER KIND, not one sprite tinted four ways. The four
+      // canisters are the same casing with a different cyan emblem on the face
+      // (art/build_assets.py), so which weapon is on offer is legible before
+      // the player commits to crossing the frame for it -- and §5.4's ownership
+      // colour is untouched, which a tint-per-kind scheme could not have
+      // managed without putting an enemy-coloured object on the playfield.
+      sp.texture = T(kind.textureKey || 'pickupScatter');
       sp.anchor.set(0.5);
       sp.x = q.x;
       sp.y = q.y;
@@ -671,6 +740,7 @@ export async function createRenderer(mountEl) {
     if (!b.active) {
       bossHull.visible = false;
       bossHullFlash.visible = false;
+      bossHullMask.clear();
       bossCore.visible = false;
       for (const p of podSprites) p.visible = false;
       bossChannels.clear();
@@ -684,6 +754,20 @@ export async function createRenderer(mountEl) {
     bossHull.x = b.x;
     bossHull.y = b.y;
     bossHull.scale.set(BOSS.width / Math.max(1, bossHull.texture.width));
+
+    // THE LIVE-SPAN CLIP. Boss three retracts as its end segments die (§6.4,
+    // BOSS.coil); every other boss has span 0..1 and this rectangle is simply
+    // wider than the sprite. Padded generously in y so the mask only ever cuts
+    // the ENDS -- clipping the hull's top or bottom would be a bug wearing the
+    // costume of a feature.
+    {
+      const sp = bossSpanX(b);
+      const halfH = bossHalfH(b);
+      bossHullMask
+        .clear()
+        .rect(sp.left, b.y - halfH - 40, Math.max(0, sp.right - sp.left), halfH * 2 + 80)
+        .fill({ color: 0xffffff });
+    }
     // Dying: the hull darkens and shudders as the break-up runs, so the death
     // beat is legible even before the last blast (§6.4).
     const dying = b.phase === 'dying';
@@ -716,6 +800,19 @@ export async function createRenderer(mountEl) {
       if (pi >= podSprites.length) break;
       const sp = podSprites[pi++];
       const pp = podPosition(b, pod);
+      // A DEAD SEGMENT GOES WITH THE HULL IT WAS BOLTED TO. Everywhere else a
+      // destroyed pod stays on the hull as wreckage -- the player needs to see
+      // what they have already done -- but on a retracting coil the hull under
+      // an end segment is gone, so the wreck would be floating in empty sky
+      // beside a boss that has visibly ended somewhere else. Expressed as a
+      // span test rather than as a boss id, so it is a no-op for every boss
+      // whose span is still the full hull.
+      const inSpan =
+        pod.dx >= b.spanLo - 1e-6 && pod.dx <= b.spanHi + 1e-6;
+      if (!pod.alive && !inSpan) {
+        sp.visible = false;
+        continue;
+      }
       sp.visible = true;
       // THREE STATES, NOT TWO, on a boss whose row authors a shut texture.
       // §6.4's bays are open or closed as well as alive or dead, and the
@@ -900,14 +997,24 @@ export async function createRenderer(mountEl) {
         // pips over a thing = that thing's HP", and the pods are then the only
         // parts of the boss wearing them, which is most of what makes "shoot
         // those four" legible without a line of tutorial text.
-        const n = pod.maxHp;
+        //
+        // A FIXED-WIDTH GAUGE, not one pip per HP point. Drawing a pip per
+        // point was fine while every pod had 6 and became a solid dashed line
+        // across the whole hull the moment a boss authored 20 -- see
+        // BOSS.podPips.maxPips. The row is capped, and the lit count is the
+        // proportion rounded UP so a pod with any HP left always shows at least
+        // one pip. "Nearly dead" and "dead" must never look the same.
+        const n = Math.min(pod.maxHp, PP.maxPips);
+        const lit = pod.maxHp > 0
+          ? Math.ceil((Math.max(0, pod.hp) / pod.maxHp) * n)
+          : 0;
         const total = n * PP.w + (n - 1) * PP.gap;
         const x0 = pp.x - total * 0.5;
         const py = pp.y + PP.offsetY;
         for (let i = 0; i < n; i++) {
           bossGuides.rect(x0 + i * (PP.w + PP.gap), py, PP.w, PP.h).fill({
-            color: i < pod.hp ? ENEMY.damage.pipOnColor : ENEMY.damage.pipOffColor,
-            alpha: i < pod.hp ? 0.95 : 0.6,
+            color: i < lit ? ENEMY.damage.pipOnColor : ENEMY.damage.pipOffColor,
+            alpha: i < lit ? 0.95 : 0.6,
           });
         }
       }

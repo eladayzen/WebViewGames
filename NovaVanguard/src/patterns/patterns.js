@@ -33,6 +33,8 @@ import {
   DESIGN_H,
   BANDS,
   levelAt,
+  sineAisleSpeed,
+  sineAisleLoss,
 } from '../data/tuning.js';
 import { cfg } from '../core/mode.js';
 import { alloc, liveCount } from '../core/state.js';
@@ -53,7 +55,7 @@ let _pulseSeq = 0;
  *  cap is a floor of the pacing contract, so it is enforced at the spawner
  *  rather than trusted to authoring: an over-budget volley is silently
  *  trimmed rather than allowed through. */
-function spawnOrb(w, x, y, vx, vy, r, patternId) {
+function spawnOrb(w, x, y, vx, vy, r, patternId, sine) {
   if (liveCount(w.enemyBullets) >= w.caps.bullets) return null;
   const b = alloc(w.enemyBullets);
   if (!b) return null;
@@ -62,6 +64,19 @@ function spawnOrb(w, x, y, vx, vy, r, patternId) {
   b.y = y;
   b.vx = vx;
   b.vy = vy;
+  // B4's lateral sine (§5.5's "sine curtain"), carried on the ORB rather than
+  // looked up per frame -- /patterns owns pattern definitions and the bullet
+  // integrator must stay a straight-line loop that knows nothing about them.
+  //
+  // `bx` is the straight-line base the velocity integrates; the sine is an
+  // offset applied on top of it, so `x` stays the one true position that both
+  // collision and the renderer read. Zeroed for every other pattern, which
+  // costs one branch per bullet per frame.
+  b.bx = x;
+  b.sAmp = sine ? sine.amp : 0;
+  b.sW = sine ? sine.rateHz * Math.PI * 2 : 0;
+  b.sPhase = sine ? sine.phase : 0;
+  b.sT = 0;
   // Trade bullet count for bullet size: dense-looking but individually
   // trackable. If a pattern needs more bullets to feel dangerous, it is the
   // wrong pattern (§5.3).
@@ -289,7 +304,14 @@ export function fanGeometry(d, spawnY, vy) {
   const sep = dv * t;
   // Omitting a run of k slots leaves a hole of (k + 1) separations between the
   // two surviving neighbours, minus their own diameters.
-  const gap = sep * ((d.fanGapSlots || 1) + 1) - 2 * d.orbRadius;
+  //
+  // A SINE CURTAIN'S HOLE ALSO BREATHES, and that is subtracted here rather
+  // than declared. B4 gives each fan slot its own sine phase, so the two orbs
+  // flanking the omitted run move relative to each other by up to
+  // 2*amp*sin(spread/2) -- see B4_SINE in /data/tuning.js. Taking it off the
+  // gap in fanGeometry rather than at the authoring site is what keeps the
+  // emitter, the aisle readout and R2 all quoting the same number.
+  const gap = sep * ((d.fanGapSlots || 1) + 1) - 2 * d.orbRadius - sineAisleLoss(d);
   return {
     t,
     sep,
@@ -305,6 +327,22 @@ export function fanGeometry(d, spawnY, vy) {
  *  future low emitter degrades to a narrow fan rather than a horizontal spray
  *  that would leave the frame before it ever reached the player. */
 export const FAN_SPREAD_VX_MAX = 340;
+
+/**
+ * How much lateral speed a fan's row-to-row gap step is allowed to use.
+ *
+ * §5.3 caps how fast an aisle travels at AISLE_MOVE_MAX and does not care what
+ * moves it -- so a curtain that is already sliding sideways under its own sine
+ * has less of that budget left for stepping. Expressed as a budget rather than
+ * as two separate checks so the two contributions can never be signed off
+ * independently and add up to more than the cap.
+ *
+ * For every non-sine pattern this is exactly AISLE_MOVE_MAX and advanceGap
+ * behaves precisely as it always did.
+ */
+export function aisleStepBudget(d) {
+  return Math.max(0, AISLE_MOVE_MAX - sineAisleSpeed(d));
+}
 
 function rowIntervalAt(d, rowsFired) {
   if (d.rowIntervalsS && d.rowIntervalsS.length) {
@@ -374,7 +412,7 @@ function advanceGap(w, st, d, nextIntervalS) {
   const muzzle = fanMuzzle(w, st);
   if (!muzzle) return;
   const g = fanGeometry(d, muzzle.y, m.patternDescentTuned);
-  if (!nextIntervalS || g.sep / nextIntervalS > AISLE_MOVE_MAX) return;
+  if (!nextIntervalS || g.sep / nextIntervalS > aisleStepBudget(d)) return;
   const n = d.fanOrbs - (d.fanGapSlots || 1);
   st.gapSlot += st.gapDir;
   if (st.gapSlot < 0) {
@@ -466,8 +504,21 @@ function emitFanRow(w, st, d) {
     if (i >= st.gapSlot && i < st.gapSlot + k) continue; // the authored aisle
     const vx = fanVx(d, i, g.spreadVx);
     const endX = muzzle.x + vx * life;
-    if (endX < lo || endX > hi) continue;
-    spawnOrb(w, muzzle.x, muzzle.y, vx, vy, d.orbRadius, st.id);
+    // The sine's excursion counts toward leaving the playable width, so a
+    // curtain orb near an edge is dropped on the same rule a straight one is
+    // (§5.1: nothing may occupy the margins).
+    const swing = d.sine ? d.sine.amp : 0;
+    if (endX - swing < lo || endX + swing > hi) continue;
+    // PHASE IS PER FAN SLOT, and it is the slot index that decides it rather
+    // than spawn order -- so the same slot in successive rows carries the same
+    // phase and the wall reads as one continuous undulating curtain rather than
+    // as three independently wobbling rows. It is also what makes the aisle's
+    // worst-case narrowing a closed-form function of the slot spread (see
+    // sineAisleLoss), which is the only version R2 can prove.
+    const sine = d.sine
+      ? { amp: d.sine.amp, rateHz: d.sine.rateHz, phase: d.sine.phasePerSlot * i }
+      : null;
+    spawnOrb(w, muzzle.x, muzzle.y, vx, vy, d.orbRadius, st.id, sine);
     fired++;
   }
   // A muzzle flash at the source, every row. This is the other half of the
@@ -482,6 +533,14 @@ const FACTORIES = {
   B1: createB1,
   B2: (o) => createFan('B2', o),
   B2T: (o) => createFan('B2T', o),
+  // B4 IS THE SAME MACHINE. §5.5's sine curtain is a fan whose orbs also
+  // oscillate laterally -- the muzzle, the spread derivation, the omitted-slot
+  // aisle and the reachability check are all identical, and the only thing the
+  // row adds is `sine`. That is the payoff of having authored the fan as a
+  // separation at the player's line rather than as a velocity: a new pattern
+  // over the same geometry is a data row plus one term, and R2 proves it the
+  // same way it proves B2.
+  B4: (o) => createFan('B4', o),
 };
 
 /** One pattern instance. `owner` is optional: an Emitter craft (§6.2) or a
@@ -550,8 +609,18 @@ export function updateEnemyBullets(w, dt) {
   for (let i = 0; i < pool.length; i++) {
     const b = pool[i];
     if (!b.alive) continue;
-    b.x += b.vx * dt;
+    b.bx += b.vx * dt;
     b.y += b.vy * dt;
+    if (b.sAmp) {
+      // The curtain's undulation. Integrated as an OFFSET off the straight-line
+      // base rather than as a velocity, so the excursion is bounded by `sAmp`
+      // exactly -- a velocity formulation would accumulate drift and the aisle
+      // R2 proves would slowly stop being the aisle that is emitted.
+      b.sT += dt;
+      b.x = b.bx + b.sAmp * Math.sin(b.sW * b.sT + b.sPhase);
+    } else {
+      b.x = b.bx;
+    }
     if (b.y > despawnY || b.x < -80 || b.x > DESIGN_W + 80) b.alive = false;
   }
 }
