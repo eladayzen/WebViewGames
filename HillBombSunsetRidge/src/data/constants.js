@@ -408,6 +408,70 @@ export const AIR_TIME_K = 0.392;
  */
 export const AIR_G = 8 / (AIR_TIME_K * AIR_TIME_K);
 
+// --- THE HOVER --------------------------------------------------------------
+// What the rider does when they are in the air and NOT doing a trick.
+//
+// Amit, on the terrain drops: "if I don't do some trick, it would be cool if I
+// could just have a feeling of a hover a little bit, like on the snowboard.
+// Like wow, I'm in the air for a second, I'm dropping so fast."
+//
+// The existing air pose could not give him that, and the reason is structural.
+// Every airborne pose in rider.js is driven by sin(min(1, airT) * PI) -- an
+// envelope that peaks at the apex and returns to ZERO by airT = 1. That was
+// exactly right when airT WAS the flight. Now the flight is ballistic and airT
+// only clocks the trick, so on a long drop it hits 1 and pins there while the
+// rider keeps falling -- and the pose unwinds to fully extended and neutral for
+// the whole hang. The rider was doing nothing, precisely when the hover was
+// meant to read.
+//
+// So this is a second envelope that does NOT unwind: it ramps in while airborne
+// and holds until touchdown. Gated on there being no trick, because a backflip
+// already has something to say and layering a spread pose under a rotation
+// reads as two animations fighting.
+/**
+ * How far off the ground counts as a FULL hover, in world units.
+ *
+ * The pose is scaled by height, not merely by being airborne, and that turned
+ * out to matter: driven by time alone it reached full on a 0.24s pop that
+ * lifted the rider 0.1 units -- arms spread wide for a hop nobody can see. The
+ * hover has to be proportionate to the air, or it reads as the rider
+ * overreacting to a bump.
+ *
+ * 1.5 units puts the big drop (1.9 measured) at full and leaves the small pops
+ * showing a tenth of it, which is about the difference between the two as
+ * ridden.
+ */
+export const HOVER_FULL_LIFT = 1.5;
+export const HOVER_IN_RATE = 1 / 0.15;  // ~0.15s to reach full
+export const HOVER_OUT_RATE = 1 / 0.08; // snaps off at touchdown
+// Sustained leg tuck. Lower than the apex fold of a jump on purpose -- this is
+// a rider holding a stance, not compressing for a landing.
+export const HOVER_FOLD_HIP = 0.34;
+export const HOVER_FOLD_KNEE = 0.30;
+// ARMS OUT, on the LATERAL axis -- not more of the existing hands-high lift.
+//
+// The first attempt routed the hover through AIR_ARM_LIFT's abduction path at
+// 0.62, and Amit's read was blunt: "didn't feel the change of arms out." He was
+// right, and it was invisible by construction -- that path already lifts 0.98
+// at the apex and the two were combined with max(), so the hover value was
+// simply never the larger of the two. It contributed nothing for the whole
+// flight.
+//
+// Raising it past 0.98 is not the answer either. The abduction sum is capped at
+// ARM_LIFT_MAX 2.0 because beyond roughly 2.1 the arm swings over vertical and
+// the hand comes back in toward the body, and balance lift already spends up to
+// 0.68 of that budget. There is no room, and "up" was never what was wanted.
+//
+// So the hover borrows the BOARDSLIDE's spread instead: rotation.x on the upper
+// arms, the lateral axis, measured rather than assumed (see the boardslide
+// block in rider.js). It is a different axis from the jump's hands-high, which
+// is exactly why it reads as a distinct pose rather than as more of the same.
+export const HOVER_ARM_SPREAD = 0.95;
+export const HOVER_ELBOW_OPEN = 0.55;
+// A touch of backward lean, which is what selling "dropping fast" actually
+// needs -- the body trails the board slightly as the ground falls away.
+export const HOVER_LEAN = 0.16;
+
 export const AIR_DURATION_MIN = 0.42;
 export const AIR_DURATION_MAX = 1.20;
 // BACKFLIP: a SNAPPY up-and-down, "like half a second of a jump" (Amit,

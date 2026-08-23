@@ -489,17 +489,18 @@ export const FACE_PATTERNS = [
     length: 120,
     build: (W) => [
       { type: 'blocker', ds: 40, u: 0 },
-      { type: 'blocker', ds: 44, u: W * 0.16 },
+      { type: 'blocker', ds: 44, u: W * 0.18 },
       { type: 'crystal', ds: 8, u: -W * 0.86 },
       { type: 'crystal', ds: 26, u: -W * 0.62 },
       { type: 'crystal', ds: 44, u: -W * 0.34 },
       { type: 'crystal', ds: 64, u: W * 0.30 },
       { type: 'crystal', ds: 84, u: W * 0.58 },
       { type: 'crystal', ds: 102, u: W * 0.84 },
-      { type: 'kicker', ds: 74, u: W * 0.46 },
+      // Ramps at BOTH ends of the chain, so the traverse is bookended by
+      // something worth arriving at rather than just ending.
+      { type: 'kicker', ds: 20, u: -W * 0.72 },
+      { type: 'bigKicker', ds: 74, u: W * 0.46 },
       { type: 'rail', ds: 96, u: -W * 0.72 },
-      // At the far end of the crossing, so the idol is the reason to finish the
-      // traverse rather than bailing out of it halfway.
       { type: 'statue', ds: 110, u: W * 0.92, rare: 2 },
     ],
   },
@@ -510,76 +511,75 @@ export const FACE_PATTERNS = [
     length: 110,
     build: (W) => [
       { type: 'blocker', ds: 30, u: 0 },
-      { type: 'blocker', ds: 34, u: -W * 0.20 },
-      { type: 'blocker', ds: 34, u: W * 0.22 },
+      { type: 'blocker', ds: 34, u: -W * 0.22 },
       { type: 'blocker', ds: 30, u: W * 0.46 },
       { type: 'crystal', ds: 58, u: W * 0.74 },
       { type: 'crystal', ds: 72, u: W * 0.80 },
       { type: 'crystal', ds: 86, u: W * 0.86 },
-      // The face's own flip launcher, independent of the drops. Behind the hard
-      // door, so the biggest trick in the game is on the line that costs the
-      // most to take.
       { type: 'barrel', ds: 96, u: W * 0.80 },
-      { type: 'cone', ds: 62, u: -W * 0.44 },
-      // Behind the narrow door, which is the whole point of there being two.
-      { type: 'statue', ds: 78, u: W * 0.90, rare: 2, rarePhase: 1 },
+      // A rail on the EASY side, so the wide door is no longer simply a
+      // punishment for taking it -- it pays less, not nothing.
+      { type: 'rail', ds: 62, u: -W * 0.56 },
+      { type: 'kicker', ds: 88, u: -W * 0.62 },
     ],
   },
   {
-    // Everything on one rim. The centre is walled off for its whole length, so
-    // there is no version of this pattern you ride straight through.
+    // Everything on one rim. The centre is walled at the moments that matter,
+    // rather than continuously -- two blockers placed where you would otherwise
+    // straighten out, instead of a fence the whole way down.
     name: 'rim run',
     length: 130,
     build: (W) => [
       { type: 'blocker', ds: 20, u: -W * 0.06 },
-      { type: 'blocker', ds: 62, u: W * 0.10 },
-      { type: 'blocker', ds: 104, u: -W * 0.12 },
+      { type: 'blocker', ds: 78, u: W * 0.10 },
       { type: 'longRail', ds: 34, u: -W * 0.78 },
       { type: 'crystal', ds: 30, u: -W * 0.78 },
       { type: 'crystal', ds: 48, u: -W * 0.80 },
       { type: 'crystal', ds: 66, u: -W * 0.82 },
       { type: 'kicker', ds: 88, u: -W * 0.76 },
+      { type: 'rail', ds: 104, u: W * 0.66 },
+      { type: 'bigKicker', ds: 118, u: W * 0.72 },
       { type: 'crystal', ds: 112, u: W * 0.88 },
-      // The opposite rim from everything else in this pattern: taking it means
-      // giving up the crystal run you just committed to.
       { type: 'statue', ds: 120, u: W * 0.94, rare: 3, rarePhase: 1 },
     ],
   },
   {
-    // A slalom that never lets you settle: rocks alternating close to centre,
-    // crystals hung on the outside of each turn so the fast line and the
-    // scoring line are the same one.
+    // A slalom that never lets you settle. Three gates rather than five -- the
+    // rhythm is the point, and at five it stopped being a rhythm and became a
+    // fence. Each turn now exits onto a ramp or a rail, so weaving is paid for
+    // rather than merely survived.
     name: 'slalom',
     length: 140,
     build: (W) => {
       const out = [];
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 3; i++) {
         const side = i % 2 ? 1 : -1;
-        out.push({ type: 'blocker', ds: 16 + i * 26, u: side * W * 0.14 });
-        out.push({ type: 'crystal', ds: 26 + i * 26, u: -side * W * 0.56 });
+        out.push({ type: 'blocker', ds: 22 + i * 34, u: side * W * 0.14 });
+        out.push({ type: 'crystal', ds: 34 + i * 34, u: -side * W * 0.56 });
       }
-      out.push({ type: 'kicker', ds: 70, u: W * 0.62 });
-      out.push({ type: 'kicker', ds: 122, u: -W * 0.64 });
+      out.push({ type: 'kicker', ds: 46, u: W * 0.62 });
+      out.push({ type: 'rail', ds: 84, u: -W * 0.60 });
+      out.push({ type: 'bigKicker', ds: 122, u: -W * 0.64 });
       return out;
     },
   },
   {
-    // Wide open, and that IS the pattern -- one big rock field in the middle
-    // with a long reward run round either edge. Gives the sequence somewhere to
-    // breathe so the slalom and the crossing read as events.
-    name: 'rock field',
+    // Wide open, and that IS the pattern -- a cluster in the middle with a long
+    // reward run round either edge. Gives the sequence somewhere to breathe so
+    // the slalom and the crossing read as events.
+    name: 'open ground',
     length: 120,
     build: (W) => [
-      { type: 'blocker', ds: 34, u: -W * 0.10 },
-      { type: 'blocker', ds: 40, u: W * 0.12 },
-      { type: 'blocker', ds: 56, u: 0 },
-      { type: 'blocker', ds: 60, u: -W * 0.26 },
-      { type: 'blocker', ds: 64, u: W * 0.30 },
+      { type: 'blocker', ds: 40, u: -W * 0.10 },
+      { type: 'blocker', ds: 46, u: W * 0.16 },
       { type: 'crystal', ds: 44, u: -W * 0.70 },
       { type: 'crystal', ds: 62, u: -W * 0.76 },
       { type: 'crystal', ds: 80, u: W * 0.72 },
       { type: 'crystal', ds: 98, u: W * 0.78 },
       { type: 'rail', ds: 86, u: W * 0.74 },
+      { type: 'longRail', ds: 40, u: -W * 0.74 },
+      { type: 'kicker', ds: 68, u: -W * 0.68 },
+      { type: 'bigKicker', ds: 108, u: W * 0.66 },
     ],
   },
 ];

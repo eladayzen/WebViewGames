@@ -25,7 +25,7 @@ import {
   AIR_DURATION, AIR_HEIGHT, SPIN_MIN_HEIGHT,
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
   AIR_HEIGHT_MAX, AIR_TIME_K, AIR_DURATION_MIN, AIR_DURATION_MAX, SPIN_720_HEIGHT,
-  AIR_G,
+  AIR_G, HOVER_IN_RATE, HOVER_OUT_RATE, HOVER_FULL_LIFT,
   BOOST_RAMP,
   GRAB_MIN_HEIGHT, GRAB_ENABLED,
   AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_SPARK_RATE,
@@ -170,6 +170,11 @@ const state = {
   // and airVel its rate of change -- the whole of the air, with no arc, no
   // authored flight time and no reference to the ground they took off from.
   airY: 0, airVel: 0, airFresh: false,
+  // How much of the no-trick HOVER pose is showing, 0..1. Eased rather than
+  // boolean so a brief ollie barely registers it and a long drop reaches it in
+  // full -- the pose scales with how much of a hang there actually was, with no
+  // threshold to tune and nothing to snap.
+  airHold: 0,
   // Pinned against the edge barrier this frame, on a terrain that has one.
   // Read by the sparks so scraping the wall is something you can SEE costing
   // you, rather than a number quietly draining in the corner.
@@ -345,6 +350,7 @@ function reset() {
   state.theta = 0;
   state.thetaVel = 0;
   state.onWall = false;
+  state.airHold = 0;
   state.height = 0;
   state.speed = START_SPEED;
   state.carve = 0;
@@ -1636,6 +1642,27 @@ function frame() {
     rivals.update(dt, state.s, props);
     modes.update(dt);
 
+    // THE HOVER, eased. Engaged only when airborne with nothing else to do:
+    // a trick already occupies the rider, and layering a held stance under a
+    // rotation reads as two animations disagreeing.
+    {
+      // Scaled by the air actually earned. airLift() is the real gap between
+      // the rider and the hill, so a pop that clears the ground by a tenth of a
+      // unit shows a tenth of the pose, and only a genuine drop spreads him
+      // out fully.
+      // Scaled by the air actually earned. airLift() is the real gap between
+      // the rider and the hill, so a pop that clears the ground by a tenth of a
+      // unit shows a tenth of the pose, and only a genuine drop spreads him
+      // out fully.
+      const want = (state.airActive && !state.airTrick)
+        ? Math.min(1, airLift() / HOVER_FULL_LIFT)
+        : 0;
+      const rate = want > state.airHold ? HOVER_IN_RATE : HOVER_OUT_RATE;
+      const step = rate * dt;
+      state.airHold += Math.max(-step, Math.min(step, want - state.airHold));
+      state.airHold = Math.max(0, Math.min(1, state.airHold));
+    }
+
     trough.update(state.s);
   }
 
@@ -1685,6 +1712,7 @@ function frame() {
     airActive: state.airActive,
     airT: state.airT,
     airTrick: state.airTrick,
+    airHold: state.airHold,
     landPose: landPose(),
     landCurl: landCurl(),
     landEnv: landEnv(),

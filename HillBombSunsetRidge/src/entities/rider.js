@@ -56,6 +56,7 @@ import {
   SPIN_LEAN,
   GRAB_CROUCH_HIP, GRAB_CROUCH_KNEE,
   GRAB_SKY_ARM, GRAB_REACH_ARM, GRAB_REACH_ELBOW,
+  HOVER_FOLD_HIP, HOVER_FOLD_KNEE, HOVER_ARM_SPREAD, HOVER_ELBOW_OPEN, HOVER_LEAN,
 } from '../data/constants.js';
 
 const RIDER_HEIGHT = 1.85;
@@ -903,16 +904,25 @@ export function createRider(scene, camera) {
           // Fold in and back out across the air: 0 at launch, peak at apex,
           // 0 by landing -- so the legs are fully extended again for touchdown,
           // and it hands straight over to the landing absorb with no jump.
+          // TWO ENVELOPES, taken at their max. The sin peaks at the apex and
+          // returns to zero by airT = 1, which is right for a jump that ENDS
+          // there. It no longer always does: the flight is ballistic now, and
+          // over a drop airT pins at 1 while the rider keeps falling, so on its
+          // own this unwinds the pose to fully extended for the whole hang.
+          // airHold does not unwind -- it holds until touchdown.
           const fold = Math.sin(Math.min(1, s.airT) * Math.PI);
+          const hold = s.airHold || 0;
           const hopping = s.airTrick === 'hop';
           const grabbing = s.airTrick === 'grab';
           // max() rather than sum, for the same reason the hop uses it: these
           // all drive the same two joints in the same direction, and adding
           // them would double the fold.
-          const hip = fold * Math.max(AIR_TUCK_HIP,
-            hopping ? HOP_HIP_FOLD : 0, grabbing ? GRAB_CROUCH_HIP : 0);
-          const knee = fold * Math.max(AIR_TUCK_KNEE,
-            hopping ? HOP_KNEE_FOLD : 0, grabbing ? GRAB_CROUCH_KNEE : 0);
+          const hip = Math.max(fold * Math.max(AIR_TUCK_HIP,
+            hopping ? HOP_HIP_FOLD : 0, grabbing ? GRAB_CROUCH_HIP : 0),
+            hold * HOVER_FOLD_HIP);
+          const knee = Math.max(fold * Math.max(AIR_TUCK_KNEE,
+            hopping ? HOP_KNEE_FOLD : 0, grabbing ? GRAB_CROUCH_KNEE : 0),
+            hold * HOVER_FOLD_KNEE);
           // Signs are opposed between the two joints: the thigh swings the knee
           // UP toward the chest, the shin folds the heel BACK under the thigh.
           upLegL.rotation.x -= hip;
@@ -924,6 +934,43 @@ export function createRider(scene, camera) {
           // they now go UP rather than down, and routing them through the same
           // abduction path as the balance lift is what keeps every arm pose
           // one-sided and free of the hand-into-hip clipping.
+        }
+
+        // --- HOVER SPREAD ----------------------------------------------------
+        // Arms out to the sides, on the same MEASURED lateral axis the
+        // boardslide uses (rotation.x on the upper arms, negative spreads both
+        // -- see the boardslide block below for how that was probed). Borrowed
+        // rather than re-derived, so the two poses cannot disagree about which
+        // way "out" is.
+        //
+        // A different axis from the jump's hands-high abduction, deliberately.
+        // That is what makes the hover read as its own pose instead of as more
+        // of the pose that is already playing, which is exactly what went wrong
+        // the first time.
+        if ((s.airHold || 0) > 0.001 && armL) {
+          const spread = s.airHold * HOVER_ARM_SPREAD;
+          const elbow = s.airHold * HOVER_ELBOW_OPEN;
+          armL.rotation.x -= spread;
+          armR.rotation.x -= spread;
+          if (foreL) foreL.rotation.x -= elbow;
+          if (foreR) foreR.rotation.x -= elbow;
+        }
+
+        // --- HOVER lean ------------------------------------------------------
+        // A little of the torso trailing the board while the ground falls away.
+        // Negative on this chain leans him BACK -- the same measured direction
+        // the brake pose uses, borrowed rather than re-derived so the two agree
+        // about which way back is.
+        //
+        // Small on purpose. The wide arms and the held tuck do the work of
+        // reading as airborne; this only has to stop the body looking bolted
+        // upright while the hill drops out from under it. Past about 0.2 it
+        // starts reading as a lean-back trick of its own.
+        if ((s.airHold || 0) > 0.001) {
+          const lean = s.airHold * HOVER_LEAN;
+          if (spine) spine.rotation.x -= lean * 0.5;
+          if (spine1) spine1.rotation.x -= lean * 0.32;
+          if (spine2) spine2.rotation.x -= lean * 0.18;
         }
 
         // --- TUCK / BRAKE pose (procedural, layered ON TOP of the clips) -----
@@ -1078,6 +1125,11 @@ export function createRider(scene, camera) {
           // Same envelope as the leg tuck -- 0 at launch, peak at the apex, 0
           // by touchdown -- so it hands over to the landing absorb with no step.
           if (s.airActive) {
+            // The hover does NOT go through here. This path is abduction --
+            // hands high -- and it already spends 0.98 at the apex against a
+            // 2.0 cap that balance lift is also drawing on. A hover routed
+            // through it was never the larger of the two and showed nothing.
+            // It spreads the arms LATERALLY instead; see the HOVER SPREAD block.
             const airFold = Math.sin(Math.min(1, s.airT) * Math.PI);
             const a = airFold * AIR_ARM_LIFT;
             liftL += a; liftR += a;
