@@ -266,27 +266,22 @@ const MISSION_MODE = {
 };
 
 /**
- * TWO LOBBY BUTTONS, one behaviour.
+ * ONE MODE BODY, TWO FRONT DOORS. The ridge's missions and the open face's are
+ * the same game -- same objectives, same clock, same scoring -- played on
+ * different hills, and the hill is chosen per mission by courseFor(). So the
+ * definition is shared and only the registration differs.
  *
- * The ridge's twenty missions and the face's eight are separate ladders with
- * separate front doors -- Amit: "I thought you're making a new button in the
- * lobby, a new lobby with new missions for the new architecture." Appending
- * them to one list, which is what was built first, made them technically
- * present and practically unreachable: the unlock rule gates each mission on
- * the one before it, so the face's first mission sat behind twenty ridge
- * missions with no way in.
- *
- * The MODE is identical for both -- same objectives, same clock, same scoring;
- * the hill is chosen per mission by courseFor(). All a second registration buys
- * is a second entry in the lobby, which is exactly the thing that was missing.
+ * The face's half registers in its own module (modes/faceMissions.js) purely so
+ * main.js's import order can group the lobby: the two ORIGINAL modes first,
+ * then the open-face ones. Registration order is lobby order.
  */
-export default registerMode({ ...MISSION_MODE, id: 'missions', name: 'MISSIONS',
-  tagline: 'Beat the clock. Tick the list.' });
+export { MISSION_MODE };
 
-export const FACE_MISSIONS_MODE = registerMode({
+export default registerMode({
   ...MISSION_MODE,
-  id: 'faceMissions',
-  name: 'OPEN FACE',
-  tagline: 'A wider mountain. Eight new runs.',
+  id: 'missions',
+  name: 'MISSIONS · ORIGINAL',
+  tagline: 'The ridge. Twenty runs against the clock.',
 });
+
 

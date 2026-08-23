@@ -36,8 +36,8 @@ const FIELD_SIZE = 4;
 
 export default registerMode({
   id: 'speedRace',
-  name: 'SPEED RACE',
-  tagline: 'Four rivals. First to the line.',
+  name: 'SPEED RACE · ORIGINAL',
+  tagline: 'The ridge. Four rivals, first to the line.',
   course: RACE_COURSE,
   // The score readout is hidden in this mode. Points still accrue underneath --
   // nothing special-cases the scoring system -- but showing a number that has no

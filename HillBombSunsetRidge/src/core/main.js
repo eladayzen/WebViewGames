@@ -66,6 +66,9 @@ import '../modes/freeride.js';
 import { setPendingMission } from '../modes/missions.js';
 import '../modes/rivals.js';
 import '../modes/speedRace.js';
+// ORDER IS LOBBY ORDER. The two ORIGINAL modes register first, then the open
+// face's -- so the front door reads as two games rather than an interleaving.
+import '../modes/faceMissions.js';
 import '../modes/openFace.js';
 import { MISSIONS } from '../data/missions.js';
 import { createProgress } from '../systems/progress.js';
@@ -1894,7 +1897,13 @@ window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, ra
   // The LIVE input instance. A dynamic import() of the module gives a second
   // copy whose initInput() never ran, so its key set stays empty and every
   // reading is zero -- which looks exactly like a broken mapping.
-  input: { readInput, setStance, getStance } };
+  input: { readInput, setStance, getStance },
+  // THE LIVE mission setter. A dynamic import() of modes/missions.js under
+  // Vite's HMR hands back a SECOND module instance whose pendingId is its own,
+  // so setting it there leaves the running game's pendingId null and every
+  // mission falls back to the default course -- which reads exactly like the
+  // face missions loading the ridge. Same trap as the input module earlier.
+  setPendingMission };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);
