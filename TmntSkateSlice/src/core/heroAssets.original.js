@@ -7,6 +7,7 @@ export const HERO_SPRITES = {
   hero_idle: new URL('../assets/hero_idle.png', import.meta.url).href,
   hero_run_1: new URL('../assets/hero_run_1.png', import.meta.url).href,
   hero_run_2: new URL('../assets/hero_run_2.png', import.meta.url).href,
+  hero_run_3: new URL('../assets/hero_run_3.png', import.meta.url).href,
   hero_swing_1: new URL('../assets/hero_swing_1.png', import.meta.url).href,
   hero_swing_2: new URL('../assets/hero_swing_2.png', import.meta.url).href,
   hero_swing_3: new URL('../assets/hero_swing_3.png', import.meta.url).href,

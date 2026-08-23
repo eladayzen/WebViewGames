@@ -177,7 +177,13 @@ export function isInvulnerable(player) {
 // art/archive/run-cycle-wide-lunge/ in case that look is worth revisiting.
 // Keys are theme-neutral (2026-08-20) -- see core/assets.js's HERO_SPRITES
 // for which actual PNG (mike_* or hero_*) each one resolves to per build.
-const RUN_CYCLE_KEYS = ['hero_run_1', 'hero_run_2'];
+// Ping-pong run cycle: frame1 -> frame2 -> frame3 -> frame2 -> (loop). The
+// middle frame (hero_run_2) is the shared passing pose, played on both the
+// out and back swings. TMNT theme maps hero_run_3 back to mike_run_1 (see
+// heroAssets.tmnt.js), so for TMNT this list resolves to
+// mike_run_1, mike_run_3, mike_run_1, mike_run_3 -- i.e. its original clean
+// 2-frame alternation, visually unchanged.
+const RUN_CYCLE_KEYS = ['hero_run_1', 'hero_run_2', 'hero_run_3', 'hero_run_2'];
 export function getRunCycleSpriteKey(player) {
   const phase = Math.floor(player.runCyclePhaseTimer / RUN_CYCLE_FRAME_DURATION_SEC) % RUN_CYCLE_KEYS.length;
   return RUN_CYCLE_KEYS[phase];

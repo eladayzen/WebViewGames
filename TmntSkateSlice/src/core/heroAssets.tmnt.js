@@ -16,6 +16,12 @@ export const HERO_SPRITES = {
   hero_idle: new URL('../assets/mike_idle.png', import.meta.url).href,
   hero_run_1: new URL('../assets/mike_run_1.png', import.meta.url).href,
   hero_run_2: new URL('../assets/mike_run_3.png', import.meta.url).href,
+  // hero_run_3 exists only because the original theme uses a 3-pose
+  // ping-pong run cycle (see player.js RUN_CYCLE_KEYS). TMNT has just two
+  // run frames, so map the 3rd key back to mike_run_1 -- the ping-pong list
+  // then resolves to mike_run_1, mike_run_3, mike_run_1, mike_run_3, which
+  // is TMNT's original 2-frame alternation, unchanged.
+  hero_run_3: new URL('../assets/mike_run_1.png', import.meta.url).href,
   hero_swing_1: new URL('../assets/mike_swing_1.png', import.meta.url).href,
   hero_swing_2: new URL('../assets/mike_swing_2.png', import.meta.url).href,
   hero_swing_3: new URL('../assets/mike_swing_3.png', import.meta.url).href,
