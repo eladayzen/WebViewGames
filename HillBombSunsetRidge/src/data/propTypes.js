@@ -453,150 +453,138 @@ export const PATTERNS = [
 ];
 
 /**
- * FACE PATTERNS -- content authored FOR a wide hill, not scaled onto one.
+ * FACE PATTERNS -- content authored FOR a wide hill, spread across ALL of it.
  *
- * The patterns above were laid out for the half-pipe and pushed outward with a
- * multiplier. That got the distribution most of the way there and then hit a
- * wall it could never clear: anything authored at u = 0 stays at 0 however
- * large the multiplier, and 17% of every placement was exactly there. So the
- * centreline kept its ramps, its crystals and its boost gates, and Amit's read
- * of the result was the correct one -- "I can just stay in the middle and go
- * through the ride."
+ * THE RULE, in Amit's words: "I generally want the stuff scattered along the
+ * road. I would have to move left and right to avoid stuff everywhere, and I
+ * could meet stuff to do everywhere -- on the outer lines, in the middle, and
+ * in the middle of the middle."
  *
- * THREE RULES, and they are what makes this a different table rather than the
- * old one with bigger numbers:
+ * That is a correction to what these patterns were, and worth recording. The
+ * first version answered "I can just stay in the middle and go through the
+ * ride" by making the middle pay nothing and putting a wall of blockers down
+ * it, with every reward pushed to the rims. Measured, that produced three
+ * segregated zones -- 10 of 12 barriers inside 20% of centre, 14 of 17 ramps in
+ * the single band at 60-80%, and mid-field nearly empty of everything. It did
+ * stop you riding the centreline, but for the wrong reason: not because the
+ * hill was full and you had to work through it, but because two thirds of the
+ * hill were bare.
  *
- *   1. NOTHING REWARDING ON THE CENTRELINE. No crystal, ramp or gate is placed
- *      within 0.2 of centre. The middle is the one place on the hill that pays
- *      nothing.
- *   2. THE MIDDLE IS OCCUPIED, not merely empty. Boredom is not a cost -- a
- *      player holding a straight line through an empty corridor is still having
- *      an easy time of it. Every pattern here puts something solid in the
- *      centre that has to be gone around.
- *   3. EVERY PATTERN HAS A LINE THROUGH IT, and it is never straight. The
- *      reward chains run diagonally or from rim to rim, so taking them means
- *      committing to a traverse and starting it early -- which, on a face where
- *      a full crossing takes four seconds, is the actual skill.
+ * SO WEAVING COMES FROM ALTERNATION, NOT FROM EMPTINESS. Every band carries
+ * every kind of thing -- barriers, ramps, rails and pickups at the centreline,
+ * at mid-field and out at the rim alike -- and consecutive items along the
+ * course alternate SIDES. Hold any fixed line and the hill is busy but you
+ * catch only a fraction of it; move with the content and you get all of it.
+ * That is a better answer than a bare corridor, because the reason to leave the
+ * middle is now that something better is elsewhere, rather than that the middle
+ * is a punishment.
  *
  * Authored against the true rim, so `spread` must be 1 on any terrain using
  * this set -- scaling a table that already reaches 0.95 would only clamp it.
  */
 export const FACE_PATTERNS = [
   {
-    // A chain arcing all the way across, with the direct route blocked. Taking
-    // the whole chain is one committed traverse begun before you can see it.
+    // A full sweep rim to rim, with something to do at every depth on the way
+    // across rather than only at the two ends.
     name: 'the crossing',
     length: 120,
     build: (W) => [
-      { type: 'blocker', ds: 40, u: 0 },
-      { type: 'blocker', ds: 44, u: W * 0.18 },
-      { type: 'crystal', ds: 8, u: -W * 0.86 },
-      { type: 'crystal', ds: 26, u: -W * 0.62 },
-      { type: 'crystal', ds: 44, u: -W * 0.34 },
-      { type: 'crystal', ds: 64, u: W * 0.30 },
-      { type: 'crystal', ds: 84, u: W * 0.58 },
-      { type: 'crystal', ds: 102, u: W * 0.84 },
-      // Mid-chain, out at the rim: the far half of the traverse has to be
-      // threaded rather than coasted along.
-      { type: 'blocker', ds: 92, u: W * 0.88 },
-      // Ramps at BOTH ends of the chain, so the traverse is bookended by
-      // something worth arriving at rather than just ending.
-      { type: 'kicker', ds: 20, u: -W * 0.72 },
-      { type: 'bigKicker', ds: 74, u: W * 0.46 },
-      { type: 'rail', ds: 96, u: -W * 0.72 },
-      { type: 'statue', ds: 110, u: W * 0.92, rare: 2 },
+      { type: 'crystal', ds: 6, u: -W * 0.88 },
+      { type: 'kicker', ds: 14, u: -W * 0.52 },
+      { type: 'blocker', ds: 20, u: -W * 0.14 },
+      { type: 'crystal', ds: 26, u: W * 0.34 },
+      { type: 'rail', ds: 32, u: W * 0.70 },
+      { type: 'blocker', ds: 44, u: W * 0.92 },
+      { type: 'crystal', ds: 50, u: W * 0.10 },
+      { type: 'bigKicker', ds: 58, u: -W * 0.38 },
+      { type: 'blocker', ds: 66, u: -W * 0.76 },
+      { type: 'crystal', ds: 74, u: -W * 0.22 },
+      { type: 'kicker', ds: 84, u: W * 0.16 },
+      { type: 'crystal', ds: 92, u: W * 0.60 },
+      { type: 'blocker', ds: 100, u: W * 0.30 },
+      { type: 'statue', ds: 112, u: W * 0.90, rare: 2 },
     ],
   },
   {
-    // Two doors, and they are not equal. The wide one is easy and pays nothing;
-    // the narrow one is off at the rim with the crystals stacked behind it.
-    name: 'two doors',
+    // Gates at three different depths, so which gap you take is decided at the
+    // rim, at mid-field and on the centreline in turn.
+    name: 'three gates',
     length: 110,
     build: (W) => [
-      { type: 'blocker', ds: 30, u: 0 },
-      { type: 'blocker', ds: 34, u: -W * 0.22 },
-      { type: 'blocker', ds: 30, u: W * 0.46 },
-      { type: 'crystal', ds: 58, u: W * 0.74 },
-      { type: 'crystal', ds: 72, u: W * 0.80 },
-      { type: 'crystal', ds: 86, u: W * 0.86 },
-      // Inside the reward stack, so the narrow door is a route you ride rather
-      // than a gate you pass and then collect for free behind.
-      { type: 'blocker', ds: 66, u: W * 0.78 },
-      // And the lane OUTSIDE the stack. Blockers at 70-80% out still left the
-      // outermost band -- which carries the most pickups on the hill -- as a
-      // free corridor you could hold hard against the barrier the whole way.
-      { type: 'blocker', ds: 100, u: W * 0.92 },
-      { type: 'barrel', ds: 96, u: W * 0.80 },
-      // A rail on the EASY side, so the wide door is no longer simply a
-      // punishment for taking it -- it pays less, not nothing.
-      { type: 'rail', ds: 62, u: -W * 0.56 },
-      { type: 'kicker', ds: 88, u: -W * 0.62 },
+      { type: 'blocker', ds: 12, u: -W * 0.86 },
+      { type: 'crystal', ds: 18, u: -W * 0.44 },
+      { type: 'rail', ds: 24, u: W * 0.06 },
+      { type: 'blocker', ds: 36, u: W * 0.48 },
+      { type: 'crystal', ds: 42, u: W * 0.88 },
+      { type: 'kicker', ds: 50, u: W * 0.26 },
+      { type: 'blocker', ds: 58, u: -W * 0.10 },
+      { type: 'crystal', ds: 64, u: -W * 0.62 },
+      { type: 'barrel', ds: 74, u: -W * 0.90 },
+      { type: 'blocker', ds: 84, u: -W * 0.34 },
+      { type: 'crystal', ds: 92, u: W * 0.20 },
+      { type: 'rail', ds: 100, u: W * 0.66 },
     ],
   },
   {
-    // Everything on one rim. The centre is walled at the moments that matter,
-    // rather than continuously -- two blockers placed where you would otherwise
-    // straighten out, instead of a fence the whole way down.
-    name: 'rim run',
+    // A ladder worked outward and back, so the run passes through every band
+    // twice instead of hugging one edge.
+    name: 'the ladder',
     length: 130,
     build: (W) => [
-      { type: 'blocker', ds: 20, u: -W * 0.06 },
-      { type: 'blocker', ds: 78, u: W * 0.10 },
-      { type: 'longRail', ds: 34, u: -W * 0.78 },
-      { type: 'crystal', ds: 30, u: -W * 0.78 },
-      { type: 'crystal', ds: 48, u: -W * 0.80 },
-      { type: 'crystal', ds: 66, u: -W * 0.82 },
-      // Halfway along the rim run. This pattern was the clearest case of the
-      // problem: everything good on one edge and nothing in the way of any of it.
-      { type: 'blocker', ds: 56, u: -W * 0.80 },
-      { type: 'blocker', ds: 22, u: -W * 0.90 },
-      { type: 'kicker', ds: 88, u: -W * 0.76 },
-      { type: 'rail', ds: 104, u: W * 0.66 },
-      { type: 'bigKicker', ds: 118, u: W * 0.72 },
-      { type: 'crystal', ds: 112, u: W * 0.88 },
-      { type: 'statue', ds: 120, u: W * 0.94, rare: 3, rarePhase: 1 },
+      { type: 'crystal', ds: 8, u: W * 0.12 },
+      { type: 'blocker', ds: 16, u: -W * 0.30 },
+      { type: 'longRail', ds: 24, u: W * 0.44 },
+      { type: 'crystal', ds: 34, u: W * 0.78 },
+      { type: 'blocker', ds: 44, u: W * 0.20 },
+      { type: 'kicker', ds: 52, u: -W * 0.24 },
+      { type: 'crystal', ds: 60, u: -W * 0.68 },
+      { type: 'blocker', ds: 70, u: -W * 0.94 },
+      { type: 'rail', ds: 80, u: -W * 0.40 },
+      { type: 'crystal', ds: 88, u: W * 0.04 },
+      { type: 'bigKicker', ds: 98, u: W * 0.50 },
+      { type: 'blocker', ds: 108, u: W * 0.84 },
+      { type: 'crystal', ds: 118, u: W * 0.32 },
+      { type: 'statue', ds: 126, u: -W * 0.86, rare: 3, rarePhase: 1 },
     ],
   },
   {
-    // A slalom that never lets you settle. Three gates rather than five -- the
-    // rhythm is the point, and at five it stopped being a rhythm and became a
-    // fence. Each turn now exits onto a ramp or a rail, so weaving is paid for
-    // rather than merely survived.
+    // Alternating turns at varying depth -- some gates near the centreline,
+    // some out wide, so the weave is never the same amplitude twice.
     name: 'slalom',
     length: 140,
     build: (W) => {
+      const at = [-0.18, 0.54, -0.86, 0.22, -0.50];
       const out = [];
-      for (let i = 0; i < 3; i++) {
-        const side = i % 2 ? 1 : -1;
-        out.push({ type: 'blocker', ds: 22 + i * 34, u: side * W * 0.14 });
-        out.push({ type: 'crystal', ds: 34 + i * 34, u: -side * W * 0.56 });
-      }
-      out.push({ type: 'blocker', ds: 92, u: W * 0.58 });
-      out.push({ type: 'kicker', ds: 46, u: W * 0.62 });
-      out.push({ type: 'rail', ds: 84, u: -W * 0.60 });
-      out.push({ type: 'bigKicker', ds: 122, u: -W * 0.64 });
+      at.forEach((u, i) => {
+        out.push({ type: 'blocker', ds: 18 + i * 26, u: u * W });
+        out.push({ type: 'crystal', ds: 30 + i * 26, u: -u * 0.72 * W });
+      });
+      out.push({ type: 'kicker', ds: 40, u: W * 0.80 });
+      out.push({ type: 'rail', ds: 74, u: -W * 0.08 });
+      out.push({ type: 'bigKicker', ds: 108, u: -W * 0.62 });
+      out.push({ type: 'kicker', ds: 132, u: W * 0.36 });
       return out;
     },
   },
   {
-    // Wide open, and that IS the pattern -- a cluster in the middle with a long
-    // reward run round either edge. Gives the sequence somewhere to breathe so
-    // the slalom and the crossing read as events.
+    // Looser, and the breather in the set -- but busy at every depth rather
+    // than clear down the middle.
     name: 'open ground',
     length: 120,
     build: (W) => [
-      { type: 'blocker', ds: 40, u: -W * 0.10 },
-      { type: 'blocker', ds: 46, u: W * 0.16 },
-      { type: 'crystal', ds: 44, u: -W * 0.70 },
-      { type: 'crystal', ds: 62, u: -W * 0.76 },
-      { type: 'blocker', ds: 52, u: -W * 0.84 },
-      { type: 'crystal', ds: 80, u: W * 0.72 },
-      { type: 'crystal', ds: 98, u: W * 0.78 },
-      { type: 'blocker', ds: 90, u: W * 0.86 },
-      { type: 'rail', ds: 86, u: W * 0.74 },
-      { type: 'longRail', ds: 40, u: -W * 0.74 },
-      { type: 'kicker', ds: 68, u: -W * 0.68 },
-      { type: 'bigKicker', ds: 108, u: W * 0.66 },
+      { type: 'kicker', ds: 10, u: W * 0.02 },
+      { type: 'crystal', ds: 20, u: -W * 0.56 },
+      { type: 'blocker', ds: 28, u: -W * 0.88 },
+      { type: 'crystal', ds: 36, u: -W * 0.16 },
+      { type: 'rail', ds: 46, u: W * 0.58 },
+      { type: 'blocker', ds: 56, u: W * 0.14 },
+      { type: 'crystal', ds: 64, u: W * 0.86 },
+      { type: 'bigKicker', ds: 74, u: W * 0.40 },
+      { type: 'blocker', ds: 84, u: -W * 0.46 },
+      { type: 'crystal', ds: 94, u: -W * 0.80 },
+      { type: 'longRail', ds: 104, u: -W * 0.12 },
+      { type: 'crystal', ds: 114, u: W * 0.24 },
     ],
   },
 ];
+
