@@ -387,6 +387,27 @@ export const AIR_DURATION_SPIN = 0.62;
 export const BOOST_RAMP = 4.5;
 
 export const AIR_TIME_K = 0.392;
+/**
+ * GRAVITY FOR A FLIGHT, in units/s^2. DERIVED, not chosen.
+ *
+ * Air used to be a scripted arc -- sin(t*PI) * height over an authored duration
+ * -- which meant the rider was following a shape rather than a trajectory. On
+ * flat ground you cannot tell the difference. Over a drop you absolutely can,
+ * and Amit could: "it feels like you are calculating the trick to the previous
+ * floor, to the regular floor... you do like a fake floor which is not there
+ * anymore and then I keep on dropping." That is precisely what it did -- the arc
+ * completed against the launch tangent, and only then did a second, separate
+ * fall phase take over. Two glued phases with a visible seam.
+ *
+ * Real ballistics has no seam, but it must not silently retune every jump in the
+ * game either. A projectile launched to apex h takes 2*sqrt(2h/G); the old arc
+ * took AIR_TIME_K*sqrt(h). Setting those equal for ALL h gives G = 8/K^2, so
+ * this value is whatever keeps every existing flight time identical. Verified
+ * across the full height range: the two agree to four decimal places, which is
+ * why the half-pipe does not move.
+ */
+export const AIR_G = 8 / (AIR_TIME_K * AIR_TIME_K);
+
 export const AIR_DURATION_MIN = 0.42;
 export const AIR_DURATION_MAX = 1.20;
 // BACKFLIP: a SNAPPY up-and-down, "like half a second of a jump" (Amit,

@@ -516,7 +516,10 @@ export const FACE_PATTERNS = [
       { type: 'crystal', ds: 58, u: W * 0.74 },
       { type: 'crystal', ds: 72, u: W * 0.80 },
       { type: 'crystal', ds: 86, u: W * 0.86 },
-      { type: 'bigKicker', ds: 96, u: W * 0.80 },
+      // The face's own flip launcher, independent of the drops. Behind the hard
+      // door, so the biggest trick in the game is on the line that costs the
+      // most to take.
+      { type: 'barrel', ds: 96, u: W * 0.80 },
       { type: 'cone', ds: 62, u: -W * 0.44 },
       // Behind the narrow door, which is the whole point of there being two.
       { type: 'statue', ds: 78, u: W * 0.90, rare: 2, rarePhase: 1 },

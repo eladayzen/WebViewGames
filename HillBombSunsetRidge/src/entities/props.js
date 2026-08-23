@@ -756,7 +756,12 @@ export function createProps(scene) {
       // A few metres BEFORE the edge, so the rider is leaving the ramp exactly
       // as the ground goes. On the lip itself the takeoff happens after the
       // hill has already started to fall and the ramp does half its job.
-      const type = lip.drop.depth >= 6 ? 'bigKicker' : 'kicker';
+      // The deepest lips get the VERT WALL. It is the only launcher whose own
+      // power reaches the flip bar, and stacking it on the biggest drop is the
+      // most air the game can produce -- which is precisely the moment that
+      // should be a backflip.
+      const type = lip.drop.depth >= 7 ? 'barrel'
+        : lip.drop.depth >= 4 ? 'bigKicker' : 'kicker';
       add(type, lip.s - 7, u);
     }
     nextLipS = throughS;

@@ -27,6 +27,7 @@
 // you ride, rather than being one fixed feel wearing a different shape.
 
 import {
+  AIR_G,
   TROUGH_RADIUS, THETA_MAX, THETA_GRAVITY,
   FUNNEL_SPACING, FUNNEL_WIDTH, FUNNEL_TIGHTNESS,
   TROUGH_ROLL_AMOUNT, TROUGH_ROLL_WAVELENGTH,
@@ -160,7 +161,36 @@ export const TERRAIN_PRESETS = {
     name: 'Open face',
     radius: 46.0,
     thetaMax: 0.92,
-    thetaGravity: 41.0,
+    /**
+     * NO PULL TO THE MIDDLE AT ALL.
+     *
+     * The pendulum's restoring term is (thetaGravity / R) * sin(theta) -- the
+     * hill's own gravity, dragging the rider back to the floor whenever they
+     * stop fighting it. On a half-pipe that is the entire instrument: the trough
+     * is a curved surface, standing still means sliding to the bottom, and that
+     * is what makes pumping possible and the centreline fast.
+     *
+     * On this hill it is the last thing still insisting the middle is home.
+     * Amit: "the controller is still pulling me to the middle all of the time.
+     * Can we try to not do that? ... maybe it won't be hard at all to get to the
+     * sides of the arena. I would just have something that won't let me go
+     * further up, like a collider, but it's not slowing me down to go to the
+     * side."
+     *
+     * At 0 the pendulum stops being a pendulum. What is left is a damped
+     * velocity controller: lean and you accelerate across the face, let go and
+     * you hold the line you are on. Lateral position becomes something you SET
+     * rather than something you maintain against a spring, and the edges cost
+     * exactly what the middle costs, which is nothing.
+     *
+     * THIS IS THE LAST PIECE OF THE ORIGINAL DESIGN TO GO. heightScale 0 already
+     * removed the speed cost of altitude; this removes the force. No part of the
+     * geometry pushes the rider anywhere any more -- the only reasons to be
+     * somewhere are what is placed there and what is in the way. That is a real
+     * bet: it makes the hill a pure positioning game, and it only holds up if
+     * the content is interesting enough to carry it alone.
+     */
+    thetaGravity: 0,
     funnelSpacing: 520,
     funnelWidth: 0.42,
     funnelTightness: 0.80,
@@ -203,20 +233,24 @@ export const TERRAIN_PRESETS = {
     wallHeight: 6.0,
 
     /**
-     * The cost of leaning on it, in u/s^2 of drag while pinned.
+     * The cost of leaning on the barrier, in u/s^2 of drag while pinned. ZERO
+     * here, deliberately -- it used to be 5.
      *
-     * Amit: "you're probably slowing down also a little bit." Not a crash and
-     * not a bounce -- scraping the barrier is a thing you can do and sometimes
-     * want to do, it just costs. 5.0 against a grade of 12.5 settles a pinned
-     * rider at about 20 u/s where a free one runs at 26.7: roughly a fifth
-     * slower, which is enough to make riding just off the wall the better line
-     * without making the wall a punishment.
+     * Amit asked for a collider that stops you going further and costs nothing
+     * to reach: "it's not slowing me down to go to the side." A scrub is
+     * precisely a charge for being at the side, so it goes.
      *
-     * This is what stops "no height cost anywhere" collapsing into "hold full
-     * lean and park at the edge". With the exchange off it is the ONLY thing
-     * that does, so it is load-bearing rather than flavour.
+     * WHAT THIS GIVES UP, stated plainly because it was load-bearing: with no
+     * restoring force AND no scrub, holding one rim for a whole descent takes no
+     * effort and costs no speed. The only thing left making it a bad idea is
+     * that the content is not there -- the face patterns run their reward chains
+     * rim to rim and alternate which side they favour, so a parked rider misses
+     * most of the hill. That is a softer answer than a speed penalty and it
+     * depends entirely on the layout continuing to be worth crossing for. If
+     * parking turns out to be a viable way to play, this is the number to bring
+     * back first.
      */
-    wallScrub: 5.0,
+    wallScrub: 0,
 
     // The wall replaces them -- two kinds of edge marker is one too many, and
     // lamps on the rim of a mountain face read as leftover street furniture.
@@ -280,25 +314,48 @@ export const TERRAIN_PRESETS = {
      * total: the sequence can be re-authored freely without the run quietly
      * getting faster or slower overall.
      */
+    /**
+     * WIDTH IS SET BY HOW MUCH AIR THE DROP SHOULD GIVE, and the relationship
+     * is not linear -- it is cubic, which is why the first two attempts felt
+     * like nothing at all.
+     *
+     * Relative to the line the rider leaves on, the ground falls d*(3x^2-2x^3)
+     * while the rider falls 0.5*g*t^2. Solving for when the ground stops
+     * outrunning them gives, with R the lip's curvature as a multiple of the
+     * critical g/v^2:
+     *
+     *     peak lift = depth * (1 - 1/R)^3        hang = 1.5 * (1 - 1/R) * L/v
+     *
+     * A drop that merely CLEARS the launch threshold has R just over 1, so
+     * (1-1/R)^3 is nearly zero: the previous cycle lifted the rider 0.05 units
+     * -- five centimetres -- for a fifth of a second. Technically airborne and
+     * completely invisible. Amit rode exactly that: it has to feel like "wow,
+     * I'm in the air for a second."
+     *
+     * Authored at R = 3, which puts the big drop 2.4 units up for 0.55s -- a
+     * real hover -- and the small ones at a pop. Everything is shorter and
+     * steeper than it looks like it ought to be, because at a fixed depth the
+     * only way to buy curvature is to shorten the run.
+     */
     dropSpacing: 230,
     dropCycle: [
       // A long shallow roll. No launch -- terrain you read, not terrain you hit.
       { depth: 5.5, width: 0.30, profile: 'roll' },
       // Short and sharp. Small, but the lip is four times the curvature of the
       // one above it despite being a shallower drop.
-      { depth: 3.5, width: 0.10, profile: 'roll' },
+      { depth: 3.5, width: 0.046, profile: 'roll' },
       // The big one. Deep AND fairly short, so it both throws you and drops the
       // ground a long way while you are up there.
-      { depth: 8.0, width: 0.16, profile: 'roll' },
+      { depth: 8.0, width: 0.070, profile: 'roll' },
       // Two steps with a breather between -- two small airs in quick
       // succession rather than one big one. Authored at 0.34 first, which
       // measured out at needing 33.5 u/s to launch: against a 26.7 cruise that
       // is a shape you can never leave the ground on, making it a second flow
       // drop rather than the distinct thing it is meant to be. 0.26 puts both
       // steps under cruising speed.
-      { depth: 4.5, width: 0.26, profile: 'stair' },
+      { depth: 4.5, width: 0.105, profile: 'stair' },
       // A snap. Barely a drop at all, over almost no distance.
-      { depth: 2.5, width: 0.08, profile: 'roll' },
+      { depth: 2.5, width: 0.039, profile: 'roll' },
     ],
     /**
      * The cycle's total descent. Stated rather than summed at import so
@@ -340,12 +397,24 @@ export const TERRAIN_PRESETS = {
     dropAccelGain: 0.10,
 
     /**
-     * The launch threshold: leave the ground when v^2 * curvature exceeds this.
-     * Lower means you fly off gentler lips at lower speed. Set against the
-     * measured curvature of the lip above so that arriving at cruising speed
-     * throws you and crawling over it does not.
+     * THE LAUNCH THRESHOLD IS GRAVITY, and it is not a free parameter.
+     *
+     * Staying on a convex surface needs a downward acceleration of v^2 *
+     * curvature. Above what gravity can supply, the rider is airborne -- so the
+     * number to compare against is AIR_G and nothing else. It is the same
+     * gravity the flight is then integrated under, and the two MUST agree.
+     *
+     * It was 14, picked by hand, against an AIR_G of 52. Every drop therefore
+     * "launched" a rider whom gravity immediately pulled back down onto ground
+     * it was falling toward faster than the hill was: measured, nine launches in
+     * thirty seconds and not one lasting a single frame. The old scripted arc
+     * concealed this entirely by lifting the rider on a shape regardless of what
+     * the surface underneath was doing -- exactly the fake floor Amit could feel.
+     *
+     * Tying them together forced the cycle below to be re-authored so the lips
+     * genuinely clear it. That is the right way round: the terrain earns its air.
      */
-    launchG: 14.0,
+    launchG: AIR_G,
 
     /**
      * Gravity for the free fall AFTER the trick's arc is spent, in units/s^2.

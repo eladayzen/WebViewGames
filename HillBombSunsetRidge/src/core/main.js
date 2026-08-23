@@ -25,6 +25,7 @@ import {
   AIR_DURATION, AIR_HEIGHT, SPIN_MIN_HEIGHT,
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
   AIR_HEIGHT_MAX, AIR_TIME_K, AIR_DURATION_MIN, AIR_DURATION_MAX, SPIN_720_HEIGHT,
+  AIR_G,
   BOOST_RAMP,
   GRAB_MIN_HEIGHT, GRAB_ENABLED,
   AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_SPARK_RATE,
@@ -165,10 +166,10 @@ const state = {
   sPrev: 0, // last frame's s -- the ramp-lip crossing test needs the interval
   theta: 0, // angle around the cross-section; 0 = the floor, +-TERRAIN.thetaMax = the lip
   thetaVel: 0,
-  // Airborne bookkeeping for hills that drop away beneath the rider. The
-  // trajectory is fixed at launch (see groundGap); airFallT times the free fall
-  // once the scripted arc is spent, and airHang is what is left to fall.
-  airLaunchS: 0, airLaunchElev: 0, airLaunchSlope: 0, airFallT: 0, airHang: 0,
+  // Ballistic flight. airY is the rider's actual world height while airborne
+  // and airVel its rate of change -- the whole of the air, with no arc, no
+  // authored flight time and no reference to the ground they took off from.
+  airY: 0, airVel: 0, airFresh: false,
   // Pinned against the edge barrier this frame, on a terrain that has one.
   // Read by the sparks so scraping the wall is something you can SEE costing
   // you, rather than a number quietly draining in the corner.
@@ -344,8 +345,6 @@ function reset() {
   state.theta = 0;
   state.thetaVel = 0;
   state.onWall = false;
-  state.airFallT = 0;
-  state.airHang = 0;
   state.height = 0;
   state.speed = START_SPEED;
   state.carve = 0;
@@ -409,44 +408,83 @@ function reset() {
  * backflip do a backflip". The random/conditional layer he mentioned wanting
  * later goes exactly here, gated behind the same `canFlip` check.
  */
-/**
- * How far the ground has fallen BELOW the trajectory the rider launched on, in
- * world units, at distance s. Zero means the surface is right under them.
- *
- * This one function is the whole difference between a hill you are welded to
- * and a hill you can jump off. The rider's height while airborne used to be
- * read from the surface directly -- so if the road dropped, the rider dropped
- * with it and a 12-unit fall produced no air whatsoever. Here the trajectory is
- * fixed at launch and the GROUND is what moves.
- *
- * On a constant grade elevAt(s) is exactly the launch tangent, so this returns
- * 0 everywhere and every existing hill behaves precisely as before.
- */
-function groundGap(s) {
-  const tangent = state.airLaunchElev + state.airLaunchSlope * (s - state.airLaunchS);
-  return Math.max(0, elevAt(s) - tangent);
+const _groundProbe = new THREE.Vector3();
+
+/** World Y of the actual riding surface under (s, theta), right now. */
+function groundYAt(s, theta) {
+  return toWorld(s, theta, _groundProbe).y;
 }
 
 /**
  * How far above the ground the rider actually is, in world units.
  *
- * TWO CONTRIBUTIONS, and forgetting the second is a bug that hides well. The
- * arc is the jump; the gap is the hill having fallen out from under them. A
- * rider 12 units up because the ground dropped is exactly as airborne as one 12
- * units up because they hit a kicker, and every height test in the game -- is
- * that ramp solid, can I reach that pickup -- has to agree about it. Reading
- * only the arc means a rider sailing over a drop collides with ramp faces they
- * are clearing by three body lengths.
- *
- * Identically the arc on any terrain without drops.
+ * One subtraction now, where it used to be an arc plus a separately-tracked
+ * "the ground fell away" term. The rider HAS a world height while airborne
+ * (state.airY) and the ground HAS one, so the gap between them is the only
+ * definition needed -- and every height test in the game reads the same number
+ * the renderer draws.
  */
 function airLift() {
   if (!state.airActive) return 0;
-  const arc = Math.sin(state.airT * Math.PI) * state.airHeight;
-  return arc + (state.airT < 1 ? groundGap(state.s) : state.airHang);
+  return Math.max(0, state.airY - groundYAt(state.s, state.theta));
 }
 
-function beginAir(power, points, forcedTrick, launchLabel) {
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.pop=true] whether the launch imparts UPWARD velocity.
+ *   False for terrain drops: the ground curving away is not a ramp, and it must
+ *   not shove the rider skyward. All the air comes from the hill leaving.
+ */
+/**
+ * The highest the rider will actually get above the GROUND on this launch, in
+ * world units -- the ramp's arc and the hill's shape taken together.
+ *
+ * WHY THE TRICK LADDER NEEDS THIS. Amit: "if I'm going into a really serious
+ * drop, or even more important a ramp and then a drop, that's classical for a
+ * backflip. And I don't see those any more." He is describing the biggest air
+ * the game can produce -- a launcher planted on the lip of a drop, so the ramp
+ * throws you and then the hill is not there when you come down -- and it was
+ * being called a spin, because the ladder read the RAMP alone. A bigKicker tops
+ * out at 3.82 earned height against a 4.4 flip bar, so no combination of ramp
+ * and terrain could ever reach it.
+ *
+ * The flight never needed this: it is ballistic and finds the ground itself. It
+ * is the DECISION that was blind, picking a trick at takeoff from half the
+ * information about the jump it was picking for.
+ *
+ * TWO WRONG VERSIONS CAME FIRST, and both are instructive. Measuring the raw
+ * ground fall below the launch line credited a 3.5-unit drop with 3.4 units of
+ * air and flipped the smallest kicker in the game. Subtracting the rider's fall
+ * but ignoring the ramp's upward velocity did the reverse -- over the 14m to the
+ * bottom of that drop a free-falling rider descends 6 units, so a 3.5-unit drop
+ * scored zero assist. Neither is the question being asked. The question is how
+ * far above the hill the rider actually gets, which needs both halves of the
+ * trajectory: vUp*t - 0.5*g*t^2 for the arc, plus however far the ground has
+ * fallen away underneath it.
+ *
+ * Returns popHeight unchanged on any terrain without drops, so the half-pipe's
+ * ladder is bit-for-bit what it was.
+ */
+function peakAirAbove(s, v, vUp, popHeight) {
+  if (!TERRAIN.dropCycle || TERRAIN.dropCycle.length === 0) return popHeight;
+  const elev0 = elevAt(s);
+  const slope0 = slopeAt(s);
+  // A generous flight's worth of hill -- longer than any real flight, since
+  // overestimating only finds a drop the rider never reaches, and drops are far
+  // enough apart that a second one is never inside the window.
+  const span = Math.max(24, v * 1.5);
+  let best = popHeight;
+  for (let d = 1; d <= span; d += 1) {
+    const t = d / v;
+    const arc = vUp * t - 0.5 * AIR_G * t * t;         // height above the launch line
+    const fell = elevAt(s + d) - (elev0 + slope0 * d); // how far the hill dropped from it
+    const air = arc + fell;
+    if (air > best) best = air;
+  }
+  return best;
+}
+
+function beginAir(power, points, forcedTrick, launchLabel, opts = {}) {
   // How much air this launch earned. Speed never contributes zero -- a crawling
   // rider still gets some pop, just never enough to reach the flip threshold.
   const speedFactor = AIR_SPEED_FLOOR
@@ -454,7 +492,18 @@ function beginAir(power, points, forcedTrick, launchLabel) {
   // A loaded tail pops higher. This is what makes the brake a setup move rather
   // than only a way to slow down: compress into the lip and the jump is bigger.
   const loadBoost = 1 + state.tailLoad * TAIL_LOAD_BOOST;
-  const earnedHeight = AIR_HEIGHT_BASE * power * power * speedFactor * loadBoost;
+  const popHeight = AIR_HEIGHT_BASE * power * power * speedFactor * loadBoost;
+  // THE JUMP IS THE RAMP PLUS THE HILL. A launch taken at the lip of a drop is
+  // genuinely a bigger jump than the same launch on flat ground, and the ladder
+  // has to see the whole of it or the best setup in the game reads as a small
+  // one. Zero everywhere without drops, so the half-pipe's ladder is untouched.
+  //
+  // Left out of the flight itself on purpose -- that is ballistic and finds the
+  // ground on its own. This only informs the CHOICE of trick, and the score.
+  const earnedHeight = opts.pop === false
+    ? popHeight
+    : peakAirAbove(state.s, state.speed,
+        Math.sqrt(2 * AIR_G * Math.min(popHeight, AIR_HEIGHT_MAX)), popHeight);
 
   // THE TRAJECTORY DECIDES THE TRICK, and nothing else does.
   //
@@ -518,11 +567,34 @@ function beginAir(power, points, forcedTrick, launchLabel) {
   //
   // On a constant grade the tangent IS the surface, so this changes nothing on
   // the half-pipe -- see the identity check in the elevation regression.
-  state.airFallT = 0;
-  state.airHang = 0;
-  state.airLaunchS = state.s;
-  state.airLaunchElev = elevAt(state.s);
-  state.airLaunchSlope = slopeAt(state.s);
+  // --- the launch, as a VELOCITY rather than a shape -------------------
+  //
+  // The rider is already falling at the rate the hill descends: the surface
+  // drops by slopeAt per unit travelled, and s advances at `speed`, so their
+  // current vertical rate is -speed*slope. A ramp ADDS to that; it does not
+  // replace it, which is why a jump taken on steep ground carries the descent
+  // into the flight instead of pausing it.
+  const descending = state.speed * slopeAt(state.s);
+  // NO POP ON A DROP. A lip you fly off because the ground curved away gives no
+  // upward impulse at all -- there is nothing to push against. The hang comes
+  // entirely from continuing on your line while the hill drops out from under
+  // you, which is the difference between "the terrain threw me" (wrong, and
+  // what the scripted arc did) and "the terrain left" (right).
+  // popHeight, NOT earnedHeight: the terrain's contribution is something the
+  // hill does by falling away, and adding it here would throw the rider upward
+  // for air the ground is about to give them anyway -- counting it twice, and
+  // reintroducing exactly the shove that pop:false exists to prevent.
+  const pop = opts.pop === false ? 0 : Math.sqrt(2 * AIR_G * Math.min(popHeight, AIR_HEIGHT_MAX));
+  state.airVel = pop - descending;
+  state.airY = groundYAt(state.s, state.theta);
+  // LAUNCHED THIS FRAME, so the flight must not integrate yet. s has already
+  // advanced by the time a launch is decided, so integrating here would drop
+  // airY by a full dt while the ground is still sampled at the s it was set
+  // from -- the rider is instantly "below" a surface that has not moved yet,
+  // and touchdown fires on frame one. Fatal for a pop:false drop, where airY
+  // starts exactly ON the ground with airVel already negative: measured, every
+  // drop launch ended on the frame it began and no drop gave any air at all.
+  state.airFresh = true;
   // Spent, not retained -- otherwise one well-timed compression would boost
   // every launch for the rest of the run.
   state.tailLoad = 0;
@@ -1116,11 +1188,63 @@ function frame() {
         // spikes at the very start of the lip and an uncapped ratio would make
         // a marginally faster approach a wildly bigger jump.
         const over = Math.min(2.2, need / TERRAIN.launchG);
-        beginAir(0.55 * over, 0, undefined, 'DROP');
+        // NO TRICK OFF A DROP. Amit: "I think we should either stop with the
+        // spins and tricks when we drop, or just when it's like a really big
+        // drop. Let's start for now by just switching them off completely."
+        //
+        // A spin needs something to spin ABOUT, and a drop gives the rider no
+        // impulse at all -- the ground simply leaves. Rotating out of that reads
+        // as the animation deciding something the physics never did, which is a
+        // close relative of the fake floor this whole pass removed.
+        //
+        // `null` rather than `undefined`: undefined means "consult the height
+        // ladder", null means "no trick, final". Restoring tricks for big drops
+        // later is this one argument -- pass undefined and the ladder decides
+        // again, or gate it on the drop's depth.
+        //
+        // pop:false -- see beginAir. The rider is not thrown; the hill leaves.
+        beginAir(0.55 * over, 0, null, 'DROP', { pop: false });
       }
     }
     if (state.airActive) {
-      state.airT += dt / state.airDuration; // power is already baked in by beginAir
+      // ONE PARABOLA, no phases. Integrate the rider's actual vertical velocity
+      // and compare against the actual ground beneath them. There is no arc, no
+      // authored duration governing the flight, and above all no launch tangent
+      // standing in for a floor that is no longer there -- the flight ends when
+      // and only when the rider meets the hill.
+      // Captured BEFORE it is cleared. Clearing the flag inside the branch and
+      // then testing !state.airFresh for touchdown a few lines further down
+      // means that test sees the flag already down on the very frame it was
+      // raised -- so the rider lands on the launch frame, with airY still
+      // exactly equal to the ground. Every drop flight lasted zero seconds.
+      const justLaunched = state.airFresh;
+      if (justLaunched) {
+        // Skip exactly one frame, so the next step advances the rider and the
+        // ground beneath them across the same interval.
+        state.airFresh = false;
+      } else {
+        // EXACT for constant acceleration: y += v0*dt - 0.5*g*dt^2, and only
+        // then v -= g*dt. The obvious order (advance v, then move by it) is
+        // semi-implicit Euler, which applies the END-of-step velocity across the
+        // whole step and so overstates the fall by 0.5*g*dt^2.
+        //
+        // Normally invisible; here it was decisive. At a drop lip the rider
+        // clears the ground by roughly 0.001 units per step -- that margin IS
+        // the amount by which the hill outruns gravity -- while the integration
+        // error is about 0.007. The rider sank through the surface on the first
+        // step every time, so every drop flight lasted exactly zero seconds,
+        // which looked for all the world like the launch condition being wrong.
+        state.airY += (state.airVel - 0.5 * AIR_G * dt) * dt;
+        state.airVel -= AIR_G * dt;
+      }
+
+      // The trick clock is SEPARATE from the flight now, and has to be: rotation
+      // is locked 1:1 to airT, and a backflip is authored at 0.55s because that
+      // is how long a backflip should look. Letting a long hang stretch it would
+      // slow the flip down; letting it loop would start a second one. So it runs
+      // at its own pace, finishes, and the rider holds the landing pose for
+      // however much longer the ground takes to arrive.
+      state.airT = Math.min(1, state.airT + dt / state.airDuration);
 
       // HANG TIME OVER A DROP. The scripted arc says the flight is over; the
       // ground says otherwise. Where the hill has fallen away beneath the
@@ -1131,29 +1255,14 @@ function frame() {
       // Held at exactly 1 rather than allowed to run on, because airT drives
       // the rotation animation 1:1: letting it pass 1 would start a second
       // backflip on the way down.
-      //
-      // TOUCHDOWN IS ITS OWN FLAG, not a value smuggled through airT. Signalling
-      // it by nudging airT past 1 meant the landing test immediately below --
-      // `airT >= 1` -- was already true on the very frame the hang STARTED,
-      // since holding airT at exactly 1 satisfies it. The rider landed the
-      // instant the arc ended and the ground-fell-away hang never ran at all:
-      // measured 0.33s of air over a drop that should give 1.08s.
-      let touchdown = false;
-      if (state.airT >= 1) {
-        state.airT = 1;
-        state.airFallT += dt;
-        const gap = groundGap(state.s);
-        // 0.5*g*t^2 from the tangent line the rider was travelling on.
-        const fallen = 0.5 * TERRAIN.fallG * state.airFallT * state.airFallT;
-        if (fallen < gap) state.airHang = gap - fallen;
-        else { state.airHang = 0; touchdown = true; }
-      }
-
+      // TOUCHDOWN IS MEETING THE GROUND. Not "the arc finished", which is what
+      // it used to be and what made the flight a shape rather than a fall.
+      const ground = groundYAt(state.s, state.theta);
+      const touchdown = !justLaunched && state.airVel <= 0 && state.airY <= ground;
       if (touchdown) {
+        state.airY = ground;
         state.airActive = false;
         state.airT = 0;
-        state.airFallT = 0;
-        state.airHang = 0;
         rig.onLand();
         scoring.land();
         // Landing clean pays out whatever the launch was worth. Deliberately
@@ -1536,15 +1645,12 @@ function frame() {
     // Air is along the SURFACE NORMAL now, not world-up -- so a launch off a
     // rolled section throws you away from the wall you left, which is what
     // makes a corkscrew readable rather than arbitrary.
-    surfaceUp(state.s, state.theta, _up);
-    _pos.addScaledVector(_up, Math.sin(state.airT * Math.PI) * state.airHeight);
-    // THE GROUND FELL AWAY. Straight world-up, NOT along the surface normal:
-    // this is not the rider being thrown off a ramp, it is the hill going out
-    // from under them, and gravity does not care which way the road is banked.
-    // Zero on any hill without drops, so nothing existing moves.
-    // While the arc runs, the rider holds the launch trajectory (the full gap);
-    // once it is done, airHang is what is left to fall.
-    _pos.y += state.airT < 1 ? groundGap(state.s) : state.airHang;
+    // THE RIDER'S HEIGHT IS SIMPLY WHERE THEY ARE. state.airY is integrated
+    // from real velocity under real gravity, so there is nothing to add on top
+    // of the surface and nothing to correct for -- the surface is just what they
+    // will eventually hit. Set outright rather than offset: an offset would once
+    // again be measuring the flight against the ground it left.
+    _pos.y = state.airY;
   }
   if (state.rampLift > 0.001) {
     // Stand the rider on the ramp deck. Added along the SURFACE NORMAL like
