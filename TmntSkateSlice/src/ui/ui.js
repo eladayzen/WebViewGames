@@ -16,6 +16,10 @@
 import { BOX_COLORS } from '../data/boxColors.js';
 import { BOMB_KILL_SET } from '../data/bombKills.js';
 import { OOZE_BUFF_DURATION_SEC, SHIELD_BUFF_DURATION_SEC, MAGNET_BUFF_DURATION_SEC, MAX_LIVES, BOX_COMPLETE_FLY_MS } from '../data/constants.js';
+// '@hero-assets' resolves to a genuinely separate per-theme file (see
+// vite.config.js) -- same import core/assets.js uses, so this and the main
+// manifest can never disagree about which hero's run-cycle frames to show.
+import { HERO_SPRITES } from '@hero-assets';
 
 // Active-buff chips (ooze/shield/magnet). Static icon URLs -- Vite only
 // bundles new URL(import.meta.url) with a literal path, not a template.
@@ -38,10 +42,9 @@ const INTRO_BOMB_ICON_URL = new URL('../assets/bomb.png', import.meta.url).href;
 
 // Same order as entities/player.js's RUN_CYCLE_KEYS -- step 2 plays the
 // character's real run-cycle frames while it sweeps, not a static pose.
-const INTRO_RUN_FRAME_URLS = [
-  new URL('../assets/mike_run_1.png', import.meta.url).href,
-  new URL('../assets/mike_run_3.png', import.meta.url).href,
-];
+// Sourced from the same HERO_SPRITES import above, so this can never fall
+// out of sync with the actual per-theme run-cycle art core/assets.js loads.
+const INTRO_RUN_FRAME_URLS = [HERO_SPRITES.hero_run_1, HERO_SPRITES.hero_run_2];
 
 // Per-color pizza-box art, keyed by box id (same literal-path rule as above --
 // no template URLs). The cardboard is tinted to each set's color while the

@@ -595,7 +595,13 @@ async function boot() {
 
       requestAnimationFrame(frame);
     } catch (err) {
-      console.error('TmntSkateSlice frame() error:', err);
+      // Theme-neutral on purpose (2026-08-20) -- this string ships in the
+      // JS bundle for BOTH builds (see core/heroAssets.*.js's header for
+      // the broader "original build ships nothing TMNT-adjacent" rule);
+      // a project name here would be a needless leak into the non-TMNT
+      // build's shipped code for zero benefit (it's an error log, not
+      // user-facing copy).
+      console.error('frame() error:', err);
       throw err;
     }
   }

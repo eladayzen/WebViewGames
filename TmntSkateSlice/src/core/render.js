@@ -145,7 +145,7 @@ function drawPlayer(ctx, xFrac, w, h, images, player, isRunning, stage) {
   // countdown/gameover (updatePlayer only runs during gs.current==='running').
   // swing/hit are themselves short multi-frame sequences, keyed to elapsed
   // state time (see getSwingCycleSpriteKey/getHitCycleSpriteKey).
-  let spriteKey = 'mike_idle';
+  let spriteKey = 'hero_idle'; // theme-neutral key -- see core/assets.js's HERO_SPRITES
   if (player.state === 'swing') {
     spriteKey = getSwingCycleSpriteKey(player);
   } else if (player.state === 'hit') {

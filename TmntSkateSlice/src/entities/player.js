@@ -175,7 +175,9 @@ export function isInvulnerable(player) {
 // an open front-to-back running lunge -- direction from Amit, 2026-07-21).
 // The original wide-open-lunge frames are archived at
 // art/archive/run-cycle-wide-lunge/ in case that look is worth revisiting.
-const RUN_CYCLE_KEYS = ['mike_run_1', 'mike_run_3'];
+// Keys are theme-neutral (2026-08-20) -- see core/assets.js's HERO_SPRITES
+// for which actual PNG (mike_* or hero_*) each one resolves to per build.
+const RUN_CYCLE_KEYS = ['hero_run_1', 'hero_run_2'];
 export function getRunCycleSpriteKey(player) {
   const phase = Math.floor(player.runCyclePhaseTimer / RUN_CYCLE_FRAME_DURATION_SEC) % RUN_CYCLE_KEYS.length;
   return RUN_CYCLE_KEYS[phase];
@@ -186,7 +188,7 @@ export function getRunCycleSpriteKey(player) {
 // or get hit), split evenly across however many frames each sequence has.
 // Regenerated no-skateboard against mike_idle's current proportions.
 // Originals archived at art/archive/hit-swing-skateboard-era/.
-const SWING_CYCLE_KEYS = ['mike_swing_1', 'mike_swing_2', 'mike_swing_3'];
+const SWING_CYCLE_KEYS = ['hero_swing_1', 'hero_swing_2', 'hero_swing_3'];
 export function getSwingCycleSpriteKey(player) {
   const elapsed = SWING_DURATION_SEC - player.stateTimer;
   let acc = 0;
@@ -197,7 +199,7 @@ export function getSwingCycleSpriteKey(player) {
   return SWING_CYCLE_KEYS[SWING_CYCLE_KEYS.length - 1];
 }
 
-const HIT_CYCLE_KEYS = ['mike_hit_1', 'mike_hit_2'];
+const HIT_CYCLE_KEYS = ['hero_hit_1', 'hero_hit_2'];
 export function getHitCycleSpriteKey(player) {
   const elapsed = HIT_FLINCH_DURATION_SEC - player.stateTimer;
   const phase = Math.min(
@@ -207,11 +209,12 @@ export function getHitCycleSpriteKey(player) {
   return HIT_CYCLE_KEYS[phase];
 }
 
-// Block (shield brace) pose. TEMPORARY: reuses mike_swing_1 (the coiled
-// nunchaku-up windup, which reads reasonably as a defensive guard) as a
-// stand-in -- the dedicated block frame got repeatedly flagged by Kolbo's
-// safety filter this session (transient). Swap in a real 'mike_block' frame
-// once generated; only this one return changes.
+// Block (shield brace) pose. TEMPORARY: reuses hero_swing_1 (the coiled
+// windup pose, which reads reasonably as a defensive guard) as a stand-in --
+// the dedicated block frame got repeatedly flagged by Kolbo's safety filter
+// this session (transient), and this project hasn't revisited it since.
+// Swap in a real dedicated block frame (per theme) once generated; only
+// this one return changes.
 export function getBlockCycleSpriteKey(player) {
-  return 'mike_swing_1';
+  return 'hero_swing_1';
 }

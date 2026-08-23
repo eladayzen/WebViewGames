@@ -1108,9 +1108,9 @@ html, body {
   100% { transform: perspective(380px) rotateY(-58deg); }
 }
 
-/* Fixed-height ANCHOR wrapper (not the <img> itself) -- mike_run_1.png/
-   mike_run_3.png share the same source canvas height but differ in width
-   (549 vs 505, pose-dependent limb spread), so a width-based <img> (the
+/* Fixed-height ANCHOR wrapper (not the <img> itself) -- the two run-cycle
+   frames (see core/heroAssets.*.js) share the same source canvas height but
+   differ in width (pose-dependent limb spread), so a width-based <img> (the
    sizing that reads best -- character stays a consistent visual SIZE across
    both frames, unlike fixing height, which visibly resized him frame to
    frame) still has a slightly different computed height per frame. Wrapping
@@ -1120,16 +1120,16 @@ html, body {
    reflowing regardless, without resizing the character (fix 2026-08-04). */
 /* Fixed box on BOTH axes (2026-08-04, replaces the width-only/height-only/
    bottom-anchor attempts) -- see the index.html comment above this element.
-   96x112 matches mike_run_1's own aspect almost exactly (549x640 -> renders
-   96.0x111.9, i.e. essentially fills the box with no letterbox at all), so
-   the run-cycle frame shown first looks identical to before; mike_run_3
-   (505x640, a visibly narrower pose) is height-bound instead -- 88.4x112,
-   letterboxed ~4px each side. Net: height is IDENTICAL across both frames
-   (111.9 vs 112 -- a 0.1px difference, imperceptible), only a small
-   transparent-letterboxed width gap differs. object-fit does the letterboxing
-   -- no absolute positioning/wrapper needed, the <img>'s own box never
-   changes size at all, so neither the character NOR the popup layout around
-   it can visibly pulse. */
+   96x112 was tuned against the TMNT theme's own run-cycle frame aspect
+   ratios (near-zero letterbox on one frame, a few px each side on the
+   other); object-fit: contain makes this robust to ANY theme's frame
+   aspect ratios, just with more/less letterbox padding -- verified this
+   still holds for the original theme's differently-proportioned frames
+   (2026-08-20), no CSS changes needed. Net: height is IDENTICAL across both
+   frames regardless of theme, only the width letterbox gap differs.
+   object-fit does the letterboxing -- no absolute positioning/wrapper
+   needed, the <img>'s own box never changes size at all, so neither the
+   character NOR the popup layout around it can visibly pulse. */
 .intro-sprite {
   width: 96px;
   height: 112px;
