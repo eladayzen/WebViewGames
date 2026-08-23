@@ -638,6 +638,22 @@ export function createProps(scene) {
   let nextLipS = 60;
   /** Emissions per pattern name this run -- drives the `rare` cadence. */
   let emitsOf = Object.create(null);
+  /**
+   * Fraction of a pattern's content actually emitted, 0..1.
+   *
+   * A COURSE property rather than a terrain or pattern one, and that is the
+   * whole reason it exists: the free descent and the mission course ride the
+   * same hill with the same patterns, and want different amounts on it. Amit,
+   * on the full-density face: "that's a very packed layout... in missions I
+   * think we need less fully packed environments."
+   *
+   * Thinning here rather than authoring a second sparser table keeps ONE set of
+   * patterns as the source of truth for how the hill is laid out. The
+   * distribution across the width -- which took several passes to get right --
+   * is preserved automatically, because dropping items uniformly at random
+   * thins every band and every kind in the same proportion.
+   */
+  let density = 1;
   // --- route variation ------------------------------------------------------
   // Off unless the course asks for it (see data/courses.js). When off, every
   // one of these is inert and the course is byte-for-byte the fixed layout the
@@ -777,7 +793,14 @@ export function createProps(scene) {
     const flip = vary && rng() < 0.5 ? -1 : 1;
     const rim = TERRAIN.thetaMax;
     if (emitsOf[p.name] === undefined) emitsOf[p.name] = 0;
+    let itemIndex = 0;
     for (const item of p.build(rim)) {
+      // Deterministic per (pattern position, item), NOT random: a mission
+      // course is a fixed layout, and a star means nothing if the same mission
+      // thins differently on a replay. Keyed off the pattern's absolute start
+      // so the same stretch of hill always drops the same items.
+      const keep = density >= 1 || hash(start * 0.37 + (itemIndex++) * 13.7) < density;
+      if (!keep) continue;
       // RARE placements appear in one of every `rare` emissions OF THIS
       // PATTERN. Per-pattern, not global: counted against the global emission
       // index, a rare:3 inside a pattern that itself only comes up every fifth
@@ -846,6 +869,11 @@ export function createProps(scene) {
      * so a different start puts the pinches, the banking and the scenery
      * somewhere else entirely. The same set-piece sits on different road.
      */
+    /** @param {number} d fraction of authored content to emit, 0..1 */
+    setDensity(d) {
+      density = (typeof d === 'number' && d > 0) ? Math.min(1, d) : 1;
+    },
+
     reset(startS = 0) {
       while (active.length) release(active.pop());
       nextPatternS = startS + 60; // leave the opening stretch clear

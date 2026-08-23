@@ -20,7 +20,7 @@
 
 import { registerMode } from './mode.js';
 import { RIDE_EVENTS as EV } from '../core/events.js';
-import { MISSIONS } from '../data/missions.js';
+import { MISSIONS , getMission } from '../data/missions.js';
 import { DEFAULT_COURSE } from '../data/courses.js';
 
 // How each objective kind reads the event stream: which event feeds it, whether
@@ -91,11 +91,17 @@ export function setPendingMission(id) {
   pendingId = id;
 }
 
-export default registerMode({
+const MISSION_MODE = {
   id: 'missions',
   name: 'MISSIONS',
   tagline: 'Beat the clock. Tick the list.',
   course: DEFAULT_COURSE,
+  /**
+   * THE MISSION picks the hill, not the mode. Missions now span two terrains
+   * in one progression, so a single course on the mode def cannot answer for
+   * all of them -- startRun asks this first and falls back to `course` above.
+   */
+  courseFor: () => (pendingId && getMission(pendingId).course) || DEFAULT_COURSE,
 
   create(ctx) {
     const mission = MISSIONS.find((m) => m.id === pendingId) || MISSIONS[0];
@@ -257,4 +263,30 @@ export default registerMode({
       }),
     };
   },
+};
+
+/**
+ * TWO LOBBY BUTTONS, one behaviour.
+ *
+ * The ridge's twenty missions and the face's eight are separate ladders with
+ * separate front doors -- Amit: "I thought you're making a new button in the
+ * lobby, a new lobby with new missions for the new architecture." Appending
+ * them to one list, which is what was built first, made them technically
+ * present and practically unreachable: the unlock rule gates each mission on
+ * the one before it, so the face's first mission sat behind twenty ridge
+ * missions with no way in.
+ *
+ * The MODE is identical for both -- same objectives, same clock, same scoring;
+ * the hill is chosen per mission by courseFor(). All a second registration buys
+ * is a second entry in the lobby, which is exactly the thing that was missing.
+ */
+export default registerMode({ ...MISSION_MODE, id: 'missions', name: 'MISSIONS',
+  tagline: 'Beat the clock. Tick the list.' });
+
+export const FACE_MISSIONS_MODE = registerMode({
+  ...MISSION_MODE,
+  id: 'faceMissions',
+  name: 'OPEN FACE',
+  tagline: 'A wider mountain. Eight new runs.',
 });
+

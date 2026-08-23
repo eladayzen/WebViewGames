@@ -19,7 +19,18 @@
 
 const STORAGE_KEY = 'hillbomb.progress.v1';
 
-export function createProgress(missionIds) {
+/**
+ * @param {string[]|string[][]} tracks one ladder, or several.
+ *
+ * TWO LADDERS, ONE RECORD STORE. The ridge and the open face are separate
+ * progressions -- the face's first mission is open from the start rather than
+ * gated behind twenty ridge missions -- but stars, scores and the storage key
+ * stay shared, because they are per-MISSION facts and nothing about them cares
+ * which list a mission appears in. Only the unlock RULE is per-track.
+ */
+export function createProgress(tracks) {
+  const chains = Array.isArray(tracks[0]) ? tracks : [tracks];
+  const missionIds = chains.flat();
   /** @type {Record<string, {stars:number, score:number}>} */
   let records = {};
 
@@ -65,17 +76,28 @@ export function createProgress(missionIds) {
      * -- there is one source of truth, and unlocking is derived from it.
      */
     isUnlocked(id) {
-      const i = missionIds.indexOf(id);
-      if (i <= 0) return i === 0;
-      return api.cleared(missionIds[i - 1]);
+      // Position within its OWN chain, not within the flattened list: the first
+      // mission of every track is open, and each one after it opens when the
+      // one before it in THAT track has been cleared.
+      for (const chain of chains) {
+        const i = chain.indexOf(id);
+        if (i < 0) continue;
+        if (i === 0) return true;
+        return api.cleared(chain[i - 1]);
+      }
+      return false;
     },
 
-    /** The first unlocked mission that has not been cleared, else the last. */
-    nextMissionId() {
-      for (const id of missionIds) {
+    /**
+     * The first unlocked mission in a track that has not been cleared, else its
+     * last. Defaults to the first track, which is the ridge.
+     */
+    nextMissionId(trackIndex = 0) {
+      for (const id of (chains[trackIndex] || missionIds)) {
         if (api.isUnlocked(id) && !api.cleared(id)) return id;
       }
-      return missionIds[missionIds.length - 1];
+      const chain = chains[trackIndex] || missionIds;
+      return chain[chain.length - 1];
     },
 
     /**

@@ -347,13 +347,22 @@ export const TERRAIN_PRESETS = {
       // The big one. Deep AND fairly short, so it both throws you and drops the
       // ground a long way while you are up there.
       { depth: 8.0, width: 0.070, profile: 'roll' },
-      // Two steps with a breather between -- two small airs in quick
-      // succession rather than one big one. Authored at 0.34 first, which
-      // measured out at needing 33.5 u/s to launch: against a 26.7 cruise that
-      // is a shape you can never leave the ground on, making it a second flow
-      // drop rather than the distinct thing it is meant to be. 0.26 puts both
-      // steps under cruising speed.
-      { depth: 4.5, width: 0.105, profile: 'stair' },
+      // ONE DROP, NOT TWO. This was a 'stair' -- two half-drops with a
+      // breather between them -- on the idea that landing the first and riding
+      // the second was an interesting decision. Ridden, it is not. Amit: "the
+      // double drops, when I have one drop and then immediately another one, it
+      // doesn't feel good. Everywhere there's a double drop it should be a big
+      // drop or something."
+      //
+      // The reason is the flight. A drop's air comes from the ground outrunning
+      // gravity, and peak lift goes as depth*(1-1/R)^3 -- so a half-depth step
+      // gives far less than half the hang. Two of those in quick succession is
+      // being pitched up and set back down twice with no time to read either.
+      // One drop of the same total depth is a single clean throw instead.
+      //
+      // Depth unchanged at 4.5, so dropCycleDepth stays 24 and the hill's
+      // average grade does not move. Width set for R = 3, like the others.
+      { depth: 4.5, width: 0.055, profile: 'roll' },
       // A snap. Barely a drop at all, over almost no distance.
       { depth: 2.5, width: 0.039, profile: 'roll' },
     ],

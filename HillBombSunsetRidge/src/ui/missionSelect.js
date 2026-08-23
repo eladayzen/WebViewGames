@@ -22,7 +22,16 @@
 /** Missions revealed per block -- see the horizon note above. */
 const BLOCK = 10;
 
-export function createMissionSelect(missions, progress, onPick) {
+/**
+ * @param {number} [track=0] which progression ladder this list is showing.
+ *
+ * There are two now -- the ridge and the open face -- and every call to
+ * nextMissionId has to name one. Without it the face's list asked for "the next
+ * mission" and was handed a RIDGE id, which is not in its array: the lookup
+ * returned undefined and reading .number off it threw, leaving the list hidden
+ * and the button dead.
+ */
+export function createMissionSelect(missions, progress, onPick, track = 0) {
   const el = document.getElementById('mission-select');
   const listEl = document.getElementById('mission-list');
   const totalEl = document.getElementById('msel-total');
@@ -46,7 +55,7 @@ export function createMissionSelect(missions, progress, onPick) {
 
   function render() {
     listEl.innerHTML = '';
-    const nextId = progress.nextMissionId();
+    const nextId = progress.nextMissionId(track);
     const shown = missions.slice(0, horizon());
 
     for (const m of shown) {
@@ -65,7 +74,9 @@ export function createMissionSelect(missions, progress, onPick) {
       // The number leads every row. Once the list scrolls, "the one I am on" is
       // otherwise only expressible as a position on screen -- a number makes it
       // something the player can hold on to and say out loud.
-      const num = `<div class="msel-num">${String(m.number).padStart(2, '0')}</div>`;
+      // Numbered within its own ladder. m.number is the position in the global
+      // table, which reads as 21-28 on a list of eight.
+      const num = `<div class="msel-num">${String(missions.indexOf(m) + 1).padStart(2, '0')}</div>`;
       row.innerHTML = unlocked
         ? `${num}
            <div class="msel-text">
@@ -99,8 +110,8 @@ export function createMissionSelect(missions, progress, onPick) {
     totalEl.innerHTML = `<span class="msel-star earned">&#9733;</span> ${total} / ${missions.length * 3}`;
     const nextM = missions.find((m) => m.id === nextId);
     nextBtn.textContent = progress.cleared(nextId)
-      ? `PLAY ${String(nextM.number).padStart(2, '0')} AGAIN`
-      : `MISSION ${String(nextM.number).padStart(2, '0')}`;
+      ? `PLAY ${String(missions.indexOf(nextM) + 1).padStart(2, '0')} AGAIN`
+      : `MISSION ${String(missions.indexOf(nextM) + 1).padStart(2, '0')}`;
   }
 
   function choose(id) {
@@ -108,7 +119,7 @@ export function createMissionSelect(missions, progress, onPick) {
     onPick(id);
   }
 
-  nextBtn.addEventListener('click', () => choose(progress.nextMissionId()));
+  nextBtn.addEventListener('click', () => choose(progress.nextMissionId(track)));
 
   // Space/Enter takes the default action. On the board these are the only keys
   // the host forwards, so without this the screen would be a dead end there --
@@ -117,7 +128,7 @@ export function createMissionSelect(missions, progress, onPick) {
     if (el.classList.contains('hidden')) return;
     if (e.code === 'Space' || e.code === 'Enter') {
       e.preventDefault();
-      choose(progress.nextMissionId());
+      choose(progress.nextMissionId(track));
     }
   });
 

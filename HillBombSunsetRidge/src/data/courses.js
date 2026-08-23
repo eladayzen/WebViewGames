@@ -111,6 +111,37 @@ export const COURSES = {
     allowedKinds: ['launch', 'grind', 'scenery', 'pickup', 'wall'],
     variation: true,
   },
+  /**
+   * THE FACE, DRESSED FOR MISSIONS.
+   *
+   * Same hill and the same authored patterns as the free descent, with two
+   * differences that are both about a mission being a fair, repeatable test.
+   *
+   * FIXED LAYOUT, like sunsetRidge and for the same reason: star thresholds are
+   * measured against a specific arrangement of ground, and a replayed mission
+   * has to be the same mission or a star means nothing.
+   *
+   * HALF THE CONTENT. Amit, on the full-density face: "that's a very packed
+   * layout, very much packed... in missions I think we need less fully packed
+   * environments." A free run wants a busy hill to play with; a mission is
+   * already asking you to hold an objective in your head, and a hill that
+   * demands continuous avoidance on top of that leaves nothing to think with.
+   * 0.55 rather than a flat half so the sparser hill still meets a barrier
+   * roughly every 55m, which is about the pipe's spacing.
+   *
+   * ENDLESS, because a mission ends on its own clock rather than by arriving
+   * somewhere -- the same shape sunsetRidge has.
+   */
+  openFaceMissions: {
+    id: 'openFaceMissions',
+    name: 'Open Face · Missions',
+    kind: COURSE_ENDLESS,
+    length: null,
+    terrain: 'openFace',
+    allowedKinds: ['launch', 'grind', 'scenery', 'pickup', 'wall'],
+    variation: false,
+    density: 0.55,
+  },
 };
 
 export const DEFAULT_COURSE = 'sunsetRidge';

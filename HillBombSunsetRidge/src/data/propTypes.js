@@ -239,7 +239,7 @@ export const PROP_TYPES = {
     size: { w: 2.6, h: 4.4, l: 2.6 },
     colour: 0x7fe3ff,
     accent: 0xfff1c0,
-    pickup: { type: 'statue', points: 1800, catchWidth: 4.2, height: 2.2, reach: 3.4 },
+    pickup: { type: 'idol', points: 1800, catchWidth: 4.2, height: 2.2, reach: 3.4 },
     label: 'IDOL',
   },
 

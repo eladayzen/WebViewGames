@@ -39,8 +39,24 @@ const AIRTIME_GOOD = 9.0;
 
 export default registerMode({
   id: 'openFace',
-  name: 'OPEN FACE',
-  tagline: 'A wide mountain. Ride the line you want.',
+  name: 'FREE DESCENT',
+  tagline: 'The open face, no list. Scored on air.',
+  /**
+   * OFF THE FRONT DOOR, like freeride before it.
+   *
+   * This mode was the scaffolding for building the open face -- somewhere to
+   * ride the terrain while the drops, the wall and the controller were being
+   * worked out. The face's mission ladder is the real thing now, and having
+   * both in the lobby put two buttons there that are both "the open face" with
+   * nothing on them to say which one has the missions. Amit, looking at it: "I
+   * click free descent and I don't see another lobby for missions."
+   *
+   * Two names for one hill is a worse problem than one fewer option, so it
+   * stays REGISTERED and reachable at ?gamemode=openFace -- it is still the
+   * cleanest harness for working on the terrain itself, with no objectives in
+   * the way -- and comes off the lobby.
+   */
+  hidden: true,
   course: OPEN_FACE_COURSE,
 
   create(ctx) {

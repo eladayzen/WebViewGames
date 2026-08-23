@@ -143,7 +143,16 @@ const briefing = createBriefing();
 // Stars and unlocks. Local today, account data in the shipped product -- the
 // whole point of it being a module is that swapping the backing store touches
 // only that file (see systems/progress.js).
-const progress = createProgress(MISSIONS.map((m) => m.id));
+// TWO LADDERS. The ridge's original twenty and the open face's eight are
+// separate progressions with separate front doors -- the face's first mission is
+// open from the start rather than sitting behind twenty ridge missions. Stars
+// and scores stay in one store; only the unlock rule is per-track.
+const RIDGE_MISSIONS = MISSIONS.filter((m) => !m.course);
+const FACE_MISSIONS = MISSIONS.filter((m) => m.course);
+const progress = createProgress([
+  RIDGE_MISSIONS.map((m) => m.id),
+  FACE_MISSIONS.map((m) => m.id),
+]);
 
 // The mode is handed a read-only view of the ride and a way to END it, and
 // nothing else. Everything it wants to know arrives through `events`.
@@ -672,16 +681,34 @@ const lobby = createLobby(
 // Only choice here is the mode. A mode with levels goes on to pick one; a mode
 // without them starts immediately.
 const modeSelect = createModeSelect((id) => {
+  // The two mission buttons open a list rather than starting a run; everything
+  // else drops straight in.
   if (id === 'missions') missionSelect.open();
+  else if (id === 'faceMissions') faceSelect.open();
   else startRun(id);
 });
 
+/** Whichever mission list is currently up, or null. */
+function openSelect() {
+  if (missionSelect.isOpen()) return missionSelect;
+  if (faceSelect.isOpen()) return faceSelect;
+  return null;
+}
+
 // --- mission select ---------------------------------------------------------
 // Shown after choosing MISSIONS, and again after every result.
-const missionSelect = createMissionSelect(MISSIONS, progress, (missionId) => {
+const missionSelect = createMissionSelect(RIDGE_MISSIONS, progress, (missionId) => {
   setPendingMission(missionId);
   startRun('missions');
 });
+
+// The face's own list, behind its own lobby button. Same component, same
+// progress store, same star records -- it differs only in which missions it
+// shows and which mode id the run is started under.
+const faceSelect = createMissionSelect(FACE_MISSIONS, progress, (missionId) => {
+  setPendingMission(missionId);
+  startRun('faceMissions');
+}, 1); // track 1 -- the face's own ladder
 
 // --- theme ------------------------------------------------------------------
 //
@@ -710,7 +737,10 @@ function startRun(id) {
   // The course decides what may spawn -- hazards are absent from every course
   // today, which is how "no cones by default" is expressed as data rather than
   // as a hard-coded filter inside the spawner.
-  const course = getCourse(def.course || DEFAULT_COURSE);
+  // A mode may defer the choice to whatever it is about to run -- missions do,
+  // because one progression now spans two hills.
+  const course = getCourse(
+    (def.courseFor && def.courseFor()) || def.course || DEFAULT_COURSE);
   // THE SHAPE OF THE HILL, before anything is placed on it. Terrain has to land
   // first: prop placement is expressed in angles out to the rim, and the trough
   // mesh, the pendulum and the collision arithmetic all read the cross-section
@@ -719,6 +749,8 @@ function startRun(id) {
   setTerrain(course.terrain || DEFAULT_TERRAIN);
   trough.applyTerrain();
   props.setAllowedKinds(course.allowedKinds);
+  // How much of the authored layout this course actually wants on the ground.
+  props.setDensity(course.density);
   // ROUTE VARIATION. One seed decides the whole run's layout, and the biggest
   // thing it moves is where on the hill you START: the trough's funnels and
   // roll are functions of absolute distance, so a different starting distance
@@ -875,12 +907,15 @@ function leaveRun() {
   // Read the mode BEFORE tearing it down. The host happens to keep its `def`
   // after stop() so `modes.id` would still answer, but relying on that makes
   // this correct by accident.
-  const wasMissions = modes.id === 'missions';
+  // Which list to return to -- the one whose button was pressed, not "missions"
+  // by name. Getting this wrong strands the player on the wrong ladder.
+  const wasMissions = modes.id === 'missions' || modes.id === 'faceMissions';
+  const returnSelect = modes.id === 'faceMissions' ? faceSelect : missionSelect;
   briefing.cancel();
   modes.stop();
   running = false;
   setPaused(false);
-  if (wasMissions) missionSelect.open();
+  if (wasMissions) returnSelect.open();
   else modeSelect.open();
 }
 
@@ -909,8 +944,8 @@ document.getElementById('confirm-yes').addEventListener('click', () => {
 window.__gbBack = () => {
   if (isConfirmOpen()) {                       // already asking -- treat as "no"
     confirmEl.classList.add('hidden');
-  } else if (missionSelect.isOpen()) {         // mission list -> mode lobby
-    missionSelect.close();
+  } else if (openSelect()) {                   // either mission list -> lobby
+    openSelect().close();
     modeSelect.open();
   } else if (modeSelect.isOpen()) {            // top of OUR stack -> leave the game
     if (window.Unity) window.Unity.call('nav:back');
@@ -959,7 +994,7 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, clock.getDelta());
 
-  if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !missionSelect.isOpen()
+  if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !openSelect()
       && !isConfirmOpen() && !briefing.isOpen() && !isPanelOpen()) {
     let { carve, tuck, brake, pop } = readInput();
     // NO CONTROL WHILE DOWN. Steering out of a crash before the rider has got
@@ -1827,7 +1862,7 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals, finishLine, trough, sky, applyTheme,
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, faceSelect, rivals, finishLine, trough, sky, applyTheme,
   // Live cross-section, plus the setter -- so a terrain can be swapped mid-run
   // from the console and measured, rather than only via a mode's course.
   TERRAIN, setTerrain: (k) => { setTerrain(k); trough.applyTerrain(); },

@@ -87,6 +87,9 @@ function starTiers(seconds) {
  * curve comes from the clock tightening rather than from asking for the
  * impossible.
  */
+/** The open face's mission course -- see data/courses.js. */
+const FACE = 'openFaceMissions';
+
 const AUTHORED = [
   ['firstDrop',   'FIRST DROP',    'Learn the ridge. Grab what shines.',        70, { pickup: 20 }],
   ['railRunner',  'RAIL RUNNER',   'The metal is faster than the paint.',       90, { grind: 4, pickup: 16 }],
@@ -108,15 +111,59 @@ const AUTHORED = [
   ['topSpeed',    'TOP SPEED',     'No brakes. No hesitation.',                 90, { score: 56000 }],
   ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 36, grind: 5, launch: 18 }],
   ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { score: 74000, pickup: 36, grind: 5 }],
+
+  // --- THE OPEN FACE ---------------------------------------------------------
+  //
+  // The ladder changes hill here. Everything above is the ridge -- a narrow
+  // trough with a fast line down the middle -- and everything below is the wide
+  // face, where there is no fast line, the whole width is ridable, and the
+  // ground itself drops away and throws you.
+  //
+  // TARGETS ARE DERIVED, NOT GUESSED, and the derivation matters because the
+  // face offers a different amount of everything. Sweeping both hills at their
+  // own densities gives what each puts in front of you per minute:
+  //
+  //     ridge        pickup 68    launch 32    grind 20
+  //     face @0.55   pickup 49    launch 25    grind 13
+  //
+  // and the twenty missions above -- whose thresholds came from real timed runs
+  // -- ask for 16-30% of the pickups on offer, 15-45% of the launches, and
+  // 10-15% of the grinds. Applying those same fractions to what the face offers
+  // is what sets the numbers below. Copying the ridge's raw targets across would
+  // have made every one of these quietly harder, most of all the grinds, where
+  // the face offers a third less.
+  //
+  // Each one introduces something, per Amit: a mission should bring in new
+  // content rather than re-ask the last one with bigger numbers.
+  ['openGround',  'OPEN GROUND',   'A whole mountain. Go wide.',                80, { pickup: 12 }, FACE],
+  ['wideLines',   'WIDE LINES',    'The edges pay better than the middle.',     90, { pickup: 15, launch: 8 }, FACE],
+  ['theDrops',    'THE DROPS',     'Let the hill throw you. It will.',          85, { launch: 14 }, FACE],
+  ['ironEdge',    'IRON EDGE',     'Rails, out where the ground runs out.',     95, { grind: 3, pickup: 14 }, FACE],
+  ['theIdol',     'THE IDOL',      'Something out there is worth the detour.', 100, { idol: 1, pickup: 14 }, FACE],
+  ['bothRims',    'BOTH RIMS',     'Left, right, and back again.',              90, { pickup: 20, launch: 12 }, FACE],
+  ['wholeFace',   'THE WHOLE FACE','Everything the mountain has.',             100, { pickup: 20, grind: 3, launch: 14 }, FACE],
+  ['idolHunt',    'IDOL HUNT',     'Take the long way. Twice.',                110, { idol: 1, pickup: 22, launch: 12 }, FACE],
 ];
 
 // Objective order on screen: collect, ride, launch, score. Consistent across
 // every mission so the eye learns where to look rather than re-reading the list.
-const KIND_ORDER = ['pickup', 'grind', 'launch', 'score'];
+const KIND_ORDER = ['pickup', 'idol', 'grind', 'launch', 'score'];
 
 /** @type {Mission[]} */
-export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets], i) => ({
+export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course], i) => ({
   id,
+  /**
+   * Which hill this mission is played on. Undefined means the ridge, which is
+   * every mission authored before the open face existed -- so the twenty that
+   * already have measured star thresholds keep the exact ground they were
+   * measured on, and nothing about them moves.
+   *
+   * ONE PROGRESSION, TWO HILLS. Amit chose "added alongside" over moving the
+   * whole mode: the face missions extend the same list rather than forking a
+   * second track, so a player walks one ladder that happens to change terrain
+   * partway up.
+   */
+  course,
   /** 1-based position in the list. Derived, never authored -- a hand-written
    *  number would go stale the moment a mission is inserted or reordered. */
   number: i + 1,
@@ -127,7 +174,13 @@ export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets], i) =>
   objectives: KIND_ORDER.filter((k) => targets[k] != null).map((kind) => (
     kind === 'pickup'
       ? { kind, type: 'crystal', count: targets[kind] }
-      : { kind, count: targets[kind] }
+      // An idol is a pickup with a different type, not a different kind -- the
+      // objective matcher already filters on p.type, so this needs no new
+      // tracking. Authored as its own key purely so a mission can ask for both
+      // in one line without the two counts colliding.
+      : kind === 'idol'
+        ? { kind: 'pickup', type: 'idol', count: targets[kind] }
+        : { kind, count: targets[kind] }
   )),
 }));
 
