@@ -1004,14 +1004,30 @@ html, body {
    Big, centred, and then it FLIES INTO the HUD panel rather than cutting to it.
    The flight is the whole point: it says "this thing you just read is that
    thing in the corner", which a fade cannot. */
-#briefing { background: rgba(10, 7, 16, 0.72); z-index: 9400; }
+/* FULLY OPAQUE, not a scrim. Amit: "I want the whole starting screen to have a
+   fully full opacity black background so we won't see the player -- something
+   in the environment at that state of generation doesn't look good."
+   
+   He is right, and it is not only cosmetic. The briefing is shown BEFORE the
+   run starts, which is exactly when the world is being built: the prop field is
+   spawning its first few hundred metres, the trough is rebuilding its whole
+   surface window, and the rider is being placed. Showing that through a 72%
+   scrim advertises the one moment the game looks least finished. Opaque turns
+   the same moment into a deliberate title card. */
+#briefing { background: #07050c; z-index: 9400; }
 #brief-card {
-  width: min(30em, 86vw);
-  font-size: 11px; /* fallback if clamp() is unsupported */
-  font-size: clamp(9px, 1.34vw, 13px);
-  padding: 1.5em 1.6em 1.3em;
+  /* BIGGER AND CLEARER, per the same note. The card was sized to sit lightly
+     over a visible game; with nothing behind it there is no reason to be
+     modest, and this is the only screen that explains what the player is about
+     to be asked to do. Roughly 40% up on both the width and the type scale. */
+  width: min(38em, 92vw);
+  font-size: 15px; /* fallback if clamp() is unsupported */
+  font-size: clamp(13px, 1.9vw, 19px);
+  padding: 1.7em 1.8em 1.5em;
   border-radius: 1em;
-  background: rgba(26, 19, 34, 0.96);
+  /* No panel fill against an opaque backdrop -- a slightly-lighter box on black
+     is just an edge to notice. The border stays as the frame. */
+  background: rgba(26, 19, 34, 0.55);
   border: 2px solid rgba(255, 122, 61, 0.55);
   color: var(--paper);
 }
@@ -1023,22 +1039,25 @@ html, body {
   opacity: 0.85;
 }
 #brief-name {
-  font: 900 2.6em/1.05 system-ui, sans-serif;
+  font: 900 3.0em/1.05 system-ui, sans-serif;
   letter-spacing: 0.04em;
   margin-top: 0.12em;
 }
 #brief-sub {
-  font: 500 1.05em/1.4 system-ui, sans-serif;
-  opacity: 0.6;
-  margin-top: 0.35em;
+  font: 500 1.15em/1.4 system-ui, sans-serif;
+  /* Was 0.6, which is fine over a bright game and muddy on black. */
+  opacity: 0.78;
+  margin-top: 0.4em;
 }
 #brief-list { list-style: none; margin: 1.2em 0 0; padding: 0; }
 #brief-list li {
   display: flex; justify-content: space-between; align-items: center; gap: 1em;
-  padding: 0.6em 0.9em;
+  padding: 0.75em 1em;
   border-radius: 0.55em;
-  background: rgba(255, 255, 255, 0.07);
-  font: 800 1.15em/1 system-ui, sans-serif;
+  /* Lifted from 0.07: the objective rows ARE the explanation of the mission,
+     and they were the faintest thing on the card. */
+  background: rgba(255, 255, 255, 0.12);
+  font: 800 1.35em/1 system-ui, sans-serif;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   /* Rows arrive one after another, so the list reads as a list of things to do

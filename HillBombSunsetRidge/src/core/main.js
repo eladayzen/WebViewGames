@@ -751,7 +751,18 @@ function startRun(id) {
   // props against the previous hill's width.
   setTerrain(course.terrain || DEFAULT_TERRAIN);
   trough.applyTerrain();
-  props.setAllowedKinds(course.allowedKinds);
+  // CONTENT IS THE MISSION'S TO DECIDE, falling back to the course.
+  //
+  // Amit, on the face's ladder: "first mission should be only ramps, and you
+  // should not have glides at all on the screen -- and of course blockers. Then
+  // the next mission should be glides, then pickups. But in the first two we
+  // shouldn't have pickups at all." That is a statement about what SPAWNS, not
+  // about what is counted: a mission teaching ramps with rails lying around is
+  // not teaching ramps.
+  const content = (def.contentFor && def.contentFor()) || null;
+  props.setAllowedKinds(content ? content.kinds : course.allowedKinds);
+  props.setContent(content ? (content.without || null) : null,
+    content ? !!content.rareAlways : false);
   // How much of the authored layout this course actually wants on the ground.
   props.setDensity(course.density);
   // ROUTE VARIATION. One seed decides the whole run's layout, and the biggest
@@ -1605,6 +1616,11 @@ function frame() {
           hit.mesh.visible = false;
           hit.spent = true;
         } else if (hit.def.kind === 'boost') {
+          events.emit(EV.BOOST, {
+            label: hit.def.label,
+            speed: hit.def.boost.speed,
+            seconds: hit.def.boost.seconds,
+          });
           // A real speed change, not a score bonus dressed up as one: the whole
           // point is that it moves you up the road. Added to the CURRENT speed
           // rather than setting a target, so hitting one while already fast is

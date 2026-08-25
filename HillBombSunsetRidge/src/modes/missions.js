@@ -32,31 +32,54 @@ import { DEFAULT_COURSE } from '../data/courses.js';
 // to two lines to do it. The label is what you are after; the counter is how far
 // you have got. The full phrasing survives where it is actually useful -- the
 // popup when a line completes, which has the room and no counter next to it.
+/**
+ * TWO LABELS PER OBJECTIVE, and they are not the same job.
+ *
+ * `label` is for the HUD panel during a run -- a glance at the corner, where
+ * "CRYSTALS 12/16" is exactly right and a verb is noise you re-read every time.
+ *
+ * `action` is for the briefing card, which is the one screen whose entire
+ * purpose is explaining what you are about to be asked to do. Amit: "instead of
+ * writing crystals -- collect crystals. The creative explanation needs to be
+ * much more simple and clear." A bare noun is a category; a verb is an
+ * instruction, and the card should give an instruction.
+ */
 const KIND_SPECS = {
   pickup: {
     event: EV.PICKUP,
     match: (o, p) => !o.type || p.type === o.type,
     label: (o) => `${(o.type || 'pickup').toUpperCase()}S`,
+    action: (o) => `COLLECT ${(o.type || 'pickup').toUpperCase()}S`,
   },
   trick: {
     event: EV.TRICK,
     match: (o, p) => p.type === o.trick,
     label: (o) => `${String(o.trick).toUpperCase()}${o.count > 1 ? 'S' : ''}`,
+    action: (o) => `LAND ${String(o.trick).toUpperCase()}${o.count > 1 ? 'S' : ''}`,
   },
   anyTrick: {
     event: EV.TRICK,
     match: () => true,
     label: () => 'TRICKS',
+    action: () => 'LAND TRICKS',
   },
   launch: {
     event: EV.LAUNCH,
     match: () => true,
     label: () => 'RAMPS',
+    action: () => 'HIT RAMPS',
+  },
+  boost: {
+    event: EV.BOOST,
+    match: () => true,
+    label: () => 'BOOSTS',
+    action: () => 'RIDE SPEED GATES',
   },
   grind: {
     event: EV.GRIND,
     match: () => true,
     label: () => 'RAILS',
+    action: () => 'RIDE RAILS',
   },
   air: {
     event: EV.LAND,
@@ -69,6 +92,7 @@ const KIND_SPECS = {
     // way to tell which landings were supposed to count.
     match: (o, p) => !!p.huge,
     label: () => 'HUGE AIRS',
+    action: () => 'LAND HUGE AIRS',
   },
   score: {
     // Score is a level, not a tally of events, so it is polled in update()
@@ -76,6 +100,7 @@ const KIND_SPECS = {
     // and the completion check do not need to know the difference.
     poll: (ctx) => ctx.scoring.state.score,
     label: () => 'SCORE',
+    action: () => 'SCORE POINTS',
     // Its own counter format: "12043/20000" does not fit the panel's width and
     // is unreadable at a glance anyway. Thousands are the unit that matters.
     fmt: (o) => `${Math.floor(o.have / 1000)}k/${Math.round(o.count / 1000)}k`,
@@ -102,6 +127,12 @@ const MISSION_MODE = {
    * all of them -- startRun asks this first and falls back to `course` above.
    */
   courseFor: () => (pendingId && getMission(pendingId).course) || DEFAULT_COURSE,
+  /**
+   * What may appear on the ground for this mission. Null lets the course
+   * decide, which is every ridge mission -- only the face's ladder introduces
+   * its vocabulary one piece at a time.
+   */
+  contentFor: () => (pendingId && getMission(pendingId).content) || null,
 
   create(ctx) {
     const mission = MISSIONS.find((m) => m.id === pendingId) || MISSIONS[0];
@@ -244,9 +275,15 @@ const MISSION_MODE = {
       briefing: () => ({
         number: mission.number,
         name: mission.name,
-        sub: mission.brief,
+        // NO FLAVOUR LINE. Amit: "we have the headline, then we have some
+        // sentence that people spend time to look at and it's really confusing
+        // and not that funny." It sat between the title and the objectives --
+        // the two things that actually say what to do -- and cost a read to
+        // discover it said nothing. mission.brief still labels the row in the
+        // mission list, where browsing is the point.
         rows: objectives.map((o) => ({
-          label: o.spec ? o.spec.label(o) : o.kind,
+          label: o.spec && o.spec.action ? o.spec.action(o)
+            : o.spec ? o.spec.label(o) : o.kind,
           text: o.spec && o.spec.fmt ? `${o.count.toLocaleString()}` : `${o.count}`,
         })),
       }),

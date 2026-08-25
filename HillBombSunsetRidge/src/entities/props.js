@@ -630,6 +630,16 @@ export function createProps(scene) {
   const active = []; // { type, def, s, u, mesh, spent }
   // Which prop kinds may spawn. Hazards excluded by default; see add().
   let allowedKinds = new Set(['launch', 'grind', 'scenery', 'pickup']);
+  /** @type {Set<string>|null} prop TYPES to leave out, or null for none. */
+  let blockedTypes = null;
+  /**
+   * When true, `rare` placements emit on every showing of their pattern rather
+   * than on their authored cadence. For a mission built ENTIRELY around a rare
+   * thing -- five idols, say -- the authored "every now and then" is exactly
+   * wrong: it is the cadence for something you meet incidentally, not for the
+   * one thing you are out there to find.
+   */
+  let rareAlways = false;
   let nextPatternS = 60; // leave the opening stretch clear
   // Separate frontier from the patterns'. Lip ramps are placed against the
   // TERRAIN, which has its own spacing and knows nothing about how long a
@@ -710,6 +720,15 @@ export function createProps(scene) {
     // survives intact and a mode can switch it back on with one flag, instead
     // of someone having to re-author eight patterns from a git history.
     if (!allowedKinds.has(def.kind)) return;
+    // TYPE BLOCK-LIST, on top of the kind filter. A mission introducing
+    // crystals must not also have idols on screen, and both are kind 'pickup'
+    // -- so kind alone cannot express "crystals but not idols".
+    //
+    // A block-list rather than an allow-list, and that is not a detail: an
+    // allow-list is applied to EVERY prop, so naming the one type a mission is
+    // about would silently delete its ramps and its blockers too. Saying what
+    // to leave out only ever removes what it names.
+    if (blockedTypes && blockedTypes.has(type)) return;
     const mesh = acquire(type);
     group.add(mesh);
     active.push({ type, def, s, theta, mesh, spent: false });
@@ -815,7 +834,8 @@ export function createProps(scene) {
       // rare:2 placement in the set fires on the same emissions and they arrive
       // in clumps -- measured, six idols in a descent landed as three early,
       // a 1000m gap, then three late.
-      if (item.rare && (emitsOf[p.name] % item.rare) !== (item.rarePhase || 0)) continue;
+      if (!rareAlways && item.rare
+        && (emitsOf[p.name] % item.rare) !== (item.rarePhase || 0)) continue;
       // SPREAD pushes an authored layout out toward the edges of a wider hill
       // (see data/terrain.js). Clamped at the rim: on a wall terrain the rim is
       // a solid barrier, and a prop scaled past it would be embedded in it.
@@ -869,6 +889,15 @@ export function createProps(scene) {
      * so a different start puts the pinches, the banking and the scenery
      * somewhere else entirely. The same set-piece sits on different road.
      */
+    /**
+     * @param {string[]|null} block prop TYPES to leave out, or null for none.
+     * @param {boolean} [always] emit `rare` placements every time.
+     */
+    setContent(block, always = false) {
+      blockedTypes = block && block.length ? new Set(block) : null;
+      rareAlways = !!always;
+    },
+
     /** @param {number} d fraction of authored content to emit, 0..1 */
     setDensity(d) {
       density = (typeof d === 'number' && d > 0) ? Math.min(1, d) : 1;

@@ -32,6 +32,16 @@ export const RIDE_EVENTS = {
   HOP: 'hop',
   /** Collected something. {type} -- for the missions mode's pickups. */
   PICKUP: 'pickup',
+  /**
+   * Rode through a speed gate. {label, speed, seconds}
+   *
+   * Its own event rather than a PICKUP with a type, because a boost is not
+   * collected -- it is a thing that happens to your speed. A mission counting
+   * them wants "how many did you take", which is the same shape as LAUNCH and
+   * GRIND, and folding it into PICKUP would put it in the same bucket as
+   * crystals for any objective that does not filter by type.
+   */
+  BOOST: 'boost',
   /** Clipped a hazard. {label, wobble} */
   HAZARD: 'hazard',
   /** The run ended. {reason: 'wipeout'|'timeup'|'complete', score, distance} */

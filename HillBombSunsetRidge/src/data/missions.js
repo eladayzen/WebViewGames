@@ -114,43 +114,72 @@ const AUTHORED = [
 
   // --- THE OPEN FACE ---------------------------------------------------------
   //
-  // The ladder changes hill here. Everything above is the ridge -- a narrow
-  // trough with a fast line down the middle -- and everything below is the wide
-  // face, where there is no fast line, the whole width is ridable, and the
-  // ground itself drops away and throws you.
+  // A TEACHING LADDER, not a difficulty ramp. Amit: "first mission should be
+  // only ramps, and you should not have glides at all on the screen -- and of
+  // course blockers. Then the next mission should be glides, then pickups. But
+  // in the first two we shouldn't have pickups at all. Every time you add some
+  // component, to show the variety of stuff."
   //
-  // TARGETS ARE DERIVED, NOT GUESSED, and the derivation matters because the
-  // face offers a different amount of everything. Sweeping both hills at their
-  // own densities gives what each puts in front of you per minute:
+  // So each of the first five introduces exactly one thing, and -- the part
+  // that matters -- the ones before it do not have that thing ON THE GROUND.
+  // A mission teaching ramps with rails lying around is not teaching ramps; the
+  // player cannot tell what the mission is about from what they can see. That
+  // is why `content` exists and why it filters at SPAWN rather than only
+  // deciding what gets counted.
   //
-  //     ridge        pickup 68    launch 32    grind 20
-  //     face @0.55   pickup 49    launch 25    grind 13
+  // Blockers are in every one of them. They are not a component to introduce --
+  // they are the reason to steer at all, and a hill without them is a hill you
+  // hold one line down.
   //
-  // and the twenty missions above -- whose thresholds came from real timed runs
-  // -- ask for 16-30% of the pickups on offer, 15-45% of the launches, and
-  // 10-15% of the grinds. Applying those same fractions to what the face offers
-  // is what sets the numbers below. Copying the ridge's raw targets across would
-  // have made every one of these quietly harder, most of all the grinds, where
-  // the face offers a third less.
+  // NO AIRTIME OBJECTIVES anywhere. Amit: "don't do airtime, because airtime is
+  // not something you choose." Exactly right -- it is a consequence of the line
+  // you took and the ground you took it on, so asking for it asks the player to
+  // aim at something they do not directly hold.
   //
-  // Each one introduces something, per Amit: a mission should bring in new
-  // content rather than re-ask the last one with bigger numbers.
-  ['openGround',  'OPEN GROUND',   'A whole mountain. Go wide.',                80, { pickup: 12 }, FACE],
-  ['wideLines',   'WIDE LINES',    'The edges pay better than the middle.',     90, { pickup: 15, launch: 8 }, FACE],
-  ['theDrops',    'THE DROPS',     'Let the hill throw you. It will.',          85, { launch: 14 }, FACE],
-  ['ironEdge',    'IRON EDGE',     'Rails, out where the ground runs out.',     95, { grind: 3, pickup: 14 }, FACE],
-  ['theIdol',     'THE IDOL',      'Something out there is worth the detour.', 100, { idol: 1, pickup: 14 }, FACE],
-  ['bothRims',    'BOTH RIMS',     'Left, right, and back again.',              90, { pickup: 20, launch: 12 }, FACE],
-  ['wholeFace',   'THE WHOLE FACE','Everything the mountain has.',             100, { pickup: 20, grind: 3, launch: 14 }, FACE],
-  ['idolHunt',    'IDOL HUNT',     'Take the long way. Twice.',                110, { idol: 1, pickup: 22, launch: 12 }, FACE],
+  // Targets are derived from what each hill offers per minute, against the
+  // fraction the twenty measured ridge missions ask for. See the note above.
+  ['faceRamps',   'RAMP SCHOOL',   'Nothing but takeoffs. Hit them.',           80,
+    { launch: 12 }, FACE, { kinds: ['launch', 'wall', 'scenery'] }],
+
+  ['faceGlides',  'RAIL SCHOOL',   'Green metal. Get on it and stay on.',       90,
+    { grind: 3 }, FACE, { kinds: ['launch', 'grind', 'wall', 'scenery'] }],
+
+  ['facePickups', 'CRYSTAL RUN',   'Now there is something to collect.',        90,
+    { pickup: 16 }, FACE,
+    // Crystals, but not idols yet -- the rare thing gets its own mission.
+    { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup'], without: ['statue'] }],
+
+  ['faceBoosts',  'SPEED GATES',   'Ride the arches. They give the hill back.', 95,
+    { boost: 5 }, FACE,
+    { kinds: ['launch', 'grind', 'wall', 'scenery', 'boost'] }],
+
+  ['faceIdols',   'IDOL HUNT',     'Five of them. They are never on your line.', 110,
+    { idol: 5 }, FACE,
+    // Idols ONLY among the pickups, and every showing rather than the authored
+    // "every now and then" -- that cadence is for something met incidentally,
+    // and this is the one thing the mission is about.
+    { kinds: ['launch', 'wall', 'scenery', 'pickup'], without: ['crystal'],
+      rareAlways: true }],
+
+  // --- and now the mixing ----------------------------------------------------
+  ['faceMix1',    'BOTH RIMS',     'Left, right, and back again.',              95,
+    { pickup: 18, launch: 10 }, FACE],
+
+  ['faceMix2',    'FULL KIT',      'Ramps, rails, crystals. All of it.',       100,
+    { pickup: 18, grind: 3, launch: 12 }, FACE],
+
+  ['faceMix3',    'THE WHOLE FACE','Everything the mountain has.',             120,
+    { pickup: 20, grind: 3, launch: 12, boost: 4, idol: 2 }, FACE,
+    { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup', 'boost'],
+      rareAlways: true }],
 ];
 
 // Objective order on screen: collect, ride, launch, score. Consistent across
 // every mission so the eye learns where to look rather than re-reading the list.
-const KIND_ORDER = ['pickup', 'idol', 'grind', 'launch', 'score'];
+const KIND_ORDER = ['pickup', 'idol', 'grind', 'launch', 'boost', 'score'];
 
 /** @type {Mission[]} */
-export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course], i) => ({
+export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course, content], i) => ({
   id,
   /**
    * Which hill this mission is played on. Undefined means the ridge, which is
@@ -164,6 +193,11 @@ export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course
    * partway up.
    */
   course,
+  /**
+   * What is allowed on the ground, or undefined to let the course decide.
+   * {kinds:string[], without?:string[], rareAlways?:boolean}
+   */
+  content,
   /** 1-based position in the list. Derived, never authored -- a hand-written
    *  number would go stale the moment a mission is inserted or reordered. */
   number: i + 1,

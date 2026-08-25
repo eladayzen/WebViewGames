@@ -490,6 +490,7 @@ export const FACE_PATTERNS = [
     length: 120,
     build: (W) => [
       { type: 'crystal', ds: 6, u: -W * 0.88 },
+      { type: 'boostPad', ds: 36, u: -W * 0.66 },
       { type: 'kicker', ds: 14, u: -W * 0.52 },
       { type: 'blocker', ds: 20, u: -W * 0.14 },
       { type: 'crystal', ds: 26, u: W * 0.34 },
@@ -512,6 +513,7 @@ export const FACE_PATTERNS = [
     length: 110,
     build: (W) => [
       { type: 'blocker', ds: 12, u: -W * 0.86 },
+      { type: 'boostPad', ds: 44, u: W * 0.32 },
       { type: 'crystal', ds: 18, u: -W * 0.44 },
       { type: 'rail', ds: 24, u: W * 0.06 },
       { type: 'blocker', ds: 36, u: W * 0.48 },
@@ -532,6 +534,7 @@ export const FACE_PATTERNS = [
     length: 130,
     build: (W) => [
       { type: 'crystal', ds: 8, u: W * 0.12 },
+      { type: 'boostPad', ds: 64, u: W * 0.22 },
       { type: 'blocker', ds: 16, u: -W * 0.30 },
       { type: 'longRail', ds: 24, u: W * 0.44 },
       { type: 'crystal', ds: 34, u: W * 0.78 },
@@ -560,6 +563,7 @@ export const FACE_PATTERNS = [
         out.push({ type: 'crystal', ds: 30 + i * 26, u: -u * 0.72 * W });
       });
       out.push({ type: 'kicker', ds: 40, u: W * 0.80 });
+      out.push({ type: 'boostPad', ds: 96, u: -W * 0.70 });
       out.push({ type: 'rail', ds: 74, u: -W * 0.08 });
       out.push({ type: 'bigKicker', ds: 108, u: -W * 0.62 });
       out.push({ type: 'kicker', ds: 132, u: W * 0.36 });
@@ -573,6 +577,7 @@ export const FACE_PATTERNS = [
     length: 120,
     build: (W) => [
       { type: 'kicker', ds: 10, u: W * 0.02 },
+      { type: 'boostPad', ds: 30, u: W * 0.44 },
       { type: 'crystal', ds: 20, u: -W * 0.56 },
       { type: 'blocker', ds: 28, u: -W * 0.88 },
       { type: 'crystal', ds: 36, u: -W * 0.16 },
@@ -584,6 +589,13 @@ export const FACE_PATTERNS = [
       { type: 'crystal', ds: 94, u: -W * 0.80 },
       { type: 'longRail', ds: 104, u: -W * 0.12 },
       { type: 'crystal', ds: 114, u: W * 0.24 },
+      // A THIRD idol in the cycle. Two was "every now and then" and nothing
+      // more: under the rareAlways override a mission built entirely around
+      // finding them still only met about three a minute, which does not
+      // support asking for five. Three placements puts it near five a minute
+      // with the override on, and still under two a minute at the authored
+      // cadence -- so the incidental case does not become a parade.
+      { type: 'statue', ds: 58, u: -W * 0.92, rare: 3 },
     ],
   },
 ];

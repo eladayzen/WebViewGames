@@ -138,7 +138,9 @@ export const COURSES = {
     kind: COURSE_ENDLESS,
     length: null,
     terrain: 'openFace',
-    allowedKinds: ['launch', 'grind', 'scenery', 'pickup', 'wall'],
+    // 'boost' is here so a mission CAN introduce speed gates; whether any given
+    // mission actually shows them is the mission's own call (see content).
+    allowedKinds: ['launch', 'grind', 'scenery', 'pickup', 'wall', 'boost'],
     variation: false,
     density: 0.55,
   },
