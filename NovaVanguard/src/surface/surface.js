@@ -40,7 +40,11 @@ export function initSurface(w, rng) {
   s.emissivePhase = 0;
   s.event.active = false;
 
-  const n = Math.min(s.props.length, SURFACE.propsPerScreen * 2);
+  // A SURFACE MAY LEGITIMATELY HAVE NO PROPS (playtest round 7). The Skyfield
+  // and Glacis Shelf are open sky and open ice -- there is nothing standing on
+  // them by design. Without this guard `kinds` is 0, rng.int(0, -1) returns a
+  // nonsense index, and /render looks up a prop kind that does not exist.
+  const n = kinds === 0 ? 0 : Math.min(s.props.length, SURFACE.propsPerScreen * 2);
   for (let i = 0; i < s.props.length; i++) {
     const p = s.props[i];
     if (i >= n) {
@@ -88,9 +92,11 @@ export function updateSurface(w, rng, dt) {
 
   // Props ride the surface and recycle in Mode S; in Mode A scrollSpeed is 0
   // so this loop is a no-op and they simply stay where they were placed.
-  if (m.scrollSpeed > 0) {
+  const kinds = propKinds(w);
+  // Propless surface: nothing is alive to recycle, and re-randomising a kind
+  // against a zero-length list is the same bug as in initSurface.
+  if (m.scrollSpeed > 0 && kinds > 0) {
     const dy = m.scrollSpeed * dt;
-    const kinds = propKinds(w);
     for (let i = 0; i < s.props.length; i++) {
       const p = s.props[i];
       if (!p.alive) continue;

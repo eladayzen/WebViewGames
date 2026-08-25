@@ -88,6 +88,24 @@
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&#9208;</button>
 
+      <!-- Mute — third in the same top-right row, inboard of pause, in the same
+           38px circular style BUILD_NOTES.md's chrome convention establishes for
+           back and pause. It is a real control rather than a debug affordance:
+           these games are played standing on a board in a room with other people
+           in it, and "turn the sound off" has to be reachable without a menu.
+           The `U` key does the same thing for whoever is tuning the mix.
+
+           Glyph only, no label, matching the pair beside it — speaker for
+           audible, crossed speaker for muted (set from /src/main.js so the
+           button and the audio layer can never disagree about which state they
+           are in). -->
+      <button id="mute-button" aria-label="Mute"
+        style="position:absolute;top:12px;right:108px;z-index:9999;width:38px;height:38px;border:none;
+               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
+               font:600 16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               line-height:1;display:flex;align-items:center;justify-content:center;
+               -webkit-tap-highlight-color:transparent;">&#128264;</button>
+
       <!-- THE FRAMING-MODE SWITCH IS GONE FROM THE SCREEN, and only from the
            screen (Amit, playtest round 3).
 

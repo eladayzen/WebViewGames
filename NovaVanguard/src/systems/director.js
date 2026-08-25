@@ -33,6 +33,7 @@ import { triggerSurfaceEvent } from '../surface/surface.js';
 import { surfaceAt } from '../data/surfaces.js';
 import { bossIsBuilt, bossDef } from '../data/bosses.js';
 import { beginBoss, updateBoss, clearBoss, BossPhase } from '../enemies/boss.js';
+import { sfx } from './audio.js';
 
 export function startScenario(w, rng, banners) {
   rng.reseed(POC_SCENARIO.seed);
@@ -201,6 +202,10 @@ function beginBossWarning(w, banners) {
   // never collide with another banner -- the report caught three text layers
   // colliding in one reference frame.
   banners.push(`WARNING — ${bossDef(bossForSurface(w)).name}`, BOSS.warningS, true);
+  // §6.4's warning band is 2 s of READ TIME with a cleared frame. A sound is
+  // the half of it that works when the player is looking at where their ship
+  // is rather than at the top of the screen.
+  sfx('bossWarning');
 }
 
 export function updateDirector(w, rng, dt, banners, fx) {

@@ -50,6 +50,7 @@ import { cfg } from '../core/mode.js';
 import { createEmitter } from '../patterns/patterns.js';
 import { spawnFragment } from './enemies.js';
 import { liveCount } from '../core/state.js';
+import { sfx } from '../systems/audio.js';
 
 const TWO_PI = Math.PI * 2;
 
@@ -785,6 +786,13 @@ export function boltHitsBoss(w, x, y, r, amount, fx) {
     b.hitFlashT = BOSS.hullHitFlashS;
     b.chipHp = Math.min(b.maxHullHp, Math.max(b.chipHp + amount, BOSS.hpChipMin));
     fx.bossImpact(x, Math.min(y, skirt));
+    // SCALED DOWN, and every boss-contact cue below is scaled the same way for
+    // the same reason. A boss hull spans 70% of the frame directly overhead, so
+    // during a fight essentially EVERY bolt lands -- this cue fires at the full
+    // rate of fire for 25-40 s straight, which is the one place a hit sound
+    // turns into a drone. Two thirds of the authored level keeps it as
+    // information without letting it take over the fight.
+    sfx('impact', 0.65);
     return 'hullHp';
   }
 
@@ -813,6 +821,7 @@ export function boltHitsBoss(w, x, y, r, amount, fx) {
       if (!p.open) {
         p.hitFlashT = 0.1;
         fx.deflect(x, Math.min(y, pp.y + BOSS.podRadius));
+        sfx('deflect', 0.55);
         return 'shut';
       }
 
@@ -827,6 +836,11 @@ export function boltHitsBoss(w, x, y, r, amount, fx) {
         p.emitter = null;
         w.stats.score += BOSS.podScore;
         fx.explosion(pp.x, pp.y);
+        // Its own clip, well above a craft kill: a pod is the fight's only real
+        // milestone before the core, and §6.4's promise that the fight
+        // "measurably calms as you win" is easier to feel when the moment of
+        // winning a piece of it sounds different from everything else.
+        sfx('podKill');
         // A pod dying is the fight's only real milestone before the core, and
         // §6.4's promise is that the fight "measurably calms as you win". Give
         // it a beat the player can feel as well as see.
@@ -839,8 +853,10 @@ export function boltHitsBoss(w, x, y, r, amount, fx) {
       } else {
         // Same contact burst the hull boss uses, at the pod. One vocabulary
         // for "your shot landed on the boss", so a player who learns it on
-        // boss one reads it unchanged on bosses two and three.
+        // boss one reads it unchanged on bosses two and three -- and the sound
+        // is the same one at the same trim, for exactly that reason.
         fx.bossImpact(pp.x, pp.y + BOSS.podRadius * 0.4);
+        sfx('impact', 0.65);
       }
       return 'pod';
     }
@@ -857,11 +873,13 @@ export function boltHitsBoss(w, x, y, r, amount, fx) {
         // say.
         b.coreHitFlashT = 0.12;
         fx.deflect(x, Math.min(y, core.y + BOSS.coreRadius));
+        sfx('deflect', 0.55);
         return 'sealed';
       }
       b.coreHp = Math.max(0, b.coreHp - amount * mul);
       b.coreHitFlashT = 0.12;
       fx.bossImpact(core.x, core.y + BOSS.coreRadius * 0.4);
+      sfx('impact', 0.65);
       return 'core';
     }
   }
@@ -874,6 +892,10 @@ export function boltHitsBoss(w, x, y, r, amount, fx) {
   if ((b.hullSparkT || 0) <= 0) {
     b.hullSparkT = BOSS.hullSparkCooldownS;
     fx.deflect(x, at);
+    // Only the SPARK is sounded, not the cheap burst on the frames between it.
+    // The visual already rate-limits itself here; borrowing that same cooldown
+    // is what keeps a stream of bolts into bare armour from becoming a drone.
+    sfx('deflect', 0.55);
   } else {
     fx.impact(x, at);
   }
@@ -906,6 +928,10 @@ function beginDeath(w, fx) {
   b.windowOpen = false;
   for (const p of b.pods) p.firing = false;
   w.stats.score += BOSS.coreScore;
+  // Fired at the START of the death, not at the end of the break-up: this is
+  // the instant the fight is won, and the 2 s of staged detonations that follow
+  // are the celebration of it rather than the event itself.
+  sfx('bossDeath');
 
   // WHERE THE STAGED DETONATIONS GO. §6.4 asks for "staged pod detonations,
   // then a hull break-up" -- on a pod boss those are literally the pods, and on

@@ -77,6 +77,25 @@ SURFACES = [
     # than Kesselring's because the seams are long continuous lines rather than
     # tiny point lamps, so they already have presence without spreading.
     ('surface-bulwark-raw-01.jpg',    'bulwark',    None, 'chromatic', 0.55),
+    # THE TWO BRIGHT SURFACES (playtest round 7). Amit: "all of the backgrounds
+    # up until now were too dark... this feels like a game for 15 year olds, not
+    # something that would fit 8 year olds." These two are the open, light
+    # levels that break up the dark ones, and they invert an assumption this
+    # pipeline used to make.
+    #
+    # 'chromatic' rather than 'warm' for BOTH, and for the opposite reason
+    # Kesselring needs it. On a dark surface, brightness alone finds the
+    # emissive accents because they are the only bright thing. On a near-white
+    # surface, brightness finds EVERYTHING -- the entire frame is bright. What
+    # still separates a lit channel from sunlit ice or cloud is chroma: the
+    # turquoise meltwater and the deep-water channels are the only saturated
+    # pixels in an otherwise desaturated frame.
+    #
+    # Bloom is low. These surfaces are already luminous, and spreading their
+    # highlights further would eat the headroom the craft need to read against
+    # them (constraints R6).
+    ('surface-skyfield-raw-02.jpg',   'skyfield',   None, 'none',      0.0),
+    ('surface-glacis-raw-01.jpg',     'glacis',     200,  'none',      0.0),
 ]
 
 for raw, stem, feather, kind, bloom in SURFACES:
@@ -92,6 +111,26 @@ for raw, stem, feather, kind, bloom in SURFACES:
 
     tile = make_v_seamless(src, feather=feather)
     tile = tile.resize((1024, 2048), Image.LANCZOS)  # power-of-two REPEAT wrap
+    # DAYLIT SURFACES GET PULLED BACK TO THE §5.4 SATURATION BAND. A real
+    # satellite ocean is far more saturated than the dark surfaces ever were
+    # (measured 0.52 against a 0.35 cap) -- and unlike luminance, saturation is
+    # capped for a reason that survives the surface being bright: the player's
+    # bullets are cyan-white and the enemies' are orange/magenta, and a deeply
+    # saturated blue ground competes with both. The emissive keys handled this
+    # implicitly on the dark surfaces by keeping saturated pixels rare; the
+    # 'none' surfaces have no emissive pass, so it is done explicitly here.
+    if kind == 'none':
+        # desaturate_hot returns RGBA; the base tile ships as opaque JPEG.
+        tile = desaturate_hot(tile, max_sat=0.34).convert('RGB')
+        # NOTE: measure_readability will still report skyfield's HSV saturation
+        # mean as OVER (~0.44 against 0.35). That is the artifact nvlib already
+        # documents -- HSV S is unstable near black, and the scrim floor
+        # (0x05060c) is itself a saturated dark blue, so over a mid-dark surface
+        # the metric mostly measures the scrim. The stable number is CHROMA:
+        # skyfield reads 0.087 against Glacis Shelf's 0.088, and Glacis passes.
+        # Pushing max_sat to 0.26 moved the reported mean only 0.438 -> 0.400
+        # while visibly draining the ocean, which is a worse picture for no real
+        # readability gain.
     save(tile, f'surface-{stem}-base.jpg', quality=90, subsampling=0)
 
     # The emissive layer is EXTRACTED from the finished base tile rather than

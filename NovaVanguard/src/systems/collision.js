@@ -19,6 +19,7 @@ import { spawnFragment } from '../enemies/enemies.js';
 import { maybeDropPickup } from './pickups.js';
 import { liveCount } from '../core/state.js';
 import { auditEmitterOwnership } from '../patterns/patterns.js';
+import { sfx } from './audio.js';
 
 // Scratch for the ownership audit -- nothing in the hot loop allocates (§9.1).
 const _audit = [];
@@ -127,6 +128,10 @@ export function resolveCollisions(w, fx, instr) {
         e.hitFlashT = 0.06;
         b.alive = false;
         fx.deflect(e.x, e.y + 18);
+        // The shimmer shield's whole job is to say "that round did not count",
+        // so it gets its own voice rather than the impact's -- a player who
+        // cannot hear the difference cannot hear that focus fire is working.
+        sfx('deflect');
         break;
       }
 
@@ -136,6 +141,7 @@ export function resolveCollisions(w, fx, instr) {
         killEnemy(w, e, fx, instr);
       } else {
         fx.impact(e.x, e.y);
+        sfx('impact');
       }
       break;
     }
@@ -222,6 +228,11 @@ export function killEnemy(w, e, fx, instr) {
   w.stats.score += base * (preLock && !wasFragment ? ENEMY.preLockScoreMultiplier : 1);
   instr.kill(preLock && !wasFragment);
   fx.explosion(x, y);
+  // A bolt that lands and a bolt that KILLS have to be separable by ear alone,
+  // so the kill is mixed a clear step above the impact (AUDIO in
+  // /data/tuning.js). Sounded here rather than beside each of the callers, for
+  // the same reason the explosion is: this is the one place a craft dies.
+  sfx('kill');
 
   // --- the pickup drop (§5.6) ---------------------------------------------
   // "when the enemy dies he gives birth to like a pick up item." The chance

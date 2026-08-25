@@ -69,3 +69,12 @@ lerna-debug.log*
 # Python bytecode from the art build scripts
 __pycache__/
 *.pyc
+
+# Raw Kolbo audio generations, same reasoning as */art/raw/ above: the shipped
+# clips live in public/assets/audio/ and the manifest that wires them is
+# tracked. The raws are the unprocessed inputs.
+*/art/audio-raw/
+
+# Scratch renders written while checking a generation (seam previews, marked-up
+# hulls, grid overlays). Throwaway by definition.
+*/art/tmp/

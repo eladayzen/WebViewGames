@@ -15,7 +15,9 @@ export const CRAFT_CONTRAST_MIN = 0.24;
 
 export const SURFACE_LUMA = {
   ashfall: 0.0708,
+  skyfield: 0.1439,
   kesselring: 0.0826,
+  glacis: 0.2983,
   bulwark: 0.0741,
 };
 

@@ -1161,8 +1161,28 @@ export function validateAll(opts = {}) {
   // check.
   // ==========================================================================
   {
-    let worstSurface = 0;
-    let worstSurfaceId = '';
+    // MEASURED PER SURFACE, AS AN ABSOLUTE DIFFERENCE (playtest round 7).
+    //
+    // This rule originally compared each craft against the single BRIGHTEST
+    // surface and required the craft to be brighter still. That was correct
+    // while every surface was dark, and wrong the moment one isn't: Amit asked
+    // for open, bright levels ("just a bit more white... not so dark and
+    // creepy"), and a craft that is merely *brighter than the darkest ground*
+    // can still vanish against a pale one.
+    //
+    // Contrast is a DIFFERENCE, not a direction. His own reference proves it --
+    // 1941 Air Attack flies dark planes over a bright blue ocean and reads
+    // perfectly. So the check is now |craft - surface| against EVERY surface,
+    // and a craft passes only if it separates from all of them. A mid-grey
+    // craft that sits between a dark and a light surface now fails, which is
+    // exactly the trap this rule exists to catch.
+    // A darkRim surface is EXEMPT, and the exemption is the design rather than
+    // a loophole. On those levels the craft's separation comes from an opaque
+    // dark outline (ENEMY.rim.darkScale), not from out-luminancing the ground
+    // -- and requiring a craft to also be brighter than a sunlit sky would mean
+    // no craft could ever fly over one. The check still runs against every
+    // surface that relies on emergent contrast.
+    const surfaces = [];
     for (const s of SURFACES) {
       const v = SURFACE_LUMA[s.id];
       if (v === undefined) {
@@ -1172,13 +1192,12 @@ export function validateAll(opts = {}) {
         );
         continue;
       }
-      if (v > worstSurface) {
-        worstSurface = v;
-        worstSurfaceId = s.id;
-      }
+      if (s.darkRim) continue;
+      surfaces.push({ id: s.id, luma: v });
     }
     let tightest = Infinity;
     let tightestId = '';
+    let tightestAgainst = '-';
     for (const id of Object.keys(ENEMY.types)) {
       const t = ENEMY.types[id];
       // The manifest key is the sprite's stem; keep the mapping in one place.
@@ -1193,20 +1212,32 @@ export function validateAll(opts = {}) {
         );
         continue;
       }
-      const delta = med - worstSurface;
+      // The worst case is the surface this craft is CLOSEST to in luminance,
+      // whichever side of it that surface falls on.
+      let delta = Infinity;
+      let againstId = '';
+      for (const s of surfaces) {
+        const d = Math.abs(med - s.luma);
+        if (d < delta) {
+          delta = d;
+          againstId = s.id;
+        }
+      }
       if (delta < CRAFT_CONTRAST_MIN) {
         err(
-          `R6[${id}]: median body luminance ${med.toFixed(3)} clears the ` +
-            `brightest surface (${worstSurfaceId} ${worstSurface.toFixed(3)}) by ` +
-            `only ${delta.toFixed(3)}, under the ${CRAFT_CONTRAST_MIN} floor — it ` +
-            `will disappear into the ground. Raise CRAFT_TARGET_MEDIAN in ` +
-            `art/build_assets.py and rebuild; do NOT brighten the surface, which ` +
-            `is dark on purpose so bullets stay readable (§5.4).`
+          `R6[${id}]: median body luminance ${med.toFixed(3)} separates from ` +
+            `surface '${againstId}' by only ${delta.toFixed(3)}, under the ` +
+            `${CRAFT_CONTRAST_MIN} floor — it will disappear into that ground. ` +
+            `Fix by moving the CRAFT away from that surface's luminance (see ` +
+            `CRAFT_TARGET_MEDIAN in art/build_assets.py, and the per-craft rim), ` +
+            `not by re-grading the surface: §5.4's band is a ceiling on the ` +
+            `ground, and the light surfaces exist because Amit asked for them.`
         );
       }
       if (delta < tightest) {
         tightest = delta;
         tightestId = id;
+        tightestAgainst = againstId;
       }
       // THE RIM MAY NOT BE THE PLAYER'S COLOUR. It is the brightest thing about
       // a craft at the distance where its hull detail has stopped resolving, so
@@ -1247,12 +1278,12 @@ export function validateAll(opts = {}) {
     }
     notes.push(
       `R6: craft contrast — the tightest is ${tightestId} at ` +
-        `${tightest.toFixed(3)} over the brightest surface ` +
-        `(${worstSurfaceId} ${worstSurface.toFixed(3)}), against a ` +
-        `${CRAFT_CONTRAST_MIN} floor. Measured off the shipped sprites by ` +
-        `art/measure_readability.py, plus an additive rim at ` +
-        `${ENEMY.rim.alpha} alpha and ${ENEMY.rim.scale}x that this number does ` +
-        `not count.`
+        `${tightest.toFixed(3)} from its nearest contrast-bearing surface ` +
+        `(${tightestAgainst}), against a ${CRAFT_CONTRAST_MIN} floor. Measured ` +
+        `off the shipped sprites by art/measure_readability.py, plus an additive ` +
+        `rim at ${ENEMY.rim.alpha} alpha and ${ENEMY.rim.scale}x that this ` +
+        `number does not count. Surfaces flagged darkRim are excluded — craft ` +
+        `separate from those by an opaque outline, not by luminance.`
     );
   }
 

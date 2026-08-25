@@ -1216,6 +1216,26 @@ export const ENEMY = {
     // pulse in lockstep.
     pulseHz: 0.55,
     pulseAmp: 0.18,
+
+    // THE BRIGHT-SURFACE INVERSION (playtest round 7). Amit asked for open,
+    // light levels ("a bit more white colors, just a bit. Not so dark and
+    // creepy"), and additive light adds nothing visible over a near-white sky
+    // or ice shelf -- so on those surfaces the same silhouette is drawn as an
+    // opaque dark outline instead. Craft do not change; only the rim's blend
+    // mode and tint do, driven by SURFACES[i].darkRim.
+    //
+    // Slightly wider than the additive rim (1.16 vs 1.13): an opaque outline
+    // has a hard edge where a glow falls off, so it needs a touch more width to
+    // read as deliberate rather than as a rendering artefact.
+    darkScale: 1.16,
+    // Near-black, but not pure black -- a cool very dark blue sits in the same
+    // family as the game's own shadows rather than reading as a hole cut in
+    // the sky.
+    darkColor: 0x0a1018,
+    // Higher than the additive alpha: this is the ONLY thing separating a
+    // craft from a pale ground, where on the dark surfaces the craft's own
+    // luminance is already doing most of the work.
+    darkAlpha: 0.82,
   },
 
   // Entry (§5.5): craft enter in file from the left or right edge only.
@@ -1943,6 +1963,11 @@ export const FORMATIONS = {
 // ---------------------------------------------------------------------------
 
 export const LEVELS = [
+  // ORDER IS THE CAMPAIGN ORDER and is index-locked to SURFACES.
+  // Playtest round 7: the two bright levels are interleaved between the
+  // dark ones (lava, open sky, shipyard, open ice, armour) so the game
+  // never runs three grim industrial levels in a row. The Hive Plate is
+  // gone entirely -- Amit: "don't use the hive plate at all."
   {
     id: 'ashfall',
     name: 'LEVEL 1',
@@ -1989,44 +2014,8 @@ export const LEVELS = [
     // says no.
     craftVariants: false,
   },
-
-  // -------------------------------------------------------------------------
-  // LEVEL 2 -- the difficulty ramp, authored against a specific report:
-  //
-  //   "the simple enemies are just blown up with one super rocket fire of mine.
-  //    And if I move or stand in the right place I can kill the whole wave
-  //    before it even gets to their positions. So on level 2 I should be
-  //    starting to see more stronger enemies. Basically just higher HP 2 or 3.
-  //    You can use much more the green enemy and probably a good idea to kick
-  //    off two new enemies."
-  //
-  // Three separate things are wrong in that sentence and the table answers each
-  // one, in order of how much it matters:
-  //
-  //   1. THE WAVE DIES BEFORE IT ARRIVES. This is the real fault -- §5.5 stages
-  //      the fly-in as the game's central beat ("killing craft mid-entry, before
-  //      they settle, is both the skill play and the score play") and a wave
-  //      that never reaches formation deletes the beat entirely. Fixed by the
-  //      two new types: the WARDEN cannot be melted on approach (3-hit shield +
-  //      5 HP = 0.84 s of unbroken on-target fire for ONE craft), and the
-  //      SPLITTER makes an early kill produce more craft rather than fewer.
-  //      Neither is a bigger number; both change what a parked player's fire
-  //      can accomplish.
-  //   2. HIGHER HP. Drones go to 2 (`hp` below). Emitters stay at §6.2's 3.
-  //      That is the whole of the numeric ramp, and it is deliberately the
-  //      smallest part of the answer -- see (1).
-  //   3. MUCH MORE OF THE GREEN ENEMY. Level one authors 7 Emitters across six
-  //      waves; level two authors 11, and every wave has at least one.
-  //
-  // §5.7 sanctions exactly these levers and no others: "Difficulty scales only
-  // through: formation size and shape complexity, number of simultaneous
-  // patterns, enemy HP, ground-target count, and swoop frequency. It NEVER
-  // scales by raising SCROLL_SPEED past its cap, exceeding APPROACH_BUDGET,
-  // narrowing AISLE_MIN, or introducing any required vertical move."
-  // Nothing below touches any of those four.
-  // -------------------------------------------------------------------------
   {
-    id: 'kesselring',
+    id: 'skyfield',
     name: 'LEVEL 2',
     // NO HP OVERRIDE, AND THE ROW IS GONE RATHER THAN EMPTIED.
     //
@@ -2214,42 +2203,317 @@ export const LEVELS = [
       },
     ],
   },
-
-  // -------------------------------------------------------------------------
-  // LEVEL 3 -- The Bulwark. AUTHORED, and its boss (Nadir Coil) is built, so
-  // the campaign the POC-8 decision note fixed at three levels now actually has
-  // three of them. Amit, playtest round 5: "We need more levels like backgrounds
-  // of course" -- he was seeing levels one and two rotate.
-  //
-  // WHAT MAKES IT DIFFERENT FROM LEVEL TWO, since "more of the same, faster" is
-  // the trap a third level falls into and §5.7 forbids the numeric ways out of
-  // it anyway (scroll speed, approach budget, aisle width and required vertical
-  // moves are floors, not levers):
-  //
-  //   1. A NEW SHAPE. F4, the staggered picket, appears here and only here. Its
-  //      half-slot offset means no two craft share a column, so there is no
-  //      vertical line the guns can clear in one pass. Level three is the level
-  //      where a formation has to be taken apart craft by craft.
-  //   2. A NEW PATTERN. B4, the sine curtain (§5.5). Level three's Emitters can
-  //      carry it, so the player meets an undulating wall in the WAVES before
-  //      meeting it again on the boss -- a boss should introduce a mechanic, not
-  //      a mechanic and a bullet vocabulary at once.
-  //   3. THE WHOLE ROSTER AT ONCE. Levels one and two each introduced types;
-  //      level three is the first that assumes all five and mixes them freely,
-  //      which is what makes the HP-tier readability rule earn its keep -- five
-  //      chassis on one screen only works if you can price each of them by
-  //      looking.
-  //   4. MORE SWOOP PRESSURE, from the Lancer being the default fill rather
-  //      than an accent. Something is in the gutter most of the time, which is
-  //      lateral pressure -- the axis a board is good at (§0.5).
-  //
-  // The difficulty comes entirely from §5.7's sanctioned levers: formation
-  // shape complexity, roster, and swoop frequency. Not one number below touches
-  // a floor.
-  // -------------------------------------------------------------------------
+  {
+    id: 'kesselring',
+    name: 'LEVEL 3',
+    // NO HP OVERRIDE, AND THE ROW IS GONE RATHER THAN EMPTIED.
+    //
+    // It used to say `hp: { drone: 2 }`, and that single line is what Amit was
+    // looking at in playtest round 5: "it's an enemy with two lives [...] but it
+    // looks really really close or maybe the same sprite even to the ones in
+    // level one which have only one life". It WAS the same sprite. The override
+    // made a craft tougher without making it look tougher, which is the exact
+    // failure the HP-tier rule above now forbids outright (R6 fails a level that
+    // authors one).
+    //
+    // §5.7's sanctioned "enemy HP" lever is not lost -- it moves from a hidden
+    // multiplier onto the roster, which is what §6.2's six-type ladder is for.
+    // Every `drone` that was silently a 2 HP craft is now an authored LANCER,
+    // which is a 2 HP craft that looks like one and dives more often besides.
+    // The wave-by-wave count is unchanged where the toughness was the point and
+    // deliberately mixed where it was not: a formation of all-Lancers would lose
+    // the contrast that makes a Lancer read as the heavy one.
+    hp: null,
+    // Emitters here pick B2 or B2T from their own identity hash, so two of them
+    // in one formation run visibly different rhythms (§6.2's patternVariants).
+    // Both are authored, validated rows -- the variation is WHICH proved
+    // pattern a craft carries, never what is inside one.
+    craftVariants: true,
+    // FIRE RATE STAYS AT THE AUTHORED 1.00 -- and the road to that answer is
+    // worth keeping, because the first attempt at it was wrong.
+    //
+    // The previous pass flagged that "level two peaks at exactly 22 bullets,
+    // the Normal cap; the spawner is actively clamping it". THE VERDICT IS
+    // OVER-AUTHORING rather than intended pressure: §5.3's density caps are
+    // floors of the pacing contract (§5.7 names them among the four things
+    // difficulty "NEVER scales by"), and /patterns enforces the bullet cap AT
+    // THE SPAWNER by dropping orbs. A level sitting on the cap is a level where
+    // pool arithmetic decides which orbs exist. Not unsafe -- a dropped orb only
+    // widens an aisle -- but unauthored, and it hides its own cause from whoever
+    // next finds the level busy.
+    //
+    // THE FIRST FIX WAS TO CUT THIS RATE TO 1.18, AND IT WAS THE WRONG LEVER.
+    // Generalising R3 to walk every level (it only ever walked level one, which
+    // is why this had to be found by playing) showed the real cause: B2T was
+    // authored at 12 orbs per volley, so TWO Emitters running it reached 24
+    // before any rate was applied. The overage was the pattern's geometry, not
+    // how often it fired -- and cutting the rate on top of fixing the geometry
+    // would have discounted the same problem twice and left level two limp,
+    // which is precisely the mistake level one's own note warns about.
+    //
+    // So B2T lost a row (see PATTERNS.B2T) and this stays where it was authored.
+    // Level two's worst wave now peaks at 17 of 22 with real headroom, and every
+    // orb the player sees is one this table put there.
+    fireRateMul: 1.0,
+    // Longer than level one's 46 s, because its waves genuinely take longer to
+    // clear now (a 22-craft wave at 2 HP with two Wardens is ~73 bolts of
+    // committed fire). A wave that times out makes its survivors flee, which
+    // would read as the game giving up rather than as the player being slow.
+    // This is also the direction playtest round 2 §4 asked for ("sub-waves
+    // themselves should run a bit longer") -- the duration half of it, not the
+    // taxonomy half, which stays pending.
+    waveTimeoutS: 58,
+    waves: [
+      {
+        // MORE EMITTERS FROM THE FIRST BEAT. Level one introduced one Emitter
+        // in its second wave; level two opens with two, spaced across the grid
+        // so their sweeps overlap from different origins. Nothing new to learn
+        // yet -- this wave's only job is "the same shapes, and they do not die
+        // as fast".
+        name: 'WAVE 1',
+        formation: 'F1',
+        //
+        // FILLED WITH LANCERS, which is where level two's old `hp: {drone: 2}`
+        // override went. Same toughness the wave always had; now the player can
+        // SEE it before firing (see the HP-tier rule above). Two drones are left
+        // in on purpose -- a formation of nothing but armoured craft has nothing
+        // to be armoured relative to.
+        squadrons: [
+          { side: 'L', count: 12, slot: 0, pace: 'normal', fill: 'lancer',
+            types: { 2: 'emitter', 5: 'drone', 9: 'emitter', 11: 'drone' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // THE WARDEN'S INTRODUCTION, at the chevron's APEX.
+        //
+        // §5.5 says the apex "is the natural focus-fire target" -- it is the
+        // lowest point of the V, the nearest craft to the player, the one the
+        // guns are already pointed at. Putting the shielded craft exactly there
+        // is the cheapest possible way to teach the type with no text: the
+        // player shoots the thing they were always going to shoot, sees three
+        // arcs break off it one at a time, and then sees it start to burn. The
+        // mechanic explains itself in the first two seconds of contact.
+        name: 'WAVE 2',
+        formation: 'F3',
+        squadrons: [
+          { side: 'R', count: 11, slot: 0, pace: 'normal', fill: 'lancer',
+            types: { 0: 'emitter', 3: 'drone', 5: 'warden', 8: 'drone',
+              10: 'emitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // THE SPLITTER'S INTRODUCTION, buried in the lens.
+        //
+        // Two of them, one in each arc, so the lesson lands twice from opposite
+        // sides in one wave. The lens is the right shape for it: 18 craft on a
+        // wide ellipse means a Splitter's pair is born into a crowd, which is
+        // when "clearing early made this worse" is most legible.
+        name: 'WAVE 3',
+        formation: 'F2',
+        squadrons: [
+          { side: 'L', count: 9, slot: 0, pace: 'normal', fill: 'lancer',
+            types: { 1: 'drone', 3: 'splitter', 7: 'emitter' } },
+          { side: 'R', count: 9, slot: 9, delayS: 1.6, pace: 'brisk',
+            fill: 'lancer', types: { 2: 'splitter', 6: 'drone' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // F5 SPLIT PODS with a Warden in EACH block, which is the wave the two
+        // new types were chosen to make possible.
+        //
+        // The blocks are 806 px apart and the guns only point one way, so
+        // covering one is choosing not to cover the other -- that was already
+        // true in level one. What changes is that the side you commit to now
+        // takes real time to clear, so the choice has a duration rather than
+        // being resolved in a second and a half. That duration IS the
+        // difficulty.
+        name: 'WAVE 4',
+        formation: 'F5',
+        squadrons: [
+          { side: 'L', count: 6, slot: 0, pace: 'normal', fill: 'lancer',
+            types: { 1: 'emitter', 4: 'warden' } },
+          { side: 'R', count: 6, slot: 6, delayS: 1.3, pace: 'brisk',
+            fill: 'lancer', types: { 1: 'warden', 4: 'emitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // Fewer craft, more pattern pressure -- the same design move level
+        // one's wave 5 makes, so the two levels rhyme rather than just
+        // escalate. Three Emitters on eleven craft is the densest sweep
+        // coverage in the game; the Splitter at the apex means the obvious
+        // focus-fire target answers back.
+        name: 'WAVE 5',
+        formation: 'F3',
+        squadrons: [
+          { side: 'L', count: 11, slot: 0, pace: 'lazy', fill: 'lancer',
+            types: { 0: 'emitter', 3: 'drone', 5: 'splitter', 7: 'drone',
+              10: 'emitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // The level's peak: a 22-craft grid from both sides carrying two
+        // Wardens, two Emitters and a Splitter.
+        //
+        // TWENTY-TWO, NOT TWENTY-FOUR, and the two empty slots are the point.
+        // The cap is 24 and a Splitter's death adds two craft, so a full grid
+        // would silently drop a fragment on the floor -- the type's whole
+        // promise ("killing it makes more") would fail exactly in the wave it
+        // matters most. Two slots of headroom is the fix, and it also leaves
+        // the grid visibly gapped, which reads as a formation already taking
+        // losses rather than as a missing squadron.
+        //
+        // NOT FLAGGED `hardest`. That flag selects which wave §10's
+        // lateral-corrections metric samples, and level one's wave 6 owns it --
+        // POC-8's collected samples were measured against that specific grid,
+        // and quietly adding a second, harder source would make the series
+        // incomparable with itself. The mode decision is settled, but the
+        // measurement should still mean one thing.
+        name: 'WAVE 6',
+        formation: 'F1',
+        squadrons: [
+          { side: 'R', count: 12, slot: 0, pace: 'normal', fill: 'lancer',
+            types: { 3: 'emitter', 6: 'drone', 8: 'warden', 11: 'drone' } },
+          { side: 'L', count: 10, slot: 12, delayS: 1.2, pace: 'brisk',
+            fill: 'lancer',
+            types: { 2: 'warden', 4: 'drone', 6: 'emitter', 9: 'splitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+    ],
+  },
+  {
+    id: 'glacis',
+    name: 'LEVEL 4',
+    hp: null,
+    craftVariants: true,
+    // THE SAME VARIANT LIST LEVEL THREE AUTHORS, copied deliberately rather
+    // than extended: the sine curtain is the last bullet shape in the game and
+    // a level after the one that introduced it should keep it, not follow it
+    // with a sixth thing. Every id here is an authored, validated row in
+    // PATTERNS -- R8 proves that at boot.
+    variantPatterns: { emitter: ['B2', 'B2T', 'B4'] },
+    fireRateMul: 1.0,
+    // Level three's timeout. Its waves are the same size and made of the same
+    // craft, so a different number here would be a number with no reason.
+    waveTimeoutS: 64,
+    waves: [
+      {
+        // THE COMMITMENT SHAPE, FIRST. Twelve craft in two blocks 806 px apart
+        // with an Emitter and a Warden in each: whichever side is covered, the
+        // other is sweeping and shielded. Level two spent four waves earning
+        // the right to ask this; level four opens with it.
+        name: 'WAVE 1',
+        formation: 'F5',
+        squadrons: [
+          { side: 'L', count: 6, slot: 0, pace: 'normal', fill: 'lancer',
+            types: { 1: 'emitter', 4: 'warden' } },
+          { side: 'R', count: 6, slot: 6, delayS: 1.2, pace: 'brisk',
+            fill: 'lancer', types: { 1: 'warden', 4: 'emitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // THE PICKET WITH SOMETHING IN IT THAT MULTIPLIES. Fourteen craft in
+        // two half-offset rows means no column can be deleted in one pass, and
+        // the single Splitter's pair is born into the gaps between the rows --
+        // the level's through-line, stated once, cleanly, before it is doubled.
+        // 14 + 2 = 16 against the 24 cap, so the fragments always arrive.
+        name: 'WAVE 2',
+        formation: 'F4',
+        squadrons: [
+          { side: 'R', count: 7, slot: 0, pace: 'normal', fill: 'lancer',
+            types: { 2: 'emitter' } },
+          { side: 'L', count: 7, slot: 7, delayS: 1.3, pace: 'brisk',
+            fill: 'lancer', types: { 4: 'splitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // THE WIDEST SHAPE CARRYING THE MOST FRAGMENTS. Two Splitters on
+        // opposite arcs of the lens, so both lessons land at once from
+        // eighteen craft spread across the whole frame width. 18 + 4 = 22
+        // against the 24 cap -- tight, and inside it.
+        name: 'WAVE 3',
+        formation: 'F2',
+        squadrons: [
+          { side: 'L', count: 9, slot: 0, pace: 'normal', fill: 'lancer',
+            types: { 2: 'splitter', 6: 'emitter' } },
+          { side: 'R', count: 9, slot: 9, delayS: 1.6, pace: 'brisk',
+            fill: 'lancer', types: { 3: 'emitter', 6: 'splitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // THE BREATHER, IN THE SAME PLACE EVERY OTHER LEVEL PUTS ONE. Eleven
+        // craft, no Splitters, but three Emitters and a Warden at the chevron's
+        // apex -- so the obvious focus-fire target is the one that takes three
+        // rounds before it starts to burn. Fewer things, each of them slower to
+        // remove: pressure without count.
+        name: 'WAVE 4',
+        formation: 'F3',
+        squadrons: [
+          { side: 'L', count: 11, slot: 0, pace: 'lazy', fill: 'lancer',
+            types: { 0: 'emitter', 5: 'warden', 8: 'emitter', 10: 'emitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // THE PICKET RE-READ, the way level three re-reads its own opener: the
+        // shape from wave 2, now with a Splitter AND a Warden in each row. The
+        // formation that cannot be cleared in passes, full of craft that cannot
+        // be cleared quickly. 14 + 4 = 18 against the 24 cap.
+        name: 'WAVE 5',
+        formation: 'F4',
+        squadrons: [
+          { side: 'L', count: 7, slot: 0, pace: 'brisk', fill: 'lancer',
+            types: { 1: 'splitter', 5: 'warden' } },
+          { side: 'R', count: 7, slot: 7, delayS: 1.4, pace: 'normal',
+            fill: 'lancer', types: { 2: 'warden', 5: 'splitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+      {
+        // THE LEVEL'S PEAK. Twenty craft from both sides, all Lancers except
+        // three Emitters, two Wardens and a Splitter -- the same census as
+        // level three's peak, entered on a level where the player has no drones
+        // to clear cheaply on the way through. 20 + 2 = 22 against the 24 cap.
+        //
+        // STILL NOT FLAGGED `hardest`, for the reason levels two and three are
+        // not: that flag selects §10's lateral-corrections sample and level
+        // one's wave 6 owns it. The measurement should keep meaning one thing.
+        name: 'WAVE 6',
+        formation: 'F1',
+        squadrons: [
+          { side: 'R', count: 10, slot: 0, pace: 'normal', fill: 'lancer',
+            types: { 1: 'emitter', 4: 'warden', 7: 'emitter' } },
+          { side: 'L', count: 10, slot: 12, delayS: 1.1, pace: 'brisk',
+            fill: 'lancer',
+            types: { 2: 'warden', 5: 'splitter', 8: 'emitter' } },
+        ],
+        patterns: ['B1'],
+        hardest: false,
+      },
+    ],
+  },
   {
     id: 'bulwark',
-    name: 'LEVEL 3',
+    name: 'LEVEL 5',
     hp: null,
     craftVariants: true,
     // B4 IS OPTED INTO PER LEVEL, exactly as craftVariants is, and for the same
@@ -2941,6 +3205,119 @@ export const FX = {
     // in lockstep. Deterministic (spawn order is), which keeps the mode A/B
     // comparison frame-identical.
     spawnPhaseStride: 2.399963,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// AUDIO (MVP item 21). The mix lives here for the same reason every other
+// number in this file does: §9.3 wants the on-device pass to be a config
+// session rather than a code hunt, and the mix is the single thing most likely
+// to need retuning through a phone speaker held at arm's length.
+//
+// THE ONE RULE THIS TABLE EXISTS TO ENFORCE: FIRE IS THE QUIET ONE. Auto-fire
+// is unconditional (§5.6) and the standard weapon fires every 0.105 s, so the
+// fire clip plays roughly ten times a second for the entire run. Anything mixed
+// at a normal level there stops being a sound and becomes the noise floor, and
+// every event worth hearing -- a kill, a deflect, a hit taken -- has to fight
+// it. So the fire clips are authored FIVE TO EIGHT TIMES quieter than the
+// events they sit under, and that ratio is the thing to preserve if these
+// numbers are ever retuned.
+//
+// EVERY CLIP IS LEVEL-CORRECTED HERE, not in the file. The generated clips
+// arrived between -0.1 and -11 dBFS peak with RMS spread over 20 dB, so a
+// uniform gain would have made the mix an accident of what each generation
+// happened to return. The `gain` column is per clip and is the correction.
+//
+// `minGapS` is a retrigger floor, and it is mix protection rather than voice
+// economy: three scatter rounds landing on three craft in one frame is three
+// identical transients stacking into one spike three times as loud as the
+// authored hit. A floor at a few tens of milliseconds collapses that into a
+// single hit, which is what the ear was going to hear anyway. It is deliberately
+// SHORTER than any weapon's fire interval, so no rate of fire is ever throttled.
+//
+// `pitchJitter` is +/- that fraction of playback rate, rolled per trigger. Only
+// the clips that repeat many times a second get any: ten identical copies of the
+// same 0.48 s sample per second phase into a machine-gun buzz, and a few percent
+// of rate spread breaks it up without the sound changing character.
+// ---------------------------------------------------------------------------
+
+export const AUDIO = {
+  // One master trim over everything, so "quieter overall" is one number.
+  // 0.8 rather than a nominal 1.0 or 0.9 because it was MEASURED: an offline
+  // render of this exact graph at busy-wave event rates (see `limiter` below)
+  // peaks at -0.88 dBFS here, against 0.07 dBFS at 0.9 -- i.e. 0.9 still let
+  // one sample through the limiter, and 0.8 leaves real headroom for ~0.35 dB
+  // of loudness.
+  master: 0.8,
+  // Bus trims. Music sits well under the SFX bus: it is a bed, and §5.4's whole
+  // readability argument is that the player should be reading the playfield.
+  sfxVolume: 0.85,
+  musicVolume: 0.22,
+  // Which music take is wired. Both were generated; only one is shipped, and
+  // swapping is this one line plus the file in /public/assets/audio.
+  musicTrack: 'musicBed',
+  // Start muted? No -- but the mute control (#mute-button) is always available,
+  // and mute is a master-gain cut so it silences music and SFX together.
+  startMuted: false,
+
+  // THE SAFETY LIMITER ON THE MASTER BUS, and it is here because a measurement
+  // said so rather than as boilerplate. An offline mixdown of the shipped clips
+  // at realistic event rates (fire 11.25/s, kills 3/s, impacts 8/s, music, the
+  // odd hit taken) peaks at +0.8 dBFS -- i.e. the mix CLIPS whenever a few loud
+  // events land together, which WebAudio does by hard-truncating at the
+  // destination and which sounds like a crackle rather than like anything
+  // authored.
+  //
+  // NO ARRANGEMENT OF PER-CLIP GAINS FIXES THAT. The worst case is a shield
+  // break, a kill and a sector shutter inside the same 200 ms, and pulling
+  // every gain down far enough for that sum to be safe would leave the common
+  // case inaudible. So the peaks are caught at the end of the chain instead.
+  //
+  // TUNED AS A LIMITER, NOT AS A COMPRESSOR: a high threshold with a hard knee
+  // and a big ratio, so it does nothing at all until the mix is genuinely about
+  // to clip. A gentler compressor would sit on the whole mix all the time and
+  // pump the fire layer, which is the exact thing that would make the quietest
+  // layer in the game start drawing attention to itself.
+  // VERIFIED, not assumed: the same busy-wave scene rendered through an
+  // OfflineAudioContext with this graph goes from +3.95 dBFS peak and 1033
+  // clipped samples with no limiter, to -0.88 dBFS peak and zero clipped
+  // samples with it. A -3 dB threshold was not quite enough (0.07 dBFS, one
+  // clipped sample); -6 is.
+  limiter: {
+    thresholdDb: -6,
+    kneeDb: 0,
+    ratio: 20,
+    attackS: 0.002,
+    releaseS: 0.12,
+  },
+
+  clips: {
+    // --- fire: the noise floor, kept under everything ---------------------
+    fire:        { gain: 0.16, minGapS: 0.030, pitchJitter: 0.06 },
+    fireHeavy:   { gain: 0.15, minGapS: 0.040, pitchJitter: 0.05 },
+    fireLance:   { gain: 0.17, minGapS: 0.040, pitchJitter: 0.04 },
+    fireSwarm:   { gain: 0.15, minGapS: 0.040, pitchJitter: 0.05 },
+
+    // --- contact: frequent, but every one of them is information ----------
+    // A bolt that lands and a bolt that kills have to be separable by ear
+    // alone, so the kill is mixed a clear step above the impact.
+    impact:      { gain: 0.30, minGapS: 0.045, pitchJitter: 0.05 },
+    kill:        { gain: 0.55, minGapS: 0.040, pitchJitter: 0.04 },
+    // The Warden's shimmer shield. Its whole job is to say "that round did not
+    // count", so it must not be quieter than the impact it replaces.
+    deflect:     { gain: 0.42, minGapS: 0.045, pitchJitter: 0.05 },
+
+    // --- the player's own state: the loudest things in the game -----------
+    playerHit:   { gain: 0.85, minGapS: 0.10 },
+    playerDown:  { gain: 0.95, minGapS: 0.50 },
+    pickup:      { gain: 0.95, minGapS: 0.10 },
+    weaponExpire:{ gain: 0.45, minGapS: 0.20 },
+
+    // --- structure: rare, and each one is a beat --------------------------
+    podKill:     { gain: 0.70, minGapS: 0.08 },
+    bossWarning: { gain: 0.75, minGapS: 1.00 },
+    bossDeath:   { gain: 0.85, minGapS: 1.00 },
+    sector:      { gain: 0.70, minGapS: 1.00 },
   },
 };
 

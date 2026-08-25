@@ -423,6 +423,9 @@ export function createWorld() {
       blackSurface: false,
       hitboxes: false,
       aisle: false,
+      // Dev cheat, honoured in player.js's damagePlayer(). Never set by
+      // gameplay -- only by ui/devPanel.js.
+      invincible: false,
     },
   };
 }

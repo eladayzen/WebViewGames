@@ -36,6 +36,19 @@ export const ASSET_MANIFEST = {
   surfaceKesselringGlow: 'assets/surface-kesselring-glow.png',
   surfaceBulwarkBase: 'assets/surface-bulwark-base.jpg',
   surfaceBulwarkGlow: 'assets/surface-bulwark-glow.png',
+  // §5.4 #5, The Hive Plate -- the fourth surface. Its glow layer is nearly
+  // empty (0.13% of frame area against Ashfall's 1.17%), which is the art
+  // telling the truth about the place: hive matter is lit by what is buried in
+  // it, not by fissures or coolant seams.
+  // The two bright surfaces (playtest round 7). Their glow layers are
+  // deliberately black -- a daylit sky and a sunlit ice shelf are LIT, not
+  // emissive, so nvlib's 'none' key leaves nothing for additive blending to
+  // contribute. The files exist so the renderer's per-surface glow lookup does
+  // not need a special case.
+  surfaceSkyfieldBase: 'assets/surface-skyfield-base.jpg',
+  surfaceSkyfieldGlow: 'assets/surface-skyfield-glow.png',
+  surfaceGlacisBase: 'assets/surface-glacis-base.jpg',
+  surfaceGlacisGlow: 'assets/surface-glacis-glow.png',
   shipLevel: 'assets/ship-level.png',
   shipRollL: 'assets/ship-roll-l.png',
   shipRollR: 'assets/ship-roll-r.png',
@@ -123,6 +136,10 @@ export const ASSET_MANIFEST = {
   propBulwarkMast: 'assets/prop-bulwark-mast.png',
   propBulwarkGrille: 'assets/prop-bulwark-grille.png',
   propBulwarkManifold: 'assets/prop-bulwark-manifold.png',
+  // The Hive Plate's fixtures are GROWN rather than bolted on, which is the
+  // whole reason the surface reads as a different idiom from the three before
+  // it: a resin pool and a chitin ridge are the ground swelling, not objects
+  // resting on it.
 };
 
 const tex = {};
@@ -602,6 +619,10 @@ const PLACEHOLDERS = {
   surfaceKesselringGlow: emptyGlow,
   surfaceBulwarkBase: placeholderSurface,
   surfaceBulwarkGlow: emptyGlow,
+  surfaceSkyfieldBase: placeholderSurface,
+  surfaceSkyfieldGlow: emptyGlow,
+  surfaceGlacisBase: placeholderSurface,
+  surfaceGlacisGlow: emptyGlow,
   shipLevel: () => placeholderShip(0),
   shipRollL: () => placeholderShip(-1),
   shipRollR: () => placeholderShip(1),

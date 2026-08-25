@@ -19,6 +19,7 @@ import {
   weaponDef,
 } from '../data/tuning.js';
 import { alloc, RunPhase } from '../core/state.js';
+import { sfx, sfxFire } from '../systems/audio.js';
 
 export function updatePlayer(w, input, dt, fx) {
   const p = w.player;
@@ -108,6 +109,14 @@ export function updatePlayer(w, input, dt, fx) {
   while (p.fireT <= 0 && guard++ < 8) {
     p.fireT += weapon.intervalS;
     fireVolley(w, p, weapon);
+    // ONE SOUND PER VOLLEY, not per round: a scatter volley is three bolts
+    // leaving one gun in the same instant, and three copies of the fire clip
+    // would just be the fire clip three times as loud. The clip is chosen by
+    // weapon, so a Lance sounds like a Lance -- see WEAPON_CLIP in
+    // /systems/audio.js. The whole fire layer is mixed far under everything
+    // else (AUDIO in /data/tuning.js); auto-fire is unconditional, so this
+    // plays about ten times a second for the entire run.
+    sfxFire(weapon.id);
   }
 }
 
@@ -323,6 +332,12 @@ export function updatePlayerBolts(w, dt) {
 export function damagePlayer(w, segments, fx) {
   const p = w.player;
   if (p.invulnT > 0 || !p.alive) return false;
+  // Dev cheat (ui/devPanel.js). Deliberately checked HERE rather than at the
+  // call sites: every path that can hurt the player already funnels through
+  // this one function, so a future damage source cannot quietly bypass it.
+  // Returns false, the same as an i-frame absorb, so nothing downstream needs
+  // to know the difference.
+  if (w.debug.invincible) return false;
 
   p.shield -= segments;
   p.invulnT = PLAYER.invulnS;
@@ -338,5 +353,11 @@ export function damagePlayer(w, segments, fx) {
     p.shield = 0;
     p.alive = false;
   }
+  // Sounded HERE rather than at the three call sites in /systems/collision.js,
+  // because this is the one function that knows whether a hit actually landed
+  // (i-frames swallow the rest) and whether it was the last one. Two distinct
+  // clips: the run continuing and the run ending must never sound the same.
+  if (p.alive) sfx('playerHit');
+  else sfx('playerDown');
   return true;
 }

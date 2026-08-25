@@ -210,6 +210,9 @@ export async function createRenderer(mountEl) {
   // it is set per type to that craft's family colour, which keeps §5.4's
   // ownership coding intact and makes the type identifiable at a distance where
   // its hull detail has stopped being legible.
+  // Set by setSurface(). Drives whether the rim is additive light (dark
+  // surfaces) or an opaque dark outline (the bright ones).
+  let darkRim = false;
   const rimSprites = bank(layers.enemies, 64, () => {
     const s = new Sprite(T('droneRim'));
     s.blendMode = 'add';
@@ -422,15 +425,26 @@ export async function createRenderer(mountEl) {
     }
     for (; pi < propSprites.length; pi++) propSprites[pi].visible = false;
 
-    // Air shadows -- the altitude cue (§5.4), required in both modes. The boss
-    // gets one too: it is the biggest thing in the air and the one most likely
-    // to read as painted onto the surface without it.
+    // Air shadows -- the altitude cue (§5.4). The boss gets one too: it is the
+    // biggest thing in the air and the one most likely to read as painted onto
+    // the surface without it.
+    //
+    // NOT ON THE OPEN SURFACES (playtest round 7). Amit, on the bright levels:
+    // "it's like the illusion of distance between the matte painting and the
+    // character." He is right, and the reason is that a contact shadow is a
+    // statement about how far the craft is from the ground. Over rock or a
+    // deck that reads as altitude; over open sky and open ice it says the ship
+    // is skimming a painted backdrop, which is the one thing those levels are
+    // for breaking. The same flag that swaps the rim to an outline suppresses
+    // the shadow, because both are answering "what does this surface need".
     let si = 0;
-    si = drawShadow(shadowSprites, si, w.player.x, w.player.y, PLAYER.spriteWidth);
-    for (let i = 0; i < w.enemies.length; i++) {
-      const e = w.enemies[i];
-      if (!e.alive) continue;
-      si = drawShadow(shadowSprites, si, e.x, e.y, enemyDef(e.type).spriteWidth);
+    if (!darkRim) {
+      si = drawShadow(shadowSprites, si, w.player.x, w.player.y, PLAYER.spriteWidth);
+      for (let i = 0; i < w.enemies.length; i++) {
+        const e = w.enemies[i];
+        if (!e.alive) continue;
+        si = drawShadow(shadowSprites, si, e.x, e.y, enemyDef(e.type).spriteWidth);
+      }
     }
     for (; si < shadowSprites.length; si++) shadowSprites[si].visible = false;
 
@@ -489,12 +503,23 @@ export async function createRenderer(mountEl) {
       rm.x = e.x;
       rm.y = e.y;
       rm.rotation = sp.rotation;
-      rm.scale.set((k * sp.texture.width * RIM.scale) / Math.max(1, rm.texture.width));
-      rm.tint = e.hitFlashT > 0 ? 0xffffff : (def.rimColor || 0xc46bff);
-      rm.alpha =
-        (e.mode === 'fleeing' ? 0.5 : 1) *
-        RIM.alpha *
-        (1 - RIM.pulseAmp + RIM.pulseAmp * (0.5 + 0.5 * Math.sin(w.time * RIM.pulseHz * TWO_PI + i)));
+      const rimK = darkRim ? RIM.darkScale : RIM.scale;
+      rm.scale.set((k * sp.texture.width * rimK) / Math.max(1, rm.texture.width));
+      rm.blendMode = darkRim ? 'normal' : 'add';
+      if (darkRim) {
+        // Opaque, near-black, and NOT pulsed. A pulse reads as neon, which is
+        // the wrong language for an outline on a daylit sky -- there it should
+        // read as the craft's own hard edge. The hit flash still whites it out,
+        // because "I hit that" has to carry on every surface.
+        rm.tint = e.hitFlashT > 0 ? 0xffffff : RIM.darkColor;
+        rm.alpha = (e.mode === 'fleeing' ? 0.5 : 1) * RIM.darkAlpha;
+      } else {
+        rm.tint = e.hitFlashT > 0 ? 0xffffff : (def.rimColor || 0xc46bff);
+        rm.alpha =
+          (e.mode === 'fleeing' ? 0.5 : 1) *
+          RIM.alpha *
+          (1 - RIM.pulseAmp + RIM.pulseAmp * (0.5 + 0.5 * Math.sin(w.time * RIM.pulseHz * TWO_PI + i)));
+      }
 
       // --- damage feedback (§6.2), for types that can take a hit at all ----
       if (e.maxHp >= dmg.pipMinMaxHp) {
@@ -1035,6 +1060,19 @@ export async function createRenderer(mountEl) {
    * Call it while the screen is covered -- see /surface/transition.js.
    */
   function setSurface(s) {
+    // BRIGHT SURFACES INVERT THE RIM (playtest round 7).
+    //
+    // The rim exists to separate a craft from the ground. On the dark surfaces
+    // it does that with additive light -- but additive light over a near-white
+    // sky or ice shelf adds nothing visible, so on the bright levels the same
+    // silhouette is drawn as an opaque DARK outline instead. It is the same
+    // texture and the same sprite; only the blend mode and the tint change.
+    //
+    // This is why constraints R6 exempts a darkRim surface from the luminance
+    // rule: separation there is authored rather than emergent, and requiring a
+    // craft to also out-luminance a white ground would mean no craft could ever
+    // fly over one.
+    darkRim = !!s.darkRim;
     baseTex = T(s.baseKey);
     tileScale = DESIGN_W / Math.max(1, baseTex.width);
     base.texture = baseTex;

@@ -29,6 +29,7 @@
 
 import { SECTOR_TRANSITION } from '../data/tuning.js';
 import { surfaceAt } from '../data/surfaces.js';
+import { sfx } from '../systems/audio.js';
 
 export const TransitionPhase = {
   COVER_IN: 'coverIn',
@@ -47,6 +48,10 @@ export function beginSurfaceTransition(w, toIndex) {
   t.fromIndex = w.surfaceIndex;
   t.toIndex = toIndex;
   t.swapped = false;
+  // The shutters closing is the loudest visual beat in the game and the
+  // playfield is frozen behind them, so this is the one moment where a sound
+  // has the whole mix to itself.
+  sfx('sector');
   return true;
 }
 

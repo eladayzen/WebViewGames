@@ -50,6 +50,7 @@ import {
 import { cfg } from '../core/mode.js';
 import { alloc, liveCount } from '../core/state.js';
 import { makeRng } from '../core/rng.js';
+import { sfx } from './audio.js';
 
 // ---------------------------------------------------------------------------
 // A SEPARATE RANDOM STREAM, and this is load-bearing rather than tidy.
@@ -264,13 +265,21 @@ export function updatePickups(w, dt) {
     }
   }
 
-  // The temporary weapon's clock. Expiry is silent and immediate -- there is no
-  // input to warn about and nothing the player can do differently, so a
-  // countdown in the margin (see /ui/hud.js) is the whole notice.
+  // The temporary weapon's clock. Expiry is immediate -- there is no input to
+  // warn about and nothing the player can do differently, so the countdown in
+  // the margin (see /ui/hud.js) and one falling cue are the whole notice.
+  //
+  // THE CUE IS NEW AND THE VISUAL SILENCE IS NOT AN ARGUMENT AGAINST IT: the
+  // player is standing on a board reading the centre of the screen, and the
+  // weapon timer lives in the left margin. On the board, the moment the gun
+  // changes back is exactly the moment a sound carries better than a bar.
   const p = w.player;
   if (p.weaponT > 0) {
     p.weaponT = Math.max(0, p.weaponT - dt);
-    if (p.weaponT === 0) p.weapon = 'standard';
+    if (p.weaponT === 0) {
+      p.weapon = 'standard';
+      sfx('weaponExpire');
+    }
   }
 }
 
@@ -286,6 +295,10 @@ function collect(w, q) {
     ? Math.max(p.weaponT, def.durationS)
     : def.durationS;
   p.weapon = def.id;
+  // Mixed near the top of the range: crossing the frame for a canister is the
+  // one thing in the game the player chooses to do, and the reward for it
+  // should be the loudest good news there is.
+  sfx('pickup');
 }
 
 /** Whether a pickup is drawable this frame (a re-offer in flight is not).

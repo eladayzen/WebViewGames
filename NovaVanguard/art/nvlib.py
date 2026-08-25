@@ -301,6 +301,22 @@ def extract_emissive(tile, kind, bloom=0.0):
                 bright = (r - 95) / 80.0
                 s = min(1.0, max(0.0, warm)) * min(1.0, max(0.0, bright))
                 cr, cg, cb = 1.0, 0.92, 0.7
+            elif kind == 'none':
+                # DAYLIT SURFACES HAVE NO EMISSIVE ACCENTS (playtest round 7).
+                #
+                # Both keys above assume the same thing: that the frame is dark
+                # and the accents are the exception. Invert the surface and the
+                # assumption collapses -- on a sunlit sky the turquoise ocean is
+                # the majority of the frame, so 'chromatic' keys the WATER and
+                # reports 37% emissive coverage against a 12% cap.
+                #
+                # The right answer is not a tighter threshold, it is that these
+                # surfaces do not emit at all. Sunlight is illumination, not
+                # emission; there is nothing on a cloud or an atoll that glows
+                # in the dark. The glow layer stays pure black, contributes
+                # nothing under blendMode 'add', and the base tile carries the
+                # whole look.
+                continue
             else:
                 mx, mn = max(r, g, b), min(r, g, b)
                 sat = 0.0 if mx == 0 else (mx - mn) / mx

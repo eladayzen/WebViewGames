@@ -175,9 +175,13 @@ def verdict(v, cap):
 
 def main():
     fail = 0
-    # Three surfaces, which is the FULL set: the POC-8 decision note cuts the
-    # campaign to three levels.
-    for stem in ('ashfall', 'kesselring', 'bulwark'):
+    # FOUR surfaces. The POC-8 decision note cut the campaign to three levels;
+    # the Hive Plate (5.4 #5) is a fourth added on top of that cut, so this
+    # tuple -- and the two below it -- are the list to extend when a surface is
+    # added. A surface missing from here has no measured row in readability.js,
+    # which /systems/constraints.js reports at boot as an error rather than
+    # letting it fly unmeasured.
+    for stem in ('ashfall', 'skyfield', 'kesselring', 'glacis', 'bulwark'):
         base = os.path.join(ASSETS, f'surface-{stem}-base.jpg')
         glowp = os.path.join(ASSETS, f'surface-{stem}-glow.png')
         if not os.path.exists(base):
@@ -212,7 +216,7 @@ def main():
     # report reads the way the game is authored -- a hot prop is a problem for
     # the surface it sits on, and only that one.
     print('props            (sprite x propTint, scrim over)')
-    for stem in ('ashfall', 'kesselring', 'bulwark'):
+    for stem in ('ashfall', 'skyfield', 'kesselring', 'glacis', 'bulwark'):
         files = sorted(x for x in os.listdir(ASSETS) if x.startswith(f'prop-{stem}-'))
         if not files:
             continue
@@ -250,7 +254,7 @@ def main():
     # the problem. The median answers "how bright is the BODY".
     craft_rows = []
     surf_rows = []
-    for stem in ('ashfall', 'kesselring', 'bulwark'):
+    for stem in ('ashfall', 'skyfield', 'kesselring', 'glacis', 'bulwark'):
         base = os.path.join(ASSETS, f'surface-{stem}-base.jpg')
         if not os.path.exists(base):
             continue
@@ -259,17 +263,26 @@ def main():
         lum, _s, _c, _n = band(composite(im, SURFACE_TINT))
         surf_rows.append((stem, lum[0]))
 
-    print('\ncraft contrast   (sprite median luma vs each surface rendered mean)')
-    worst_surface = max(v for _k, v in surf_rows) if surf_rows else 0.0
+    # ABSOLUTE separation against EVERY surface, not "brighter than the
+    # brightest" (playtest round 7). With bright levels in the campaign a craft
+    # can now be too CLOSE to a pale ground as easily as too dark against a
+    # black one, and the worst case is whichever surface it sits nearest to in
+    # luminance -- on either side. Mirrors the R6 rule in constraints.js.
+    print('\ncraft contrast   (sprite median luma vs its NEAREST surface)')
     for f in sorted(x for x in os.listdir(ASSETS)
                     if (x.startswith('enemy-') or x.startswith('ship-'))
                     and x.endswith('.png') and '-rim' not in x):
         im = Image.open(os.path.join(ASSETS, f)).convert('RGBA')
         med = median_luma(im)
-        delta = med - worst_surface
+        # Bright surfaces are exempt here for the same reason R6 exempts them:
+        # craft separate from those by an authored dark outline, not by
+        # luminance. Keeping them in would fail every craft in the game.
+        DARK_RIM = ('skyfield', 'glacis')
+        cand = [(abs(med - v), k) for k, v in surf_rows if k not in DARK_RIM]
+        delta, against = min(cand, default=(0.0, '-'))
         craft_rows.append((f, med, delta))
-        print(f'  {f:30s} median {med:.3f}   delta {delta:+.3f}   '
-              f'{"OK  " if delta >= CRAFT_CONTRAST_MIN else "DARK"}')
+        print(f'  {f:30s} median {med:.3f}   nearest {against:11s} '
+              f'delta {delta:+.3f}   {"OK  " if delta >= CRAFT_CONTRAST_MIN else "FAIL"}')
         fail += delta < CRAFT_CONTRAST_MIN
 
     emit_readability(surf_rows, craft_rows)

@@ -765,3 +765,120 @@ body {
   from { opacity: 1; }
   to { opacity: 0.35; }
 }
+
+/* ---------------------------------------------------------------------------
+   Dev panel (ui/devPanel.js)
+   ---------------------------------------------------------------------------
+   Fourth button in the top-right chrome row, continuing the 48px spacing of
+   back / pause / mute. Deliberately styled like the rest of the chrome rather
+   than as a debug overlay: it is a tool Amit uses while judging the game, so
+   it should not fight the art while it is open.
+--------------------------------------------------------------------------- */
+
+#dev-button {
+  position: absolute;
+  top: 12px;
+  right: 156px;
+  z-index: 9999;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: #eafcff;
+  font: 600 15px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-button.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+}
+
+#dev-panel {
+  position: absolute;
+  top: 58px;
+  right: 12px;
+  z-index: 9999;
+  width: 232px;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+  background: rgba(10, 12, 26, 0.93);
+  border: 1px solid rgba(111, 232, 255, 0.28);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  color: #eafcff;
+  font: 500 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-panel.hidden { display: none; }
+
+.dev-section {
+  margin: 10px 0 5px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: rgba(111, 232, 255, 0.72);
+}
+
+.dev-section:first-child { margin-top: 2px; }
+
+.dev-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.dev-toggle { justify-content: space-between; }
+
+.dev-chip {
+  flex: 1;
+  min-width: 34px;
+  padding: 6px 4px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(30, 40, 70, 0.8);
+  color: #eafcff;
+  font: 600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.dev-toggle .dev-chip { flex: 0 0 52px; }
+
+.dev-chip:hover { background: rgba(45, 60, 100, 0.9); }
+
+.dev-chip.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+  border-color: rgba(55, 200, 230, 0.9);
+}
+
+.dev-note {
+  margin: 2px 0 4px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(234, 252, 255, 0.55);
+}
+
+/* Invincibility has to be impossible to forget about -- a persistent tint on
+   the frame, so "why am I not dying" is answered before it is asked. */
+body.dev-invincible::after {
+  content: 'INVINCIBLE';
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9998;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 96, 96, 0.85);
+  color: #180404;
+  font: 700 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 0.12em;
+  pointer-events: none;
+}

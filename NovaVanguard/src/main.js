@@ -34,6 +34,7 @@ import {
 import { surfaceAt, SURFACES } from './data/surfaces.js';
 import { BOSSES, bossIsBuilt } from './data/bosses.js';
 import { createSectorTransitionUi } from './ui/sectorTransition.js';
+import { createDevPanel } from './ui/devPanel.js';
 import {
   updateDirector,
   startScenario,
@@ -48,6 +49,16 @@ import {
   updateTelegraphs,
 } from './systems/pickups.js';
 import { runValidator } from './systems/constraints.js';
+import {
+  initAudio,
+  suspendAudio,
+  resumeAudio,
+  toggleMuted,
+  isMuted,
+  refreshMix,
+  audioStats,
+  sfx,
+} from './systems/audio.js';
 import { createHud } from './ui/hud.js';
 import { createInstrumentation } from './debug/instrumentation.js';
 import { createPanel } from './debug/panel.js';
@@ -63,6 +74,14 @@ async function boot() {
   resolveBootMode();
   initInput();
 
+  // NOT AWAITED, deliberately. Auto-start on load is an SDK requirement (see
+  // the note at the bottom of this file), so nothing in boot may block on a
+  // network fetch that might never complete -- and every sfx() call before the
+  // buffers land is a silent no-op by design. The context itself stays locked
+  // until the first gesture, which /systems/audio.js self-installs a listener
+  // for; the game is fully playable in the meantime, silently.
+  initAudio();
+
   const renderer = await createRenderer(mount);
   // Keep the DOM HUD glued to the same letterboxed box the canvas uses.
   renderer.onResize((box) => {
@@ -75,6 +94,8 @@ async function boot() {
   const world = createWorld();
   const rng = makeRng(POC_SCENARIO.seed);
   const hud = createHud(document);
+  const muteButton = document.getElementById('mute-button');
+  muteButton.textContent = isMuted() ? '\u{1F507}' : '\u{1F508}';
   const sectorUi = createSectorTransitionUi(document);
   const instr = createInstrumentation();
 
@@ -171,8 +192,8 @@ async function boot() {
   // ---------------------------------------------------------------------
 
   /** Fire the beat. Cycles through /data/surfaces.js, so triggering it
-   *  repeatedly walks Ashfall -> Kesselring -> Ashfall and can be watched over
-   *  and over without a reload. */
+   *  repeatedly walks Ashfall -> Kesselring -> Bulwark -> Hive -> Ashfall and
+   *  can be watched over and over without a reload. */
   function nextSurface() {
     if (world.state !== GameState.RUNNING) return;
     const to = (world.surfaceIndex + 1) % SURFACES.length;
@@ -233,6 +254,22 @@ async function boot() {
     hud.banners.push('NO BUILT BOSS ON THIS SURFACE', 1.2);
   }
 
+  /** Jump straight to a level by index (ui/devPanel.js).
+   *
+   *  Goes through the SAME transition beat as nextSurface() rather than
+   *  assigning surfaceIndex directly -- the swap clears the playfield, the
+   *  pickups and the pending re-offers, and skipping that would drop the
+   *  player into a new surface with the old sector's squadron already locked
+   *  in formation over it. Jumping to the level you are already on is a no-op
+   *  rather than a redundant 2.35s shutter. */
+  function jumpToLevel(index) {
+    if (world.state !== GameState.RUNNING) return;
+    const to = ((index % SURFACES.length) + SURFACES.length) % SURFACES.length;
+    if (to === world.surfaceIndex) return;
+    if (!beginSurfaceTransition(world, to)) return;
+    sectorUi.begin(surfaceAt(to));
+  }
+
   onModeChange((id) => {
     hud.setMode(id);
     panel.setMode(id);
@@ -245,13 +282,40 @@ async function boot() {
   // ---------------------------------------------------------------------
   // Debug keys (§5.2's `M`, plus the dev guides POC-1 and §5.4 call for)
   // ---------------------------------------------------------------------
+  /**
+   * The one place `paused` is written, so the audio context can be suspended
+   * with it. A BufferSourceNode has no pause of its own, so freezing the music
+   * bed means freezing the context -- and a paused game that keeps playing its
+   * music is the kind of thing that only gets noticed on a device.
+   */
+  function setPaused(next) {
+    world.paused = next;
+    if (world.paused) suspendAudio();
+    else resumeAudio();
+  }
+
+  function toggleMute() {
+    const m = toggleMuted();
+    muteButton.textContent = m ? '\u{1F507}' : '\u{1F508}';
+    muteButton.setAttribute('aria-label', m ? 'Unmute' : 'Mute');
+    // Unmuting resumes the context (a tap on the speaker IS the gesture the
+    // autoplay policy wants), which would otherwise start the music bed playing
+    // over a paused game. Pause wins.
+    if (world.paused) suspendAudio();
+  }
+
   window.addEventListener('keydown', (e) => {
     switch (e.code) {
       case 'KeyM':
         swapMode();
         break;
       case 'KeyP':
-        world.paused = !world.paused;
+        setPaused(!world.paused);
+        break;
+      // Mute, on a key as well as on the button -- the button is for a device,
+      // the key is for whoever is tuning the mix with the console open.
+      case 'KeyU':
+        toggleMute();
         break;
       case 'KeyB':
         world.debug.bands = !world.debug.bands;
@@ -301,8 +365,23 @@ async function boot() {
   });
 
   document.getElementById('pause-button').addEventListener('click', () => {
-    world.paused = !world.paused;
+    setPaused(!world.paused);
   });
+
+  muteButton.addEventListener('click', () => toggleMute());
+
+  // Dev panel (ui/devPanel.js) -- level jump, skip-to-boss, invincibility.
+  // Mounted from JS rather than authored into index.html so the whole tool
+  // lives in one file and can be dropped by deleting the import.
+  const devPanel = createDevPanel(document, {
+    jumpToLevel,
+    skipToBoss: forceBoss,
+    restart: restartScenario,
+    world,
+    surfaces: SURFACES,
+  });
+  document.body.appendChild(devPanel.button);
+  document.body.appendChild(devPanel.panel);
 
   // The SDK forwards Space/Enter, and synthetically clicks #restart-button
   // while the game-over overlay is visible. Space/Enter also restarts here so
@@ -450,6 +529,12 @@ async function boot() {
     // true: an operator on a board can retune a number in the console and feel
     // the result on the next frame, with no rebuild and no reload.
     tuning: TUNING,
+    // The audio layer, live, for the same reason the tuning namespace is: the
+    // mix is retuned by ear on a device, and `__nv.tuning.AUDIO.clips.fire.gain
+    // = 0.1; __nv.audio.refreshMix()` is that whole loop with no rebuild. `sfx`
+    // is here so a single clip can be auditioned in isolation, which is the
+    // only honest way to judge one against the fire layer it sits over.
+    audio: { sfx, refreshMix, audioStats, toggleMuted, isMuted },
     stepSim(seconds) {
       const end = world.time + seconds;
       let guard = 0;
