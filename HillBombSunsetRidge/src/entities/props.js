@@ -13,7 +13,7 @@ import { PROP_TYPES, PATTERNS, FACE_PATTERNS } from '../data/propTypes.js';
 import {
   toWorld, surfaceUp, frameAt, makeFrame, radiusAt, dropLipsBetween,
 } from '../world/trough.js';
-import { RAMP_ARROW_COLOR } from '../data/constants.js';
+import { RAMP_ARROW_COLOR, IDOL_OUTLINE } from '../data/constants.js';
 // Patterns are authored as FRACTIONS of the ridable half-width, so the rim angle
 // they are handed has to be the live one -- a pattern laid out against the
 // half-pipe's 1.15 rad would put half its props past the edge of a shallower,
@@ -502,29 +502,100 @@ function buildBoostPad(def) {
 // uprights, because a solid slab reads as scenery at speed while boards read as
 // something built to stop you.
 /**
- * A carved stone idol: a tapered plinth, a body, shoulders and a head. Built
- * from boxes rather than a mesh because it has to read as a SILHOUETTE from
- * several hundred units away -- the decision to go for one is made long before
- * any detail resolves -- and a tall stepped shape against a wide empty hill is
- * about as legible as a silhouette gets.
+ * OUTLINE a built prop, so its silhouette survives any ground it stands on.
+ *
+ * Amit on the idol: "the colour is like black and it's okay, but sometimes it's
+ * hard to see him. Maybe we need some kind of outline, or a way for it to be
+ * more clear on any kind of floor and wall."
+ *
+ * Lightening the body is the obvious answer and the wrong one. Every theme's
+ * ground is dark and low-saturation ON PURPOSE -- that is what keeps the red
+ * rider findable on a board-mounted screen -- so a dark object will keep
+ * disappearing whatever shade of dark it is, and a light one would compete with
+ * the rider for attention. What is missing is not brightness, it is an EDGE.
+ *
+ * INVERTED HULL: a copy of each mesh, slightly larger, drawn back-faces-only.
+ * The front faces of the real mesh cover its middle, so what is left showing is
+ * a rim of constant width all the way around the silhouette. It costs one extra
+ * draw per part, needs no lighting, no post-processing and no shader, and works
+ * against literally any background because it is a hard value break exactly
+ * where the object ends.
+ */
+function addOutline(group, colour, scale = 1.07) {
+  const mat = new THREE.MeshBasicMaterial({ color: colour, side: THREE.BackSide });
+  const shells = [];
+  group.traverse((o) => { if (o.isMesh) shells.push(o); });
+  for (const m of shells) {
+    const shell = new THREE.Mesh(m.geometry, mat);
+    shell.position.copy(m.position);
+    shell.quaternion.copy(m.quaternion);
+    shell.scale.copy(m.scale).multiplyScalar(scale);
+    // Behind the real mesh in draw order, so the rim never paints over the face
+    // it is outlining.
+    shell.renderOrder = -1;
+    group.add(shell);
+  }
+  return group;
+}
+
+/**
+ * THE IDOL -- a tapered stone totem with a lit amber core, planted on the hill.
+ *
+ * It was a plinth, a body, shoulders and a head: four stacked boxes, which from
+ * any distance read as a snowman rather than as treasure. Amit: "the idols look
+ * really bad... the design, the colours, everything -- try to make something
+ * different shape."
+ *
+ * A FOUR-SIDED TAPERED COLUMN instead, which is a silhouette nothing else on
+ * this hill has. Ramps are wedges, blockers are flat panels, crystals are small
+ * gems, rails are thin bars -- a tall obelisk narrowing to a point is instantly
+ * not any of them, and that is most of the job. The decision to go for one is
+ * made several seconds out, at a range where only the outline exists.
+ *
+ * THE GLOW IS A BAND, NOT A COATING. The amber sits in a slot near the top and
+ * in a gem crowning it, against a dark body -- so the eye catches a bright mark
+ * at a known height rather than a large softly-coloured object, which is what
+ * reads at distance. Colouring the whole thing amber would have made a big dull
+ * shape; the value break is what carries.
  */
 function buildStatue(def) {
   const { w, h, l } = def.size;
   const g = new THREE.Group();
   const stone = new THREE.MeshBasicMaterial({ color: def.colour });
   const lit = new THREE.MeshBasicMaterial({ color: def.accent });
-  const parts = [
-    { w: w, h: h * 0.16, l: l, y: h * 0.08, m: lit },
-    { w: w * 0.62, h: h * 0.52, l: l * 0.62, y: h * 0.42, m: stone },
-    { w: w * 0.80, h: h * 0.10, l: l * 0.80, y: h * 0.73, m: lit },
-    { w: w * 0.44, h: h * 0.24, l: l * 0.44, y: h * 0.90, m: stone },
-  ];
-  for (const q of parts) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(q.w, q.h, q.l), q.m);
-    m.position.y = q.y;
-    g.add(m);
-  }
-  return g;
+
+  // Plinth: a wider foot, so it reads as planted rather than stuck in.
+  const base = new THREE.Mesh(new THREE.BoxGeometry(w, h * 0.07, l), stone);
+  base.position.y = h * 0.035;
+  g.add(base);
+
+  // The shaft, four-sided and tapering. radialSegments 4 gives flat faces that
+  // catch the unlit shading differently as it turns, which is the only
+  // animation an unlit material gets.
+  const shaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(w * 0.16, w * 0.42, h * 0.74, 4), stone);
+  shaft.position.y = h * 0.07 + h * 0.37;
+  shaft.rotation.y = Math.PI / 4;
+  g.add(shaft);
+
+  // The lit slot, set near the top where the eye lands first.
+  const core = new THREE.Mesh(
+    new THREE.CylinderGeometry(w * 0.24, w * 0.28, h * 0.1, 4), lit);
+  core.position.y = h * 0.66;
+  core.rotation.y = Math.PI / 4;
+  g.add(core);
+
+  // A crowning gem, the same amber. An octahedron rather than another box: at
+  // range this is the part that says "collect me", and it is the crystal's own
+  // shape scaled up, which is the link between the two.
+  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(w * 0.34, 0), lit);
+  gem.position.y = h * 0.94;
+  g.add(gem);
+
+  // The rim goes on last, so it wraps everything including the lit parts -- a
+  // bright core with a bright edge still reads, and the alternative is a gem
+  // that floats free of an outlined body.
+  return addOutline(g, IDOL_OUTLINE);
 }
 
 /**
@@ -991,13 +1062,16 @@ export function createProps(scene) {
           // Spin about the SURFACE normal, composed onto the basis above --
           // writing mesh.rotation.y here instead would overwrite the whole
           // quaternion and stand the crystal world-upright on a rolled section.
-          _spin.setFromAxisAngle(_up, spinT * 1.8 + it.s * 0.7);
+          _spin.setFromAxisAngle(_up,
+            (it.def.pickup.grounded ? spinT * 0.5 : spinT * 1.8) + it.s * 0.7);
           it.mesh.quaternion.premultiply(_spin);
           // Float it off the surface, along that same normal. The height is the
           // one the probe tests against, so what you see is what you can reach.
-          it.mesh.position.addScaledVector(
-            _up, it.def.pickup.height + Math.sin(spinT * 2.2 + it.s) * 0.16,
-          );
+          // Grounded pickups neither float nor bob -- they are planted. The
+          // spin stays: it is the shared language that says "collectable", and
+          // a slowly turning monument reads fine where a bobbing one does not.
+          const bob = it.def.pickup.grounded ? 0 : Math.sin(spinT * 2.2 + it.s) * 0.16;
+          it.mesh.position.addScaledVector(_up, it.def.pickup.height + bob);
         }
       }
     },

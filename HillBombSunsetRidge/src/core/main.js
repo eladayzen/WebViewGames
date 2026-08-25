@@ -185,6 +185,8 @@ const state = {
   // False from the moment a drop throws the rider until the ground stops
   // curving away -- so one lip cannot launch them twice. See the launch test.
   dropArmed: true,
+  // Seconds left of the post-barrier recovery drag, and how hard it bites.
+  wallSlowT: 0, wallSlowFactor: 1,
   // How much of the no-trick HOVER pose is showing, 0..1. Eased rather than
   // boolean so a brief ollie barely registers it and a long drop reaches it in
   // full -- the pose scales with how much of a hang there actually was, with no
@@ -367,6 +369,7 @@ function reset() {
   state.onWall = false;
   state.airHold = 0;
   state.dropArmed = true;
+  state.wallSlowT = 0;
   state.height = 0;
   state.speed = START_SPEED;
   state.carve = 0;
@@ -1117,7 +1120,14 @@ function frame() {
     // steepness puts terminal at 74 u/s on a hill balanced for 27. The gain is
     // the fraction of that we actually take -- see dropAccelGain.
     const steepness = slopeAt(state.s) / GRADE;
-    const gradePull = GRADE_ACCEL * (1 + TERRAIN.dropAccelGain * (steepness - 1));
+    let gradePull = GRADE_ACCEL * (1 + TERRAIN.dropAccelGain * (steepness - 1));
+    // RECOVERY DRAG after a barrier. Applied to the GRADE rather than as extra
+    // drag so it cannot stall the rider outright -- it only slows how fast the
+    // hill hands the speed back.
+    if (state.wallSlowT > 0) {
+      state.wallSlowT = Math.max(0, state.wallSlowT - dt);
+      gradePull *= state.wallSlowFactor;
+    }
 
     const accel =
       gradePull
@@ -1668,13 +1678,34 @@ function frame() {
           // you are down is a metre you have to win back.
           state.speed = hit.def.wall.stopSpeed;
           state.tripT = hit.def.wall.downSeconds;
+          // The hill holds the speed back for a beat -- see slowSeconds. Longer
+          // than the loss of control on purpose: you get the steering back
+          // first and spend the rest of it climbing out of the hole, which is
+          // what "and now I'm slow" actually feels like.
+          state.wallSlowT = hit.def.wall.slowSeconds || 0;
+          state.wallSlowFactor = hit.def.wall.slowFactor || 1;
           state.roll = 0;          // the momentum bonus, earned and now lost
           state.boostT = 0;
           state.grind = null;      // knocked off a rail if you were on one
           state.airActive = false;
           state.airT = 0;
           state.airTrick = null;
-          state.thetaVel = 0;
+          // SHOVED CLEAR, not stopped on its line. Zeroing thetaVel left the
+          // rider travelling straight down the barrier they had just hit, which
+          // is what made a centre-on impact look like passing through it.
+          //
+          // Which way: away from the barrier's own line if the rider is off it
+          // at all, otherwise continue whichever way they were already drifting,
+          // and failing both -- a dead-centre hit with no lateral motion, which
+          // is exactly the case that read worst -- toward the middle of the
+          // hill, where there is the most room to be pushed into.
+          {
+            const off = state.theta - hit.theta;
+            const dir = Math.abs(off) > 1e-3 ? Math.sign(off)
+              : Math.abs(state.thetaVel) > 1e-3 ? Math.sign(state.thetaVel)
+                : -Math.sign(state.theta) || 1;
+            state.thetaVel = dir * (hit.def.wall.deflect || 0);
+          }
           // The heaviest absorb the rider has, held for the whole time they are
           // down -- it is the closest thing to a fall this rig can do without
           // new animation, and it reads as being folded up by the impact.

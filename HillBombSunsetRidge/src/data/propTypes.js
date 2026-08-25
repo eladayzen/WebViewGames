@@ -118,6 +118,11 @@ export const PROP_TYPES = {
       clearHeight: 1.3,  // an arc above this sails over it
       stopSpeed: 6.0,    // what you are left with after hitting it
       downSeconds: 1.1,  // how long the rider is out of control
+      // Less shove than the face's blocker: this one is a run-ender, and being
+      // flung sideways on top of losing the race reads as piling on.
+      deflect: 0.14,
+      slowSeconds: 2.0,
+      slowFactor: 0.3,
     },
     label: 'WALL',
   },
@@ -150,8 +155,46 @@ export const PROP_TYPES = {
     wall: {
       catchWidth: 2.0,
       clearHeight: 1.9,  // a real drop's air clears it; an ollie does not
-      stopSpeed: 15.0,   // knocked down to a crawl, not stopped dead
+      stopSpeed: 12.0,   // knocked down to a crawl, not stopped dead
       downSeconds: 0.55,
+      /**
+       * How long the hill refuses to give the speed back, and by how much.
+       *
+       * Amit: "he's pushing too much and he's not slowing down. He should feel
+       * like -- oh, I got pushed a little bit, and now I'm slow."
+       *
+       * The second half is not fixed by a deeper stopSpeed, which is the
+       * obvious move and does almost nothing: the grade accelerates hardest at
+       * low speed, so recovery to 25 u/s takes 2.3s from 15 and 3.0s from 8.
+       * Measured -- the depth of the hit barely changes how long it is felt.
+       *
+       * What does is holding the grade off for a moment afterwards. At 0.35 the
+       * pull barely beats drag, so the rider crawls out of it rather than being
+       * fired back up to cruise, and the whole event lasts about three and a
+       * half seconds instead of two.
+       */
+      slowSeconds: 1.6,
+      slowFactor: 0.35,
+      /**
+       * Sideways shove on impact, in rad/s of lateral velocity.
+       *
+       * Amit: "I'm running into a barricade -- if you hit it on the side it
+       * looks okay, but if you hit it in the middle you just go through it.
+       * Try to see if we can push him to the side as well as slowing him."
+       *
+       * He is describing the tell that it is not solid. The crash zeroed
+       * thetaVel, so the rider stopped dead ON the barrier's line and then
+       * carried straight down it -- through the thing that just hit them.
+       * Deflecting says the barrier has a shape and a side, which is the
+       * difference between an obstacle and a trigger volume.
+       *
+       * 0.26 rad/s against the controller's 1.69 damping settles about 0.15
+       * rad out, roughly 7 units at this radius. The barrier is 4 wide, so that
+       * is clear of it and no further -- a nudge off your line, not a throw
+       * across the hill. It was 0.55 first, which moved the rider 13 units:
+       * unmistakably past the barrier and unmistakably too much.
+       */
+      deflect: 0.26,
     },
     label: 'BLOCKED',
   },
@@ -234,12 +277,44 @@ export const PROP_TYPES = {
    */
   statue: {
     kind: 'pickup',
-    // Far bigger than a crystal. It has to be readable from most of a hill
-    // away, because the whole point is deciding to go for it early.
-    size: { w: 2.6, h: 4.4, l: 2.6 },
-    colour: 0x7fe3ff,
-    accent: 0xfff1c0,
-    pickup: { type: 'idol', points: 1800, catchWidth: 4.2, height: 2.2, reach: 3.4 },
+    /**
+     * A TOTEM STANDING ON THE GROUND, not a thing hovering over it.
+     *
+     * Amit: "the idols look really bad... they're floating way up in the air,
+     * looks like I might be missing them from going under them, though I'm not.
+     * Maybe they need to be taller and reach the floor."
+     *
+     * Both halves of that are real. It floated 2.2 units up because every
+     * pickup does -- a crystal is a gem you reach for and hovering says so --
+     * but a four-metre figure hanging in mid-air says nothing except that it
+     * has come loose. Worse, hovering invents a gap under it, and a gap the
+     * player can see is a gap they will try to ride through; being collected
+     * anyway then reads as the collider being wrong rather than generous.
+     *
+     * So it is grounded and much taller: 7 units, planted, unmissable from a
+     * long way up the hill -- which is what a thing worth changing your line
+     * for has to be.
+     *
+     * COLOUR. It was pale cyan, which is the hue this game spends on PAINT --
+     * the guide stripes and the centreline. The one object you are meant to
+     * cross the hill for was dressed as a road marking. It is dark stone with
+     * amber inlay now, and the amber is the crystal's own hue: same currency,
+     * much bigger. The dark body is what makes the glow read at distance.
+     */
+    size: { w: 2.4, h: 7.0, l: 2.4 },
+    colour: 0x2e2338, // dark stone, so the inlay carries
+    accent: 0xffb43c, // the crystal's amber -- same currency, larger denomination
+    pickup: {
+      type: 'idol', points: 1800, catchWidth: 4.2,
+      // Grounded: what you see standing on the hill is what you ride into.
+      height: 0,
+      // Generous vertically because it is seven units tall -- clipping its
+      // shoulder should count, and so should sailing over it off a drop.
+      reach: 5.0,
+      // No bob. A crystal bobbing reads as a floating gem; a planted monument
+      // bobbing reads as a bug.
+      grounded: true,
+    },
     label: 'IDOL',
   },
 

@@ -864,6 +864,13 @@ export const SHOULDER_COLOR = 0x4a3f8c;
 export const TERRAIN_COLOR = 0x3b2f72;
 export const RAIL_COLOR = 0x5cff9e;
 
+/**
+ * The idol's silhouette rim. Warm near-white, so it belongs to the amber the
+ * totem is inlaid with rather than introducing a seventh hue, and bright enough
+ * to break against every theme's ground -- all of which are dark by design.
+ */
+export const IDOL_OUTLINE = 0xfff3d0;
+
 // --- funnels: the trough pinching to a throat and flaring open again ---
 // The set-piece from concept-01, and the cheapest possible proof that connected
 // structure is GEOMETRY, not painting: it is radiusAt(s) returning a smaller
