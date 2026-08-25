@@ -495,6 +495,7 @@ export const FACE_PATTERNS = [
       { type: 'blocker', ds: 20, u: -W * 0.14 },
       { type: 'crystal', ds: 26, u: W * 0.34 },
       { type: 'rail', ds: 32, u: W * 0.70 },
+      { type: 'rail', ds: 78, u: -W * 0.50 },
       { type: 'blocker', ds: 44, u: W * 0.92 },
       { type: 'crystal', ds: 50, u: W * 0.10 },
       { type: 'bigKicker', ds: 58, u: -W * 0.38 },
@@ -516,6 +517,7 @@ export const FACE_PATTERNS = [
       { type: 'boostPad', ds: 44, u: W * 0.32 },
       { type: 'crystal', ds: 18, u: -W * 0.44 },
       { type: 'rail', ds: 24, u: W * 0.06 },
+      { type: 'longRail', ds: 68, u: -W * 0.72 },
       { type: 'blocker', ds: 36, u: W * 0.48 },
       { type: 'crystal', ds: 42, u: W * 0.88 },
       { type: 'kicker', ds: 50, u: W * 0.26 },
@@ -543,6 +545,7 @@ export const FACE_PATTERNS = [
       { type: 'crystal', ds: 60, u: -W * 0.68 },
       { type: 'blocker', ds: 70, u: -W * 0.94 },
       { type: 'rail', ds: 80, u: -W * 0.40 },
+      { type: 'rail', ds: 112, u: W * 0.62 },
       { type: 'crystal', ds: 88, u: W * 0.04 },
       { type: 'bigKicker', ds: 98, u: W * 0.50 },
       { type: 'blocker', ds: 108, u: W * 0.84 },
@@ -565,6 +568,8 @@ export const FACE_PATTERNS = [
       out.push({ type: 'kicker', ds: 40, u: W * 0.80 });
       out.push({ type: 'boostPad', ds: 96, u: -W * 0.70 });
       out.push({ type: 'rail', ds: 74, u: -W * 0.08 });
+      out.push({ type: 'rail', ds: 24, u: W * 0.44 });
+      out.push({ type: 'longRail', ds: 118, u: W * 0.16 });
       out.push({ type: 'bigKicker', ds: 108, u: -W * 0.62 });
       out.push({ type: 'kicker', ds: 132, u: W * 0.36 });
       return out;
@@ -582,6 +587,7 @@ export const FACE_PATTERNS = [
       { type: 'blocker', ds: 28, u: -W * 0.88 },
       { type: 'crystal', ds: 36, u: -W * 0.16 },
       { type: 'rail', ds: 46, u: W * 0.58 },
+      { type: 'rail', ds: 88, u: -W * 0.64 },
       { type: 'blocker', ds: 56, u: W * 0.14 },
       { type: 'crystal', ds: 64, u: W * 0.86 },
       { type: 'bigKicker', ds: 74, u: W * 0.40 },

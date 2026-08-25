@@ -182,6 +182,9 @@ const state = {
   // and airVel its rate of change -- the whole of the air, with no arc, no
   // authored flight time and no reference to the ground they took off from.
   airY: 0, airVel: 0, airFresh: false,
+  // False from the moment a drop throws the rider until the ground stops
+  // curving away -- so one lip cannot launch them twice. See the launch test.
+  dropArmed: true,
   // How much of the no-trick HOVER pose is showing, 0..1. Eased rather than
   // boolean so a brief ollie barely registers it and a long drop reaches it in
   // full -- the pose scales with how much of a hang there actually was, with no
@@ -363,6 +366,7 @@ function reset() {
   state.thetaVel = 0;
   state.onWall = false;
   state.airHold = 0;
+  state.dropArmed = true;
   state.height = 0;
   state.speed = START_SPEED;
   state.carve = 0;
@@ -762,7 +766,8 @@ function startRun(id) {
   const content = (def.contentFor && def.contentFor()) || null;
   props.setAllowedKinds(content ? content.kinds : course.allowedKinds);
   props.setContent(content ? (content.without || null) : null,
-    content ? !!content.rareAlways : false);
+    content ? !!content.rareAlways : false,
+    content ? (content.feature || null) : null);
   // How much of the authored layout this course actually wants on the ground.
   props.setDensity(course.density);
   // ROUTE VARIATION. One seed decides the whole run's layout, and the biggest
@@ -1237,7 +1242,18 @@ function frame() {
     // a drop rather than like a trigger volume someone painted on a hill.
     if (!state.airActive && !state.grind && state.tripT <= 0) {
       const need = state.speed * state.speed * curvatureAt(state.s);
-      if (need > TERRAIN.launchG) {
+      // ONE LAUNCH PER LIP. Without the latch, landing while still inside the
+      // convex half of a drop re-satisfies the test on the very next frame and
+      // throws the rider again -- Amit: "I still get the point, sometimes more
+      // than one for a drop." It happens at lower speeds, where the flight is
+      // short enough to touch down before the ground stops curving away.
+      //
+      // Re-armed below, once the hill is no longer outrunning gravity, which is
+      // the same condition that fires it. So a drop launches exactly once and
+      // the next one is free to.
+      if (need <= TERRAIN.launchG) state.dropArmed = true;
+      if (need > TERRAIN.launchG && state.dropArmed) {
+        state.dropArmed = false;
         // Scaled by how far past the threshold you were, so the same lip pays
         // out more the harder you hit it -- and capped, because the curvature
         // spikes at the very start of the lip and an uncapped ratio would make

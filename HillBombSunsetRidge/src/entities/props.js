@@ -640,6 +640,21 @@ export function createProps(scene) {
    * one thing you are out there to find.
    */
   let rareAlways = false;
+  /**
+   * Kinds exempt from density thinning -- the thing a mission is TEACHING.
+   *
+   * Filtering content out does not backfill what is left, so a mission showing
+   * only one kind gets whatever the patterns happen to hold of it, thinned by
+   * the course density on top. Amit on RAIL SCHOOL: "we need much more rails";
+   * on RAMP SCHOOL: "the last half of the course is a bit dull, sometimes I
+   * don't see a ramp in the horizon." Measured, that was a rail every 250m and
+   * a ramp every 78m across an 85-unit-wide hill.
+   *
+   * So the featured kind emits in full while everything else stays thinned.
+   * That is the shape a lesson wants anyway: the subject plentiful, the rest
+   * background.
+   */
+  let featured = null;
   let nextPatternS = 60; // leave the opening stretch clear
   // Separate frontier from the patterns'. Lip ramps are placed against the
   // TERRAIN, which has its own spacing and knows nothing about how long a
@@ -818,7 +833,10 @@ export function createProps(scene) {
       // course is a fixed layout, and a star means nothing if the same mission
       // thins differently on a replay. Keyed off the pattern's absolute start
       // so the same stretch of hill always drops the same items.
-      const keep = density >= 1 || hash(start * 0.37 + (itemIndex++) * 13.7) < density;
+      const def0 = PROP_TYPES[item.type];
+      const isFeatured = featured && def0 && featured.has(def0.kind);
+      const keep = isFeatured || density >= 1
+        || hash(start * 0.37 + (itemIndex++) * 13.7) < density;
       if (!keep) continue;
       // RARE placements appear in one of every `rare` emissions OF THIS
       // PATTERN. Per-pattern, not global: counted against the global emission
@@ -893,9 +911,10 @@ export function createProps(scene) {
      * @param {string[]|null} block prop TYPES to leave out, or null for none.
      * @param {boolean} [always] emit `rare` placements every time.
      */
-    setContent(block, always = false) {
+    setContent(block, always = false, feature = null) {
       blockedTypes = block && block.length ? new Set(block) : null;
       rareAlways = !!always;
+      featured = feature && feature.length ? new Set(feature) : null;
     },
 
     /** @param {number} d fraction of authored content to emit, 0..1 */

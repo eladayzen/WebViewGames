@@ -139,19 +139,24 @@ const AUTHORED = [
   // Targets are derived from what each hill offers per minute, against the
   // fraction the twenty measured ridge missions ask for. See the note above.
   ['faceRamps',   'RAMP SCHOOL',   'Nothing but takeoffs. Hit them.',           80,
-    { launch: 12 }, FACE, { kinds: ['launch', 'wall', 'scenery'] }],
+    // `feature` exempts ramps from the course's thinning, so the lesson's
+    // subject is continuous rather than sampled. Without it the back half of
+    // this mission had stretches with no ramp in sight.
+    { launch: 12 }, FACE, { kinds: ['launch', 'wall', 'scenery'], feature: ['launch'] }],
 
   ['faceGlides',  'RAIL SCHOOL',   'Green metal. Get on it and stay on.',       90,
-    { grind: 3 }, FACE, { kinds: ['launch', 'grind', 'wall', 'scenery'] }],
+    { grind: 5 }, FACE,
+    { kinds: ['launch', 'grind', 'wall', 'scenery'], feature: ['grind'] }],
 
   ['facePickups', 'CRYSTAL RUN',   'Now there is something to collect.',        90,
     { pickup: 16 }, FACE,
     // Crystals, but not idols yet -- the rare thing gets its own mission.
-    { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup'], without: ['statue'] }],
+    { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup'], without: ['statue'],
+      feature: ['pickup'] }],
 
   ['faceBoosts',  'SPEED GATES',   'Ride the arches. They give the hill back.', 95,
     { boost: 5 }, FACE,
-    { kinds: ['launch', 'grind', 'wall', 'scenery', 'boost'] }],
+    { kinds: ['launch', 'grind', 'wall', 'scenery', 'boost'], feature: ['boost'] }],
 
   ['faceIdols',   'IDOL HUNT',     'Five of them. They are never on your line.', 110,
     { idol: 5 }, FACE,
@@ -159,7 +164,7 @@ const AUTHORED = [
     // "every now and then" -- that cadence is for something met incidentally,
     // and this is the one thing the mission is about.
     { kinds: ['launch', 'wall', 'scenery', 'pickup'], without: ['crystal'],
-      rareAlways: true }],
+      rareAlways: true, feature: ['pickup'] }],
 
   // --- and now the mixing ----------------------------------------------------
   ['faceMix1',    'BOTH RIMS',     'Left, right, and back again.',              95,

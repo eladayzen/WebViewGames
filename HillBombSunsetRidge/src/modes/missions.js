@@ -65,7 +65,22 @@ const KIND_SPECS = {
   },
   launch: {
     event: EV.LAUNCH,
-    match: () => true,
+    /**
+     * RAMPS ONLY -- not everything that puts the rider in the air.
+     *
+     * A terrain drop fires the same LAUNCH event as a kicker, which was
+     * deliberate (the ride reports leaving the ground, and what threw you is a
+     * detail) and is wrong for an objective. Amit, on RAMP SCHOOL: "it says hit
+     * ramps, but you actually collect also drops. A drop in the road -- I don't
+     * have to do nothing, I didn't want to navigate there, and I still get the
+     * point."
+     *
+     * An objective is a thing you go and do. A drop happens to you whether you
+     * steer or not, so counting it pays the player for the hill's behaviour
+     * rather than their own. Requiring a named launcher also excludes the bare
+     * ollie, for the same reason: HIT RAMPS should mean ramps.
+     */
+    match: (o, p) => !!p.launcher && p.launcher !== 'DROP',
     label: () => 'RAMPS',
     action: () => 'HIT RAMPS',
   },
