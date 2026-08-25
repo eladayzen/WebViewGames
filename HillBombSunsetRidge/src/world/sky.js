@@ -71,23 +71,47 @@ function makeCap(radius, colour) {
   return mesh;
 }
 
+/**
+ * A VERTICAL GRADIENT, built from two colours.
+ *
+ * Replaces the painted panorama. Amit: "maybe for now we can remove the matte
+ * painting and just use some gradient in the distance, and change the gradient
+ * also -- maybe it could help the feel."
+ *
+ * The painting was doing a job -- towers and cloud banks give scale and say the
+ * hill is somewhere -- but it was ONE painting behind every level, tinted, so
+ * eight different mountains all sat in front of the same skyline. A gradient
+ * has no content to repeat, so each theme's own sky colours read as a different
+ * place instead of the same place at a different hour. It is also the thing
+ * that makes a distant horizon feel far away: an untextured value ramp has no
+ * detail to give the eye a sense of nearness.
+ *
+ * 2 x 256 rather than 1 x 256 because some drivers refuse to filter a
+ * single-column texture cleanly, and the cost of the second column is nothing.
+ */
+function gradientTexture(topHex, botHex) {
+  const c = document.createElement('canvas');
+  c.width = 2; c.height = 256;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 256);
+  const hex = (v) => '#' + v.toString(16).padStart(6, '0');
+  grad.addColorStop(0, hex(topHex));
+  grad.addColorStop(1, hex(botHex));
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 2, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.ClampToEdgeWrapping;
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  t.needsUpdate = true;
+  return t;
+}
+
 export function createSky(scene) {
-  const tex = new THREE.TextureLoader().load(skyUrl, (loaded) => {
-    // Colour the caps from the painting's own edges once it's actually decoded,
-    // rather than guessing a constant -- if the art changes, this follows it.
-    const img = loaded.image;
-    capTop = edgeColour(img, true);
-    capBot = edgeColour(img, false);
-    topCap.material.color.setHex(capTop).multiply(mat.color);
-    botCap.material.color.setHex(capBot).multiply(mat.color);
-  });
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  // ONE wrap, not two. Repeating twice shrank the towers and cloud banks into a
-  // busy little band; the painting reads as scale and distance only when it's
-  // stretched right out. Amit: "the matte paint isn't stretched enough".
-  tex.repeat.set(1, 1);
+  // The painted panorama is off. The loader and its edge-sampling are gone with
+  // it rather than left dangling -- `skyUrl` stays imported and unused so that
+  // bringing the matte back is one material swap, not an archaeology exercise.
+  let tex = gradientTexture(0x160e47, 0x401a5f);
 
   const geo = new THREE.CylinderGeometry(RADIUS, RADIUS, HEIGHT, 48, 1, true);
   const mat = new THREE.MeshBasicMaterial({
@@ -119,8 +143,8 @@ export function createSky(scene) {
   // tint multiplies on top, so they have to be remembered rather than read back
   // off the material -- reading back would compound the tint every time one was
   // applied and the sky would march toward black over a few runs.
-  let capTop = 0xffffff;
-  let capBot = 0xffffff;
+  let capTop = 0x160e47;
+  let capBot = 0x401a5f;
 
   return {
     mesh,
@@ -134,10 +158,27 @@ export function createSky(scene) {
      * moves the time of day.
      */
     setTint(hex) {
-      mat.color.setHex(hex);
-      const t = new THREE.Color(hex);
-      topCap.material.color.setHex(capTop).multiply(t);
-      botCap.material.color.setHex(capBot).multiply(t);
+      // The tint multiplied a PAINTING to move its time of day. Against a
+      // gradient that is already built from the theme's own colours it would
+      // only darken what setGradient just set, so it is a no-op now. Kept so
+      // callers do not have to know which sky they are talking to.
+      void hex;
+    },
+
+    /**
+     * Paint the sky from a theme's two colours, and match the caps to its ends
+     * so the dome has no visible seam where the cylinder stops.
+     */
+    setGradient(topHex, botHex) {
+      capTop = topHex;
+      capBot = botHex;
+      const old = mat.map;
+      mat.map = gradientTexture(topHex, botHex);
+      mat.color.setHex(0xffffff);
+      mat.needsUpdate = true;
+      if (old) old.dispose();
+      topCap.material.color.setHex(topHex);
+      botCap.material.color.setHex(botHex);
     },
 
     /** Keep everything centred on the camera so it behaves as infinitely far. */

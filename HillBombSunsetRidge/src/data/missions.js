@@ -142,21 +142,23 @@ const AUTHORED = [
     // `feature` exempts ramps from the course's thinning, so the lesson's
     // subject is continuous rather than sampled. Without it the back half of
     // this mission had stretches with no ramp in sight.
-    { launch: 12 }, FACE, { kinds: ['launch', 'wall', 'scenery'], feature: ['launch'] }],
+    { launch: 12 }, FACE, { kinds: ['launch', 'wall', 'scenery'], feature: ['launch'] },
+    'openFace'],
 
   ['faceGlides',  'RAIL SCHOOL',   'Green metal. Get on it and stay on.',       90,
     { grind: 5 }, FACE,
-    { kinds: ['launch', 'grind', 'wall', 'scenery'], feature: ['grind'] }],
+    { kinds: ['launch', 'grind', 'wall', 'scenery'], feature: ['grind'] }, 'faceBasin'],
 
   ['facePickups', 'CRYSTAL RUN',   'Now there is something to collect.',        90,
     { pickup: 16 }, FACE,
     // Crystals, but not idols yet -- the rare thing gets its own mission.
     { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup'], without: ['statue'],
-      feature: ['pickup'] }],
+      feature: ['pickup'] }, 'faceLongRun'],
 
   ['faceBoosts',  'SPEED GATES',   'Ride the arches. They give the hill back.', 95,
     { boost: 5 }, FACE,
-    { kinds: ['launch', 'grind', 'wall', 'scenery', 'boost'], feature: ['boost'] }],
+    { kinds: ['launch', 'grind', 'wall', 'scenery', 'boost'], feature: ['boost'] },
+    'faceGorge'],
 
   ['faceIdols',   'IDOL HUNT',     'Five of them. They are never on your line.', 110,
     { idol: 5 }, FACE,
@@ -164,19 +166,19 @@ const AUTHORED = [
     // "every now and then" -- that cadence is for something met incidentally,
     // and this is the one thing the mission is about.
     { kinds: ['launch', 'wall', 'scenery', 'pickup'], without: ['crystal'],
-      rareAlways: true, feature: ['pickup'] }],
+      rareAlways: true, feature: ['pickup'] }, 'faceSpine'],
 
   // --- and now the mixing ----------------------------------------------------
   ['faceMix1',    'BOTH RIMS',     'Left, right, and back again.',              95,
-    { pickup: 18, launch: 10 }, FACE],
+    { pickup: 18, launch: 10 }, FACE, undefined, 'faceSwitchback'],
 
   ['faceMix2',    'FULL KIT',      'Ramps, rails, crystals. All of it.',       100,
-    { pickup: 18, grind: 3, launch: 12 }, FACE],
+    { pickup: 18, grind: 3, launch: 12 }, FACE, undefined, 'faceChute'],
 
   ['faceMix3',    'THE WHOLE FACE','Everything the mountain has.',             120,
     { pickup: 20, grind: 3, launch: 12, boost: 4, idol: 2 }, FACE,
     { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup', 'boost'],
-      rareAlways: true }],
+      rareAlways: true }, 'faceStaircase'],
 ];
 
 // Objective order on screen: collect, ride, launch, score. Consistent across
@@ -184,7 +186,7 @@ const AUTHORED = [
 const KIND_ORDER = ['pickup', 'idol', 'grind', 'launch', 'boost', 'score'];
 
 /** @type {Mission[]} */
-export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course, content], i) => ({
+export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course, content, terrain], i) => ({
   id,
   /**
    * Which hill this mission is played on. Undefined means the ridge, which is
@@ -203,6 +205,13 @@ export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course
    * {kinds:string[], without?:string[], rareAlways?:boolean}
    */
   content,
+  /**
+   * WHICH MOUNTAIN. Undefined means the course's default, which is every ridge
+   * mission. The face's levels each name their own, so pressing go on mission 4
+   * is a different place from mission 3 rather than the same hill with
+   * different furniture on it.
+   */
+  terrain,
   /** 1-based position in the list. Derived, never authored -- a hand-written
    *  number would go stale the moment a mission is inserted or reordered. */
   number: i + 1,

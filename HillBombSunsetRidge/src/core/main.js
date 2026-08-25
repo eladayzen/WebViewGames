@@ -36,6 +36,7 @@ import {
   LAND_AMOUNT_BACKFLIP, LAND_AMOUNT_SPIN, LAND_AMOUNT_GRIND,
   LAND_AMOUNT_HOP, LAND_AMOUNT_PLAIN,
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
+  SKY_BLUE_TOP, SKY_BLUE_BOTTOM,
 } from '../data/constants.js';
 import { initInput, readInput, forcePop, setStance, getStance } from '../input/input.js';
 import {
@@ -731,11 +732,18 @@ let activeTheme = getTheme(DEFAULT_THEME);
 
 function applyTheme(theme) {
   activeTheme = theme;
-  scene.fog.color.setHex(theme.fog);
+  // ONE SKY FOR NOW -- see SKY_BLUE_TOP. The theme still owns the ground, the
+  // markings and the rider's rim; it just no longer owns the sky, so that eight
+  // hill shapes can be judged against a constant.
+  //
+  // Fog takes the HORIZON colour rather than the theme's: fog fades distant
+  // ground toward its own colour, and a dark fog under a bright sky ends the
+  // world in a dark band floating in mid-air instead of a horizon.
+  scene.fog.color.setHex(SKY_BLUE_BOTTOM);
   // The background is a baked canvas gradient, so it has to be redrawn rather
   // than recoloured.
-  scene.background = makeSkyGradient(theme.skyTop, theme.skyBottom);
-  sky.setTint(theme.skyTint);
+  scene.background = makeSkyGradient(SKY_BLUE_TOP, SKY_BLUE_BOTTOM);
+  sky.setGradient(SKY_BLUE_TOP, SKY_BLUE_BOTTOM);
   trough.setTheme(theme);
   speedLines.setTheme(theme);
   rider.setTheme(theme);
@@ -756,7 +764,11 @@ function startRun(id) {
   // mesh, the pendulum and the collision arithmetic all read the cross-section
   // live -- so a course that changed the ground after spawning would scatter its
   // props against the previous hill's width.
-  setTerrain(course.terrain || DEFAULT_TERRAIN);
+  // THE MISSION MAY NAME ITS OWN HILL. A course says which world you are in;
+  // within a world each level is free to be a different mountain, which is the
+  // whole point of the face's variants. Falls back to the course's.
+  const wantTerrain = (def.terrainFor && def.terrainFor()) || course.terrain;
+  setTerrain(wantTerrain || DEFAULT_TERRAIN);
   trough.applyTerrain();
   // CONTENT IS THE MISSION'S TO DECIDE, falling back to the course.
   //
@@ -794,7 +806,12 @@ function startRun(id) {
   // A FRESH LOOK EVERY RUN. The point is that the hill does not feel like the
   // same hill twice; picking here rather than per-mode means free ride, missions
   // and the race all get it for free.
-  applyTheme(pickRandomTheme());
+  // A LEVEL'S OWN COLOUR, when it has one. Random per run was right while every
+  // hill was the same shape -- it was the only thing making two runs look
+  // different at all. Now that the hills genuinely differ, a fixed palette per
+  // level is worth more: it is how you recognise where you are before you have
+  // read a word of the HUD.
+  applyTheme(TERRAIN.theme ? getTheme(TERRAIN.theme) : pickRandomTheme());
   running = true;
   setPaused(false);
   reset();

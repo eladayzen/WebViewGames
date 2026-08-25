@@ -202,8 +202,23 @@ export function dropLipsBetween(sFrom, sTo) {
 }
 
 /** Centreline position at distance s. This is the trough FLOOR, not its axis. */
+/**
+ * Centreline position at distance s. This is the trough FLOOR, not its axis.
+ *
+ * THE ROUTE, and until now it was a constant. Two fixed sine waves, the same
+ * amplitude and the same period, on every hill in the game -- so the ridge and
+ * the open face followed an identical path down the mountain and differed only
+ * in what was standing on it. Amit: "everything feels the same... you have the
+ * same route and you add stuff. That's not a good experience -- every time I
+ * press go, it should be, hey, this is a new route."
+ *
+ * Two harmonics, because one is a corridor that snakes and three is noise you
+ * cannot read ahead. The long one sets where the hill generally goes; the short
+ * one is the turn you are actually in. A terrain picks both.
+ */
 export function centre(s, out = new THREE.Vector3()) {
-  const x = Math.sin(s * 0.0031) * 26 + Math.sin(s * 0.00097) * 44;
+  const r = TERRAIN.route;
+  const x = Math.sin(s / r.waveA) * r.ampA + Math.sin(s / r.waveB) * r.ampB;
   return out.set(x, -elevAt(s), -s);
 }
 
@@ -277,12 +292,34 @@ export function makeFrame() {
 
 const _twFrame = makeFrame();
 
-/** World position of the trough surface at (s, θ). */
+/**
+ * THE CROSS-SECTION, as one number.
+ *
+ * The surface has always been P = centre + right*R*sin(t) + up*R*(1-cos(t)) --
+ * a circle, so every hill in the game is a concave valley and can only differ
+ * in how wide and how deep. Amit: "they still feel relatively close to each
+ * other. Let's try one that is going downhill but flat, not bending to the
+ * sides, maybe even one that's bent the other way."
+ *
+ * Scaling ONLY the rise term turns that one formula into a family:
+ *
+ *     curve  1    the valley the game shipped with
+ *     curve  0    a flat plane -- downhill, no lateral bend at all
+ *     curve <0    a RIDGE, ground falling away on both sides
+ *     curve >1    a deeper bowl, walls climbing harder
+ *
+ * The lateral spread (right * R * sin) is untouched, so the hill stays the same
+ * WIDTH at every setting and only its profile changes -- which is what keeps
+ * prop placement, collision and the mission targets valid across all of them.
+ *
+ * A ridge is only rideable at all because nothing pulls the rider to the middle
+ * any more. Under the old pendulum they would have slid off it.
+ */
 export function toWorld(s, theta, out = new THREE.Vector3()) {
   const f = frameAt(s, _twFrame);
   centre(s, out);
   out.addScaledVector(f.right, f.radius * Math.sin(theta));
-  out.addScaledVector(f.up, f.radius * (1 - Math.cos(theta)));
+  out.addScaledVector(f.up, f.radius * (1 - Math.cos(theta)) * TERRAIN.curve);
   return out;
 }
 
@@ -296,14 +333,21 @@ const _suFrame = makeFrame();
  */
 export function surfaceUp(s, theta, out = new THREE.Vector3()) {
   const f = frameAt(s, _suFrame);
+  // Perpendicular to dP/dt, which is right*R*cos(t) + up*R*sin(t)*curve -- so
+  // the normal picks up the same factor. At curve 0 it is simply `up`, which is
+  // correct for a flat plane; at negative curve it leans the other way, which is
+  // what makes a ridge read as a ridge rather than as a valley drawn upside
+  // down. Deriving it rather than reusing the circle's normal is the difference
+  // between the rider standing ON the new surface and hovering at an angle to
+  // it.
   return out.copy(f.up).multiplyScalar(Math.cos(theta))
-    .addScaledVector(f.right, -Math.sin(theta))
+    .addScaledVector(f.right, -Math.sin(theta) * TERRAIN.curve)
     .normalize();
 }
 
 /** Height of the surface at θ above the trough floor -- drives speed exchange. */
 export function heightAt(s, theta) {
-  return radiusAt(s) * (1 - Math.cos(theta));
+  return radiusAt(s) * (1 - Math.cos(theta)) * TERRAIN.curve;
 }
 
 // --- the mesh ---------------------------------------------------------------
@@ -398,9 +442,10 @@ class TroughSurface {
         const o = i * 3;
         const sinT = Math.sin(theta);
         const cosT = Math.cos(theta);
-        pos[o] = this._p.x + f.right.x * R * sinT + f.up.x * R * (1 - cosT);
-        pos[o + 1] = this._p.y + f.right.y * R * sinT + f.up.y * R * (1 - cosT);
-        pos[o + 2] = this._p.z + f.right.z * R * sinT + f.up.z * R * (1 - cosT);
+        const riseT = R * (1 - cosT) * TERRAIN.curve;
+        pos[o] = this._p.x + f.right.x * R * sinT + f.up.x * riseT;
+        pos[o + 1] = this._p.y + f.right.y * R * sinT + f.up.y * riseT;
+        pos[o + 2] = this._p.z + f.right.z * R * sinT + f.up.z * riseT;
         // UVs: v runs along the trough so a tiled texture repeats down its
         // length; u wraps across the cross-section.
         uv[i * 2] = t;
@@ -408,7 +453,11 @@ class TroughSurface {
 
         // Shading: darken up the walls, and darken one side more than the other
         // so the channel has a lit side and a shadow side like concept-02.
-        let shade = 1 - 0.42 * (1 - cosT) - 0.13 * sinT;
+        // Shading follows the PROFILE. On a valley the walls darken with depth;
+        // on a flat plane there is no depth to darken with, and on a ridge the
+        // sides fall away, so the same term with curve applied keeps the
+        // surface reading three-dimensional whichever way it bends.
+        let shade = 1 - 0.42 * (1 - cosT) * TERRAIN.curve - 0.13 * sinT;
         if (this.dashed) {
           // The floor centre line is dashed, which is what actually lets the eye
           // read speed. A solid stripe gives no motion cue at all.
@@ -514,9 +563,10 @@ class EdgeWall {
       centre(s, this._p);
       const R = f.radius;
       // The foot of the wall: the rim point of the cross-section at this s.
-      const fx = this._p.x + f.right.x * R * sinT + f.up.x * R * (1 - cosT);
-      const fy = this._p.y + f.right.y * R * sinT + f.up.y * R * (1 - cosT);
-      const fz = this._p.z + f.right.z * R * sinT + f.up.z * R * (1 - cosT);
+      const rise = R * (1 - cosT) * TERRAIN.curve;
+      const fx = this._p.x + f.right.x * R * sinT + f.up.x * rise;
+      const fy = this._p.y + f.right.y * R * sinT + f.up.y * rise;
+      const fz = this._p.z + f.right.z * R * sinT + f.up.z * rise;
       for (let c = 0; c <= this.cols; c++) {
         const t = c / this.cols;
         const i = r * (this.cols + 1) + c;

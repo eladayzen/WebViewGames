@@ -871,6 +871,29 @@ export const RAIL_COLOR = 0x5cff9e;
  */
 export const IDOL_OUTLINE = 0xfff3d0;
 
+/**
+ * ONE BRIGHT BLUE SKY, on every theme, for now.
+ *
+ * Amit: "let's do simple bright blue skies for all for now." The per-theme
+ * skies went in the same pass that replaced the matte painting, and having five
+ * palettes of sky AND eight hill shapes changing at once makes it impossible to
+ * tell which of them is doing what. A single known sky is the control.
+ *
+ * A real daylight ramp -- deep azure overhead to a pale, almost white horizon --
+ * because that is what sells distance: the horizon washing out is the cue the
+ * eye actually reads as far away, and a flat blue does not have it.
+ *
+ * FOG MATCHES THE HORIZON, which is the part that cannot be skipped. Fog fades
+ * distant ground toward its own colour, so a dark fog under a bright sky ends
+ * the world in a dark band hanging in mid-air. Fading into the horizon colour
+ * is what makes the ground actually go away.
+ *
+ * Per-theme skies are one line away in applyTheme when this stops being useful:
+ * the themes still carry their own skyTop/skyBottom untouched.
+ */
+export const SKY_BLUE_TOP = 0x2f7fd0;
+export const SKY_BLUE_BOTTOM = 0xcfeaf8;
+
 // --- funnels: the trough pinching to a throat and flaring open again ---
 // The set-piece from concept-01, and the cheapest possible proof that connected
 // structure is GEOMETRY, not painting: it is radiusAt(s) returning a smaller

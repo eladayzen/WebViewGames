@@ -64,6 +64,31 @@ import {
 export const LIP_CUSHION = 'cushion';
 export const LIP_WALL = 'wall';
 
+/**
+ * FOUR VARIATIONS ON THE OPEN FACE, so that pressing go is not always the same
+ * mountain. Each inherits the face's controller feel exactly -- same thetaMax,
+ * same carve and damp scales, same heightScale and catchScale -- and changes
+ * only where the hill GOES and what it looks like doing it.
+ *
+ * That split is deliberate. The controller is one system and has been retuned
+ * enough times; a level that also steers differently would make every piece of
+ * feedback ambiguous about which change caused it. And the mission targets were
+ * derived against the face's width, so holding thetaMax and catchScale keeps
+ * them valid across all of these.
+ *
+ * What varies: the ROUTE (how the hill wanders), the ROLL (whether it banks
+ * through those turns), the FUNNEL (whether it breathes wide and narrow), the
+ * DROP cycle, and the THEME. Between them that is a different place, ridden the
+ * same way.
+ */
+const FACE_FEEL = {
+  curve: 1,
+  thetaMax: 0.92, thetaGravity: 0, carveScale: 0.62, dampScale: 1.25,
+  heightScale: 0, catchScale: 1.415, lipMode: LIP_WALL, wallHeight: 6.0,
+  wallScrub: 0, lipLamps: false, spread: 1, patternSet: 'face',
+  dropAccelGain: 0.10, launchG: AIR_G, fallG: 55, lipRamps: 0.5,
+};
+
 /** @type {Record<string, Terrain>} */
 export const TERRAIN_PRESETS = {
   /**
@@ -85,6 +110,10 @@ export const TERRAIN_PRESETS = {
     funnelTightness: FUNNEL_TIGHTNESS,
     rollAmount: TROUGH_ROLL_AMOUNT,
     rollWavelength: TROUGH_ROLL_WAVELENGTH,
+    // The original route, as reciprocals of the constants it was written with
+    // (sin(s*0.0031)*26 + sin(s*0.00097)*44), so the ridge is unchanged.
+    route: { ampA: 26, waveA: 1 / 0.0031, ampB: 44, waveB: 1 / 0.00097 },
+    curve: 1,
     carveScale: 1,
     dampScale: 1,
     heightScale: 1,
@@ -196,6 +225,8 @@ export const TERRAIN_PRESETS = {
     funnelTightness: 0.80,
     rollAmount: 0.13,
     rollWavelength: 260,
+    route: { ampA: 26, waveA: 1 / 0.0031, ampB: 44, waveB: 1 / 0.00097 },
+    curve: 1,
     carveScale: 0.62,
     dampScale: 1.25,
     heightScale: 0,
@@ -436,6 +467,199 @@ export const TERRAIN_PRESETS = {
      * long enough to see.
      */
     fallG: 55,
+  },
+
+  /**
+   * SWITCHBACKS. A short, hard meander -- the hill changes direction every
+   * ~180m, so the route itself is the obstacle and reading ahead matters more
+   * than anything placed on it. Banked hard through the turns (roll 0.30), and
+   * narrow-ish so a turn actually contains you.
+   */
+  faceSwitchback: {
+    ...FACE_FEEL,
+    id: 'faceSwitchback',
+    name: 'Switchback',
+    radius: 40.0,
+    route: { ampA: 34, waveA: 180, ampB: 22, waveB: 620 },
+    rollAmount: 0.30, rollWavelength: 150,
+    funnelSpacing: 420, funnelWidth: 0.34, funnelTightness: 0.72,
+    dropSpacing: 200,
+    dropCycle: [
+      { depth: 4.0, width: 0.06, profile: 'roll' },
+      { depth: 6.0, width: 0.072, profile: 'roll' },
+      { depth: 2.5, width: 0.045, profile: 'roll' },
+      { depth: 5.0, width: 0.066, profile: 'roll' },
+    ],
+    dropCycleDepth: 17.5,
+    theme: 'glacier',
+  },
+
+  /**
+   * THE LONG RUN. Almost straight -- one enormous lazy arc over a kilometre --
+   * and the widest hill in the game. Nothing about the route asks anything of
+   * you, which makes it the one place where the CONTENT is the whole game and
+   * speed is the point. Flat roll, no funnel to speak of, big rare drops.
+   */
+  faceLongRun: {
+    ...FACE_FEEL,
+    id: 'faceLongRun',
+    name: 'Long Run',
+    radius: 54.0,
+    route: { ampA: 8, waveA: 900, ampB: 70, waveB: 2600 },
+    rollAmount: 0.05, rollWavelength: 400,
+    funnelSpacing: 900, funnelWidth: 0.5, funnelTightness: 0.9,
+    dropSpacing: 330,
+    dropCycle: [
+      { depth: 9.0, width: 0.052, profile: 'roll' },
+      { depth: 3.0, width: 0.030, profile: 'roll' },
+      { depth: 12.0, width: 0.060, profile: 'roll' },
+    ],
+    dropCycleDepth: 24.0,
+    theme: 'emberFlats',
+  },
+
+  /**
+   * THE GORGE. Tight, deep and constantly pinching -- radius 32 with a hard
+   * funnel, so the hill squeezes to a throat and flares open again every 300m.
+   * The one variant where the walls are close enough to feel like walls, which
+   * is the closest this set gets to the old trough without giving back the
+   * pendulum.
+   */
+  faceGorge: {
+    ...FACE_FEEL,
+    id: 'faceGorge',
+    name: 'The Gorge',
+    radius: 32.0,
+    route: { ampA: 18, waveA: 300, ampB: 30, waveB: 1400 },
+    rollAmount: 0.20, rollWavelength: 210,
+    funnelSpacing: 300, funnelWidth: 0.4, funnelTightness: 0.52,
+    dropSpacing: 190,
+    dropCycle: [
+      { depth: 3.0, width: 0.055, profile: 'roll' },
+      { depth: 5.5, width: 0.075, profile: 'roll' },
+      { depth: 2.0, width: 0.045, profile: 'roll' },
+    ],
+    dropCycleDepth: 10.5,
+    theme: 'midnightPines',
+  },
+
+  /**
+   * THE STAIRCASE. Route barely matters; the ELEVATION is the level. Drops
+   * every 130m and deep ones -- more than twice the frequency of anywhere else
+   * -- so the hill is a flight of steps and you are almost never on the ground
+   * for long. The test of whether drops carry a level on their own.
+   */
+  faceStaircase: {
+    ...FACE_FEEL,
+    id: 'faceStaircase',
+    name: 'The Staircase',
+    radius: 46.0,
+    route: { ampA: 20, waveA: 520, ampB: 26, waveB: 1700 },
+    rollAmount: 0.10, rollWavelength: 300,
+    funnelSpacing: 600, funnelWidth: 0.3, funnelTightness: 0.82,
+    dropSpacing: 130,
+    dropCycle: [
+      { depth: 5.0, width: 0.10, profile: 'roll' },
+      { depth: 7.0, width: 0.118, profile: 'roll' },
+      { depth: 4.0, width: 0.089, profile: 'roll' },
+      { depth: 6.0, width: 0.109, profile: 'roll' },
+      { depth: 3.0, width: 0.077, profile: 'roll' },
+    ],
+    dropCycleDepth: 25.0,
+    theme: 'orchid',
+  },
+
+  /**
+   * THE BASIN. Was THE FLATS -- dead flat, curve 0, contained only by its
+   * barriers -- and Amit rode it: "level 2 does not feel good, feels
+   * unrealistic." Level 4, the Gorge, was the one that worked.
+   *
+   * The diagnosis I am acting on is that flat was not the problem; UNIFORM was.
+   * A perfectly flat plane of constant width with no bank is a corridor, and
+   * nothing about it says mountainside -- but what the Gorge has that this
+   * lacked is that it is DOING something the whole way down, opening and
+   * closing and banking through its turns. Flatness only became unreadable
+   * because nothing else was changing either.
+   *
+   * So it keeps the open, shallow character -- curve 0.32, still by far the
+   * least walled hill in the set -- and gains what the Gorge has: a hard funnel
+   * so it visibly breathes between wide and narrow every 380m, and enough roll
+   * to bank the turns. Broad and low, but alive.
+   */
+  faceBasin: {
+    ...FACE_FEEL,
+    id: 'faceBasin',
+    name: 'The Basin',
+    curve: 0.32,
+    radius: 52.0,
+    route: { ampA: 20, waveA: 460, ampB: 38, waveB: 1600 },
+    rollAmount: 0.16, rollWavelength: 240,
+    funnelSpacing: 380, funnelWidth: 0.42, funnelTightness: 0.55,
+    dropSpacing: 240,
+    dropCycle: [
+      { depth: 6.0, width: 0.055, profile: 'roll' },
+      { depth: 3.0, width: 0.038, profile: 'roll' },
+      { depth: 9.0, width: 0.068, profile: 'roll' },
+    ],
+    dropCycleDepth: 18.0,
+    theme: 'emberFlats',
+  },
+
+  /**
+   * THE SPINE. curve -0.55 -- bent the other way. A ridge running down the
+   * mountain with the ground falling away on both sides, so the centreline is
+   * the HIGH point and every direction from it is downhill.
+   *
+   * This is the shape the game could never have had. Under the pendulum the
+   * rider would simply have slid off it; with no restoring force they hold
+   * whatever line they pick, and choosing a side becomes the whole game. The
+   * barriers at the rim stop being a fence at the top of a wall and become the
+   * edge of a drop.
+   */
+  faceSpine: {
+    ...FACE_FEEL,
+    id: 'faceSpine',
+    name: 'The Spine',
+    curve: -0.55,
+    radius: 44.0,
+    route: { ampA: 22, waveA: 380, ampB: 34, waveB: 1500 },
+    rollAmount: 0.08, rollWavelength: 320,
+    funnelSpacing: 560, funnelWidth: 0.3, funnelTightness: 0.85,
+    dropSpacing: 260,
+    dropCycle: [
+      { depth: 5.0, width: 0.048, profile: 'roll' },
+      { depth: 8.0, width: 0.061, profile: 'roll' },
+      { depth: 3.5, width: 0.040, profile: 'roll' },
+    ],
+    dropCycleDepth: 16.5,
+    theme: 'midnightPines',
+  },
+
+  /**
+   * THE CHUTE. curve 2.2 and a hard route -- everything the other direction.
+   * Walls that climb more than twice as fast as the original trough's, on a
+   * course that changes direction every 140m. The steepest, tightest, most
+   * enclosed thing in the set, and the counterweight to The Flats: if the
+   * answer is that this game wants MORE shape rather than less, this is the end
+   * of the range that says so.
+   */
+  faceChute: {
+    ...FACE_FEEL,
+    id: 'faceChute',
+    name: 'The Chute',
+    curve: 2.2,
+    radius: 38.0,
+    route: { ampA: 44, waveA: 140, ampB: 28, waveB: 700 },
+    rollAmount: 0.34, rollWavelength: 130,
+    funnelSpacing: 340, funnelWidth: 0.38, funnelTightness: 0.6,
+    dropSpacing: 210,
+    dropCycle: [
+      { depth: 4.5, width: 0.052, profile: 'roll' },
+      { depth: 7.0, width: 0.065, profile: 'roll' },
+      { depth: 2.5, width: 0.039, profile: 'roll' },
+    ],
+    dropCycleDepth: 14.0,
+    theme: 'duskNeon',
   },
 };
 

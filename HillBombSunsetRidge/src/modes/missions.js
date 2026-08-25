@@ -148,6 +148,8 @@ const MISSION_MODE = {
    * its vocabulary one piece at a time.
    */
   contentFor: () => (pendingId && getMission(pendingId).content) || null,
+  /** The specific mountain this mission is set on, or null for the course's. */
+  terrainFor: () => (pendingId && getMission(pendingId).terrain) || null,
 
   create(ctx) {
     const mission = MISSIONS.find((m) => m.id === pendingId) || MISSIONS[0];
