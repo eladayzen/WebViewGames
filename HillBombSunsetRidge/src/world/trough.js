@@ -223,6 +223,19 @@ export function centre(s, out = new THREE.Vector3()) {
 }
 
 /**
+ * How fast the centreline is moving SIDEWAYS, per unit travelled down the hill.
+ *
+ * Analytic derivative of centre()'s two harmonics. This is the number the rider
+ * has to cancel to hold a line in the world rather than a lane on the road --
+ * see the world-steer correction in core/main.js.
+ */
+export function routeSlopeAt(s) {
+  const r = TERRAIN.route;
+  return Math.cos(s / r.waveA) * (r.ampA / r.waveA)
+    + Math.cos(s / r.waveB) * (r.ampB / r.waveB);
+}
+
+/**
  * Trough radius at s. THIS is the funnel.
  *
  * The moment in concept-01 where the channel narrows into a throat and flares

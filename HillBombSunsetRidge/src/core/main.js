@@ -41,7 +41,7 @@ import {
 import { initInput, readInput, forcePop, setStance, getStance } from '../input/input.js';
 import {
   createTrough, toWorld, surfaceUp, heightAt, frameAt, makeFrame, radiusAt,
-  elevAt, slopeAt, curvatureAt, dropLipsBetween,
+  elevAt, slopeAt, curvatureAt, dropLipsBetween, routeSlopeAt,
 } from '../world/trough.js';
 import { createRider } from '../entities/rider.js';
 import { createCameraRig } from '../camera/cameraRig.js';
@@ -1198,6 +1198,38 @@ function frame() {
         + lipPush;
       state.thetaVel += thetaAcc * dt;
       state.theta += state.thetaVel * dt;
+
+      // --- WORLD STEER: the lane stops carrying the rider ------------------
+      //
+      // Amit: "why should the player and the controller care about the lane?
+      // The lane is for building the world. In the snowboard game the lane was
+      // not affecting the player at all."
+      //
+      // Position is stored as (s, theta) -- an angle off a centreline that
+      // BENDS -- so holding theta means being swept sideways with the road.
+      // Measured hands-off, that is 38.8 units of lateral travel in nine
+      // seconds on Switchback, with the rider's lane never changing and the
+      // camera tracking the road to within 1.4 degrees. Nothing was steering
+      // them; the road was carrying them.
+      //
+      // The road's lateral rate is speed * d(centre.x)/ds. The rider's own
+      // offset from the centreline is R*sin(theta), which changes at R*cos(theta)
+      // per radian -- so cancelling one with the other is a division. Neutral
+      // input then means a straight line in the WORLD, and following a bend
+      // becomes something the player does rather than something done to them.
+      //
+      // A SCALE, not a switch: 0 is the old behaviour exactly, so the half-pipe
+      // and everything tuned on it are untouched, and a route that turns out to
+      // demand too much steering can be dialled back rather than re-authored.
+      if (TERRAIN.worldSteer > 0) {
+        const R2 = radiusAt(state.s);
+        // cos(theta) goes to zero at the rim of a deep hill, and the correction
+        // divides by it -- so it is floored. Past that angle the surface is too
+        // steep for a lateral cancellation to mean much anyway.
+        const lean = Math.max(0.35, Math.cos(state.theta));
+        const correction = -(state.speed * routeSlopeAt(state.s)) / (R2 * lean);
+        state.theta += correction * TERRAIN.worldSteer * dt;
+      }
 
       // Where the world ends. In CUSHION mode this is a backstop well past the
       // point the soft push has already taken over, and reaching it is a bug

@@ -83,6 +83,9 @@ export const LIP_WALL = 'wall';
  */
 const FACE_FEEL = {
   curve: 1,
+  // 1 = hold a line in the WORLD with neutral input; the road bending is
+  // something you steer through rather than something that moves you.
+  worldSteer: 1,
   thetaMax: 0.92, thetaGravity: 0, carveScale: 0.62, dampScale: 1.25,
   heightScale: 0, catchScale: 1.415, lipMode: LIP_WALL, wallHeight: 6.0,
   wallScrub: 0, lipLamps: false, spread: 1, patternSet: 'face',
@@ -114,6 +117,9 @@ export const TERRAIN_PRESETS = {
     // (sin(s*0.0031)*26 + sin(s*0.00097)*44), so the ridge is unchanged.
     route: { ampA: 26, waveA: 1 / 0.0031, ampB: 44, waveB: 1 / 0.00097 },
     curve: 1,
+    // 0 = the lane carries you, which is what the pipe has always done and what
+    // its pendulum was built around. Untouched.
+    worldSteer: 0,
     carveScale: 1,
     dampScale: 1,
     heightScale: 1,
@@ -227,6 +233,7 @@ export const TERRAIN_PRESETS = {
     rollWavelength: 260,
     route: { ampA: 26, waveA: 1 / 0.0031, ampB: 44, waveB: 1 / 0.00097 },
     curve: 1,
+    worldSteer: 1,
     carveScale: 0.62,
     dampScale: 1.25,
     heightScale: 0,
