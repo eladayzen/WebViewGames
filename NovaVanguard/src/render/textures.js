@@ -82,6 +82,7 @@ export const ASSET_MANIFEST = {
   // player projectile -- §5.4's ownership coding admits no exceptions, so a
   // temporary weapon changes shape and never side.
   spread: 'assets/proj-player-spread.png',
+  boltRapid: 'assets/proj-player-rapid.png',
   // The three additional pickup weapons (WEAPONS). Each shape IS its weapon's
   // behaviour rather than decoration: a needle that goes through, a finned
   // missile that steers, a crescent shockwave with no reach. All cyan-white --
@@ -94,6 +95,7 @@ export const ASSET_MANIFEST = {
   // emblem on the face, so which weapon is on offer can be read before the
   // player commits to crossing the frame for it. Spun and pulsed at runtime
   // from one static sprite each, exactly as §5.6 requires.
+  pickupRapid: 'assets/pickup-rapid.png',
   pickupScatter: 'assets/pickup-scatter.png',
   pickupLance: 'assets/pickup-lance.png',
   pickupSwarm: 'assets/pickup-swarm.png',
@@ -638,10 +640,12 @@ const PLACEHOLDERS = {
   lancerRim: placeholderRim,
   bolt: placeholderBolt,
   spread: placeholderSpread,
+  boltRapid: placeholderSpread,
   lance: () => placeholderRound('lance'),
   swarm: () => placeholderRound('swarm'),
   flak: () => placeholderRound('flak'),
   orb: placeholderOrb,
+  pickupRapid: () => placeholderPickup('rapid'),
   pickupScatter: () => placeholderPickup('scatter'),
   pickupLance: () => placeholderPickup('lance'),
   pickupSwarm: () => placeholderPickup('swarm'),

@@ -47,6 +47,7 @@ import {
   resetPickups,
   updatePickups,
   updateTelegraphs,
+  devSpawnPickup,
 } from './systems/pickups.js';
 import { runValidator } from './systems/constraints.js';
 import {
@@ -62,7 +63,7 @@ import {
 import { createHud } from './ui/hud.js';
 import { createInstrumentation } from './debug/instrumentation.js';
 import { createPanel } from './debug/panel.js';
-import { POC_SCENARIO, SECTOR_TRANSITION } from './data/tuning.js';
+import { POC_SCENARIO, SECTOR_TRANSITION, PICKUPS } from './data/tuning.js';
 import * as TUNING from './data/tuning.js';
 
 const stage = document.getElementById('stage');
@@ -377,6 +378,11 @@ async function boot() {
     jumpToLevel,
     skipToBoss: forceBoss,
     restart: restartScenario,
+    // Dev-only weapon spawner. The list comes from PICKUPS.kinds rather than
+    // being written out here, so a fifth weapon appears in the panel the moment
+    // it is authored -- the same table-driven discipline the surfaces use.
+    spawnPickup: (kind) => devSpawnPickup(world, kind),
+    weaponKinds: Object.keys(PICKUPS.kinds),
     world,
     surfaces: SURFACES,
   });

@@ -36,12 +36,15 @@ const WRENCH = '&#128295;'; // 🔧
  * @param {object} actions
  *   @param {(index:number)=>void} actions.jumpToLevel
  *   @param {()=>void}             actions.skipToBoss
+ *   @param {(kind:string)=>void}  actions.spawnPickup
+ *   @param {string[]}             actions.weaponKinds
  *   @param {()=>void}             actions.restart
  *   @param {object}               actions.world      live world, for debug flags
  *   @param {Array}                actions.surfaces   SURFACES, for level names
  */
 export function createDevPanel(doc, actions) {
-  const { jumpToLevel, skipToBoss, restart, world, surfaces } = actions;
+  const { jumpToLevel, skipToBoss, restart, spawnPickup, weaponKinds = [],
+          world, surfaces } = actions;
 
   const btn = doc.createElement('button');
   btn.id = 'dev-button';
@@ -121,6 +124,19 @@ export function createDevPanel(doc, actions) {
     if (i === 0) skipToBoss();
     else restart();
   });
+
+  // SPAWN A NAMED WEAPON CANISTER. Waiting for a specific weapon to drop means
+  // playing until the weighted roll happens to pick it -- which is minutes per
+  // weapon and, for the rarer draws, sometimes not at all in a level. These
+  // put each one in reach immediately, in the lower middle where the player
+  // already is.
+  if (weaponKinds.length) {
+    section('SPAWN WEAPON');
+    buttonRow(
+      weaponKinds.map((k) => k.toUpperCase()),
+      (i) => spawnPickup(weaponKinds[i]),
+    );
+  }
 
   section('CHEATS');
   const invRow = toggleRow(

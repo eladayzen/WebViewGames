@@ -303,6 +303,27 @@ function collect(w, q) {
 
 /** Whether a pickup is drawable this frame (a re-offer in flight is not).
  *  Exported so /render does not have to know what a re-offer is. */
+/**
+ * DEV ONLY (ui/devPanel.js): drop a specific weapon canister on demand, in the
+ * lower middle of the frame where the player already is.
+ *
+ * Bypasses every gate maybeDropPickup() enforces -- the roll, the drop chance,
+ * the minimum gap, the exclude-running-weapon rule -- because the point is to
+ * test a named weapon immediately, not to sample the drop system. It still goes
+ * through spawnPickup(), so the canister behaves exactly like a real one once
+ * it exists; only its ORIGIN is synthetic.
+ *
+ * Deliberately does NOT touch w.pickup.killsSinceDrop or lastDropT beyond what
+ * spawnPickup already does, so a dev spawn cannot quietly change how the real
+ * drop system behaves for the rest of the run.
+ */
+export function devSpawnPickup(w, kind) {
+  if (!PICKUPS.kinds[kind]) return false;
+  // Lower middle, a little above the player's hold line so it is immediately
+  // reachable without a vertical lean (§5.6's whole constraint).
+  return !!spawnPickup(w, DESIGN_W * 0.5, DESIGN_H * 0.62, kind);
+}
+
 export function pickupVisible(q) {
   return q.alive && q.reOfferT <= 0;
 }

@@ -398,7 +398,20 @@ export const PLAYER = {
   // affect, no input that changes it (§4). Rank changes what comes out; POC
   // has no chevrons so rank is pinned at 1 (§2).
   fire: {
-    rank1IntervalS: 0.105,
+    // 30% SLOWER THAN IT SHIPPED (playtest round 8). Amit: "the basic shot
+    // should be like I said 30% slower fire rate. And then to have a pickup
+    // which [...] just gives me more fire rate which will be the current fire
+    // rate."
+    //
+    // 0.105 -> 0.150 was rate x 0.7 (9.52 shots/s -> 6.67); playtest round 9
+    // took another 20% off, 0.150 -> 0.1875, i.e. 5.33 shots/s. Cumulatively
+    // the baseline is at 56% of what it shipped with. The gap RAPID fills is
+    // now large enough to be the point of picking it up rather than a nuance.
+    //
+    // PROJECTILE SPEED IS UNTOUCHED, deliberately -- he was explicit that this
+    // is a fire-RATE change. boltSpeed drives the reaction-time arithmetic in
+    // §5.3, so moving it would silently retune every pattern in the game.
+    rank1IntervalS: 0.1875,
     boltSpeed: 1450, // px/s upward
     boltRadius: 9,
     boltDamage: 1,
@@ -480,6 +493,59 @@ export const WEAPONS = {
     durationS: 11.0,
     // Picking a second one up while it is running tops the clock back up rather
     // than stacking, so two drops in quick succession are never wasted.
+    refresh: true,
+  },
+
+  // -------------------------------------------------------------------------
+  // RAPID -- the baseline's old fire rate, now something you earn.
+  //
+  // WHY THIS WEAPON EXISTS, and it is the whole point of playtest round 8.
+  // Amit: "most of what I'm looking for is to fire all of the time. Because
+  // it's much easier to aim like that, just going left and right and not having
+  // to sniper anyone."
+  //
+  // That is a statement about what fire rate MEANS in this game. There is no
+  // aim input (§0.2/§4) -- the only verb is where you stand -- so rate is not a
+  // damage stat, it is COVERAGE. A faster gun widens the window in which
+  // standing in roughly the right place is good enough. That is why a
+  // slower-but-stronger weapon reads as a punishment here even at equal DPS,
+  // and why the reward for a pickup should be rate.
+  //
+  // It is the one weapon with NO exotic behaviour: no spread, no pierce, no
+  // homing, no range limit. Identical to the bolt in every respect except that
+  // it fires at 0.105 -- exactly what the baseline was before this round. Its
+  // weakness is therefore honest and structural rather than authored: it is the
+  // only alternate weapon that gives you nothing you could not already do, so
+  // taking it over a situational weapon is a real choice rather than a free
+  // upgrade.
+  rapid: {
+    id: 'rapid',
+    name: 'RAPID',
+    // The pre-nerf baseline, referenced as a literal rather than through
+    // PLAYER.fire so that retuning the baseline again does not silently drag
+    // this with it -- the two numbers are related by history, not by rule.
+    intervalS: 0.105,
+    shots: [{ angle: 0 }],
+    speed: PLAYER.fire.boltSpeed,
+    radius: 9,
+    damage: 1,
+    textureKey: 'boltRapid',
+    // ELECTRIC CYAN, and the colour has been through two corrections worth
+    // recording. A warm gold read best as "running hotter" and R9 rejected it:
+    // §5.4 codes bullet OWNERSHIP by hue and warm is the ENEMY's side. Amit
+    // then asked for "some stronger color [...] maybe green" for feedback --
+    // green fails the same rule (it needs blue >= green >= red) and would also
+    // collide with the Emitter craft, which is the game's green thing.
+    //
+    // So the axis that IS free is saturation, not hue. The standard bolt is a
+    // pale near-white cyan; this is the same hue driven hard, which separates
+    // the two at a glance without either leaving the player's side of §5.4.
+    tint: 0x21e6ff,
+    drawScale: 2.6,
+    // Shorter than the others. A pure rate boost is the most immediately
+    // enjoyable thing in the game, so it should be the one that runs out
+    // soonest -- the wanting is the point (§5.6: a lure, not a state).
+    durationS: 9.0,
     refresh: true,
   },
 
@@ -809,6 +875,7 @@ export const PICKUPS = {
   // and the player would dodge the reward. The emblem carries the identity;
   // the colour carries the side. R5 asserts it.
   kinds: {
+    rapid: { id: 'rapid', weapon: 'rapid', textureKey: 'pickupRapid', tint: 0xffffff },
     scatter: { id: 'scatter', weapon: 'scatter', textureKey: 'pickupScatter', tint: 0xffffff },
     lance: { id: 'lance', weapon: 'lance', textureKey: 'pickupLance', tint: 0xffffff },
     swarm: { id: 'swarm', weapon: 'swarm', textureKey: 'pickupSwarm', tint: 0xffffff },
@@ -831,11 +898,23 @@ export const PICKUPS = {
   // sharp weakness. Flak is weighted lowest because its range limit makes it
   // the most situational -- a genuinely good draw in a swoop-heavy wave and a
   // poor one in front of a boss.
+  // PLAYTEST ROUND 8 REWEIGHTING. Amit asked to see the rate pickup "a lot",
+  // and the reason is not generosity: the baseline is now 30% slower, so RAPID
+  // is what makes the game feel like itself. It is weighted well above
+  // everything else and is the new introductory draw.
+  //
+  // LANCE IS HALVED, and that is a considered demotion rather than a nudge. Its
+  // 0.34s interval is 2.3x the new baseline's, and Amit's report is that a
+  // slower-but-stronger weapon "feels like a nerf" in a game where rate is
+  // coverage rather than damage. It keeps its pierce and its 3 damage -- it is
+  // still the right answer to a stacked column -- but it should be the rare
+  // specialist draw, not a coin flip you lose.
   weaponWeights: {
+    rapid: 2.20,
     scatter: 1.00,
-    lance: 0.85,
     swarm: 0.85,
     flak: 0.65,
+    lance: 0.40,
   },
 
   // A drop never grants the weapon that is already running.
