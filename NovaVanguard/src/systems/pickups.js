@@ -287,8 +287,44 @@ function collect(w, q) {
   q.alive = false;
   w.pickup.collected++;
   const kind = PICKUPS.kinds[q.kind] || PICKUPS.kinds.scatter;
-  const def = weaponDef(kind.weapon);
   const p = w.player;
+
+  // NON-WEAPON CANISTERS (playtest round 10). Amit asked for "a pickup for
+  // shield for our hero spaceship. Time limit in shield and pickup for health."
+  //
+  // Two genuinely different things, and keeping them separate matters:
+  //   * REPAIR restores a shield SEGMENT -- it undoes damage already taken and
+  //     is worth nothing at full health.
+  //   * BARRIER is a timed invulnerability -- it prevents damage not yet taken
+  //     and is worth most when you are about to be hit.
+  // A player at one segment in front of a boss wants the first; a player at
+  // full shield crossing a curtain wants the second. Collapsing them into one
+  // "defensive" pickup would lose exactly that choice.
+  //
+  // Neither touches p.weapon, so picking one up does NOT cost the player the
+  // weapon they are running -- which is the whole reason these are a separate
+  // effect rather than another row in WEAPONS.
+  if (kind.effect === 'repair') {
+    const before = p.shield;
+    p.shield = Math.min(PLAYER.shieldSegments, p.shield + (kind.amount || 1));
+    // Silent about the cap rather than refusing the pickup: a canister that
+    // could not be collected at full health would sit in the lane looking like
+    // a bug, and §5.6's lure rules assume every canister is takeable.
+    if (p.shield !== before) w.stats.repaired = (w.stats.repaired || 0) + 1;
+    // Fire the burst even at full shield. The canister WAS collected, and a
+    // pickup that visibly does nothing reads as a bug -- the honest signal is
+    // "that happened, and you were already full", not silence.
+    p.repairFlashT = PLAYER.repairFlashS;
+    sfx('pickup');
+    return;
+  }
+  if (kind.effect === 'barrier') {
+    p.barrierT = Math.max(p.barrierT || 0, kind.durationS || 6);
+    sfx('pickup');
+    return;
+  }
+
+  const def = weaponDef(kind.weapon);
   // `refresh` tops the clock back up rather than stacking, so two drops close
   // together are never wasted and can never bank into a minute of scatter.
   p.weaponT = def.refresh

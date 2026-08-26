@@ -883,7 +883,29 @@ export function validateAll(opts = {}) {
       for (const id of Object.keys(PICKUPS.kinds)) {
         const k = PICKUPS.kinds[id];
         if (k.id !== id) err(`R5[${id}]: kind id '${k.id}' does not match its key`);
-        if (!WEAPONS[k.weapon]) {
+        // NON-WEAPON CANISTERS (round 10). A kind grants EITHER a weapon or an
+        // effect, never both and never neither. Checked rather than exempted:
+        // an effect string with a typo would otherwise fall through
+        // /systems/pickups.js's branches and silently grant nothing, which is
+        // indistinguishable from a canister that failed to collect.
+        if (k.effect) {
+          if (k.weapon) {
+            err(`R5[${id}]: names both an effect and a weapon; a canister does one thing`);
+          }
+          const KNOWN = ['barrier', 'repair'];
+          if (!KNOWN.includes(k.effect)) {
+            err(
+              `R5[${id}]: effect '${k.effect}' is not one /systems/pickups.js ` +
+                `handles (${KNOWN.join(', ')}) — it would collect and do nothing`
+            );
+          }
+          if (k.effect === 'barrier' && !(k.durationS > 0)) {
+            err(`R5[${id}]: barrier needs a positive durationS; it is a window of time`);
+          }
+          if (k.effect === 'repair' && !(k.amount > 0)) {
+            err(`R5[${id}]: repair needs a positive amount of shield segments`);
+          }
+        } else if (!WEAPONS[k.weapon]) {
           err(`R5[${id}]: grants weapon '${k.weapon}', which is not authored`);
         }
         if (k.weapon === 'standard') {

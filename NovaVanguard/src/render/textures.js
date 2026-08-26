@@ -96,6 +96,8 @@ export const ASSET_MANIFEST = {
   // player commits to crossing the frame for it. Spun and pulsed at runtime
   // from one static sprite each, exactly as §5.6 requires.
   pickupRapid: 'assets/pickup-rapid.png',
+  pickupBarrier: 'assets/pickup-barrier.png',
+  pickupRepair: 'assets/pickup-repair.png',
   pickupScatter: 'assets/pickup-scatter.png',
   pickupLance: 'assets/pickup-lance.png',
   pickupSwarm: 'assets/pickup-swarm.png',
@@ -646,6 +648,8 @@ const PLACEHOLDERS = {
   flak: () => placeholderRound('flak'),
   orb: placeholderOrb,
   pickupRapid: () => placeholderPickup('rapid'),
+  pickupBarrier: () => placeholderPickup('barrier'),
+  pickupRepair: () => placeholderPickup('repair'),
   pickupScatter: () => placeholderPickup('scatter'),
   pickupLance: () => placeholderPickup('lance'),
   pickupSwarm: () => placeholderPickup('swarm'),

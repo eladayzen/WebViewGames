@@ -65,6 +65,7 @@ const MANIFEST = {
   kill: 'assets/audio/sfx-kill.mp3',
   deflect: 'assets/audio/sfx-deflect.mp3',
   orbPop: 'assets/audio/sfx-orb-pop.mp3',
+  fireRapid: 'assets/audio/sfx-fire-rapid.mp3',
   playerHit: 'assets/audio/sfx-player-hit.mp3',
   playerDown: 'assets/audio/sfx-player-down.mp3',
   pickup: 'assets/audio/sfx-pickup.mp3',
@@ -80,6 +81,13 @@ const MANIFEST = {
  *  standard bolt's, so adding a WEAPONS row can never produce a silent gun. */
 const WEAPON_CLIP = {
   standard: 'fire',
+  // RAPID GETS ITS OWN VOICE (playtest round 10). Amit asked for "stronger
+  // change [...] also in audio" between the standard shot and RAPID. The clip
+  // was generated in the audio pass and left unwired because the weapon did not
+  // exist yet; it does now, and a weapon whose entire identity is its rate is
+  // the one that most needs to sound different -- rate is a rhythm, and the ear
+  // reads rhythm faster than the eye reads a tint.
+  rapid: 'fireRapid',
   scatter: 'fire',
   lance: 'fireLance',
   swarm: 'fireSwarm',

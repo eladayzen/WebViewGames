@@ -70,6 +70,13 @@ export function updatePlayer(w, input, dt, fx) {
 
   // --- timers -------------------------------------------------------------
   if (p.invulnT > 0) p.invulnT = Math.max(0, p.invulnT - dt);
+  if (p.repairFlashT > 0) p.repairFlashT = Math.max(0, p.repairFlashT - dt);
+  if (p.barrierT > 0) {
+    p.barrierT = Math.max(0, p.barrierT - dt);
+    // Announce the drop-off, or a barrier ending is invisible until the hit
+    // that proves it ended -- which is the worst possible moment to learn it.
+    if (p.barrierT === 0) sfx('weaponExpire');
+  }
   if (p.hitFlashT > 0) p.hitFlashT = Math.max(0, p.hitFlashT - dt);
 
   // --- auto-fire (§4) -----------------------------------------------------
@@ -345,6 +352,15 @@ export function damagePlayer(w, segments, fx) {
   // Returns false, the same as an i-frame absorb, so nothing downstream needs
   // to know the difference.
   if (w.debug.invincible) return false;
+  // The BARRIER pickup. Absorbs the hit outright and does NOT tick down early
+  // for it -- it is a window of time, not a pool of hits, which is what makes
+  // it a different decision from REPAIR rather than a slower version of it.
+  if (p.barrierT > 0) {
+    p.hitFlashT = 0.2;
+    if (fx && fx.deflect) fx.deflect(p.x, p.y);
+    sfx('deflect');
+    return false;
+  }
 
   p.shield -= segments;
   p.invulnT = PLAYER.invulnS;

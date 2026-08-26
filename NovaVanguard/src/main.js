@@ -383,6 +383,10 @@ async function boot() {
     // it is authored -- the same table-driven discipline the surfaces use.
     spawnPickup: (kind) => devSpawnPickup(world, kind),
     weaponKinds: Object.keys(PICKUPS.kinds),
+    // Which of those are non-weapon canisters, so the panel can group them.
+    // Derived from the table rather than hardcoded, for the same reason the
+    // list itself is.
+    effectKinds: Object.keys(PICKUPS.kinds).filter((k) => !!PICKUPS.kinds[k].effect),
     world,
     surfaces: SURFACES,
   });

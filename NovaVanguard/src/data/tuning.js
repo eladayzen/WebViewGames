@@ -392,6 +392,10 @@ export const PLAYER = {
   spriteHeight: 128,
   // Attrition, not lives (§5.10).
   shieldSegments: 6,
+  // How long the REPAIR sphere takes to swell and fade. Short: it is a
+  // confirmation, not a state, and anything longer starts competing with the
+  // barrier ring for "you currently have something".
+  repairFlashS: 0.95,
   damage: { bullet: 1, enemyCollision: 2, groundFire: 1 },
   invulnS: 1.2,
   // Auto-fire is unconditional: no fire button, no cooldown the player can
@@ -728,24 +732,36 @@ export const WEAPONS = {
     // ±24° at the extremes. Kept inside R9's 0.45 rad advisory so the outer
     // rounds still travel a useful distance upward rather than sideways off
     // the frame.
-    shots: [
-      { angle: -0.42 }, { angle: -0.21 }, { angle: 0 },
-      { angle: 0.21 }, { angle: 0.42 },
-    ],
+    // THREE, NOT FIVE (playtest round 10). Amit: "we don't need so many lines
+    // of burst. We can just use three out of what is currently five."
+    //
+    // The outer pair went rather than the inner: keeping ±0.42 and dropping
+    // ±0.21 would leave a hole straight ahead exactly where the player aims by
+    // standing. This keeps the centre round and the two that still clear a
+    // neighbouring formation slot.
+    shots: [{ angle: -0.28 }, { angle: 0 }, { angle: 0.28 }],
     speed: 900,
     radius: 20,
     damage: 1,
     // Distance travelled before the round is spent. THIS IS THE ROW'S WHOLE
     // IDENTITY -- see the note above before retuning it.
-    // 420 -> 500 (playtest round 9). Amit: "flak should have more range".
+    // NO RANGE LIMIT (playtest round 10). Amit: "let those my projectiles run
+    // and live until they exit the screen. Right now they die too early."
     //
-    // NOT the 700 I first set. R9 caught that at 700 the fan reaches y=229 --
-    // inside the formation band -- which erases the row's entire identity:
-    // locked craft being out of reach is what makes FLAK a close-quarters
-    // weapon rather than a wide Scatter. 500 is the most range available that
-    // still dies short of the band from the player's hold line (885 - 367 =
-    // 518 px of gap), so it is +19% reach and the weakness survives intact.
-    rangePx: 500,
+    // THIS DELETES THE ROW'S ORIGINAL WEAKNESS, deliberately, and the weakness
+    // had to move somewhere. FLAK was authored as a close-quarters weapon whose
+    // trade was that locked craft were out of reach -- twice now that has read
+    // as broken rather than as a trade, which is the signal that it was the
+    // wrong axis for this game: a range limit punishes the player for standing
+    // still, and standing in the right place IS the game's only verb.
+    //
+    // What carries the cost instead: three rounds rather than five, and every
+    // intercept spending one of them. A fan that both reaches the formation band
+    // and shoots down fire is strong -- but it is 3 rounds on a 0.20s clock
+    // against a 5-round burst's coverage, and each orb it stops is a round that
+    // never reaches a craft. Its weakness is now opportunity cost, which the
+    // player controls, rather than a wall they cannot see.
+    rangePx: 0,
     // SHOOTS DOWN ENEMY FIRE (playtest round 9). Amit asked for a weapon that
     // can "hit and eliminate enemy projectiles", and for FLAK to be it.
     //
@@ -921,10 +937,27 @@ export const PICKUPS = {
 
   // Presentation. §5.6: "all spun/pulsed at runtime from a single static
   // sprite each" -- so this is the whole animation budget for the type.
-  spriteWidth: 62,
-  spinHz: 0.42,
+  // BIGGER AND ALMOST STILL (playtest round 10). Amit: "all of the pickups
+  // should not be rotating so fast [...] when they enter the screen from the
+  // top and leave from the bottom they won't even complete 30 degrees of spin.
+  // They should also be a bit bigger. My aim is that it would be clear that
+  // it's a positive thing."
+  //
+  // That is a readability goal, not a taste one, and the arithmetic follows
+  // from it. A canister falls at the scroll speed (SCROLL_SPEED 135 px/s) over
+  // a 1080px frame, so it is on screen for ~8 s. The old 0.42 Hz spun it 3.4
+  // FULL turns in that time -- which reads as a tumbling coin, i.e. as loot in
+  // a different genre, and a tumbling object is also harder to identify than a
+  // still one. At 0.010 Hz it turns 0.08 of a rotation, or ~29 degrees, over
+  // the whole traversal: enough to look alive, not enough to obscure the
+  // emblem that says which pickup it is.
+  spriteWidth: 82,
+  spinHz: 0,
   pulseHz: 1.6,
-  pulseAmp: 0.12,
+  // Halved (playtest round 10): "the squeeze animation is a bit too strong."
+  // At 0.12 the canister breathed +/-12% of its own width, which at the new
+  // 82px size is a visible 10px pump; 0.06 keeps it alive without the squeeze.
+  pulseAmp: 0.06,
   // A soft additive halo under the canister so it reads as hot against a dark
   // surface without needing a second texture.
   haloScale: 2.5,
@@ -941,6 +974,16 @@ export const PICKUPS = {
   // the colour carries the side. R5 asserts it.
   kinds: {
     rapid: { id: 'rapid', weapon: 'rapid', textureKey: 'pickupRapid', tint: 0xffffff },
+    // NON-WEAPON CANISTERS (playtest round 10). `effect` instead of `weapon`,
+    // and /systems/pickups.js branches on it before touching the weapon at all
+    // -- so collecting one never costs the player the gun they are running.
+    //
+    // BARRIER is time; REPAIR is a segment. Two rows rather than one
+    // "defensive" pickup because they answer different questions: at one
+    // segment in front of a boss you want the repair, at full shield crossing a
+    // curtain you want the barrier.
+    barrier: { id: 'barrier', effect: 'barrier', durationS: 7.0, textureKey: 'pickupBarrier', tint: 0xffffff, auraTint: 0xffd98a },
+    repair: { id: 'repair', effect: 'repair', amount: 2, textureKey: 'pickupRepair', tint: 0xffffff, auraTint: 0x9dffc0 },
     scatter: { id: 'scatter', weapon: 'scatter', textureKey: 'pickupScatter', tint: 0xffffff },
     lance: { id: 'lance', weapon: 'lance', textureKey: 'pickupLance', tint: 0xffffff },
     swarm: { id: 'swarm', weapon: 'swarm', textureKey: 'pickupSwarm', tint: 0xffffff },
@@ -976,6 +1019,13 @@ export const PICKUPS = {
   // specialist draw, not a coin flip you lose.
   weaponWeights: {
     rapid: 3.20,
+    // Weighted like mid-tier weapons rather than rare prizes. Both are
+    // situational by nature -- REPAIR is worth nothing at full shield, BARRIER
+    // little in a quiet stretch -- so scarcity would mostly make them arrive at
+    // the wrong moment. Frequency is what lets a defensive pickup ever coincide
+    // with actually needing one.
+    barrier: 0.95,
+    repair: 0.95,
     scatter: 1.00,
     swarm: 0.85,
     flak: 0.65,
@@ -3478,6 +3528,11 @@ export const AUDIO = {
     // meets a curtain, and at impact volume that becomes a wall of noise at
     // exactly the moment the player most needs to hear the pattern.
     orbPop:      { gain: 0.26, minGapS: 0.035, pitchJitter: 0.07 },
+    // RAPID's own fire voice. Mixed a touch under the standard bolt's despite
+    // being the thing the player wants to notice -- it fires at nearly twice
+    // the rate, so equal per-shot gain would make the whole mix jump every time
+    // the weapon lands. The DIFFERENCE is the feedback, not the volume.
+    fireRapid:   { gain: 0.14, minGapS: 0.028, pitchJitter: 0.05 },
 
     // --- the player's own state: the loudest things in the game -----------
     playerHit:   { gain: 0.85, minGapS: 0.10 },

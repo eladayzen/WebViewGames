@@ -38,13 +38,14 @@ const WRENCH = '&#128295;'; // 🔧
  *   @param {()=>void}             actions.skipToBoss
  *   @param {(kind:string)=>void}  actions.spawnPickup
  *   @param {string[]}             actions.weaponKinds
+ *   @param {string[]}             actions.effectKinds  subset that are not weapons
  *   @param {()=>void}             actions.restart
  *   @param {object}               actions.world      live world, for debug flags
  *   @param {Array}                actions.surfaces   SURFACES, for level names
  */
 export function createDevPanel(doc, actions) {
   const { jumpToLevel, skipToBoss, restart, spawnPickup, weaponKinds = [],
-          world, surfaces } = actions;
+          effectKinds = [], world, surfaces } = actions;
 
   const btn = doc.createElement('button');
   btn.id = 'dev-button';
@@ -130,11 +131,29 @@ export function createDevPanel(doc, actions) {
   // weapon and, for the rarer draws, sometimes not at all in a level. These
   // put each one in reach immediately, in the lower middle where the player
   // already is.
-  if (weaponKinds.length) {
+  //
+  // SPLIT INTO TWO GROUPS, and the split is functional rather than cosmetic.
+  // Seven chips in one 232px row is ~28px each -- unreadable, and the reason
+  // the two defensive canisters did not register as present when they were
+  // added. Grouping them also matches how they are chosen in play: "which gun
+  // do I want" and "am I about to die" are different questions.
+  //
+  // Membership is derived from the pickup table (`effect` vs `weapon`) rather
+  // than listed here, so a new canister lands in the right group on its own.
+  const offensive = weaponKinds.filter((k) => !effectKinds.includes(k));
+  const defensive = weaponKinds.filter((k) => effectKinds.includes(k));
+  if (offensive.length) {
     section('SPAWN WEAPON');
     buttonRow(
-      weaponKinds.map((k) => k.toUpperCase()),
-      (i) => spawnPickup(weaponKinds[i]),
+      offensive.map((k) => k.toUpperCase()),
+      (i) => spawnPickup(offensive[i]),
+    );
+  }
+  if (defensive.length) {
+    section('SPAWN DEFENCE');
+    buttonRow(
+      defensive.map((k) => k.toUpperCase()),
+      (i) => spawnPickup(defensive[i]),
     );
   }
 

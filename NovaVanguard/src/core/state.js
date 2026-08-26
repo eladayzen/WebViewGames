@@ -74,6 +74,12 @@ export function createWorld() {
       roll: 0, // -1 | 0 | 1
       rank: 1, // pinned at 1 for POC -- no chevrons (§2)
       shield: PLAYER.shieldSegments,
+      // BARRIER pickup (§5.6, playtest round 10): seconds of remaining
+      // invulnerability. Distinct from invulnT, which is the post-hit i-frame
+      // window -- these can overlap and must not clobber each other.
+      barrierT: 0,
+      // One-shot REPAIR burst (§5.6): counts DOWN from PLAYER.repairFlashS.
+      repairFlashT: 0,
       invulnT: 0,
       fireT: 0,
       alive: true,

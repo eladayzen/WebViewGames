@@ -380,6 +380,30 @@ bo = bo.crop(luma_bbox(bo, 8))
 # concept frame shows, where the raw's 1:9 filament would be 200px long.
 save(bo.resize((64, 179), Image.LANCZOS), 'proj-player-bolt.png')
 
+# ROUND 10: SHAPE IS THE FEEDBACK CHANNEL, not colour.
+#
+# Amit: "we need stronger feedback. Like stronger change in the shape in the
+# color between the regular and the rapid also in audio and also with the lance.
+# Its shape and color needs to be much more different than it is now."
+#
+# Colour cannot carry this on its own and it is worth writing down why: §5.4
+# codes bullet ownership by hue and R9 enforces it as blue >= green >= red, so
+# every player round in the game must live in one narrow wedge -- white through
+# cyan through blue. Three weapons cannot be told apart by hue inside that. So
+# the axis that does the work is SILHOUETTE, and these two are authored as
+# deliberate opposites of the standard bolt's 1:2.8 shard:
+#   * RAPID  -- 1:1.1, a fat blunt slug. Reads as volume.
+#   * LANCE  -- 1:6.4, a long needle. Reads as a single committed spike.
+# Aspect is the whole point of the resize below; /render scales uniformly off
+# texture WIDTH, so the authored aspect IS the on-screen shape.
+ra = Image.open(RAW + 'proj-rapid-raw-02.png').convert('RGB')
+ra = ra.crop(luma_bbox(ra, 8))
+save(ra.resize((78, 86), Image.LANCZOS), 'proj-player-rapid.png')
+
+la = Image.open(RAW + 'proj-lance-raw-02.png').convert('RGB')
+la = la.crop(luma_bbox(la, 8))
+save(la.resize((34, 218), Image.LANCZOS), 'proj-player-lance.png')
+
 # The temporary alternate weapon's round (the SCATTER pickup, 5.6 + Amit's
 # "another weapon like a fire different kind of projectiles for limited time").
 #
@@ -421,7 +445,11 @@ save(sp.resize((104, 168), Image.LANCZOS), 'proj-player-spread.png')
 # authored aspect is the on-screen shape.
 PROJ = [
     # (panel, out name, target width, target height)
-    (0, 'proj-player-lance.png', 40, 232),
+    # LANCE's panel is no longer used: round 10 replaced it with a dedicated
+    # generation at a far more extreme 1:6.4 aspect, because "much more
+    # different than it is now" could not be met by a 1:5.8 variant of the same
+    # silhouette. The panel stays in the sheet -- it is the source the other two
+    # were sliced from and re-cutting them would change validated assets.
     (1, 'proj-player-swarm.png', 62, 124),
     (2, 'proj-player-flak.png', 168, 92),
 ]
@@ -759,3 +787,20 @@ save(sc.resize((round(sc.width * k), round(sc.height * k)), Image.LANCZOS),
      'fx-scorch.png')
 
 print('done')
+
+
+# ===========================================================================
+# 6. ROUND 10 CANISTERS -- the two non-weapon pickups (BARRIER, REPAIR).
+#
+# Generated singly rather than as a sheet, so they are cut singly. Same
+# treatment as the weapon canisters: white-key, keep the largest component to
+# drop the generator's cast shadow, tight crop, fit to the shared width so
+# every canister is the same size in the lane regardless of what it grants.
+# ===========================================================================
+print('round-10 canisters')
+for raw_name, out_name in (
+    ('pickup-barrier-raw-01.png', 'pickup-barrier'),
+    ('pickup-repair-raw-01.png', 'pickup-repair'),
+):
+    im = Image.open(RAW + raw_name).convert('RGBA')
+    save(cut(im, PICKUP_W), out_name + '.png')

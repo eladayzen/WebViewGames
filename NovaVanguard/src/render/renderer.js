@@ -238,6 +238,11 @@ export async function createRenderer(mountEl) {
   // One static sprite each, spun and pulsed at runtime -- §5.6 specifies
   // exactly that, and it is why a pickup type costs one image. The halo under
   // it is the shared additive particle texture, so it costs nothing at all.
+  // Vector ring around each canister -- see the note in drawPickups(). Added
+  // before the sprite bank so it draws BEHIND the canister rather than over
+  // the emblem the ring exists to draw attention to.
+  const pickupFx = new Graphics();
+  layers.pickups.addChild(pickupFx);
   const pickupHalos = bank(layers.pickups, 8, () => {
     const s = new Sprite(T('particle'));
     s.blendMode = 'add';
@@ -329,6 +334,14 @@ export async function createRenderer(mountEl) {
   muzzleGlow.tint = 0x9ff0ff;
   muzzleGlow.visible = false;
   layers.player.addChild(muzzleGlow);
+
+  // BARRIER + REPAIR (§5.6, playtest round 10). Vector rather than a sprite for
+  // the same reason the Warden's shimmer shield is: the barrier has to show a
+  // COUNTDOWN, and an arc that shortens states the remaining time exactly,
+  // where a fading sprite only says "something is happening". Added after the
+  // ship so both draw over the hull.
+  const playerFx = new Graphics();
+  layers.player.addChild(playerFx);
 
   const particles = createParticles(layers.particles, T('particle'));
 
@@ -575,6 +588,101 @@ export async function createRenderer(mountEl) {
     // screen look like a dead one.
     if (p.alive) particles.thrust(p.x, p.y + 54, p.roll);
 
+    // --- BARRIER: a ring that is also its own clock ------------------------
+    //
+    // Amit: "we have to see some shield around the spaceship [...] and I have
+    // to see the time that I have left for it."
+    //
+    // Two rings, and both halves matter. The faint full circle says WHERE the
+    // barrier is; the bright arc on top of it drains clockwise from full to
+    // nothing, so "how long left" is readable without a number and without
+    // looking away from the playfield -- which is the only place a player on a
+    // board can afford to look.
+    playerFx.clear();
+    if (p.alive && p.barrierT > 0) {
+      const total = PICKUPS.kinds.barrier?.durationS || 7;
+      const frac = Math.max(0, Math.min(1, p.barrierT / total));
+      const R = PLAYER.spriteWidth * 0.78;
+      // Breathing, so it reads as an energy field rather than a UI overlay.
+      //
+      // AMPLITUDE, NOT CENTRE. The first pass was 0.86 +/- 0.14, i.e. it swung
+      // between 0.72x and 1.00x -- a 28% collapse that read as the ring being
+      // squeezed rather than as it breathing. Amit: "the scale up is good, the
+      // maximum value, but the minimum is way too small." So the top of the
+      // range is held at exactly 1.00 and only the bottom comes up.
+      const pulse = 0.95 + 0.05 * Math.sin(w.time * 5.5);
+      // GOLD, matching its canister (playtest round 10). Amit moved the pickup
+      // to yellow because a blue canister sat too close to the weapon ones --
+      // and the effect follows it, so the colour on the ground predicts the
+      // colour on the ship. It also separates the barrier from the player's own
+      // cyan-white, which a blue ring did not.
+      //
+      // No §5.4 conflict: that rule codes BULLET ownership, and warm being the
+      // enemy's side applies to projectiles. This is a field attached to the
+      // player and never crosses the playfield as fire.
+      playerFx.circle(p.x, p.y, R * pulse).stroke({
+        width: 3,
+        color: 0xffd98a,
+        alpha: 0.32,
+      });
+      // The clock arc, from straight up, clockwise.
+      //
+      // THE moveTo IS LOAD-BEARING. Graphics.arc() continues the CURRENT path
+      // from wherever the pen happens to be, and after a fresh clear() that is
+      // (0, 0) -- so without this the arc is joined to the stage's top-left
+      // corner by a stray line across the whole screen. Amit saw exactly that:
+      // "you did something weird with like a vector from the top, it has a
+      // vector to the left corner of the screen."
+      const a0 = -Math.PI / 2;
+      const ar = R * pulse;
+      playerFx
+        .moveTo(p.x + Math.cos(a0) * ar, p.y + Math.sin(a0) * ar)
+        .arc(p.x, p.y, ar, a0, a0 + frac * Math.PI * 2)
+        .stroke({ width: 7, color: 0xffc23d, alpha: 0.95 });
+      // A last-second warning, so the barrier ending is never a surprise.
+      if (p.barrierT < 1.2) {
+        playerFx.circle(p.x, p.y, R * pulse + 5).stroke({
+          width: 2,
+          color: 0xffffff,
+          alpha: 0.25 + 0.35 * Math.abs(Math.sin(w.time * 16)),
+        });
+      }
+    }
+
+    // --- REPAIR: a sphere that swells once and is gone ---------------------
+    //
+    // Amit: "I want to see some animation, some sphere turning on and off for a
+    // moment around the spaceship." Deliberately the opposite shape of the
+    // barrier's: it expands OUTWARD and fades, so a one-shot heal can never be
+    // mistaken for a timed field that is still running.
+    if (p.alive && p.repairFlashT > 0) {
+      const k = 1 - p.repairFlashT / PLAYER.repairFlashS;
+      // Eased rather than linear (playtest round 10: "make it a bit slower.
+      // The feedback should be bigger [...] so I can feel it a bit more"). The
+      // sphere now leaves fast and SETTLES, which is what gives it weight -- a
+      // linear expansion reads as a wipe, an eased one reads as an event. Note
+      // the size is unchanged; he was explicit that "bigger" did not mean scale.
+      const e = 1 - Math.pow(1 - k, 2.4);
+      const R = PLAYER.spriteWidth * (0.45 + 0.85 * e);
+      const fade = 1 - e;
+      playerFx.circle(p.x, p.y, R).stroke({
+        width: 9 * fade + 2,
+        color: 0x7dffa8,
+        alpha: 0.95 * fade,
+      });
+      // A second ring chasing the first, so the burst has a leading edge and a
+      // trailing one instead of a single expanding hoop.
+      playerFx.circle(p.x, p.y, R * 0.66).stroke({
+        width: 5 * fade + 1,
+        color: 0xd6ffe6,
+        alpha: 0.7 * fade,
+      });
+      playerFx.circle(p.x, p.y, R * 0.78).fill({
+        color: 0x7dffa8,
+        alpha: 0.20 * fade,
+      });
+    }
+
     // Charged muzzle glow while fire is held (FIRE_HOLD). Breathing, not
     // static -- a still glow reads as a UI decal, a breathing one reads as a
     // weapon holding a charge.
@@ -683,6 +791,7 @@ export async function createRenderer(mountEl) {
    */
   function drawPickups(w) {
     const P = PICKUPS;
+    pickupFx.clear();
     let pi = 0;
     for (let i = 0; i < w.pickups.length; i++) {
       const q = w.pickups[i];
@@ -703,10 +812,17 @@ export async function createRenderer(mountEl) {
       sp.anchor.set(0.5);
       sp.x = q.x;
       sp.y = q.y;
-      // A SPIN, NOT A TUMBLE. The canister is a top-down object seen from
-      // directly above (§0.2), so rotating it in the frame plane is the only
-      // rotation that does not imply a camera that does not exist.
-      sp.rotation = w.time * P.spinHz * TWO_PI;
+      // NO ROTATION AT ALL (playtest round 10). Amit: "lose the rotation
+      // completely. The pickups orientation should always be set like regular,
+      // set to north."
+      //
+      // Which is consistent with every other object in the game: §0.2 fixes the
+      // player's nose north and rolls it rather than turning it, and craft
+      // rotate only to face travel. A canister does not travel under its own
+      // power -- it rides the surface -- so it has nothing to face. Holding it
+      // north also keeps its emblem square to the reader, which is the whole
+      // reason the spin came down in the first place.
+      sp.rotation = 0;
       sp.scale.set(
         ((P.spriteWidth * (1 + P.pulseAmp * beat)) / Math.max(1, sp.texture.width))
       );
@@ -720,6 +836,20 @@ export async function createRenderer(mountEl) {
           Math.max(1, halo.texture.width)
       );
       halo.alpha = P.haloAlpha * (0.75 + beat * 0.35);
+      // A RING, NOT PARTICLES (playtest round 10). The motes read as debris
+      // rather than as an offer -- at the sparse rate the playfield could
+      // afford, they looked like something coming off a damaged object. A
+      // closed ring says "this is a thing, and it is whole", which is the
+      // reading a collectable wants. Tinted to the canister's own family, so a
+      // gold barrier is ringed gold and a green repair green.
+      const ringTint = kind.auraTint || 0xbfefff;
+      const rr = P.spriteWidth * (0.78 + 0.05 * beat);
+      pickupFx
+        .circle(q.x, q.y, rr)
+        .stroke({ width: 2.5, color: ringTint, alpha: 0.30 + 0.16 * beat });
+      pickupFx
+        .circle(q.x, q.y, rr * 0.80)
+        .stroke({ width: 1.2, color: ringTint, alpha: 0.18 + 0.12 * beat });
     }
     for (; pi < pickupSprites.length; pi++) {
       pickupSprites[pi].visible = false;
