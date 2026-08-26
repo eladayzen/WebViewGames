@@ -556,15 +556,21 @@ export const WEAPONS = {
     // deep blue would satisfy R9 and disappear on Ashfall.
     tint: 0x4da6ff,
     drawScale: 2.6,
-    // LENGTHENED 9 -> 16 (playtest round 9). The original reasoning -- that the
-    // most enjoyable weapon should be the one that runs out soonest -- was
-    // written when RAPID was a bonus on top of a fast baseline. It is not that
-    // any more: the baseline is at 56% and RAPID is what restores the game's
-    // original feel, so a short clock was not creating want, it was creating a
-    // brief window of the game feeling right followed by a long one of it not.
-    // It is now the LONGEST weapon in the set, which is the correct statement
-    // of what it is for.
-    durationS: 16.0,
+    // 9 -> 16 -> 11 (rounds 9 and 11). The swing is worth recording, because
+    // both moves were right for the state the game was in at the time.
+    //
+    // 16 was set when RAPID had just become the thing that restores the
+    // original feel of a baseline cut to 56% -- a short clock then meant a
+    // brief window of the game feeling right and a long one of it not. What
+    // changed since is the scarcity rule: a weapon canister no longer spawns
+    // while one is running, so a 16s RAPID also meant 16s of no weapon drops at
+    // all. The clock stopped being just this weapon's duration and became the
+    // length of everyone else's drought.
+    //
+    // 11 matches SCATTER, so RAPID is no longer the outlier in either
+    // direction -- long enough to be worth crossing the frame for, short enough
+    // that the rest of the weapon set still gets to appear.
+    durationS: 11.0,
     refresh: true,
   },
 
@@ -983,6 +989,11 @@ export const PICKUPS = {
     // segment in front of a boss you want the repair, at full shield crossing a
     // curtain you want the barrier.
     barrier: { id: 'barrier', effect: 'barrier', durationS: 7.0, textureKey: 'pickupBarrier', tint: 0xffffff, auraTint: 0xffd98a },
+    // TWO SEGMENTS, and it stays two. I raised this to 3 on the theory that a
+    // rare heal should also be a big one; Amit's call is that rarity alone is
+    // the value ("no - 2 bars is enough"). He is right that they are separate
+    // levers: 3 of 6 is half the bar in one canister, which starts to undo a
+    // bad stretch rather than reward surviving it.
     repair: { id: 'repair', effect: 'repair', amount: 2, textureKey: 'pickupRepair', tint: 0xffffff, auraTint: 0x9dffc0 },
     scatter: { id: 'scatter', weapon: 'scatter', textureKey: 'pickupScatter', tint: 0xffffff },
     lance: { id: 'lance', weapon: 'lance', textureKey: 'pickupLance', tint: 0xffffff },
@@ -1019,18 +1030,52 @@ export const PICKUPS = {
   // specialist draw, not a coin flip you lose.
   weaponWeights: {
     rapid: 3.20,
-    // Weighted like mid-tier weapons rather than rare prizes. Both are
-    // situational by nature -- REPAIR is worth nothing at full shield, BARRIER
-    // little in a quiet stretch -- so scarcity would mostly make them arrive at
-    // the wrong moment. Frequency is what lets a defensive pickup ever coincide
-    // with actually needing one.
-    barrier: 0.95,
-    repair: 0.95,
+    // SPLIT APART (playtest round 11). Amit: "too much health pickups. A health
+    // pickup should be something that you see. Same. Not a lot. And yeah, you
+    // can give more shields instead of it."
+    //
+    // They were weighted the same and should never have been. A heal is the
+    // only thing in the game that undoes a mistake, so its value comes from
+    // being RARE -- a common heal makes taking a hit cost nothing, which is
+    // exactly the tension the shield bar exists to create. The barrier prevents
+    // damage for a window and expires whether or not it was needed, so it can
+    // be frequent without ever erasing a mistake.
+    //
+    // So: BARRIER becomes the common defensive draw and REPAIR the one you
+    // notice arriving.
+    barrier: 1.45,
+    repair: 0.30,
     scatter: 1.00,
     swarm: 0.85,
     flak: 0.65,
     lance: 0.40,
   },
+
+  // NO SECOND WEAPON WHILE ONE IS RUNNING (playtest round 11).
+  //
+  // Amit: "players felt like the pickup is taking them back. Like they've had a
+  // better weapon and they picked up something that looked to them like not
+  // such a great weapon. And they were sorry for picking that up."
+  //
+  // Two fixes were rejected before this one, and why matters. SCORING the
+  // weapons and only offering upgrades cannot work: there is no total order --
+  // LANCE beats a stacked column and is the worst weapon in the game against a
+  // Warden, FLAK owns a bullet curtain and is useless at a boss. Any ranking is
+  // right in one wave and wrong in the next, and a refused pickup feels worse
+  // than a downgrade. STACKING breaks the rule the whole system leans on: a
+  // canister must visibly change what comes out of the guns (§5.6), and stacked
+  // weapons blur exactly that.
+  //
+  // So the fix is scarcity: the situation simply arises less. A weapon canister
+  // will not spawn while a temporary weapon is running -- but the DEFENSIVE
+  // canisters still do, because they never overwrite anything and so can never
+  // cause the regret.
+  suppressWeaponWhileRunning: true,
+  // ...except in the last seconds, so chaining is a thing the player can do
+  // deliberately rather than a thing they are punished for still holding a
+  // weapon during. Without this, the moment a weapon expires is also the moment
+  // the drought ends, and the two never overlap.
+  chainTailS: 2.5,
 
   // A drop never grants the weapon that is already running.
   //

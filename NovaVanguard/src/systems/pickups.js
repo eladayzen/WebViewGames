@@ -111,7 +111,13 @@ export function maybeDropPickup(w, type, x, y) {
     return false;
   }
 
-  spawnPickup(w, x, y, rollKind(w));
+  const kind = rollKind(w);
+  // Nothing eligible right now (the weapon drought, PICKUPS above). Return
+  // WITHOUT consuming the drop: killsSinceDrop keeps climbing, so the pickup
+  // the player earned arrives as soon as something is eligible rather than
+  // being silently spent on a canister that could not exist.
+  if (!kind) return false;
+  spawnPickup(w, x, y, kind);
   return true;
 }
 
@@ -132,20 +138,46 @@ export function maybeDropPickup(w, type, x, y) {
  * Drawn from the pickup stream, not the scenario's -- see the note at the top
  * of this file. Level one's choreography must stay byte-for-byte where it is.
  */
+/**
+ * Is a canister of this kind allowed to spawn right now?
+ *
+ * The scarcity rule (PICKUPS.suppressWeaponWhileRunning). A WEAPON canister is
+ * withheld while a temporary weapon is running, so the player is rarely offered
+ * a swap they did not want; DEFENSIVE canisters are always allowed, because
+ * they overwrite nothing and so can never cause the regret this rule exists for.
+ *
+ * The tail exception means the drought lifts just before the weapon does, which
+ * is what turns chaining into something the player can aim for.
+ */
+function kindAllowedNow(w, id) {
+  const k = PICKUPS.kinds[id];
+  if (!k) return false;
+  if (k.effect) return true;
+  if (!PICKUPS.suppressWeaponWhileRunning) return true;
+  const t = w.player.weaponT;
+  return t <= 0 || t <= PICKUPS.chainTailS;
+}
+
 function rollKind(w) {
   const running = w.player.weaponT > 0 ? w.player.weapon : '';
   let total = 0;
   for (const id of Object.keys(PICKUPS.kinds)) {
     if (PICKUPS.excludeRunningWeapon && PICKUPS.kinds[id].weapon === running) continue;
+    if (!kindAllowedNow(w, id)) continue;
     total += PICKUPS.weaponWeights[id] || 0;
   }
   // Every candidate excluded or unweighted: fall back to the introductory one
   // rather than to nothing. Unreachable with the authored table, and a canister
   // that granted nothing would be the worst possible failure mode for a lure.
-  if (total <= 0) return 'scatter';
+  // Nothing eligible: no canister at all, rather than the introductory
+  // fallback. During a weapon drought every weapon row is ineligible, and
+  // falling back to 'scatter' would hand the player exactly the swap the rule
+  // just spent its whole existence preventing.
+  if (total <= 0) return '';
   let r = prng.next() * total;
   for (const id of Object.keys(PICKUPS.kinds)) {
     if (PICKUPS.excludeRunningWeapon && PICKUPS.kinds[id].weapon === running) continue;
+    if (!kindAllowedNow(w, id)) continue;
     r -= PICKUPS.weaponWeights[id] || 0;
     if (r <= 0) return id;
   }
@@ -377,7 +409,9 @@ export function devSpawnPickup(w, kind) {
 export function dropAuthoredPickup(w, x, y) {
   if (liveCount(w.pickups) >= PICKUPS.maxOnScreen) return false;
   const before = w.pickup.killsSinceDrop;
-  const q = spawnPickup(w, x, y, rollKind(w));
+  const kind = rollKind(w);
+  if (!kind) return false;
+  const q = spawnPickup(w, x, y, kind);
   w.pickup.killsSinceDrop = before;
   return !!q;
 }
