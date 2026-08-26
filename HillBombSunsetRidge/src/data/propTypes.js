@@ -579,7 +579,11 @@ export const FACE_PATTERNS = [
       { type: 'kicker', ds: 84, u: W * 0.16 },
       { type: 'crystal', ds: 92, u: W * 0.60 },
       { type: 'blocker', ds: 100, u: W * 0.30 },
-      { type: 'statue', ds: 112, u: W * 0.90, rare: 2 },
+      // DEAD CENTRE, behind the blocker lane. Amit: "the idols are always on
+      // the sides, it's boring." All three sat past 86% out, so the only idol
+      // anyone ever saw was a rim idol. This one is guarded by the middle
+      // rather than by distance -- you go through something to reach it.
+      { type: 'statue', ds: 78, u: W * 0.08, rare: 2 },
     ],
   },
   {
@@ -625,7 +629,8 @@ export const FACE_PATTERNS = [
       { type: 'bigKicker', ds: 98, u: W * 0.50 },
       { type: 'blocker', ds: 108, u: W * 0.84 },
       { type: 'crystal', ds: 118, u: W * 0.32 },
-      { type: 'statue', ds: 126, u: -W * 0.86, rare: 3, rarePhase: 1 },
+      // Mid-field, the band that had none at all.
+      { type: 'statue', ds: 126, u: W * 0.46, rare: 3, rarePhase: 1 },
     ],
   },
   {
@@ -676,7 +681,9 @@ export const FACE_PATTERNS = [
       // support asking for five. Three placements puts it near five a minute
       // with the override on, and still under two a minute at the authored
       // cadence -- so the incidental case does not become a parade.
-      { type: 'statue', ds: 58, u: -W * 0.92, rare: 3 },
+      // One stays at the rim -- a long way out is still a good place for one,
+      // it just cannot be the ONLY place.
+      { type: 'statue', ds: 58, u: -W * 0.88, rare: 3 },
     ],
   },
 ];

@@ -160,13 +160,18 @@ const AUTHORED = [
     { kinds: ['launch', 'grind', 'wall', 'scenery', 'boost'], feature: ['boost'] },
     'faceGorge'],
 
-  ['faceIdols',   'IDOL HUNT',     'Five of them. They are never on your line.', 110,
-    { idol: 5 }, FACE,
+  ['faceIdols',   'IDOL HUNT',     'Ten of them, and never where you already are.', 130,
+    // TEN, per Amit. Five was set when all three idol placements sat past 86%
+    // out and the only one anyone met was a rim idol. Spread across the hill
+    // and measured on The Amphitheatre at 10.5 a minute, about 22 pass by in
+    // 130s -- so ten is a little under half of them. A hunt rather than a
+    // sweep, and rather than the lottery two would have been at the old rate.
+    { idol: 10 }, FACE,
     // Idols ONLY among the pickups, and every showing rather than the authored
     // "every now and then" -- that cadence is for something met incidentally,
     // and this is the one thing the mission is about.
     { kinds: ['launch', 'wall', 'scenery', 'pickup'], without: ['crystal'],
-      rareAlways: true, feature: ['pickup'] }, 'faceSpine'],
+      rareAlways: true, feature: ['pickup'] }, 'faceAmphitheatre'],
 
   // --- and now the mixing ----------------------------------------------------
   ['faceMix1',    'BOTH RIMS',     'Left, right, and back again.',              95,

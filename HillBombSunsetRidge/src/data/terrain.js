@@ -613,30 +613,38 @@ export const TERRAIN_PRESETS = {
   },
 
   /**
-   * THE SPINE. curve -0.55 -- bent the other way. A ridge running down the
-   * mountain with the ground falling away on both sides, so the centreline is
-   * the HIGH point and every direction from it is downhill.
+   * THE AMPHITHEATRE. Replaces THE SPINE, which was a convex ridge at curve
+   * -0.55 -- and Amit rode it: "a very bad shape for the level, the reverse
+   * curve is way too strong. We need to give it up."
    *
-   * This is the shape the game could never have had. Under the pendulum the
-   * rider would simply have slid off it; with no restoring force they hold
-   * whatever line they pick, and choosing a side becomes the whole game. The
-   * barriers at the rim stop being a fence at the top of a wall and become the
-   * edge of a drop.
+   * Worth recording why it failed, since the mechanism stays available. A ridge
+   * means every direction from the centreline is downhill, so the ground under
+   * the rider tilts AWAY on whichever side they are on and there is no
+   * horizontal reference anywhere on screen. It was the most novel shape in the
+   * set and the least readable, and novelty does not survive not being able to
+   * tell where you are. Negative curve is still supported; -0.55 is simply far
+   * past what reads.
+   *
+   * What replaces it is built for its mission instead of for novelty. IDOL HUNT
+   * asks for five of one rare thing, so it wants ROOM -- the widest hill in the
+   * set at radius 56, a gentle bowl that keeps a horizon, a slow lazy route
+   * that does not fight the detours, and drops far enough apart that going a
+   * long way sideways is not constantly interrupted.
    */
-  faceSpine: {
+  faceAmphitheatre: {
     ...FACE_FEEL,
-    id: 'faceSpine',
-    name: 'The Spine',
-    curve: -0.55,
-    radius: 44.0,
-    route: { ampA: 22, waveA: 380, ampB: 34, waveB: 1500 },
-    rollAmount: 0.08, rollWavelength: 320,
-    funnelSpacing: 560, funnelWidth: 0.3, funnelTightness: 0.85,
-    dropSpacing: 260,
+    id: 'faceAmphitheatre',
+    name: 'The Amphitheatre',
+    curve: 0.55,
+    radius: 56.0,
+    route: { ampA: 14, waveA: 620, ampB: 40, waveB: 2000 },
+    rollAmount: 0.07, rollWavelength: 340,
+    funnelSpacing: 700, funnelWidth: 0.34, funnelTightness: 0.78,
+    dropSpacing: 300,
     dropCycle: [
-      { depth: 5.0, width: 0.048, profile: 'roll' },
-      { depth: 8.0, width: 0.061, profile: 'roll' },
-      { depth: 3.5, width: 0.040, profile: 'roll' },
+      { depth: 5.0, width: 0.042, profile: 'roll' },
+      { depth: 8.0, width: 0.053, profile: 'roll' },
+      { depth: 3.5, width: 0.035, profile: 'roll' },
     ],
     dropCycleDepth: 16.5,
     theme: 'midnightPines',
