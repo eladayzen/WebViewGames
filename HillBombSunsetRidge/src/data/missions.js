@@ -91,11 +91,57 @@ function starTiers(seconds) {
 const FACE = 'openFaceMissions';
 
 const AUTHORED = [
-  ['firstDrop',   'FIRST DROP',    'Learn the ridge. Grab what shines.',        70, { pickup: 20 }],
-  ['railRunner',  'RAIL RUNNER',   'The metal is faster than the paint.',       90, { grind: 4, pickup: 16 }],
-  ['bigScore',    'BIG SCORE',     'Everything pays. Go and get paid.',         80, { score: 38000, launch: 7 }],
-  ['sunsetRun',   'SUNSET RUN',    'Everything you know, before the light goes.', 90, { pickup: 24, grind: 3, score: 48000 }],
-  ['airTime',     'AIR TIME',      'Feet off the ground as much as possible.',  75, { launch: 13 }],
+  // MISSION 1 IS RAMPS, and only ramps. Amit, moving back to the ridge after
+  // parking the open face: "first mission should be around ramps, taking like
+  // 15 ramps. Also put in some pink barriers. For now hide or remove the
+  // glides, the green glides, any kind of pickup. And the existing ramps -- try
+  // to move them a little bit to the side so they won't all be so close to the
+  // center."
+  //
+  // `push` is what does that last part and why it exists: four of the ridge's
+  // nine ramp placements sit at exactly u = 0, and a multiplier leaves anything
+  // at zero exactly where it was. 1.3 spreads what is already spread; the 0.25
+  // push moves the centre ones off it. Together the ramps land between a fifth
+  // and two thirds of the way out instead of piled on the centreline.
+  //
+  // 'wall' is in kinds so the pink barriers appear; the course itself does not
+  // allow that kind, so no other ridge mission sees them and none of their
+  // measured star thresholds move.
+  ['firstDrop',   'FIRST DROP',    'Ramps, and something to go around.',        80,
+    { launch: 15 }, undefined,
+    // woodWall is excluded BY TYPE: it shares the 'wall' kind with the blocker,
+    // so allowing the kind brought the race's timber plank along with the pink
+    // barrier. Only one of them is what was asked for.
+    { kinds: ['launch', 'wall', 'scenery'], without: ['woodWall'],
+      density: 1, spread: 1.3, push: 0.25 }],
+  // 2 -- RAILS. Adds the green metal on top of mission 1's ramps; the
+  // objective is rails and nothing else.
+  ['railRunner',  'RAIL RUNNER',   'Green metal. Get on it and stay on.',       90,
+    { grind: 6 }, undefined,
+    { kinds: ['launch', 'grind', 'wall', 'scenery'], without: ['woodWall'],
+      density: 1, feature: ['grind'] }],
+  // 3 -- CRYSTALS. Idols are excluded by type: they are their own lesson two
+  // missions later, and a rare thing met before it is introduced is just a
+  // confusing crystal.
+  ['crystalRun',  'CRYSTAL RUN',   'Now there is something to collect.',        90,
+    { pickup: 22 }, undefined,
+    { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup'],
+      without: ['woodWall', 'statue'], density: 1, feature: ['pickup'] }],
+  // 4 -- SPEED GATES. Crystals come OUT for this one, the same way they did on
+  // the open face: a mission about riding arches should not also be a mission
+  // about collecting, or the objective is not what the player is doing.
+  ['speedGates',  'SPEED GATES',   'Ride the arches. They give the hill back.', 95,
+    { boost: 6 }, undefined,
+    { kinds: ['launch', 'grind', 'wall', 'scenery', 'boost'],
+      without: ['woodWall'], density: 1, feature: ['boost'] }],
+  // 5 -- IDOLS. Crystals out, idols in and forced to every showing of their
+  // pattern -- the authored "every now and then" cadence is for something met
+  // incidentally, and this is the one thing the mission is about.
+  ['idolHunt',    'IDOL HUNT',     'Ten of them, and never where you already are.', 130,
+    { idol: 10 }, undefined,
+    { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup'],
+      without: ['woodWall', 'crystal', 'highCrystal'],
+      density: 1, rareAlways: true, feature: ['pickup'] }],
   ['crystalHaul', 'CRYSTAL HAUL',  'Leave nothing shining behind you.',         85, { pickup: 26 }],
   ['ironLine',    'IRON LINE',     'Find the rails. Ride them properly.',      100, { grind: 5, launch: 8 }],
   ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',    75, { score: 44000 }],

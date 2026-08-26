@@ -726,6 +726,21 @@ export function createProps(scene) {
    * background.
    */
   let featured = null;
+  /**
+   * Per-mission lateral layout overrides: a multiplier, and a PUSH outward.
+   *
+   * The push is what a multiplier cannot do. Amit, on the ridge's first
+   * mission: "move them a little bit to the side so they won't all be so close
+   * to the center" -- and four of its nine ramps sit at exactly u = 0, where
+   * any multiplier leaves them exactly where they were. Adding a fixed angular
+   * offset moves them; multiplying spreads what is already spread. Both are
+   * wanted, so both are here.
+   *
+   * null means the terrain's own spread, which is every mission that has not
+   * asked for something else.
+   */
+  let spreadOverride = null;
+  let pushOut = 0;
   let nextPatternS = 60; // leave the opening stretch clear
   // Separate frontier from the patterns'. Lip ramps are placed against the
   // TERRAIN, which has its own spacing and knows nothing about how long a
@@ -931,7 +946,17 @@ export function createProps(scene) {
       // Clamping rather than dropping keeps the pattern's shape -- the outermost
       // items pile onto the edge instead of vanishing, which is what "all the
       // way across the field" should look like.
-      const u = Math.max(-rim, Math.min(rim, item.u * TERRAIN.spread));
+      const mult = spreadOverride != null ? spreadOverride : TERRAIN.spread;
+      let u = item.u * mult;
+      if (pushOut > 0) {
+        // Sign of whatever it already had; for a dead-centre item there is no
+        // sign to keep, so one is chosen deterministically off its position --
+        // stable across replays, and alternating rather than all one way.
+        const sgn = Math.abs(u) > 1e-6 ? Math.sign(u)
+          : (hash(start * 1.7 + item.ds) < 0.5 ? -1 : 1);
+        u = sgn * (Math.abs(u) + pushOut);
+      }
+      u = Math.max(-rim, Math.min(rim, u));
       add(item.type, start + item.ds, u * flip);  // item.u is an ANGLE
     }
 
@@ -982,6 +1007,15 @@ export function createProps(scene) {
      * @param {string[]|null} block prop TYPES to leave out, or null for none.
      * @param {boolean} [always] emit `rare` placements every time.
      */
+    /**
+     * @param {number|null} mult lateral multiplier, or null for the terrain's.
+     * @param {number} push fixed angular offset away from the centreline.
+     */
+    setLayout(mult, push = 0) {
+      spreadOverride = mult;
+      pushOut = push || 0;
+    },
+
     setContent(block, always = false, feature = null) {
       blockedTypes = block && block.length ? new Set(block) : null;
       rareAlways = !!always;

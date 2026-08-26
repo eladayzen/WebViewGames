@@ -413,6 +413,8 @@ export const PATTERNS = [
     length: 70,
     build: (W) => [
       { type: 'rail', ds: 0, u: -W * 0.35 },
+      { type: 'blocker', ds: 44, u: -W * 0.08 },
+      { type: 'statue', ds: 60, u: W * 0.10, rare: 2 },
       { type: 'rail', ds: 26, u: W * 0.35 },
       { type: 'cone', ds: 14, u: 0 },
       // Strung ALONG the rail line, drifting from one rail to the next, so the
@@ -430,6 +432,7 @@ export const PATTERNS = [
     length: 85,
     build: (W) => [
       { type: 'kicker', ds: 0, u: -W * 0.25 },
+      { type: 'blocker', ds: 38, u: W * 0.12 },
       { type: 'kicker', ds: 26, u: W * 0.25 },
       { type: 'bigKicker', ds: 56, u: 0 },
       { type: 'boostPad', ds: 14, u: -W * 0.15 },
@@ -474,6 +477,8 @@ export const PATTERNS = [
       { type: 'rail', ds: 0, u: -W * 0.5 },
       { type: 'rail', ds: 0, u: W * 0.5 },
       { type: 'bank', ds: 40, u: 0 },
+      { type: 'blocker', ds: 66, u: W * 0.14 },
+      { type: 'statue', ds: 24, u: -W * 0.52, rare: 3, rarePhase: 1 },
       { type: 'boostPad', ds: 74, u: W * 0.30 },
       { type: 'woodWall', ds: 46, u: -W * 0.28 },
       { type: 'hydrant', ds: 20, u: -W * 0.78 },
@@ -490,6 +495,8 @@ export const PATTERNS = [
       { type: 'roadwork', ds: 0, u: -W * 0.55 },
       { type: 'roadwork', ds: 30, u: W * 0.5 },
       { type: 'longRail', ds: 20, u: W * 0.1 },
+      { type: 'blocker', ds: 52, u: -W * 0.06 },
+      { type: 'statue', ds: 80, u: W * 0.82, rare: 3 },
       { type: 'boostPad', ds: 48, u: -W * 0.16 },
       { type: 'woodWall', ds: 12, u: W * 0.30 },
       { type: 'pothole', ds: 62, u: -W * 0.45 },
