@@ -86,8 +86,28 @@ const FACE_FEEL = {
   // 1 = hold a line in the WORLD with neutral input; the road bending is
   // something you steer through rather than something that moves you.
   worldSteer: 1,
-  thetaMax: 0.92, thetaGravity: 0, carveScale: 0.62, dampScale: 1.25,
-  heightScale: 0, catchScale: 1.415, lipMode: LIP_WALL, wallHeight: 6.0,
+  // THE RIDGE'S RIM ANGLE AND WIDTH BAND. Amit, after playing both ladders:
+  // "the original missions are more fun -- everything is more action close to
+  // each other. I don't need to move a lot to hunt for something, and when I
+  // miss it, it's heartbreaking. Let's take the width and the shape from the
+  // original missions and put a bit more stuff."
+  //
+  // Measured, that is arithmetic rather than atmosphere: per reward the ridge
+  // asks for 8.9 units of sideways travel and the face asked for 29.9, up to
+  // 36.5 on the widest -- 3.4x the journey for 1.5x fewer rewards. The cause is
+  // that patterns are authored as FRACTIONS of the half-width, so u = 0.5 is 15
+  // units out on the ridge and 26 on the Amphitheatre. Width was doing all of
+  // that quietly.
+  //
+  // catchScale returns to 1 with it: that only ever existed to keep colliders
+  // the same SHARE of a wider hill.
+  //
+  // What the face keeps is everything that made it worth building -- no pull to
+  // the middle, no speed cost for altitude, a hard edge instead of a cushion,
+  // drops that throw you, and a line held in the world rather than in the
+  // road's lane. It was never the width that made it new.
+  thetaMax: 1.15, thetaGravity: 0, carveScale: 0.62, dampScale: 1.25,
+  heightScale: 0, catchScale: 1, lipMode: LIP_WALL, wallHeight: 6.0,
   wallScrub: 0, lipLamps: false, spread: 1, patternSet: 'face',
   dropAccelGain: 0.10, launchG: AIR_G, fallG: 55, lipRamps: 0.5,
 };
@@ -194,8 +214,8 @@ export const TERRAIN_PRESETS = {
   openFace: {
     id: 'openFace',
     name: 'Open face',
-    radius: 46.0,
-    thetaMax: 0.92,
+    radius: 27.0,
+    thetaMax: 1.15,
     /**
      * NO PULL TO THE MIDDLE AT ALL.
      *
@@ -249,7 +269,7 @@ export const TERRAIN_PRESETS = {
     // digit. Deliberately no more than that: colliders already run wider than
     // the meshes they belong to (Amit asked for that), and overshooting here
     // starts collecting things the player can see they missed.
-    catchScale: 1.415,
+    catchScale: 1,
 
     /**
      * A WALL, not a cushion. The soft push-back is gone entirely: everything
@@ -477,6 +497,51 @@ export const TERRAIN_PRESETS = {
   },
 
   /**
+   * THE RIDGE, EXACTLY -- ridden with the face's controller.
+   *
+   * Amit: "in the first mission of the open face I want you to copy the level
+   * and the placements of the ramps exactly like in the original first.
+   * Exactly the same."
+   *
+   * So every dimension here is READ from the half-pipe preset rather than
+   * restated, and the route, funnel and roll are the ridge's own. It also uses
+   * the STREET pattern set, which is what puts the ramps exactly where the
+   * original mission puts them -- the face's own patterns are a different
+   * layout however closely their numbers are matched.
+   *
+   * AND NO DROPS. The ridge has none, and "exactly the same level" has to mean
+   * the ground too, or the comparison is not one.
+   *
+   * What is NOT copied is the controller: no pull to the middle, no speed cost
+   * for altitude, a hard edge instead of a cushion, and a line held in the
+   * world rather than in the road's lane. That is the entire point of the
+   * experiment -- it isolates how the new controller feels on a level already
+   * known to be fun, with nothing else different to argue about.
+   */
+  faceRidgeMatch: {
+    ...FACE_FEEL,
+    id: 'faceRidgeMatch',
+    name: 'Sunset Ridge (match)',
+    radius: TROUGH_RADIUS,
+    thetaMax: THETA_MAX,
+    curve: 1,
+    funnelSpacing: FUNNEL_SPACING,
+    funnelWidth: FUNNEL_WIDTH,
+    funnelTightness: FUNNEL_TIGHTNESS,
+    rollAmount: TROUGH_ROLL_AMOUNT,
+    rollWavelength: TROUGH_ROLL_WAVELENGTH,
+    route: { ampA: 26, waveA: 1 / 0.0031, ampB: 44, waveB: 1 / 0.00097 },
+    // The ridge's own content, so the ramps land where they always did.
+    patternSet: 'street',
+    // No drops -- the ridge is an even grade from top to bottom.
+    dropSpacing: 1, dropCycle: [], dropCycleDepth: 0,
+    dropAccelGain: 0, launchG: Infinity, lipRamps: 0,
+    // Lamps come back with the street set; they are its furniture.
+    lipLamps: true,
+    theme: 'duskNeon',
+  },
+
+  /**
    * SWITCHBACKS. A short, hard meander -- the hill changes direction every
    * ~180m, so the route itself is the obstacle and reading ahead matters more
    * than anything placed on it. Banked hard through the turns (roll 0.30), and
@@ -486,7 +551,7 @@ export const TERRAIN_PRESETS = {
     ...FACE_FEEL,
     id: 'faceSwitchback',
     name: 'Switchback',
-    radius: 40.0,
+    radius: 26.0,
     route: { ampA: 34, waveA: 180, ampB: 22, waveB: 620 },
     rollAmount: 0.30, rollWavelength: 150,
     funnelSpacing: 420, funnelWidth: 0.34, funnelTightness: 0.72,
@@ -511,7 +576,7 @@ export const TERRAIN_PRESETS = {
     ...FACE_FEEL,
     id: 'faceLongRun',
     name: 'Long Run',
-    radius: 54.0,
+    radius: 30.0,
     route: { ampA: 8, waveA: 900, ampB: 70, waveB: 2600 },
     rollAmount: 0.05, rollWavelength: 400,
     funnelSpacing: 900, funnelWidth: 0.5, funnelTightness: 0.9,
@@ -536,7 +601,7 @@ export const TERRAIN_PRESETS = {
     ...FACE_FEEL,
     id: 'faceGorge',
     name: 'The Gorge',
-    radius: 32.0,
+    radius: 24.0,
     route: { ampA: 18, waveA: 300, ampB: 30, waveB: 1400 },
     rollAmount: 0.20, rollWavelength: 210,
     funnelSpacing: 300, funnelWidth: 0.4, funnelTightness: 0.52,
@@ -560,7 +625,7 @@ export const TERRAIN_PRESETS = {
     ...FACE_FEEL,
     id: 'faceStaircase',
     name: 'The Staircase',
-    radius: 46.0,
+    radius: 27.0,
     route: { ampA: 20, waveA: 520, ampB: 26, waveB: 1700 },
     rollAmount: 0.10, rollWavelength: 300,
     funnelSpacing: 600, funnelWidth: 0.3, funnelTightness: 0.82,
@@ -597,8 +662,8 @@ export const TERRAIN_PRESETS = {
     ...FACE_FEEL,
     id: 'faceBasin',
     name: 'The Basin',
-    curve: 0.32,
-    radius: 52.0,
+    curve: 0.85,
+    radius: 29.0,
     route: { ampA: 20, waveA: 460, ampB: 38, waveB: 1600 },
     rollAmount: 0.16, rollWavelength: 240,
     funnelSpacing: 380, funnelWidth: 0.42, funnelTightness: 0.55,
@@ -635,8 +700,8 @@ export const TERRAIN_PRESETS = {
     ...FACE_FEEL,
     id: 'faceAmphitheatre',
     name: 'The Amphitheatre',
-    curve: 0.55,
-    radius: 56.0,
+    curve: 0.9,
+    radius: 30.0,
     route: { ampA: 14, waveA: 620, ampB: 40, waveB: 2000 },
     rollAmount: 0.07, rollWavelength: 340,
     funnelSpacing: 700, funnelWidth: 0.34, funnelTightness: 0.78,
@@ -662,8 +727,8 @@ export const TERRAIN_PRESETS = {
     ...FACE_FEEL,
     id: 'faceChute',
     name: 'The Chute',
-    curve: 2.2,
-    radius: 38.0,
+    curve: 1.25,
+    radius: 24.0,
     route: { ampA: 44, waveA: 140, ampB: 28, waveB: 700 },
     rollAmount: 0.34, rollWavelength: 130,
     funnelSpacing: 340, funnelWidth: 0.38, funnelTightness: 0.6,

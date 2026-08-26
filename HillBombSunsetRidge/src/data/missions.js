@@ -142,8 +142,20 @@ const AUTHORED = [
     // `feature` exempts ramps from the course's thinning, so the lesson's
     // subject is continuous rather than sampled. Without it the back half of
     // this mission had stretches with no ramp in sight.
-    { launch: 12 }, FACE, { kinds: ['launch', 'wall', 'scenery'], feature: ['launch'] },
-    'openFace'],
+    // The ridge's own level and its own ramp placements, at full density --
+    // see faceRidgeMatch.
+    //
+    // RAMPS AND NOTHING ELSE. Amit: "remove everything from there that is not
+    // a ramp -- completely." No barriers, no cones, no crystals, not even the
+    // lip lamps: 'launch' is the only kind that reaches the ground.
+    //
+    // Which makes this the cleanest test the project has. The level is one
+    // already known to be fun, the ramp placements are identical to the
+    // original's to the digit, and every other variable is gone -- so whatever
+    // it feels like is the CONTROLLER, and nothing else.
+    { launch: 12 }, FACE,
+    { kinds: ['launch'], density: 1 },
+    'faceRidgeMatch'],
 
   ['faceGlides',  'RAIL SCHOOL',   'Green metal. Get on it and stay on.',       90,
     { grind: 5 }, FACE,

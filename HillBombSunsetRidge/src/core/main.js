@@ -784,7 +784,9 @@ function startRun(id) {
     content ? !!content.rareAlways : false,
     content ? (content.feature || null) : null);
   // How much of the authored layout this course actually wants on the ground.
-  props.setDensity(course.density);
+  // A mission may override the course's density -- "exactly the same as the
+  // original" has to include how much of the layout is actually emitted.
+  props.setDensity(content && content.density != null ? content.density : course.density);
   // ROUTE VARIATION. One seed decides the whole run's layout, and the biggest
   // thing it moves is where on the hill you START: the trough's funnels and
   // roll are functions of absolute distance, so a different starting distance

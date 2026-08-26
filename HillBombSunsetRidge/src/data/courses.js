@@ -142,7 +142,12 @@ export const COURSES = {
     // mission actually shows them is the mission's own call (see content).
     allowedKinds: ['launch', 'grind', 'scenery', 'pickup', 'wall', 'boost'],
     variation: false,
-    density: 0.55,
+    // A BIT MORE STUFF. 0.55 came from Amit calling the full-density face "very
+    // packed" -- but that was about BARRIERS everywhere, and thinning
+    // uniformly took the action out with them. Having played both: "we felt it
+    // is more fun when it's more packed, we feel more action." 0.9 puts rewards
+    // back above the ridge's own density, which is the level he is comparing to.
+    density: 0.9,
   },
 };
 
