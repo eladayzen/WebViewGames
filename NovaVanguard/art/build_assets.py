@@ -804,3 +804,45 @@ for raw_name, out_name in (
 ):
     im = Image.open(RAW + raw_name).convert('RGBA')
     save(cut(im, PICKUP_W), out_name + '.png')
+
+# ===========================================================================
+# 7. BOSSES 4 AND 5 -- Vespidae (art generated earlier, wired now) and the
+#    Siege Dreadnought.
+#
+# Same treatment as the three before them: hull cut to a fixed width so its
+# ASPECT is what decides its on-screen extent (6.4's "never enters the player
+# band" is derived from that aspect, so it is a property of the art), and the
+# two pod states cut through ONE SHARED CELL RECT so a pod does not jump when
+# it dies.
+#
+# The pod states are generated as two separate images here rather than as a
+# sheet, so "shared rect" means a shared TARGET size: both are fitted to the
+# same box, which is what keeps the dead pod registered on the live one.
+# ===========================================================================
+print('bosses 4 and 5')
+
+BOSS_HULLS = [
+    ('boss-vespidae-hull.png', 'boss-vespidae-hull', 1400),
+    ('boss-siege-hull-raw-01.png', 'boss-siege-hull', 1400),
+]
+for raw_name, out_name, target_w in BOSS_HULLS:
+    src_path = RAW + raw_name
+    if not os.path.exists(src_path):
+        src_path = OUT + raw_name          # vespidae shipped already cut
+    h = Image.open(src_path).convert('RGBA')
+    if h.getextrema()[3][0] == 255:        # still opaque: needs keying
+        h = cutout_white(h.convert('RGB').convert('RGBA'))
+    h = keep_largest_component(h)
+    h = h.crop(alpha_bbox(h))
+    kk = target_w / h.width
+    h = h.resize((target_w, max(1, round(h.height * kk))), Image.LANCZOS)
+    save(h, out_name + '.png')
+    print(f'  {out_name} aspect {h.width / h.height:.3f}')
+
+POD_W = 190
+for raw_name, out_name in (
+    ('boss-emplacement-raw-01.png', 'boss-emplacement'),
+    ('boss-emplacement-dead-raw-01.png', 'boss-emplacement-dead'),
+):
+    im = cut(Image.open(RAW + raw_name), POD_W)
+    save(im, out_name + '.png')

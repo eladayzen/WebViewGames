@@ -165,10 +165,61 @@ function cadenceOf(owner) {
  * §5.3 guarantee /systems/constraints.js proves per pattern is untouched, volley
  * by volley, exactly as the per-craft cadence skew already was.
  */
+
+/**
+ * How much to shorten a boss volley because too few of its pods are firing.
+ *
+ * Returns a multiplier on the interval: 1 when the expected number of sources
+ * are live, smaller when fewer are. See the note in volleyInterval().
+ */
+function bossPressureMul(w) {
+  const b = w.boss;
+  if (!b || !b.active) return 1;
+  let firing = 0;
+  for (const p of b.pods) if (p.alive && p.firing) firing++;
+  if (firing <= 0) return 1;
+  const want = Math.max(1, w.caps.simultaneousPatterns);
+  if (firing >= want) return 1;
+  return Math.max(BOSS.pressureFloor, firing / want);
+}
+
 function volleyInterval(w, st) {
   const level = levelAt(w.surfaceIndex).fireRateMul || 1;
   const boss = st.boss ? BOSS.fireRateMul : 1;
-  return st.def.volleyIntervalS * cadenceOf(st.owner) * level * boss;
+  // BOSS FIVE'S ENRAGE. Every emplacement destroyed makes the survivors fire
+  // faster, so the fight accelerates as the player wins it.
+  //
+  // This is the finale's mechanic and it is deliberately NOT another exposure
+  // gate: bosses two, three and four all answer "which part can I hit right
+  // now", and a fourth variation of that would be a puzzle the player has
+  // already solved three times. This one is always fully open -- every
+  // emplacement is hittable from the first second -- and asks a different
+  // question instead: how fast do you dare kill it. Racing shortens the fight
+  // and thickens the fire; taking it slowly keeps the fire thin and leaves you
+  // under it longer. Both are legitimate, which is what makes it a decision.
+  const rage = st.boss && w.boss.enrageMul > 0 ? w.boss.enrageMul : 1;
+  // THE PRESSURE FLOOR (playtest round 12). Amit: "level 2 nadir coil does not
+  // shoot when last head is left. Level 4 brood gantry almost does not shoot
+  // back."
+  //
+  // Both are the same bug and it is a design one, not a logic one. A boss's
+  // fire comes from its OPEN pods, and the volley intervals were authored
+  // assuming the cap's worth of them are firing at once. When only one is --
+  // Nadir Coil down to its last segment, Brood Gantry between bay windows --
+  // that one pod is running a pattern authored at up to 9.5s between volleys,
+  // and the fight goes quiet at exactly the moment it should be at its most
+  // desperate.
+  //
+  // So the boss keeps roughly constant PRESSURE rather than constant per-pod
+  // cadence: with half the expected sources firing, each fires twice as often.
+  // The threat still degrades as pods die -- fewer distinct patterns is a real
+  // and readable weakening -- it just degrades toward "thinner" instead of
+  // toward "silent".
+  //
+  // Capped, because §5.3's aisles are authored per pattern and an unbounded
+  // scale would eventually outrun the reaction floor the validator proves.
+  const thin = st.boss ? bossPressureMul(w) : 1;
+  return st.def.volleyIntervalS * cadenceOf(st.owner) * level * boss * rage * thin;
 }
 
 /** Where a volley comes from. An OWNED emitter (an Emitter craft, a boss pod)

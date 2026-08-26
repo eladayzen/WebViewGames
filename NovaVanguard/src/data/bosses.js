@@ -125,6 +125,14 @@ export const BOSSES = {
   // two's waves -- so the fight introduces no new bullet vocabulary at all.
   broodGantry: {
     id: 'broodGantry',
+    // THE HULL GUN (playtest round 12). One pattern the hull fires itself, for
+    // as long as it lives, owned by no pod. It is the floor of threat that
+    // destroying pods cannot remove -- see bossEmitters() in /enemies/boss.js
+    // for why one pattern from a lone surviving pod was not enough.
+    //
+    // B1 deliberately: the first pattern the player ever learned, so the thing
+    // that is always present is also the thing they can always read.
+    hullPatterns: ['B1'],
     built: true,
     name: 'BROOD GANTRY',
     hullKey: 'bossBroodGantryHull',
@@ -203,6 +211,14 @@ export const BOSSES = {
   // pressure, no plunge, no diagonal curtain.
   nadirCoil: {
     id: 'nadirCoil',
+    // THE HULL GUN (playtest round 12). One pattern the hull fires itself, for
+    // as long as it lives, owned by no pod. It is the floor of threat that
+    // destroying pods cannot remove -- see bossEmitters() in /enemies/boss.js
+    // for why one pattern from a lone surviving pod was not enough.
+    //
+    // B1 deliberately: the first pattern the player ever learned, so the thing
+    // that is always present is also the thing they can always read.
+    hullPatterns: ['B1'],
     built: true,
     name: 'NADIR COIL',
     hullKey: 'bossNadirCoilHull',
@@ -256,6 +272,109 @@ export const BOSSES = {
     // not its bulk.
     podHp: 20,
     coreHp: 80,
+  },
+
+  // -------------------------------------------------------------------------
+  // BOSS FOUR -- VESPIDAE, on Glacis Shelf.
+  //
+  // §6.4's broodmother, finally built: its art was generated during a scope
+  // that was cancelled and sat unused in art/unused/ until now.
+  //
+  // ITS GATE IS 'chain' (see updateChain in /enemies/boss.js): exactly one sac
+  // is open, and killing it moves the opening to the FURTHEST survivor. That is
+  // the axis no earlier boss uses -- two is a clock you wait out, three is an
+  // order you can read in advance, and this one changes only when the player
+  // makes it change, and always demands a real lateral relocation when it does.
+  // On a machine whose only verb is where you stand, "be somewhere else now" is
+  // the most direct thing a boss can ask.
+  //
+  // Four sacs at asymmetric dx, so the relocations are uneven distances rather
+  // than a metronome. Sac HP is low: the fight is the travelling, not the
+  // grinding, and a tough sac would turn every relocation into a wait.
+  // -------------------------------------------------------------------------
+  vespidae: {
+    id: 'vespidae',
+    // THE HULL GUN (playtest round 12). One pattern the hull fires itself, for
+    // as long as it lives, owned by no pod. It is the floor of threat that
+    // destroying pods cannot remove -- see bossEmitters() in /enemies/boss.js
+    // for why one pattern from a lone surviving pod was not enough.
+    //
+    // B1 deliberately: the first pattern the player ever learned, so the thing
+    // that is always present is also the thing they can always read.
+    hullPatterns: ['B1'],
+    built: true,
+    name: 'VESPIDAE',
+    hullKey: 'bossVespidaeHull',
+    podKey: 'bossSac',
+    podShutKey: 'bossSac',
+    podDeadKey: 'bossSacDead',
+    podSpriteWidth: 132,
+    podNoun: 'SAC',
+    gate: 'chain',
+    coreDx: 0.5,
+    pods: [
+      { dx: 0.118, pattern: 'B1' },
+      { dx: 0.352, pattern: 'B2' },
+      { dx: 0.646, pattern: 'B2' },
+      { dx: 0.884, pattern: 'B4' },
+    ],
+    podHp: 14,
+    coreHp: 78,
+  },
+
+  // -------------------------------------------------------------------------
+  // BOSS FIVE -- SIEGE WARDEN, on The Bulwark. The finale.
+  //
+  // NO EXPOSURE GATE AT ALL, and that is the point. Bosses two, three and four
+  // all answer the same question in different words -- "which part of me can
+  // you hit right now" -- and a fourth variation of it would be a puzzle the
+  // player has already solved three times. Every emplacement here is open from
+  // the first second.
+  //
+  // What escalates instead is the FIRE. `enragePerKill` shortens the survivors'
+  // volley interval by 18% per emplacement destroyed, so the fight accelerates
+  // as it is won: at three down the two remaining patterns run at 46% of their
+  // authored interval. The decision it creates is genuinely new -- racing
+  // shortens the fight but thickens the fire, taking it slowly keeps the fire
+  // thin but leaves you under it longer, and both are defensible.
+  //
+  // The floor in applyEnrage (0.35) exists because §5.3's reaction-time
+  // arithmetic is authored per pattern, and an unbounded multiplier would
+  // eventually outrun the aisle the validator proved. The escalation is allowed
+  // to be brutal; it is not allowed to be unfair.
+  // -------------------------------------------------------------------------
+  siegeWarden: {
+    id: 'siegeWarden',
+    // THE HULL GUN (playtest round 12). One pattern the hull fires itself, for
+    // as long as it lives, owned by no pod. It is the floor of threat that
+    // destroying pods cannot remove -- see bossEmitters() in /enemies/boss.js
+    // for why one pattern from a lone surviving pod was not enough.
+    //
+    // B1 deliberately: the first pattern the player ever learned, so the thing
+    // that is always present is also the thing they can always read.
+    hullPatterns: ['B1'],
+    built: true,
+    name: 'SIEGE WARDEN',
+    hullKey: 'bossSiegeHull',
+    podKey: 'bossEmplacement',
+    podShutKey: 'bossEmplacement',
+    podDeadKey: 'bossEmplacementDead',
+    podSpriteWidth: 150,
+    podNoun: 'EMPLACEMENT',
+    // No gate: every emplacement is permanently open.
+    gate: '',
+    coreDx: 0.5,
+    pods: [
+      { dx: 0.150, pattern: 'B1' },
+      { dx: 0.383, pattern: 'B2' },
+      { dx: 0.617, pattern: 'B4' },
+      { dx: 0.850, pattern: 'B2' },
+    ],
+    // Higher than the others: with nothing gating access, an emplacement that
+    // died as fast as a coil segment would make the whole fight a burst.
+    podHp: 30,
+    coreHp: 96,
+    enragePerKill: 0.18,
   },
 };
 

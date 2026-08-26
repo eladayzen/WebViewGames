@@ -120,6 +120,12 @@ export const ASSET_MANIFEST = {
   // boss three spends none of its teaching budget on re-establishing it and can
   // spend all of it on the ends rule instead (§6.4, BOSS.coil).
   bossNadirCoilHull: 'assets/boss-nadircoil-hull.png',
+  bossVespidaeHull: 'assets/boss-vespidae-hull.png',
+  bossSac: 'assets/boss-sac.png',
+  bossSacDead: 'assets/boss-sac-dead.png',
+  bossSiegeHull: 'assets/boss-siege-hull.png',
+  bossEmplacement: 'assets/boss-emplacement.png',
+  bossEmplacementDead: 'assets/boss-emplacement-dead.png',
   bossCoilOpen: 'assets/boss-coil-open.png',
   bossCoilShut: 'assets/boss-coil-shut.png',
   bossCoilDead: 'assets/boss-coil-dead.png',
@@ -665,6 +671,12 @@ const PLACEHOLDERS = {
   bossCoilOpen: () => placeholderBay('open'),
   bossCoilShut: () => placeholderBay('shut'),
   bossCoilDead: () => placeholderBay('dead'),
+  bossVespidaeHull: placeholderBossHull,
+  bossSac: () => placeholderBay('open'),
+  bossSacDead: () => placeholderBay('dead'),
+  bossSiegeHull: placeholderBossHull,
+  bossEmplacement: () => placeholderBay('open'),
+  bossEmplacementDead: () => placeholderBay('dead'),
   scorch: placeholderScorch,
 };
 // Every prop falls back to the same flat programmer-art block, keyed by

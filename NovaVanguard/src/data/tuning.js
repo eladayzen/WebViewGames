@@ -701,6 +701,23 @@ export const WEAPONS = {
     // `acquireY` is the important one: a round only ever considers craft ABOVE
     // it, so nothing ever turns back down toward the player band.
     homing: { turnRate: 3.2, acquireRange: 900, retargetS: 0.22 },
+    // NOT OFFERED DURING A BOSS FIGHT (playtest round 12). Amit: "swarm weapon
+    // doesn't work good at all on the bosses, doesn't understand where to shoot
+    // them. Instead of fixing it, let's try to not give swarm when I'm working
+    // on a boss."
+    //
+    // The right call, because this is not a bug to fix -- it is the weapon's
+    // authored weakness meeting the one fight where a weakness becomes a dead
+    // hand. SWARM homes onto CRAFT and deliberately never onto a boss (§6.4's
+    // hull is not a valid target and should not become one; a homing round that
+    // tracked a boss would trivialise every fight in the game). Against a boss
+    // it therefore flies straight, which is a worse bolt.
+    //
+    // Everywhere else that trade is fine: you took a specialist and met the
+    // wrong wave. In a boss fight it is not a trade at all, because there is
+    // nothing else to shoot and no way to decline the canister -- so the honest
+    // fix is to stop offering it, not to make the homing lie about its rules.
+    craftOnly: true,
     textureKey: 'swarm',
     tint: 0xe6fbff,
     drawScale: 2.4,
@@ -3271,6 +3288,21 @@ export const BOSS = {
   // leaves the rotation permanently, so the fight still calms exactly as §6.4
   // requires, and the cap is never exceeded.
   podRotateS: 4.5,
+  // PRESSURE FLOOR (playtest round 12). Amit: "level 2 nadir coil does not
+  // shoot when last head is left."
+  //
+  // Volley intervals are authored assuming the cap's worth of pods are firing
+  // at once. When only one is -- a coil down to its last segment, a gantry
+  // between bay windows -- that pod is running a pattern authored at up to 9.5s
+  // between volleys and the fight goes quiet exactly when it should be most
+  // desperate. bossPressureMul() in /patterns shortens the interval in
+  // proportion to how few sources are live; this is the floor on that, so a
+  // lone survivor fires a little over twice as often as authored and no faster.
+  // Bounded because §5.3's aisles are proved per pattern.
+  //
+  // NOTE this was necessary but NOT sufficient -- see hullPatterns in
+  // /data/bosses.js. Firing one pattern faster still leaves one pattern.
+  pressureFloor: 0.45,
 
   // Hull bosses ----------------------------------------------------------
   // Boss one is one big HP pool with no weak points (see /data/bosses.js for

@@ -142,6 +142,8 @@ export function beginBoss(w, bossId, aspect) {
   //
   //   'bay'  -- boss two: a per-pod clock, phase-shifted (updateBays).
   //   'ends' -- boss three: the outermost living segments (updateCoil).
+  //   'chain'-- boss four: exactly one, and killing it moves the opening to the
+  //             furthest survivor (updateChain).
   //   ''     -- everything else: permanently open, which is boss one's shape
   //             and the shape any future plain pod boss gets for free.
   //
@@ -153,6 +155,13 @@ export function beginBoss(w, bossId, aspect) {
   // read it -- the bolt test (armour outside the span is not there any more),
   // the renderer's hull mask, and the death sequence. A boss with no gate that
   // shortens keeps 0..1 forever and every one of those reads unchanged.
+  // Which sac the 'chain' gate currently has open; -1 until adopted.
+  b.chainIdx = -1;
+  // Boss five's enrage (BOSSES.siegeWarden.enragePerKill). A MULTIPLIER on the
+  // volley interval, so < 1 means faster. Starts neutral; recomputed on every
+  // pod death from the number already destroyed, rather than accumulated -- a
+  // running product would drift if a death were ever processed twice.
+  b.enrageMul = 1;
   b.spanLo = 0;
   b.spanHi = 1;
   b.spanLoT = 0;
@@ -239,6 +248,7 @@ export function beginBoss(w, bossId, aspect) {
   // shootable for roughly half the fight, so 24 points of pods cannot carry its
   // length -- the core is where the fight's duration actually lives, and that
   // is a property of THIS boss's shape rather than of the framework.
+  b.enragePerKill = def.enragePerKill || 0;
   b.maxCoreHp = b.hullBoss ? 0 : (def.coreHp || BOSS.coreHp);
   b.coreHp = b.maxCoreHp;
   b.coreHitFlashT = 0;
@@ -291,6 +301,78 @@ export function beginBoss(w, bossId, aspect) {
  * is worth preferring on its own -- the failure it prevents (a working fight
  * that reads as invulnerable) is the one that shipped once already.
  */
+
+/**
+ * BOSS FOUR'S GATE -- 'chain'. Exactly one sac is open at a time, and killing
+ * it passes the opening to another.
+ *
+ * The distinction from the two gates above is what makes this a fourth fight
+ * rather than a variation. The bay gate is a CLOCK -- you wait for a window.
+ * The coil gate is an ORDER -- the ends are exposed and you work inward, which
+ * is knowable in advance. This one is neither: which sac is open changes only
+ * when the player makes it change, so the fight is a sequence of relocations
+ * the player causes and cannot predict. On a machine whose only verb is where
+ * you stand, "you must now be somewhere else" is the most direct demand the
+ * game can make.
+ *
+ * The successor is chosen as the FURTHEST living sac from the one just killed,
+ * not a random one. Random would occasionally pick the neighbour and produce a
+ * boss that sometimes asks for nothing; furthest guarantees every kill is worth
+ * a real lateral commitment, and it is deterministic, which keeps the fight
+ * reproducible for the same seed.
+ */
+
+/**
+ * Recompute boss five's escalation from how many emplacements are already gone.
+ *
+ * Derived rather than accumulated on purpose: a boss that multiplied its rate
+ * on each death would end up somewhere different if a death were ever counted
+ * twice, and "the fight got harder than it should have" is close to impossible
+ * to notice as a bug and impossible to reproduce as a report.
+ */
+function applyEnrage(b) {
+  const per = b.enragePerKill || 0;
+  if (per <= 0) {
+    b.enrageMul = 1;
+    return;
+  }
+  let dead = 0;
+  for (const p of b.pods) if (!p.alive) dead++;
+  b.enrageMul = Math.max(0.35, 1 - per * dead);
+}
+
+function updateChain(w, dt) {
+  const b = w.boss;
+  const C = BOSS.coil;
+  const live = [];
+  for (let i = 0; i < b.pods.length; i++) if (b.pods[i].alive) live.push(i);
+  if (!live.length) return;
+
+  // Adopt an opening if there is none (fight start, or the open sac just died).
+  if (b.chainIdx < 0 || !b.pods[b.chainIdx] || !b.pods[b.chainIdx].alive) {
+    const from = b.chainIdx >= 0 && b.pods[b.chainIdx] ? b.pods[b.chainIdx].dx : 0.5;
+    let best = live[0];
+    let bestD = -1;
+    for (const i of live) {
+      const d = Math.abs(b.pods[i].dx - from);
+      if (d > bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    b.chainIdx = best;
+  }
+
+  const doorRate = dt / Math.max(0.01, C.doorS);
+  for (let i = 0; i < b.pods.length; i++) {
+    const p = b.pods[i];
+    if (!p.alive) continue;
+    const wantOpen = i === b.chainIdx;
+    p.doorK = Math.max(0, Math.min(1, p.doorK + (wantOpen ? doorRate : -doorRate)));
+    p.open = p.doorK > 0.5;
+  }
+}
+
 function updateCoil(w, dt) {
   const b = w.boss;
   const C = BOSS.coil;
@@ -481,6 +563,7 @@ export function updateBoss(w, dt, fx, banners) {
       // arm time (b.gate); a boss with neither has permanently open pods and
       // reaches neither of these.
       if (b.gate === 'ends') updateCoil(w, dt);
+      else if (b.gate === 'chain') updateChain(w, dt);
       else updateBays(w, dt, fx);
       // The vulnerable window is a PROPERTY OF THE CORE, so a boss with no core
       // does not have one -- no announcement banner, no climb line, no reward
@@ -649,10 +732,37 @@ export function bossEmitters(w, out) {
     }
     return out;
   }
+  const cap = w.caps.simultaneousPatterns;
   for (const p of b.pods) {
     // `open` is the bay gate and is permanently true for a pod that is not a
     // bay, so this reads unchanged for every other boss shape.
+    if (out.length >= cap) break;
     if (p.alive && p.open && p.firing && p.emitter) out.push(p.emitter);
+  }
+
+  // THE HULL'S OWN GUN (playtest round 12). Amit: "we need to make sure that
+  // the bosses actually shoot back at me. Because right now it's not happening
+  // in half of them [...] when I'm standing against the last remaining gate,
+  // again nothing threatens me."
+  //
+  // The earlier pressure fix was necessary and insufficient. Firing the last
+  // pod's pattern more often still leaves ONE pattern on screen, and one
+  // pattern is thin however fast it repeats -- the boss was not silent, it was
+  // monotonous, which from the player's chair is the same complaint.
+  //
+  // So a pod boss may now also carry emitters on the HULL itself, which are
+  // alive for as long as the boss is and belong to no pod. That gives every
+  // fight a floor of threat that destroying pods cannot remove: killing pods
+  // still visibly calms the fight (§6.4's "measurably calms as you win" is
+  // intact -- the pods' patterns are what go), but it can no longer calm it to
+  // nothing.
+  //
+  // Appended AFTER the pods and under the same cap, so while the boss is whole
+  // the pods still own the screen and the hull gun only surfaces as they die --
+  // which is exactly the moment the fight used to empty out.
+  for (const e of b.hullEmitters || []) {
+    if (out.length >= cap) break;
+    out.push(e);
   }
   return out;
 }
@@ -833,6 +943,8 @@ export function boltHitsBoss(w, x, y, r, amount, fx) {
         p.alive = false;
         p.hp = 0;
         p.deathT = 0;
+        // Boss five: the survivors speed up (no-op for every other row).
+        applyEnrage(b);
         // The pattern goes with it, permanently (§6.4). Dropping the instance
         // rather than flagging it means there is nothing left to re-enable.
         p.emitter = null;

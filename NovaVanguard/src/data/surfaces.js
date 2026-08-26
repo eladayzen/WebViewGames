@@ -66,11 +66,10 @@ export const SURFACES = [
     // ENEMY.rim.darkScale in tuning.js. Without it every craft in the game
     // sits ~0.06 from this surface's rendered luminance and disappears.
     darkRim: true,
-    // REUSED. Amit asked for the open levels quickly and said explicitly that
-    // reusing or omitting bosses was fine ("if we can keep them without bosses
-    // or reuse bosses I don't care"). Cinderjaw is the plain HP-pool boss --
-    // the simplest fight in the roster, which suits the second level.
-    boss: 'cinderjaw',
+    // NADIR COIL (round 12). Was a Cinderjaw reuse, which put the same fight
+    // at levels one AND two -- back to back, the worst possible placement for
+    // a repeat. Every level now has its own boss.
+    boss: 'nadirCoil',
   },
   {
     id: 'kesselring',
@@ -98,10 +97,9 @@ export const SURFACES = [
     // reads as open precisely because nothing is standing on it.
     props: [],
     darkRim: true,
-    // REUSED, as permitted. Nadir Coil is the retracting-ends fight; putting
-    // it here rather than only on The Bulwark means the campaign's two hardest
-    // mechanics are not both back-to-back at the end.
-    boss: 'nadirCoil',
+    // VESPIDAE (round 12). Was a Nadir Coil reuse; §6.4's broodmother is built
+    // now, so every level has its own fight and no boss repeats.
+    boss: 'vespidae',
   },
   {
     id: 'bulwark',
@@ -114,7 +112,8 @@ export const SURFACES = [
     // in §5.4 #3; the vent grille and coolant manifold carry the violet
     // seam-light down onto the prop layer so the two do not read as unrelated.
     props: ['propBulwarkClamp', 'propBulwarkMast', 'propBulwarkGrille', 'propBulwarkManifold'],
-    boss: 'nadirCoil',
+    // SIEGE WARDEN (round 12), the finale.
+    boss: 'siegeWarden',
   },
 ];
 

@@ -48,7 +48,7 @@ import {
   weaponDef,
 } from '../data/tuning.js';
 import { cfg } from '../core/mode.js';
-import { alloc, liveCount } from '../core/state.js';
+import { alloc, liveCount, RunPhase } from '../core/state.js';
 import { makeRng } from '../core/rng.js';
 import { sfx } from './audio.js';
 
@@ -149,10 +149,28 @@ export function maybeDropPickup(w, type, x, y) {
  * The tail exception means the drought lifts just before the weapon does, which
  * is what turns chaining into something the player can aim for.
  */
+/** Is a boss present, or about to be? Covers the warning band as well as the
+ *  fight, so a canister cannot be drawn two seconds before the hull arrives and
+ *  hand the player a weapon that is useless the moment it does. */
+function bossOnScreen(w) {
+  return !!(
+    w.boss.active ||
+    w.phase === RunPhase.BOSS_WARNING ||
+    w.phase === RunPhase.BOSS ||
+    w.phase === RunPhase.BOSS_DEATH
+  );
+}
+
 function kindAllowedNow(w, id) {
   const k = PICKUPS.kinds[id];
   if (!k) return false;
   if (k.effect) return true;
+  // A craft-only weapon is withheld while a boss is on screen, including the
+  // warning band -- see WEAPONS.swarm for why this is a scheduling decision
+  // rather than a homing bug. Checked against the weapon, not against an id
+  // list, so a future homing weapon inherits it by declaring the same flag.
+  const def = k.weapon ? weaponDef(k.weapon) : null;
+  if (def && def.craftOnly && bossOnScreen(w)) return false;
   if (!PICKUPS.suppressWeaponWhileRunning) return true;
   const t = w.player.weaponT;
   return t <= 0 || t <= PICKUPS.chainTailS;
