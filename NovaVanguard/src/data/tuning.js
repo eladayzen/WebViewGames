@@ -540,12 +540,27 @@ export const WEAPONS = {
     // So the axis that IS free is saturation, not hue. The standard bolt is a
     // pale near-white cyan; this is the same hue driven hard, which separates
     // the two at a glance without either leaving the player's side of §5.4.
-    tint: 0x21e6ff,
+    // AZURE, the third colour this weapon has worn, and the constraint is the
+    // interesting part. §5.4 codes bullet ownership by hue and R9 enforces it
+    // as blue >= green >= red, so the player's side of the line is a WEDGE:
+    // white through cyan through blue, and nothing else. Warm gold was rejected
+    // outright; green fails the same test and collides with the Emitter craft.
+    //
+    // Round 9 asked for more separation again, and cyan had already spent the
+    // saturation axis -- so this moves as far along the wedge as the rule
+    // allows while staying bright enough to read over a near-black surface. A
+    // deep blue would satisfy R9 and disappear on Ashfall.
+    tint: 0x4da6ff,
     drawScale: 2.6,
-    // Shorter than the others. A pure rate boost is the most immediately
-    // enjoyable thing in the game, so it should be the one that runs out
-    // soonest -- the wanting is the point (§5.6: a lure, not a state).
-    durationS: 9.0,
+    // LENGTHENED 9 -> 16 (playtest round 9). The original reasoning -- that the
+    // most enjoyable weapon should be the one that runs out soonest -- was
+    // written when RAPID was a bonus on top of a fast baseline. It is not that
+    // any more: the baseline is at 56% and RAPID is what restores the game's
+    // original feel, so a short clock was not creating want, it was creating a
+    // brief window of the game feeling right followed by a long one of it not.
+    // It is now the LONGEST weapon in the set, which is the correct statement
+    // of what it is for.
+    durationS: 16.0,
     refresh: true,
   },
 
@@ -607,6 +622,23 @@ export const WEAPONS = {
     // is hit at most once by a given round (see the pierce stamp in
     // /systems/collision.js), so this is a count of victims, not of frames.
     pierce: 4,
+    // BLAST ON HIT (playtest round 9). Amit: "you can create an explosion that
+    // if it hits something it's an explosion that might take out close by
+    // entities."
+    //
+    // This answers LANCE reading as a punishment. Its problem was never its
+    // damage, it was COVERAGE -- a 0.34s gun in a game with no aim leaves gaps
+    // a faster one does not. A blast radius buys coverage back without touching
+    // the fire rate: a shot that lands slightly off still clears what it was
+    // aimed at, which is exactly the forgiveness the slow rate was removing.
+    //
+    // Radius is a little over one formation slot's spacing, so a centre hit
+    // reliably takes the neighbour. Splash damage is 1 rather than the full 3 --
+    // the pierce is what makes LANCE strong against a column, and a blast that
+    // also hit for 3 would make it strictly the best weapon in the game rather
+    // than the specialist one.
+    blastRadius: 132,
+    blastDamage: 1,
     textureKey: 'lance',
     tint: 0xd8fbff,
     drawScale: 2.0,
@@ -705,7 +737,31 @@ export const WEAPONS = {
     damage: 1,
     // Distance travelled before the round is spent. THIS IS THE ROW'S WHOLE
     // IDENTITY -- see the note above before retuning it.
-    rangePx: 420,
+    // 420 -> 500 (playtest round 9). Amit: "flak should have more range".
+    //
+    // NOT the 700 I first set. R9 caught that at 700 the fan reaches y=229 --
+    // inside the formation band -- which erases the row's entire identity:
+    // locked craft being out of reach is what makes FLAK a close-quarters
+    // weapon rather than a wide Scatter. 500 is the most range available that
+    // still dies short of the band from the player's hold line (885 - 367 =
+    // 518 px of gap), so it is +19% reach and the weakness survives intact.
+    rangePx: 500,
+    // SHOOTS DOWN ENEMY FIRE (playtest round 9). Amit asked for a weapon that
+    // can "hit and eliminate enemy projectiles", and for FLAK to be it.
+    //
+    // THE ROUND DIES ON THE INTERCEPT, his call: "does it die from the enemy
+    // projectile or keep on going? [...] I think it should die because it would
+    // be too strong if it would keep on going." Structurally right -- a
+    // five-round fan that survived every intercept would delete a whole pattern
+    // per volley, and §5.3's aisles are authored assuming bullets get DODGED.
+    // One round, one orb keeps interception a partial answer: it thins a wall,
+    // it never erases one.
+    //
+    // The short life is what keeps this safe. FLAK reaches ~700px, so it clears
+    // what is already close and nothing still crossing the gap -- the player
+    // reads the pattern exactly as before and gets to punch a hole in the last
+    // stretch of it.
+    intercepts: true,
     textureKey: 'flak',
     tint: 0xdff8ff,
     drawScale: 3.4,
@@ -799,11 +855,20 @@ export const PICKUPS = {
   // kill: a Warden eats eight bolts behind its shield and a Splitter answers
   // its own death with two more craft, so a drop is the fight paying for the
   // commitment rather than a lottery ticket.
+  // ROUND 9: ROUGHLY DOUBLED. Amit: "we need more rapid pickups on general."
+  // Two knobs move that, and both had to: this table decides how often ANY
+  // canister appears, and weaponWeights decides which one it is. Raising only
+  // the weight would have made RAPID a larger share of a supply that is itself
+  // scarce -- about two per level -- which is not what "more" means when the
+  // baseline has just been cut to 56% of its original rate.
+  //
+  // The floor below (maxKillsWithoutDrop) comes down with it, so the dry
+  // stretches shorten too rather than only the average.
   dropChance: {
-    drone: 0.018,
-    emitter: 0.10,
-    warden: 0.22,
-    splitter: 0.13,
+    drone: 0.038,
+    emitter: 0.20,
+    warden: 0.40,
+    splitter: 0.26,
     // Anything not named above (splitter fragments, bay-launched drones).
     // Zero on purpose: a Splitter that could drop twice through its own
     // fragments would make the type the best farm in the game, which is a
@@ -820,14 +885,14 @@ export const PICKUPS = {
   //
   // It is a second knob in the same block rather than logic buried in the
   // system, for exactly the reason the first one is.
-  maxKillsWithoutDrop: 42,
+  maxKillsWithoutDrop: 22,
 
   // At most one on screen, and never two inside this window. Both are anti-
   // clutter rather than anti-generosity: two canisters drifting at once turn a
   // lure into a scatter of choices, and §5.6's offset cap only means something
   // if there is one thing to be offset FROM.
   maxOnScreen: 1,
-  minGapS: 11.0,
+  minGapS: 6.5,
 
   // --- §5.6's flight-path rules, verbatim ---------------------------------
   // "A pickup's lateral offset from the player is capped at 0.35 of the width,
@@ -910,7 +975,7 @@ export const PICKUPS = {
   // still the right answer to a stacked column -- but it should be the rare
   // specialist draw, not a coin flip you lose.
   weaponWeights: {
-    rapid: 2.20,
+    rapid: 3.20,
     scatter: 1.00,
     swarm: 0.85,
     flak: 0.65,
@@ -2791,6 +2856,27 @@ export function levelVariantPatterns(i, type) {
 // ---------------------------------------------------------------------------
 
 export const BOSS = {
+  // SUPPLY DURING THE FIGHT (playtest round 9). Amit: "boss fights became too
+  // hard now [...] every time that is like on 70% and on 30% he should generate
+  // a pickup."
+  //
+  // WHY THE BOSS SPECIFICALLY GOT HARDER. The baseline fire rate is now 56% of
+  // what it shipped with, and every other part of the game absorbed that: waves
+  // have formations a blast can catch, and kills roll for drops. A boss has
+  // neither -- it is one target, no drops, and pure sustained damage, so the
+  // rate cut lands on it undiluted and a fight that was ~25s becomes ~45s with
+  // no new decisions in the extra twenty.
+  //
+  // Fractions of the boss's TOTAL remaining HP, crossed once each and in order.
+  // 70% is early enough to change the fight rather than reward its end, and 30%
+  // lands where a player is most likely to be losing shield.
+  pickupAtFractions: [0.70, 0.30],
+  // Dropped below the hull rather than at it: the boss sits at y=0.315 and
+  // §5.6 forbids a lure above y=0.62, so a canister at the boss would be one
+  // the player must climb for -- the expensive lean, and exactly what §5.6
+  // exists to prevent.
+  pickupDropY: 0.60,
+
   // "Never enters the player band. Its lowest extent is y = 0.58."
   maxExtentY: 0.58,
   // Station: centred in the enemy band, hanging into the upper gutter.
@@ -3385,6 +3471,13 @@ export const AUDIO = {
     // The Warden's shimmer shield. Its whole job is to say "that round did not
     // count", so it must not be quieter than the impact it replaces.
     deflect:     { gain: 0.42, minGapS: 0.045, pitchJitter: 0.05 },
+    // FLAK shooting down an enemy orb (WEAPONS.flak.intercepts). Generated in
+    // the audio pass and left unwired then, because nothing in the game could
+    // destroy an enemy projectile yet -- playtest round 9 gave it a source.
+    // Mixed just under the impact: interception happens in fives when a fan
+    // meets a curtain, and at impact volume that becomes a wall of noise at
+    // exactly the moment the player most needs to hear the pattern.
+    orbPop:      { gain: 0.26, minGapS: 0.035, pitchJitter: 0.07 },
 
     // --- the player's own state: the loudest things in the game -----------
     playerHit:   { gain: 0.85, minGapS: 0.10 },

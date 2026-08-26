@@ -986,12 +986,22 @@ export function validateAll(opts = {}) {
           `${expected.toFixed(2)} drops per full clear, with ` +
           `PICKUPS.maxKillsWithoutDrop=${PICKUPS.maxKillsWithoutDrop} ` +
           `guaranteeing ${Math.floor(craft / PICKUPS.maxKillsWithoutDrop)} as a ` +
-          `floor. Target per Amit: "like two chances".`
+          `floor. Target per Amit (round 9): more supply, since RAPID is what restores the fire rate.`
       );
-      if (expected < 1.2 || expected > 3.5) {
+      // BAND RAISED (playtest round 9). The old 1.2-3.5 encoded Amit's round-5
+      // target, "in the first level I need like two chances to pick up some new
+      // weapon so I can understand where this game is going" -- an INTRODUCTORY
+      // number, for a level whose job was teaching that pickups exist.
+      //
+      // Round 9 changed what pickups are for: the baseline fire rate was cut to
+      // 56% of its original, and RAPID is what restores it, so "we need more
+      // rapid pickups on general" is a request for supply rather than for
+      // tutorial beats. The rule still exists -- an unbounded drop rate would
+      // make the weapons ambient rather than wanted -- the target simply moved.
+      if (expected < 2.5 || expected > 6.0) {
         warn(
           `R5: expected level-one pickup yield ${expected.toFixed(2)} is outside ` +
-            `the 1.2-3.5 band the "about two" target implies`
+            `the 2.5-6.0 supply band round 9 set`
         );
       }
     }

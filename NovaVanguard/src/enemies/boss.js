@@ -256,6 +256,8 @@ export function beginBoss(w, bossId, aspect) {
   b.windowAnnounced = false;
   b.deathT = 0;
   b.deathPodsFired = 0;
+  // Supply thresholds (BOSS.pickupAtFractions), consumed in order.
+  b.nextPickupIdx = 0;
   b.deathPoints = null;
   // Settle the gate's opening state before the first frame is drawn, so a coil
   // arrives with its ends already lit rather than opening them on frame two.
@@ -1019,6 +1021,49 @@ export function bossPodHpFraction(pod) {
 
 export function bossCoreHpFraction(b) {
   return b.maxCoreHp > 0 ? Math.max(0, b.coreHp) / b.maxCoreHp : 0;
+}
+
+/**
+ * How much of the WHOLE boss is left, 0..1, across both boss models.
+ *
+ * A hull boss is one pool; a pod boss is four pods plus a core. Summing them
+ * rather than reading whichever pool happens to be exposed is what makes the
+ * supply thresholds mean the same thing in both fights -- on a pod boss the
+ * core is sealed for most of the fight, so a core-only fraction would sit at
+ * 1.00 through the entire pod phase and then dump both pickups at the end.
+ */
+export function bossTotalFraction(b) {
+  if (!b.active) return 1;
+  if (b.hullBoss) {
+    return b.maxHullHp > 0 ? Math.max(0, b.hullHp) / b.maxHullHp : 0;
+  }
+  let hp = Math.max(0, b.coreHp);
+  let max = b.maxCoreHp;
+  for (const p of b.pods) {
+    hp += Math.max(0, p.hp);
+    max += p.maxHp;
+  }
+  return max > 0 ? hp / max : 0;
+}
+
+/**
+ * Fire any supply thresholds this frame's damage just crossed
+ * (BOSS.pickupAtFractions). Called after every damage application rather than
+ * on a timer, so the pickup arrives on the hit that earned it.
+ *
+ * Crossings are consumed in order and never repeat: `nextPickupIdx` only moves
+ * forward, so a boss that somehow regained HP could not pay out twice.
+ */
+export function checkBossSupply(w, drop) {
+  const b = w.boss;
+  if (!b.active || b.phase !== BossPhase.FIGHTING) return;
+  const list = BOSS.pickupAtFractions;
+  if (!list || b.nextPickupIdx >= list.length) return;
+  const frac = bossTotalFraction(b);
+  while (b.nextPickupIdx < list.length && frac <= list[b.nextPickupIdx]) {
+    b.nextPickupIdx++;
+    drop(b.x, BOSS.pickupDropY * DESIGN_H);
+  }
 }
 
 /**

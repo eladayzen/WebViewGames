@@ -64,6 +64,7 @@ const MANIFEST = {
   impact: 'assets/audio/sfx-impact.mp3',
   kill: 'assets/audio/sfx-kill.mp3',
   deflect: 'assets/audio/sfx-deflect.mp3',
+  orbPop: 'assets/audio/sfx-orb-pop.mp3',
   playerHit: 'assets/audio/sfx-player-hit.mp3',
   playerDown: 'assets/audio/sfx-player-down.mp3',
   pickup: 'assets/audio/sfx-pickup.mp3',

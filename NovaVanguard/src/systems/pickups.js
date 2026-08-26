@@ -324,6 +324,28 @@ export function devSpawnPickup(w, kind) {
   return !!spawnPickup(w, DESIGN_W * 0.5, DESIGN_H * 0.62, kind);
 }
 
+/**
+ * A pickup the FIGHT authored, rather than one a kill rolled for.
+ *
+ * Used by the boss HP thresholds (BOSS.pickupAtFractions). Bypasses the drop
+ * chance, the minimum gap and the kills-without-drop floor, because none of
+ * those are about this: they exist to shape how often a random kill pays out,
+ * and a boss reaching 70% is not a random event. The weapon itself is still
+ * rolled normally, so the exclude-running-weapon rule still holds and the
+ * canister still visibly changes what comes out of the guns.
+ *
+ * It does NOT reset killsSinceDrop -- a boss pickup is extra supply, not a
+ * substitute for the wave drops, and consuming the dry-spell counter would
+ * make the fight quietly stingier afterwards.
+ */
+export function dropAuthoredPickup(w, x, y) {
+  if (liveCount(w.pickups) >= PICKUPS.maxOnScreen) return false;
+  const before = w.pickup.killsSinceDrop;
+  const q = spawnPickup(w, x, y, rollKind(w));
+  w.pickup.killsSinceDrop = before;
+  return !!q;
+}
+
 export function pickupVisible(q) {
   return q.alive && q.reOfferT <= 0;
 }

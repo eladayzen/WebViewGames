@@ -217,6 +217,13 @@ function fireVolley(w, p, weapon) {
     b.pierce = weapon.pierce || 0;
     b.uid = _boltUid++;
     b.lifePx = weapon.rangePx || 0;
+    // Round-carried weapon properties. Everything downstream reads the ROUND,
+    // never the current weapon config -- which is what lets a round fired by
+    // LANCE still blast after the pickup has expired mid-flight, and is the
+    // same discipline b.dmg and b.pierce already follow.
+    b.blastRadius = weapon.blastRadius || 0;
+    b.blastDamage = weapon.blastDamage || 0;
+    b.intercepts = !!weapon.intercepts;
     b.turn = weapon.homing ? weapon.homing.turnRate : 0;
     b.acquire = weapon.homing ? weapon.homing.acquireRange : 0;
     b.retargetT = 0;

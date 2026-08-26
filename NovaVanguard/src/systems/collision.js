@@ -14,9 +14,9 @@ import {
   BANDS,
 } from '../data/tuning.js';
 import { damagePlayer } from '../player/player.js';
-import { boltHitsBoss } from '../enemies/boss.js';
+import { boltHitsBoss, checkBossSupply } from '../enemies/boss.js';
 import { spawnFragment } from '../enemies/enemies.js';
-import { maybeDropPickup } from './pickups.js';
+import { maybeDropPickup, dropAuthoredPickup } from './pickups.js';
 import { liveCount } from '../core/state.js';
 import { auditEmitterOwnership } from '../patterns/patterns.js';
 import { sfx } from './audio.js';
@@ -29,6 +29,38 @@ function hits(ax, ay, ar, bx, by, br) {
   const dy = ay - by;
   const r = ar + br;
   return dx * dx + dy * dy <= r * r;
+}
+
+
+/**
+ * Splash damage from a LANCE impact (WEAPONS.lance).
+ *
+ * Damage does NOT fall off with distance. A soft gradient would make the
+ * weapon's behaviour unreadable -- the player cannot measure 90px from 130px
+ * mid-fight, so a hit that "should have" killed a neighbour and did not reads
+ * as the game being unreliable rather than as a rule. A hard radius is a
+ * promise the player can learn.
+ */
+function blast(w, x, y, radius, dmg, exclude, fx, instr) {
+  if (!(radius > 0) || !(dmg > 0)) return;
+  fx.blast?.(x, y, radius);
+  const r2 = radius * radius;
+  for (let k = 0; k < w.enemies.length; k++) {
+    const o = w.enemies[k];
+    if (!o.alive || o === exclude || o.mode === 'fleeing') continue;
+    const ddx = o.x - x;
+    const ddy = o.y - y;
+    if (ddx * ddx + ddy * ddy > r2) continue;
+    // A shimmer shield eats the splash exactly as it eats a round (§6.2).
+    if (o.shield > 0) {
+      o.shield--;
+      o.shieldFlashT = 0.16;
+      continue;
+    }
+    o.hp -= dmg;
+    o.hitFlashT = 0.09;
+    if (o.hp <= 0) killEnemy(w, o, fx, instr);
+  }
 }
 
 export function resolveCollisions(w, fx, instr) {
@@ -64,8 +96,13 @@ export function resolveCollisions(w, fx, instr) {
         // which made the accuracy metric read 100% through a fight in which
         // nothing whatsoever was being damaged -- the instrumentation agreed
         // with the bug instead of exposing it.
-        if (what === 'pod' || what === 'core' || what === 'hullHp') w.stats.hits++;
-        else w.stats.deflects++;
+        if (what === 'pod' || what === 'core' || what === 'hullHp') {
+          w.stats.hits++;
+          // Supply thresholds (BOSS.pickupAtFractions). Checked on the hit that
+          // caused the damage rather than on a timer, so the canister arrives
+          // as a consequence of the player's own shot.
+          checkBossSupply(w, (px, py) => dropAuthoredPickup(w, px, py));
+        } else w.stats.deflects++;
         continue;
       }
       // null means the bolt is unobstructed -- either clear of the hull, or
@@ -143,6 +180,66 @@ export function resolveCollisions(w, fx, instr) {
         fx.impact(e.x, e.y);
         sfx('impact');
       }
+
+      // THE BLAST (WEAPONS.lance.blastRadius). Splash from the impact point,
+      // applied to every OTHER live craft in range.
+      //
+      // Deliberately centred on the CRAFT rather than on the round: a round
+      // travelling ~29px per frame is already past the hull's near edge by the
+      // time the test fires, and blasting from the round's position would push
+      // the explosion consistently past what the player watched it hit.
+      //
+      // The victim itself is excluded because it has just taken the full
+      // damage; splash is what the neighbours get. Splash never pierces a
+      // shimmer shield either -- it is a hit like any other, and the Warden's
+      // "whole bolts, not points" rule is the type's entire identity.
+      if (b.blastRadius > 0) {
+        blast(w, e.x, e.y, b.blastRadius, b.blastDamage, e, fx, instr);
+      }
+      break;
+    }
+  }
+
+  // --- player bolts vs ENEMY BULLETS (WEAPONS.flak.intercepts) -------------
+  //
+  // Amit asked for a weapon that can "hit and eliminate enemy projectiles", and
+  // chose FLAK to be it. He also chose that the intercepting round DIES: "it
+  // would be too strong if it would keep on going." Both rounds are spent, one
+  // for one.
+  //
+  // WHY THIS IS SAFE, and it is worth being explicit because interception cuts
+  // against the game's core assumption. §5.3 authors every aisle on the premise
+  // that bullets are DODGED, not deleted -- so a weapon that erased patterns
+  // would quietly invalidate the pacing contract the validator enforces. FLAK
+  // cannot: it reaches ~700px, one round kills one orb, and the fan is five
+  // rounds on a 0.20s clock. It thins the last stretch of a wall. Reading the
+  // pattern is still the job.
+  //
+  // Runs BEFORE the enemy-bullets-vs-player pass, so a round intercepted this
+  // frame cannot also hit the player on the same frame -- the alternative
+  // ordering would occasionally kill the player with a bullet that had already
+  // been shot down, which is the least explicable death in the game.
+  //
+  // Placed before the `p.alive` early-return as well: interception is a
+  // property of the two projectiles and has nothing to do with whether the
+  // player is still alive, and stopping it mid-death-animation would look like
+  // the weapon flickering off.
+  for (let i = 0; i < w.playerBolts.length; i++) {
+    const b = w.playerBolts[i];
+    if (!b.alive || !b.intercepts) continue;
+    for (let j = 0; j < w.enemyBullets.length; j++) {
+      const o = w.enemyBullets[j];
+      if (!o.alive) continue;
+      if (Math.abs(o.y - b.y) > 90) continue;
+      if (!hits(b.x, b.y, b.r, o.x, o.y, o.r)) continue;
+      o.alive = false;
+      b.alive = false;
+      // Its own voice. An intercept is a thing the player DID, and hearing it
+      // is most of what makes the weapon feel like it is working -- the orb
+      // simply vanishing reads as a rendering glitch.
+      fx.impact(o.x, o.y);
+      sfx('orbPop');
+      w.stats.intercepts = (w.stats.intercepts || 0) + 1;
       break;
     }
   }
