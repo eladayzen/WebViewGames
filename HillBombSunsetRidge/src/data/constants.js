@@ -872,6 +872,19 @@ export const RAIL_COLOR = 0x5cff9e;
 export const IDOL_OUTLINE = 0xfff3d0;
 
 /**
+ * How far up the wall a speed gate may ever sit, as a fraction of the rim.
+ *
+ * Gates are the one prop the rider has to LINE UP WITH and hold a line into,
+ * and above about half way the pendulum is pulling them back down the whole
+ * time they are trying to. Everything else on the hill is either hit in passing
+ * or ridden along, and can live at the edges quite happily.
+ *
+ * Enforced at placement rather than in the authoring, so no per-mission layout
+ * can push a gate past it however wide that layout spreads everything else.
+ */
+export const BOOST_MAX_LANE = 0.52;
+
+/**
  * ONE BRIGHT BLUE SKY, on every theme, for now.
  *
  * Amit: "let's do simple bright blue skies for all for now." The per-theme

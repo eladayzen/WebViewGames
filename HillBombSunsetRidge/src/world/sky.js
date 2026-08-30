@@ -37,6 +37,104 @@
 
 import * as THREE from 'three';
 import skyUrl from '../assets/world/sky_panorama.jpg?url';
+import forestUrl from '../assets/world/sky_forest.jpg?url';
+import iceUrl from '../assets/world/sky_ice.jpg?url';
+import dunesUrl from '../assets/world/sky_dunes.jpg?url';
+import spiresUrl from '../assets/world/sky_spires.jpg?url';
+import stormUrl from '../assets/world/sky_storm.jpg?url';
+
+/**
+ * A MATTE'S OWN FOG COLOUR.
+ *
+ * Amit: "there's a colour that is affecting how the level looks at its first
+ * point, before the level vanishes from my eyes -- take a medium-dark colour
+ * from every matte painting and assign it to that level's fog colour."
+ *
+ * Fog is the colour distant ground fades INTO, so it is literally the join
+ * between the playfield and the painting behind it. It had been pinned to one
+ * blue for every level since the sky went flat, which meant six different
+ * paintings all had the same hill dissolving into the same colour in front of
+ * them -- the ground reached the horizon and stopped being part of the picture.
+ *
+ * Each value below is measured off its own painting rather than picked by eye:
+ * the mean of the medium-dark band (a 14-point percentile window) of the
+ * painting's LOWER HALF, which is the haze the ground actually meets -- taking
+ * the whole image would drag in the dark sky above it. The window walks upward
+ * until the sample clears a luminance floor of 0.17, because fog that is too
+ * dark ends the world in a black band hanging under a lit sky, which reads
+ * worse than fog that is slightly too light. Only the forest needed that (its
+ * pines are near-black, so its honest medium-dark was 0.12); the other five
+ * landed in 0.22-0.26 on the first window.
+ */
+/**
+ * The mattes a terrain can name, by key. A terrain with no `sky` gets the plain
+ * gradient, which is still the right answer for a level whose painting has not
+ * been made yet -- better a clean ramp than the wrong place behind the hill.
+ */
+export const SKIES = {
+  /**
+   * A matte is either a url, or {url, repeat} where `repeat` is how many times
+   * it wraps around the 360 degrees.
+   *
+   * HOW STRETCHED A PAINTING LOOKS IS PER-PAINTING. One wrap spreads a 2048px
+   * image around the entire horizon, which is right for the sky-city -- Amit,
+   * on an early build: "the matte paint isn't stretched enough", and repeating
+   * it twice shrank its towers into a busy little band. But that is a property
+   * of what is IN the painting, not a global truth: art with large, widely
+   * spaced forms wants one wrap, and art with fine repeated detail looks
+   * smeared at that scale and wants two.
+   */
+  /**
+   * The original dusk sky-city. Held at ONE wrap for a long time -- Amit, on an
+   * early build: "the matte paint isn't stretched enough" -- but one wrap also
+   * means repeat.y of 0.5, i.e. the painting blown up to DOUBLE the cylinder
+   * height with only its middle band visible. That was fine while it was the
+   * only matte in the game; next to five paintings sitting at a quarter size it
+   * became the one that looked wrong. Amit: "the only one which looks funny is
+   * number one -- something about the size of the matte painting doesn't make
+   * sense."
+   *
+   * So it joins the dunes at the gentler of the two tiers rather than the ice's.
+   * Its towers are large, widely spaced forms and would turn into a busy little
+   * band at 8. At 4 wraps its seam also sits 45 degrees off centre -- outside
+   * the 26.6 degree half-FOV entirely, so it is never in front of the rider.
+   */
+  sunset: { url: skyUrl, repeat: 4, fog: 0x66327e },
+  /**
+   * A wild forest valley -- ranks of black pines falling into mist, ridgelines
+   * stacking away to a mint horizon. Made for The Narrows, whose palette is
+   * midnightPines, so the hill and the distance are the same world rather than
+   * a green level standing in front of somebody else's sky.
+   */
+  forest: { url: forestUrl, repeat: 8, fog: 0x193133 },
+  /**
+   * The rest of the set, one per level. All five share the recipe the forest
+   * one turned out to be built on, which is worth stating because it is what
+   * makes them read rather than any individual subject:
+   *
+   *   layered silhouettes fading rank by rank into haze -- this is the depth
+   *   a bright band at the horizon, trapped between a dark top and dark bottom
+   *   no focal point, so turning never reveals it as a photo pinned behind
+   *   a bottom edge of haze, never ground, so it cannot argue with the 3D
+   *   a tight palette matching the level's own floor colour
+   *   painterly and simplified, to sit with the game's flat unlit look
+   *
+   * Wild rather than realistic survives all of that intact, which is why the
+   * dunes and the spires can be at impossible scale and still sit correctly
+   * behind the hill.
+   */
+  // MUCH SMALLER, aspect held. 8 horizontal wraps against a fitted 2 puts the
+  // painting at a quarter of its size in BOTH directions -- a band across the
+  // middle of the sky rather than the whole sky. Amit: "don't worry if I will
+  // see [the repeat] from the sides, I will tell you."
+  ice: { url: iceUrl, repeat: 8, fog: 0x224466 },
+  // 4 wraps (4 x 2 on the wall) -- half the reduction the ice got. The dunes
+  // are broader forms than ice blocks, so they hold together at a larger size
+  // where the ice needed the extra step down.
+  dunes: { url: dunesUrl, repeat: 4, fog: 0x62301f },
+  spires: { url: spiresUrl, repeat: 8, fog: 0x4d2e52 },
+  storm: { url: stormUrl, repeat: 8, fog: 0x354550 },
+};
 
 const RADIUS = 430;
 const HEIGHT = 900; // the finite, textured body
@@ -89,6 +187,88 @@ function makeCap(radius, colour) {
  * 2 x 256 rather than 1 x 256 because some drivers refuse to filter a
  * single-column texture cleanly, and the cost of the second column is nothing.
  */
+/**
+ * How many times a painting should wrap, so it is not distorted.
+ *
+ * `repeat.x` tiles horizontally but every copy still spans the FULL cylinder
+ * height -- so raising it does not reduce stretch, it reverses it. Measured on
+ * this cylinder (circumference 2702, height 900) against a 1.65:1 painting:
+ *
+ *     1 wrap    3.00:1 on the wall   stretched 1.8x WIDE
+ *     2 wraps   1.50:1               squashed 1.1x tall
+ *     3 wraps   1.00:1               squashed 1.6x tall
+ *     5 wraps   0.60:1               squashed 2.7x tall
+ *
+ * Which is exactly what Amit saw: chasing "less stretched" past 2 was making
+ * it worse in the other direction, and by 5 the painting was nearly three
+ * times too narrow.
+ *
+ * The undistorted count is circumference / (aspect * height), and it is
+ * ROUNDED because a fractional wrap puts a hard cut through the middle of the
+ * image instead of at its edge. On this geometry that lands on 2 for anything
+ * near 16:9, about a 10% error -- far below what the eye picks up, and the
+ * right default for art nobody has an opinion about.
+ */
+function fitWraps(img) {
+  if (!img || !img.width || !img.height) return 2;
+  const circumference = 2 * Math.PI * RADIUS;
+  const ideal = circumference / ((img.width / img.height) * HEIGHT);
+  return Math.max(1, Math.round(ideal));
+}
+
+/**
+ * SCALE THE PAINTING DOWN WITHOUT DISTORTING IT.
+ *
+ * Amit: "keep the aspect ratio but make it smaller -- much, much smaller."
+ *
+ * Wrapping it more times horizontally alone does not do that, it squashes the
+ * image narrow, because every copy still spans the full cylinder HEIGHT. Both
+ * axes have to scale together. So repeat.y rises with repeat.x, which shrinks
+ * the painting into a horizontal BAND across the cylinder instead of covering
+ * it top to bottom -- which is what "smaller" means on a curved surface.
+ *
+ * wrapT is ClampToEdge, so above and below that band the image's own top and
+ * bottom rows stretch out to fill. That is why these paintings are authored
+ * with plain sky along the top edge and open haze along the bottom: the clamp
+ * then reads as sky continuing up and haze continuing down, rather than as the
+ * picture stopping.
+ *
+ * offset.y = 0.5 - repeatY/2 centres the band, so the painting maps across the
+ * middle of the cylinder and its horizon lands where the horizon belongs.
+ *
+ * Aspect is held exactly: repeatY = repeatX / fitted, since `fitted` is by
+ * definition the horizontal count at which one wrap is undistorted.
+ */
+/**
+ * ROTATE THE PAINTING SO NO EDGE SITS DEAD AHEAD.
+ *
+ * Amit: "the split line is exactly ahead of me in the middle of the frame...
+ * it needs to be as far away as possible from the center."
+ *
+ * That was not bad luck, it was arithmetic. The rider travels along -Z
+ * (trough.js centre() returns z = -s), and THREE.CylinderGeometry starts its
+ * u wrap at +Z -- so the direction you are looking is exactly u = 0.5. An
+ * image edge falls wherever u*repeatX is a whole number, and at 8 wraps
+ * 0.5*8 = 4 puts one precisely at the centre of the screen. Every even wrap
+ * count does this. It is also why level 1 never showed it: at 1 wrap the
+ * centre lands on 0.5, halfway through the image.
+ *
+ * So shift by whatever puts the forward direction at a HALF tile instead of a
+ * whole one -- the furthest any point can be from an edge on a tiled wall.
+ * At 8 wraps that is 22.5 degrees off-centre, at 4 it is 45.
+ */
+function seamOffset(wrapsX) {
+  // want frac(0.5*wrapsX + offset) === 0.5
+  const o = (0.5 - 0.5 * wrapsX) % 1;
+  return o < 0 ? o + 1 : o;
+}
+
+function applyScale(tex, wrapsX, fitted) {
+  const y = wrapsX / fitted;
+  tex.repeat.set(wrapsX, y);
+  tex.offset.set(seamOffset(wrapsX), 0.5 - y / 2);
+}
+
 function gradientTexture(topHex, botHex) {
   const c = document.createElement('canvas');
   c.width = 2; c.height = 256;
@@ -108,10 +288,11 @@ function gradientTexture(topHex, botHex) {
 }
 
 export function createSky(scene) {
-  // The painted panorama is off. The loader and its edge-sampling are gone with
-  // it rather than left dangling -- `skyUrl` stays imported and unused so that
-  // bringing the matte back is one material swap, not an archaeology exercise.
+  // Starts as a gradient; a terrain that names a matte swaps one in through
+  // setPanorama below.
   let tex = gradientTexture(0x160e47, 0x401a5f);
+  /** Cached by url, so revisiting a level does not re-decode its painting. */
+  const mattes = new Map();
 
   const geo = new THREE.CylinderGeometry(RADIUS, RADIUS, HEIGHT, 48, 1, true);
   const mat = new THREE.MeshBasicMaterial({
@@ -163,6 +344,84 @@ export function createSky(scene) {
       // only darken what setGradient just set, so it is a no-op now. Kept so
       // callers do not have to know which sky they are talking to.
       void hex;
+    },
+
+    /**
+     * Hang a painted panorama, or pass null to fall back to the gradient.
+     *
+     * THE MATTE IS BACK, per level rather than globally. Amit: "let's bring
+     * back the mat painting we had for the first level, and try to generate
+     * something completely new for 3."
+     *
+     * It came off originally because ONE painting behind every level meant
+     * eight different mountains all sat in front of the same skyline -- the
+     * problem was never the painting, it was having a single one. A matte per
+     * terrain is the version that was actually wanted: the towers and cloud
+     * banks give scale and say the hill is somewhere, and now somewhere
+     * different each time.
+     *
+     * Cap colours are sampled from the painting's own edges once it decodes, so
+     * the dome closes on the art's own sky rather than on a guess -- and if the
+     * art changes, they follow it.
+     */
+    setPanorama(entry) {
+      // A matte is either a url string or {url, repeat}. TYPE-CHECK BEFORE
+      // READING `repeat`: on a plain string, `entry.repeat` is not undefined --
+      // it is String.prototype.repeat, the built-in method, which is truthy and
+      // went straight into repeat.set() as the horizontal tile count. The
+      // texture's repeat.x literally became a function, and every matte except
+      // the one object-form entry rendered from a NaN scale.
+      const obj = entry && typeof entry === 'object';
+      const url = obj ? entry.url : entry;
+      // An explicit repeat is an ART DIRECTION override; otherwise it is
+      // derived from the image once it decodes -- see fitWraps.
+      const forced = obj && typeof entry.repeat === 'number' ? entry.repeat : 0;
+      if (!url) {
+        mat.map = tex;
+        mat.color.setHex(0xffffff);
+        mat.needsUpdate = true;
+        return;
+      }
+      const hit = mattes.get(url);
+      if (hit) {
+        applyScale(hit.tex, forced || hit.wraps, hit.wraps);
+        mat.map = hit.tex;
+        topCap.material.color.setHex(hit.top);
+        botCap.material.color.setHex(hit.bot);
+        mat.color.setHex(0xffffff);
+        mat.needsUpdate = true;
+        return;
+      }
+      const t = new THREE.TextureLoader().load(url, (loaded) => {
+        const rec = {
+          tex: t,
+          wraps: fitWraps(loaded.image),
+          top: edgeColour(loaded.image, true),
+          bot: edgeColour(loaded.image, false),
+        };
+        applyScale(t, forced || rec.wraps, rec.wraps);
+        mattes.set(url, rec);
+        // Only apply if this matte is still the one wanted -- a fast level
+        // change could otherwise land an old painting on the new hill.
+        if (mat.map === t) {
+          topCap.material.color.setHex(rec.top);
+          botCap.material.color.setHex(rec.bot);
+        }
+      });
+      t.colorSpace = THREE.SRGBColorSpace;
+      /**
+       * PLAIN repeat, NOT mirrored. Mirroring removes the seam by flipping
+       * every other copy, but it buys that by making the horizon a palindrome
+       * -- Amit tried it: "Oh, you mirrored it. Not good." The seam is dealt
+       * with by seamOffset below and by healing the art itself.
+       */
+      t.wrapS = THREE.RepeatWrapping;
+      t.wrapT = THREE.ClampToEdgeWrapping;
+      // Provisional until the image decodes and fitWraps can measure it.
+      applyScale(t, forced || 2, 2);
+      mat.map = t;
+      mat.color.setHex(0xffffff);
+      mat.needsUpdate = true;
     },
 
     /**

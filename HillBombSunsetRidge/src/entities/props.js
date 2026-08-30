@@ -13,7 +13,7 @@ import { PROP_TYPES, PATTERNS, FACE_PATTERNS } from '../data/propTypes.js';
 import {
   toWorld, surfaceUp, frameAt, makeFrame, radiusAt, dropLipsBetween,
 } from '../world/trough.js';
-import { RAMP_ARROW_COLOR, IDOL_OUTLINE } from '../data/constants.js';
+import { RAMP_ARROW_COLOR, IDOL_OUTLINE, BOOST_MAX_LANE } from '../data/constants.js';
 // Patterns are authored as FRACTIONS of the ridable half-width, so the rim angle
 // they are handed has to be the live one -- a pattern laid out against the
 // half-pipe's 1.15 rad would put half its props past the edge of a shallower,
@@ -957,6 +957,22 @@ export function createProps(scene) {
         u = sgn * (Math.abs(u) + pushOut);
       }
       u = Math.max(-rim, Math.min(rim, u));
+      // GATES HAVE A CEILING. Amit: "if they're touching the colour zone above,
+      // or even close to it, it's an area where it's really hard for the player
+      // to navigate and stay there because of the gravity."
+      //
+      // Lowering them at the source was not enough, because a mission's layout
+      // then pushes everything outward and puts them straight back up the wall
+      // -- measured at 0.79 of the rim on the missions whose cycled layout has
+      // the strongest push. This is a property of the OBJECT, not of any one
+      // level: a speed gate above roughly half way is one the pendulum will not
+      // let you sit in, whatever the layout wanted. Ramps and crystals are
+      // still free to go to the edges; they do not have to be held.
+      const def1 = PROP_TYPES[item.type];
+      if (def1 && def1.kind === 'boost') {
+        const ceiling = rim * BOOST_MAX_LANE;
+        u = Math.max(-ceiling, Math.min(ceiling, u));
+      }
       add(item.type, start + item.ds, u * flip);  // item.u is an ANGLE
     }
 

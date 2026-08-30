@@ -436,10 +436,10 @@ export const PATTERNS = [
       { type: 'blocker', ds: 38, u: W * 0.12 },
       { type: 'kicker', ds: 26, u: W * 0.25 },
       { type: 'bigKicker', ds: 56, u: 0 },
-      { type: 'boostPad', ds: 14, u: -W * 0.62 },
+      { type: 'boostPad', ds: 14, u: -W * 0.34 },
       { type: 'woodWall', ds: 40, u: W * 0.26 },
       // Just past the big kicker's lip, where the arc actually is.
-      { type: 'airGate', ds: 64, u: W * 0.58 },
+      { type: 'airGate', ds: 64, u: W * 0.30 },
       // Far enough past the kicker to get the speed back before committing.
       { type: 'barrel', ds: 78, u: -W * 0.2 },
       { type: 'cone', ds: 40, u: -W * 0.6 },
@@ -461,7 +461,7 @@ export const PATTERNS = [
         out.push({ type: 'crystal', ds: i * 10 + 5, u: (i % 2 ? -1 : 1) * W * 0.3 });
       }
       out.push({ type: 'pothole', ds: 34, u: 0 });
-      out.push({ type: 'boostPad', ds: 45, u: -W * 0.74 });
+      out.push({ type: 'boostPad', ds: 45, u: -W * 0.42 });
       return out;
     },
   },
@@ -481,7 +481,7 @@ export const PATTERNS = [
       { type: 'blocker', ds: 66, u: W * 0.14 },
       // Behind the blocker at ds 66, and further out than the swerve wants.
       { type: 'statue', ds: 78, u: W * 0.22, rare: 3, rarePhase: 1 },
-      { type: 'boostPad', ds: 74, u: W * 0.76 },
+      { type: 'boostPad', ds: 74, u: W * 0.44 },
       { type: 'woodWall', ds: 46, u: -W * 0.28 },
       { type: 'hydrant', ds: 20, u: -W * 0.78 },
       { type: 'hydrant', ds: 60, u: W * 0.78 },
@@ -501,7 +501,7 @@ export const PATTERNS = [
       // Far rim, opposite the longRail this pattern runs -- taking it means
       // giving up the grind, which is the decision that makes it worth a look.
       { type: 'statue', ds: 74, u: -W * 0.88, rare: 3 },
-      { type: 'boostPad', ds: 48, u: -W * 0.66 },
+      { type: 'boostPad', ds: 48, u: -W * 0.38 },
       { type: 'woodWall', ds: 12, u: W * 0.30 },
       { type: 'pothole', ds: 62, u: -W * 0.45 },
       { type: 'cone', ds: 70, u: -W * 0.2 },
@@ -520,10 +520,10 @@ export const PATTERNS = [
       { type: 'bank', ds: 0, u: W * 0.4 },
       { type: 'barrel', ds: 44, u: 0 },
       { type: 'longRail', ds: 66, u: 0 },
-      { type: 'boostPad', ds: 24, u: W * 0.70 },
+      { type: 'boostPad', ds: 24, u: W * 0.40 },
       { type: 'woodWall', ds: 76, u: -W * 0.24 },
       // Off the vert wall, which is the biggest arc on the course.
-      { type: 'airGate', ds: 56, u: -W * 0.60 },
+      { type: 'airGate', ds: 56, u: -W * 0.32 },
       // Over the big kicker's landing: only reachable with real height.
       { type: 'highCrystal', ds: 54, u: 0 },
       { type: 'highCrystal', ds: 60, u: 0 },
@@ -534,7 +534,7 @@ export const PATTERNS = [
     // Deliberate empty stretch. Density everywhere is exhausting and leaves the
     // player no room to just feel the speed, which is the point of the game.
     length: 55,
-    build: (W) => [{ type: 'boostPad', ds: 28, u: -W * 0.72 }],
+    build: (W) => [{ type: 'boostPad', ds: 28, u: -W * 0.36 }],
   },
 ];
 

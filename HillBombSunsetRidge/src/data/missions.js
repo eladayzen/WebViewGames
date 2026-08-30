@@ -87,6 +87,44 @@ function starTiers(seconds) {
  * curve comes from the clock tightening rather than from asking for the
  * impossible.
  */
+/**
+ * THE SIX RIDGES, in ladder order. Missions 1-6 get one each and 7 onward
+ * cycle back through them -- Amit: "you can do just six of them and then we
+ * can use them again in level 7, 8 and so on."
+ *
+ * Six distinct hills authored well is worth more than twenty lightly varied
+ * ones, and it is far less to get right. A player meets all six in the first
+ * six missions and then meets them again carrying harder objectives, which is
+ * a fair trade for the alternative -- twenty places that all feel like one.
+ */
+const RIDGE_CYCLE = [
+  'ridgeDrops',      // 1  the ridge as it was, with the ground giving way
+  'ridgeWeave',      // 2  switchbacks, banked hard
+  'ridgeNarrows',    // 3  tight and pinching
+  'ridgeLongFall',   // 4  rare drops, the deepest
+  'ridgeStaircase',  // 5  shallow drops, constantly
+  'ridgeBowl',       // 6  wide and deep-walled
+];
+
+/**
+ * PER-MISSION LAYOUT, cycling on a different length to the terrain.
+ *
+ * The same hill laid out two ways is two levels: everything pushed to the rims
+ * plays nothing like the same content clustered down the middle. Five entries
+ * against six terrains on purpose -- the two cycles fall out of step, so
+ * mission 7 is not mission 1 again, it is ridge 1 with a layout it has not had.
+ *
+ * `push` is the one that matters most and the one a multiplier cannot do:
+ * anything authored at u = 0 stays at 0 however hard it is scaled.
+ */
+const RIDGE_LAYOUTS = [
+  { spread: 1.30, push: 0.25 },  // off the centreline, moderately wide
+  { spread: 1.60, push: 0.10 },  // pushed out to the rims
+  { spread: 0.75, push: 0.05 },  // clustered tight, for the narrow hills
+  { spread: 1.15, push: 0.35 },  // centre emptied hard, edges left alone
+  { spread: 1.00, push: 0 },     // as authored -- the reference layout
+];
+
 /** The open face's mission course -- see data/courses.js. */
 const FACE = 'openFaceMissions';
 
@@ -107,13 +145,18 @@ const AUTHORED = [
   // 'wall' is in kinds so the pink barriers appear; the course itself does not
   // allow that kind, so no other ridge mission sees them and none of their
   // measured star thresholds move.
-  ['firstDrop',   'FIRST DROP',    'Ramps, and something to go around.',        80,
+  ['firstDrop',   'FIRST DROP',    'Ramps, and ground that gives way.',         80,
     { launch: 15 }, undefined,
     // woodWall is excluded BY TYPE: it shares the 'wall' kind with the blocker,
     // so allowing the kind brought the race's timber plank along with the pink
     // barrier. Only one of them is what was asked for.
     { kinds: ['launch', 'wall', 'scenery'], without: ['woodWall'],
-      density: 1, spread: 1.3, push: 0.25 }],
+      density: 1, spread: 1.3, push: 0.25 },
+    // THE RIDGE, WITH DROPS. Nothing needed supporting for this -- the drop
+    // system reads terrain fields the half-pipe simply had switched off. It is
+    // its own preset so the other nineteen ridge missions keep ground that does
+    // not move, and their measured star thresholds with it.
+    'ridgeDrops'],
   // 2 -- RAILS. Adds the green metal on top of mission 1's ramps; the
   // objective is rails and nothing else.
   ['railRunner',  'RAIL RUNNER',   'Green metal. Get on it and stay on.',       90,
@@ -132,8 +175,19 @@ const AUTHORED = [
   // about collecting, or the objective is not what the player is doing.
   ['speedGates',  'SPEED GATES',   'Ride the arches. They give the hill back.', 95,
     { boost: 6 }, undefined,
+    // ITS OWN LAYOUT, overriding the cycle. Amit: "the speed gates are too
+    // high -- if they're touching the colour zone above, or even close to it,
+    // it's an area where it's really hard for the player to navigate and stay
+    // because of the gravity."
+    //
+    // The gates were lowered at the source, but this mission's cycled layout
+    // was adding a 0.35 rad push on top, which put them back at three quarters
+    // of the way up the wall -- into the coping, where the pendulum is fighting
+    // you the whole time you are there. A small push keeps them off the
+    // centreline without climbing.
     { kinds: ['launch', 'grind', 'wall', 'scenery', 'boost'],
-      without: ['woodWall'], density: 1, feature: ['boost'] }],
+      without: ['woodWall'], density: 1, feature: ['boost'],
+      spread: 1.1, push: 0.08 }],
   // 5 -- IDOLS. Crystals out, idols in and forced to every showing of their
   // pattern -- the authored "every now and then" cadence is for something met
   // incidentally, and this is the one thing the mission is about.
@@ -249,7 +303,21 @@ const AUTHORED = [
 const KIND_ORDER = ['pickup', 'idol', 'grind', 'launch', 'boost', 'score'];
 
 /** @type {Mission[]} */
-export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course, content, terrain], i) => ({
+let ridgeIndex = -1;
+
+export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course, content, terrain], i) => {
+  // Ridge missions cycle through the six hills and the five layouts. A mission
+  // that named its own terrain or set its own layout keeps them -- authored
+  // intent always beats the cycle.
+  if (!course) {
+    ridgeIndex += 1;
+    terrain = terrain || RIDGE_CYCLE[ridgeIndex % RIDGE_CYCLE.length];
+    const lay = RIDGE_LAYOUTS[ridgeIndex % RIDGE_LAYOUTS.length];
+    content = content
+      ? { spread: lay.spread, push: lay.push, ...content }
+      : { spread: lay.spread, push: lay.push };
+  }
+  return {
   id,
   /**
    * Which hill this mission is played on. Undefined means the ridge, which is
@@ -293,7 +361,8 @@ export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course
         ? { kind: 'pickup', type: 'idol', count: targets[kind] }
         : { kind, count: targets[kind] }
   )),
-}));
+  };
+});
 
 export function getMission(id) {
   return MISSIONS.find((m) => m.id === id) || MISSIONS[0];

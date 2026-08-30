@@ -38,7 +38,13 @@ export const COURSES = {
     /** null is what makes it endless. A finite course would put metres here. */
     length: null,
     /** Which prop kinds may spawn. Hazards deliberately absent -- see props.js. */
-    allowedKinds: ['launch', 'grind', 'scenery', 'pickup'],
+    // 'boost' is here so speed gates turn up across the later ladder. Amit,
+    // after mission 4 introduces them: "throw speed gates here and there in the
+    // levels after, because it's fun and it keeps things interesting."
+    //
+    // Missions 1-5 name their own kinds and so are unaffected -- the lessons
+    // stay clean, and the gates start appearing once they have been taught.
+    allowedKinds: ['launch', 'grind', 'scenery', 'pickup', 'boost'],
     /**
      * FIXED LAYOUT. Missions are measured against this course -- star
      * thresholds came from timed runs on it -- and a replayed mission has to be

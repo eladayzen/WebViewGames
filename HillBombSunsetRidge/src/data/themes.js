@@ -57,8 +57,14 @@ export const THEMES = [
     // separate from the road by VALUE and not only by hue.
     id: 'emberFlats',
     name: 'EMBER FLATS',
+    // THE GROUND WAS THE PROBLEM. Amit: "the orange level does not look good."
+    // trough was 0x3a1c22 -- a muddy red-brown, which is the one ground colour
+    // here that is neither dark enough to sit back nor saturated enough to mean
+    // anything, and it went muddier still under the daylight sky. Now a deep
+    // warm aubergine: still the warm end of the set, but dark and clean, so the
+    // amber markings and the red rider both read against it.
     skyTop: 0x2a0f1e, skyBottom: 0x7a2a1e, fog: 0x9c4526, skyTint: 0xffb27a,
-    trough: 0x3a1c22, floorLine: 0xffd166, lip: 0xff7a3d, guide: 0xffe6a8,
+    trough: 0x2c1526, floorLine: 0xffd166, lip: 0xff7a3d, guide: 0xffe6a8,
     speedLine: 0xffd9a8, rim: 0xffc48a,
   },
   {
@@ -78,6 +84,17 @@ export const THEMES = [
     skyTop: 0x230b3d, skyBottom: 0x5e1f6b, fog: 0x8a3a86, skyTint: 0xffb8f0,
     trough: 0x2b1440, floorLine: 0xffa8e8, lip: 0xc07bff, guide: 0xffd6f6,
     speedLine: 0xffd0f4, rim: 0xf0b8ff,
+  },
+  {
+    // A SIXTH PALETTE, because six levels were sharing five and The Bowl was
+    // doubling up on glacier. Storm-slate: the coldest and most desaturated
+    // ground in the set, with acid-green markings -- the one combination the
+    // other five do not already occupy.
+    id: 'stormFront',
+    name: 'STORM FRONT',
+    skyTop: 0x0d1418, skyBottom: 0x2c3a3f, fog: 0x46595e, skyTint: 0xbfd6d2,
+    trough: 0x18232a, floorLine: 0xc9ff5e, lip: 0x7de8d0, guide: 0xd8f6ef,
+    speedLine: 0xdcf7f0, rim: 0xaef0e0,
   },
 ];
 

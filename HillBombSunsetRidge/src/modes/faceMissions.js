@@ -25,4 +25,21 @@ export default registerMode({
   id: 'faceMissions',
   name: 'MISSIONS · OPEN FACE',
   tagline: 'The wide mountain. Eight runs, and it drops.',
+  /**
+   * PARKED. Amit: "we will be eliminating the mission open face for now -- no
+   * way to get to that menu. I want to make sure there's no way someone for
+   * some reason exits and finds himself in the open face menu."
+   *
+   * `hidden` takes it off the lobby, which is the only route in: its mission
+   * list is opened by that button and by nothing else, and the back-stack only
+   * ever returns to a list a run was started from -- so with no way to start
+   * one, there is no way to arrive at it either.
+   *
+   * Registered rather than deleted, and the eight levels, the terrain variants
+   * and the world-steer controller all stay exactly as they are. What failed
+   * was the combination, not the parts, and several of them -- the drops above
+   * all -- have already come back to the ridge and are the best thing on it.
+   * Reachable at ?gamemode=faceMissions if it is ever worth another look.
+   */
+  hidden: true,
 });

@@ -47,7 +47,7 @@ import { createRider } from '../entities/rider.js';
 import { createCameraRig } from '../camera/cameraRig.js';
 import { createLobby } from '../ui/lobby.js';
 import { initSettingsPanel, isPanelOpen, FEEL } from '../ui/settingsPanel.js';
-import { createSky } from '../world/sky.js';
+import { createSky, SKIES } from '../world/sky.js';
 import { createProps } from '../entities/props.js';
 import { createRivals } from '../entities/rivals.js';
 import { createFinishLine } from '../entities/finishLine.js';
@@ -736,14 +736,22 @@ function applyTheme(theme) {
   // markings and the rider's rim; it just no longer owns the sky, so that eight
   // hill shapes can be judged against a constant.
   //
-  // Fog takes the HORIZON colour rather than the theme's: fog fades distant
-  // ground toward its own colour, and a dark fog under a bright sky ends the
-  // world in a dark band floating in mid-air instead of a horizon.
-  scene.fog.color.setHex(SKY_BLUE_BOTTOM);
+  // FOG COMES FROM THE PAINTING. Fog fades distant ground toward its own
+  // colour, so it is the join between the playfield and whatever is behind it
+  // -- and every matte is a different somewhere. A level with no matte still
+  // falls back to the horizon colour, which is the same reasoning it always
+  // was: a dark fog under a bright sky ends the world in a dark band floating
+  // in mid-air instead of a horizon. See SKIES for how each value is measured.
+  const matte = TERRAIN.sky ? SKIES[TERRAIN.sky] : null;
+  scene.fog.color.setHex(matte && matte.fog ? matte.fog : SKY_BLUE_BOTTOM);
   // The background is a baked canvas gradient, so it has to be redrawn rather
   // than recoloured.
   scene.background = makeSkyGradient(SKY_BLUE_TOP, SKY_BLUE_BOTTOM);
   sky.setGradient(SKY_BLUE_TOP, SKY_BLUE_BOTTOM);
+  // A LEVEL'S OWN SKYLINE. A terrain naming a matte gets its painting; one that
+  // does not keeps the gradient, which is the honest fallback for a level whose
+  // art has not been made yet.
+  sky.setPanorama(TERRAIN.sky ? SKIES[TERRAIN.sky] : null);
   trough.setTheme(theme);
   speedLines.setTheme(theme);
   rider.setTheme(theme);
@@ -779,7 +787,12 @@ function startRun(id) {
   // about what is counted: a mission teaching ramps with rails lying around is
   // not teaching ramps.
   const content = (def.contentFor && def.contentFor()) || null;
-  props.setAllowedKinds(content ? content.kinds : course.allowedKinds);
+  // `content.kinds` OR the course's -- a mission may carry content that says
+  // nothing about kinds. The layout cycle gives every ridge mission a
+  // {spread, push}, and reading kinds straight off that passed undefined into
+  // a Set, which spawned an EMPTY WORLD on missions 6-20. It showed up as one
+  // null in a measurement table and was written off as a probe artefact.
+  props.setAllowedKinds((content && content.kinds) || course.allowedKinds);
   props.setContent(content ? (content.without || null) : null,
     content ? !!content.rareAlways : false,
     content ? (content.feature || null) : null);

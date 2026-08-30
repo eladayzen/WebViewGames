@@ -112,6 +112,29 @@ const FACE_FEEL = {
   dropAccelGain: 0.10, launchG: AIR_G, fallG: 55, lipRamps: 0.5,
 };
 
+/**
+ * The half-pipe's own dimensions and feel, so a variant can inherit the ridge
+ * exactly and change only what it means to change.
+ */
+const TERRAIN_BASE_RIDGE = {
+  radius: TROUGH_RADIUS,
+  thetaMax: THETA_MAX,
+  thetaGravity: THETA_GRAVITY,
+  funnelSpacing: FUNNEL_SPACING,
+  funnelWidth: FUNNEL_WIDTH,
+  funnelTightness: FUNNEL_TIGHTNESS,
+  rollAmount: TROUGH_ROLL_AMOUNT,
+  rollWavelength: TROUGH_ROLL_WAVELENGTH,
+  route: { ampA: 26, waveA: 1 / 0.0031, ampB: 44, waveB: 1 / 0.00097 },
+  curve: 1,
+  worldSteer: 0,
+  carveScale: 1, dampScale: 1, heightScale: 1, catchScale: 1,
+  lipMode: LIP_CUSHION, wallHeight: 0, wallScrub: 0,
+  spread: 1, patternSet: 'street', lipLamps: true,
+  dropSpacing: 1, dropCycle: [], dropCycleDepth: 0,
+  dropAccelGain: 0, launchG: Infinity, fallG: 55, lipRamps: 0,
+};
+
 /** @type {Record<string, Terrain>} */
 export const TERRAIN_PRESETS = {
   /**
@@ -497,6 +520,217 @@ export const TERRAIN_PRESETS = {
   },
 
   /**
+   * THE RIDGE, WITH THE GROUND FALLING AWAY.
+   *
+   * Amit: "is it possible to bring the drops into the missions original game
+   * mode, or is it something very difficult we need to start supporting?"
+   *
+   * It is a data change. The drop system was built terrain-driven from the
+   * start -- elevation profile, launch test, ballistic flight and hang are all
+   * global code reading these seven fields, and the half-pipe simply has them
+   * switched off. Nothing needed supporting; it needed turning on.
+   *
+   * A SEPARATE PRESET rather than switching them on in `halfpipe`, because that
+   * one is shared by all twenty ridge missions and the race, and fifteen of
+   * those have star thresholds measured on ground that does not move. Missions
+   * opt in by naming this terrain.
+   *
+   * Everything else is read from the half-pipe: same radius, rim, funnel, roll,
+   * route, pendulum, cushioned lip. It is the ridge the game has always had,
+   * with three drops per kilometre in it.
+   *
+   * The cycle is gentler than the open face's -- 4 to 7 units against 8 to 12,
+   * and spaced further apart. The ridge is a narrower hill with a real fast
+   * line down the middle, so a drop is an interruption to a line the player is
+   * actively holding rather than a feature of open ground. Widths are set at
+   * R = 3 like everywhere else, so all three throw the rider at cruising speed
+   * and none of them at a crawl.
+   */
+  ridgeDrops: {
+    ...TERRAIN_BASE_RIDGE,
+    id: 'ridgeDrops',
+    name: 'Sunset Ridge (drops)',
+    // AN EXPLICIT PALETTE. It had none, so it drew a random theme every run --
+    // which is why Amit saw levels 1 and 2 come up the same colour. duskNeon is
+    // the ridge's own look, and the sunset matte is the painting this level has
+    // always been set in front of.
+    theme: 'duskNeon',
+    sky: 'sunset',
+    dropSpacing: 340,
+    dropCycle: [
+      { depth: 4.0, width: 0.037, profile: 'roll' },
+      { depth: 7.0, width: 0.049, profile: 'roll' },
+      { depth: 5.0, width: 0.041, profile: 'roll' },
+    ],
+    dropCycleDepth: 16.0,
+    dropAccelGain: 0.10,
+    launchG: AIR_G,
+    fallG: 55,
+    // A ramp on half the lips, as on the face -- the ramp throws you and then
+    // the hill is not there when you come down.
+    lipRamps: 0.5,
+  },
+
+  /**
+   * SIX RIDGES, and every mission rides one of them.
+   *
+   * Amit: "it has to feel like every time something is different -- not only
+   * the skin, the visual. Gameplay-wise it would be best if it were also how
+   * the level is built and the placing of stuff, so it won't feel like the same
+   * thing every time." And on scope: "you can do just six of them and then we
+   * can use them again in level 7, 8 and so on."
+   *
+   * The diagnosis was that all twenty ridge missions were ONE hill -- one
+   * terrain, one pattern table, full density, no per-mission layout. Everything
+   * varied except the level.
+   *
+   * All six keep what makes the ridge the ridge and the fun one: its radius
+   * band, its rim, its pendulum, its cushioned lip, its street content. What
+   * varies is what the hill DOES -- where it goes, how often the ground falls
+   * away, how hard it banks, whether it pinches, and how wide it is. Plus a
+   * palette each, which is the skin part and deliberately not the main part.
+   *
+   * Every one of them has drops, per Amit after riding mission 1: "one is
+   * great, I want to put it in all of the levels."
+   */
+
+  /** 2 -- THE WEAVE. Switchbacks and hard banking; the route is the obstacle. */
+  ridgeWeave: {
+    ...TERRAIN_BASE_RIDGE,
+    id: 'ridgeWeave', name: 'The Weave',
+    // THE FOREST MOVES HERE. Amit: "use that theme with the green and forest in
+    // level 2 instead, so level 2 will feel much more different from level 1."
+    // Level 1 is the dusk sky-city; putting the forest immediately after it
+    // means the second thing a player sees is a different WORLD, not the same
+    // one with the hill bent differently.
+    theme: 'midnightPines',
+    sky: 'forest',
+    // NO LAMPS. Amit: "remove the tall lamps completely from that level,
+    // because it's a more organic level with a forest theme. Don't try to put
+    // trees, just remove them."
+    //
+    // They are coping lights -- street furniture, and they read as such. On a
+    // hill standing in a pine valley they are the one thing insisting this is
+    // a skatepark. Nothing replaces them: an empty rim is honest where the
+    // wrong object is not.
+    lipLamps: false,
+    radius: 26.0,
+    route: { ampA: 30, waveA: 200, ampB: 24, waveB: 700 },
+    rollAmount: 0.34, rollWavelength: 165,
+    funnelSpacing: 520, funnelWidth: 0.30, funnelTightness: 0.68,
+    dropSpacing: 300,
+    dropCycle: [
+      { depth: 5.0, width: 0.046, profile: 'roll' },
+      { depth: 3.5, width: 0.039, profile: 'roll' },
+      { depth: 6.5, width: 0.053, profile: 'roll' },
+    ],
+    dropCycleDepth: 15.0,
+    dropAccelGain: 0.10, launchG: AIR_G, fallG: 55, lipRamps: 0.4,
+  },
+
+  /** 3 -- THE NARROWS. Tight, and constantly pinching to a throat. */
+  ridgeNarrows: {
+    ...TERRAIN_BASE_RIDGE,
+    id: 'ridgeNarrows', name: 'The Narrows',
+    radius: 23.0,
+    route: { ampA: 20, waveA: 340, ampB: 34, waveB: 1300 },
+    rollAmount: 0.24, rollWavelength: 210,
+    funnelSpacing: 280, funnelWidth: 0.44, funnelTightness: 0.46,
+    dropSpacing: 190,
+    dropCycle: [
+      { depth: 3.0, width: 0.039, profile: 'roll' },
+      { depth: 4.5, width: 0.048, profile: 'roll' },
+    ],
+    dropCycleDepth: 7.5,
+    dropAccelGain: 0.10, launchG: AIR_G, fallG: 55, lipRamps: 0.6,
+    theme: 'glacier',
+    sky: 'ice',
+    // No lamps here either. Amit: "third mission, remove the lamps completely."
+    // Same reasoning as the forest -- coping lights are street furniture, and a
+    // frozen sea is no more a skatepark than a pine valley is.
+    lipLamps: false,
+  },
+
+  /** 4 -- THE LONG FALL. Rare drops, but the deepest in the game. */
+  ridgeLongFall: {
+    ...TERRAIN_BASE_RIDGE,
+    id: 'ridgeLongFall', name: 'The Long Fall',
+    radius: 29.0,
+    route: { ampA: 10, waveA: 800, ampB: 52, waveB: 2400 },
+    rollAmount: 0.09, rollWavelength: 380,
+    funnelSpacing: 900, funnelWidth: 0.36, funnelTightness: 0.84,
+    dropSpacing: 520,
+    dropCycle: [
+      { depth: 11.0, width: 0.041, profile: 'roll' },
+      { depth: 7.0, width: 0.033, profile: 'roll' },
+    ],
+    dropCycleDepth: 18.0,
+    dropAccelGain: 0.10, launchG: AIR_G, fallG: 55, lipRamps: 0.5,
+    theme: 'emberFlats',
+    sky: 'dunes',
+    // NO LAMPS. Amit: "the [first level] is the only one we should be getting
+    // lightning poles, lamps whatever -- the rest of them remove them
+    // completely." The lamps are street furniture and they read as such: they
+    // belong to the sky-city the first hill runs under, not to a dune field, a
+    // spire range or a storm.
+    lipLamps: false,
+  },
+
+  /** 5 -- THE STAIRCASE. Shallow drops, twice as often as anywhere else. */
+  ridgeStaircase: {
+    ...TERRAIN_BASE_RIDGE,
+    id: 'ridgeStaircase', name: 'The Staircase',
+    radius: 27.0,
+    route: { ampA: 22, waveA: 480, ampB: 30, waveB: 1600 },
+    rollAmount: 0.16, rollWavelength: 260,
+    funnelSpacing: 640, funnelWidth: 0.28, funnelTightness: 0.78,
+    dropSpacing: 150,
+    dropCycle: [
+      { depth: 3.5, width: 0.087, profile: 'roll' },
+      { depth: 5.0, width: 0.104, profile: 'roll' },
+      { depth: 2.5, width: 0.074, profile: 'roll' },
+    ],
+    dropCycleDepth: 11.0,
+    dropAccelGain: 0.10, launchG: AIR_G, fallG: 55, lipRamps: 0.35,
+    theme: 'orchid',
+    sky: 'spires',
+    // NO LAMPS. Amit: "the [first level] is the only one we should be getting
+    // lightning poles, lamps whatever -- the rest of them remove them
+    // completely." The lamps are street furniture and they read as such: they
+    // belong to the sky-city the first hill runs under, not to a dune field, a
+    // spire range or a storm.
+    lipLamps: false,
+  },
+
+  /** 6 -- THE BOWL. Wider and deeper-walled; the most enclosed of the six. */
+  ridgeBowl: {
+    ...TERRAIN_BASE_RIDGE,
+    id: 'ridgeBowl', name: 'The Bowl',
+    radius: 28.0,
+    curve: 1.3,
+    route: { ampA: 24, waveA: 420, ampB: 36, waveB: 1500 },
+    rollAmount: 0.20, rollWavelength: 240,
+    funnelSpacing: 460, funnelWidth: 0.34, funnelTightness: 0.62,
+    dropSpacing: 360,
+    dropCycle: [
+      { depth: 6.0, width: 0.043, profile: 'roll' },
+      { depth: 9.0, width: 0.053, profile: 'roll' },
+    ],
+    dropCycleDepth: 15.0,
+    dropAccelGain: 0.10, launchG: AIR_G, fallG: 55, lipRamps: 0.5,
+    // Its own palette at last -- it was doubling up on glacier, which level 3
+    // now owns outright.
+    theme: 'stormFront',
+    sky: 'storm',
+    // NO LAMPS. Amit: "the [first level] is the only one we should be getting
+    // lightning poles, lamps whatever -- the rest of them remove them
+    // completely." The lamps are street furniture and they read as such: they
+    // belong to the sky-city the first hill runs under, not to a dune field, a
+    // spire range or a storm.
+    lipLamps: false,
+  },
+
+  /**
    * THE RIDGE, EXACTLY -- ridden with the face's controller.
    *
    * Amit: "in the first mission of the open face I want you to copy the level
@@ -759,7 +993,15 @@ export const TERRAIN = { ...TERRAIN_PRESETS[DEFAULT_TERRAIN] };
  * typo'd terrain should give you the game you already had, not a black screen.
  */
 export function setTerrain(key) {
-  Object.assign(TERRAIN, TERRAIN_PRESETS[key] || TERRAIN_PRESETS[DEFAULT_TERRAIN]);
+  const next = TERRAIN_PRESETS[key] || TERRAIN_PRESETS[DEFAULT_TERRAIN];
+  // CLEAR FIRST. Object.assign merges -- it does not remove keys the new preset
+  // omits -- so any optional field simply carried over from the last terrain.
+  // Measured: levels with no `sky` of their own were wearing the previous
+  // level's matte painting, level 2 showing level 1's sunset and levels 4-6
+  // showing level 3's forest. Every optional field had the same hole in it;
+  // `sky` is just the one that was visible from the seat.
+  for (const k of Object.keys(TERRAIN)) delete TERRAIN[k];
+  Object.assign(TERRAIN, next);
 }
 
 /** Arc distance from the centreline to the rim -- the ridable half-width. */
