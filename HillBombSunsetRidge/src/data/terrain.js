@@ -547,7 +547,34 @@ export const TERRAIN_PRESETS = {
    * and none of them at a crawl.
    */
   ridgeDrops: {
+    /**
+     * CARVE AUTHORITY, SET AGAINST THIS HILL'S OWN WIDTH.
+     *
+     * The pendulum's restoring term is thetaGravity/R -- a tighter trough pulls
+     * you back to the floor harder. That is correct physics (a shorter pendulum
+     * has a stiffer swing) and wrong as a game: it meant the narrow hills fought
+     * the player and the wide ones did not, for no reason either could see.
+     * Measured at HALF input -- about what a rider actually holds on a board --
+     * the reachable fraction of the width was:
+     *
+     *     ridgeLongFall  R 28   67%        ridgeDrops     R 23   53%
+     *     ridgeStaircase R 26   62%        ridgeWeave     R 24   56%
+     *     ridgeBowl      R 25   59%        ridgeNarrows   R 19   43%
+     *
+     * A 1.6x spread across the ladder from nothing but how wide the trough is.
+     * Amit, on mission 9 -- which is ridgeNarrows, the tightest of the six:
+     * "the pulling to the centre is a bit strong in general, and specifically
+     * on number nine... it feels the game is pulling you to the centre."
+     *
+     * So carveScale is 28/R: every hill gets the authority the WIDEST one
+     * already had, which lands them all at that 67%. It scales the CARVE rather
+     * than cutting thetaGravity because gravity is also what makes neutral
+     * settle in the trough and what drives the speed exchange up the wall --
+     * the design's central inversion. Cutting it would have changed how the
+     * pipe rides; this only changes how hard it is to leave the floor.
+     */
     ...TERRAIN_BASE_RIDGE,
+    carveScale: 1.22,
     id: 'ridgeDrops',
     name: 'Sunset Ridge (drops)',
     // AN EXPLICIT PALETTE. It had none, so it drew a random theme every run --
@@ -596,7 +623,9 @@ export const TERRAIN_PRESETS = {
 
   /** 2 -- THE WEAVE. Switchbacks and hard banking; the route is the obstacle. */
   ridgeWeave: {
+    // 28/R -- see ridgeDrops. R is 24 on this hill.
     ...TERRAIN_BASE_RIDGE,
+    carveScale: 1.17,
     id: 'ridgeWeave', name: 'The Weave',
     // THE FOREST MOVES HERE. Amit: "use that theme with the green and forest in
     // level 2 instead, so level 2 will feel much more different from level 1."
@@ -630,7 +659,9 @@ export const TERRAIN_PRESETS = {
 
   /** 3 -- THE NARROWS. Tight, and constantly pinching to a throat. */
   ridgeNarrows: {
+    // 28/R -- see ridgeDrops. R is 19 on this hill.
     ...TERRAIN_BASE_RIDGE,
+    carveScale: 1.47,
     id: 'ridgeNarrows', name: 'The Narrows',
     radius: 23.0,
     route: { ampA: 20, waveA: 340, ampB: 34, waveB: 1300 },
@@ -653,7 +684,9 @@ export const TERRAIN_PRESETS = {
 
   /** 4 -- THE LONG FALL. Rare drops, but the deepest in the game. */
   ridgeLongFall: {
+    // 28/R -- see ridgeDrops. R is 28 on this hill.
     ...TERRAIN_BASE_RIDGE,
+    carveScale: 1.0,
     id: 'ridgeLongFall', name: 'The Long Fall',
     radius: 29.0,
     route: { ampA: 10, waveA: 800, ampB: 52, waveB: 2400 },
@@ -678,7 +711,9 @@ export const TERRAIN_PRESETS = {
 
   /** 5 -- THE STAIRCASE. Shallow drops, twice as often as anywhere else. */
   ridgeStaircase: {
+    // 28/R -- see ridgeDrops. R is 26 on this hill.
     ...TERRAIN_BASE_RIDGE,
+    carveScale: 1.08,
     id: 'ridgeStaircase', name: 'The Staircase',
     radius: 27.0,
     route: { ampA: 22, waveA: 480, ampB: 30, waveB: 1600 },
@@ -704,7 +739,9 @@ export const TERRAIN_PRESETS = {
 
   /** 6 -- THE BOWL. Wider and deeper-walled; the most enclosed of the six. */
   ridgeBowl: {
+    // 28/R -- see ridgeDrops. R is 25 on this hill.
     ...TERRAIN_BASE_RIDGE,
+    carveScale: 1.12,
     id: 'ridgeBowl', name: 'The Bowl',
     radius: 28.0,
     curve: 1.3,

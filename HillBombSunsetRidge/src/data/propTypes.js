@@ -24,7 +24,25 @@ export const PROP_TYPES = {
     size: { w: 4.2, h: 0.95, l: 3.4 },
     colour: 0x6c3fd8,
     accent: 0x4223a2,
-    launch: { power: 1.0, points: 120, profile: 'wedge' },
+    /**
+     * RAMP PAYOUTS ARE FLATTENED: 200 / 250 / 300 / 420 across the four, where
+     * they used to run 120 / 150 / 260 / 420 -- a 3.5x spread down to 2.1x.
+     *
+     * Amit: "with the ramps I think we can flatten it a bit -- 200 to 420 --
+     * because it's really hard to control what trick will happen here."
+     *
+     * Which is the right reason. The rider does not choose their trick and
+     * largely does not choose their ramp: the hill puts a kicker or a barrel in
+     * front of them and the line they were already on decides which. Paying 3.5
+     * times more for one than the other grades a coin toss. The spread is kept
+     * rather than removed because a barrel IS a bigger commitment to line up,
+     * but it is now a bonus for reaching the big one rather than the difference
+     * between a good run and a bad one.
+     *
+     * Interpolated on the ramp's own power so the table stays derivable:
+     * power 1.0 -> 200, 1.9 -> 420, everything else on that line.
+     */
+    launch: { power: 1.0, points: 200, profile: 'wedge' },
     label: 'KICKER',
   },
   bigKicker: {
@@ -32,7 +50,7 @@ export const PROP_TYPES = {
     size: { w: 5.6, h: 1.6, l: 5.0 },
     colour: 0x8a4fe8,
     accent: 0x5427b6,
-    launch: { power: 1.42, points: 260, profile: 'wedge' },
+    launch: { power: 1.42, points: 300, profile: 'wedge' },
     label: 'BIG AIR',
   },
   // THE ONLY LAUNCHER THAT CAN PRODUCE A BACKFLIP, and only when hit at speed.
@@ -56,7 +74,7 @@ export const PROP_TYPES = {
     size: { w: 9.0, h: 1.2, l: 6.0 },
     colour: 0x35538f,
     accent: 0x27406f,
-    launch: { power: 1.2, points: 150, profile: 'hump' },
+    launch: { power: 1.2, points: 250, profile: 'hump' },
     label: 'BANK',
   },
 
@@ -305,7 +323,18 @@ export const PROP_TYPES = {
     colour: 0x2e2338, // dark stone, so the inlay carries
     accent: 0xffb43c, // the crystal's amber -- same currency, larger denomination
     pickup: {
-      type: 'idol', points: 1800, catchWidth: 4.2,
+      /**
+       * 300, down from 1,800. Amit: "the idol -- lower it, like, a lot. 300 is
+       * enough."
+       *
+       * At 1,800 one idol was worth fifteen crystals or a nine-chain barrel
+       * landing. On IDOL HUNT that is the mission and it was fine; on every
+       * other hill an idol was worth more than the rest of the course put
+       * together, so a run's score was decided by whether one happened to be
+       * on the line. 300 keeps it clearly the best single pickup -- two and a
+       * half crystals -- without it being the only thing that counts.
+       */
+      type: 'idol', points: 300, catchWidth: 4.2,
       // Grounded: what you see standing on the hill is what you ride into.
       height: 0,
       // Generous vertically because it is seven units tall -- clipping its

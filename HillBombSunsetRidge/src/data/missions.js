@@ -74,7 +74,15 @@
  * SCORE ON THE HILL, per mission. The measured ceiling: every point-bearing
  * prop that spawns over the 1800 m course under that mission's OWN content
  * filter, added up. Counted by walking each mission's hill in 25 m steps and
- * summing the point value of everything that appeared.
+ * summing the point value of everything that appeared -- ramps and pickups at
+ * face value, and a rail at its pointsPerSecond over the time it takes to ride
+ * its length at the measured ~29 m/s.
+ *
+ * RE-MEASURED after the payout changes: no more passive distance score, ramps
+ * flattened to 200/250/300/420, the idol down from 1,800 to 300. Removing the
+ * passive score is what makes these numbers mean something -- while it existed
+ * roughly 3,400 points of every run came from the clock rather than the hill,
+ * so a census of the props was never the whole score. Now it is.
  *
  * This exists because star thresholds used to come from the CLOCK alone --
  * 200 and 371 points per second, from a 70s mission that had measured
@@ -82,10 +90,10 @@
  * never true of the teaching missions, which exist precisely to strip the hill
  * down to one thing:
  *
- *     mission 1  ramps only, no pickups, no rails    ceiling  6,920
- *     mission 2  ramps and rails, no pickups         ceiling  7,180
- *     mission 4  ramps, rails and gates, no pickups  ceiling  9,080
- *     mission 6+ the full hill                       ceiling ~28,900
+ *     mission 1  ramps only, no pickups, no rails    ceiling  9,040
+ *     mission 2  ramps and rails, no pickups         ceiling 13,798
+ *     mission 4  ramps, rails and gates, no pickups  ceiling 15,658
+ *     mission 6+ the full hill                       ceiling ~28,000
  *
  * Against a 2-star bar of 16,000 on mission 1. Not hard -- arithmetically
  * impossible, and 3 stars more so. An autopilot that took every ramp on that
@@ -96,11 +104,11 @@
  * game being broken, not as a challenge, because nothing they do moves it.
  */
 const CEILING = {
-  firstDrop: 6920, railRunner: 7180, crystalRun: 18300, speedGates: 9080,
-  idolHunt: 29020, crystalHaul: 28840, ironLine: 28840, fastLane: 29100,
-  fullPlate: 29460, ridgeMaster: 28840, doubleDown: 29340, steelRush: 28840,
-  highRoller: 28840, sweep: 29100, launchParty: 29460, goldRush: 28840,
-  grindCity: 29340, topSpeed: 28840, gauntlet: 28840, lastLight: 29100,
+  firstDrop: 9040, railRunner: 13798, crystalRun: 25158, speedGates: 15658,
+  idolHunt: 17798, crystalHaul: 27918, ironLine: 27918, fastLane: 28218,
+  fullPlate: 28818, ridgeMaster: 27918, doubleDown: 28618, steelRush: 27918,
+  highRoller: 27918, sweep: 28218, launchParty: 28818, goldRush: 27918,
+  grindCity: 28618, topSpeed: 27918, gauntlet: 27918, lastLight: 28218,
 };
 
 /**
@@ -143,7 +151,9 @@ function starTiers(seconds, id) {
  * six missions and then meets them again carrying harder objectives, which is
  * a fair trade for the alternative -- twenty places that all feel like one.
  */
-const RIDGE_CYCLE = [
+// Exported because the race shuffles the same six hills -- see
+// modes/speedRace.js. One list, so a hill added here turns up in both.
+export const RIDGE_CYCLE = [
   'ridgeDrops',      // 1  the ridge as it was, with the ground giving way
   'ridgeWeave',      // 2  switchbacks, banked hard
   'ridgeNarrows',    // 3  tight and pinching
@@ -250,19 +260,38 @@ const AUTHORED = [
   // existed, reachable only by stacking a deep trick chain on top. 30,000 is
   // just above the ceiling, so it still wants a chain, but a couple of good
   // ones rather than a flawless run.
-  ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',    75, { score: 30000 }],
-  ['fullPlate',   'FULL PLATE',    'A bit of everything, and no time to spare.', 95, { pickup: 24, grind: 4, launch: 10 }],
-  ['ridgeMaster', 'RIDGE MASTER',  'Prove you have learned the whole ridge.',  100, { score: 60000, pickup: 28 }],
+  ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',    75, { score: 20000 }],
+  // EASED: 24/4/10 down to 16/3/8. Amit: "09 full plate is too hard, lower
+  // expectations a bit."
+  //
+  // No single number was out of line -- measured against what its 95s actually
+  // reaches (55 ramps, 114 crystals, 32 rails) it asked for 21% / 12% / 18%,
+  // where the single-objective missions around it ask 24-42% of one thing. The
+  // problem is the CONJUNCTION: this is the first mission wanting three things
+  // at once, and all three must be met, which is far worse than three times one
+  // -- chasing crystals costs you ramp alignment and lining up a rail costs you
+  // both.
+  //
+  // It also draws the worst hill for it. Mission 9 is ridgeNarrows, the
+  // tightest trough of the six, carrying the layout with the hardest push off
+  // the centreline (0.35). Narrowest hill, most spread-out content, three
+  // demands. That is not authored -- it is where the six-terrain and
+  // five-layout cycles happen to collide.
+  //
+  // 14% / 9% / 15% now: plainly the gentle introduction to combination
+  // missions, with THE GAUNTLET at 19 as the hard version of the same idea.
+  ['fullPlate',   'FULL PLATE',    'A bit of everything, and no time to spare.', 95, { pickup: 16, grind: 3, launch: 8 }],
+  ['ridgeMaster', 'RIDGE MASTER',  'Prove you have learned the whole ridge.',  100, { score: 22000, pickup: 28 }],
   ['doubleDown',  'DOUBLE DOWN',   'Twice the crystals, twice the ramps.',      90, { pickup: 29, launch: 13 }],
-  ['steelRush',   'STEEL RUSH',    'Rails pay, and they pay while you are on them.', 105, { grind: 5, score: 64000 }],
-  ['highRoller',  'HIGH ROLLER',   'One number matters. Make it big.',          85, { score: 52000 }],
+  ['steelRush',   'STEEL RUSH',    'Rails pay, and they pay while you are on them.', 105, { grind: 5, score: 23000 }],
+  ['highRoller',  'HIGH ROLLER',   'One number matters. Make it big.',          85, { score: 21000 }],
   ['sweep',       'SWEEP',         'Clean the hill out on the way down.',      100, { pickup: 33, grind: 5 }],
   ['launchParty', 'LAUNCH PARTY',  'Hit every ramp you can find.',              95, { launch: 23 }],
   ['goldRush',    'GOLD RUSH',     'The ridge is paved with the stuff.',       105, { pickup: 36 }],
   ['grindCity',   'GRIND CITY',    'Metal first, everything else after.',      110, { grind: 5, pickup: 36 }],
-  ['topSpeed',    'TOP SPEED',     'No brakes. No hesitation.',                 90, { score: 56000 }],
+  ['topSpeed',    'TOP SPEED',     'No brakes. No hesitation.',                 90, { score: 22000 }],
   ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 36, grind: 5, launch: 18 }],
-  ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { score: 74000, pickup: 36, grind: 5 }],
+  ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { score: 24000, pickup: 36, grind: 5 }],
 
   // --- THE OPEN FACE ---------------------------------------------------------
   //

@@ -116,10 +116,29 @@ export function createScoring() {
     update(dt, speed, carve, grinding) {
       if (s.dead) return;
 
-      // Distance score, weighted by speed -- fast metres are worth more AND
-      // arrive sooner, so speed compounds into score twice. The wobble meter is
-      // the counterweight that stops that being a free lunch.
-      s.score += speed * dt * 1.4;
+      /**
+       * NO PASSIVE DISTANCE SCORE. This used to be
+       *
+       *     s.score += speed * dt * 1.4;
+       *
+       * -- about 41 points a second at ordinary pace, paid for existing. The
+       * reasoning was that fast metres are worth more AND arrive sooner, so
+       * speed compounded into score twice, with the wobble meter as the
+       * counterweight.
+       *
+       * It stopped working for two reasons. Runs now always ride the full clock
+       * (see modes/missions.js), so it became the SAME number every run no
+       * matter how well it was ridden -- a floor, not a reward. And it was the
+       * same order as the things a player is supposed to be trying to do: a
+       * measured hands-off run of mission 1, no input at all for the whole
+       * clock, scored 3,433, where every ramp on that entire course adds up to
+       * 6,920. Three seconds of sitting still paid what a kicker did.
+       *
+       * Amit: "I want to cancel passive distance."
+       *
+       * topSpeed is still tracked -- the results screen reports it, and it
+       * costs nothing to keep.
+       */
       if (speed > s.topSpeed) s.topSpeed = speed;
 
       if (wobbleEnabled) {

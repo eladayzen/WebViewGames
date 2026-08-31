@@ -747,6 +747,15 @@ export function createProps(scene) {
   // pattern happens to be -- driving both off one cursor would make whether a
   // drop got a ramp depend on where a pattern boundary happened to fall.
   let nextLipS = 60;
+  /**
+   * EXTRA BOOST PADS, every this many metres. 0 is off, which is every mode
+   * except the race -- see setBoostEvery.
+   */
+  let boostEvery = 0;
+  let nextBoostS = 60;
+  /** Extra pink barriers every this many metres. 0 is off. See setWallEvery. */
+  let wallEvery = 0;
+  let nextWallS = 60;
   /** Emissions per pattern name this run -- drives the `rare` cadence. */
   let emitsOf = Object.create(null);
   /**
@@ -903,6 +912,67 @@ export function createProps(scene) {
     nextLipS = throughS;
   }
 
+  /**
+   * A STEADY DRUMBEAT OF SPEED GATES, on top of whatever the patterns give.
+   *
+   * The race asked for "more speed boosters" and the patterns are the wrong
+   * place to get them: they are shared with the missions, so any change there
+   * lands on both. This is additive and course-owned, which keeps the two
+   * modes reading the same tables and still lets the race be about speed.
+   *
+   * ALTERNATING SIDES, and out at two thirds of the rim rather than near the
+   * middle. A pad you pass over without steering is not a decision, and a race
+   * decided by pads has to be a race about LINE -- so the fast route through
+   * them weaves, and taking every one costs you something to set up.
+   *
+   * Deterministic on the pad index, so a given stretch of hill has the same
+   * pads every time the frontier regenerates it and nothing flickers as it
+   * passes. `airGate` on every third, since the bigger boost is worth a
+   * different silhouette to aim at.
+   */
+  function emitBoosts(throughS) {
+    if (!boostEvery) return;
+    while (nextBoostS < throughS) {
+      const i = Math.round(nextBoostS / boostEvery);
+      const side = i % 2 === 0 ? 1 : -1;
+      // Jittered off the exact cadence so it does not read as a metronome.
+      const jitter = (hash(i * 5.1 + 3) - 0.5) * boostEvery * 0.35;
+      const u = side * TERRAIN.thetaMax * 0.66;
+      add(i % 3 === 2 ? 'airGate' : 'boostPad', nextBoostS + jitter, u);
+      nextBoostS += boostEvery;
+    }
+  }
+
+  /**
+   * PINK BARRIERS, SCATTERED. Amit, on the race: "remove the wooden ones and
+   * put in more of the pink ones, scatter them around."
+   *
+   * SCATTERED IS THE WORD, so this deliberately does not alternate sides the
+   * way the speed gates do. The gates are a rhythm you learn to weave through;
+   * a barrier you can predict is not an obstacle, it is a slalom pole. So the
+   * lateral position is hashed across the middle two thirds of the road and
+   * the spacing is jittered hard -- sometimes two close together, sometimes a
+   * long clear stretch.
+   *
+   * They stay off the rims. A barrier hard against the wall is unavoidable if
+   * you happen to be riding high there, and the pink one is meant to cost you
+   * a beat and some speed, not to be a wall you cannot see a way around.
+   *
+   * Deterministic on the barrier index, so a stretch of hill has the same
+   * barriers every time the frontier regenerates it.
+   */
+  function emitWalls(throughS) {
+    if (!wallEvery) return;
+    while (nextWallS < throughS) {
+      const i = Math.round(nextWallS / wallEvery);
+      const jitter = (hash(i * 9.7 + 5) - 0.5) * wallEvery * 0.8;
+      // -0.66..0.66 of the rim: off the centreline, and off the walls.
+      const u = (hash(i * 3.3 + 17) * 2 - 1) * TERRAIN.thetaMax * 0.66;
+      add('blocker', nextWallS + jitter, u);
+      nextWallS += wallEvery;
+    }
+  }
+
   /** Emit the next authored pattern, plus roadside scenery for that stretch. */
   function emitPattern() {
     const p = nextPattern();
@@ -1039,6 +1109,24 @@ export function createProps(scene) {
     },
 
     /** @param {number} d fraction of authored content to emit, 0..1 */
+    /**
+     * @param {number} m metres between extra speed gates, or 0 for none.
+     *
+     * A COURSE SETTING, not a terrain one: the same six hills are ridden by the
+     * missions with their authored pad count and by the race with this on top.
+     */
+    setBoostEvery(m) {
+      boostEvery = (typeof m === 'number' && m > 0) ? m : 0;
+    },
+
+    /**
+     * @param {number} m metres between extra pink barriers, or 0 for none.
+     * Course-scoped for the same reason as setBoostEvery.
+     */
+    setWallEvery(m) {
+      wallEvery = (typeof m === 'number' && m > 0) ? m : 0;
+    },
+
     setDensity(d) {
       density = (typeof d === 'number' && d > 0) ? Math.min(1, d) : 1;
     },
@@ -1047,6 +1135,8 @@ export function createProps(scene) {
       while (active.length) release(active.pop());
       nextPatternS = startS + 60; // leave the opening stretch clear
       nextLipS = startS + 60;
+      nextBoostS = startS + 60;
+      nextWallS = startS + 60;
       emitsOf = Object.create(null);
       patternIndex = 0;
       bag = [];
@@ -1068,6 +1158,8 @@ export function createProps(scene) {
       spinT += dt;
       while (nextPatternS < riderS + SPAWN_AHEAD) emitPattern();
       emitLipRamps(riderS + SPAWN_AHEAD);
+      emitBoosts(riderS + SPAWN_AHEAD);
+      emitWalls(riderS + SPAWN_AHEAD);
       for (let i = active.length - 1; i >= 0; i--) {
         const it = active[i];
         if (it.s < riderS - RECYCLE_BEHIND) {

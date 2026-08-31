@@ -29,6 +29,36 @@
 
 import { registerMode } from './mode.js';
 import { RACE_COURSE, getCourse } from '../data/courses.js';
+import { RIDGE_CYCLE } from '../data/missions.js';
+
+/**
+ * A DIFFERENT ONE OF THE SIX HILLS EVERY RACE.
+ *
+ * The race was riding `halfpipe` -- the original undressed ridge, with no sky
+ * and no palette of its own, so it drew a random theme over a plain gradient
+ * and got none of the art the missions were given. Meanwhile six hills exist,
+ * each with its own shape, matte painting and colours. Amit: "shuffle between
+ * the levels we made for the missions, same art, same stuff."
+ *
+ * Naming the terrain is all it takes: a terrain carries its own `sky` and
+ * `theme`, and startRun applies both, so the race gets the painting and the
+ * palette for free rather than needing anything wired to it.
+ *
+ * SHUFFLED, NOT RANDOM -- a bag that deals all six before repeating any. Plain
+ * random gives the same hill twice in a row about one race in six, which is
+ * precisely the thing this change exists to stop.
+ */
+let bag = [];
+function nextRaceTerrain() {
+  if (!bag.length) {
+    bag = RIDGE_CYCLE.slice();
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bag[i], bag[j]] = [bag[j], bag[i]];
+    }
+  }
+  return bag.pop();
+}
 
 /** Safety cap, not the goal -- see the note above. */
 const RACE_TIMEOUT = 180;
@@ -39,6 +69,8 @@ export default registerMode({
   name: 'SPEED RACE · ORIGINAL',
   tagline: 'The ridge. Four rivals, first to the line.',
   course: RACE_COURSE,
+  /** A fresh hill per race -- see nextRaceTerrain. */
+  terrainFor: () => nextRaceTerrain(),
   // The score readout is hidden in this mode. Points still accrue underneath --
   // nothing special-cases the scoring system -- but showing a number that has no
   // bearing on whether you are winning is worse than showing nothing: it reads

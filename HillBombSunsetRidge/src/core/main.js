@@ -818,13 +818,23 @@ function startRun(id) {
   // a Set, which spawned an EMPTY WORLD on missions 6-20. It showed up as one
   // null in a measurement table and was written off as a probe artefact.
   props.setAllowedKinds((content && content.kinds) || course.allowedKinds);
-  props.setContent(content ? (content.without || null) : null,
+  // A COURSE CAN BLOCK TYPES TOO. It was a mission-only setting, which left the
+  // race as the last place the wooden barricade still appeared -- every ridge
+  // mission already names it in `without`, so nothing else was showing it.
+  // A mission's own list wins outright when it has one.
+  props.setContent(
+    (content && content.without) || course.without || null,
     content ? !!content.rareAlways : false,
     content ? (content.feature || null) : null);
   // How much of the authored layout this course actually wants on the ground.
   // A mission may override the course's density -- "exactly the same as the
   // original" has to include how much of the layout is actually emitted.
   props.setDensity(content && content.density != null ? content.density : course.density);
+  // Extra speed gates on top of the authored patterns -- the race's, and only
+  // the race's. See props.setBoostEvery.
+  props.setBoostEvery(course.boostEvery || 0);
+  // Extra pink barriers, same idea and the same course-only scope.
+  props.setWallEvery(course.wallEvery || 0);
   // Lateral layout is the mission's too -- see setLayout.
   props.setLayout(content && content.spread != null ? content.spread : null,
     content ? (content.push || 0) : 0);

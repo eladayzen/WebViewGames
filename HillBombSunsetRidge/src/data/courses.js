@@ -82,6 +82,37 @@ export const COURSES = {
      * point of a race is not knowing what is round the next bend.
      */
     variation: true,
+    /**
+     * A SPEED GATE EVERY 110 METRES, on top of whatever the patterns give --
+     * roughly one every four seconds at race pace, against the ~200 m the
+     * shared patterns were producing on their own. Amit: "put more speed
+     * boosters in there."
+     *
+     * This is the mode's whole argument. Without pads a race is "hold forward
+     * and do not crash"; with them at this cadence there is always a next one
+     * to reach and it is never straight ahead -- props.js alternates sides at
+     * two thirds of the rim, so the fast line weaves and the race becomes about
+     * choosing it. See props.setBoostEvery.
+     */
+    boostEvery: 110,
+    /**
+     * NO WOODEN BARRICADES. Amit: "it still has the old barricades, the wooden
+     * ones -- remove them." The race was their last home: they are in the
+     * shared patterns four times over, and every ridge mission already names
+     * woodWall in its own `without`, so nothing but this course was showing
+     * them. Blocking the TYPE rather than the kind, because the pink blocker
+     * shares that kind and is the thing being kept.
+     */
+    without: ['woodWall'],
+    /**
+     * A PINK BARRIER EVERY 130 METRES, scattered rather than placed -- see
+     * props.emitWalls. Roughly one every four or five seconds at race pace,
+     * which puts them at about the cadence of the speed gates without landing
+     * in step with them: the gate you want and the barrier in the way arrive
+     * on different rhythms, so the line through them has to be read rather
+     * than memorised.
+     */
+    wallEvery: 130,
   },
 
   /**
