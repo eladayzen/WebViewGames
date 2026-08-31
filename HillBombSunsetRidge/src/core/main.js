@@ -2021,6 +2021,9 @@ function frame() {
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
 window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, faceSelect, rivals, finishLine, trough, sky, applyTheme,
+  // The ladder itself, so star thresholds can be checked against what a hill
+  // actually pays without re-deriving them outside the game.
+  RIDGE_MISSIONS, FACE_MISSIONS,
   // Live cross-section, plus the setter -- so a terrain can be swapped mid-run
   // from the console and measured, rather than only via a mode's course.
   TERRAIN, setTerrain: (k) => { setTerrain(k); trough.applyTerrain(); },

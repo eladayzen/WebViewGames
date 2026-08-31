@@ -163,7 +163,35 @@ const MISSION_MODE = {
     }));
 
     let left = mission.seconds;
+    /** The run is over and a result has been reported. Nothing counts after. */
     let finished = false;
+    /**
+     * THE OBJECTIVE IS BANKED, and the run carries on.
+     *
+     * Completing used to END the run and pay 25 a second for whatever was left
+     * on the clock. On an ENDLESS course -- which every ridge mission is, there
+     * is no finish line -- that made being good at the mission cost you points:
+     *
+     *     riding a second   ~150-250 points, and up to ~390 if you miss nothing
+     *     banking a second   25 points
+     *
+     * So clearing a 90s mission at the 45s mark paid about 1,100 and gave up
+     * about 9,000 of riding. Stars come from SCORE, so the faster you cleared
+     * the objective the fewer stars you got for it -- which is half of why
+     * three stars felt unreachable even once the thresholds were fixed (see
+     * CEILING in data/missions.js for the other half).
+     *
+     * So the objective is now a GATE and the score is the GRADE, and they stop
+     * fighting: clearing it locks the mission in, and the rest of the clock is
+     * spent raising the grade. Amit: "not ending the run the moment you reached
+     * the desired score, and not ending until the end of the time."
+     *
+     * Once this is set the mission CANNOT be lost. Time running out is a
+     * success from here, a barrier cannot take it back, and the only thing the
+     * remaining seconds can do is add. That is the whole reason it is a
+     * separate flag from `finished` rather than an early return.
+     */
+    let cleared = false;
     /** @type {Function[]} */
     const unsubs = [];
 
@@ -190,26 +218,38 @@ const MISSION_MODE = {
       return score >= three ? 3 : score >= two ? 2 : 1;
     }
 
+    /**
+     * All objectives met: bank it and keep riding. See `cleared`.
+     *
+     * NO TIME BONUS. It existed to pay for finishing early, which is exactly
+     * the behaviour being removed -- keeping it would pay the player for
+     * something that can no longer happen, at a fifteenth of what the same
+     * seconds are now worth ridden.
+     */
     function checkComplete() {
-      if (finished || objectives.some((o) => !o.done)) return;
+      if (finished || cleared || objectives.some((o) => !o.done)) return;
+      cleared = true;
+      // Say so at the moment it happens. Without this the only signal is the
+      // last objective's counter ticking over, which is a small thing to carry
+      // "the mission is yours, now go and earn the stars".
+      ctx.hud.banner('OBJECTIVE CLEAR');
+    }
+
+    /** Bank the result and show the screen. The one exit for a cleared run. */
+    function settle() {
       finished = true;
-      // Bank the remaining seconds: it rewards route planning over grinding out
-      // the clock, which is the behaviour a hard cap is meant to encourage.
-      const bonus = Math.round(left * 25);
-      // Neither of a mission's own payouts is a trick, so neither builds the
-      // chain -- the run is over by the time the bonus lands anyway.
-      ctx.scoring.award(bonus, 'TIME BONUS', false);
-      // Read the score AFTER the bonus lands, so banking time can be what
-      // carries a run over a star threshold.
-      const earned = starsFor(ctx.scoring.state.score);
+      const score = ctx.scoring.state.score;
+      const earned = starsFor(score);
       // Recorded BEFORE the results screen is built, so the mission list behind
       // it already reflects this run -- including whatever it just unlocked.
-      ctx.progress.record(mission.id, earned, ctx.scoring.state.score);
+      ctx.progress.record(mission.id, earned, score);
       ctx.endRun('complete', {
         tone: 'success',
         title: 'MISSION COMPLETE',
         subtitle: `${String(mission.number).padStart(2, '0')} \u00b7 ${mission.name}`,
-        detail: `${Math.ceil(left)}s to spare`,
+        // What the extra time actually bought, which is the point of riding it
+        // out. "0s to spare" would be true of every run now and say nothing.
+        detail: `${score.toLocaleString()} points`,
         stars: earned,
         rows: recap(),
       });
@@ -217,6 +257,8 @@ const MISSION_MODE = {
 
     function credit(o, amount) {
       if (o.done || finished) return;
+      // Note this is NOT gated on `cleared` -- by definition every objective is
+      // already done by then, so there is nothing left for it to credit.
       o.have = Math.min(o.count, o.have + amount);
       if (o.have >= o.count) {
         o.done = true;
@@ -267,6 +309,10 @@ const MISSION_MODE = {
         left -= dt;
         if (left <= 0) {
           left = 0;
+          // A CLEARED RUN ENDS IN SUCCESS, not in "time up". The clock running
+          // out is now the ordinary way every mission finishes -- it is the
+          // objective, not the timer, that decides which screen this is.
+          if (cleared) { settle(); return; }
           finished = true;
           const done = objectives.filter((o) => o.done).length;
           ctx.endRun('timeup', {
@@ -309,11 +355,34 @@ const MISSION_MODE = {
         title: mission.name,
         seconds: left,
         limit: mission.seconds,
-        objectives: objectives.map((o) => ({
-          label: o.spec ? o.spec.label(o) : o.kind,
-          text: counterText(o),
-          done: o.done,
-        })),
+        /**
+         * ONCE IT IS CLEARED, THE PANEL SHOWS THE NEXT STAR.
+         *
+         * The rest of the clock is only worth riding if there is something to
+         * ride it FOR. A panel still showing four ticked-off objectives says
+         * "you are done" while the game keeps going, which is the aimless
+         * version of this change and the thing that would make it feel like
+         * padding. The score bar is the goal for the back half of the run.
+         *
+         * At three stars there is no next tier, so it shows the score itself --
+         * still a number going up, which is the point.
+         */
+        objectives: cleared
+          ? [(() => {
+            const score = ctx.scoring.state.score;
+            const [two, three] = mission.stars || [Infinity, Infinity];
+            const next = score < two ? two : score < three ? three : 0;
+            const stars = score >= three ? '\u2605\u2605\u2605' : score >= two ? '\u2605\u2605' : '\u2605';
+            return next
+              ? { label: `${stars} \u2192 ${Math.round(next).toLocaleString()}`,
+                  text: Math.round(score).toLocaleString(), done: false }
+              : { label: stars, text: Math.round(score).toLocaleString(), done: true };
+          })()]
+          : objectives.map((o) => ({
+            label: o.spec ? o.spec.label(o) : o.kind,
+            text: counterText(o),
+            done: o.done,
+          })),
       }),
     };
   },

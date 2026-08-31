@@ -71,14 +71,60 @@
  */
 
 /**
- * Star thresholds from the mission's own clock. Derived rather than written out
- * forty times: the measured 70s mission settled on 14k/26k, so the rates are
- * 200 and 371 points per second of clock. Rounded to the nearest 500 because a
- * threshold of 18,932 implies a precision none of this has.
+ * SCORE ON THE HILL, per mission. The measured ceiling: every point-bearing
+ * prop that spawns over the 1800 m course under that mission's OWN content
+ * filter, added up. Counted by walking each mission's hill in 25 m steps and
+ * summing the point value of everything that appeared.
+ *
+ * This exists because star thresholds used to come from the CLOCK alone --
+ * 200 and 371 points per second, from a 70s mission that had measured
+ * 14k/26k. That rate was true of a mission with everything on the hill. It was
+ * never true of the teaching missions, which exist precisely to strip the hill
+ * down to one thing:
+ *
+ *     mission 1  ramps only, no pickups, no rails    ceiling  6,920
+ *     mission 2  ramps and rails, no pickups         ceiling  7,180
+ *     mission 4  ramps, rails and gates, no pickups  ceiling  9,080
+ *     mission 6+ the full hill                       ceiling ~28,900
+ *
+ * Against a 2-star bar of 16,000 on mission 1. Not hard -- arithmetically
+ * impossible, and 3 stars more so. An autopilot that took every ramp on that
+ * mission scored 7,570. Amit: "it's easy enough to finish them, but I am
+ * always getting 1 star, sometimes 2, and it's not clear why."
+ *
+ * Which is the real defect: a threshold the player cannot reach reads as the
+ * game being broken, not as a challenge, because nothing they do moves it.
  */
-function starTiers(seconds) {
+const CEILING = {
+  firstDrop: 6920, railRunner: 7180, crystalRun: 18300, speedGates: 9080,
+  idolHunt: 29020, crystalHaul: 28840, ironLine: 28840, fastLane: 29100,
+  fullPlate: 29460, ridgeMaster: 28840, doubleDown: 29340, steelRush: 28840,
+  highRoller: 28840, sweep: 29100, launchParty: 29460, goldRush: 28840,
+  grindCity: 29340, topSpeed: 28840, gauntlet: 28840, lastLight: 29100,
+};
+
+/**
+ * Star thresholds from what the mission can actually PAY, not from its clock.
+ *
+ * 55% of the ceiling for two stars, 85% for three. Both are below it because
+ * the ceiling assumes a run that takes everything and misses nothing, which is
+ * not a thing to ask of a player on a balance board -- and because two sources
+ * sit outside the count and only ever help: the time bonus (25 a second for
+ * whatever is left on the clock) and the trick chain, which multiplies air
+ * awards. The autopilot's 7,570 on a 6,920 ceiling is those two, and it is why
+ * 85% is a real target rather than a demand for perfection.
+ *
+ * A mission with no measured ceiling falls back to the old clock rate, so
+ * adding one to the list does not silently give it a bar of zero.
+ *
+ * Still rounded to the nearest 500: a threshold of 18,932 implies a precision
+ * none of this has.
+ */
+function starTiers(seconds, id) {
   const round = (n) => Math.round(n / 500) * 500;
-  return [round(200 * seconds), round(371 * seconds)];
+  const ceiling = CEILING[id];
+  if (!ceiling) return [round(200 * seconds), round(371 * seconds)];
+  return [round(0.55 * ceiling), round(0.85 * ceiling)];
 }
 
 /**
@@ -198,7 +244,13 @@ const AUTHORED = [
       density: 1, rareAlways: true, feature: ['pickup'] }],
   ['crystalHaul', 'CRYSTAL HAUL',  'Leave nothing shining behind you.',         85, { pickup: 26 }],
   ['ironLine',    'IRON LINE',     'Find the rails. Ride them properly.',      100, { grind: 5, launch: 8 }],
-  ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',    75, { score: 44000 }],
+  // 30k, down from 44k. Amit: "the score in level 8 is too hard, lower it to
+  // 30K." The hill's measured ceiling is 29,100 -- every ramp, crystal and gate
+  // on it, taken perfectly -- so 44,000 was asking for half again more than
+  // existed, reachable only by stacking a deep trick chain on top. 30,000 is
+  // just above the ceiling, so it still wants a chain, but a couple of good
+  // ones rather than a flawless run.
+  ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',    75, { score: 30000 }],
   ['fullPlate',   'FULL PLATE',    'A bit of everything, and no time to spare.', 95, { pickup: 24, grind: 4, launch: 10 }],
   ['ridgeMaster', 'RIDGE MASTER',  'Prove you have learned the whole ridge.',  100, { score: 60000, pickup: 28 }],
   ['doubleDown',  'DOUBLE DOWN',   'Twice the crystals, twice the ramps.',      90, { pickup: 29, launch: 13 }],
@@ -349,7 +401,7 @@ export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course
   name,
   brief,
   seconds,
-  stars: starTiers(seconds),
+  stars: starTiers(seconds, id),
   objectives: KIND_ORDER.filter((k) => targets[k] != null).map((kind) => (
     kind === 'pickup'
       ? { kind, type: 'crystal', count: targets[kind] }
