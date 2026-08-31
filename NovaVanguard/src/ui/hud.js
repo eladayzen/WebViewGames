@@ -48,6 +48,12 @@ export function createHud(root) {
     gameoverStats: root.querySelector('#gameover-stats'),
     scoreboard: root.querySelector('#scoreboard'),
     startOverlay: root.querySelector('#start-overlay'),
+    confirmOverlay: root.querySelector('#confirm-overlay'),
+    quitOverlay: root.querySelector('#quit-overlay'),
+    quitStats: root.querySelector('#quit-stats'),
+    quitScoreboard: root.querySelector('#quit-scoreboard'),
+    quitScoreboardTitle: root.querySelector('#quit-scoreboard-title'),
+    quitScoreboardRows: root.querySelector('#quit-scoreboard-rows'),
     startCountdown: root.querySelector('#start-countdown'),
     gameoverCountdown: root.querySelector('#gameover-countdown'),
     startScoreboard: root.querySelector('#start-scoreboard'),
@@ -412,10 +418,18 @@ export function createHud(root) {
      * broken, so the section simply does not exist.
      */
     showBoard(where, board, groups) {
-      const startScreen = where === 'start';
-      const box = startScreen ? el.startScoreboard : el.scoreboard;
-      const title = startScreen ? el.startScoreboardTitle : el.scoreboardTitle;
-      const list = startScreen ? el.startScoreboardRows : el.scoreboardRows;
+      const box =
+        where === 'start' ? el.startScoreboard
+        : where === 'quit' ? el.quitScoreboard
+        : el.scoreboard;
+      const title =
+        where === 'start' ? el.startScoreboardTitle
+        : where === 'quit' ? el.quitScoreboardTitle
+        : el.scoreboardTitle;
+      const list =
+        where === 'start' ? el.startScoreboardRows
+        : where === 'quit' ? el.quitScoreboardRows
+        : el.scoreboardRows;
       if (!box) return;
 
       const total = (groups || []).reduce((n, g) => n + g.length, 0);
@@ -502,6 +516,30 @@ export function createHud(root) {
       if (!el.gameoverCountdown) return;
       el.gameoverCountdown.textContent =
         secs > 0 ? `Restarting in ${secs}` : '';
+    },
+
+    /** "Are you sure?" over the running game. */
+    showConfirm() {
+      if (el.confirmOverlay) el.confirmOverlay.classList.remove('hidden');
+    },
+    hideConfirm() {
+      if (el.confirmOverlay) el.confirmOverlay.classList.add('hidden');
+    },
+
+    /** The quit screen: the run's result, the board, and two ways out. */
+    showQuit(w) {
+      if (!el.quitOverlay) return;
+      el.quitStats.textContent =
+        `${w.stats.kills} destroyed · wave ${w.director.waveIndex + 1} · ` +
+        `score ${w.stats.score.toLocaleString()}`;
+      el.quitOverlay.classList.remove('hidden');
+    },
+    isQuitOpen() {
+      return !!(el.quitOverlay && !el.quitOverlay.classList.contains('hidden'));
+    },
+    hideQuit() {
+      if (el.quitOverlay) el.quitOverlay.classList.add('hidden');
+      if (el.quitScoreboard) el.quitScoreboard.classList.add('hidden');
     },
 
     hideGameOver() {

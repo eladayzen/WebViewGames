@@ -168,8 +168,7 @@ That is not politeness — it is how the game is developed and tested.
 
 ```js
 GoBalance.available                  // false in a normal browser
-GoBalance.audio                      // {volume, muted} — read-only, host-pushed
-GoBalance.on('audiochange', fn)
+GoBalance.audio                      // STUB: always {volume:1, muted:false}
 GoBalance.on('playerschange', fn)
 await GoBalance.getProfile()         // {signedIn, isGuest, id, name, avatarType,
                                      //  avatarIndex, gender, yearOfBirth}
@@ -238,41 +237,58 @@ the way they already serve the SDK.
 
 ---
 
-## Audio — read this before wiring sound
+## Audio — the game owns it
 
-**The SDK shadows `AudioContext.prototype.destination`** and splices a
-host-owned `GainNode` in front of the real destination, so it can enforce the
-app's mute. Consequences:
+**A web game's audio is entirely its own.** The app's mute button does not reach
+the page, and the page does not report its sound state back. Every game starts
+with sound ON and ships its own control if it wants one.
 
-- Benign for a normal graph — your nodes sit upstream and are never touched.
-- `ctx.destination` is **a GainNode, not the real `AudioDestinationNode`**.
-  Identity comparisons and `maxChannelCount` will misbehave.
-- It only ever *undoes its own* muting, so a game's own toggle is never
-  silently switched back on.
+`GoBalance.audio` still exists as a constant `{volume: 1, muted: false}` and
+`on('audiochange', …)` still registers, purely so older code does not throw.
+**Both are stubs.** Reading them tells you nothing — do not build behaviour on
+them.
 
-**The app's mute is authoritative and one-way.** `PREF_GLOBAL_VOLUME` (0 or 1)
-is pushed to the page; the SDK sets its gain to 0. There is **no `setMuted` or
-`setVolume`** — a game can observe and nothing more.
+### How it got here, so nobody rebuilds it
 
-So while the app is muted, **a web game cannot make a sound, and no in-game
-control can change that.** Design for it:
+This was wired up once and deliberately removed (`d6fb9fda`, 2026-08-31). The
+SDK used to shadow `AudioContext.prototype.destination` and splice in a gain
+node the app controlled, so the app's mute silenced the page. It worked, and it
+was the wrong shape: the app's mute became authoritative and one-way, so a
+player entering a game from a muted lobby had **no route to sound at all** —
+no in-game control could override a gain node upstream of everything the game
+owned, and there was no `setMuted` to ask with. The fix was to detach.
 
-- Subscribe to `audiochange` and track the app's mute as a **separate input**
-  from the player's own, OR'd together. Collapsing them means the app unmuting
-  clears a mute the player set themselves.
-- Drive your mute icon from the *effective* state, or it will claim sound is on
-  while the game is silent.
-- Keep your own controls usable while app-muted — record the preference and
-  apply it when the app unmutes — and say plainly on screen that the app is
-  muted, or the silence reads as a broken game.
+The lesson worth keeping: `AudioListener.volume` has no effect inside a WebView,
+which is why the app's mute never reached web games in the first place. Anything
+that "fixes" that by clamping the page's audio recreates the same trap.
 
-> **OPEN ISSUE (2026-08-31).** Amit is checking with the developers whether app
-> mute should hard-mute web games at all, or only set their initial state, and
-> whether a one-way `setMuted(false)` should exist so a game can offer sound
-> inline. **Update this section when that lands.** Until then the above is the
-> contract.
+### What a game should do
 
----
+Ship a **speaker button that opens a small menu with two switches, Music and
+Sound effects**, each on/off. That is the shape Nova Vanguard uses and the one
+to copy:
+
+- **Two switches, not one.** They are separately wanted — a player often wants
+  the game's feedback while listening to their own music, and an all-or-nothing
+  toggle gets a game silenced entirely by anyone who dislikes its soundtrack.
+- **Separate gain buses** under a master, so a switch is one gain write rather
+  than a flag every play path has to remember to check.
+- **Persist the choice** (`localStorage`, guarded — it can throw outright in a
+  restricted WebView) and **read it before building the audio graph**, or the
+  buses are created from defaults and a player who muted the music hears a burst
+  of it on every launch.
+- **Turning music off should stop the source**, not leave it playing into a
+  silent gain.
+- **Drive the speaker icon from the effective state** — master muted, or both
+  channels off, both mean silence, and an icon tracking only one contradicts the
+  other.
+
+### The one WebAudio rule that still applies
+
+Browsers block audio until a genuine user gesture, and a WebView is stricter,
+not looser. Self-install a one-time `pointerdown` / `touchstart` / `keydown`
+listener that resumes the `AudioContext`, rather than expecting every call site
+to remember. A tap on your own mute control is itself a gesture — use it.
 
 ## Registering the game (the project owner's four edits)
 
@@ -324,6 +340,6 @@ from the game-over overlay; the app's mute reaches the game.
 | Freezes on iOS after a moment | rAF shim / `__pumpFrames` missing from `index.html` |
 | Steers about twice as fast as you lean | `forwardSteeringKeys: 1` while the game reads `__gbSensor` |
 | Space/Enter restarts a run that never started | a non-game-over screen reusing `#gameover-overlay` |
-| Silent, in-game mute button does nothing | the app is muted; nothing in the game can override it |
+| Silent until the player interacts | the AudioContext was never unlocked — no gesture listener |
 | Module script refused | file type not in `MimeFor()` |
 | Saved progress vanished | the StreamingAssets folder was renamed after shipping |

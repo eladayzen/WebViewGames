@@ -57,8 +57,6 @@ import {
   resumeAudio,
   toggleMuted,
   isMuted,
-  hostMutedState,
-  setHostAudioListener,
   isMusicOn,
   isSfxOn,
   setMusicOn,
@@ -104,32 +102,89 @@ async function boot() {
   const hud = createHud(document);
   const muteButton = document.getElementById('mute-button');
 
-  /** Repaint the mute control from the EFFECTIVE audio state.
-   *
-   *  isMuted() is "player muted OR app muted", so this can never claim sound is
-   *  on while the app is holding us silent. When the silence is the app's, the
-   *  control is also dimmed and says so -- pressing it cannot make sound, and a
-   *  button that looks live but does nothing is worse than one that admits it.
-   */
+  /** Repaint the speaker icon from what the player will actually hear. */
   function paintMute() {
     // The icon reports whether the player will actually hear anything: the app
     // muting us, the master mute, or both channels switched off all end in
     // silence, and an icon that only tracked one of them would contradict the
     // other two.
+    // Master mute, or both channels off, both end in silence -- an icon that
+    // tracked only one of them would contradict the other.
     const m = isMuted() || (!isMusicOn() && !isSfxOn());
-    const byApp = hostMutedState();
     muteButton.textContent = m ? '\u{1F507}' : '\u{1F508}';
-    muteButton.setAttribute('aria-label', byApp ? 'Muted by the app' : m ? 'Unmute' : 'Mute');
-    muteButton.style.opacity = byApp ? '0.45' : '1';
+    muteButton.setAttribute('aria-label', m ? 'Sound settings (muted)' : 'Sound settings');
   }
+  // --- quitting ------------------------------------------------------------
+  //
+  // The X is the ONLY way out of a game on the board, which cuts both ways: it
+  // must always work, and it must not end a run on a single mis-tap. So it asks
+  // first -- but only when there is a run to lose.
+  //
+  // `window.__gbBack` is the hook the button's inline onclick prefers, falling
+  // back to a direct nav:back if this module never loaded. That fallback is
+  // deliberate: a game that fails to boot must still be escapable.
+  const leaveToLobby = () => {
+    if (window.GoBalance && typeof window.GoBalance.back === 'function') {
+      window.GoBalance.back();
+      return;
+    }
+    if (window.Unity) window.Unity.call('nav:back');
+  };
+
+  /** Quit for real: bank the run, then show the board with no clock on it. */
+  function endRunAndShowQuit() {
+    hud.hideConfirm();
+    world.paused = true;
+    suspendAudio();
+    // The score counts even though the player stopped early -- Amit's call and
+    // the right one: a run that ended by choice still happened, and a board
+    // that only ever records deaths quietly punishes stopping.
+    const runScore = world.stats.score;
+    hud.showQuit(world);
+    submitRun(runScore).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, runScore);
+        hud.showBoard('quit', board, near.length ? [top, near] : [top]);
+      })
+    );
+  }
+
+  window.__gbBack = () => {
+    // Ask only when a run is actually in progress. On the start screen, the quit
+    // screen or the game-over screen the player is already stopped, and asking
+    // "are you sure?" over a screen they chose to be on is just noise.
+    if (hud.isQuitOpen()) return leaveToLobby();
+    if (!started) return leaveToLobby();
+    if (world.state !== GameState.RUNNING) return leaveToLobby();
+    hud.showConfirm();
+  };
+
+  document.getElementById('confirm-stay').addEventListener('click', (e) => {
+    e.stopPropagation();
+    hud.hideConfirm();
+  });
+  document.getElementById('confirm-quit').addEventListener('click', (e) => {
+    e.stopPropagation();
+    endRunAndShowQuit();
+  });
+  document.getElementById('quit-again').addEventListener('click', (e) => {
+    e.stopPropagation();
+    hud.hideQuit();
+    world.paused = false;
+    resumeAudio();
+    restartScenario();
+  });
+  document.getElementById('quit-leave').addEventListener('click', (e) => {
+    e.stopPropagation();
+    leaveToLobby();
+  });
+
   // --- the sound menu (Music / Sound effects) ------------------------------
   const soundMenu = document.getElementById('sound-menu');
-  const soundNote = document.getElementById('sound-note');
   const rowMusic = document.getElementById('sound-music');
   const rowSfx = document.getElementById('sound-sfx');
 
   function paintSoundMenu() {
-    const byApp = hostMutedState();
     const rows = [
       [rowMusic, isMusicOn()],
       [rowSfx, isSfxOn()],
@@ -138,13 +193,8 @@ async function boot() {
       if (!row) continue;
       row.querySelector('.sound-state').textContent = on ? 'On' : 'Off';
       row.classList.toggle('on', on);
-      // Left ENABLED while the app is muted, deliberately. The switch still
-      // records what the player wants and applies the moment the app unmutes --
-      // a disabled control would make the game look broken at exactly the
-      // moment it is already silent for a reason the player cannot see.
       row.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
-    if (soundNote) soundNote.classList.toggle('hidden', !byApp);
   }
 
   function setSoundMenuOpen(open) {
@@ -173,11 +223,6 @@ async function boot() {
   document.addEventListener('click', () => setSoundMenuOpen(false));
 
   paintMute();
-  // The app can change this without the player touching anything.
-  setHostAudioListener(() => {
-    paintMute();
-    paintSoundMenu();
-  });
   const sectorUi = createSectorTransitionUi(document);
   const instr = createInstrumentation();
 

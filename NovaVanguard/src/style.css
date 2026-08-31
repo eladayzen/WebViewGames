@@ -1138,3 +1138,58 @@ body.dev-invincible::after {
   font-size: 1.2vmin;
   padding: 0.2vmin 0;
 }
+
+/* --- the confirm prompt and the quit screen ------------------------------- */
+
+/* The question is a card, not a screen: "keep playing" should feel like
+   nothing happened, so it deliberately does not redraw the world behind a full
+   background the way the start and result screens do. */
+#confirm-card {
+  min-width: 34%;
+  max-width: 46%;
+}
+
+#confirm-sub {
+  margin: 0 0 0.6vmin;
+  font-size: 1.5vmin;
+  color: rgba(207, 233, 245, 0.75);
+}
+
+.board-buttons {
+  display: flex;
+  gap: 1.2vmin;
+  justify-content: center;
+  margin-top: 2.4vmin;
+}
+
+.board-buttons button {
+  flex: 1 1 0;
+  max-width: 22vmin;
+  padding: 1.5vmin 2vmin;
+  border-radius: 1vmin;
+  border: 0.22vmin solid rgba(111, 232, 255, 0.55);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 1.7vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.18vmin;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.board-buttons button:hover {
+  background: rgba(45, 60, 100, 0.95);
+}
+
+/* The continuing action is the lit one on both screens. Leaving is always
+   available and never the thing the eye lands on first. */
+#confirm-stay,
+#quit-again {
+  background: rgba(55, 200, 230, 0.22);
+  border-color: rgba(111, 232, 255, 0.9);
+}
+
+#quit-stats {
+  margin: 0 0 0.4vmin;
+  font-size: 1.6vmin;
+  color: rgba(207, 233, 245, 0.85);
+}

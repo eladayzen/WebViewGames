@@ -73,7 +73,7 @@
            `absolute`, not `fixed`, so it anchors to the visible game frame rather
            than the raw viewport. -->
       <button id="gb-back"
-        onclick="if(window.Unity)window.Unity.call('nav:back');"
+        onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
         style="position:absolute;top:12px;right:12px;z-index:9999;width:38px;height:38px;border:none;
                border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
                font:600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
@@ -123,10 +123,6 @@
           <span class="sound-label">Sound effects</span>
           <span class="sound-state"></span>
         </button>
-        <!-- Shown only when the app itself is muted, because then neither
-             switch can produce sound and silence would otherwise look like a
-             fault in the game. -->
-        <div id="sound-note" class="hidden">Sound is muted in the app</div>
       </div>
 
       <!-- THE FRAMING-MODE SWITCH IS GONE FROM THE SCREEN, and only from the
@@ -266,6 +262,44 @@
       <!-- GoBalance SDK DOM contract (§7.4): the host checks for this exact
            `hidden` class before synthetically clicking #restart-button, and
            the id must be hyphenated exactly like this. -->
+      <!-- "ARE YOU SURE?" — the X is the only way out of a game on the board,
+           so it must not be a single mis-tap. Deliberately small and centred
+           rather than a full board screen: this is a question, not a
+           destination, and answering "keep playing" should feel like nothing
+           happened. -->
+      <div id="confirm-overlay" class="board-screen hidden">
+        <div id="confirm-card" class="board-card">
+          <h1>QUIT?</h1>
+          <p id="confirm-sub">Your score will still be counted.</p>
+          <div class="board-buttons">
+            <button id="confirm-stay" type="button">KEEP PLAYING</button>
+            <button id="confirm-quit" type="button">QUIT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- THE QUIT SCREEN. Same board, same card as the start and result
+           screens, and NO timer: the player chose to stop, so nothing should
+           start counting at them.
+
+           NOT #gameover-overlay — the host synth-clicks #restart-button
+           whenever an element with that id is visible, and this screen has its
+           own buttons. -->
+      <div id="quit-overlay" class="board-screen hidden">
+        <div id="quit-card" class="board-card">
+          <h1>RUN ENDED</h1>
+          <p id="quit-stats"></p>
+          <div id="quit-scoreboard" class="hidden">
+            <div id="quit-scoreboard-title">BEST ON THIS ACCOUNT</div>
+            <ol id="quit-scoreboard-rows"></ol>
+          </div>
+          <div class="board-buttons">
+            <button id="quit-again" type="button">PLAY AGAIN</button>
+            <button id="quit-leave" type="button">QUIT</button>
+          </div>
+        </div>
+      </div>
+
       <!-- THE START SCREEN. Same board, same background, same card as the
            result screen -- the player sees one screen that bookends the run
            rather than two designs that happen to show the same table.

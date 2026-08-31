@@ -110,25 +110,6 @@ const buffers = {};
 const lastPlayedAt = {};
 let muted = AUDIO.startMuted;
 
-// --- the app's own mute, which is a SEPARATE input from the player's --------
-//
-// The GoBalance SDK (Assets/GoBalance/WebGames/Resources/GoBalanceWebSdk.txt)
-// already silences us when the app is muted: it shadows AudioContext's
-// `destination` getter and splices a host-owned gain node in front of the real
-// one, so our whole chain is downstream of a gain we do not control.
-//
-// What it does NOT do is tell us. So without this the in-game mute button can
-// contradict what the player hears -- silent game, button showing unmuted, and
-// pressing it does nothing because the silence is upstream of masterGain.
-//
-// TWO INPUTS, NOT ONE. The app's mute and the player's own are tracked
-// separately and OR'd, deliberately: the SDK is careful to only ever undo its
-// OWN muting ("a game with its own sound toggle must not have it silently
-// switched back on when the app is unmuted"), and collapsing the two into a
-// single flag would throw that away -- unmuting in the lobby would clear a mute
-// the player set themselves.
-let hostMuted = false;
-
 // --- per-channel mutes (the player's sound popup) ---------------------------
 //
 // Music and sound effects are separately switchable because they are separately
@@ -178,16 +159,16 @@ function savePrefs() {
     /* nothing to do; the session still behaves correctly */
   }
 }
-// The app's volume, 0..1. Today GlobalMuteBtn.cs writes only 0 or 1 -- it is a
-// mute toggle, not a slider. Applied proportionally anyway: it costs nothing,
-// matches the current values exactly, and the app's own comment says the float
-// exists "just to prepare for adding volume adjusment in the future".
-let hostVolume = 1;
-
-/** What masterGain should actually be, from all inputs. */
+/** What masterGain should actually be.
+ *
+ *  THE GAME OWNS ITS OWN AUDIO (2026-08-31). This briefly also folded in the
+ *  app's mute, which the SDK used to push and enforce through a gain node it
+ *  spliced in front of the real destination. The app team then detached it
+ *  deliberately -- `GoBalance.audio` still exists so old code does not throw,
+ *  but it is a constant {volume:1, muted:false} and means nothing. Reading it
+ *  would be reading a stub. */
 function effectiveMasterGain() {
-  if (muted || hostMuted) return 0;
-  return AUDIO.master * hostVolume;
+  return muted ? 0 : AUDIO.master;
 }
 // Read preferences at module load: the sound menu asks isMusicOn()/isSfxOn()
 // the first time it opens, which can be long before anything is audible.
@@ -291,52 +272,7 @@ async function loadBuffer(src) {
  * silent no-op rather than a stall. Nothing in the run waits on audio.
  */
 
-/**
- * Follow the app's audio state (GoBalance SDK).
- *
- * Guarded on the SDK being absent, so the game is unchanged at a plain URL --
- * `window.GoBalance` only exists inside the WebView, and every call here is
- * inert without it. That is the SDK's own design ("everything is inert outside
- * the WebView, so the API can be called unconditionally").
- *
- * Called from initAudio() rather than at module load: the SDK installs itself
- * as the first tag in <head>, but its handshake with the host is asynchronous
- * (it retries for up to a second while window.Unity appears), so reading it
- * once at import time would often read a default.
- */
-function bindHostAudio() {
-  const GB = typeof window !== 'undefined' ? window.GoBalance : null;
-  if (!GB) return;
-
-  const apply = (state) => {
-    if (!state) return;
-    hostMuted = !!state.muted;
-    hostVolume = typeof state.volume === 'number' ? state.volume : 1;
-    if (masterGain) masterGain.gain.value = effectiveMasterGain();
-    // Let the HUD repaint the icon: the effective state just changed without
-    // the player touching anything.
-    if (typeof onHostAudioChange === 'function') onHostAudioChange();
-  };
-
-  apply(GB.audio);
-  try {
-    GB.on('audiochange', apply);
-  } catch (err) {
-    /* older SDK without events: the initial read above still applied */
-  }
-}
-
-/** Set by /main.js so the mute button can be repainted when the APP changes it
- *  rather than only when the player does. */
-let onHostAudioChange = null;
-export function setHostAudioListener(fn) {
-  onHostAudioChange = fn;
-}
-
 export function initAudio() {
-  // Follow the app's mute before anything is audible, so a game entered from a
-  // muted lobby never makes a sound at all.
-  bindHostAudio();
   const ids = Object.keys(MANIFEST);
   return Promise.all(
     ids.map((id) =>
@@ -540,20 +476,8 @@ export function refreshMix() {
   if (musicBus) musicBus.gain.value = AUDIO.musicVolume;
 }
 
-/**
- * The state the player can actually hear, which is what the button must draw.
- *
- * Not `muted` alone: if the app has muted us, the game IS silent, and an icon
- * claiming otherwise is a lie the player can hear. Callers that need to know
- * whose mute it is can ask hostMutedState().
- */
 export function isMuted() {
-  return muted || hostMuted;
-}
-
-/** True when the silence is the APP's doing, not the player's. */
-export function hostMutedState() {
-  return hostMuted;
+  return muted;
 }
 
 /**
