@@ -713,13 +713,38 @@ const missionSelect = createMissionSelect(RIDGE_MISSIONS, progress, (missionId) 
   startRun('missions');
 });
 
-// The face's own list, behind its own lobby button. Same component, same
-// progress store, same star records -- it differs only in which missions it
-// shows and which mode id the run is started under.
-const faceSelect = createMissionSelect(FACE_MISSIONS, progress, (missionId) => {
-  setPendingMission(missionId);
-  startRun('faceMissions');
-}, 1); // track 1 -- the face's own ladder
+/**
+ * THE FACE'S LOBBY IS A DOOR BACK TO THE RIDGE.
+ *
+ * It used to be a second real mission list -- same component, same progress
+ * store, its own ladder. The open face is parked, so the lobby button that led
+ * here was removed... which turned out to be a fence around a field with no
+ * gate on the other three sides. A player still landed in it. Amit: "make the
+ * open valley lobby just something that transfers players to the desired
+ * lobby, just in case -- I don't know where they got there from."
+ *
+ * That last part is the requirement. Rather than find every route in, this
+ * stops being a place you can be: whatever calls open() -- the mode button, a
+ * finished face run, a saved ?gamemode=faceMissions link, anything added later
+ * that has not been thought about yet -- gets the ridge list instead. There is
+ * no path in that needs to be known about, because there is no longer anywhere
+ * to arrive at.
+ *
+ * NOT CONSTRUCTING the real list is the point rather than a side effect. Every
+ * instance of that component wires a handler onto the one shared NEXT button
+ * and a keydown listener onto the window at construction time, and that pair
+ * of duplicate listeners IS the bug that sent a ridge run into the open
+ * valley. Ownership tracking in the component now stops them firing on each
+ * other's panel; not creating the second set means there is nothing to stop.
+ *
+ * isOpen() is honestly false: this never shows anything, so nothing above it
+ * -- the back button, the input gate -- should believe a list is up.
+ */
+const faceSelect = {
+  isOpen: () => false,
+  open: () => missionSelect.open(),
+  close: () => {},
+};
 
 // --- theme ------------------------------------------------------------------
 //

@@ -59,12 +59,19 @@ import stormUrl from '../assets/world/sky_storm.jpg?url';
  * Each value below is measured off its own painting rather than picked by eye:
  * the mean of the medium-dark band (a 14-point percentile window) of the
  * painting's LOWER HALF, which is the haze the ground actually meets -- taking
- * the whole image would drag in the dark sky above it. The window walks upward
- * until the sample clears a luminance floor of 0.17, because fog that is too
- * dark ends the world in a black band hanging under a lit sky, which reads
- * worse than fog that is slightly too light. Only the forest needed that (its
- * pines are near-black, so its honest medium-dark was 0.12); the other five
- * landed in 0.22-0.26 on the first window.
+ * the whole image would drag in the dark sky above it.
+ *
+ * The window then walks until the sample lands between 0.17 and 0.30 luminance.
+ * Too dark ends the world in a black band hanging under a lit sky; too light
+ * washes the distant ground out and costs the rider the contrast it needs on a
+ * dim board-mounted screen. Four of the six landed in range on the first
+ * window. The forest had to walk up -- its pines are near-black, so its honest
+ * medium-dark was 0.12. The storm walks all the way down and STILL does not
+ * make the ceiling: its painting has no dark pixels below the horizon at all,
+ * so it sits at 0.34. That is correct rather than a miss -- fog has to dissolve
+ * the ground into the sky actually behind it, and forcing a bright painting to
+ * fade to a dark colour would recreate the very band the floor rule exists to
+ * prevent.
  */
 /**
  * The mattes a terrain can name, by key. A terrain with no `sky` gets the plain
@@ -133,7 +140,7 @@ export const SKIES = {
   // where the ice needed the extra step down.
   dunes: { url: dunesUrl, repeat: 4, fog: 0x62301f },
   spires: { url: spiresUrl, repeat: 8, fog: 0x4d2e52 },
-  storm: { url: stormUrl, repeat: 8, fog: 0x354550 },
+  storm: { url: stormUrl, repeat: 8, fog: 0x4a5960 },
 };
 
 const RADIUS = 430;

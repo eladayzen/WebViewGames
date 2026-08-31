@@ -23,6 +23,33 @@
 const BLOCK = 10;
 
 /**
+ * WHICH LADDER THE PANEL IS CURRENTLY SHOWING.
+ *
+ * There are two instances of this component -- the ridge's and the face's --
+ * and they share ONE #mission-select element, one #mission-list and one
+ * #msel-next button, because only one is ever on screen. What they do not
+ * share is their event listeners: each instance wires its own click handler
+ * onto that single NEXT button and its own keydown handler onto the window at
+ * construction time, and the only guard either of them had was "is the panel
+ * hidden" -- a question about the SHARED element, which both answer the same
+ * way.
+ *
+ * So pressing NEXT (or Space, or Enter) on the ridge list ran BOTH handlers.
+ * The ridge started its mission and then the face started one over the top of
+ * it, last write winning. Amit: "I found myself somehow, after I completed a
+ * run, in the forbidden open valley mission lobby."
+ *
+ * The open face is meant to be unreachable -- there is no lobby button for it
+ * any more -- but unreachable was only ever enforced at the menu. Its list
+ * object still existed, still listened, and Space is one of the only two keys
+ * the GoBalance board forwards, so on the board it was not an edge case.
+ *
+ * This is the ownership the shared element never had: whoever opened it last
+ * owns it, and every other instance ignores input until it does not.
+ */
+let showing = null;
+
+/**
  * @param {number} [track=0] which progression ladder this list is showing.
  *
  * There are two now -- the ridge and the open face -- and every call to
@@ -116,27 +143,37 @@ export function createMissionSelect(missions, progress, onPick, track = 0) {
 
   function choose(id) {
     el.classList.add('hidden');
+    showing = null;
     onPick(id);
   }
 
-  nextBtn.addEventListener('click', () => choose(progress.nextMissionId(track)));
+  /** True only when the shared panel is open AND showing THIS ladder. */
+  function mine() {
+    return showing === api && !el.classList.contains('hidden');
+  }
+
+  nextBtn.addEventListener('click', () => {
+    if (!mine()) return;
+    choose(progress.nextMissionId(track));
+  });
 
   // Space/Enter takes the default action. On the board these are the only keys
   // the host forwards, so without this the screen would be a dead end there --
   // the same reason the game-over overlay listens for them.
   window.addEventListener('keydown', (e) => {
-    if (el.classList.contains('hidden')) return;
+    if (!mine()) return;
     if (e.code === 'Space' || e.code === 'Enter') {
       e.preventDefault();
       choose(progress.nextMissionId(track));
     }
   });
 
-  return {
-    isOpen: () => !el.classList.contains('hidden'),
+  const api = {
+    isOpen: () => mine(),
     /** Re-reads progress every time, so a result is reflected the moment it lands. */
     open() {
       render();
+      showing = api;
       el.classList.remove('hidden');
       // Bring the mission you are actually on into view. The list scrolls, but
       // the GoBalance WebView forwards no pointer at all -- there is nothing to
@@ -147,6 +184,11 @@ export function createMissionSelect(missions, progress, onPick, track = 0) {
       const next = listEl.querySelector('.msel-row.next');
       if (next) next.scrollIntoView({ block: 'center' });
     },
-    close() { el.classList.add('hidden'); },
+    close() {
+      el.classList.add('hidden');
+      if (showing === api) showing = null;
+    },
   };
+
+  return api;
 }
