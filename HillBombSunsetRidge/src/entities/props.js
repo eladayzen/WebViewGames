@@ -937,8 +937,41 @@ export function createProps(scene) {
       const side = i % 2 === 0 ? 1 : -1;
       // Jittered off the exact cadence so it does not read as a metronome.
       const jitter = (hash(i * 5.1 + 3) - 0.5) * boostEvery * 0.35;
-      const u = side * TERRAIN.thetaMax * 0.66;
-      add(i % 3 === 2 ? 'airGate' : 'boostPad', nextBoostS + jitter, u);
+      const at = nextBoostS + jitter;
+      let u = side * TERRAIN.thetaMax * 0.66;
+      /**
+       * A GATE AFTER A RAMP HAS TO SIT WHERE THE RAMP THROWS YOU.
+       *
+       * Amit: "if a yellow speed boost is after a big ramp but not aligned to
+       * it -- too much on the left -- I cannot pick it up, it's impossible to
+       * get to it."
+       *
+       * Exactly right, and it is measurable. Carve still works in the air (the
+       * pendulum only stops for a grind), so a flight buys roughly 0.9 rad of
+       * steering at the player's 0.61 rad/s. But the alternating cadence above
+       * put gates at 0.66 of the rim while the lip ramps sit at 0.34 of it --
+       * on the OPPOSITE side that is a 1.15 rad swing, more than the air
+       * allows. The gate was not hard to reach, it was unreachable.
+       *
+       * So a gate landing shortly after a ramp gives up its place in the
+       * cadence and takes the ramp's line instead, nudged a little to one side
+       * so it still has to be steered for. The rider comes off the lip pointing
+       * at it, which is the whole point of putting a gate after a ramp.
+       */
+      let from = null, fromD = 1e9;
+      for (const it of active) {
+        if (!it.def || it.def.kind !== 'launch') continue;
+        const d = at - it.s;
+        if (d > 4 && d < 55 && d < fromD) { fromD = d; from = it; }
+      }
+      if (from) {
+        // Half the air budget, so it is a steer rather than a gift, and always
+        // on the side the rider has more road to work with.
+        const nudge = (from.theta > 0 ? -1 : 1) * 0.22;
+        u = Math.max(-TERRAIN.thetaMax * 0.8,
+          Math.min(TERRAIN.thetaMax * 0.8, from.theta + nudge));
+      }
+      add(i % 3 === 2 ? 'airGate' : 'boostPad', at, u);
       nextBoostS += boostEvery;
     }
   }
