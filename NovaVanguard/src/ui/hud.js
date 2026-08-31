@@ -14,6 +14,7 @@
 // formation physically overlapping the score readout, and in a shallow frame
 // that is much worse.
 
+import { avatarFor } from '../data/avatars.js';
 import {
   PLAYER,
   BANNERS,
@@ -45,6 +46,15 @@ export function createHud(root) {
     modeA: root.querySelector('#mode-a'),
     gameover: root.querySelector('#gameover-overlay'),
     gameoverStats: root.querySelector('#gameover-stats'),
+    scoreboard: root.querySelector('#scoreboard'),
+    startOverlay: root.querySelector('#start-overlay'),
+    startCountdown: root.querySelector('#start-countdown'),
+    gameoverCountdown: root.querySelector('#gameover-countdown'),
+    startScoreboard: root.querySelector('#start-scoreboard'),
+    startScoreboardTitle: root.querySelector('#start-scoreboard-title'),
+    startScoreboardRows: root.querySelector('#start-scoreboard-rows'),
+    scoreboardTitle: root.querySelector('#scoreboard-title'),
+    scoreboardRows: root.querySelector('#scoreboard-rows'),
     restart: root.querySelector('#restart-button'),
     warn: root.querySelector('#constraint-warning'),
     bossBar: root.querySelector('#boss-bar'),
@@ -373,11 +383,130 @@ export function createHud(root) {
     showGameOver(w) {
       el.gameoverStats.textContent =
         `${w.stats.kills} destroyed · ${w.stats.preLockKills} pre-lock · ` +
-        `wave ${w.director.waveIndex + 1}`;
+        `wave ${w.director.waveIndex + 1} · score ${w.stats.score.toLocaleString()}`;
       el.gameover.classList.remove('hidden');
     },
+
+    /**
+     * Paint the account scoreboard, or leave it hidden.
+     *
+     * HIDDEN IS A REAL OUTCOME, not a failure path. Outside the Unity app there
+     * is no SDK, and a profile that has never played has no rows -- in both
+     * cases an empty framed panel would look broken, so the section simply does
+     * not exist. The game-over card reads exactly as it did before.
+     *
+     * `complete: false` means only this device could be read (offline, or
+     * nobody signed in). The title says so, because presenting one device as
+     * the whole family is a claim the player has no way to check.
+     */
+    /**
+     * Paint a board screen.
+     *
+     * `groups` is a list of row-runs, drawn in order with a visible break
+     * between them -- the result screen passes [leaders, windowAroundYourRun],
+     * the start screen passes one group. The break matters: without it, rows
+     * #5 and #34 sitting flush look like consecutive places.
+     *
+     * HIDDEN IS A REAL OUTCOME. Outside the app there is no SDK, and a profile
+     * that has never played has no rows; an empty framed panel would look
+     * broken, so the section simply does not exist.
+     */
+    showBoard(where, board, groups) {
+      const startScreen = where === 'start';
+      const box = startScreen ? el.startScoreboard : el.scoreboard;
+      const title = startScreen ? el.startScoreboardTitle : el.scoreboardTitle;
+      const list = startScreen ? el.startScoreboardRows : el.scoreboardRows;
+      if (!box) return;
+
+      const total = (groups || []).reduce((n, g) => n + g.length, 0);
+      if (!board || !board.available || !total) {
+        box.classList.add('hidden');
+        return;
+      }
+      title.textContent = board.complete
+        ? 'BEST ON THIS ACCOUNT'
+        : 'BEST ON THIS DEVICE';
+      list.textContent = '';
+
+      groups.forEach((rows, gi) => {
+        if (gi > 0 && rows.length) {
+          const gap = document.createElement('li');
+          gap.className = 'sb-gap';
+          gap.textContent = '·  ·  ·';
+          list.appendChild(gap);
+        }
+        rows.forEach((r) => {
+          const li = document.createElement('li');
+          // `isRun` marks the run just played; `isYou` marks any row of the
+          // player's. Only the run gets the strong highlight -- on a board
+          // where a player holds several rows, lighting all of them up would
+          // stop answering "which one was this run".
+          li.className =
+            'sb-row' + (r.isRun ? ' sb-you' : r.isYou ? ' sb-mine' : '');
+
+          const rank = document.createElement('span');
+          rank.className = 'sb-rank';
+          // The TRUE position, never the index within this group.
+          rank.textContent = String(r.rank);
+
+          const av = document.createElement('span');
+          av.className = 'sb-avatar';
+          const art = avatarFor(r.avatarType);
+          if (art) {
+            av.style.backgroundColor = art.color;
+            const img = document.createElement('img');
+            img.src = art.src;
+            img.alt = '';
+            av.appendChild(img);
+          } else {
+            // Unknown avatar type: the app can add one at any time and this
+            // game's mirrored copy will not know it yet. Fall back to the
+            // initial rather than a broken image.
+            av.classList.add('sb-avatar-fallback');
+            av.textContent = (r.name || '?').charAt(0).toUpperCase();
+          }
+
+          const name = document.createElement('span');
+          name.className = 'sb-name';
+          name.textContent = r.name || 'PLAYER';
+
+          const score = document.createElement('span');
+          score.className = 'sb-score';
+          score.textContent = Number(r.score || 0).toLocaleString();
+
+          li.appendChild(rank);
+          li.appendChild(av);
+          li.appendChild(name);
+          li.appendChild(score);
+          list.appendChild(li);
+        });
+      });
+      box.classList.remove('hidden');
+    },
+
+    /** The pre-run screen. Same card and same board as the result screen. */
+    showStart() {
+      if (el.startOverlay) el.startOverlay.classList.remove('hidden');
+    },
+    hideStart() {
+      if (el.startOverlay) el.startOverlay.classList.add('hidden');
+    },
+    /** Seconds remaining on the START screen, as a whole number. */
+    setCountdown(secs) {
+      if (!el.startCountdown) return;
+      el.startCountdown.textContent = secs > 0 ? `Starting in ${secs}` : 'Go';
+    },
+
+    /** Seconds remaining on the RESULT screen before it restarts itself. */
+    setResultCountdown(secs) {
+      if (!el.gameoverCountdown) return;
+      el.gameoverCountdown.textContent =
+        secs > 0 ? `Restarting in ${secs}` : '';
+    },
+
     hideGameOver() {
       el.gameover.classList.add('hidden');
+      if (el.scoreboard) el.scoreboard.classList.add('hidden');
     },
     onRestart(fn) {
       el.restart.addEventListener('click', fn);

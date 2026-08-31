@@ -654,15 +654,65 @@ body {
    `hidden` class name are fixed by GOBALANCE_SDK.md; the styling is ours.
 --------------------------------------------------------------------------- */
 
-#gameover-overlay {
+/* THE BOARD SCREEN -- one design, shown twice.
+ *
+ * The run opens and closes on the same screen: the same background, the same
+ * card, the same table of names. That is the point of it. Before the run it
+ * says who you are trying to beat; after it, whether you did. Two screens that
+ * merely happened to show the same table would read as two features.
+ *
+ * A real background rather than a translucent overlay, so it is a place rather
+ * than a pause -- the playfield behind it is not part of what the player is
+ * looking at in either case. */
+.board-screen {
   position: absolute;
   inset: 0;
   z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(2, 4, 10, 0.72);
-  backdrop-filter: blur(2px);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(31, 58, 96, 0.92) 0%, rgba(5, 8, 18, 0.97) 62%),
+    #04060e;
+}
+
+.board-screen.hidden { display: none; }
+
+.board-card {
+  text-align: center;
+  min-width: 46%;
+  max-width: 62%;
+  padding: 3.4vmin 4vmin;
+  border-radius: 1.6vmin;
+  background: rgba(9, 14, 28, 0.72);
+  border: 0.18vmin solid rgba(111, 232, 255, 0.22);
+  box-shadow: 0 1.4vmin 5vmin rgba(0, 0, 0, 0.55);
+}
+
+#start-card h1,
+#gameover-card h1 {
+  margin: 0 0 0.9vmin;
+  font-size: 3.4vmin;
+  letter-spacing: 0.5vmin;
+  color: #eafcff;
+  text-shadow: 0 0 2vmin rgba(111, 232, 255, 0.55);
+}
+
+#start-sub {
+  margin: 0 0 1.4vmin;
+  font-size: 1.5vmin;
+  letter-spacing: 0.12vmin;
+  color: rgba(207, 233, 245, 0.72);
+}
+
+/* The countdown is the one thing on the start screen that changes, so it is the
+   one thing sized to be read from a standing position on a board. */
+#start-countdown {
+  margin: 2vmin 0 0;
+  font: 700 2.2vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.22vmin;
+  color: #6fe8ff;
+  text-shadow: 0 0 1.6vmin rgba(111, 232, 255, 0.6);
 }
 
 #gameover-card {
@@ -909,4 +959,182 @@ body.dev-invincible::after {
   font: 700 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   letter-spacing: 0.12em;
   pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   The account scoreboard, on the game-over card (systems/scoreboard.js).
+   ---------------------------------------------------------------------------
+   Sized and coloured as part of the card rather than as a panel of its own:
+   this is the last line of a result the player is already reading, not a
+   separate screen. It is also ABOVE the restart button in the DOM and must stay
+   there -- the host synth-clicks #restart-button on Space/Enter while the
+   overlay is up, and the button has to remain the obvious end of the card.
+--------------------------------------------------------------------------- */
+
+#scoreboard,
+#start-scoreboard {
+  margin: 2.2vmin 0 0.6vmin;
+  width: 100%;
+  text-align: left;
+}
+
+#scoreboard.hidden,
+#start-scoreboard.hidden { display: none; }
+
+#scoreboard-title,
+#start-scoreboard-title {
+  font: 700 1.25vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.22vmin;
+  color: rgba(111, 232, 255, 0.75);
+  margin-bottom: 1vmin;
+  text-align: center;
+}
+
+#scoreboard-rows,
+#start-scoreboard-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5vmin;
+}
+
+.sb-row {
+  display: grid;
+  grid-template-columns: 3.2vmin 3.4vmin 1fr auto;
+  align-items: baseline;
+  gap: 1vmin;
+  padding: 0.7vmin 1vmin;
+  border-radius: 0.7vmin;
+  background: rgba(20, 34, 54, 0.55);
+  font: 600 1.5vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  color: #cfe9f5;
+}
+
+/* The player's own row. Brighter and outlined rather than merely tinted --
+   "where am I" is the only question this board has to answer at a glance, and
+   it is being read by someone who has just died and is about to press
+   restart. */
+.sb-row.sb-you {
+  background: rgba(55, 200, 230, 0.20);
+  outline: 0.22vmin solid rgba(111, 232, 255, 0.8);
+  color: #eafcff;
+}
+
+.sb-rank { color: rgba(207, 233, 245, 0.55); text-align: right; }
+.sb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-score { font-variant-numeric: tabular-nums; letter-spacing: 0.06vmin; }
+
+/* ---------------------------------------------------------------------------
+   The sound menu, off the speaker button.
+   ---------------------------------------------------------------------------
+   A PLAYER-FACING control, not a debug panel: two rows, words rather than
+   numbers, and the state spelled out as On/Off instead of encoded in a colour
+   that has to be learned. Sized for a thumb, since the same markup is what a
+   touch device gets.
+--------------------------------------------------------------------------- */
+
+#sound-menu {
+  position: absolute;
+  top: 58px;
+  right: 96px;
+  z-index: 9999;
+  width: 210px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(10, 12, 26, 0.94);
+  border: 1px solid rgba(111, 232, 255, 0.30);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#sound-menu.hidden { display: none; }
+
+.sound-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(111, 232, 255, 0.22);
+  border-radius: 9px;
+  background: rgba(30, 40, 70, 0.75);
+  color: #cfe9f5;
+  font: 600 14px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.sound-row:hover { background: rgba(45, 60, 100, 0.9); }
+
+/* On is the lit state, so "is my music on" is answerable at a glance without
+   reading the word. The word is still there for anyone who needs it. */
+.sound-row.on {
+  background: rgba(55, 200, 230, 0.20);
+  border-color: rgba(111, 232, 255, 0.75);
+  color: #eafcff;
+}
+
+.sound-state {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+}
+
+#sound-note {
+  padding: 6px 4px 2px;
+  text-align: center;
+  font: 500 11.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  line-height: 1.35;
+  color: rgba(255, 214, 138, 0.95);
+}
+
+#sound-note.hidden { display: none; }
+
+
+/* --- avatars and the two-section board (playtest round 13) ---------------- */
+
+/* The avatar sits on its own authored colour, so a row still reads as that
+   person even at a glance, and still reads if the image fails to load. */
+.sb-avatar {
+  width: 3.2vmin;
+  height: 3.2vmin;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(111, 232, 255, 0.18);
+}
+
+.sb-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.sb-avatar-fallback {
+  font: 700 1.5vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  color: #04121a;
+}
+
+/* A player's OTHER runs: marked, but quietly. Only the run just played gets
+   the strong highlight (.sb-you) -- lighting up every row a player owns would
+   stop the screen answering "which one was this run". */
+.sb-row.sb-mine {
+  background: rgba(55, 200, 230, 0.10);
+}
+
+/* The break between the leaders and the window around your run. Without it,
+   rows #5 and #34 sitting flush read as consecutive places. */
+.sb-gap {
+  text-align: center;
+  letter-spacing: 0.6vmin;
+  color: rgba(207, 233, 245, 0.35);
+  font-size: 1.2vmin;
+  padding: 0.2vmin 0;
 }

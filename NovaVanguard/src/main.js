@@ -50,12 +50,19 @@ import {
   devSpawnPickup,
 } from './systems/pickups.js';
 import { runValidator } from './systems/constraints.js';
+import { submitRun, fetchBoard, resultSections } from './systems/scoreboard.js';
 import {
   initAudio,
   suspendAudio,
   resumeAudio,
   toggleMuted,
   isMuted,
+  hostMutedState,
+  setHostAudioListener,
+  isMusicOn,
+  isSfxOn,
+  setMusicOn,
+  setSfxOn,
   refreshMix,
   audioStats,
   sfx,
@@ -63,7 +70,7 @@ import {
 import { createHud } from './ui/hud.js';
 import { createInstrumentation } from './debug/instrumentation.js';
 import { createPanel } from './debug/panel.js';
-import { POC_SCENARIO, SECTOR_TRANSITION, PICKUPS } from './data/tuning.js';
+import { POC_SCENARIO, SECTOR_TRANSITION, PICKUPS, START_SCREEN } from './data/tuning.js';
 import * as TUNING from './data/tuning.js';
 
 const stage = document.getElementById('stage');
@@ -96,7 +103,81 @@ async function boot() {
   const rng = makeRng(POC_SCENARIO.seed);
   const hud = createHud(document);
   const muteButton = document.getElementById('mute-button');
-  muteButton.textContent = isMuted() ? '\u{1F507}' : '\u{1F508}';
+
+  /** Repaint the mute control from the EFFECTIVE audio state.
+   *
+   *  isMuted() is "player muted OR app muted", so this can never claim sound is
+   *  on while the app is holding us silent. When the silence is the app's, the
+   *  control is also dimmed and says so -- pressing it cannot make sound, and a
+   *  button that looks live but does nothing is worse than one that admits it.
+   */
+  function paintMute() {
+    // The icon reports whether the player will actually hear anything: the app
+    // muting us, the master mute, or both channels switched off all end in
+    // silence, and an icon that only tracked one of them would contradict the
+    // other two.
+    const m = isMuted() || (!isMusicOn() && !isSfxOn());
+    const byApp = hostMutedState();
+    muteButton.textContent = m ? '\u{1F507}' : '\u{1F508}';
+    muteButton.setAttribute('aria-label', byApp ? 'Muted by the app' : m ? 'Unmute' : 'Mute');
+    muteButton.style.opacity = byApp ? '0.45' : '1';
+  }
+  // --- the sound menu (Music / Sound effects) ------------------------------
+  const soundMenu = document.getElementById('sound-menu');
+  const soundNote = document.getElementById('sound-note');
+  const rowMusic = document.getElementById('sound-music');
+  const rowSfx = document.getElementById('sound-sfx');
+
+  function paintSoundMenu() {
+    const byApp = hostMutedState();
+    const rows = [
+      [rowMusic, isMusicOn()],
+      [rowSfx, isSfxOn()],
+    ];
+    for (const [row, on] of rows) {
+      if (!row) continue;
+      row.querySelector('.sound-state').textContent = on ? 'On' : 'Off';
+      row.classList.toggle('on', on);
+      // Left ENABLED while the app is muted, deliberately. The switch still
+      // records what the player wants and applies the moment the app unmutes --
+      // a disabled control would make the game look broken at exactly the
+      // moment it is already silent for a reason the player cannot see.
+      row.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    if (soundNote) soundNote.classList.toggle('hidden', !byApp);
+  }
+
+  function setSoundMenuOpen(open) {
+    if (!soundMenu) return;
+    soundMenu.classList.toggle('hidden', !open);
+    if (open) paintSoundMenu();
+  }
+
+  if (rowMusic) {
+    rowMusic.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setMusicOn(!isMusicOn());
+      paintSoundMenu();
+      paintMute();
+    });
+  }
+  if (rowSfx) {
+    rowSfx.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setSfxOn(!isSfxOn());
+      paintSoundMenu();
+      paintMute();
+    });
+  }
+  // Anywhere else closes it, so it can never be left covering the playfield.
+  document.addEventListener('click', () => setSoundMenuOpen(false));
+
+  paintMute();
+  // The app can change this without the player touching anything.
+  setHostAudioListener(() => {
+    paintMute();
+    paintSoundMenu();
+  });
   const sectorUi = createSectorTransitionUi(document);
   const instr = createInstrumentation();
 
@@ -156,6 +237,10 @@ async function boot() {
    * clearing, and both modes replay the identical squadron script.
    */
   function restartScenario() {
+    // Stop the result clock, or a manual restart would be followed by an
+    // automatic one a few seconds later.
+    resultT = -1;
+    hud.setResultCountdown(0);
     resetWorld(world);
     renderer.clearFx();
     hud.hideGameOver();
@@ -296,9 +381,8 @@ async function boot() {
   }
 
   function toggleMute() {
-    const m = toggleMuted();
-    muteButton.textContent = m ? '\u{1F507}' : '\u{1F508}';
-    muteButton.setAttribute('aria-label', m ? 'Unmute' : 'Mute');
+    toggleMuted();
+    paintMute();
     // Unmuting resumes the context (a tap on the speaker IS the gesture the
     // autoplay policy wants), which would otherwise start the music bed playing
     // over a paused game. Pause wins.
@@ -369,7 +453,14 @@ async function boot() {
     setPaused(!world.paused);
   });
 
-  muteButton.addEventListener('click', () => toggleMute());
+  // THE SPEAKER OPENS THE MENU rather than toggling master mute. Two switches
+  // that the player can see beat one switch whose meaning they have to infer,
+  // and "turn the music off but keep the hits" is the request a single toggle
+  // cannot answer.
+  muteButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setSoundMenuOpen(soundMenu.classList.contains('hidden'));
+  });
 
   // Dev panel (ui/devPanel.js) -- level jump, skip-to-boss, invincibility.
   // Mounted from JS rather than authored into index.html so the whole tool
@@ -409,6 +500,26 @@ async function boot() {
   let lastInput = { carve: 0, nudge: 0, source: 'keyboard' };
 
   function update(dt) {
+    // Runs before the RUNNING gate below, because during the countdown the
+    // state is deliberately not RUNNING.
+    if (!started) {
+      tickCountdown(dt);
+      return;
+    }
+    // The result screen counts itself down to a restart. Runs before the
+    // RUNNING gate because the state is FAILED while it is up.
+    if (resultT >= 0) {
+      resultT -= dt;
+      const secs = Math.max(0, Math.ceil(resultT));
+      if (secs !== resultShown) {
+        resultShown = secs;
+        hud.setResultCountdown(secs);
+      }
+      if (resultT <= 0) {
+        resultT = -1;
+        restartScenario();
+      }
+    }
     // Pause freezes the whole simulation WITHOUT touching the state machine's
     // current value, so resuming drops back into exactly what was paused
     // (§9.2, and the repo-wide convention in BUILD_NOTES.md).
@@ -475,6 +586,25 @@ async function boot() {
     if (!world.player.alive && world.state === GameState.RUNNING) {
       world.state = GameState.FAILED;
       hud.showGameOver(world);
+      // THE ACCOUNT SCOREBOARD (systems/scoreboard.js). Fire-and-forget: the
+      // overlay is already up, and the board fills in underneath it when the
+      // round-trip returns. Deliberately not awaited -- a slow or offline
+      // Firestore read must never delay the player seeing that they died, and
+      // both calls resolve rather than reject, so there is nothing to catch.
+      //
+      // Submitted BEFORE fetching so the run just finished is in the board the
+      // player is about to read -- otherwise their own score is conspicuously
+      // missing from the one screen where they are looking for it.
+      resultT = START_SCREEN.resultSeconds;
+      resultShown = -1;
+      hud.setResultCountdown(START_SCREEN.resultSeconds);
+      const runScore = world.stats.score;
+      submitRun(runScore).then(() =>
+        fetchBoard().then((board) => {
+          const { top, window: near } = resultSections(board.rows, runScore);
+          hud.showBoard('result', board, near.length ? [top, near] : [top]);
+        })
+      );
     }
   }
 
@@ -505,7 +635,78 @@ async function boot() {
   // No mode banner on boot any more: Mode S is the decided mode, so announcing
   // it every time is noise. `M` still announces a swap, because that is a
   // change the operator needs told about.
+  // --- the start screen -----------------------------------------------------
+  //
+  // The run does not begin until the countdown ends. update() already returns
+  // unless the state is RUNNING, so holding the state at BOOT is the whole gate
+  // -- no new branch in the simulation, and nothing can spawn, fire or move
+  // behind the screen.
+  //
+  // AUTO-ADVANCING, WITH NO KEY PRESS. GOBALANCE_SDK.md requires the first
+  // playable state to be reached on load; a countdown that runs itself down
+  // satisfies that where a "press to start" gate would not. Any input skips it,
+  // because a player who is ready should not be made to wait.
+  let countdownT = START_SCREEN.seconds;
+  let countdownShown = -1;
+  let started = false;
+  // The result screen's own clock. -1 means "not counting", which is the state
+  // during a run and after a manual restart.
+  let resultT = -1;
+  let resultShown = -1;
+
+  function beginRun() {
+    if (started) return;
+    started = true;
+    hud.hideStart();
+    restartScenario();
+  }
+
+  function tickCountdown(dt) {
+    if (started) return;
+    countdownT -= dt;
+    const secs = Math.max(0, Math.ceil(countdownT));
+    if (secs !== countdownShown) {
+      countdownShown = secs;
+      hud.setCountdown(secs);
+    }
+    if (countdownT <= 0) beginRun();
+  }
+
+  // Prime the board before the player has played anything: on the start screen
+  // it is the standing board, so it is fetched rather than submitted to.
+  hud.showStart();
+  hud.setCountdown(START_SCREEN.seconds);
+  // The start screen has no run to place, so it is simply the leaders. Ten
+  // rows is what the card holds without scrolling at the sizes the board is
+  // read from -- standing up, at arm's length.
+  fetchBoard().then((board) =>
+    hud.showBoard('start', board, [board.rows.slice(0, 10)])
+  );
+
+  // Any deliberate input skips the wait. Pointer and key only -- NOT the board
+  // sensor, which is never zero and would skip the screen instantly.
+  const skip = () => beginRun();
+  window.addEventListener('pointerdown', skip, { once: true });
+  window.addEventListener('keydown', skip, { once: true });
+
+  // Skipping the RESULT screen is a separate, permanent listener: the start
+  // skip above is {once:true} and is spent on the first run, and the result
+  // screen comes back after every run thereafter.
+  //
+  // Deliberately does NOT fire while a run is in progress -- it only acts while
+  // the result clock is actually counting, so a stray tap mid-run cannot
+  // restart the game.
+  const skipResult = () => {
+    if (resultT < 0) return;
+    resultT = -1;
+    restartScenario();
+  };
+  window.addEventListener('pointerdown', skipResult);
+
+  // The scenario is armed but NOT started, so the surface and HUD draw behind
+  // the screen while the state stays out of RUNNING.
   restartScenario();
+  world.state = GameState.BOOT;
 
   // Surface the boot report and the scenario controls where an operator (or a
   // scripted run -- §5.2 explicitly wants the mode settable for those) can

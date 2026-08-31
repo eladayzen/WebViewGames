@@ -109,11 +109,98 @@ let musicBus = null;
 const buffers = {};
 const lastPlayedAt = {};
 let muted = AUDIO.startMuted;
+
+// --- the app's own mute, which is a SEPARATE input from the player's --------
+//
+// The GoBalance SDK (Assets/GoBalance/WebGames/Resources/GoBalanceWebSdk.txt)
+// already silences us when the app is muted: it shadows AudioContext's
+// `destination` getter and splices a host-owned gain node in front of the real
+// one, so our whole chain is downstream of a gain we do not control.
+//
+// What it does NOT do is tell us. So without this the in-game mute button can
+// contradict what the player hears -- silent game, button showing unmuted, and
+// pressing it does nothing because the silence is upstream of masterGain.
+//
+// TWO INPUTS, NOT ONE. The app's mute and the player's own are tracked
+// separately and OR'd, deliberately: the SDK is careful to only ever undo its
+// OWN muting ("a game with its own sound toggle must not have it silently
+// switched back on when the app is unmuted"), and collapsing the two into a
+// single flag would throw that away -- unmuting in the lobby would clear a mute
+// the player set themselves.
+let hostMuted = false;
+
+// --- per-channel mutes (the player's sound popup) ---------------------------
+//
+// Music and sound effects are separately switchable because they are separately
+// wanted: a player on a board often wants the game's feedback -- hits, kills,
+// the boss warning -- while listening to their own music. One master switch
+// cannot express that, and a game that only offers all-or-nothing gets muted
+// entirely by anyone who dislikes its soundtrack.
+//
+// Persisted, because this is a preference rather than a per-run state. Stored
+// under a namespaced key so it cannot collide with anything else the WebView
+// holds. localStorage can throw outright in a restricted WebView, so every
+// access is guarded and simply degrades to session-only.
+let musicOn = true;
+let sfxOn = true;
+
+const PREF_KEY = 'novavanguard:audio';
+
+let prefsLoaded = false;
+
+function loadPrefs() {
+  // Idempotent and called from two places: once at module load, so the sound
+  // menu can paint the real state before any audio exists, and again when the
+  // graph is built in case that somehow happens first. Without the module-load
+  // call, isMusicOn() answers with a default until the player has heard
+  // something -- and the menu would open showing the wrong switches.
+  if (prefsLoaded) return;
+  prefsLoaded = true;
+  try {
+    const raw = window.localStorage.getItem(PREF_KEY);
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    if (typeof p.musicOn === 'boolean') musicOn = p.musicOn;
+    if (typeof p.sfxOn === 'boolean') sfxOn = p.sfxOn;
+    if (typeof p.muted === 'boolean') muted = p.muted;
+  } catch (err) {
+    /* private mode, or no storage: defaults stand */
+  }
+}
+
+function savePrefs() {
+  try {
+    window.localStorage.setItem(
+      PREF_KEY,
+      JSON.stringify({ musicOn, sfxOn, muted })
+    );
+  } catch (err) {
+    /* nothing to do; the session still behaves correctly */
+  }
+}
+// The app's volume, 0..1. Today GlobalMuteBtn.cs writes only 0 or 1 -- it is a
+// mute toggle, not a slider. Applied proportionally anyway: it costs nothing,
+// matches the current values exactly, and the app's own comment says the float
+// exists "just to prepare for adding volume adjusment in the future".
+let hostVolume = 1;
+
+/** What masterGain should actually be, from all inputs. */
+function effectiveMasterGain() {
+  if (muted || hostMuted) return 0;
+  return AUDIO.master * hostVolume;
+}
+// Read preferences at module load: the sound menu asks isMusicOn()/isSfxOn()
+// the first time it opens, which can be long before anything is audible.
+loadPrefs();
+
 let musicSource = null;
 let loaded = false;
 
 function getContext() {
   if (ctx) return ctx;
+  // Cheap no-op if module load already did it; kept so the graph can never be
+  // built from defaults regardless of call order.
+  loadPrefs();
   try {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
@@ -143,13 +230,13 @@ function getContext() {
     // UPSTREAM of the limiter, so muting silences the limiter's input rather
     // than asking it to squash a signal that should not exist.
     masterGain = ctx.createGain();
-    masterGain.gain.value = muted ? 0 : AUDIO.master;
+    masterGain.gain.value = effectiveMasterGain();
     masterGain.connect(tail);
     sfxBus = ctx.createGain();
-    sfxBus.gain.value = AUDIO.sfxVolume;
+    sfxBus.gain.value = sfxOn ? AUDIO.sfxVolume : 0;
     sfxBus.connect(masterGain);
     musicBus = ctx.createGain();
-    musicBus.gain.value = AUDIO.musicVolume;
+    musicBus.gain.value = musicOn ? AUDIO.musicVolume : 0;
     musicBus.connect(masterGain);
   } catch (err) {
     ctx = null;
@@ -203,7 +290,53 @@ async function loadBuffer(src) {
  * decode is in flight, and each `sfx()` call before the buffer lands is a
  * silent no-op rather than a stall. Nothing in the run waits on audio.
  */
+
+/**
+ * Follow the app's audio state (GoBalance SDK).
+ *
+ * Guarded on the SDK being absent, so the game is unchanged at a plain URL --
+ * `window.GoBalance` only exists inside the WebView, and every call here is
+ * inert without it. That is the SDK's own design ("everything is inert outside
+ * the WebView, so the API can be called unconditionally").
+ *
+ * Called from initAudio() rather than at module load: the SDK installs itself
+ * as the first tag in <head>, but its handshake with the host is asynchronous
+ * (it retries for up to a second while window.Unity appears), so reading it
+ * once at import time would often read a default.
+ */
+function bindHostAudio() {
+  const GB = typeof window !== 'undefined' ? window.GoBalance : null;
+  if (!GB) return;
+
+  const apply = (state) => {
+    if (!state) return;
+    hostMuted = !!state.muted;
+    hostVolume = typeof state.volume === 'number' ? state.volume : 1;
+    if (masterGain) masterGain.gain.value = effectiveMasterGain();
+    // Let the HUD repaint the icon: the effective state just changed without
+    // the player touching anything.
+    if (typeof onHostAudioChange === 'function') onHostAudioChange();
+  };
+
+  apply(GB.audio);
+  try {
+    GB.on('audiochange', apply);
+  } catch (err) {
+    /* older SDK without events: the initial read above still applied */
+  }
+}
+
+/** Set by /main.js so the mute button can be repainted when the APP changes it
+ *  rather than only when the player does. */
+let onHostAudioChange = null;
+export function setHostAudioListener(fn) {
+  onHostAudioChange = fn;
+}
+
 export function initAudio() {
+  // Follow the app's mute before anything is audible, so a game entered from a
+  // muted lobby never makes a sound at all.
+  bindHostAudio();
   const ids = Object.keys(MANIFEST);
   return Promise.all(
     ids.map((id) =>
@@ -303,9 +436,49 @@ export function stopMusic() {
   musicSource = null;
 }
 
+/** Apply the per-channel switches to the live buses. */
+function applyChannels() {
+  if (sfxBus) sfxBus.gain.value = sfxOn ? AUDIO.sfxVolume : 0;
+  if (musicBus) musicBus.gain.value = musicOn ? AUDIO.musicVolume : 0;
+}
+
+export function isMusicOn() { return musicOn; }
+export function isSfxOn() { return sfxOn; }
+
+/**
+ * Turn the music channel on or off.
+ *
+ * Turning it ON also starts the bed if it is not already running: the source is
+ * stopped outright when music is switched off rather than left playing into a
+ * silent gain, so there is nothing to unmute back into.
+ */
+export function setMusicOn(next) {
+  musicOn = !!next;
+  applyChannels();
+  savePrefs();
+  if (musicOn) {
+    resumeIfSuspended();
+    if (loaded && !musicSource) startMusic();
+  } else {
+    stopMusic();
+  }
+  return musicOn;
+}
+
+export function setSfxOn(next) {
+  sfxOn = !!next;
+  applyChannels();
+  savePrefs();
+  // A tap on the control is a gesture, which is exactly what the autoplay
+  // policy wants -- so use it rather than waiting for the next one.
+  if (sfxOn) resumeIfSuspended();
+  return sfxOn;
+}
+
 export function setMuted(next) {
   muted = !!next;
-  if (masterGain) masterGain.gain.value = muted ? 0 : AUDIO.master;
+  savePrefs();
+  if (masterGain) masterGain.gain.value = effectiveMasterGain();
   // A gesture is a gesture: tapping the mute control to UNmute is exactly the
   // interaction the autoplay policy wants, so use it.
   if (!muted) {
@@ -361,13 +534,26 @@ export function audioStats() {
 }
 
 export function refreshMix() {
-  if (masterGain) masterGain.gain.value = muted ? 0 : AUDIO.master;
+  if (masterGain) masterGain.gain.value = effectiveMasterGain();
+  applyChannels();
   if (sfxBus) sfxBus.gain.value = AUDIO.sfxVolume;
   if (musicBus) musicBus.gain.value = AUDIO.musicVolume;
 }
 
+/**
+ * The state the player can actually hear, which is what the button must draw.
+ *
+ * Not `muted` alone: if the app has muted us, the game IS silent, and an icon
+ * claiming otherwise is a lie the player can hear. Callers that need to know
+ * whose mute it is can ask hostMutedState().
+ */
 export function isMuted() {
-  return muted;
+  return muted || hostMuted;
+}
+
+/** True when the silence is the APP's doing, not the player's. */
+export function hostMutedState() {
+  return hostMuted;
 }
 
 /**

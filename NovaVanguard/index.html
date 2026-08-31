@@ -106,6 +106,29 @@
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&#128264;</button>
 
+      <!-- THE SOUND MENU. Opens from the speaker button above.
+           A player-facing control, not a debug panel: two switches, the words
+           spelled out, no jargon and no numbers.
+
+           Music and effects are separate because they are separately wanted --
+           a player often wants the game's feedback while listening to their own
+           music, and a game offering only all-or-nothing gets silenced entirely
+           by anyone who dislikes its soundtrack. -->
+      <div id="sound-menu" class="hidden">
+        <button class="sound-row" id="sound-music" type="button">
+          <span class="sound-label">Music</span>
+          <span class="sound-state"></span>
+        </button>
+        <button class="sound-row" id="sound-sfx" type="button">
+          <span class="sound-label">Sound effects</span>
+          <span class="sound-state"></span>
+        </button>
+        <!-- Shown only when the app itself is muted, because then neither
+             switch can produce sound and silence would otherwise look like a
+             fault in the game. -->
+        <div id="sound-note" class="hidden">Sound is muted in the app</div>
+      </div>
+
       <!-- THE FRAMING-MODE SWITCH IS GONE FROM THE SCREEN, and only from the
            screen (Amit, playtest round 3).
 
@@ -243,11 +266,55 @@
       <!-- GoBalance SDK DOM contract (§7.4): the host checks for this exact
            `hidden` class before synthetically clicking #restart-button, and
            the id must be hyphenated exactly like this. -->
-      <div id="gameover-overlay" class="hidden">
-        <div id="gameover-card">
+      <!-- THE START SCREEN. Same board, same background, same card as the
+           result screen -- the player sees one screen that bookends the run
+           rather than two designs that happen to show the same table.
+
+           NOT #gameover-overlay, and that is a hard rule rather than a
+           preference: the Unity host synth-clicks #restart-button whenever an
+           element with that id is visible, so putting a pre-run screen inside
+           it would let Space/Enter restart a run that never started.
+
+           It auto-advances on a timer and needs no key press, which is what
+           keeps the SDK's "first playable state on load" requirement intact. -->
+      <div id="start-overlay" class="board-screen">
+        <div id="start-card" class="board-card">
+          <h1>NOVA VANGUARD</h1>
+          <p id="start-sub">Lean to fly · guns fire themselves</p>
+          <div id="start-scoreboard" class="hidden">
+            <div id="start-scoreboard-title">BEST ON THIS ACCOUNT</div>
+            <ol id="start-scoreboard-rows"></ol>
+          </div>
+          <p id="start-countdown">Starting in 10</p>
+        </div>
+      </div>
+
+      <div id="gameover-overlay" class="board-screen hidden">
+        <div id="gameover-card" class="board-card">
           <h1>SHIELD DOWN</h1>
           <p id="gameover-stats"></p>
+
+          <!-- THE ACCOUNT SCOREBOARD (GoBalance submitScore / getScoreboard).
+               Hidden by default and only revealed when the SDK is present and
+               returns rows: outside the Unity app `window.GoBalance` does not
+               exist at all, and an empty board frame on a dev URL would be a
+               permanently broken-looking panel.
+
+               Inside #gameover-card deliberately, ABOVE the restart button --
+               the host synth-clicks #restart-button on Space/Enter while this
+               overlay is visible, so nothing here may sit between the player
+               and that button in reading order. -->
+          <div id="scoreboard" class="hidden">
+            <div id="scoreboard-title">BEST ON THIS ACCOUNT</div>
+            <ol id="scoreboard-rows"></ol>
+          </div>
+
           <button id="restart-button">RESTART</button>
+          <!-- Counts the result screen down to an automatic restart. Placed
+               BELOW the button deliberately: #restart-button stays the last and
+               most obvious thing on the card, and the host synth-clicks it on
+               Space/Enter while this overlay is visible. -->
+          <p id="gameover-countdown"></p>
         </div>
       </div>
     </div>

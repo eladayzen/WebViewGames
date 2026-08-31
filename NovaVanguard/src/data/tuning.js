@@ -1945,6 +1945,37 @@ export const ENTRY_PACE = {
   lazy: [0.58, 1.0],
 };
 
+// ---------------------------------------------------------------------------
+// The start screen (playtest round 13). The same board the run ends on, shown
+// before it begins, on a countdown.
+//
+// TEN SECONDS is Amit's number and it is longer than a countdown needs to be
+// for its own sake -- which is the point. On a board the player has to physically
+// get on and settle before the first squadron arrives, and the screen is where
+// they read who they are trying to beat. A 3-second countdown would be a
+// formality; this is a beat.
+//
+// It auto-advances and any input skips it, so the SDK's "first playable state
+// on load, no key press" requirement is intact either way.
+// ---------------------------------------------------------------------------
+export const START_SCREEN = {
+  // FIVE at the start, TEN at the end (playtest round 13). Amit's numbers, and
+  // they are different for a reason worth keeping: the two screens carry the
+  // same board but not the same job.
+  //
+  // At the START the player is already standing on the board waiting to play --
+  // the screen is a settling beat, and anything longer is a queue. At the END
+  // they have just finished and the board finally contains their own run, so it
+  // is the only moment they will actually read the names. Ten seconds is time
+  // to look; five would be a flash of a result.
+  seconds: 5,
+  // The result screen restarts itself when it runs out, so an abandoned run
+  // never parks the machine on a dead screen -- the same reasoning as §7.2's
+  // timeout, which exists so a walk-up queue is not stalled by someone who
+  // wandered off. Any input skips it, so nobody who wants to go again waits.
+  resultSeconds: 10,
+};
+
 export const POC_SCENARIO = {
   seed: 0x4e6f7661, // 'Nova'
   // A short escalating cycle that repeats forever.
