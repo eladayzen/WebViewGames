@@ -187,6 +187,17 @@ html, body {
   opacity: 0.85;
 }
 
+/* THE OBJECTIVE ICON on the briefing card. Sized to sit with the row's text
+   rather than dominate it -- it is an aid to recognition, not the headline. */
+.brief-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
+}
+.brief-icon svg { display: block; width: 30px; height: 24px; }
+#brief-list li { display: flex; align-items: center; }
+
 .sp-note {
   flex-basis: 100%;
   font-size: 8.5px;

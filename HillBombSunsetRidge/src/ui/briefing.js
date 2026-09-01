@@ -18,6 +18,8 @@
 // A cut looks worse and is strictly more reliable. A HUD that always appears
 // beats one that arrives elegantly when it arrives at all.
 
+import { iconFor } from './propIcons.js';
+
 export function createBriefing() {
   const el = document.getElementById('briefing');
   const card = document.getElementById('brief-card');
@@ -98,7 +100,13 @@ export function createBriefing() {
       listEl.innerHTML = '';
       data.rows.forEach((r, i) => {
         const li = document.createElement('li');
-        li.innerHTML = `<span>${r.label}</span><b>${r.text}</b>`;
+        // THE PICTURE COMES FIRST, before the words. A teaching mission's whole
+        // job is "here is a new thing, go and find it", and the player scans
+        // this card for a second before the run starts -- what they should take
+        // away is a shape to look for, not a phrase to remember.
+        const icon = r.kind ? iconFor(r.kind, r.type) : '';
+        li.innerHTML = `${icon ? `<i class="brief-icon">${icon}</i>` : ''}`
+          + `<span>${r.label}</span><b>${r.text}</b>`;
         li.style.animationDelay = `${0.12 + i * 0.09}s`;
         listEl.appendChild(li);
       });

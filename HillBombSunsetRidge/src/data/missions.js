@@ -128,11 +128,48 @@ const CEILING = {
  * Still rounded to the nearest 500: a threshold of 18,932 implies a precision
  * none of this has.
  */
+/**
+ * HOW MUCH OF WHAT IS AUTHORED IS ACTUALLY ASKED FOR.
+ *
+ * Amit: "the difficulty is generally too high on the missions -- reduce it by
+ * 30% for all, because with the controller it will be much harder."
+ *
+ * Which is the real point and not a fudge. Every target in this file was set
+ * against a hill measured with a KEYBOARD, where carve is an instant hard +-1
+ * and the rider goes exactly where they are told. On the GoBalance board the
+ * same input is a person shifting their weight: it arrives late, it overshoots,
+ * it drifts back when they stop thinking about it, and holding a line costs
+ * real effort. The number of crystals on the road did not change; the cost of
+ * reaching each one did.
+ *
+ * ONE SCALAR, applied at build time to every ask -- objective counts, score
+ * targets and both star thresholds -- rather than thirty edited numbers. That
+ * matters because this is a guess that will be revisited after board testing:
+ * the whole ladder has to move together, and a single constant can be tuned in
+ * one place without anyone having to remember which rows were touched.
+ *
+ * It deliberately does NOT scale the clock. Giving more time makes a mission
+ * longer, not easier -- the player is still asked for the same thing and simply
+ * grinds at it. Asking for less is the thing that actually lowers the demand.
+ */
+const DIFFICULTY = 0.7;
+
+/** Scale a count. Never below 1 -- an objective of zero is already complete. */
+const easeCount = (n) => Math.max(1, Math.round(n * DIFFICULTY));
+
+/** Scale a score. Kept on the 500 grid the thresholds already use. */
+const easeScore = (n) => Math.round((n * DIFFICULTY) / 500) * 500;
+
 function starTiers(seconds, id) {
   const round = (n) => Math.round(n / 500) * 500;
   const ceiling = CEILING[id];
-  if (!ceiling) return [round(200 * seconds), round(371 * seconds)];
-  return [round(0.55 * ceiling), round(0.85 * ceiling)];
+  // Stars are an ASK too, so they move with everything else -- leaving them put
+  // while the objectives came down would have made three stars the hard part of
+  // a mission that is otherwise easy, which is the opposite of the intent.
+  if (!ceiling) {
+    return [round(200 * seconds * DIFFICULTY), round(371 * seconds * DIFFICULTY)];
+  }
+  return [round(0.55 * ceiling * DIFFICULTY), round(0.85 * ceiling * DIFFICULTY)];
 }
 
 /**
@@ -202,7 +239,11 @@ const AUTHORED = [
   // allow that kind, so no other ridge mission sees them and none of their
   // measured star thresholds move.
   ['firstDrop',   'FIRST DROP',    'Ramps, and ground that gives way.',         80,
-    { launch: 15 }, undefined,
+    // 8 ramps once DIFFICULTY is applied (11 x 0.7 = 7.7). Amit: "8 ramps are
+    // enough." Authored rather than hard-set so it still moves with the global
+    // scalar -- if the board wants another easing pass, this comes down with
+    // everything else instead of being the one row that does not.
+    { launch: 11 }, undefined,
     // woodWall is excluded BY TYPE: it shares the 'wall' kind with the blocker,
     // so allowing the kind brought the race's timber plank along with the pink
     // barrier. Only one of them is what was asked for.
@@ -431,16 +472,21 @@ export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course
   brief,
   seconds,
   stars: starTiers(seconds, id),
+  // Every count and every score here is the AUTHORED value scaled by
+  // DIFFICULTY -- see the note on that constant. The authored numbers are left
+  // as written so the intent of each mission stays readable.
   objectives: KIND_ORDER.filter((k) => targets[k] != null).map((kind) => (
-    kind === 'pickup'
-      ? { kind, type: 'crystal', count: targets[kind] }
+    kind === 'score'
+      ? { kind, count: easeScore(targets[kind]) }
+      : kind === 'pickup'
+        ? { kind, type: 'crystal', count: easeCount(targets[kind]) }
       // An idol is a pickup with a different type, not a different kind -- the
       // objective matcher already filters on p.type, so this needs no new
       // tracking. Authored as its own key purely so a mission can ask for both
       // in one line without the two counts colliding.
-      : kind === 'idol'
-        ? { kind: 'pickup', type: 'idol', count: targets[kind] }
-        : { kind, count: targets[kind] }
+        : kind === 'idol'
+          ? { kind: 'pickup', type: 'idol', count: easeCount(targets[kind]) }
+          : { kind, count: easeCount(targets[kind]) }
   )),
   };
 });

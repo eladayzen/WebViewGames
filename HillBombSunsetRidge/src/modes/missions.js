@@ -348,6 +348,11 @@ const MISSION_MODE = {
           label: o.spec && o.spec.action ? o.spec.action(o)
             : o.spec ? o.spec.label(o) : o.kind,
           text: o.spec && o.spec.fmt ? `${o.count.toLocaleString()}` : `${o.count}`,
+          // What this objective is ABOUT, so the card can show the thing rather
+          // than only name it. Passed as kind+type rather than as a rendered
+          // icon: a mode should not know what the briefing looks like.
+          kind: o.kind,
+          type: o.type,
         })),
       }),
 
