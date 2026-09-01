@@ -1,5 +1,18 @@
 # Shipping a web game to the GoBalance SDK
 
+> **Shipping into the real product? Read `GOBALANCE_APP_INTEGRATION.md` instead.**
+>
+> This document covers `~/PracticulaProjects/gobalance_bobo_sdk`, the older SDK
+> sandbox. The product — the BoBo app, where games now ship — is
+> `~/UnityProjects/gobalance`, and its host differs in ways that break a build:
+> a mandatory hand-written `manifest.txt`, a different registration path, and an
+> audio contract of its own.
+>
+> That doc in turn points at the app team's own
+> `Assets/GoBalance/WebGames/README.md`, which is the definitive API. Read the
+> three in that order: this only if you are targeting the sandbox, theirs for
+> the contract, ours for what breaks in practice.
+
 ## The process, in one sentence
 
 **We build here, we move it over there — that's it.**

@@ -13,7 +13,25 @@ The two hosts are similar but not identical, and the differences bite. This
 document covers the **product**. Where it disagrees with `GOBALANCE_SDK.md`,
 this one wins for `~/UnityProjects/gobalance`.
 
-Ground truth, if this doc and the code ever disagree:
+### Read the app team's README first
+
+**`~/UnityProjects/gobalance/Assets/GoBalance/WebGames/README.md`** — 148 lines,
+maintained by the BoBo app team, and the definitive statement of the API you
+build against. Read it before this document, not instead of it.
+
+The division, so neither goes stale:
+
+| Their README | This document |
+|---|---|
+| The **contract** — what `GoBalance.*` offers, what each call returns, what is and isn't possible | The **practice** — what breaks when you actually land a game, and what we learned costing hours |
+| Owned by the app team, changes when the API changes | Owned by us, changes when we get burned |
+
+Where the two disagree, **theirs wins on the API** and this one wins on process.
+Deliberately not copied here: the full call list, the leaderboard scope table,
+the save-state paths. Duplicating them means two versions drifting apart — the
+same mistake as mirroring avatar art, one directory up.
+
+Ground truth beneath both, if either disagrees with the code:
 `~/UnityProjects/gobalance/Assets/GoBalance/WebGames/` — `WebGameController.cs`,
 `WebGameBridge.cs`, `WebGameSaveStore.cs`, and `Resources/GoBalanceWebSdk.txt`.
 
@@ -140,6 +158,13 @@ people's in-flight work.
   resolves to a folder that does not exist ⇒ blank screen. In the scene YAML a
   correct value is unquoted; if you see `folderName: ' Name'` **quoted**, YAML
   quoted it *because* of the space. That is the tell.
+- **Whatever is written in `index.html` is the first thing the player sees.**
+  The WebView paints the markup before your bundle runs, so any placeholder text
+  is on screen for real — over the app's own loading, it can be the *only* thing
+  read. Placeholder copy that later goes stale ships a visible lie: ours said
+  "Starting in 10" long after the wait became five seconds, and that is what the
+  player saw every launch. Write the pre-JS text as something that stays true
+  with no number in it, and let the script fill in specifics.
 - **The folder name is permanent.** `FirestoreStructureStrings.WebGameKey()`
   derives the save/score key from it (`NovaVanguard` → `web_nova_vanguard`).
   Renaming after ship orphans every player's data with no migration. **Decide the
@@ -190,6 +215,18 @@ are not going away.
 `window.__gbSensor = {x, y}` is a **plain global you poll**, rewritten at 60Hz.
 Not an event. Multiplayer adds `window.__gbPlayers`.
 
+### Saved state, in one paragraph
+
+`save()`/`load()` store an opaque per-profile blob the app never parses — see
+their README for the Firestore path and the key derivation. Three consequences
+worth designing around: a copy is always mirrored to **PlayerPrefs**, so saves
+survive offline play, guest profiles and BoBo Pro tablets (no Google services,
+therefore no Firestore), with a monotonic revision deciding which copy wins on
+load; **guest profiles are never written to the cloud**, so their data and their
+board rows exist only on the device that played them; and because the blob is
+opaque, **you own every migration** — old saves keep arriving after you change
+its shape, so version the payload from the first build.
+
 ### Scores, and the difference from `save()`
 
 `save()` stores an **opaque blob the app never parses** — a score buried in it
@@ -214,26 +251,61 @@ Three things that catch people:
 - **`complete: false` means only this device could be read** (offline, or nobody
   signed in). Label it "on this device", never as the whole family.
 
+**What the store actually keeps** (`WebGameSaveStore.cs`), because it changes
+what your result screen can promise:
+
+- **Your best 100 runs per profile, per game — not your last 100.** The array is
+  sorted high-to-low and *then* truncated, so a low run is discarded at write
+  time once 100 better ones exist. This was 10 until it bit us: a player who
+  quit early submitted a low score, it fell off immediately, and the result
+  screen correctly showed a board without the run they had just played. If a run
+  you just submitted is missing, this is the first thing to check.
+- **`submitScore()` resolves before the write commits.** It reports success while
+  the Firestore write is still in flight, so a `getScoreboard()` fired the
+  instant it resolves can come back without that run. Intermittent by nature.
+  If you must show the run with certainty, hold the value you submitted and
+  render it from that rather than trusting it to come back.
+
+Both live on the host side. Neither is yours to fix — report them.
+
 **Scope:** a personal best works. A family board across the profiles on one
 account works — that is what `getScoreboard()` returns. A **global** board across
 different accounts does not exist and needs shared Firestore collections and
 write rules that are not there. Don't design for it.
 
-### Avatars
+### Avatars — derive them, do not mirror them
 
-`avatarType` is a name (`astronaut`, `skateboard`, …) and the art lives in the
-Unity project, which the page cannot reach — the server only serves your game's
-folder. Today that means **mirroring the PNGs into your own assets**.
+`avatarType` is a name (`astronaut`, `skateboard`, …) and `avatarIndex` is the
+slot the app assigned that profile. The art itself lives in the Unity project,
+which **the page cannot reach** — the server only serves your game's own folder.
 
-They resolve from `Assets/GoBalance/App/MainMenu/ScriptableObjects/Avatars
-List.asset` — walk each entry's sprite GUID to the `.meta` that declares it
-(they land in `App/GeneralSprites/UiImages/UserProfiles/uppN.png`). Each entry
-also carries an authored colour, useful as a ring behind the image.
+The first version of this mirrored the PNGs into the game's assets. **Do not.**
+That was rejected on the grounds that decide it: every game needs its own copy,
+and each copy goes stale the day the app adds or redraws an avatar.
 
-Mirrored art is a **duplicate**: it goes stale when the app changes, and every
-game needs its own copy. Handle an unknown `avatarType` by falling back to an
-initial rather than a broken image. Worth asking the app team to serve avatars
-the way they already serve the SDK.
+Render an identity you can derive instead — the player's initial on a colour
+picked from `avatarIndex`:
+
+```js
+const WHEEL = ['#fee44f','#36c09e','#ee5d2c','#8ab4ff','#f48dd4','#9be564','#ffa14a','#7fd7ff'];
+// avatarIndex is what the app already uses to tell two siblings apart, so the
+// board agrees with the lobby without sharing a single asset.
+// Fall back to a hash of profileId -- NOT name, since two profiles can share one.
+```
+
+Working reference: `NovaVanguard/src/data/avatars.js` (~50 lines, copyable).
+
+Two things that make it hold up:
+
+- **A small hand-picked wheel, not generated hues.** These are read at a glance,
+  side by side, on a dark card. Evenly spaced hues produce neighbours nobody can
+  tell apart, and some will collide with your own player colour.
+- **Never key the colour off the name.** Names repeat and change; `profileId`
+  does not. A row must not change colour because someone was renamed.
+
+Keep the derivation in **one exported function**. If the app ever serves avatars
+the way it already serves the SDK (`/__gobalance/avatar/<type>.png` — worth
+asking for), that function starts returning a `src` too and nothing else moves.
 
 ---
 
@@ -290,6 +362,129 @@ not looser. Self-install a one-time `pointerdown` / `touchstart` / `keydown`
 listener that resumes the `AudioContext`, rather than expecting every call site
 to remember. A tap on your own mute control is itself a gesture — use it.
 
+## Quitting — the X is the only way out
+
+On the board there is no keyboard, no gesture and no home button the player can
+reach. `#gb-back` is it. That cuts both ways: **it must always work, and it must
+not end a run on a single mis-tap.**
+
+### Route it through your own handler, keep the inline fallback
+
+Every shipped game's button carries an inline `onclick`. Prefer a game-owned
+hook and fall back to a direct `nav:back`:
+
+```html
+<button id="gb-back"
+  onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()">×</button>
+```
+
+The fallback is not belt-and-braces — **a game that fails to load a module must
+still be escapable.** Without it, one broken import strands the player.
+
+### Ask, but only when there is a run to lose
+
+Confirm on a mis-tap mid-run. Do **not** confirm from a start screen, a results
+screen or a quit screen: the player is already stopped, and asking "are you
+sure?" over a screen they chose to be on is noise.
+
+```js
+window.__gbBack = () => {
+  if (hud.isQuitOpen()) return leaveToLobby();
+  if (!started) return leaveToLobby();
+  if (world.state !== GameState.RUNNING) return leaveToLobby();
+  pausedBeforeConfirm = world.paused;   // remember, see below
+  setPaused(true);
+  hud.showConfirm();
+};
+```
+
+### The confirm is a modal over the paused game, not a screen
+
+It must **not** paint over the playfield. The player has to see the run they are
+being asked to abandon — a light scrim and a card, with the game visible
+underneath.
+
+And it **must pause**, precisely because the game is still visible: leaving it
+running means the player watches themselves die while deciding.
+
+**Restore the previous pause state, not "unpaused".** Someone who paused,
+reached for the X, then changed their mind should still be paused. Blindly
+resuming drops them into a live game they had deliberately stopped.
+
+Route every pause through one function, so the audio suspend/resume can never
+drift out of step with it.
+
+### After confirming: a quit screen, not an exit
+
+Leaving straight to the lobby throws away the run. Show the same board screen
+the game ends on, with:
+
+- the run's result
+- the leaderboard, **with the score submitted even though the player quit** — a
+  run that ended by choice still happened, and a board that only records deaths
+  quietly punishes stopping
+- **no timer.** The player chose to stop; nothing should start counting at them
+- two buttons: play again, and quit
+
+The X stays where it is and leaves from there.
+
+> **Do not build this screen out of `#gameover-overlay`.** See rule 4 above —
+> the host synth-clicks `#restart-button` whenever an element with that id is
+> visible, and a screen with its own buttons would be firing a restart behind
+> them. Give it its own id and verify there is exactly one `#restart-button` in
+> the document.
+
+### The trade to be aware of
+
+A quit screen with no timeout sits there indefinitely. That is right for a
+deliberate quit, and it does mean a player who walks away parks the machine on
+it — where a death screen would have auto-restarted. Decide knowingly.
+
+---
+
+## Dev tools and player settings — two different things
+
+These are the same in every game, so copy them rather than reinventing them.
+`NovaVanguard/src/ui/devUnlock.js` and `src/ui/settingsPanel.js` are written to
+be lifted wholesale.
+
+**Split them by audience, not by convenience.** One panel mixing both means the
+player who wants to change their controller has to walk past a spawn-rate slider.
+
+### Player settings: visible, and only what a player would want
+
+Controller sensitivity belongs here. It is a real player-facing need on a
+balance board — people differ in weight and confidence, and the default will be
+wrong for someone in every family.
+
+```js
+GoBalance.setSensitivity(percent);   // 0..100, higher = reacts to a smaller lean
+```
+
+Persist the choice yourself (`localStorage`) and re-apply on boot; the host does
+not remember it for you. Keep the range sane — 10–100 in steps of 5 — and drive
+the host on change, so the player feels it while adjusting rather than after.
+
+### Dev tools: hidden behind a deliberate gesture
+
+Debug overlays must not be reachable by a curious child, and must stay reachable
+by you on a device with no keyboard. The pattern:
+
+1. **Press and hold a fixed, unlabelled element for 7 seconds** — something
+   always on screen (the health bar works) with no hint that it does anything.
+   A hold cannot happen by accident the way a tap sequence can.
+2. **Then a numeric pad** — digits and an X, nothing else.
+3. **A wrong digit resets immediately.** No "attempts left", no feedback about
+   how wrong it was.
+4. The backdrop **swallows clicks but does not close** the pad, so a mis-tap
+   while entering the code does not dump you back into the game.
+
+Ship with dev tools hidden by default. **Do not persist the unlock** — keep it
+in memory so a reload re-locks it. Player settings are the opposite: persist
+those, or the player re-picks their sensitivity every launch.
+
+---
+
 ## Registering the game (the project owner's four edits)
 
 1. **`Games/<Name>/<Name>.unity`** — copy an existing web-game scene. The scene
@@ -323,7 +518,12 @@ boots and behaves with **no `GoBalance` present**. This proves your feature
 detection is real.
 
 **Editor:** board drives the game with no double-input; Space/Enter restarts
-from the game-over overlay; the app's mute reaches the game.
+from the game-over overlay; the game starts with sound on and its own mute
+control works; X asks before ending a run, and leaves without asking from any
+screen where the player is already stopped; **quit mid-run and confirm the run
+you just played appears on the quit board** — that path exercises submit, fetch
+and placement in one go, and it is the one that broke; dev tools are invisible
+until the hold-and-code unlock, and player settings are reachable without it.
 
 **Device — the only place two failures are visible at all:**
 - blank screen ⇒ manifest missing or stale
@@ -343,3 +543,7 @@ from the game-over overlay; the app's mute reaches the game.
 | Silent until the player interacts | the AudioContext was never unlocked — no gesture listener |
 | Module script refused | file type not in `MimeFor()` |
 | Saved progress vanished | the StreamingAssets folder was renamed after shipping |
+| Player stranded in a game | `#gb-back` routed only through a module that failed to load — keep the inline `nav:back` fallback |
+| A run ends on a stray tap | X quitting without confirming while a run is in progress |
+| The run just played is missing from the board | it fell off the host's best-N cap (low score, e.g. a quit), or the board was fetched before the write committed |
+| Avatars look wrong or blank after an app update | the game mirrored the app's PNGs — derive the identity instead |

@@ -59,9 +59,20 @@ have Post-MVP scope leaking into them rather than quietly building it.
    resolved yet; if you're starting a new 2D game and the retrospective's
    "Open question for the CTO" section is still open, flag it to Amit rather
    than silently picking a side.
-4. **Ship it into the SDK exactly per `GOBALANCE_SDK.md` Phase 1, and stop
-   exactly where that doc says to stop.** Read that file in full before
-   shipping anything — summary, because getting this wrong either breaks
+4. **Ship it exactly per the doc for the project you are targeting, and stop
+   exactly where that doc says to stop.** Ask which target first if the build
+   doc does not say:
+   - **The product** (`~/UnityProjects/gobalance`, the BoBo app) — the default
+     for anything shipping to players. Follow **`GOBALANCE_APP_INTEGRATION.md`**,
+     and read the app team's own
+     `~/UnityProjects/gobalance/Assets/GoBalance/WebGames/README.md` first: it
+     is the definitive `GoBalance.*` API, and the folder it lives in is theirs,
+     not yours to edit. `manifest.txt` there is mandatory and hand-written; a
+     stale one is a blank screen on device that looks perfect in the Editor.
+   - **The sandbox** (`~/PracticulaProjects/gobalance_bobo_sdk`) — only when
+     explicitly asked. `GOBALANCE_SDK.md`, whose steps are summarised below.
+
+   Read the file that applies in full before shipping anything — summary, because getting this wrong either breaks
    the game on-device or silently overwrites someone else's in-flight work
    in a shared repo:
    - Boilerplate (rAF shim, Unity error bridge, back button) goes in
