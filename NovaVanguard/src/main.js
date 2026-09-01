@@ -35,6 +35,8 @@ import { surfaceAt, SURFACES } from './data/surfaces.js';
 import { BOSSES, bossIsBuilt } from './data/bosses.js';
 import { createSectorTransitionUi } from './ui/sectorTransition.js';
 import { createDevPanel } from './ui/devPanel.js';
+import { createSettingsPanel } from './ui/settingsPanel.js';
+import { installDevUnlock } from './ui/devUnlock.js';
 import {
   updateDirector,
   startScenario,
@@ -134,8 +136,9 @@ async function boot() {
   /** Quit for real: bank the run, then show the board with no clock on it. */
   function endRunAndShowQuit() {
     hud.hideConfirm();
-    world.paused = true;
-    suspendAudio();
+    // Already paused by the question; setPaused is idempotent and keeps the
+    // audio suspend on the single path that owns it.
+    setPaused(true);
     // The score counts even though the player stopped early -- Amit's call and
     // the right one: a run that ended by choice still happened, and a board
     // that only ever records deaths quietly punishes stopping.
@@ -149,6 +152,12 @@ async function boot() {
     );
   }
 
+  // Whether the game was ALREADY paused when the question was asked, so that
+  // answering "keep playing" restores what the player had rather than blindly
+  // unpausing. Someone who paused, reached for the X, then changed their mind
+  // should still be paused.
+  let pausedBeforeConfirm = false;
+
   window.__gbBack = () => {
     // Ask only when a run is actually in progress. On the start screen, the quit
     // screen or the game-over screen the player is already stopped, and asking
@@ -156,12 +165,18 @@ async function boot() {
     if (hud.isQuitOpen()) return leaveToLobby();
     if (!started) return leaveToLobby();
     if (world.state !== GameState.RUNNING) return leaveToLobby();
+    // Freeze the run while the question is up. The playfield stays visible
+    // behind the modal, so leaving it running would mean the player watches
+    // themselves die while deciding whether to quit.
+    pausedBeforeConfirm = world.paused;
+    setPaused(true);
     hud.showConfirm();
   };
 
   document.getElementById('confirm-stay').addEventListener('click', (e) => {
     e.stopPropagation();
     hud.hideConfirm();
+    setPaused(pausedBeforeConfirm);
   });
   document.getElementById('confirm-quit').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -170,8 +185,7 @@ async function boot() {
   document.getElementById('quit-again').addEventListener('click', (e) => {
     e.stopPropagation();
     hud.hideQuit();
-    world.paused = false;
-    resumeAudio();
+    setPaused(false);
     restartScenario();
   });
   document.getElementById('quit-leave').addEventListener('click', (e) => {
@@ -526,8 +540,33 @@ async function boot() {
     world,
     surfaces: SURFACES,
   });
-  document.body.appendChild(devPanel.button);
-  document.body.appendChild(devPanel.panel);
+  // THE PLAYER'S PANEL, always available: a gear, with the settings a player is
+  // meant to change. Separate from the wrench for a reason -- mixing them puts
+  // a player one tap from invincibility, and a developer behind a secret when
+  // they want sensitivity.
+  const settings = createSettingsPanel(document);
+  document.body.appendChild(settings.button);
+  document.body.appendChild(settings.panel);
+
+  // THE DEV PANEL IS NOT MOUNTED UNTIL IT IS UNLOCKED.
+  //
+  // Hold the shield gauge for seven seconds, then enter the code. The gesture
+  // is what makes it undiscoverable; the code is what makes it deliberate. See
+  // ui/devUnlock.js for why this is a gesture rather than a build flag -- in
+  // short, the production build is exactly the one worth debugging, so a flag
+  // can only ever be wrong in one direction.
+  let devMounted = false;
+  const mountDev = () => {
+    if (devMounted) return;
+    devMounted = true;
+    document.body.appendChild(devPanel.button);
+    document.body.appendChild(devPanel.panel);
+    devPanel.toggle();
+  };
+  installDevUnlock(document, document.getElementById('shield-wrap'), mountDev);
+  // `?dev=1` skips the gesture, for a desktop session where the hold is just
+  // seven seconds of nothing.
+  if (/[?&]dev=1\b/.test(window.location.search || '')) mountDev();
 
   // The SDK forwards Space/Enter, and synthetically clicks #restart-button
   // while the game-over overlay is visible. Space/Enter also restarts here so

@@ -74,17 +74,17 @@
            than the raw viewport. -->
       <button id="gb-back"
         onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
-        style="position:absolute;top:12px;right:12px;z-index:9999;width:38px;height:38px;border:none;
+        style="position:absolute;top:12px;right:12px;z-index:9999;width:48px;height:48px;border:none;
                border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
-               font:600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               font:600 25px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&times;</button>
 
       <!-- Pause — placeholder glyph icon per the same convention. -->
       <button id="pause-button"
-        style="position:absolute;top:12px;right:60px;z-index:9999;width:38px;height:38px;border:none;
+        style="position:absolute;top:12px;right:68px;z-index:9999;width:48px;height:48px;border:none;
                border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
-               font:600 16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               font:600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&#9208;</button>
 
@@ -100,9 +100,9 @@
            button and the audio layer can never disagree about which state they
            are in). -->
       <button id="mute-button" aria-label="Mute"
-        style="position:absolute;top:12px;right:108px;z-index:9999;width:38px;height:38px;border:none;
+        style="position:absolute;top:12px;right:124px;z-index:9999;width:48px;height:48px;border:none;
                border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
-               font:600 16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               font:600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&#128264;</button>
 
@@ -263,11 +263,15 @@
            `hidden` class before synthetically clicking #restart-button, and
            the id must be hyphenated exactly like this. -->
       <!-- "ARE YOU SURE?" — the X is the only way out of a game on the board,
-           so it must not be a single mis-tap. Deliberately small and centred
-           rather than a full board screen: this is a question, not a
-           destination, and answering "keep playing" should feel like nothing
-           happened. -->
-      <div id="confirm-overlay" class="board-screen hidden">
+           so it must not be a single mis-tap.
+
+           A MODAL, NOT A BOARD SCREEN. It does not paint over the playfield:
+           the game is paused underneath and stays visible, so the player can
+           see the run they are being asked to abandon. The other three screens
+           are destinations and hide the game deliberately; this is a question
+           about the game, and hiding it would make "keep playing" feel like
+           re-entering rather than resuming. -->
+      <div id="confirm-overlay" class="modal-overlay hidden">
         <div id="confirm-card" class="board-card">
           <h1>QUIT?</h1>
           <p id="confirm-sub">Your score will still be counted.</p>
@@ -319,7 +323,7 @@
             <div id="start-scoreboard-title">BEST ON THIS ACCOUNT</div>
             <ol id="start-scoreboard-rows"></ol>
           </div>
-          <p id="start-countdown">Starting in 10</p>
+          <p id="start-countdown">Game will start in a few seconds</p>
         </div>
       </div>
 

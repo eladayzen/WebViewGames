@@ -14,7 +14,7 @@
 // formation physically overlapping the score readout, and in a shallow frame
 // that is much worse.
 
-import { avatarFor } from '../data/avatars.js';
+import { identityFor } from '../data/avatars.js';
 import {
   PLAYER,
   BANNERS,
@@ -334,6 +334,28 @@ export function createHud(root) {
     }
   }
 
+  // The start screen shows a number only once the board it belongs to is on
+  // screen. Before that the board is still being fetched and the screen is
+  // near-empty, so a lone digit ticking down is just a deadline with nothing to
+  // read; after it, the number tells the player how long they have to read the
+  // rows. Both facts arrive independently, so each is remembered and the line
+  // is re-rendered from whichever lands second.
+  let startBoardUp = false;
+  let startSecs = null;
+
+  function renderStartCountdown() {
+    if (!el.startCountdown) return;
+    // No number yet is the same as no board yet: nothing to count down to.
+    if (!startBoardUp || startSecs === null) {
+      el.startCountdown.textContent = 'Game will start in a few seconds';
+      return;
+    }
+    // At zero the run is already beginning and the screen is coming down; it
+    // must not flip back to "in a few seconds" for that last frame.
+    el.startCountdown.textContent =
+      startSecs > 0 ? `Starting in ${startSecs}` : 'Go';
+  }
+
   return {
     banners,
 
@@ -437,6 +459,12 @@ export function createHud(root) {
         box.classList.add('hidden');
         return;
       }
+      // Past the early return, so this only counts a board that really drew.
+      // A board that is unavailable or empty leaves the wording alone.
+      if (where === 'start') {
+        startBoardUp = true;
+        renderStartCountdown();
+      }
       title.textContent = board.complete
         ? 'BEST ON THIS ACCOUNT'
         : 'BEST ON THIS DEVICE';
@@ -463,22 +491,14 @@ export function createHud(root) {
           // The TRUE position, never the index within this group.
           rank.textContent = String(r.rank);
 
+          // The player's initial on a colour stable for that profile. No app
+          // art is mirrored into this game -- see /data/avatars.js for why the
+          // copied PNGs were removed.
+          const id = identityFor(r);
           const av = document.createElement('span');
           av.className = 'sb-avatar';
-          const art = avatarFor(r.avatarType);
-          if (art) {
-            av.style.backgroundColor = art.color;
-            const img = document.createElement('img');
-            img.src = art.src;
-            img.alt = '';
-            av.appendChild(img);
-          } else {
-            // Unknown avatar type: the app can add one at any time and this
-            // game's mirrored copy will not know it yet. Fall back to the
-            // initial rather than a broken image.
-            av.classList.add('sb-avatar-fallback');
-            av.textContent = (r.name || '?').charAt(0).toUpperCase();
-          }
+          av.style.backgroundColor = id.color;
+          av.textContent = id.initial;
 
           const name = document.createElement('span');
           name.className = 'sb-name';
@@ -507,8 +527,8 @@ export function createHud(root) {
     },
     /** Seconds remaining on the START screen, as a whole number. */
     setCountdown(secs) {
-      if (!el.startCountdown) return;
-      el.startCountdown.textContent = secs > 0 ? `Starting in ${secs}` : 'Go';
+      startSecs = secs;
+      renderStartCountdown();
     },
 
     /** Seconds remaining on the RESULT screen before it restarts itself. */

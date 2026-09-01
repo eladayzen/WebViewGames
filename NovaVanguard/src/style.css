@@ -856,15 +856,15 @@ body {
 #dev-button {
   position: absolute;
   top: 12px;
-  right: 156px;
+  right: 236px;
   z-index: 9999;
-  width: 38px;
-  height: 38px;
+  width: 48px;
+  height: 48px;
   border: none;
   border-radius: 999px;
   background: rgba(20, 20, 40, 0.72);
   color: #eafcff;
-  font: 600 15px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font: 600 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   cursor: pointer;
   line-height: 1;
   display: flex;
@@ -880,7 +880,7 @@ body {
 
 #dev-panel {
   position: absolute;
-  top: 58px;
+  top: 68px;
   right: 12px;
   z-index: 9999;
   width: 232px;
@@ -972,17 +972,20 @@ body.dev-invincible::after {
 --------------------------------------------------------------------------- */
 
 #scoreboard,
-#start-scoreboard {
+#start-scoreboard,
+#quit-scoreboard {
   margin: 2.2vmin 0 0.6vmin;
   width: 100%;
   text-align: left;
 }
 
 #scoreboard.hidden,
-#start-scoreboard.hidden { display: none; }
+#start-scoreboard.hidden,
+#quit-scoreboard.hidden { display: none; }
 
 #scoreboard-title,
-#start-scoreboard-title {
+#start-scoreboard-title,
+#quit-scoreboard-title {
   font: 700 1.25vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
   letter-spacing: 0.22vmin;
   color: rgba(111, 232, 255, 0.75);
@@ -991,7 +994,8 @@ body.dev-invincible::after {
 }
 
 #scoreboard-rows,
-#start-scoreboard-rows {
+#start-scoreboard-rows,
+#quit-scoreboard-rows {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1023,7 +1027,15 @@ body.dev-invincible::after {
 }
 
 .sb-rank { color: rgba(207, 233, 245, 0.55); text-align: right; }
-.sb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* LEFT, explicitly. The card is `text-align: center` for its heading, and a
+   grid cell inherits that -- so the name floated in the middle of its column
+   while the rank and score sat at the edges, which read as a broken table. */
+.sb-name {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sb-score { font-variant-numeric: tabular-nums; letter-spacing: 0.06vmin; }
 
 /* ---------------------------------------------------------------------------
@@ -1037,8 +1049,8 @@ body.dev-invincible::after {
 
 #sound-menu {
   position: absolute;
-  top: 58px;
-  right: 96px;
+  top: 68px;
+  right: 108px;
   z-index: 9999;
   width: 210px;
   padding: 8px;
@@ -1097,8 +1109,9 @@ body.dev-invincible::after {
 
 /* --- avatars and the two-section board (playtest round 13) ---------------- */
 
-/* The avatar sits on its own authored colour, so a row still reads as that
-   person even at a glance, and still reads if the image fails to load. */
+/* The initial on a colour stable for that profile. No image: the app's avatar
+   art cannot be reached from the page, and mirroring it per game was rejected
+   as a maintenance cost (see /data/avatars.js). */
 .sb-avatar {
   width: 3.2vmin;
   height: 3.2vmin;
@@ -1110,16 +1123,11 @@ body.dev-invincible::after {
   background: rgba(111, 232, 255, 0.18);
 }
 
-.sb-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.sb-avatar-fallback {
+/* Dark text on the light wheel colours, which is legible on every one of them
+   and needs no per-colour contrast decision. */
+.sb-avatar {
   font: 700 1.5vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
-  color: #04121a;
+  color: #06121c;
 }
 
 /* A player's OTHER runs: marked, but quietly. Only the run just played gets
@@ -1141,9 +1149,22 @@ body.dev-invincible::after {
 
 /* --- the confirm prompt and the quit screen ------------------------------- */
 
-/* The question is a card, not a screen: "keep playing" should feel like
-   nothing happened, so it deliberately does not redraw the world behind a full
-   background the way the start and result screens do. */
+/* The confirm modal. Sits OVER the paused playfield rather than replacing it:
+   just enough scrim to lift the card off the action and make the text legible
+   over whatever happens to be behind it, and no more. The player must be able
+   to see the run they are deciding about. */
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.42);
+}
+
+.modal-overlay.hidden { display: none; }
+
 #confirm-card {
   min-width: 34%;
   max-width: 46%;
@@ -1192,4 +1213,157 @@ body.dev-invincible::after {
   margin: 0 0 0.4vmin;
   font-size: 1.6vmin;
   color: rgba(207, 233, 245, 0.85);
+}
+
+
+/* ---------------------------------------------------------------------------
+   Player settings (gear) and the dev-tools unlock.
+   ---------------------------------------------------------------------------
+   TEMPLATE. The same two controls, in the same places, should appear in every
+   GoBalance web game: a gear the player is meant to press, and a wrench that
+   only exists once unlocked.
+--------------------------------------------------------------------------- */
+
+#settings-button {
+  position: absolute;
+  top: 12px;
+  right: 180px;
+  z-index: 9999;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: #eafcff;
+  font: 600 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#settings-button.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+}
+
+#settings-panel {
+  position: absolute;
+  top: 68px;
+  right: 108px;
+  z-index: 9999;
+  width: 230px;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: rgba(10, 12, 26, 0.94);
+  border: 1px solid rgba(111, 232, 255, 0.30);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  color: #cfe9f5;
+}
+
+#settings-panel.hidden { display: none; }
+
+.settings-section {
+  font: 700 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 0.14em;
+  color: rgba(111, 232, 255, 0.75);
+}
+
+.settings-note {
+  margin: 4px 0 10px;
+  font: 500 11.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: rgba(207, 233, 245, 0.6);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Big steppers rather than a slider: this is set standing on a board, often by
+   a parent, and a coarse control you can hit beats a precise one you cannot. */
+.settings-step {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.35);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.settings-value {
+  flex: 1;
+  text-align: center;
+  font: 700 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #eafcff;
+}
+
+/* The gauge being held, so a seven-second press gives some sign it is doing
+   something -- without hinting at it to anyone not already holding. */
+.devhold { opacity: 0.72; }
+
+#devcode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+}
+
+#devcode-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(111, 232, 255, 0.35);
+}
+
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+#devcode-dots {
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 8px;
+  color: #6fe8ff;
+}
+
+#devcode-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(30, 40, 70, 0.9);
+  color: #eafcff;
+  font: 600 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  gap: 8px;
+}
+
+.devcode-key {
+  height: 62px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }

@@ -1,45 +1,51 @@
-// Profile avatars, mirrored from the GoBalance app (playtest round 13).
+// Leaderboard identity, WITHOUT mirroring the app's avatar art.
 //
-// WHY THESE ARE COPIES. The scoreboard entries carry `avatarType` (a name like
-// "astronaut") and `avatarIndex`, but the art itself lives in the Unity
-// project's own sprite folder -- and the page can only load files the host
-// serves out of THIS game's folder. There is no /__gobalance/avatar/<type>.png
-// endpoint, so the images have to be here.
+// WHAT THIS REPLACED, AND WHY. The scoreboard entries carry `avatarType` and
+// `avatarIndex`, but the art itself lives in the Unity project and the page can
+// only load files served from this game's own folder -- there is no
+// /__gobalance/avatar/<type>.png. The first version therefore copied 16 PNGs
+// (636 KB) into the game and generated a name->file table from the app's
+// `Avatars List.asset`.
 //
-// THE COST, stated plainly: these are duplicates. If the app ever adds, removes
-// or redraws an avatar, this folder is stale until someone re-runs the copy,
-// and every other web game that wants avatars needs its own copy too. The right
-// long-term fix is for the host to serve them the way it already serves the SDK
-// -- worth raising with the app team rather than solving five times.
+// That was the wrong trade and it was rejected: every web game would need its
+// own copy, and every copy goes stale the moment the app adds, removes or
+// redraws an avatar -- silently, since a missing type just falls back.
 //
-// GENERATED, NOT HAND-WRITTEN. Resolved from the app's own
-// `Avatars List.asset` by walking each entry's sprite GUID to the .meta that
-// declares it. The colours are the avatar's own authored colour from that same
-// asset, used as the ring behind the image so a row still reads at a glance if
-// the art ever fails to load.
+// So identity is now DERIVED, not fetched: the player's initial on a colour
+// that is stable for that profile. No assets, nothing to keep in sync, and a
+// row is still recognisable at a glance on a shared device -- which is the job.
+//
+// IF THE HOST EVER SERVES AVATARS, this is the one place to change: return a
+// src alongside the colour and /ui/hud.js will draw it.
 
-export const AVATARS = {
-  astronaut: { src: 'assets/avatars/astronaut.png', color: '#fee44f' },
-  skateboard: { src: 'assets/avatars/skateboard.png', color: '#36c09e' },
-  drums: { src: 'assets/avatars/drums.png', color: '#ee5d2c' },
-  chess: { src: 'assets/avatars/chess.png', color: '#b8beba' },
-  toothbrush: { src: 'assets/avatars/toothbrush.png', color: '#0191f1' },
-  tape: { src: 'assets/avatars/tape.png', color: '#f48dd4' },
-  aligator: { src: 'assets/avatars/aligator.png', color: '#b6f8a2' },
-  fries: { src: 'assets/avatars/fries.png', color: '#d5aa32' },
-  sandals: { src: 'assets/avatars/sandals.png', color: '#87dbe6' },
-  cactus: { src: 'assets/avatars/cactus.png', color: '#e85850' },
-  floatie: { src: 'assets/avatars/floatie.png', color: '#f8afba' },
-  sports: { src: 'assets/avatars/sports.png', color: '#0569dd' },
-  rocket: { src: 'assets/avatars/rocket.png', color: '#bfc6bf' },
-  icecream: { src: 'assets/avatars/icecream.png', color: '#e6aa30' },
-  bicycle: { src: 'assets/avatars/bicycle.png', color: '#ebbfbe' },
-  guitar: { src: 'assets/avatars/guitar.png', color: '#3d74cd' },
-};
+// A small fixed wheel rather than a generated hue: these are read at a glance,
+// side by side, on a dark card. Hand-picked values stay distinguishable from
+// each other and from the player's own cyan-white; evenly spaced hues do not.
+const WHEEL = [
+  '#fee44f', '#36c09e', '#ee5d2c', '#8ab4ff',
+  '#f48dd4', '#9be564', '#ffa14a', '#7fd7ff',
+];
 
-/** Art + colour for a scoreboard entry, or null if the type is unknown. An
- *  unknown type is not an error: the app can add an avatar at any time and this
- *  copy will not know about it until someone re-runs the mirror. */
-export function avatarFor(type) {
-  return (type && AVATARS[type]) || null;
+/**
+ * Stable colour for a profile.
+ *
+ * Prefers `avatarIndex`, because the app already assigns it per profile and it
+ * is what makes two siblings look different in the app's own UI -- so the
+ * board agrees with the lobby without sharing any art. Falls back to a hash of
+ * `profileId` so a row is never uncoloured, and `profileId` rather than `name`
+ * because two profiles on one account can share a name.
+ */
+export function identityFor(entry) {
+  if (!entry) return { color: WHEEL[0], initial: '?' };
+  let i = entry.avatarIndex;
+  if (typeof i !== 'number' || !isFinite(i) || i < 0) {
+    const key = String(entry.profileId || entry.name || '');
+    i = 0;
+    for (let k = 0; k < key.length; k++) i = (i * 31 + key.charCodeAt(k)) >>> 0;
+  }
+  const name = String(entry.name || '').trim();
+  return {
+    color: WHEEL[i % WHEEL.length],
+    initial: (name.charAt(0) || '?').toUpperCase(),
+  };
 }
