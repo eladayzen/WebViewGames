@@ -105,6 +105,7 @@ export default registerMode({
         startS = ctx.getState().s;
         finishS = startS + course.length;
         ctx.finishLine.place(finishS);
+        ctx.props.setEndS(finishS);
         ctx.hud.banner('DROP IN');
         // Counted off the event rather than off the airborne flag: a flight that
         // starts and ends inside one frame should not count as a jump, and the

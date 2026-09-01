@@ -58,7 +58,15 @@ let showing = null;
  * returned undefined and reading .number off it threw, leaving the list hidden
  * and the button dead.
  */
-export function createMissionSelect(missions, progress, onPick, track = 0) {
+/**
+ * @param {string} [noun='mission'] what a row IS, for the locked-row text.
+ *
+ * The race ladder reuses this list, and told the player to "clear the mission
+ * before it" on a screen with no missions on it. One word, but it is the only
+ * sentence a locked row gets, and being wrong about what the game calls its own
+ * content is exactly the kind of thing that reads as unfinished.
+ */
+export function createMissionSelect(missions, progress, onPick, track = 0, noun = 'mission') {
   const el = document.getElementById('mission-select');
   const listEl = document.getElementById('mission-list');
   const totalEl = document.getElementById('msel-total');
@@ -116,7 +124,7 @@ export function createMissionSelect(missions, progress, onPick, track = 0) {
         : `${num}
            <div class="msel-text">
              <b>${m.name}</b>
-             <small>Clear the mission before it</small>
+             <small>Clear the ${noun} before it</small>
            </div>
            <div class="msel-lock">&#128274;</div>`;
 

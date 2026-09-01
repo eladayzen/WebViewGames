@@ -67,7 +67,7 @@ import { createModeHost, getMode } from '../modes/mode.js';
 import '../modes/freeride.js';
 import { setPendingMission } from '../modes/missions.js';
 import '../modes/rivals.js';
-import '../modes/speedRace.js';
+import { setPendingRace } from '../modes/speedRace.js';
 // ORDER IS LOBBY ORDER. The two ORIGINAL modes register first, then the open
 // face's -- so the front door reads as two games rather than an interleaving.
 import '../modes/faceMissions.js';
@@ -76,6 +76,7 @@ import { MISSIONS } from '../data/missions.js';
 import { createProgress } from '../systems/progress.js';
 import { createModeSelect } from '../ui/modeSelect.js';
 import { createMissionSelect } from '../ui/missionSelect.js';
+import { RACES, RACE_IDS } from '../data/races.js';
 import { createObjectives } from '../ui/objectives.js';
 import { createBriefing } from '../ui/briefing.js';
 import { getCourse, DEFAULT_COURSE } from '../data/courses.js';
@@ -184,6 +185,11 @@ const FACE_MISSIONS = MISSIONS.filter((m) => m.course);
 const progress = createProgress([
   RIDGE_MISSIONS.map((m) => m.id),
   FACE_MISSIONS.map((m) => m.id),
+  // THE RACE LADDER, track 2. A third progression through the same store: races
+  // earn stars and unlock the next one exactly as missions do, so the lobby, the
+  // records and the storage all work unchanged. Only the RULE for earning a
+  // clear differs, and that lives in the race mode.
+  RACE_IDS,
 ]);
 
 // The mode is handed a read-only view of the ride and a way to END it, and
@@ -198,6 +204,11 @@ const modes = createModeHost({
   // is the run's and nothing survives into free ride.
   rivals,
   finishLine,
+  // The prop field, so a FINITE course can say where its road stops -- see
+  // props.setEndS. Deliberately not a general handle on spawning: a mode that
+  // started placing its own props would put content outside the course's
+  // allowedKinds and outside every measurement built on it.
+  props,
   endRun: (reason, card) => showGameOver(reason, card),
 });
 
@@ -754,10 +765,12 @@ const lobby = createLobby(
 // Only choice here is the mode. A mode with levels goes on to pick one; a mode
 // without them starts immediately.
 const modeSelect = createModeSelect((id) => {
-  // The two mission buttons open a list rather than starting a run; everything
-  // else drops straight in.
+  // A mode with LEVELS opens its list; everything else drops straight in.
+  // Speed race joined that group when it got a ladder of its own -- picking a
+  // track is part of a race, not something to be dealt at random.
   if (id === 'missions') missionSelect.open();
   else if (id === 'faceMissions') faceSelect.open();
+  else if (id === 'speedRace') raceSelect.open();
   else startRun(id);
 });
 
@@ -807,6 +820,17 @@ const faceSelect = {
   open: () => missionSelect.open(),
   close: () => {},
 };
+
+/**
+ * THE RACE LOBBY. The same component the missions use, on the race ladder --
+ * races have an id, a name, a brief and a star record, which is everything that
+ * list needs. Building a second list widget for six rows would have been two
+ * places for the two-key navigation to drift apart.
+ */
+const raceSelect = createMissionSelect(RACES, progress, (raceId) => {
+  setPendingRace(raceId);
+  startRun('speedRace');
+}, 2, 'race');
 
 // --- theme ------------------------------------------------------------------
 //
@@ -1066,8 +1090,11 @@ function leaveRun() {
   // this correct by accident.
   // Which list to return to -- the one whose button was pressed, not "missions"
   // by name. Getting this wrong strands the player on the wrong ladder.
-  const wasMissions = modes.id === 'missions' || modes.id === 'faceMissions';
-  const returnSelect = modes.id === 'faceMissions' ? faceSelect : missionSelect;
+  // Which screen sits above this run. The race has a lobby of its own now, so
+  // it belongs in this group rather than dropping back to the mode list.
+  const wasMissions = modes.id === 'missions' || modes.id === 'faceMissions'
+    || modes.id === 'speedRace';
+  const returnSelect = modes.id === 'speedRace' ? raceSelect : missionSelect;
   briefing.cancel();
   modes.stop();
   running = false;
@@ -2134,6 +2161,9 @@ window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, ra
   // The ladder itself, so star thresholds can be checked against what a hill
   // actually pays without re-deriving them outside the game.
   RIDGE_MISSIONS, FACE_MISSIONS,
+  // The race ladder and its picker, so a headless check can open the lobby and
+  // choose a track without clicking through two menus.
+  raceSelect, setPendingRace,
   // Live cross-section, plus the setter -- so a terrain can be swapped mid-run
   // from the console and measured, rather than only via a mode's course.
   TERRAIN, setTerrain: (k) => { setTerrain(k); trough.applyTerrain(); },

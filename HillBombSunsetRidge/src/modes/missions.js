@@ -408,7 +408,9 @@ export { MISSION_MODE };
 export default registerMode({
   ...MISSION_MODE,
   id: 'missions',
-  name: 'MISSIONS · ORIGINAL',
+  // Just MISSIONS -- see the same change in speedRace.js. The open-face ladder
+  // it was being told apart from is no longer reachable.
+  name: 'MISSIONS',
   tagline: 'The ridge. Twenty runs against the clock.',
 });
 

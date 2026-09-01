@@ -756,6 +756,11 @@ export function createProps(scene) {
   /** Extra pink barriers every this many metres. 0 is off. See setWallEvery. */
   let wallEvery = 0;
   let nextWallS = 60;
+  /**
+   * NOTHING IS PLACED BEYOND THIS. 0 means no limit, which is every endless
+   * course. See setEndS.
+   */
+  let endS = 0;
   /** Emissions per pattern name this run -- drives the `rare` cadence. */
   let emitsOf = Object.create(null);
   /**
@@ -823,6 +828,20 @@ export function createProps(scene) {
   function add(type, s, theta) {
     const def = PROP_TYPES[type];
     if (!def) return;
+    /**
+     * PAST THE FINISH LINE IS NOT PART OF THE COURSE. Amit: "there shouldn't be
+     * any objects after the finish line, I should hide them."
+     *
+     * Right, and it is not only tidiness. A ramp beyond the line invites a jump
+     * that cannot count, and a barrier there can knock the player over after
+     * they have already won -- both read as the game still asking something of
+     * you when it no longer is. Emptying the road past the line is what makes it
+     * a finish rather than an arbitrary marker on a hill that keeps going.
+     *
+     * Filtered at SPAWN rather than hidden at render, so nothing beyond the line
+     * exists to collide with either.
+     */
+    if (endS && s > endS) return;
     // KIND FILTER. Hazards (cones, potholes) are off by default -- Amit wants
     // the punishing encounters gone for now, but explicitly may want them back
     // for a future game mode. So they are filtered at SPAWN rather than deleted
@@ -1156,6 +1175,17 @@ export function createProps(scene) {
      * @param {number} m metres between extra pink barriers, or 0 for none.
      * Course-scoped for the same reason as setBoostEvery.
      */
+    /**
+     * @param {number} s the finish distance, or 0 for an endless course.
+     *
+     * Set per RUN rather than per course, because a varying course starts at a
+     * different distance each time -- the finish is startS + length, which the
+     * course itself cannot know.
+     */
+    setEndS(s) {
+      endS = (typeof s === 'number' && s > 0) ? s : 0;
+    },
+
     setWallEvery(m) {
       wallEvery = (typeof m === 'number' && m > 0) ? m : 0;
     },

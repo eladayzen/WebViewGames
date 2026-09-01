@@ -29,48 +29,51 @@
 
 import { registerMode } from './mode.js';
 import { RACE_COURSE, getCourse } from '../data/courses.js';
-import { RIDGE_CYCLE } from '../data/missions.js';
+import { getRace, RACE_IDS, starsForPlace, RACE_UNLOCK_PLACE } from '../data/races.js';
 
 /**
- * A DIFFERENT ONE OF THE SIX HILLS EVERY RACE.
+ * WHICH RACE THE LOBBY PICKED, set immediately before startRun.
  *
- * The race was riding `halfpipe` -- the original undressed ridge, with no sky
- * and no palette of its own, so it drew a random theme over a plain gradient
- * and got none of the art the missions were given. Meanwhile six hills exist,
- * each with its own shape, matte painting and colours. Amit: "shuffle between
- * the levels we made for the missions, same art, same stuff."
- *
- * Naming the terrain is all it takes: a terrain carries its own `sky` and
- * `theme`, and startRun applies both, so the race gets the painting and the
- * palette for free rather than needing anything wired to it.
- *
- * SHUFFLED, NOT RANDOM -- a bag that deals all six before repeating any. Plain
- * random gives the same hill twice in a row about one race in six, which is
- * precisely the thing this change exists to stop.
+ * The same pattern the missions use, and for the same reason: a mode is chosen
+ * by id through a registry that cannot carry an argument, so the choice is
+ * parked here and read by courseFor/terrainFor as the run is built.
  */
-let bag = [];
-function nextRaceTerrain() {
-  if (!bag.length) {
-    bag = RIDGE_CYCLE.slice();
-    for (let i = bag.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [bag[i], bag[j]] = [bag[j], bag[i]];
-    }
-  }
-  return bag.pop();
+let pendingId = RACE_IDS[0];
+
+export function setPendingRace(id) {
+  if (RACE_IDS.includes(id)) pendingId = id;
 }
 
-/** Safety cap, not the goal -- see the note above. */
+/** Safety cap, not the goal -- the race ends by arriving, not by a buzzer. */
 const RACE_TIMEOUT = 180;
 const FIELD_SIZE = 4;
 
+/**
+ * How long the player keeps riding after crossing the line, in seconds. Long
+ * enough to see the gate pass overhead and the road open out behind it; short
+ * enough that it reads as the end of a race rather than the game forgetting to
+ * stop. Amit: "give me another second or two to run after the finish line."
+ */
+const RUNOUT_SECONDS = 2;
+
 export default registerMode({
   id: 'speedRace',
-  name: 'SPEED RACE · ORIGINAL',
+  // Just SPEED RACE. The suffix distinguished it from the open-face variant,
+  // which is parked and unreachable -- so it was labelling a choice the player
+  // does not have. Amit: "change the names in the main lobby to just missions
+  // and just speed race."
+  name: 'SPEED RACE',
   tagline: 'The ridge. Four rivals, first to the line.',
   course: RACE_COURSE,
-  /** A fresh hill per race -- see nextRaceTerrain. */
-  terrainFor: () => nextRaceTerrain(),
+  /**
+   * THE HILL IS THE RACE. It used to be dealt at random from a shuffled bag,
+   * which made every race the same event on scenery the player had no
+   * relationship with -- and meant "I want another go at that one" was not
+   * something they could ask for. Now the lobby picks it.
+   */
+  terrainFor: () => getRace(pendingId).terrain,
+  /** Named on the results screen and the pre-race card. */
+  raceName: () => getRace(pendingId).name,
   // The score readout is hidden in this mode. Points still accrue underneath --
   // nothing special-cases the scoring system -- but showing a number that has no
   // bearing on whether you are winning is worse than showing nothing: it reads
@@ -87,6 +90,8 @@ export default registerMode({
     let finished = false;
     let startS = 0;
     let finishS = 0;
+    /** Seconds of free coasting left after crossing the line. See update(). */
+    let runout = 0;
     /** Finish order, filled as each racer crosses. */
     const crossed = [];
 
@@ -123,15 +128,35 @@ export default registerMode({
       const me = rows.find((r) => r.you);
       const won = me.place === 1;
       const homeCount = crossed.length;
+      const race = getRace(pendingId);
+      const stars = starsForPlace(me.place);
       ctx.finishLine.hide();
+      /**
+       * THIRD OR BETTER CLEARS THE RACE and unlocks the next.
+       *
+       * Recorded BEFORE the results screen is built, so the lobby behind it
+       * already shows what this run just opened -- the same ordering the
+       * missions use, and for the same reason.
+       *
+       * A worse place records nothing at all rather than a zero-star clear.
+       * `cleared` is what gates the next race, so writing a record for fourth
+       * would unlock the ladder by losing.
+       */
+      if (stars > 0) ctx.progress.record(race.id, stars, Math.round(ctx.scoring.state.score));
       ctx.endRun(won ? 'complete' : 'timeup', {
-        tone: won ? 'success' : 'fail',
+        tone: stars > 0 ? 'success' : 'fail',
         title: won ? 'WINNER' : `FINISHED ${ordinal(me.place)}`,
-        subtitle: 'SPEED RACE',
+        // The track, not the mode. Which race it was is the thing worth saying
+        // on a screen that already has "FINISHED 2ND" at the top of it.
+        subtitle: race.name,
         detail: reason === 'timeout'
           ? `time cap  ·  ${Math.round(finishS - me.s)} m short of the line`
-          : `${(course.length / 1000).toFixed(1)} km  ·  ${homeCount} of ${FIELD_SIZE + 1} home`,
-        stars: me.place === 1 ? 3 : me.place === 2 ? 2 : me.place === 3 ? 1 : 0,
+          // Says what the bar was when it was missed, so a fourth place reads as
+          // "one more place and it opens" rather than as an unexplained refusal.
+          : stars > 0
+            ? `${(course.length / 1000).toFixed(1)} km  ·  ${homeCount} of ${FIELD_SIZE + 1} home`
+            : `${ordinal(RACE_UNLOCK_PLACE)} or better unlocks the next race`,
+        stars,
         rows: rows.map((r) => ({
           label: r.name,
           // Finishers get their place; anyone still out gets how far short they
@@ -148,6 +173,8 @@ export default registerMode({
         finishS = startS + course.length;
         rivals.spawn(FIELD_SIZE, startS);
         ctx.finishLine.place(finishS);
+        // Empty the road past the line -- see props.setEndS.
+        ctx.props.setEndS(finishS);
         ctx.hud.banner('RACE');
       },
 
@@ -170,7 +197,26 @@ export default registerMode({
         const meS = ctx.getState().s;
         if (meS >= finishS && !crossed.includes('YOU')) {
           crossed.push('YOU');
-          end('finish');
+          // A BEAT TO COAST THROUGH. Amit: "give me another second or two to run
+          // after the gate and finish line before it's sent to the hub."
+          //
+          // Ending on the frame the line is crossed cuts the picture at exactly
+          // the moment the player is looking at the thing they just achieved --
+          // the gate is still filling the screen when the results replace it.
+          // Crossing a line is a moment you ride THROUGH, so the run does, and
+          // the result screen arrives once it has actually happened.
+          //
+          // The place is already fixed at this point: `crossed` recorded the
+          // order, so nothing about the outcome can change during the runout,
+          // and a rival finishing during it still lands behind the player.
+          runout = RUNOUT_SECONDS;
+        }
+
+        if (runout > 0) {
+          runout -= dt;
+          if (runout <= 0) { end('finish'); return; }
+          // The clock stops during the runout: the race is over, and letting the
+          // timeout fire here would report a win as a time cap.
           return;
         }
 
