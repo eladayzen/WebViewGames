@@ -46,7 +46,7 @@ import {
 import { createRider } from '../entities/rider.js';
 import { createCameraRig } from '../camera/cameraRig.js';
 import { createLobby } from '../ui/lobby.js';
-import { initSettingsPanel, isPanelOpen, FEEL } from '../ui/settingsPanel.js';
+import { initSettingsPanel, isPanelOpen, closeSettingsPanel, FEEL } from '../ui/settingsPanel.js';
 import { createSky, SKIES } from '../world/sky.js';
 import { createProps } from '../entities/props.js';
 import { createRivals } from '../entities/rivals.js';
@@ -54,6 +54,7 @@ import { createFinishLine } from '../entities/finishLine.js';
 import { createSparks } from '../entities/sparks.js';
 import { createSpeedLines } from '../entities/speedLines.js';
 import { createScoring } from '../systems/scoring.js';
+import { createAudio } from '../systems/audio.js';
 import { createHud } from '../ui/hud.js';
 import { CONTROLS, setControlPreset } from '../data/controlPresets.js';
 import { TERRAIN, setTerrain, DEFAULT_TERRAIN, LIP_CUSHION, LIP_WALL } from '../data/terrain.js';
@@ -133,6 +134,8 @@ const props = createProps(scene);
 const sparks = createSparks(scene);
 const speedLines = createSpeedLines(scene);
 const scoring = createScoring();
+const audio = createAudio();
+
 const hud = createHud();
 const rider = createRider(scene, camera);
 const rig = createCameraRig(camera);
@@ -142,6 +145,31 @@ const finishLine = createFinishLine(scene);
 // The controller reports what happened; game modes listen. Nothing downstream
 // of this line may reach back into the simulation -- see core/events.js.
 const events = createEvents();
+
+/**
+ * SOUND IS DRIVEN OFF THE EVENT BUS, not off the code that causes the sound.
+ *
+ * Every one of these already existed for the HUD and the objectives, so audio
+ * costs nothing to add and -- more importantly -- cannot drift out of step with
+ * what the game says happened. A ramp that stops emitting LAUNCH loses its
+ * popup, its objective credit and its sound together, which is a bug you notice
+ * rather than three separate ones you might not.
+ *
+ * The grind is the exception and is wired at its own start/stop sites below: it
+ * has a DURATION, and GRIND only fires when the rail is finished.
+ */
+events.on(EV.LAUNCH, () => audio.play('launch'));
+events.on(EV.LAND, () => audio.play('land'));
+events.on(EV.BOOST, () => audio.play('boost'));
+events.on(EV.HAZARD, () => audio.play('crash'));
+/**
+ * Pitched off the CHAIN so a run of crystals rises instead of repeating. The
+ * same clip thirty times is the fastest way to make a pickup annoying; a
+ * semitone per link turns the repetition into the thing being rewarded. Capped
+ * so it never reaches chipmunk.
+ */
+events.on(EV.PICKUP, () => audio.play('pickup',
+  Math.min(1.6, 1 + (scoring.state.chain - 1) * 0.06)));
 const objectivesUi = createObjectives();
 const briefing = createBriefing();
 // Stars and unlocks. Local today, account data in the shipped product -- the
@@ -270,12 +298,46 @@ let paused = false;
  * being broken rather than as a pause. Every entry to and exit from a run now
  * goes through here.
  */
+/**
+ * THE CHROME BELONGS TO A RUN, not to the app.
+ *
+ * Amit: "the settings and the pause menu will appear only after the run
+ * actually starts, not while doing the UI."
+ *
+ * Both buttons only mean anything mid-ride -- there is nothing to pause on a
+ * menu, and the settings panel opening over the mission list puts two competing
+ * lists on screen at once, each with its own idea of what Enter and Space do.
+ * On the board that is worse than untidy: those two keys are the whole input
+ * vocabulary, so an overlay nobody meant to open can swallow every press.
+ *
+ * Hidden rather than disabled, so there is nothing to aim at in the first place.
+ */
+function setChromeVisible(on) {
+  for (const id of ['pause-button', 'settings-button']) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', !on);
+  }
+  // A run ending with the panel still up would leave it orphaned over the
+  // results screen, with its own key handling live.
+  if (!on) closeSettingsPanel();
+}
+
+/**
+ * Audio follows the game's paused state AND the settings panel, since both are
+ * "the player is not riding right now". Called from setPaused and from the
+ * panel's open/close, so there is one rule rather than two that can disagree.
+ */
+function syncAudioPause() {
+  audio.setPaused(paused || isPanelOpen());
+}
+
 function setPaused(next) {
   paused = next;
   const pauseButton = document.getElementById('pause-button');
   const pausedBadge = document.getElementById('paused-badge');
   if (pauseButton) pauseButton.innerHTML = paused ? '&#9654;' : '&#9208;';
   if (pausedBadge) pausedBadge.classList.toggle('hidden', !paused);
+  syncAudioPause();
 }
 {
   const pauseButton = document.getElementById('pause-button');
@@ -866,6 +928,9 @@ function startRun(id) {
   // read a word of the HUD.
   applyTheme(TERRAIN.theme ? getTheme(TERRAIN.theme) : pickRandomTheme());
   running = true;
+  // The game track starts HERE, not at boot: the lobby is silent by design.
+  audio.setInRun(true);
+  setChromeVisible(true);
   setPaused(false);
   reset();
   modes.start(id);
@@ -1006,6 +1071,8 @@ function leaveRun() {
   briefing.cancel();
   modes.stop();
   running = false;
+  audio.setInRun(false);
+  setChromeVisible(false);
   setPaused(false);
   if (wasMissions) returnSelect.open();
   else modeSelect.open();
@@ -1071,7 +1138,16 @@ window.addEventListener('keydown', (e) => {
 // onChange fires once during its own construction and writes the control
 // preset, so a panel built earlier would have its stored preference silently
 // overwritten on every boot.
-initSettingsPanel({ openLab: () => lobby.open() });
+initSettingsPanel({
+  openLab: () => lobby.open(),
+  audio,
+  // The panel counts as paused: it is over the game and the player is not
+  // riding. See syncAudioPause.
+  onToggle: () => syncAudioPause(),
+});
+// Hidden until a run starts. The first screen is a menu, so the chrome has
+// nothing to act on yet -- see setChromeVisible.
+setChromeVisible(false);
 
 // --- HUD --------------------------------------------------------------------
 let fpsAccum = 0;
@@ -1953,6 +2029,27 @@ function frame() {
     ? Math.max(0, (scoring.state.wobble - 55) / 45)
     : Math.min(SHAKE_MAX, Math.max(0, (state.speed - NATURAL_TOP_SPEED) / SHAKE_SPAN));
 
+  /**
+   * THE RIDE'S SOUND, every frame. One call, and the audio system decides which
+   * continuous layer that implies -- rolling, grinding, or the silence of being
+   * in the air.
+   *
+   * Driven from the same state the renderer reads rather than from the events
+   * that cause the transitions, deliberately: `airborne` and `grind` are the
+   * truth about where the rider is, whereas LAUNCH and LAND are moments. A bed
+   * driven by moments drifts out of sync the first time one is missed -- a drop
+   * that launches without a ramp, a rail exit that is interrupted -- and the
+   * wheels end up rolling through the air. This cannot.
+   */
+  audio.setRide({
+    airborne: state.airActive,
+    grinding: !!state.grind,
+    speed: state.speed,
+    // Silent between runs: the wheels must not keep rolling over the results
+    // screen, which breaks the illusion exactly as badly as the gaps did.
+    active: running && !gameOver,
+  });
+
   rider.update(view, dt);
 
   // GRIND SPARKS. Struck at the board's actual underside, which has to be read
@@ -2031,6 +2128,9 @@ function frame() {
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
 window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, faceSelect, rivals, finishLine, trough, sky, applyTheme,
+  // The sound system, so a headless check can confirm the context actually
+  // started and that the two switches move independently.
+  audio,
   // The ladder itself, so star thresholds can be checked against what a hill
   // actually pays without re-deriving them outside the game.
   RIDGE_MISSIONS, FACE_MISSIONS,

@@ -120,6 +120,73 @@ html, body {
 }
 .sp-row button:active { background: rgba(255, 255, 255, 0.3); }
 
+/* THE VOLUME SLIDERS.
+   Sized so a thumb can actually land on them -- the track is the full width of
+   the row and the handle is deliberately oversized, because this panel is used
+   on a phone-sized WebView as often as on a desktop. */
+.sp-slider {
+  flex: 1 1 100%;
+  order: 3;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  margin: 2px 0 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  outline: none;
+  cursor: pointer;
+}
+.sp-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffe9d6;
+  border: none;
+  cursor: pointer;
+}
+.sp-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: #ffe9d6;
+  cursor: pointer;
+}
+/* A dimmed row's slider should look inert as well as read inert. */
+.sp-dim .sp-slider { opacity: 0.35; }
+
+/* THE STANCE BUTTON -- a picture of the real balance board. See addStance(). */
+.sp-row button.sp-stance {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 78px;
+  height: auto;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+/* Sized by WIDTH only so the aspect is the artwork's own. The box is square so
+   the rotated state occupies the same space as the flat one -- otherwise the
+   whole panel reflows every time the stance is flipped. */
+.sp-stance { justify-content: center; }
+.sp-board {
+  display: block;
+  width: 62px;
+  height: auto;
+  transition: transform 160ms ease;
+}
+/* SKATE is the board turned a quarter under the rider. The artwork's own
+   footprints and arrows rotate with it, which is the entire explanation. */
+.sp-board-skate { transform: rotate(90deg); }
+.sp-stance-name {
+  font: 800 9px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.8px;
+  opacity: 0.85;
+}
+
 .sp-note {
   flex-basis: 100%;
   font-size: 8.5px;

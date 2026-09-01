@@ -61,14 +61,24 @@ export function createBriefing() {
     finish();
   }
 
-  // Space/Enter and a tap still skip ahead -- the SUPPORT stays, only the text
-  // advertising it is gone. On the board these are the only inputs the host
-  // forwards, so a desktop tester and the SDK's synthetic clicks both work.
+  /**
+   * NO CLICK-TO-SKIP. Amit: "there is a countdown -- when I click on it, it
+   * jumps straight to the game. Let's disable this click-skip."
+   *
+   * The card is not decoration: it is where the player reads what the mission
+   * is asking for, and a tap anywhere on a full-screen panel is very easy to
+   * fire by accident -- so the one interaction this screen had was to destroy
+   * its own reason for existing, on a touch device, on every single run.
+   *
+   * Space/Enter still skip. Those are a deliberate press rather than a stray
+   * tap, and on the GoBalance board they are the only inputs the host forwards
+   * at all -- removing them too would leave a rider unable to get past the card
+   * except by waiting it out.
+   */
   window.addEventListener('keydown', (e) => {
     if (dismissed) return;
     if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); fly(); }
   });
-  el.addEventListener('click', fly);
 
   return {
     isOpen: () => !dismissed,

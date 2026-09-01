@@ -74,6 +74,24 @@ export const STANCE_MODES = [STANCE_SKATE, STANCE_SQUARE];
 // re-enabling this is one boolean if the hardware or the ergonomics change.
 const FORWARD_INPUT = false;
 
+/**
+ * THE BRAKE IS OFF. Amit: "disable the input for the player to brake -- no need
+ * for it."
+ *
+ * This is the whole fore/aft axis gone, since FORWARD_INPUT already disabled the
+ * other half of it: steering is now purely lateral, which is also the axis the
+ * board is comfortable on (leaning forward and back on a balance board is hard
+ * and imprecise, sideways is not).
+ *
+ * Disabled HERE, at the one place the axis is read, rather than at the call
+ * sites. Everything downstream -- the brake drag, the tail load, the deck pitch,
+ * the tail sparks, the pose -- keeps working off a brake value that is simply
+ * always zero, so nothing needs to learn that the input is gone and turning it
+ * back on is one line. The alternative, deleting the consumers, throws away a
+ * working feature to disable it.
+ */
+const BRAKE_INPUT = false;
+
 const keys = new Set();
 // A trick can still be fired programmatically (the lab's auto-trick, and the
 // 'T' key) even though the manual pop input is gone -- see forcePop.
@@ -239,7 +257,7 @@ export function readInput() {
   //
   // Rescaled after the gate so the brake still starts from zero at the moment it
   // engages -- otherwise crossing the threshold would snap straight to 42%.
-  const rawBrake = Math.max(0, -ay);
+  const rawBrake = BRAKE_INPUT ? Math.max(0, -ay) : 0;
   let brake = 0;
   if (rawBrake > BRAKE_DEADZONE) {
     const now = performance.now();

@@ -22,8 +22,11 @@ export const PROP_TYPES = {
     kind: 'launch',
     // A wedge: low at the near edge, rising toward the rider's direction.
     size: { w: 4.2, h: 0.95, l: 3.4 },
-    colour: 0x6c3fd8,
-    accent: 0x4223a2,
+    // Lifted too, luminance 84 -> 128, for the same reason as the bank: it is
+    // the other small launcher and sat just as dark. Kept violet so the two are
+    // still told apart at a glance -- brightness was the problem, not hue.
+    colour: 0x9b6bff,
+    accent: 0x6b3fd0,
     /**
      * RAMP PAYOUTS ARE FLATTENED: 200 / 250 / 300 / 420 across the four, where
      * they used to run 120 / 150 / 260 / 420 -- a 3.5x spread down to 2.1x.
@@ -72,8 +75,23 @@ export const PROP_TYPES = {
     // Wide, shallow quarter-pipe style bank -- a gentler launch, and forgiving
     // because it's wide enough that you don't have to aim.
     size: { w: 9.0, h: 1.2, l: 6.0 },
-    colour: 0x35538f,
-    accent: 0x27406f,
+    /**
+     * BRIGHTENED, from 0x35538f. Amit: "the small blue ramps are hard to see, we
+     * need them in a brighter colour."
+     *
+     * Measured, and it was not close: the bank sat at luminance 81 while the
+     * ground it lies on runs 27-45 depending on theme. That is the LOWEST
+     * contrast of the four launchers, on the one shaped worst for being seen --
+     * it is the widest and by far the flattest, so it presents almost no
+     * silhouette against the road and had only its colour to do the work.
+     *
+     * 166 now, about four times the brightness of the darkest ground, which puts
+     * it above even the barrel. Azure rather than a lighter navy so it separates
+     * by HUE as well as by value from every trough colour in the set, all of
+     * which are dark and desaturated by design.
+     */
+    colour: 0x4bb8ff,
+    accent: 0x2f86c4,
     launch: { power: 1.2, points: 250, profile: 'hump' },
     label: 'BANK',
   },
