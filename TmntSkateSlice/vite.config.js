@@ -40,6 +40,15 @@ export default defineConfig(({ mode }) => {
           __dirname,
           isOriginal ? 'src/core/heroAssets.original.js' : 'src/core/heroAssets.tmnt.js'
         ),
+        // Same per-theme file-swap as @hero-assets, for the collectible art
+        // (falling item + its HUD collection chip). The 'original' theme uses
+        // distinct per-color idols; TMNT maps every color back to pizza_slice
+        // so its build renders unchanged. Keeping idol_*.png out of the TMNT
+        // module graph is again the point (see @hero-assets note above).
+        '@collectible-assets': path.resolve(
+          __dirname,
+          isOriginal ? 'src/core/collectibleAssets.original.js' : 'src/core/collectibleAssets.tmnt.js'
+        ),
       },
     },
     build: {

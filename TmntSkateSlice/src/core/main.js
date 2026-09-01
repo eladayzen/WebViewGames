@@ -5,10 +5,10 @@
 
 import { loadAssets, loadAudioAssets } from './assets.js';
 import { setupCanvas, renderFrame } from './render.js';
-import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, togglePause, triggerIntro, triggerStageComplete, resumeRunning } from './gameState.js';
+import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, triggerIntro, triggerStageComplete, resumeRunning } from './gameState.js';
 import { INTRO_STEP1_AUTO_ADVANCE_SEC, INTRO_STEP2_AUTO_ADVANCE_SEC, INTRO_RUN_FRAME_DURATION_SEC } from '../data/introTutorial.js';
 import { STAGE_COMPLETE_COUNTDOWN_SEC, STAGE_CURTAIN_CLOSE_DELAY_SEC, STAGE_CURTAIN_TRANSITION_SEC } from '../data/stageTransition.js';
-import { getSteerAxis } from '../input/input.js';
+import { getSteerAxis, applySensitivityToHost } from '../input/input.js';
 import { createAudio, playSfx, startMusic, pauseMusic, resumeMusic } from '../systems/audio.js';
 import { initSettingsPanel } from '../ui/settingsPanel.js';
 import {
@@ -26,6 +26,7 @@ import {
   isMagnetBuffed,
   getHitHalfWidthFrac,
   isInvulnerable,
+  RUN_CYCLE_KEYS,
 } from '../entities/player.js';
 import { updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
 import { createSpawner, resetSpawner, updateSpawner } from '../systems/spawner.js';
@@ -33,6 +34,9 @@ import { createBombPresence, resetBombPresence, updateBombPresence } from '../sy
 import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../systems/boxes.js';
 import { createBombKills, resetBombKills, registerBombKill, updateBombKills } from '../systems/bombKills.js';
 import { rollBoxReward, BOX_COLOR_BY_ID } from '../data/boxColors.js';
+// Per-theme falling-item sprite key by box color, so the fly-to-chip "twin"
+// matches the caught art (an idol in the original theme, pizza_slice in TMNT).
+import { FALLING_SPRITE_KEY_BY_BOX_COLOR } from '@collectible-assets';
 import { BOMB_KILL_SET } from '../data/bombKills.js';
 import { createDifficulty, resetDifficulty, updateDifficulty, commitStageAdvance, getStage, getScoreBand } from '../systems/difficulty.js';
 import { STAGES } from '../data/stages.js';
@@ -46,6 +50,7 @@ import {
   registerBombKillScore,
 } from '../systems/scoring.js';
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
+import { submitRun, fetchBoard, resultSections } from '../systems/scoreboard.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
 import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, BOX_COMPLETE_FLY_MS, HUD_SCALE_REFERENCE_HEIGHT_PX, HUD_SCALE_MAX } from '../data/constants.js';
@@ -92,6 +97,15 @@ async function boot() {
   let introElapsed = 0; // time in the CURRENT step, for the auto-advance timeout
   let introRunFrameIndex = 0;
   let introRunFrameElapsed = 0;
+  // Loop phase for the JS-driven tutorial board-tilt + character sweep (was a
+  // CSS @keyframes animation; those freeze on the occluded WebView -- ui.js).
+  let introSweepElapsed = 0;
+
+  // Quit-confirm flow: remember whether the game was already paused when the X
+  // raised the confirm, so KEEP PLAYING restores that state rather than
+  // blindly unpausing someone who had deliberately paused (GOBALANCE_APP_-
+  // INTEGRATION.md "Quitting").
+  let pausedBeforeConfirm = false;
 
   // Stage-complete transition state (freeze + curtain, ported from
   // HalfShellHustle's level-complete pattern -- data/stageTransition.js's
@@ -100,6 +114,9 @@ async function boot() {
   let stageCompleteElapsed = 0;
   let stageCurtainsClosed = false;
   let stageSwapped = false;
+  // Seconds since the current countdown number appeared, for its JS-driven
+  // tick pop (was a CSS class-toggle animation -- ui.js setStageTickAnim).
+  let stageTickElapsed = 0;
 
   // Background music is back on by default (2026-08-19, was off since
   // 2026-07-30's "annoying" feedback -- replaced with a new track + real
@@ -140,6 +157,84 @@ async function boot() {
     ui.setBombKills(bombKills);
   }
 
+  // Submit the finished run to the family-account board, then fetch + render
+  // it into the game-over overlay. Fire-and-forget: never awaited, never
+  // blocks the death screen, and a no-op outside the app (scoreboard.js
+  // feature-detects). SUBMIT BEFORE FETCH so the run just played is in the
+  // board. Called ONCE from the death site (not the per-frame gameover
+  // branch, which would resubmit every frame). `justScored` is held locally
+  // so the row can be found + highlighted (entries carry no run id).
+  function submitAndShowBoard(justScored) {
+    submitRun(justScored).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, justScored);
+        ui.showScoreboard(board, near.length ? [top, near] : [top]);
+      })
+    );
+  }
+
+  // One route for pause, so the audio suspend/resume can never drift out of
+  // step with gs.paused or the HUD (GOBALANCE_APP_INTEGRATION.md). Used by the
+  // pause button AND the quit-confirm flow.
+  function setPaused(value) {
+    gs.paused = value;
+    ui.setPaused(value);
+    if (value) pauseMusic();
+    else resumeMusic();
+  }
+
+  // Leave the game back to the app's games list. Prefer the SDK's back(); fall
+  // back to the raw native bridge so a game whose module failed to load is
+  // still escapable (the inline #gb-back onclick has the same fallback).
+  function leaveToLobby() {
+    if (window.GoBalance && typeof window.GoBalance.back === 'function') {
+      window.GoBalance.back();
+      return;
+    }
+    if (window.Unity) window.Unity.call('nav:back');
+  }
+
+  // The X (#gb-back) hook. Only interrupts a LIVE run with a confirm; from any
+  // screen where the player is already stopped (intro/countdown/stage-complete/
+  // game-over, or the quit board itself) it just leaves. Ignores repeat taps
+  // while the confirm is already up so pausedBeforeConfirm isn't clobbered.
+  window.__gbBack = () => {
+    if (ui.isQuitOpen()) return leaveToLobby();
+    if (ui.isConfirmOpen()) return;
+    if (gs.current !== 'running') return leaveToLobby();
+    pausedBeforeConfirm = gs.paused;
+    setPaused(true);
+    ui.showConfirm();
+  };
+
+  // Confirmed a mid-run quit: end the run, submit it (a run ended by choice
+  // still happened), and show the quit board with the family leaderboard. The
+  // board is shown immediately with just the result line; the leaderboard
+  // fills in when the async fetch resolves. No auto-restart timer.
+  function endRunAndShowQuit() {
+    ui.hideConfirm();
+    setPaused(true);
+    const runScore = scoring.score;
+    const statsText = `SCORE ${Math.floor(runScore).toLocaleString()} · BEST COMBO x${scoring.bestCombo}`;
+    ui.showQuit(statsText, null, []);
+    submitRun(runScore).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, runScore);
+        ui.showQuit(statsText, board, near.length ? [top, near] : [top]);
+      })
+    );
+  }
+
+  // PLAY AGAIN from the quit board, and the shared path for the game-over
+  // RETRY button: dismiss the quit board, rebuild the world, run the intro,
+  // and clear any pause.
+  function restartGame() {
+    ui.hideQuit();
+    fullReset();
+    beginIntro();
+    setPaused(false);
+  }
+
   // Shown every run (boot() below and the restart button both call this),
   // not just the first one ever -- direct-feedback pattern ported from
   // HalfShellHustle (see WEB_MINIGAME_TECH_RETROSPECTIVE.md). Always called
@@ -150,6 +245,7 @@ async function boot() {
     introElapsed = 0;
     introRunFrameIndex = 0;
     introRunFrameElapsed = 0;
+    introSweepElapsed = 0;
     ui.showIntroTutorial();
   }
 
@@ -189,17 +285,36 @@ async function boot() {
 
   document.getElementById('restart-button').addEventListener('click', () => {
     playSfx(audio, sfx.sfx_ui_tap);
-    fullReset();
-    beginIntro();
-    ui.setPaused(false);
+    restartGame();
   });
 
   document.getElementById('pause-button').addEventListener('click', () => {
     playSfx(audio, sfx.sfx_ui_tap);
-    togglePause(gs);
-    ui.setPaused(gs.paused);
-    if (gs.paused) pauseMusic();
-    else resumeMusic();
+    setPaused(!gs.paused);
+  });
+
+  // Quit-flow buttons (GOBALANCE_APP_INTEGRATION.md "Quitting"). stopPropagation
+  // so a tap on a card button never falls through to a backdrop handler.
+  document.getElementById('confirm-stay').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx(audio, sfx.sfx_ui_tap);
+    ui.hideConfirm();
+    setPaused(pausedBeforeConfirm); // restore prior state, not blind unpause
+  });
+  document.getElementById('confirm-quit').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx(audio, sfx.sfx_ui_tap);
+    endRunAndShowQuit();
+  });
+  document.getElementById('quit-again').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx(audio, sfx.sfx_ui_tap);
+    restartGame();
+  });
+  document.getElementById('quit-leave').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx(audio, sfx.sfx_ui_tap);
+    leaveToLobby();
   });
 
   // Settings panel (gear button, 2026-08-19) -- SENSITIVITY/MUSIC/SFX,
@@ -207,6 +322,11 @@ async function boot() {
   // for why it's driven by touch AND Enter/Space (no pointer is forwarded
   // inside the real Unity WebView in this game's analog steering mode).
   initSettingsPanel(() => playSfx(audio, sfx.sfx_ui_tap));
+
+  // Push the persisted board sensitivity to the host on boot -- it doesn't
+  // remember the choice across launches (GOBALANCE_APP_INTEGRATION.md). No-op
+  // outside the app.
+  applySensitivityToHost();
 
   // Apply a booster effect (shield / magnet / wave "blow up"), from either a
   // caught falling pickup OR a box-completion reward (2026-08-02). xFrac/yFrac
@@ -287,7 +407,7 @@ async function boot() {
         // colored box (feedback 2026-08-03).
         const chipPos = ui.getChipCenterFrac(boxColor);
         const boxHex = (BOX_COLOR_BY_ID[boxColor] || {}).hex || '#ffffff';
-        spawnCollectFlyer(juice, item.xFrac, item.yFrac, chipPos.xFrac, chipPos.yFrac, boxHex, () => ui.pulseChip(boxColor));
+        spawnCollectFlyer(juice, item.xFrac, item.yFrac, chipPos.xFrac, chipPos.yFrac, boxHex, () => ui.pulseChip(boxColor), FALLING_SPRITE_KEY_BY_BOX_COLOR[boxColor]);
         const done = registerBoxCatch(boxes, boxColor);
         if (done) {
           // Auto-reward (2026-08-02): each box grants N distinct boosters
@@ -354,6 +474,7 @@ async function boot() {
         if (isDead(lives)) {
           triggerGameOver(gs);
           playSfx(audio, sfx.sfx_game_over);
+          submitAndShowBoard(scoring.score);
         }
       }
       // overlap while invulnerable (and not shielded): bomb just continues (§5.4)
@@ -509,13 +630,15 @@ async function boot() {
           ui.setCountdown(0);
           introElapsed += dt;
           if (introStep === 2) {
-            // Run-cycle frame swap, the only dt-driven visual here -- the
-            // board/character sweep itself is pure CSS (style.css), so it
-            // can't desync no matter what dt does.
+            // Board-tilt + character sweep, driven per-frame (was CSS
+            // @keyframes -- freezes on the occluded WebView, ui.js). 3.6s loop.
+            introSweepElapsed += dt;
+            ui.setIntroSweep((introSweepElapsed % 3.6) / 3.6);
+            // Run-cycle frame swap, keyed to the real in-game cadence.
             introRunFrameElapsed += dt;
             if (introRunFrameElapsed >= INTRO_RUN_FRAME_DURATION_SEC) {
               introRunFrameElapsed -= INTRO_RUN_FRAME_DURATION_SEC;
-              introRunFrameIndex = (introRunFrameIndex + 1) % 2;
+              introRunFrameIndex = (introRunFrameIndex + 1) % RUN_CYCLE_KEYS.length;
               ui.setIntroRunFrame(introRunFrameIndex);
             }
           }
@@ -542,9 +665,17 @@ async function boot() {
         } else if (gs.current === 'stagecomplete') {
           ui.setCountdown(0);
           stageCompleteElapsed += dt;
+          // Headline bounce + countdown tick pop, driven per-frame (were CSS
+          // animations -- freeze on the occluded WebView, ui.js). The tick
+          // timer resets the frame the number changes so each gets its beat.
+          ui.setStageHeadlineAnim(stageCompleteElapsed);
           // ceil, floored at 1: reads "1" for the whole final second rather
           // than flashing a 0 nobody is meant to see.
-          ui.setStageCountdown(Math.max(1, Math.ceil(STAGE_COMPLETE_COUNTDOWN_SEC - stageCompleteElapsed)));
+          const tickChanged = ui.setStageCountdown(
+            Math.max(1, Math.ceil(STAGE_COMPLETE_COUNTDOWN_SEC - stageCompleteElapsed))
+          );
+          stageTickElapsed = tickChanged ? 0 : stageTickElapsed + dt;
+          ui.setStageTickAnim(stageTickElapsed);
           // Let the celebration burst play out/decay while the world is
           // frozen (same "keep ticking VFX" fix already applied to gameover
           // -- otherwise it'd freeze mid-burst instead of settling).

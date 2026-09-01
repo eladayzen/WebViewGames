@@ -19,13 +19,12 @@
 // WHO OWNS WHAT: this file only renders rows and pushes changes into the
 // systems that actually own the state (input.js for sensitivity,
 // systems/audio.js for SFX/music) -- same split HalfShellHustle's panel
-// uses. SENSITIVITY deliberately does NOT use the SDK's gb:sensitivity
-// bridge: that tunes Unity-side key press/release thresholds and does
-// nothing at all in analog mode (confirmed against GOBALANCE_SDK.md, and
-// HalfShellHustle's own identical row is marked "stepped mode only --
-// tunes the HOST thresholds" for the same reason). Instead it's a
-// game-side gain multiplier on the raw analog tilt -- see input.js's
-// getSensitivity/setSensitivity for the actual math.
+// uses. SENSITIVITY is driven THROUGH THE HOST: input.js's setSensitivity
+// calls GoBalance.setSensitivity(0..100), which the app applies to the board
+// reading before the page sees it (GOBALANCE_APP_INTEGRATION.md). This panel
+// just reads/writes it via getSensitivity/setSensitivity and never scales the
+// sensor itself -- see input.js's header for why (a game-side gain would
+// double-apply on the product SDK).
 
 import { getSensitivity, setSensitivity } from '../input/input.js';
 import { getSfxEnabled, setSfxEnabled, getMusicEnabled, setMusicEnabled } from '../systems/audio.js';

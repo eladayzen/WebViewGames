@@ -183,7 +183,11 @@ export function isInvulnerable(player) {
 // heroAssets.tmnt.js), so for TMNT this list resolves to
 // mike_run_1, mike_run_3, mike_run_1, mike_run_3 -- i.e. its original clean
 // 2-frame alternation, visually unchanged.
-const RUN_CYCLE_KEYS = ['hero_run_1', 'hero_run_2', 'hero_run_3', 'hero_run_2'];
+// Exported so the intro tutorial (ui.js) plays the EXACT same run-cycle
+// sequence the game does, sourced from here rather than a hand-kept copy --
+// a hardcoded 2-frame copy in ui.js silently fell out of sync when this grew
+// to the 3-pose ping-pong (2026-08-31).
+export const RUN_CYCLE_KEYS = ['hero_run_1', 'hero_run_2', 'hero_run_3', 'hero_run_2'];
 export function getRunCycleSpriteKey(player) {
   const phase = Math.floor(player.runCyclePhaseTimer / RUN_CYCLE_FRAME_DURATION_SEC) % RUN_CYCLE_KEYS.length;
   return RUN_CYCLE_KEYS[phase];

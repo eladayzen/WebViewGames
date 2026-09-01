@@ -16,26 +16,23 @@
 let keyLeft = false;
 let keyRight = false;
 
-// SENSITIVITY (2026-08-19, settings panel) -- deliberately NOT the SDK's
-// gb:sensitivity Unity bridge. That bridge retunes the HOST's key press/
-// release thresholds, which only exist for `forwardSteeringKeys = true`
-// (digital) games; per GOBALANCE_SDK.md it does nothing at all in analog
-// mode, and HalfShellHustle's own steering panel marks its equivalent row
-// "stepped mode only -- tunes the HOST thresholds" for exactly this reason.
-// This game reads the raw sensor itself, so sensitivity has to be a
-// GAME-SIDE gain on that raw value instead.
+// SENSITIVITY -- driven through the HOST (2026-09-01, revised).
+// GOBALANCE_APP_INTEGRATION.md and NovaVanguard's settingsPanel.js are explicit:
+// `GoBalance.setSensitivity(0..100)` (higher = reacts to a smaller lean) is
+// applied on the Unity side to the board reading ITSELF, before __gbSensor
+// ever reaches the page -- so the game must NOT also scale the sensor value,
+// or the two compound and the dial stops meaning what it says.
 //
-// 0..100 (same convention as the SDK's own dial, for a familiar range) maps
-// geometrically -- not linearly -- onto a gain multiplier so that 50 (the
-// default) lands on EXACTLY 1.0x: gain = GAIN_MIN * (GAIN_MAX/GAIN_MIN)^(pct/100).
-// At pct=50 that's GAIN_MIN * sqrt(GAIN_MAX/GAIN_MIN) = sqrt(GAIN_MIN*GAIN_MAX)
-// = sqrt(0.5*2.0) = 1.0 exactly -- so a fresh install (or anyone who never
-// touches the setting) feels identical to how this game already shipped,
-// and the dial only ever moves the feel once someone deliberately drags it.
+// An earlier build of this game DID scale game-side, because it was tuned
+// against the SDK SANDBOX (gobalance_bobo_sdk), where the legacy
+// gb:sensitivity bridge is a no-op in analog mode. The PRODUCT SDK honors
+// setSensitivity, so on the product that game-side gain would have been a
+// double-apply. We now drive the host and read the sensor raw. The legacy
+// gb:sensitivity Unity bridge is still called as a fallback (harmless where
+// unsupported). The host does NOT remember the choice, so we persist it and
+// re-apply on boot (see applySensitivityToHost, called from core/main.js).
 const SENSITIVITY_STORAGE_KEY = 'tss:sensitivity';
 const SENSITIVITY_DEFAULT = 50;
-const SENSITIVITY_GAIN_MIN = 0.5; // pct=0: needs a much bigger lean for full speed
-const SENSITIVITY_GAIN_MAX = 2.0; // pct=100: a small lean already hits full speed
 
 let sensitivityPercent = SENSITIVITY_DEFAULT;
 try {
@@ -50,6 +47,17 @@ try {
   // systems/audio.js's persisted SFX/music preference.
 }
 
+// Push the current value to the host: the real SDK call when present, else the
+// legacy Unity bridge. Both are no-ops outside the app / on a plain dev URL.
+function applyToHost(percent) {
+  const gb = typeof window !== 'undefined' ? window.GoBalance : null;
+  if (gb && typeof gb.setSensitivity === 'function') {
+    gb.setSensitivity(percent);
+  } else if (typeof window !== 'undefined' && window.Unity) {
+    window.Unity.call('gb:sensitivity:' + percent);
+  }
+}
+
 export function getSensitivity() {
   return sensitivityPercent;
 }
@@ -61,11 +69,14 @@ export function setSensitivity(percent) {
   } catch (err) {
     // Non-fatal: the preference just won't survive a reload.
   }
+  applyToHost(sensitivityPercent);
 }
 
-function sensitivityGain() {
-  const ratio = SENSITIVITY_GAIN_MAX / SENSITIVITY_GAIN_MIN;
-  return SENSITIVITY_GAIN_MIN * Math.pow(ratio, sensitivityPercent / 100);
+// Re-apply the persisted value to the host once at startup -- the host does
+// not remember it across launches (GOBALANCE_APP_INTEGRATION.md). Called from
+// core/main.js boot, after the SDK has had a chance to install.
+export function applySensitivityToHost() {
+  applyToHost(sensitivityPercent);
 }
 
 window.addEventListener('keydown', (e) => {
@@ -80,9 +91,9 @@ window.addEventListener('keyup', (e) => {
 // Returns a continuous steering axis in roughly [-1, 1]: negative = left,
 // positive = right. __gbSensor.x (real board tilt, or Editor keyboard proxy
 // upstream of this page) wins whenever present; keyboard fallback is purely
-// for testing this page outside the SDK/board. The SENSITIVITY gain above
-// applies to both paths uniformly, so the keyboard fallback correctly
-// previews how the setting will feel on the real board.
+// for testing this page outside the SDK/board. NO game-side sensitivity gain:
+// the host has already scaled the board reading by the time we see it (see the
+// SENSITIVITY note above).
 export function getSteerAxis() {
   const sensor = window.__gbSensor;
   let raw;
@@ -92,5 +103,5 @@ export function getSteerAxis() {
     if (keyLeft) raw -= 1;
     if (keyRight) raw += 1;
   }
-  return Math.max(-1, Math.min(1, raw * sensitivityGain()));
+  return Math.max(-1, Math.min(1, raw));
 }

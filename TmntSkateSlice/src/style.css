@@ -780,15 +780,25 @@ html, body {
   transition: transform 0.6s cubic-bezier(0.6, 0, 0.35, 1); /* MUST match STAGE_CURTAIN_TRANSITION_SEC */
 }
 
+/* Curtain art + crop-anchor are THEME-VARYING (TMNT keeps its red pizza drape;
+   the original theme uses a blue/gold ninja curtain split down the middle).
+   The art is referenced from the per-theme collectibleAssets.*.js modules, NOT
+   from a hardcoded url() here -- ui.js sets these vars at init, so the
+   non-selected theme's curtain art never enters this build (same guarantee as
+   the sprite aliases). background-position is a var too: the original's split
+   halves pin toward the seam to reunite the centered motif; TMNT stays
+   center. */
 #stage-curtain-left {
   left: 0;
-  background-image: url('./assets/stage_curtain_left.png');
+  background-image: var(--stage-curtain-left-img);
+  background-position: var(--stage-curtain-left-pos, center);
   transform: translateX(-100%);
 }
 
 #stage-curtain-right {
   right: 0;
-  background-image: url('./assets/stage_curtain_right.png');
+  background-image: var(--stage-curtain-right-img);
+  background-position: var(--stage-curtain-right-pos, center);
   transform: translateX(100%);
 }
 
@@ -826,20 +836,10 @@ html, body {
   text-shadow: 0 0 22px rgba(140, 255, 160, 0.75);
 }
 
-/* Bouncy elastic-overshoot pop, not a fade -- a fade reads as UI, an
-   overshoot reads as an exclamation. Restarted per showStageComplete() via
-   the same remove-class/reflow/re-add idiom already used throughout this
-   file's HUD setters. */
-.sc-headline-play {
-  animation: sc-headline-bounce 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes sc-headline-bounce {
-  0%   { transform: scale(0.2) rotate(-8deg); opacity: 0; }
-  55%  { transform: scale(1.18) rotate(4deg); opacity: 1; }
-  75%  { transform: scale(0.94) rotate(-2deg); }
-  100% { transform: scale(1) rotate(0deg); opacity: 1; }
-}
+/* The headline's bouncy elastic-overshoot pop is driven per-frame from JS
+   (ui.js setStageHeadlineAnim, core/main.js's stagecomplete branch), not a CSS
+   @keyframes -- CSS animations freeze on the occluded WebView (compositor
+   suspended) while the pumped JS rAF loop keeps running. */
 
 #sc-next {
   margin-top: 10px;
@@ -851,9 +851,9 @@ html, body {
   paint-order: stroke fill;
 }
 
-/* Re-animated per whole-second tick from JS (class removed, reflow,
-   re-added) so each number lands with its own beat rather than the digits
-   silently swapping. */
+/* Each whole-second number gets its own tick-pop beat, driven per-frame from
+   JS (ui.js setStageTickAnim) rather than a class-toggled CSS animation that
+   freezes on the occluded WebView. */
 #sc-countdown {
   margin-top: 14px;
   font-weight: 900;
@@ -865,15 +865,6 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
-.sc-tick {
-  animation: sc-tick 0.5s ease-out;
-}
-
-@keyframes sc-tick {
-  0%   { transform: scale(1.5); opacity: 0.25; }
-  35%  { transform: scale(1); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
-}
 
 /* --- Game-over overlay --- */
 .overlay {
@@ -931,6 +922,199 @@ html, body {
 #restart-button:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Family-account leaderboard on the game-over overlay (2026-09-01).
+   Adapted from NovaVanguard's .sb-* rules; NO avatar column here, so the row
+   grid is rank | name | score (3 cols, not 4). Hidden outside the app. --- */
+#scoreboard,
+#quit-scoreboard {
+  width: min(92%, 340px);
+  max-height: 34vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#scoreboard.hidden,
+#quit-scoreboard.hidden {
+  display: none;
+}
+
+#scoreboard-title,
+#quit-scoreboard-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #9fb0d8;
+  text-align: center;
+}
+
+#scoreboard-rows,
+#quit-scoreboard-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-row {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+  color: #e8ecff;
+}
+
+/* The run just played -- brightest highlight. */
+.sb-row.sb-you {
+  background: rgba(90, 209, 255, 0.22);
+  outline: 1.5px solid rgba(90, 209, 255, 0.8);
+}
+
+/* The player's other rows on the board -- softer highlight. */
+.sb-row.sb-mine {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.sb-rank {
+  text-align: right;
+  color: #8fa0c8;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.sb-score {
+  font-weight: 800;
+  color: #ffe066;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-gap {
+  text-align: center;
+  color: #6070a0;
+  letter-spacing: 2px;
+  font-size: 12px;
+  padding: 1px 0;
+}
+
+/* --- Quit flow: confirm modal + quit board (2026-09-01) ------------------
+   .modal-overlay is a light scrim OVER the still-visible paused game (the
+   player must see the run they're abandoning). .board-screen is a full,
+   opaque screen (the quit board), like the game-over overlay. --- */
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 5, 15, 0.55);
+  pointer-events: auto;
+}
+
+.board-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 5, 15, 0.9);
+  pointer-events: auto;
+}
+
+.modal-overlay.hidden,
+.board-screen.hidden {
+  display: none;
+}
+
+.board-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 26px 24px;
+  width: min(92%, 380px);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(30, 22, 46, 0.98), rgba(18, 12, 28, 0.98));
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.board-title {
+  font-weight: 900;
+  font-size: 30px;
+  letter-spacing: 1px;
+  color: #ffde50;
+  -webkit-text-stroke: 1.5px #2a1a00;
+  paint-order: stroke fill;
+}
+
+.board-sub {
+  font-size: 15px;
+  font-weight: 600;
+  color: #cfd8ff;
+  text-align: center;
+}
+
+.board-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.board-buttons button {
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Primary (continue / play again) -- gold, matching #restart-button. */
+#confirm-stay,
+#quit-again {
+  background: linear-gradient(180deg, #ffde50, #ffa93c);
+  color: #2a1a00;
+  box-shadow: 0 4px 0 #a86800, 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+#confirm-stay:active,
+#quit-again:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Secondary (quit / leave) -- muted, so it doesn't compete with the primary. */
+#confirm-quit,
+#quit-leave {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e8ecff;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+}
+
+#confirm-quit:active,
+#quit-leave:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
 }
 
 /* --- First-run onboarding tutorial (2026-08-04), ported from
@@ -1098,15 +1282,10 @@ html, body {
   background-position: center;
 }
 
-#intro-steer-board {
-  animation: intro-steer-board-sweep 3.6s ease-in-out infinite;
-}
-
-@keyframes intro-steer-board-sweep {
-  0%   { transform: perspective(380px) rotateY(-58deg); }
-  50%  { transform: perspective(380px) rotateY(58deg); }
-  100% { transform: perspective(380px) rotateY(-58deg); }
-}
+/* #intro-steer-board's tilt is driven per-frame from JS (ui.js setIntroSweep,
+   core/main.js's intro branch), not a CSS @keyframes -- the occluded WebView's
+   compositor is suspended, so CSS animations freeze there while the JS rAF
+   loop keeps being pumped (WebGameController.cs's "occluded editor overlay"). */
 
 /* Fixed-height ANCHOR wrapper (not the <img> itself) -- the two run-cycle
    frames (see core/heroAssets.*.js) share the same source canvas height but
@@ -1137,12 +1316,5 @@ html, body {
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.4));
 }
 
-#intro-steer-player {
-  animation: intro-steer-player-sweep 3.6s ease-in-out infinite;
-}
-
-@keyframes intro-steer-player-sweep {
-  0%   { transform: translateX(-72px); }
-  50%  { transform: translateX(72px); }
-  100% { transform: translateX(-72px); }
-}
+/* #intro-steer-player's left/right sweep is driven per-frame from JS too
+   (ui.js setIntroSweep) -- same compositor-suspended reason as the board. */

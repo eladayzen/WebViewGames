@@ -24,9 +24,14 @@ import { loadAudioBuffer } from '../systems/audio.js';
 // ...), never mike_* or the new hero's name directly, so swapping themes
 // needs zero changes anywhere else.
 import { HERO_SPRITES } from '@hero-assets';
+// Per-theme collectible canvas images (falling item art). Original theme adds
+// its 4 idol sprites here; TMNT's COLLECTIBLE_MANIFEST is empty (it reuses
+// pizza_slice below). Same build-time alias mechanism as '@hero-assets'.
+import { COLLECTIBLE_MANIFEST } from '@collectible-assets';
 
 const MANIFEST = {
   ...HERO_SPRITES,
+  ...COLLECTIBLE_MANIFEST,
 
   pizza_slice: new URL('../assets/pizza_slice.png', import.meta.url).href,
   ooze_canister: new URL('../assets/ooze_canister.png', import.meta.url).href,

@@ -20,6 +20,22 @@ import { OOZE_BUFF_DURATION_SEC, SHIELD_BUFF_DURATION_SEC, MAGNET_BUFF_DURATION_
 // vite.config.js) -- same import core/assets.js uses, so this and the main
 // manifest can never disagree about which hero's run-cycle frames to show.
 import { HERO_SPRITES } from '@hero-assets';
+// The intro tutorial's step-2 sweep plays the real run cycle; source its frame
+// order from player.js so it can't drift from the actual gameplay animation.
+import { RUN_CYCLE_KEYS } from '../entities/player.js';
+// Per-theme collectible art (see collectibleAssets.*.js): the original theme's
+// HUD box chips + intro "catch" icon use the SAME idol art that falls; TMNT
+// keeps its cardboard-box chips and pizza-slice icon. Same build-time alias
+// as '@hero-assets'.
+import {
+  BOX_ICON_URLS as THEME_BOX_ICON_URLS,
+  INTRO_PRIMARY_GOOD_URL,
+  boxCompleteTitle,
+  STAGE_CURTAIN_LEFT_URL,
+  STAGE_CURTAIN_RIGHT_URL,
+  STAGE_CURTAIN_LEFT_POS,
+  STAGE_CURTAIN_RIGHT_POS,
+} from '@collectible-assets';
 
 // Active-buff chips (ooze/shield/magnet). Static icon URLs -- Vite only
 // bundles new URL(import.meta.url) with a literal path, not a template.
@@ -33,18 +49,19 @@ const BUFF_ICON_URLS = {
 // the 3 pickups), never new art, so it reads as "this is literally what
 // falls," not a generic icon (same principle the reference pattern used).
 const INTRO_GOOD_ICON_URLS = {
-  pizza: new URL('../assets/pizza_slice.png', import.meta.url).href,
+  pizza: INTRO_PRIMARY_GOOD_URL, // theme-provided: an idol (original) or the pizza slice (TMNT)
   shield: new URL('../assets/powerup_shield.png', import.meta.url).href,
   magnet: new URL('../assets/powerup_magnet.png', import.meta.url).href,
   wave: new URL('../assets/powerup_wave.png', import.meta.url).href,
 };
 const INTRO_BOMB_ICON_URL = new URL('../assets/bomb.png', import.meta.url).href;
 
-// Same order as entities/player.js's RUN_CYCLE_KEYS -- step 2 plays the
-// character's real run-cycle frames while it sweeps, not a static pose.
-// Sourced from the same HERO_SPRITES import above, so this can never fall
-// out of sync with the actual per-theme run-cycle art core/assets.js loads.
-const INTRO_RUN_FRAME_URLS = [HERO_SPRITES.hero_run_1, HERO_SPRITES.hero_run_2];
+// Step 2 plays the character's REAL run-cycle while it sweeps, not a static
+// pose. Built from player.js's exported RUN_CYCLE_KEYS (the single source of
+// truth) mapped through the per-theme HERO_SPRITES, so it always matches the
+// exact sequence the game plays -- including the 3-pose ping-pong -- and can
+// never drift the way a hand-kept frame list did.
+const INTRO_RUN_FRAME_URLS = RUN_CYCLE_KEYS.map((k) => HERO_SPRITES[k]);
 
 // Per-color pizza-box art, keyed by box id (same literal-path rule as above --
 // no template URLs). The cardboard is tinted to each set's color while the
@@ -52,11 +69,11 @@ const INTRO_RUN_FRAME_URLS = [HERO_SPRITES.hero_run_1, HERO_SPRITES.hero_run_2];
 // collecting" (feedback 2026-07-30: colored glow alone wasn't informative
 // enough). Regular keeps the classic brown box.
 const BOX_ICON_URLS = {
-  regular: new URL('../assets/pizza_box.png', import.meta.url).href,
-  blue: new URL('../assets/pizza_box_blue.png', import.meta.url).href,
-  purple: new URL('../assets/pizza_box_purple.png', import.meta.url).href,
-  red: new URL('../assets/pizza_box_red.png', import.meta.url).href,
-  // The bomb-kill set reuses the box-completion celebration with a bomb icon.
+  // The 4 color chips come from the active theme (idols for original, colored
+  // cardboard boxes for TMNT) -- see collectibleAssets.*.js.
+  ...THEME_BOX_ICON_URLS,
+  // The bomb-kill set reuses the box-completion celebration with a bomb icon
+  // (theme-neutral, stays here).
   bombsquad: new URL('../assets/bomb.png', import.meta.url).href,
 };
 
@@ -81,6 +98,75 @@ const BUFF_CONFIGS = [
   { key: 'magnet', timerField: 'magnetBuffTimer', maxSec: MAGNET_BUFF_DURATION_SEC, hex: '#F84FA0' },
 ];
 
+// --- JS-driven UI animation ---------------------------------------------
+// These used to be CSS @keyframes / class-toggle animations. On the occluded
+// WebView (Unity editor overlay) the compositor is suspended, so CSS
+// animations freeze -- while the JS rAF loop keeps running because Unity pumps
+// it (WebGameBridge's __pumpFrames). Driving these per-frame from core/main.js,
+// writing transform/opacity directly, means they ride that same pump.
+function lerp(a, b, f) {
+  return a + (b - a) * f;
+}
+
+// Bouncy elastic pop for the stage-complete headline, matching the old
+// sc-headline-bounce keyframe stops. `u` is 0..1 over the 0.7s pop.
+function headlinePopAt(u) {
+  if (u <= 0.55) {
+    const f = u / 0.55;
+    return { scale: lerp(0.2, 1.18, f), rot: lerp(-8, 4, f), op: lerp(0, 1, f) };
+  }
+  if (u <= 0.75) {
+    const f = (u - 0.55) / 0.2;
+    return { scale: lerp(1.18, 0.94, f), rot: lerp(4, -2, f), op: 1 };
+  }
+  const f = (u - 0.75) / 0.25;
+  return { scale: lerp(0.94, 1, f), rot: lerp(-2, 0, f), op: 1 };
+}
+
+// Shared leaderboard renderer for the game-over overlay AND the quit board --
+// both show the same family-account board (systems/scoreboard.js). Takes the
+// three target elements so one implementation drives both. `board` is
+// fetchBoard()'s result; `groups` is an array of row-arrays (leaders, and
+// optionally a window around your run) with a `·  ·  ·` separator between them.
+// No avatars: rows are rank | name | score (see .sb-row in style.css). Safe
+// no-op that hides the section when the board is unavailable or empty.
+function renderBoardInto(rootEl, titleEl, listEl, board, groups) {
+  if (!rootEl) return;
+  const list = (groups || []).filter((g) => g && g.length);
+  if (!board || !board.available || !list.length) {
+    rootEl.classList.add('hidden');
+    return;
+  }
+  titleEl.textContent = board.complete ? 'BEST ON THIS ACCOUNT' : 'BEST ON THIS DEVICE';
+  listEl.innerHTML = '';
+  list.forEach((rows, gi) => {
+    if (gi > 0) {
+      const gap = document.createElement('li');
+      gap.className = 'sb-gap';
+      gap.textContent = '·  ·  ·';
+      listEl.appendChild(gap);
+    }
+    rows.forEach((r) => {
+      const li = document.createElement('li');
+      li.className = 'sb-row' + (r.isRun ? ' sb-you' : r.isYou ? ' sb-mine' : '');
+      const rank = document.createElement('span');
+      rank.className = 'sb-rank';
+      rank.textContent = String(r.rank); // TRUE rank, never the group index
+      const name = document.createElement('span');
+      name.className = 'sb-name';
+      name.textContent = r.name || 'PLAYER';
+      const score = document.createElement('span');
+      score.className = 'sb-score';
+      score.textContent = Number(r.score || 0).toLocaleString();
+      li.appendChild(rank);
+      li.appendChild(name);
+      li.appendChild(score);
+      listEl.appendChild(li);
+    });
+  });
+  rootEl.classList.remove('hidden');
+}
+
 
 export function createUI() {
   const el = {
@@ -99,13 +185,36 @@ export function createUI() {
     gameoverOverlay: document.getElementById('gameover-overlay'),
     finalScore: document.getElementById('final-score'),
     finalCombo: document.getElementById('final-combo'),
+    scoreboard: document.getElementById('scoreboard'),
+    scoreboardTitle: document.getElementById('scoreboard-title'),
+    scoreboardRows: document.getElementById('scoreboard-rows'),
+    confirmOverlay: document.getElementById('confirm-overlay'),
+    quitOverlay: document.getElementById('quit-overlay'),
+    quitStats: document.getElementById('quit-stats'),
+    quitScoreboard: document.getElementById('quit-scoreboard'),
+    quitScoreboardTitle: document.getElementById('quit-scoreboard-title'),
+    quitScoreboardRows: document.getElementById('quit-scoreboard-rows'),
     pauseButton: document.getElementById('pause-button'),
     pausedBadge: document.getElementById('paused-badge'),
     introOverlay: document.getElementById('intro-tutorial-overlay'),
     introStepItems: document.getElementById('intro-step-items'),
     introStepSteer: document.getElementById('intro-step-steer'),
     introSteerPlayer: document.getElementById('intro-steer-player'),
+    introSteerBoard: document.getElementById('intro-steer-board'),
   };
+
+  // Stage-transition curtain art is theme-provided (see collectibleAssets.*.js)
+  // and applied via CSS vars, so the shared style.css carries no hardcoded
+  // curtain path and the non-selected theme's drape never enters the build.
+  // Set once at init; the panels stay off-screen until a stage transition.
+  if (el.stageCurtainLeft) {
+    el.stageCurtainLeft.style.setProperty('--stage-curtain-left-img', `url("${STAGE_CURTAIN_LEFT_URL}")`);
+    el.stageCurtainLeft.style.setProperty('--stage-curtain-left-pos', STAGE_CURTAIN_LEFT_POS);
+  }
+  if (el.stageCurtainRight) {
+    el.stageCurtainRight.style.setProperty('--stage-curtain-right-img', `url("${STAGE_CURTAIN_RIGHT_URL}")`);
+    el.stageCurtainRight.style.setProperty('--stage-curtain-right-pos', STAGE_CURTAIN_RIGHT_POS);
+  }
 
   // Step 1's item icons -- set once, static content (unlike the box-reward
   // pool, this popup never changes what it shows).
@@ -454,13 +563,27 @@ export function createUI() {
     el.introStepSteer.classList.toggle('hidden', step !== 2);
   }
 
-  // index into INTRO_RUN_FRAME_URLS -- step 2's continuous board/character
-  // sweep is pure CSS (see style.css), only the run-cycle frame itself is
-  // dt-driven from core/main.js to match the real in-game cadence.
+  // index into INTRO_RUN_FRAME_URLS -- the run-cycle frame is dt-driven from
+  // core/main.js to match the real in-game cadence (the left/right sweep of
+  // the board+character is setIntroSweep below).
   function setIntroRunFrame(index) {
     if (index === lastIntroRunFrame) return;
     lastIntroRunFrame = index;
     el.introSteerPlayer.src = INTRO_RUN_FRAME_URLS[index];
+  }
+
+  // Step 2's continuous board-tilt + character sweep, driven per-frame from
+  // core/main.js (NOT a CSS @keyframes -- those freeze on the occluded WebView,
+  // see the module-level note above). `phase` is 0..1 over one loop; cos gives
+  // a natural ease-in-out swing 1 -> -1 -> 1 (left extreme -> right -> left).
+  function setIntroSweep(phase) {
+    const c = Math.cos(phase * Math.PI * 2);
+    if (el.introSteerBoard) {
+      el.introSteerBoard.style.transform = `perspective(380px) rotateY(${(-58 * c).toFixed(2)}deg)`;
+    }
+    if (el.introSteerPlayer) {
+      el.introSteerPlayer.style.transform = `translateX(${(-72 * c).toFixed(2)}px)`;
+    }
   }
 
   return {
@@ -491,7 +614,7 @@ export function createUI() {
       // twin chip actually lands, see below (2026-08-04).
       slot.root.style.setProperty('--bcp-color', hex);
       slot.icon.src = BOX_ICON_URLS[id] || BOX_ICON_URLS.regular;
-      slot.title.textContent = `${label.toUpperCase()} BOX!`;
+      slot.title.textContent = boxCompleteTitle(label, id); // theme-scoped: "SET COMPLETE!" (original) / "<COLOR> BOX!" (TMNT)
       slot.bonus.textContent = `+${bonus}`;
       const effects = (reward && reward.effects) || [];
       slot.rewardItems.forEach((ri, k) => {
@@ -708,15 +831,35 @@ export function createUI() {
       resetStageCurtains();
       lastStageCountdownShown = null;
       el.scNext.textContent = `NEXT: ${nextName.toUpperCase()}`;
-      el.scHeadline.classList.remove('sc-headline-play');
-      void el.scHeadline.offsetWidth;
-      el.scHeadline.classList.add('sc-headline-play');
+      // Seed the headline at the pop's start frame; core/main.js drives it up
+      // per-frame via setStageHeadlineAnim (JS, so it rides the WebView pump
+      // instead of a CSS timeline that freezes on the occluded overlay).
+      el.scHeadline.style.transform = 'scale(0.2) rotate(-8deg)';
+      el.scHeadline.style.opacity = '0';
       el.stageCompleteOverlay.classList.remove('hidden');
     },
 
     hideStageComplete() {
       el.stageCompleteOverlay.classList.add('hidden');
-      el.scHeadline.classList.remove('sc-headline-play');
+    },
+
+    // Bouncy headline pop, driven per-frame. `t` is seconds since the stage-
+    // complete overlay showed; holds settled after the 0.7s pop.
+    setStageHeadlineAnim(t) {
+      const s = headlinePopAt(Math.max(0, Math.min(1, t / 0.7)));
+      el.scHeadline.style.transform = `scale(${s.scale.toFixed(3)}) rotate(${s.rot.toFixed(2)}deg)`;
+      el.scHeadline.style.opacity = s.op.toFixed(3);
+    },
+
+    // Countdown-number tick pop, driven per-frame. `t` is seconds since the
+    // current number appeared (main.js resets it when setStageCountdown reports
+    // the number changed). Matches the old sc-tick keyframe.
+    setStageTickAnim(t) {
+      const u = Math.max(0, Math.min(1, t / 0.5));
+      const scale = u <= 0.35 ? lerp(1.5, 1, u / 0.35) : 1;
+      const op = u <= 0.35 ? lerp(0.25, 1, u / 0.35) : 1;
+      el.scCountdown.style.transform = `scale(${scale.toFixed(3)})`;
+      el.scCountdown.style.opacity = op.toFixed(3);
     },
 
     // core/main.js triggers this partway through the countdown (data/
@@ -737,16 +880,15 @@ export function createUI() {
       el.stageCurtainRight.classList.remove('stage-curtain-closed');
     },
 
-    // Re-triggers the pop animation per whole second so each number lands
-    // with its own beat instead of the digits silently swapping. Dirty-
-    // checked because the caller ticks this every frame.
+    // Sets the countdown number (dirty-checked -- the caller ticks every
+    // frame). Returns true the frame the number CHANGED, so main.js can reset
+    // the JS-driven tick-pop timer (setStageTickAnim); the pop is no longer a
+    // CSS class toggle (which froze on the occluded WebView).
     setStageCountdown(seconds) {
-      if (seconds === lastStageCountdownShown) return;
+      if (seconds === lastStageCountdownShown) return false;
       lastStageCountdownShown = seconds;
       el.scCountdown.textContent = `${seconds}`;
-      el.scCountdown.classList.remove('sc-tick');
-      void el.scCountdown.offsetWidth;
-      el.scCountdown.classList.add('sc-tick');
+      return true;
     },
 
     setCountdown(value) {
@@ -766,6 +908,45 @@ export function createUI() {
 
     hideGameOver() {
       el.gameoverOverlay.classList.add('hidden');
+      // Reset the board for the next run so a stale list never flashes before
+      // the fresh fetch populates it.
+      if (el.scoreboard) el.scoreboard.classList.add('hidden');
+      if (el.scoreboardRows) el.scoreboardRows.innerHTML = '';
+    },
+
+    // Render the family-account leaderboard into the game-over overlay.
+    showScoreboard(board, groups) {
+      renderBoardInto(el.scoreboard, el.scoreboardTitle, el.scoreboardRows, board, groups);
+    },
+
+    // --- Quit flow (GOBALANCE_APP_INTEGRATION.md "Quitting") ------------------
+    // The X (#gb-back) raises a confirm MODAL over the still-visible paused
+    // game mid-run; confirming leads to a quit BOARD screen (its own ids, never
+    // #gameover-overlay, so the host's Space/Enter restart can't fire through
+    // it). Both are plain show/hide toggles here; main.js owns the logic.
+    showConfirm() {
+      if (el.confirmOverlay) el.confirmOverlay.classList.remove('hidden');
+    },
+    hideConfirm() {
+      if (el.confirmOverlay) el.confirmOverlay.classList.add('hidden');
+    },
+    isConfirmOpen() {
+      return !!(el.confirmOverlay && !el.confirmOverlay.classList.contains('hidden'));
+    },
+    // Show the quit board: a run-result line + the same family leaderboard.
+    showQuit(statsText, board, groups) {
+      if (!el.quitOverlay) return;
+      if (el.quitStats) el.quitStats.textContent = statsText;
+      renderBoardInto(el.quitScoreboard, el.quitScoreboardTitle, el.quitScoreboardRows, board, groups);
+      el.quitOverlay.classList.remove('hidden');
+    },
+    hideQuit() {
+      if (el.quitOverlay) el.quitOverlay.classList.add('hidden');
+      if (el.quitScoreboard) el.quitScoreboard.classList.add('hidden');
+      if (el.quitScoreboardRows) el.quitScoreboardRows.innerHTML = '';
+    },
+    isQuitOpen() {
+      return !!(el.quitOverlay && !el.quitOverlay.classList.contains('hidden'));
     },
 
     setPaused(isPaused) {
@@ -789,5 +970,6 @@ export function createUI() {
 
     setIntroStep,
     setIntroRunFrame,
+    setIntroSweep,
   };
 }

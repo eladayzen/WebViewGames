@@ -9,6 +9,10 @@ import { ITEM_SIZE_FRAC, PLAYER_HEIGHT_FRAC, SHIELD_WARN_SEC } from '../data/con
 import { getShakeOffsetFrac } from '../systems/juice.js';
 import { getRunCycleSpriteKey, getSwingCycleSpriteKey, getHitCycleSpriteKey, getBlockCycleSpriteKey } from '../entities/player.js';
 import { BOX_COLOR_BY_ID } from '../data/boxColors.js';
+// Per-theme: which loaded-image key a falling pizza-item uses, keyed by its
+// collection box color. TMNT maps every color to 'pizza_slice' (unchanged);
+// original maps each to its distinct idol sprite. See collectibleAssets.*.js.
+import { FALLING_SPRITE_KEY_BY_BOX_COLOR } from '@collectible-assets';
 
 // Gentle idle "breathing" pulse (no-skateboard standing pose only, not the
 // run-cycle) -- vertical-only scale from 1x to 1.08x and back over a
@@ -329,7 +333,12 @@ function drawItems(ctx, items, w, h, images) {
     const isVariant = bc && bc !== 'regular';
     const hex = isVariant ? BOX_COLOR_BY_ID[bc].hex : null;
     const pulse = isVariant ? 0.5 + 0.5 * Math.sin(now / 300 + (item.id || 0) * 1.7) : 0;
-    const img = images[item.type.sprite];
+    // Pizza items resolve their sprite per-theme by box color (idols in the
+    // original theme, pizza_slice in TMNT); everything else (bomb, pickups)
+    // keeps its own type.sprite.
+    const spriteKey =
+      item.type.id === 'pizza' && bc ? FALLING_SPRITE_KEY_BY_BOX_COLOR[bc] : item.type.sprite;
+    const img = images[spriteKey];
 
     // Box-variant highlight (every box EXCEPT 'regular'): a SOFT pulsing glow
     // (radial gradient, no hard ring) plus a colored CONTOUR that hugs the
