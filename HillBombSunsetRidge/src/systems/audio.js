@@ -45,10 +45,9 @@ import rollFastUrl from '../assets/audio/sfx_roll_fast.mp3?url';
 import pickupUrl from '../assets/audio/sfx_pickup.mp3?url';
 import boostUrl from '../assets/audio/sfx_boost.mp3?url';
 import crashUrl from '../assets/audio/sfx_crash.mp3?url';
-import musicGlideUrl from '../assets/audio/music_glide.mp3?url';
-import musicDuskUrl from '../assets/audio/music_dusk.mp3?url';
+import musicFlowUrl from '../assets/audio/music_flow.mp3?url';
+import musicDriftUrl from '../assets/audio/music_drift.mp3?url';
 import musicGridUrl from '../assets/audio/music_grid.mp3?url';
-import musicAsphaltUrl from '../assets/audio/music_asphalt.mp3?url';
 
 /**
  * Per-clip mix, here rather than baked into the files so it can be tuned without
@@ -100,12 +99,16 @@ const BEDS = {
  * just give you different music -- keep everything you've downloaded and see
  * which one we use."
  *
- * Every take generated so far is kept rather than the rejects being thrown away,
- * which turns out to be the right instinct for two reasons. A track that is
- * wrong as THE music can be right as ONE of the music, because the thing that
- * made it tiring -- hearing it every single run -- stops being true. And a
- * player who meets a different track on each hill reads the game as bigger than
- * one that loops the same thirty seconds forever.
+ * A track that is wrong as THE music can still be right as ONE of the music,
+ * because the thing that made it tiring -- hearing it every single run -- stops
+ * being true. A player meeting a different track on each hill also reads the
+ * game as bigger than one looping the same thirty seconds forever.
+ *
+ * That is not a licence to keep everything, though: three tracks that belong
+ * beat four where one does not. ASPHALT was cut for exactly that -- it was made
+ * to be calm and turned out calm to the point of not being this game, which no
+ * amount of rotation fixes. The two dusk-synthwave tracks went the same way,
+ * for being "much too 80s".
  *
  * Every file here has been trimmed of its outro fade, cross-faded at the loop
  * point, and normalised to a common level, so switching between them cannot
@@ -126,17 +129,24 @@ const BEDS = {
  * value.
  */
 const TRACKS = [
-  // The original dusk synthwave. Rejected as the single track -- "way too 70s
-  // 80s" -- and perfectly good as one of several, where its being a different
-  // world from the others is the point.
-  { url: musicGlideUrl, name: 'glide', trim: 1, rate: 1 },
-  { url: musicDuskUrl, name: 'dusk', trim: 1, rate: 1 },
+  /**
+   * THE MIDDLE GROUND, two takes from one generation. Amit: "try generating
+   * something in the middle between ASPHALT and GRID" -- asphalt being calm to
+   * the point of receding, grid being "action and fun but too fast and too
+   * hard". So: 126 BPM against their 115 and 140, warm rounded drums instead of
+   * crisp digital ones, and nothing shrill in the top end.
+   *
+   * Both takes are shipped rather than one being picked for him. They came from
+   * a single call, so the second is free, and they are different enough that
+   * the choice is a listening decision rather than a technical one.
+   *
+   * These replace the two dusk-synthwave tracks, which went for the reason they
+   * were nearly cut the first time: "much too 80s".
+   */
+  { url: musicFlowUrl, name: 'flow', trim: 1, rate: 1 },
+  { url: musicDriftUrl, name: 'drift', trim: 1, rate: 1 },
   // Slowed and trimmed slightly, per "a bit too harsh, a bit too fast and loud".
   { url: musicGridUrl, name: 'grid', trim: 0.85, rate: 0.92 },
-  // Made after "a bit too harsh, a bit too fast and loud" -- the same modern
-  // brief asked for calm: slower, softer drums, space in the mix. The one to
-  // listen to first if GRID still grates.
-  { url: musicAsphaltUrl, name: 'asphalt', trim: 1, rate: 1 },
 ];
 
 /**
