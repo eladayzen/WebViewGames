@@ -76,7 +76,8 @@ import { MISSIONS } from '../data/missions.js';
 import { createProgress } from '../systems/progress.js';
 import { createModeSelect } from '../ui/modeSelect.js';
 import { createMissionSelect } from '../ui/missionSelect.js';
-import { RACES, RACE_IDS } from '../data/races.js';
+import { RACE_IDS } from '../data/races.js';
+import { createRaceSelect } from '../ui/raceSelect.js';
 import { createObjectives } from '../ui/objectives.js';
 import { createBriefing } from '../ui/briefing.js';
 import { getCourse, DEFAULT_COURSE } from '../data/courses.js';
@@ -827,10 +828,10 @@ const faceSelect = {
  * list needs. Building a second list widget for six rows would have been two
  * places for the two-key navigation to drift apart.
  */
-const raceSelect = createMissionSelect(RACES, progress, (raceId) => {
+const raceSelect = createRaceSelect(progress, (raceId) => {
   setPendingRace(raceId);
   startRun('speedRace');
-}, 2, 'race');
+}, 2);
 
 // --- theme ------------------------------------------------------------------
 //

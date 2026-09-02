@@ -235,13 +235,30 @@ export default registerMode({
        * do." Three lines answer it -- where the finish is, who you are racing,
        * and what the gates are for.
        */
+      /**
+       * THE CARD SAYS WHAT TO DO, not what the race is made of.
+       *
+       * Amit: "the opening screen is not good, it needs to be very clear --
+       * collect speed boosters, avoid those walls, to win. And if you can show
+       * some iconic presentation."
+       *
+       * The old version listed FINISH 2.6 KM, RIVALS 4, BOOST GATES RIDE
+       * THROUGH: three facts about the race, none of which is an instruction.
+       * A player reading it still had to work out that the gates are how you
+       * win and the barriers are how you lose -- which is the entire strategy,
+       * and the one thing a pre-race card exists to hand over.
+       *
+       * So each row is now a VERB with the thing it acts on beside it, and each
+       * carries the prop's own icon, so what to chase and what to dodge are
+       * told apart before the run starts rather than during it.
+       */
       briefing: () => ({
-        name: 'SPEED RACE',
-        sub: 'First to the finish line wins.',
+        name: getRace(pendingId).name,
+        sub: 'Beat 4 rivals to the finish line.',
         rows: [
-          { label: 'FINISH', text: `${(course.length / 1000).toFixed(1)} KM` },
-          { label: 'RIVALS', text: `${FIELD_SIZE}` },
-          { label: 'BOOST GATES', text: 'RIDE THROUGH' },
+          { label: 'RIDE THE GATES', text: 'FASTER', kind: 'boost' },
+          { label: 'AVOID THE BARRIERS', text: 'SLOWER', kind: 'wall' },
+          { label: 'FIRST TO THE LINE', text: `${(course.length / 1000).toFixed(1)} KM`, kind: 'score' },
         ],
       }),
 

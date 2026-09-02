@@ -103,6 +103,22 @@ function gateIcon() {
   </svg>`;
 }
 
+function wallIcon() {
+  const c = colours('blocker');
+  /**
+   * THE PINK X, which is what the barrier actually is on the road -- a dark
+   * panel with a bright cross on it. Drawn as a panel rather than as a warning
+   * triangle: a generic hazard sign would teach the player to look for
+   * something the game never shows them.
+   */
+  return `<svg ${BOX} aria-hidden="true">
+    <rect x="6" y="6" width="28" height="22" rx="3" fill="${c.main}"/>
+    <path d="M11 11 L29 23 M29 11 L11 23" stroke="${c.accent}" stroke-width="3.4"
+      stroke-linecap="round"/>
+    <rect x="6" y="27" width="28" height="3" rx="1.5" fill="${c.accent}" opacity="0.8"/>
+  </svg>`;
+}
+
 function scoreIcon() {
   // Score has no prop, so this is the one icon that cannot come from the world.
   // A star, matching the results screen's own currency.
@@ -116,6 +132,7 @@ const ICONS = {
   launch: rampIcon,
   grind: railIcon,
   boost: gateIcon,
+  wall: wallIcon,
   score: scoreIcon,
   crystal: crystalIcon,
   idol: idolIcon,

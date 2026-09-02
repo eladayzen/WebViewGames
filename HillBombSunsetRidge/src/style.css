@@ -1172,3 +1172,138 @@ html, body {
   transform-origin: center;
 }
 
+
+
+/* ---- THE RACE LOBBY -------------------------------------------------------
+   Six tracks as a 3x2 grid. Every tile is built from the hill it leads to --
+   its real matte painting behind, its real lip colour as the accent -- so the
+   screen is a preview rather than a decoration. See ui/raceSelect.js. */
+
+.rs-inner {
+  width: min(760px, 94vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  /* Breathing room, and enough on the right that the scrollbar -- when six
+     tiles outgrow a short viewport -- does not sit on top of a tile's edge. */
+  padding: 4px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rs-head h2 {
+  margin: 0;
+  font: 900 22px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 3px;
+  color: #ffe9d6;
+}
+#race-back {
+  width: 34px; height: 34px;
+  border: none; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffe9d6; font-size: 15px; cursor: pointer;
+}
+
+/* THREE ACROSS, wrapping to two rows. Collapses to two columns on a narrow
+   WebView rather than shrinking the tiles below readable. */
+#race-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+@media (max-width: 620px) {
+  #race-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.rs-tile {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 10px;
+  border: none;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  background: var(--rs-deep, #1a1030);
+  color: #ffe9d6;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* The accent is the hill's own lip colour -- the loudest value break on the
+     road, and the thing a player remembers a level by. */
+  outline: 2px solid transparent;
+  transition: outline-color 120ms ease, transform 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The matte, and a scrim so the text on top of it stays readable whatever the
+   painting is doing behind. Two layers rather than dimming the image itself:
+   the sky should still look like its own sky. */
+.rs-art {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(to top,
+      rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.45) 45%, rgba(0, 0, 0, 0.1) 100%),
+    var(--rs-image, none);
+  background-size: auto, cover;
+  /* Sampled from the horizon band rather than the middle: that is where the
+     painting has its colour, and the top of every one of them is dark cloud. */
+  background-position: center, center 62%;
+}
+
+.rs-num {
+  position: absolute;
+  top: 8px; left: 10px;
+  font: 900 12px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 1.5px;
+  color: var(--rs-accent, #ff3ea5);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+.rs-body { position: relative; display: block; }
+.rs-body b {
+  display: block;
+  font: 900 15px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 1.2px;
+  line-height: 1.15;
+}
+.rs-body small {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.3;
+  opacity: 0.72;
+}
+
+/* A bar in the hill's own colour along the bottom edge -- the cheapest possible
+   "this is that place" signal, and the one that survives being glanced at. */
+.rs-tile::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 4px;
+  background: var(--rs-accent, #ff3ea5);
+}
+
+.rs-stars { position: relative; margin-top: 5px; letter-spacing: 2px; font-size: 11px; }
+.rs-star { color: rgba(255, 233, 214, 0.28); }
+.rs-star.earned { color: var(--rs-accent, #ffd166); }
+
+.rs-lock { position: relative; margin-top: 5px; font-size: 13px; opacity: 0.75; }
+
+.rs-tile.locked { cursor: default; }
+/* Locked tiles keep their art -- seeing the places you have not earned is the
+   reason a grid beats a list here -- but drop back so the playable ones lead. */
+.rs-tile.locked .rs-art { filter: saturate(0.35) brightness(0.5); }
+.rs-tile.locked .rs-body b { opacity: 0.75; }
+.rs-tile.locked::after { opacity: 0.3; }
+
+.rs-tile.rs-sel { outline-color: var(--rs-accent, #ff3ea5); }
+.rs-tile:not(.locked):active { transform: scale(0.985); }

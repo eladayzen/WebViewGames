@@ -239,6 +239,21 @@
            what it unlocked rather than dropping you straight back onto the hill.
            Rows are built from the mission list and the progress store by
            src/ui/missionSelect.js. -->
+      <!-- THE RACE LOBBY. A grid rather than a list, because picking a track is
+           a comparison and not a queue -- see ui/raceSelect.js. Its own markup
+           rather than a variant of the mission list: the two screens answer
+           different questions and sharing one would mean every future change to
+           either having to be checked against the other. -->
+      <div id="race-select" class="overlay hidden">
+        <div class="rs-inner">
+          <div class="rs-head">
+            <h2>SPEED RACE</h2>
+            <button id="race-back" title="Back">&#10005;</button>
+          </div>
+          <div id="race-grid"></div>
+        </div>
+      </div>
+
       <div id="mission-select" class="overlay hidden">
         <div class="msel-inner">
           <div class="msel-head">

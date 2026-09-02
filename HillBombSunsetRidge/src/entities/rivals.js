@@ -24,7 +24,7 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { toWorld, surfaceUp, frameAt, makeFrame, radiusAt } from '../world/trough.js';
 import { TERRAIN } from '../data/terrain.js';
-import { SPEED_REF } from '../data/constants.js';
+import { SPEED_REF, NATURAL_TOP_SPEED } from '../data/constants.js';
 
 /** Distinct, high-contrast jerseys. The player is RED, so none of these are. */
 const JERSEYS = [
@@ -45,26 +45,40 @@ function hash01(a, b) {
   return x - Math.floor(x);
 }
 
-/**
- * The most a rival may run over or under the player's own speed while closing
- * on its station, in world units per second. About a sixth of race pace: enough
- * to shut a 40 m gap in ten seconds, far too little to look like a cheat.
- */
-const CORRECTION_MAX = 4.5;
 
 /**
- * How much further over the player a BOOSTED rival may go, on top of
- * CORRECTION_MAX. A real surge you can see them make and answer, rather than a
- * second speed economy the player cannot reach.
+ * How much further over the player a BOOSTED rival may go, on top of the
+ * ordinary correction.
+ *
+ * CUT FROM 5, and this was the leak that kept first place out of reach. The
+ * headroom only applies to a rival that is BEHIND its station -- which is
+ * exactly the situation when the player is winning. So every gate a rival took
+ * while losing paid it +5 u/s for three seconds, about 16 m clawed straight
+ * back off the lead the player had just earned. Measured with it: nine gates
+ * and a single crash still finished 2nd.
+ *
+ * At 1.8 a rival's gate is still visible -- they close, and you can see them
+ * closing -- but it no longer erases a gate the player took.
  */
-const BOOST_HEADROOM = 5;
+const BOOST_HEADROOM = 1.8;
 
 /**
  * The most a rival may run OVER the player's pace while closing a gap -- a
- * third of CORRECTION_MAX. See the asymmetry note in update(): being outridden
- * is not a fault to correct, it is the player winning.
+ * third of the band. See the asymmetry note in update(): being outridden is not
+ * a fault to correct, it is the player winning.
  */
-const CHASE_MAX = 1.0;
+/**
+ * How far a rival may bend its own pace to stay near the player, as a fraction.
+ * Wide enough that an ordinary run has company; narrow enough that a good run
+ * escapes and a bad one is left.
+ */
+const PACE_BAND = 0.16;
+
+/**
+ * How much of that band a rival may spend CHASING, against all of it for
+ * holding back. See the asymmetry note in update().
+ */
+const CHASE_SHARE = 0.35;
 
 /**
  * THE HARD LIMIT ON HOW FAST A RIVAL CAN CROSS THE ROAD, in radians per second.
@@ -197,7 +211,23 @@ export function createRivals(scene, rider) {
         // more than the numbers -- these are a FRACTION of SPEED_REF, so every
         // change to the grade silently re-tunes the whole field unless they are
         // brought back to what the player can actually do.
-        pace: 0.62 + (i / Math.max(1, count - 1)) * 0.24,
+        /**
+         * AN ABSOLUTE PACE, in the same units the player rides in.
+         *
+         * These were 0.62-0.86 of SPEED_REF, which was right while `pace` only
+         * TINTED a speed derived from the player's -- the rival kept station and
+         * this decided who sat slightly ahead. Read as a real speed it means
+         * 18.6-25.8 u/s against a player who cruises at 30 and reaches 40 on a
+         * gate, and the field is simply not in the race: measured, a clean run
+         * won with the last rival 813 m back.
+         *
+         * Anchored to what the hill gives an unassisted rider instead --
+         * NATURAL_TOP_SPEED is 30.9, and the spread straddles it. The slowest
+         * rival is beatable by riding cleanly; the fastest is not beatable
+         * without taking gates. That is the whole contest, and it is now a
+         * property of the field rather than of a rubber band.
+         */
+        pace: (NATURAL_TOP_SPEED / SPEED_REF) * (0.88 + (i / Math.max(1, count - 1)) * 0.16),
         /**
          * WHERE THIS RIVAL WANTS TO BE, RELATIVE TO THE PLAYER, in metres.
          *
@@ -225,10 +255,35 @@ export function createRivals(scene, rider) {
          * held to +4.5 u/s, so 3-5 of them is 90-160 m, and the furthest
          * station ahead has to sit inside that.
          */
-        offset: [18, -30, 34, -48, 8][i % 5],
+        /**
+         * STATIONS PULLED IN AND BACK. Measured on the previous set
+         * ([18,-30,34,-48]): a player who took NINE gates cleanly and crashed
+         * once still finished 2nd, beaten by RIFF -- which holds the furthest
+         * forward station AND has the highest skill, so it was both ahead to
+         * begin with and the best at staying there.
+         *
+         * Amit's benchmark is the target: "if I collected four or five boosters
+         * and hit one bumper on the way, I should probably be number one." A
+         * gate is worth roughly 30 m, so 4-5 of them is 120-150 m and a crash
+         * gives back about 50 -- call it 70-100 m of real advantage. The
+         * furthest station ahead has to sit comfortably inside that, so it is
+         * 20 rather than 34, and only one rival is meaningfully up the road at
+         * all.
+         *
+         * The field still starts ahead of the player, so first place is
+         * something to go and take rather than something to be handed.
+         */
+        offset: [2, -46, 6, -64, 0][i % 5],
         // SKILL decides how much of the course a rival converts into points.
         // Spread wide so the leaderboard is not just the pace ladder again.
-        skill: 0.62 + ((i * 7) % 5) / 5 * 0.5,
+        /**
+         * SKILL SPREAD COMPRESSED, 0.62-1.12 down to 0.52-0.82. The top of the
+         * old range was the problem rather than the average: RIFF at 1.02 read
+         * pads earliest, turned fastest and took the most of them, and won
+         * every measured race regardless of how the field was otherwise tuned.
+         * One rival that good is not a difficulty setting, it is a wall.
+         */
+        skill: 0.52 + ((i * 7) % 5) / 5 * 0.3,
         /**
          * As a FRACTION OF THE RIM, not an absolute angle. At the old fixed
          * 0.18-0.30 a rival never left the middle quarter of a 1.15 road --
@@ -353,27 +408,43 @@ export function createRivals(scene, rider) {
         }
         if (r.boostT > 0) r.boostT = Math.max(0, r.boostT - dt);
         /**
-         * HOLD STATION ON THE PLAYER, within a hard cap.
+         * A REAL PACE, NUDGED TOWARD THE PLAYER -- not a speed derived from
+         * theirs.
          *
-         * Match the player's speed, then correct toward this rival's own slot
-         * (see `offset`). The cap is the whole design: at most CORRECTION_MAX
-         * over or under the player, so a rival closes a gap at a believable
-         * rate and NEVER teleports up the road. Rubber-banding you can see is
-         * worse than a field that spreads -- it tells the player their riding
-         * does not matter.
+         * The previous model was fully player-relative: a rival's target WAS
+         * the player's speed plus a correction. That gave the closeness Amit
+         * asked for and destroyed the race to get it -- with no absolute pace,
+         * a rival slows down as far as it needs to in order to stay near a bad
+         * run. Amit: "I got into all of the barriers by intention and I'm still
+         * coming in first." Of course: nothing in the model could out-ride him,
+         * because their speed was defined as roughly his.
          *
-         * Which means the cap is also what keeps the race honest: ride well and
-         * you genuinely pull away, because they can only claw back 4 u/s no
-         * matter how far ahead you get. Crash and they are on you.
+         * So each rival now rides its OWN pace, and station-keeping is allowed
+         * to bend that pace by at most PACE_BAND either way. The consequences
+         * are the two halves of what he asked for:
          *
-         * The floor stops the field parking when the player stops -- on a
-         * balance board "I stepped off" is a real state, and four riders
-         * standing still waiting is not a race.
+         *   RIDING WELL PAYS. Beyond +PACE_BAND they cannot answer. Take gates,
+         *   hold a clean line, and you leave them -- and the gap keeps growing
+         *   rather than being reeled back in.
+         *
+         *   RIDING BADLY LOSES. Below -PACE_BAND they will not wait. Crash into
+         *   everything and the field simply rides away, which is the thing that
+         *   was impossible before.
+         *
+         *   IN BETWEEN, THEY STAY WITH YOU. Within the band the correction
+         *   pulls them toward their station, so an ordinary run has company on
+         *   both sides. Amit: "they should adjust themselves to me in a way,
+         *   but it should also matter how well I play."
+         *
+         * The band is what makes those three the same rule rather than three
+         * modes with edges to fall between.
          */
+        const ownPace = SPEED_REF * r.pace;
+        const band = ownPace * PACE_BAND;
         const want = playerS + r.offset;
         /**
-         * ASYMMETRIC ON PURPOSE. Holding a rival BACK is worth up to
-         * CORRECTION_MAX; letting one CHASE is worth a third of that.
+         * ASYMMETRIC ON PURPOSE. Holding a rival BACK is worth the full band;
+         * letting one CHASE is worth a third of it.
          *
          * Symmetric correction is why the field could not be beaten: it made a
          * station something the rivals returned to no matter what the player
@@ -392,15 +463,17 @@ export function createRivals(scene, rider) {
          * at CHASE_MAX a rival claws back 1.5 m a second, so one pad buys about
          * twenty seconds of holding them off and 3-5 is a lead that lasts.
          */
+        /**
+         * Still asymmetric, and still for the same reason: a rival vanishing up
+         * the road ruins the mode, whereas a rival dropped because the player
+         * outrode them IS the mode. So it may hold itself back by the full band
+         * but only chase within a third of it.
+         */
         const rawCorr = (want - r.s) * 0.45;
         const correction = rawCorr > 0
-          ? Math.min(CHASE_MAX, rawCorr)
-          : Math.max(-CORRECTION_MAX, rawCorr);
-        const station = Math.max(SPEED_REF * 0.55, playerSpeed + correction);
-        // The rival's own pace still tints it, so they are not four copies of
-        // the player's speed -- just no longer free to leave.
-        let target = station * (0.94 + r.pace * 0.08)
-          + (r.boostT > 0 ? r.boostSpeed : 0);
+          ? Math.min(band * CHASE_SHARE, rawCorr)
+          : Math.max(-band, rawCorr);
+        let target = ownPace + correction + (r.boostT > 0 ? r.boostSpeed : 0);
         /**
          * THE CAP GOES ON THE FINAL NUMBER, boost included.
          *
@@ -433,14 +506,12 @@ export function createRivals(scene, rider) {
          * coming back.
          */
         const behind = r.s < want;
-        const ceiling = playerSpeed + CORRECTION_MAX
-          + (r.boostT > 0 && behind ? BOOST_HEADROOM : 0);
-        const floorSpeed = Math.max(SPEED_REF * 0.55, playerSpeed - CORRECTION_MAX - 2);
+        // Clamped around the rival's OWN pace. This is the line that decides
+        // whether the race can be lost: nothing here refers to the player's
+        // speed, so a player riding badly is simply left behind.
+        const ceiling = ownPace + band + (r.boostT > 0 && behind ? BOOST_HEADROOM : 0);
+        const floorSpeed = ownPace - band;
         target = Math.max(floorSpeed, Math.min(ceiling, target));
-        // The ceiling has to respect the asymmetry too, or a chasing rival
-        // simply takes its speed from the cap instead of from the correction.
-        if (r.s < want) target = Math.min(target, playerSpeed + CHASE_MAX
-          + (r.boostT > 0 ? BOOST_HEADROOM : 0));
         // EASE STRAIGHT TO THE TARGET. This used to run the player's own
         // grade-minus-drag law with a pace-seeking term added on top, which
         // looked principled and was quietly wrong: the two terms fight, so a
@@ -603,8 +674,17 @@ export function createRivals(scene, rider) {
               // a bit too good, I can hardly beat them." The field taking pads
               // at close to the player's own rate is the single biggest thing
               // keeping a good run from converting into places.
+              // Roughly one gate in four. Down again from one in three: the
+              // field banking gates at close to the player's own rate is what
+              // makes a good run fail to convert into places, and in a RACE
+              // that is the whole result rather than a scoring detail.
+              // About one gate in six. Measured on one-in-four: a player taking
+              // SEVEN gates with a single crash still finished 2nd, which is
+              // well past Amit's bar of "four or five boosters and one bumper
+              // should be number one". The field's own gates are the thing that
+              // cancels the player's, so this is the lever that moves it.
               if (gap < def.boost.catchWidth
-                  && hash01(it.s, r.index) < 0.10 + r.skill * 0.22) {
+                  && hash01(it.s, r.index) < 0.03 + r.skill * 0.07) {
                 r.boostT = def.boost.seconds;
                 // Capped the same way the player's is, and against the same
                 // ceiling -- an uncapped stack ran away on both sides.
