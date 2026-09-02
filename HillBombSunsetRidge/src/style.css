@@ -187,16 +187,27 @@ html, body {
   opacity: 0.85;
 }
 
-/* THE OBJECTIVE ICON on the briefing card. Sized to sit with the row's text
-   rather than dominate it -- it is an aid to recognition, not the headline. */
+/* THE OBJECTIVE ICON on the briefing card.
+   Amit: "put the icons near the numbers, maybe make them a bit bigger."
+
+   BESIDE THE COUNT, not out at the left margin. The icon and the number are one
+   statement -- EIGHT of THESE -- and the row's job is to be read as that single
+   thing. Parked on the far side of the card they were two separate facts with a
+   label between them, and the eye had to travel to join them up. */
 .brief-icon {
   flex: none;
   display: inline-flex;
   align-items: center;
-  margin-right: 8px;
+  /* After the label, before the count. `order` rather than reordering the DOM
+     so the markup still reads label-then-value for anything reading it aloud. */
+  order: 2;
+  margin: 0;
 }
-.brief-icon svg { display: block; width: 30px; height: 24px; }
-#brief-list li { display: flex; align-items: center; }
+/* Half again bigger. It is next to a large number now and has to hold its own
+   against it; at 30px it read as a bullet point. */
+.brief-icon svg { display: block; width: 46px; height: 36px; }
+#brief-list li > span { flex: 1; order: 1; }
+#brief-list li > b { order: 3; }
 
 .sp-note {
   flex-basis: 100%;
@@ -800,6 +811,14 @@ html, body {
   opacity: 0.9;
   transition: opacity 0.3s;
 }
+/* The objective's icon, beside its count -- see objectives.js. Smaller than the
+   briefing card's: this is glanced at mid-ride over a moving road, where a large
+   graphic competes with the thing it is telling you to look for. */
+.obj-icon { flex: none; display: inline-flex; align-items: center; margin-left: auto; }
+.obj-icon svg { display: block; width: 26px; height: 21px; }
+/* The label takes the slack so the icon and count stay paired on the right. */
+#obj-list li .obj-label { flex: 1; }
+
 #obj-list li.done { opacity: 0.42; }
 #obj-list li.done .obj-label { text-decoration: line-through; }
 .obj-count {
@@ -1129,7 +1148,10 @@ html, body {
 }
 #brief-list { list-style: none; margin: 1.2em 0 0; padding: 0; }
 #brief-list li {
-  display: flex; justify-content: space-between; align-items: center; gap: 1em;
+  /* The gap is what pairs the icon with the count: a small one between them and
+     the label pushed away by flex:1, so the two right-hand elements read as a
+     group rather than as three evenly spaced items. */
+  display: flex; justify-content: space-between; align-items: center; gap: 0.55em;
   padding: 0.75em 1em;
   border-radius: 0.55em;
   /* Lifted from 0.07: the objective rows ARE the explanation of the mission,

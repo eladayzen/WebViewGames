@@ -13,6 +13,8 @@
 // the frame a value actually changed -- never on a condition that stays true,
 // which would restart the animation every frame and freeze it on frame one.
 
+import { iconFor } from './propIcons.js';
+
 export function createObjectives() {
   const root = document.getElementById('objectives');
   const titleEl = document.getElementById('obj-title');
@@ -64,7 +66,25 @@ export function createObjectives() {
     listEl.innerHTML = '';
     rows = objectives.map((o) => {
       const li = document.createElement('li');
-      li.innerHTML = `<span class="obj-label">${o.label}</span><b class="obj-count"></b>`;
+      /**
+       * THE SAME ICON AS THE BRIEFING CARD. Amit: "maybe add them in the left
+       * counter UI panel as well."
+       *
+       * Which closes the loop the card opens. The card teaches "this shape is
+       * what you are after"; the panel is what the player glances at for the
+       * rest of the run, and it was still describing that thing in words only.
+       * Using the same drawing in both places means the lesson survives the
+       * three seconds after the card closes -- and a glance at the corner
+       * becomes a shape-match rather than a read.
+       *
+       * Beside the COUNT, for the same reason as the card: the icon and the
+       * number are one statement, and a glance should not have to join them up
+       * across the width of the panel.
+       */
+      const icon = o.kind ? iconFor(o.kind, o.type) : '';
+      li.innerHTML = `<span class="obj-label">${o.label}</span>`
+        + `${icon ? `<i class="obj-icon">${icon}</i>` : ''}`
+        + `<b class="obj-count"></b>`;
       listEl.appendChild(li);
       return li;
     });

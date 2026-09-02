@@ -381,13 +381,17 @@ const MISSION_MODE = {
             const stars = score >= three ? '\u2605\u2605\u2605' : score >= two ? '\u2605\u2605' : '\u2605';
             return next
               ? { label: `${stars} \u2192 ${Math.round(next).toLocaleString()}`,
-                  text: Math.round(score).toLocaleString(), done: false }
-              : { label: stars, text: Math.round(score).toLocaleString(), done: true };
+                  text: Math.round(score).toLocaleString(), done: false, kind: 'score' }
+              : { label: stars, text: Math.round(score).toLocaleString(), done: true, kind: 'score' };
           })()]
           : objectives.map((o) => ({
             label: o.spec ? o.spec.label(o) : o.kind,
             text: counterText(o),
             done: o.done,
+            // Same pair the briefing card carries, so the icon a player just
+            // learned on the card is the one counting down in the corner.
+            kind: o.kind,
+            type: o.type,
           })),
       }),
     };
