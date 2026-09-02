@@ -50,7 +50,10 @@ function look(race) {
  * @param {(id: string) => void} onPick
  * @param {number} track which ladder this is, for the unlock rule
  */
-export function createRaceSelect(progress, onPick, track = 2) {
+/**
+ * @param {() => void} [onBack] where the X goes -- the screen ABOVE this one.
+ */
+export function createRaceSelect(progress, onPick, track = 2, onBack = null) {
   const el = document.getElementById('race-select');
   const gridEl = document.getElementById('race-grid');
   const closeEl = document.getElementById('race-back');
@@ -121,7 +124,23 @@ export function createRaceSelect(progress, onPick, track = 2) {
     onPick(id);
   }
 
-  if (closeEl) closeEl.addEventListener('click', () => el.classList.add('hidden'));
+  /**
+   * THE X GOES UP A LEVEL, it does not merely close.
+   *
+   * It used to hide the lobby and nothing else -- and there is nothing else:
+   * the mode lobby was closed when SPEED RACE was picked, so hiding this left
+   * the player on a live canvas with no menu, no run and no way out. Amit:
+   * "clicking the X dropped me into an arena with my character and I'm stuck."
+   *
+   * A close button on a screen with nothing behind it is a trapdoor. Anything
+   * that dismisses a lobby has to say where the player ends up.
+   */
+  function back() {
+    el.classList.add('hidden');
+    if (onBack) onBack();
+  }
+
+  if (closeEl) closeEl.addEventListener('click', back);
 
   /**
    * ENTER MOVES, SPACE PICKS -- the same two keys and the same division of

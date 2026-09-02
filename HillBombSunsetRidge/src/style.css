@@ -1307,3 +1307,77 @@ html, body {
 
 .rs-tile.rs-sel { outline-color: var(--rs-accent, #ff3ea5); }
 .rs-tile:not(.locked):active { transform: scale(0.985); }
+
+
+/* ---- OBJECTIVE CLEAR ------------------------------------------------------
+   The moment a mission is about. Amit: "the message should be bigger with
+   stronger feedback." The old version reused the 30px trick banner -- the same
+   voice the game uses for BIG AIR several times a run -- so the one thing that
+   changes what a run IS announced itself like a kicker.
+
+   Three layers, because loudness on screen is not one property: a colour wash
+   over the whole frame (something happened), a large centred title (what), and
+   a subline (what to do now, since the run deliberately does not end). */
+#objective-clear {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 40;
+}
+#objective-clear.hidden { display: none; }
+
+/* The wash. Fast in, slow out -- a flash that lingers reads as a bug, one that
+   leaves too fast is not seen at all on a board-mounted screen. */
+.oc-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 45%,
+    rgba(79, 240, 255, 0.30) 0%, rgba(79, 240, 255, 0.10) 40%, rgba(79, 240, 255, 0) 70%);
+  animation: oc-flash 1.5s ease-out forwards;
+}
+@keyframes oc-flash {
+  0%   { opacity: 0; }
+  8%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.oc-text {
+  position: relative;
+  text-align: center;
+  animation: oc-pop 2.0s cubic-bezier(0.15, 1.5, 0.35, 1) forwards;
+}
+.oc-text b {
+  display: block;
+  /* Scales with the viewport rather than a fixed size -- this has to be
+     unmissable on a phone-sized WebView and on a TV, and 30px was neither. */
+  font: 900 clamp(34px, 8vw, 76px)/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.06em;
+  color: #ffffff;
+  text-shadow:
+    0 0 18px rgba(79, 240, 255, 0.9),
+    0 0 46px rgba(79, 240, 255, 0.5),
+    0 4px 18px rgba(0, 0, 0, 0.75);
+}
+.oc-text small {
+  display: block;
+  margin-top: 10px;
+  font: 800 clamp(11px, 2.1vw, 17px)/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.22em;
+  color: #4ff0ff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+  opacity: 0.9;
+}
+
+/* Overshoot on the way in so it lands with weight, then hold, then lift away --
+   the hold is most of the duration, because a message that is already leaving
+   by the time you have read it may as well not have been shown. */
+@keyframes oc-pop {
+  0%   { opacity: 0; transform: scale(0.55); }
+  14%  { opacity: 1; transform: scale(1.06); }
+  22%  { transform: scale(1); }
+  72%  { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: scale(1.02) translateY(-26px); }
+}

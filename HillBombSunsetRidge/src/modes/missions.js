@@ -229,10 +229,11 @@ const MISSION_MODE = {
     function checkComplete() {
       if (finished || cleared || objectives.some((o) => !o.done)) return;
       cleared = true;
-      // Say so at the moment it happens. Without this the only signal is the
-      // last objective's counter ticking over, which is a small thing to carry
-      // "the mission is yours, now go and earn the stars".
-      ctx.hud.banner('OBJECTIVE CLEAR');
+      // Say so at the moment it happens, LOUDLY. Without this the only signal
+      // was the last objective's counter ticking over, which is a very small
+      // thing to carry "the mission is yours, now go and earn the stars".
+      ctx.hud.objectiveClear();
+      ctx.audio.play('objective');
     }
 
     /** Bank the result and show the screen. The one exit for a cleared run. */

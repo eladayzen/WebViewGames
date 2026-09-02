@@ -160,9 +160,43 @@ const events = createEvents();
  * The grind is the exception and is wired at its own start/stop sites below: it
  * has a DURATION, and GRIND only fires when the rail is finished.
  */
-events.on(EV.LAUNCH, () => audio.play('launch'));
+events.on(EV.LAUNCH, (p) => {
+  audio.play('launch');
+  /**
+   * THE PAYOUT FIRES AT TAKEOFF, not on landing. Amit: "the sound for points
+   * for jumps -- try to start it sooner, as the jump starts."
+   *
+   * Which is right, and it is honest here in a way it would not be in most
+   * games. There is deliberately NO landing skill-check on this hill (see the
+   * landing note in the ride loop): the skill is choosing where and when to
+   * launch, and everything after the wheels leave the ground is already
+   * decided. So the points are known AT TAKEOFF -- announcing them then is
+   * reporting a settled fact, not promising one.
+   *
+   * It also puts the sound where the feeling is. The reward landing a second
+   * later arrived after the interesting part was over; at takeoff it plays
+   * INTO the silence of the air, which is the moment the jump actually is.
+   */
+  if (p && p.points > 0) {
+    audio.play(p.huge ? 'huge' : 'trick',
+      Math.min(1.7, 1 + (scoring.state.chain - 1) * 0.07));
+  }
+});
+// Just the slap now -- the reward moved to the takeoff, above. The landing is a
+// physical event and reports itself; what it was WORTH was already announced.
 events.on(EV.LAND, () => audio.play('land'));
 events.on(EV.BOOST, () => audio.play('boost'));
+/**
+ * A RAIL PAYS TOO, and pays MORE than most ramps -- a long rail is worth 309
+ * against a kicker's 200 -- so leaving it silent said the opposite of what the
+ * scoring does. Fires at the exit, which is when the points are actually
+ * awarded and when the rider is back in control to appreciate it.
+ */
+events.on(EV.GRIND, (p) => {
+  if (p && p.points > 0) {
+    audio.play('trick', Math.min(1.7, 1 + (scoring.state.chain - 1) * 0.07));
+  }
+});
 events.on(EV.HAZARD, () => audio.play('crash'));
 /**
  * Pitched off the CHAIN so a run of crystals rises instead of repeating. The
@@ -199,6 +233,10 @@ const modes = createModeHost({
   events,
   scoring,
   hud,
+  // Sound, so a mode can mark its own moments. The ride's own audio is driven
+  // off the event bus; this is for things only the mode knows about -- clearing
+  // an objective is not a ride event, it is a rule being satisfied.
+  audio,
   getState: () => ({ s: state.s, speed: state.speed, airborne: state.airActive }),
   progress,
   // The AI field. Handed to the mode rather than owned by it, so its lifetime
@@ -735,7 +773,12 @@ function beginAir(power, points, forcedTrick, launchLabel, opts = {}) {
   // Reported AFTER height and duration are settled, so a listener sees the
   // finished jump rather than a half-decided one.
   events.emit(EV.LAUNCH, {
+    // `points` and `huge` ride along so a listener can react to the SIZE of a
+    // launch at the moment it happens. Both are already decided here -- the
+    // ramp's value is read at takeoff -- so this is reporting a known fact
+    // rather than predicting one.
     launcher: launchLabel, power, height: state.airHeight, trick,
+    points, huge: points >= HUGE_AIR_POINTS,
   });
   if (trick === 'hop') events.emit(EV.HOP, { label: launchLabel });
 }
@@ -775,10 +818,19 @@ const modeSelect = createModeSelect((id) => {
   else startRun(id);
 });
 
-/** Whichever mission list is currently up, or null. */
+/**
+ * Whichever level-picking screen is currently up, or null.
+ *
+ * THE RACE LOBBY BELONGS IN HERE. It was missing, and this function is what
+ * __gbBack uses to decide what "up a level" means -- so with the race grid open
+ * the hardware back button skipped straight past it to "mid-run, ask to quit"
+ * or out of the game entirely. Any screen that sits above a run has to be
+ * listed, or the one button the board guarantees does the wrong thing on it.
+ */
 function openSelect() {
   if (missionSelect.isOpen()) return missionSelect;
   if (faceSelect.isOpen()) return faceSelect;
+  if (raceSelect.isOpen()) return raceSelect;
   return null;
 }
 
@@ -831,7 +883,7 @@ const faceSelect = {
 const raceSelect = createRaceSelect(progress, (raceId) => {
   setPendingRace(raceId);
   startRun('speedRace');
-}, 2);
+}, 2, () => modeSelect.open());
 
 // --- theme ------------------------------------------------------------------
 //

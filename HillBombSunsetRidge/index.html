@@ -143,6 +143,18 @@
 
         <div id="popups"></div>
         <div id="trick-banner"></div>
+
+        <!-- THE OBJECTIVE-CLEAR MOMENT. Its own element rather than the trick
+             banner, which is 30px and shared with labels like BIG AIR that flash
+             past several times a run -- the one moment a whole mission builds
+             toward cannot be announced in the same voice as a kicker. -->
+        <div id="objective-clear" class="hidden">
+          <div class="oc-flash"></div>
+          <div class="oc-text">
+            <b>OBJECTIVE CLEAR</b>
+            <small>KEEP RIDING &mdash; BUILD YOUR SCORE</small>
+          </div>
+        </div>
         <div id="hint">
           <!-- No TUCK here any more: the forward lean is disabled (see
                input/input.js), and a hint advertising a control that does

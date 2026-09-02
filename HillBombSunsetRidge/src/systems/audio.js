@@ -45,6 +45,9 @@ import rollFastUrl from '../assets/audio/sfx_roll_fast.mp3?url';
 import pickupUrl from '../assets/audio/sfx_pickup.mp3?url';
 import boostUrl from '../assets/audio/sfx_boost.mp3?url';
 import crashUrl from '../assets/audio/sfx_crash.mp3?url';
+import trickUrl from '../assets/audio/sfx_trick.mp3?url';
+import hugeUrl from '../assets/audio/sfx_huge.mp3?url';
+import objectiveUrl from '../assets/audio/sfx_objective.mp3?url';
 import musicFlowUrl from '../assets/audio/music_flow.mp3?url';
 import musicDriftUrl from '../assets/audio/music_drift.mp3?url';
 import musicGridUrl from '../assets/audio/music_grid.mp3?url';
@@ -65,6 +68,31 @@ const ONESHOTS = {
   pickup: { url: pickupUrl, gain: 0.30 },
   boost: { url: boostUrl, gain: 0.55 },
   crash: { url: crashUrl, gain: 0.70 },
+  /**
+   * THE PAYOUT SOUNDS. Amit: "we need to add audio feedback for tricks giving
+   * points."
+   *
+   * Landing already made a noise -- the board slapping concrete -- but that is
+   * a PHYSICAL event and says nothing about whether it was worth anything. A
+   * clean landing off a kicker and a nine-chain vert wall sounded identical,
+   * which quietly hid the entire scoring model: the chain is where the points
+   * actually come from and it had no voice at all.
+   *
+   * So the slap still reports the landing and this reports the REWARD, layered
+   * over it. Two sounds because they are two different facts.
+   */
+  trick: { url: trickUrl, gain: 0.42 },
+  // Its own clip rather than the same one louder: a huge air is the biggest
+  // thing the game can produce and deserves a different shape, not a bigger
+  // copy of the ordinary one.
+  huge: { url: hugeUrl, gain: 0.55 },
+  /**
+   * THE LOUDEST THING IN THE GAME, and deliberately. Clearing the objective is
+   * the single moment a mission is about -- everything before it is working
+   * toward this and everything after is a victory lap. It has to sit above the
+   * ride rather than in it.
+   */
+  objective: { url: objectiveUrl, gain: 0.85 },
 };
 
 /**

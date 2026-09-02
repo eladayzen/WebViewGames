@@ -19,6 +19,7 @@ export function createHud() {
   };
 
   let bannerTimer = 0;
+  let objectiveTimer = 0;
   let lastFps = 0;
   let lastSpeed = 0;
   let shownScore = 0; // what the readout currently reads, for the count-up
@@ -120,6 +121,31 @@ export function createHud() {
       if (el.wobbleBar) el.wobbleBar.classList.toggle('hidden', !on);
       const label = document.getElementById('wobble-label');
       if (label) label.classList.toggle('hidden', !on);
+    },
+
+    /**
+     * THE OBJECTIVE-CLEAR MOMENT -- its own call, not banner().
+     *
+     * banner() is the trick label: 30px, 1.1 seconds, fired several times a run
+     * for BIG AIR and RAIL. Announcing the completion of the mission in that
+     * same voice made the biggest event in a run indistinguishable from its
+     * smallest. Amit: "the message should be bigger with stronger feedback."
+     *
+     * Restarted cleanly by removing and re-adding the element, so the CSS
+     * animations replay if it is ever fired twice in one run.
+     */
+    objectiveClear() {
+      const oc = document.getElementById('objective-clear');
+      if (!oc) return;
+      oc.classList.add('hidden');
+      // Force a reflow between the two class changes, or the browser coalesces
+      // them and the animation never restarts.
+      void oc.offsetWidth;
+      oc.classList.remove('hidden');
+      clearTimeout(objectiveTimer);
+      // Matches the longer of the two animations, so the element is only hidden
+      // once it has finished leaving.
+      objectiveTimer = setTimeout(() => oc.classList.add('hidden'), 2000);
     },
 
     banner(text) {
