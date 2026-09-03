@@ -142,8 +142,18 @@ async function boot() {
     // The score counts even though the player stopped early -- Amit's call and
     // the right one: a run that ended by choice still happened, and a board
     // that only ever records deaths quietly punishes stopping.
+    showEndBoard(false);
+  }
+
+  /**
+   * The screen a run ends on when the player is choosing what happens next:
+   * they quit, or they finished the campaign. Board, play again, leave, and no
+   * clock on any of it. Shared because the two differ only in the headline --
+   * everything the player does from here is the same.
+   */
+  function showEndBoard(cleared) {
+    hud.showQuit(world, cleared);
     const runScore = world.stats.score;
-    hud.showQuit(world);
     submitRun(runScore).then(() =>
       fetchBoard().then((board) => {
         const { top, window: near } = resultSections(board.rows, runScore);
@@ -300,6 +310,8 @@ async function boot() {
     // automatic one a few seconds later.
     resultT = -1;
     hud.setResultCountdown(0);
+    hud.hideVictory();
+    hud.hideQuit();
     resetWorld(world);
     renderer.clearFx();
     hud.hideGameOver();
@@ -639,6 +651,15 @@ async function boot() {
     // behaviour the POC has always had. /systems/director.js owns which.
     // "Every sector, not every second sector" (decision note §4).
     if (SECTOR_TRANSITION.autoOnWaveCycle && sectorComplete(world)) {
+      // THE LAST SECTOR ENDS THE CAMPAIGN INSTEAD OF WRAPPING. Until now
+      // `nextSurface()` took the index modulo SURFACES.length, so beating the
+      // final boss quietly returned the player to level one with nothing scaled
+      // and nothing said. Amit: level five is the end of the campaign, and
+      // finishing it should be a screen.
+      if (world.surfaceIndex >= SURFACES.length - 1) {
+        completeCampaign();
+        return;
+      }
       nextSurface();
       if (world.transition.active) return;
     }
@@ -669,27 +690,62 @@ async function boot() {
     // Zero segments = failed. No revive, no continue, no cost to retry (§5.10).
     if (!world.player.alive && world.state === GameState.RUNNING) {
       world.state = GameState.FAILED;
-      hud.showGameOver(world);
-      // THE ACCOUNT SCOREBOARD (systems/scoreboard.js). Fire-and-forget: the
-      // overlay is already up, and the board fills in underneath it when the
-      // round-trip returns. Deliberately not awaited -- a slow or offline
-      // Firestore read must never delay the player seeing that they died, and
-      // both calls resolve rather than reject, so there is nothing to catch.
-      //
-      // Submitted BEFORE fetching so the run just finished is in the board the
-      // player is about to read -- otherwise their own score is conspicuously
-      // missing from the one screen where they are looking for it.
-      resultT = START_SCREEN.resultSeconds;
-      resultShown = -1;
-      hud.setResultCountdown(START_SCREEN.resultSeconds);
-      const runScore = world.stats.score;
-      submitRun(runScore).then(() =>
-        fetchBoard().then((board) => {
-          const { top, window: near } = resultSections(board.rows, runScore);
-          hud.showBoard('result', board, near.length ? [top, near] : [top]);
-        })
-      );
+      showResult();
     }
+  }
+
+  /**
+   * Beating the final boss. A beat of its own before the board: the run is over
+   * and the score is already made, but handing straight to a leaderboard would
+   * make finishing the campaign feel exactly like dying.
+   *
+   * The simulation stops here the same way it stops on death -- CLEARED is not
+   * RUNNING, so `update()` returns before touching the world -- which is what
+   * makes it safe to leave the playfield on screen behind the card.
+   */
+  function completeCampaign() {
+    if (world.state !== GameState.RUNNING) return;
+    world.state = GameState.CLEARED;
+    hud.showVictory(world);
+  }
+
+  /** Leave the victory beat for the ending board. Guarded on the state rather
+   *  than on a flag: CLEARED means precisely "the victory screen is up", so a
+   *  second press cannot submit the run twice. */
+  function continueFromVictory() {
+    if (world.state !== GameState.CLEARED) return;
+    hud.hideVictory();
+    // The state stays CLEARED: the simulation must remain stopped, the X must
+    // still leave without asking, and Space must NOT restart -- on this screen
+    // "play again" is a button the player chooses, not a key that fires under
+    // their hands. PLAY AGAIN calls restartScenario(), which sets RUNNING.
+    showEndBoard(true);
+  }
+
+  /** The screen a run ends on when the player DIED: the board, and a clock that
+   *  restarts the game so an abandoned machine never parks on a dead screen.
+   *  Finishing the campaign goes to showEndBoard() instead -- see there. */
+  function showResult() {
+    hud.showGameOver(world);
+    // THE ACCOUNT SCOREBOARD (systems/scoreboard.js). Fire-and-forget: the
+    // overlay is already up, and the board fills in underneath it when the
+    // round-trip returns. Deliberately not awaited -- a slow or offline
+    // Firestore read must never delay the player seeing that they died, and
+    // both calls resolve rather than reject, so there is nothing to catch.
+    //
+    // Submitted BEFORE fetching so the run just finished is in the board the
+    // player is about to read -- otherwise their own score is conspicuously
+    // missing from the one screen where they are looking for it.
+    resultT = START_SCREEN.resultSeconds;
+    resultShown = -1;
+    hud.setResultCountdown(START_SCREEN.resultSeconds);
+    const runScore = world.stats.score;
+    submitRun(runScore).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, runScore);
+        hud.showBoard('result', board, near.length ? [top, near] : [top]);
+      })
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -782,10 +838,27 @@ async function boot() {
   // restart the game.
   const skipResult = () => {
     if (resultT < 0) return;
+    // THE TAP THAT LEAVES THE VICTORY BEAT MUST NOT ALSO SKIP THE BOARD. One
+    // press can reach both listeners, and the board is what the player pressed
+    // TOWARD -- skipping it would restart the game instead of showing the run
+    // they just finished. A guard on age rather than on listener order, because
+    // ordering is invisible at the call site and this is not.
+    if (resultT > START_SCREEN.resultSeconds - 0.3) return;
     resultT = -1;
     restartScenario();
   };
   window.addEventListener('pointerdown', skipResult);
+
+  // CONTINUE IS THE ONLY WAY OFF THE VICTORY SCREEN -- Amit's call. No clock and
+  // no tap-anywhere: this is the one screen the player has earned, and a stray
+  // touch while they are reading it should not take it away.
+  const victoryButton = document.getElementById('victory-continue');
+  if (victoryButton) {
+    victoryButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      continueFromVictory();
+    });
+  }
 
   // The scenario is armed but NOT started, so the surface and HUD draw behind
   // the screen while the state stays out of RUNNING.

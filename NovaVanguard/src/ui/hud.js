@@ -55,6 +55,9 @@ export function createHud(root) {
     quitScoreboardTitle: root.querySelector('#quit-scoreboard-title'),
     quitScoreboardRows: root.querySelector('#quit-scoreboard-rows'),
     startCountdown: root.querySelector('#start-countdown'),
+    victory: root.querySelector('#victory-overlay'),
+    victoryStats: root.querySelector('#victory-stats'),
+    quitTitle: root.querySelector('#quit-title'),
     gameoverCountdown: root.querySelector('#gameover-countdown'),
     startScoreboard: root.querySelector('#start-scoreboard'),
     startScoreboardTitle: root.querySelector('#start-scoreboard-title'),
@@ -518,6 +521,17 @@ export function createHud(root) {
       box.classList.remove('hidden');
     },
 
+    /** The victory beat, between the last boss dying and the board. */
+    showVictory(w) {
+      if (el.victoryStats) {
+        el.victoryStats.textContent =
+          `${w.stats.kills} destroyed \u00b7 score ${w.stats.score.toLocaleString()}`;
+      }
+      if (el.victory) el.victory.classList.remove('hidden');
+    },
+    hideVictory() {
+      if (el.victory) el.victory.classList.add('hidden');
+    },
     /** The pre-run screen. Same card and same board as the result screen. */
     showStart() {
       if (el.startOverlay) el.startOverlay.classList.remove('hidden');
@@ -546,9 +560,19 @@ export function createHud(root) {
       if (el.confirmOverlay) el.confirmOverlay.classList.add('hidden');
     },
 
-    /** The quit screen: the run's result, the board, and two ways out. */
-    showQuit(w) {
+    /**
+     * The quit screen: the run's result, the board, and two ways out.
+     *
+     * Also the CAMPAIGN COMPLETE screen. Finishing the game and stopping it by
+     * hand end in the same place on purpose -- the run is over, the score is
+     * banked, and the only question left is play again or leave. Neither has a
+     * clock: both are screens the player chose to be on.
+     */
+    showQuit(w, cleared) {
       if (!el.quitOverlay) return;
+      if (el.quitTitle) {
+        el.quitTitle.textContent = cleared ? 'CAMPAIGN COMPLETE' : 'RUN ENDED';
+      }
       el.quitStats.textContent =
         `${w.stats.kills} destroyed · wave ${w.director.waveIndex + 1} · ` +
         `score ${w.stats.score.toLocaleString()}`;

@@ -291,7 +291,7 @@
            own buttons. -->
       <div id="quit-overlay" class="board-screen hidden">
         <div id="quit-card" class="board-card">
-          <h1>RUN ENDED</h1>
+          <h1 id="quit-title">RUN ENDED</h1>
           <p id="quit-stats"></p>
           <div id="quit-scoreboard" class="hidden">
             <div id="quit-scoreboard-title">BEST ON THIS ACCOUNT</div>
@@ -324,6 +324,20 @@
             <ol id="start-scoreboard-rows"></ol>
           </div>
           <p id="start-countdown">Game will start in a few seconds</p>
+        </div>
+      </div>
+
+      <!-- CAMPAIGN COMPLETE -- the beat between beating the last boss and
+           reading the board. Its own id and NO #restart-button inside it: the
+           host synth-clicks that id whenever it is visible, and a celebration
+           screen that restarted the run on Space would throw away the run it is
+           celebrating. -->
+      <div id="victory-overlay" class="board-screen hidden">
+        <div id="victory-card" class="board-card">
+          <h1>CAMPAIGN COMPLETE</h1>
+          <p id="victory-sub">ALL FIVE SECTORS CLEARED</p>
+          <p id="victory-stats"></p>
+          <button id="victory-continue" type="button">CONTINUE</button>
         </div>
       </div>
 

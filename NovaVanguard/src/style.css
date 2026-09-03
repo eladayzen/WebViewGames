@@ -1366,4 +1366,69 @@ body.dev-invincible::after {
   font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  transition: background 90ms linear;
 }
+
+/* Every key answers a press the same way. A key that looked inert while another
+   lit up was what gave the code away one digit at a time. */
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+
+/* A wrong code, shown for a moment before the row clears. Amber rather than red:
+   this is a mistyped code, not an alarm. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
+}
+
+/* CAMPAIGN COMPLETE -- the beat between the last boss and the board. Same card
+   as the other screens so the game does not suddenly change visual language at
+   its best moment; the difference is the accent and the absence of a board. */
+#victory-overlay .board-card {
+  text-align: center;
+  border-color: rgba(255, 214, 122, 0.55);
+  box-shadow: 0 0 6vmin rgba(255, 198, 88, 0.22);
+}
+
+#victory-overlay h1 {
+  color: #ffd67a;
+  letter-spacing: 0.12em;
+}
+
+#victory-sub {
+  color: rgba(255, 235, 190, 0.82);
+  letter-spacing: 0.22em;
+  font-size: 1.7vmin;
+  margin: 0.6vmin 0 1.8vmin;
+}
+
+#victory-stats {
+  font-size: 2vmin;
+  margin-bottom: 2.4vmin;
+}
+
+/* Matches the restart button on the result screen: this is the same action in
+   the same place in the flow, and a player should not have to learn a second
+   shape for "go on". Gold rather than cyan only because this screen is the
+   one moment the game is congratulating them. */
+#victory-continue {
+  font: 700 2vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.24em;
+  padding: 1.4vmin 4.5vmin;
+  border-radius: 1vmin;
+  border: 0.22vmin solid rgba(255, 214, 122, 0.75);
+  background: rgba(92, 66, 20, 0.9);
+  color: #fff6e2;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#victory-continue:hover {
+  background: rgba(126, 92, 30, 0.95);
+}
+
+#victory-continue:active {
+  transform: translateY(0.2vmin);
+}
+

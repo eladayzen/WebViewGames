@@ -26,6 +26,12 @@ export const GameState = {
   BOOT: 'boot',
   RUNNING: 'running',
   FAILED: 'failed',
+  // Reaching the end of the campaign is NOT failing, and the two must not share
+  // a state: the victory beat suppresses the simulation the same way, but it is
+  // reached by winning and it shows a different screen. Everything downstream of
+  // the beat (the result screen, the board, the restart) is shared -- only how
+  // the run ENDED differs, so only the entry point differs.
+  CLEARED: 'cleared',
 };
 
 /** Sub-states inside `running`, gated by a single enum rather than by flags
