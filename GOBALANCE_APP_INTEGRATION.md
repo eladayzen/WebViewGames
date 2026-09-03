@@ -217,6 +217,12 @@ Not an event. Multiplayer adds `window.__gbPlayers`.
 
 ### Saved state, in one paragraph
 
+**First ask whether you need it at all.** These are arcade games — a run is whole
+or it is nothing (see below) — so a run in progress is never saved and there is
+nothing to resume. `save()` is for what survives BETWEEN runs, which for most
+games so far is nothing at all. Scores are not this: they go through
+`submitScore`, which is the only path the app can rank.
+
 `save()`/`load()` store an opaque per-profile blob the app never parses — see
 their README for the Firestore path and the key derivation. Three consequences
 worth designing around: a copy is always mirrored to **PlayerPrefs**, so saves
@@ -362,6 +368,82 @@ not looser. Self-install a one-time `pointerdown` / `touchstart` / `keydown`
 listener that resumes the `AudioContext`, rather than expecting every call site
 to remember. A tap on your own mute control is itself a gesture — use it.
 
+## These are arcade games: a run is whole, or it is nothing
+
+**There is no mid-run save, and there should not be one.** A player steps onto a
+board, plays until they die or stop, and steps off. Nothing carries into the next
+run. Design to that and a lot of hard questions stop existing — no resume, no
+"continue?", no partial state to migrate, no half-finished run to reconcile
+against a board.
+
+What that buys you is one rule, and it is worth stating as a rule because every
+ending in the game has to obey it:
+
+> **Every way a run can end, ends the same way: bank the score, then show the
+> board.** No exceptions for the endings that feel like they don't count.
+
+There are three of them, and it is easy to build only the first:
+
+| How the run ended | Screen | Clock? |
+|---|---|---|
+| **Died** | result screen | yes — restarts itself, so an abandoned machine never parks on a dead screen |
+| **Quit** (pressed X mid-run) | board + PLAY AGAIN / QUIT | **no** — they chose to stop |
+| **Finished** (beat the last level) | a beat, then the same board + PLAY AGAIN / QUIT | **no** — the beat is the one screen they earned |
+
+### The score counts even when the player quit
+
+This is the one most likely to be got wrong, and it was a direct instruction:
+**a run that ended by choice still happened.** A board that only records deaths
+quietly punishes stopping — it teaches players to stand there and die on purpose
+rather than press the button that means "I'm done". So the quit path submits,
+exactly like the death path.
+
+Practically: `submitScore` on the way into the quit screen, not on the way out.
+The player may leave to the lobby from that screen and the page is gone.
+
+### Whether the run is worth submitting is not your call
+
+Don't filter out short runs, zero scores, or "they only played ten seconds".
+The host stores your best N runs per profile and drops the rest, so a run that
+does not deserve a place will not get one — that decision already exists one
+layer down, and making it twice means the second one is invisible.
+
+### A clock is for abandonment, not for pacing
+
+Put a self-restarting timer only on the screen a player lands on **without
+choosing to** — the death screen. A screen they pressed a button to reach should
+wait for them. Getting this backwards is how a celebration screen yanks itself
+away while someone is reading their score.
+
+And if a screen has both a clock and a skip, guard the skip on the screen's
+**age**, not on listener order: one press can reach two skip listeners, and the
+second one will skip the screen the first one was opening. Ours ignores skips in
+the first 0.3 s.
+
+### Restart means restart
+
+PLAY AGAIN and the death screen's timer both start a **complete fresh run** —
+level one, score zero, world reset. There is no "continue where you left off",
+because there is nothing to continue: see the top of this section. Reset the
+renderer's surface too, or a restart taken on level five leaves the wrong art
+under level one.
+
+### Guard "this screen is up" on state, not on a timer
+
+A subtle one that cost us a bug report. A screen whose timer expires calls its
+own handler with the timer already negative, so a handler that guards re-entry
+with `if (timer < 0) return;` rejects the very call the expiry makes — and then
+every button on that screen is dead for the rest of the run. Guard on the state
+enum instead: it answers the honest question, "is this screen what's on screen?"
+
+Related: give **finishing** its own state, separate from dying. They suppress the
+simulation identically, but the state is also what the X reads to leave without
+asking and what Space reads to restart — and on a screen with its own buttons,
+"play again" must be a button the player chooses, not a key firing under their
+hands.
+
+---
+
 ## Quitting — the X is the only way out
 
 On the board there is no keyboard, no gesture and no home button the player can
@@ -416,15 +498,16 @@ drift out of step with it.
 
 ### After confirming: a quit screen, not an exit
 
-Leaving straight to the lobby throws away the run. Show the same board screen
-the game ends on, with:
+Leaving straight to the lobby throws away the run. Show the board screen
+instead — the run's result, the leaderboard, **the score submitted even though
+the player quit**, no timer, and two buttons: play again and quit. See "a run is
+whole, or it is nothing" above for why each of those is not optional.
 
-- the run's result
-- the leaderboard, **with the score submitted even though the player quit** — a
-  run that ended by choice still happened, and a board that only records deaths
-  quietly punishes stopping
-- **no timer.** The player chose to stop; nothing should start counting at them
-- two buttons: play again, and quit
+Build this screen ONCE and reuse it for finishing the game, too. Quitting and
+completing the campaign leave the player in exactly the same position — the run
+is over, the score is banked, and the only question left is play again or leave —
+so they should differ in the headline and nothing else. We built the victory
+ending as a separate screen first and then deleted it.
 
 The X stays where it is and leaves from there.
 
@@ -529,8 +612,10 @@ detection is real.
 **Editor:** board drives the game with no double-input; Space/Enter restarts
 from the game-over overlay; the game starts with sound on and its own mute
 control works; X asks before ending a run, and leaves without asking from any
-screen where the player is already stopped; **quit mid-run and confirm the run
-you just played appears on the quit board** — that path exercises submit, fetch
+screen where the player is already stopped; **exercise all three endings — die,
+quit mid-run, and finish the last level — and confirm each one banks the score
+and shows the board**; **quit mid-run and confirm the run you just played appears
+on the quit board** — that path exercises submit, fetch
 and placement in one go, and it is the one that broke; dev tools are invisible
 until the hold-and-code unlock, and player settings are reachable without it.
 
@@ -554,5 +639,9 @@ until the hold-and-code unlock, and player settings are reachable without it.
 | Saved progress vanished | the StreamingAssets folder was renamed after shipping |
 | Player stranded in a game | `#gb-back` routed only through a module that failed to load — keep the inline `nav:back` fallback |
 | A run ends on a stray tap | X quitting without confirming while a run is in progress |
+| A screen's buttons are all dead and it never advances | its handler guards re-entry on a timer that has already gone negative — guard on the state instead |
+| Pressing a button skips the screen it just opened | one press reaching two skip listeners; guard the skip on screen age, not listener order |
+| A run the player quit is missing from the board | the quit path never called `submitScore` — every ending banks the score |
+| A restart plays level one under level five's art | the world was reset but the renderer's surface was not |
 | The run just played is missing from the board | it fell off the host's best-N cap (low score, e.g. a quit), or the board was fetched before the write committed |
 | Avatars look wrong or blank after an app update | the game mirrored the app's PNGs — derive the identity instead |
