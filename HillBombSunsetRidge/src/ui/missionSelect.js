@@ -19,6 +19,8 @@
 // Everything here is read from the progress store (systems/progress.js), which
 // is the seam that becomes account data later. This file never reads storage.
 
+import { iconFor } from './propIcons.js';
+
 /** Missions revealed per block -- see the horizon note above. */
 const BLOCK = 10;
 
@@ -112,12 +114,52 @@ export function createMissionSelect(missions, progress, onPick, track = 0, noun 
       // Numbered within its own ladder. m.number is the position in the global
       // table, which reads as 21-28 on a list of eight.
       const num = `<div class="msel-num">${String(missions.indexOf(m) + 1).padStart(2, '0')}</div>`;
+      /**
+       * WHAT THE MISSION IS ABOUT, as icons.
+       *
+       * The list is where a player chooses what to play, and every row read
+       * the same: a name, a mood line, three stars. Nothing said whether the
+       * next one was ramps or a crystal sweep -- which is the only question
+       * anyone actually has when picking. The briefing card and the in-run
+       * panel already carry these drawings, so a row showing them means a
+       * player recognises the shape before they commit rather than after the
+       * card appears.
+       *
+       * DEDUPED BY KIND: a mission asking crystals and idols shows two
+       * different pickups, but nothing shows the same icon twice.
+       */
+      const kinds = [];
+      for (const o of m.objectives || []) {
+        /**
+         * NO SCORE ICON HERE, though the briefing card has one.
+         *
+         * A score objective's icon is a star, and this row already ends in
+         * three stars that mean the rating -- so FAST LANE rendered a star
+         * immediately left of its rating stars, saying two unrelated things in
+         * the same shape. On the card there are no rating stars to collide
+         * with, so it keeps its icon there.
+         *
+         * An icon that has to be read twice differently is worse than no icon:
+         * the row's job is "what is this one about", and score is the one
+         * answer the stars beside it already imply.
+         */
+        if (o.kind === 'score') continue;
+        const key = o.kind === 'pickup' ? (o.type || 'crystal') : o.kind;
+        if (!kinds.includes(key)) kinds.push(key);
+      }
+      const icons = kinds
+        .map((k) => iconFor(k === 'crystal' || k === 'idol' ? 'pickup' : k, k))
+        .filter(Boolean)
+        .map((svg) => `<i class="msel-icon">${svg}</i>`)
+        .join('');
+
       row.innerHTML = unlocked
         ? `${num}
            <div class="msel-text">
              <b>${m.name}</b>
              <small>${m.brief}</small>
            </div>
+           <div class="msel-icons">${icons}</div>
            <div class="msel-stars">${stars(progress.stars(m.id))}</div>`
         // A locked row names itself but not its brief: knowing there is a
         // SUNSET RUN ahead is the hook; spoiling what it asks for is not.

@@ -341,11 +341,13 @@ const AUTHORED = [
   ['doubleDown',  'DOUBLE DOWN',   'Twice the crystals, twice the ramps.',      90, { pickup: 29, launch: 13 }],
   ['steelRush',   'STEEL RUSH',    'Rails pay, and they pay while you are on them.', 105, { grind: 5, score: 23000 }],
   ['highRoller',  'HIGH ROLLER',   'One number matters. Make it big.',          85, { score: 21000 }],
-  ['sweep',       'SWEEP',         'Clean the hill out on the way down.',      100, { pickup: 33, grind: 5 }],
+  ['sweep',       'SWEEP',         'Sweep the hill, gates and all.',           100, { pickup: 30, boost: 17 }],
   ['launchParty', 'LAUNCH PARTY',  'Hit every ramp you can find.',              95, { launch: 23 }],
-  ['goldRush',    'GOLD RUSH',     'The ridge is paved with the stuff.',       105, { pickup: 36 }],
+  ['goldRush',    'GOLD RUSH',     'Crystals, and the idols among them.',      105, { pickup: 30, idol: 6 }],
   ['grindCity',   'GRIND CITY',    'Metal first, everything else after.',      110, { grind: 5, pickup: 36 }],
-  ['topSpeed',    'TOP SPEED',     'No brakes. No hesitation.',                 90, { score: 22000 }],
+  // A speed mission that is finally ABOUT speed: the gates are the mechanic,
+  // so asking for them is asking for the thing the mission is named after.
+  ['topSpeed',    'TOP SPEED',     'Ride every gate you can reach.',            90, { score: 20000, boost: 21 }],
   ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 36, grind: 5, launch: 18 }],
   ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { score: 24000, pickup: 36, grind: 5 }],
 
@@ -381,27 +383,34 @@ const AUTHORED = [
   // Every number here is AUTHORED and passes through DIFFICULTY (0.7), so the
   // player sees roughly 70% of what is written. The authored values are what
   // state the intent.
-  ['nightShift',  'NIGHT SHIFT',   'Same hill, harder line.',                  100, { pickup: 30, grind: 5 }],
+  ['nightShift',  'NIGHT SHIFT',   'The idols are out tonight.',               100,
+    { idol: 11, grind: 5 }, undefined, { rareAlways: true }],
   ['freeFall',    'FREE FALL',     'Let the ground do the work.',               90, { launch: 20, score: 20000 }],
-  ['stoneStep',   'STONE STEP',    'Down the staircase, nothing missed.',      105, { pickup: 34, launch: 14 }],
+  ['stoneStep',   'STONE STEP',    'Ramp to gate, all the way down.',          105, { launch: 14, boost: 17 }],
   ['deepEnd',     'DEEP END',      'High walls. Use them.',                     95, { score: 26000 }],
   ['loosePack',   'LOOSE PACK',    'Everything on the hill is worth points.',  110, { pickup: 38, grind: 5, launch: 16 }],
   ['switchHouse', 'SWITCH HOUSE',  'The road never lets you settle.',          100, { pickup: 34, boost: 8 }],
-  ['pinchPoint',  'PINCH POINT',   'Tight, fast, and no room to waste.',        85, { pickup: 28, launch: 14 }],
+  ['pinchPoint',  'PINCH POINT',   'Narrow, and the gates are on the edges.',   85, { boost: 21, launch: 14 }],
   ['longHaul',    'LONG HAUL',     'Wide open and a long way down.',           115, { score: 27000, grind: 6 }],
   ['stepLadder',  'STEP LADDER',   'Every drop pays if you land it.',          100, { launch: 24, score: 22000 }],
-  ['stormChase',  'STORM CHASE',   'Deep bowl, full sweep.',                   110, { pickup: 40, grind: 6 }],
+  ['stormChase',  'STORM CHASE',   'Idols in the bowl. Go and get them.',      110,
+    { idol: 14, grind: 6 }, undefined, { rareAlways: true }],
   // --- 31-40: the pairings come back around, so the demands take over --------
   ['ironWill',    'IRON WILL',     'Rails first. Everything else after.',       95, { grind: 7, pickup: 32 }],
-  ['fastCurrent', 'FAST CURRENT',  'Hold the line and do not slow down.',       80, { score: 24000, boost: 8 }],
+  ['fastCurrent', 'FAST CURRENT',  'Never stop accelerating.',                  80, { boost: 26, score: 20000 }],
   ['cleanSweep',  'CLEAN SWEEP',   'Leave nothing on the hill.',               105, { pickup: 44 }],
   ['bigNumbers',  'BIG NUMBERS',   'Chain it. That is the only way.',           90, { score: 30000 }],
   ['nervePlay',   'NERVE PLAY',    'Three demands, one short clock.',           90, { pickup: 34, grind: 6, launch: 18 }],
   ['skyLine',     'SKY LINE',      'Every ramp, every time.',                   95, { launch: 28 }],
-  ['tightRope',   'TIGHT ROPE',    'The narrow one, and no margin.',            85, { pickup: 32, grind: 6 }],
+  ['tightRope',   'TIGHT ROPE',    'Idols on the tightest hill there is.',      85,
+    { idol: 9, grind: 6 }, undefined, { rareAlways: true }],
   ['fullTilt',    'FULL TILT',     'Nothing held back.',                        85, { score: 30000, launch: 20 }],
   ['lastCall',    'LAST CALL',     'Everything you have learned, at once.',    100, { pickup: 42, grind: 6, launch: 22 }],
-  ['sundown',     'SUNDOWN',       'The last run on the ridge.',               110, { score: 32000, pickup: 44, grind: 7 }],
+  // The finale asks for the two things Amit calls the most fun, plus a score
+  // that needs the chain -- so the last mission is the game at its best rather
+  // than its longest crystal sweep.
+  ['sundown',     'SUNDOWN',       'Everything the ridge has, one last time.', 115,
+    { idol: 13, boost: 21, score: 26000 }, undefined, { rareAlways: true }],
 
   // --- THE OPEN FACE ---------------------------------------------------------
   //
