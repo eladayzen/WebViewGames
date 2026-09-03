@@ -115,6 +115,8 @@ let onOpenLab = null;
 let audio = null;
 /** Told whenever the panel opens or closes -- see initSettingsPanel's hooks. */
 let onPanelToggle = null;
+/** The DEV OPTIONS row, hidden until the unlock fires. See unlockDevOptions. */
+let devRow = null;
 
 // localStorage can throw outright in a restricted WebView (private mode,
 // storage disabled). A tuning nicety must never take the game down with it, so
@@ -413,6 +415,9 @@ function showRows(list) {
   const holder = panelEl && panelEl.querySelector('.sp-rows');
   if (!holder) return;
   holder.innerHTML = '';
+  // A row hidden by class stays hidden across a panel swap -- appending it does
+  // not clear the class, but saying so here stops the next person adding a
+  // display:block that quietly re-reveals the dev row.
   for (const r of list) holder.appendChild(r.el);
   selected = 0;
   list.forEach((r) => r.refresh());
@@ -445,6 +450,16 @@ function setPanelOpen(open) {
     if (showingDev) showRows(playerRows);
   }
   if (onPanelToggle) onPanelToggle(open);
+}
+
+/**
+ * Reveal the DEV OPTIONS row for this session. Called by the unlock gesture.
+ *
+ * Deliberately has no matching lock(): the only way back is a reload, which is
+ * what stops a panel opened once from staying open on a shared device.
+ */
+export function unlockDevOptions() {
+  if (devRow) devRow.el.classList.remove('sp-hidden');
 }
 
 export function isPanelOpen() {
@@ -527,14 +542,26 @@ export function initSettingsPanel(hooks = {}) {
     fmt: (v) => `${Math.round(v)}`,
     relevance: () => state.music,
   });
-  addAction({
+  /**
+   * HIDDEN UNTIL UNLOCKED. Amit: "hide the dev options button."
+   *
+   * The row is built either way and simply not shown, which matters because the
+   * dev panel has to keep working -- it is needed on real hardware, in the
+   * shipped build, in front of a player who has just reported something. A
+   * build flag can only be one or the other, and PROD is exactly the build
+   * worth debugging.
+   *
+   * Reachable by holding the speed readout for seven seconds and entering the
+   * code -- see ui/devUnlock.js, and main.js for where it is installed. The
+   * unlock is NOT persisted: a reload re-locks it, so a device left with the
+   * panel open does not stay open.
+   */
+  devRow = addAction({
     label: 'DEV OPTIONS',
     run: () => { showRows(devRows); return null; },
-    // The eventual plan is for this row to disappear and be reachable only by a
-    // known input combination. Kept as an ordinary row until then so the thing
-    // being hidden later is already built and working.
     note: 'host wiring, control tuning, render lab',
   });
+  devRow.el.classList.add('sp-hidden');
   addAction({
     label: 'CLOSE',
     // Reachable by key as well as touch -- with the gear unclickable on-device,

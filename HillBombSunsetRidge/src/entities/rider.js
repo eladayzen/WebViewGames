@@ -31,10 +31,8 @@
 //         └ visual (sprite plane | static mesh | rigged mesh)
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import riderSpriteUrl from '../assets/rider_sprite.png?url';
-import riderModelUrl from '../assets/rider.glb?url';
 import riggedUrl from '../assets/rig/rider_rigged.fbx?url';
 import clipIdleUrl from '../assets/rig/clip_idle.fbx?url';
 import clipPushUrl from '../assets/rig/clip_push.fbx?url';
@@ -354,11 +352,6 @@ export function createRider(scene, camera) {
   }
 
   // --- mode B: static 3D model ---------------------------------------------
-  const modelHolder = new THREE.Group();
-  modelHolder.visible = false;
-  tilt.add(modelHolder);
-  let modelLoaded = false;
-  const staticOriginalMats = new Map();
 
   // --- mode C: rigged + animated -------------------------------------------
   const rigHolder = new THREE.Group();
@@ -444,23 +437,20 @@ export function createRider(scene, camera) {
   }
 
   const ready = Promise.all([
-    // mode B
-    new Promise((resolve) => {
-      new GLTFLoader().load(riderModelUrl, (gltf) => {
-        const obj = gltf.scene;
-        fitToRider(obj, true, 'static');
-        obj.traverse((n) => {
-          if (n.isMesh) {
-            n.frustumCulled = false;
-            staticOriginalMats.set(n, n.material);
-          }
-        });
-        modelHolder.add(obj);
-        modelLoaded = true;
-        applyMode();
-        resolve();
-      }, undefined, () => resolve());
-    }),
+    /**
+     * MODE B IS GONE, and with it rider.glb -- 2.7 MB, a quarter of the whole
+     * bundle.
+     *
+     * It was the raw unrigged mesh, kept alongside the rigged one so the render
+     * lab could show them side by side while we decided which to ship. That
+     * decision was made -- the game ships MODE C -- and both were still being
+     * downloaded and parsed on every single launch, because the loads fire at
+     * init rather than per mode. So every player was paying 2.7 MB for a
+     * comparison nobody was making any more.
+     *
+     * The mesh has not been deleted from the repo, only from the build: it is
+     * one import away if the rig ever needs re-judging against it.
+     */
 
     // mode C
     new Promise((resolve) => {
@@ -615,7 +605,6 @@ export function createRider(scene, camera) {
 
   function applyMode() {
     spriteMesh.visible = mode === 'sprite';
-    modelHolder.visible = mode === 'model' && modelLoaded;
     rigHolder.visible = mode === 'rigged' && rigLoaded;
     applyLighting();
   }
@@ -625,24 +614,6 @@ export function createRider(scene, camera) {
     // same textures. The build doc claims unlit is correct for illustrated
     // surfaces (§9.1); for a PBR character that's genuinely untested, and this
     // toggle is how it gets checked rather than assumed.
-    if (modelLoaded) {
-      modelHolder.traverse((n) => {
-        if (!n.isMesh) return;
-        const orig = staticOriginalMats.get(n);
-        if (!orig) return;
-        if (lit) {
-          n.material = orig;
-        } else {
-          if (!n.userData.unlitMat) {
-            n.userData.unlitMat = new THREE.MeshBasicMaterial({
-              map: orig.map || null,
-              color: orig.color ? orig.color.clone() : 0xffffff,
-            });
-          }
-          n.material = n.userData.unlitMat;
-        }
-      });
-    }
     if (rigLoaded) {
       rigMeshes.forEach((n, i) => {
         n.material = lit ? rigLitMats[i] : rigUnlitMats[i];
@@ -687,7 +658,6 @@ export function createRider(scene, camera) {
       applyLighting();
     },
 
-    get modelAvailable() { return modelLoaded; },
     get rigAvailable() { return rigLoaded; },
     get clipNames() { return Object.keys(actions); },
     get debugPushWeight() { return pushWeight; }, // verifying the mid-air push-cancel fix

@@ -17,7 +17,17 @@
 // be handed over at launch, in bulk, by the host -- would be inventing a problem
 // to solve. When the host arrives, `hydrate()` takes its payload.
 
-const STORAGE_KEY = 'hillbomb.progress.v1';
+/**
+ * THE STORE IS INJECTED NOW -- see systems/gbProfile.js.
+ *
+ * This file used to read and write localStorage directly, which is one bucket
+ * PER DEVICE. On a BoBo that is shared by a family, that means a sibling
+ * inherits your unlocked missions and your stars. The host already keeps saves
+ * per profile; all this file has to do is stop deciding where they go.
+ *
+ * Kept as a parameter rather than an import so the store can be swapped in a
+ * test and so this file has no opinion about GoBalance at all.
+ */
 
 /**
  * @param {string[]|string[][]} tracks one ladder, or several.
@@ -28,31 +38,15 @@ const STORAGE_KEY = 'hillbomb.progress.v1';
  * stay shared, because they are per-MISSION facts and nothing about them cares
  * which list a mission appears in. Only the unlock RULE is per-track.
  */
-export function createProgress(tracks) {
+export function createProgress(tracks, store) {
   const chains = Array.isArray(tracks[0]) ? tracks : [tracks];
   const missionIds = chains.flat();
   /** @type {Record<string, {stars:number, score:number}>} */
   let records = {};
 
-  function load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) records = JSON.parse(raw) || {};
-    } catch (e) {
-      // A corrupt or unavailable store must not stop the game booting -- worst
-      // case the player starts from the first mission again. Private-browsing
-      // modes throw on localStorage access entirely.
-      records = {};
-    }
-  }
-
   function save() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-    } catch (e) { /* nothing to do; progress is a nicety, not the game */ }
+    if (store) store.save(records);
   }
-
-  load();
 
   const api = {
     /** Stars earned on a mission, 0 if never cleared. */
@@ -116,6 +110,22 @@ export function createProgress(tracks) {
     /** Total stars, for a future "you have N of M" readout. */
     get totalStars() {
       return missionIds.reduce((n, id) => n + api.stars(id), 0);
+    },
+
+    /**
+     * Fill from the store. Awaited at boot BEFORE anything renders -- a mission
+     * list drawn first and corrected a moment later shows the player a locked
+     * ladder that then pops open, which reads as a bug even though the end
+     * state is right.
+     */
+    async ready() {
+      if (!store) return;
+      records = await store.load();
+    },
+
+    /** Write now rather than on the debounce -- for a run ending. */
+    flush() {
+      if (store) store.flush();
     },
 
     /** Replace everything at once -- the shape a host handover would take. */

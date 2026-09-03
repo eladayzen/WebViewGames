@@ -46,7 +46,10 @@ import {
 import { createRider } from '../entities/rider.js';
 import { createCameraRig } from '../camera/cameraRig.js';
 import { createLobby } from '../ui/lobby.js';
-import { initSettingsPanel, isPanelOpen, closeSettingsPanel, FEEL } from '../ui/settingsPanel.js';
+import {
+  initSettingsPanel, isPanelOpen, closeSettingsPanel, unlockDevOptions, FEEL,
+} from '../ui/settingsPanel.js';
+import { installDevUnlock } from '../ui/devUnlock.js';
 import { createSky, SKIES } from '../world/sky.js';
 import { createProps } from '../entities/props.js';
 import { createRivals } from '../entities/rivals.js';
@@ -74,6 +77,7 @@ import '../modes/faceMissions.js';
 import '../modes/openFace.js';
 import { MISSIONS } from '../data/missions.js';
 import { createProgress } from '../systems/progress.js';
+import { createProfileStore } from '../systems/gbProfile.js';
 import { createModeSelect } from '../ui/modeSelect.js';
 import { createMissionSelect } from '../ui/missionSelect.js';
 import { RACE_IDS } from '../data/races.js';
@@ -177,10 +181,7 @@ events.on(EV.LAUNCH, (p) => {
    * later arrived after the interesting part was over; at takeoff it plays
    * INTO the silence of the air, which is the moment the jump actually is.
    */
-  if (p && p.points > 0) {
-    audio.play(p.huge ? 'huge' : 'trick',
-      Math.min(1.7, 1 + (scoring.state.chain - 1) * 0.07));
-  }
+  if (p && p.points > 0) audio.payout(p.huge, scoring.state.chain);
 });
 // Just the slap now -- the reward moved to the takeoff, above. The landing is a
 // physical event and reports itself; what it was WORTH was already announced.
@@ -193,9 +194,7 @@ events.on(EV.BOOST, () => audio.play('boost'));
  * awarded and when the rider is back in control to appreciate it.
  */
 events.on(EV.GRIND, (p) => {
-  if (p && p.points > 0) {
-    audio.play('trick', Math.min(1.7, 1 + (scoring.state.chain - 1) * 0.07));
-  }
+  if (p && p.points > 0) audio.payout(false, scoring.state.chain);
 });
 events.on(EV.HAZARD, () => audio.play('crash'));
 /**
@@ -203,6 +202,24 @@ events.on(EV.HAZARD, () => audio.play('crash'));
  * same clip thirty times is the fastest way to make a pickup annoying; a
  * semitone per link turns the repetition into the thing being rewarded. Capped
  * so it never reaches chipmunk.
+ */
+/**
+ * THE PAYOUT SOUND GROWS WITH THE CHAIN, in level as well as pitch.
+ *
+ * Amit: "the sfx for a single ramp jump is too strong feedback." Right -- a
+ * lone kicker is 200 points, the smallest thing that pays anything at all, and
+ * it was announcing itself at the same volume as a nine-chain vert wall. A
+ * reward that is always loud stops being a reward and becomes a noise the game
+ * makes when you jump.
+ *
+ * So the chain drives BOTH the pitch and the level, and the ordinary case is
+ * deliberately quiet -- an unchained jump is now a small note under the landing
+ * slap rather than over it. Reaching full volume takes a chain of five, which
+ * means the sound getting louder IS the run going well.
+ *
+ * A HUGE AIR keeps a higher floor. A vert wall is a big commitment on its own
+ * and should sound like one even unchained, so it starts at 70% rather than the
+ * ordinary 40%.
  */
 events.on(EV.PICKUP, () => audio.play('pickup',
   Math.min(1.6, 1 + (scoring.state.chain - 1) * 0.06)));
@@ -225,7 +242,23 @@ const progress = createProgress([
   // records and the storage all work unchanged. Only the RULE for earning a
   // clear differs, and that lives in the race mode.
   RACE_IDS,
-]);
+], createProfileStore());
+
+/**
+ * PROGRESS IS ASYNCHRONOUS NOW, so the ladder is not known at boot.
+ *
+ * The mode lobby is visible in the markup before any script runs, which means a
+ * player can reach MISSIONS before a profile's save has come back. Opening the
+ * list then would show a fresh ladder and correct itself a moment later -- a
+ * locked ladder that pops open reads as a bug even though the end state is
+ * right, and worse, an eager player could start mission 1 of a ladder they had
+ * already finished.
+ *
+ * So the two list-opening buttons await this, and nothing else does. The hill
+ * keeps rendering behind the menu throughout: blocking the RENDER on a network
+ * read would trade a small correctness problem for a black screen.
+ */
+const progressReady = progress.ready();
 
 // The mode is handed a read-only view of the ride and a way to END it, and
 // nothing else. Everything it wants to know arrives through `events`.
@@ -808,13 +841,16 @@ const lobby = createLobby(
 // --- the front door ---------------------------------------------------------
 // Only choice here is the mode. A mode with levels goes on to pick one; a mode
 // without them starts immediately.
-const modeSelect = createModeSelect((id) => {
+const modeSelect = createModeSelect(async (id) => {
   // A mode with LEVELS opens its list; everything else drops straight in.
   // Speed race joined that group when it got a ladder of its own -- picking a
   // track is part of a race, not something to be dealt at random.
-  if (id === 'missions') missionSelect.open();
-  else if (id === 'faceMissions') faceSelect.open();
-  else if (id === 'speedRace') raceSelect.open();
+  //
+  // The lists wait for the profile's save; a mode with no ladder does not need
+  // it and should not be delayed by it.
+  if (id === 'missions') { await progressReady; missionSelect.open(); }
+  else if (id === 'faceMissions') { await progressReady; faceSelect.open(); }
+  else if (id === 'speedRace') { await progressReady; raceSelect.open(); }
   else startRun(id);
 });
 
@@ -1152,6 +1188,10 @@ function leaveRun() {
   modes.stop();
   running = false;
   audio.setInRun(false);
+  // Write now rather than on the debounce. A player who clears a mission and
+  // immediately quits out of the app would otherwise lose the star they just
+  // earned to a timer that never fired.
+  progress.flush();
   setChromeVisible(false);
   setPaused(false);
   if (wasMissions) returnSelect.open();
@@ -1228,6 +1268,19 @@ initSettingsPanel({
 // Hidden until a run starts. The first screen is a menu, so the chrome has
 // nothing to act on yet -- see setChromeVisible.
 setChromeVisible(false);
+
+/**
+ * THE DEV UNLOCK: hold the speed readout for seven seconds, then the code.
+ *
+ * The speed readout is the target devUnlock.js asks for -- always on screen
+ * during a run and never otherwise interactive, so nobody reaches it by trying
+ * things. The hold is what makes it undiscoverable (nobody holds a HUD readout
+ * for seven seconds by accident) and the code is what makes it deliberate.
+ *
+ * Guarded inside installDevUnlock: a missing element must not take the boot
+ * down over a debugging convenience.
+ */
+installDevUnlock(document, document.getElementById('speed-readout'), unlockDevOptions);
 
 // --- HUD --------------------------------------------------------------------
 let fpsAccum = 0;
@@ -2259,10 +2312,6 @@ window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, ra
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);
 rider.ready.then(() => {
-  if (!rider.modelAvailable) {
-    document.querySelector('[data-mode="model"] small').textContent =
-      'FAILED TO LOAD — check src/assets/rider.glb';
-  }
   const rigNote = document.querySelector('[data-mode="rigged"] small');
   if (rigNote) {
     rigNote.textContent = rider.rigAvailable

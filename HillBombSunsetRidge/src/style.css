@@ -209,6 +209,9 @@ html, body {
 #brief-list li > span { flex: 1; order: 1; }
 #brief-list li > b { order: 3; }
 
+/* A row built but not shown -- the dev-options entry before it is unlocked. */
+.sp-row.sp-hidden { display: none; }
+
 .sp-note {
   flex-basis: 100%;
   font-size: 8.5px;
@@ -1402,4 +1405,78 @@ html, body {
   22%  { transform: scale(1); }
   72%  { opacity: 1; transform: scale(1) translateY(0); }
   100% { opacity: 0; transform: scale(1.02) translateY(-26px); }
+}
+
+
+/* The one HUD element that accepts a press. The HUD is pointer-events:none so
+   taps fall through to the game, which also meant the dev-unlock hold could
+   never land -- see ui/devUnlock.js. Re-enabled for this element only, and it
+   costs nothing: the game is driven by the board and the keyboard, so nothing
+   is lost by the speed readout swallowing a tap. */
+#speed-readout { pointer-events: auto; }
+
+/* ---- DEV UNLOCK -----------------------------------------------------------
+   Styling for ui/devUnlock.js, which is a TEMPLATE FILE copied verbatim across
+   GoBalance web games so the gesture is identical everywhere. The markup it
+   builds is fixed, so these selectors are part of that contract -- brought over
+   with it rather than reinvented, for the same reason: someone who knows the
+   unlock in one game should meet the same thing here. */
+.devhold { opacity: 0.72; }
+
+#devcode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+}
+
+#devcode-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(111, 232, 255, 0.35);
+}
+
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+#devcode-dots {
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 8px;
+  color: #6fe8ff;
+}
+
+#devcode-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(30, 40, 70, 0.9);
+  color: #eafcff;
+  font: 600 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  gap: 8px;
+}
+
+.devcode-key {
+  height: 62px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }

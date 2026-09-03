@@ -36,11 +36,10 @@ export function createLobby(onChange, onStart) {
 
   const config = {
     // Default is the RIGGED character -- the mode that actually represents the
-    // game now. 'sprite' and 'model' were the A/B controls for the earlier
-    // "which rider representation should we use" comparison, which is settled;
-    // they stay reachable from the lab for reference but are no longer what you
-    // get on open.
-    mode: ['model', 'sprite'].includes(q.get('mode')) ? q.get('mode') : 'rigged',
+    // game. 'sprite' remains as the cheap fallback; 'model' is gone along with
+    // rider.glb, which was 2.7 MB downloaded on every launch to serve a
+    // comparison that had already been decided (see rider.js).
+    mode: q.get('mode') === 'sprite' ? 'sprite' : 'rigged',
     lighting: q.get('lit') === '1' ? 'lit' : 'unlit',
     swing: q.get('swing') || 'full',
     texres: q.get('texres') || '1024',

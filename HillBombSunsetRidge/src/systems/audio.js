@@ -81,6 +81,20 @@ const ONESHOTS = {
    * So the slap still reports the landing and this reports the REWARD, layered
    * over it. Two sounds because they are two different facts.
    */
+  /**
+   * A SOFT MUTED PLUCK, not a chime. Amit: "the sfx for a single ramp jump is
+   * too strong feedback... it's more the sound you chose."
+   *
+   * The first one was a bright ascending sparkle, which is a CELEBRATION -- and
+   * an ordinary kicker is not one. Measured, its spectral centroid was 2,582 Hz
+   * against this one's 577: the problem was never the level, it was that the
+   * clip sat right on top of the frequencies the ear treats as important, so
+   * turning it down made it quiet AND still wrong.
+   *
+   * This is one warm rounded note with an immediate attack and a 0.34 s decay.
+   * The attack matters as much as the tone: it fires at takeoff, so it has to
+   * land WITH the ramp pop rather than swelling after it.
+   */
   trick: { url: trickUrl, gain: 0.42 },
   // Its own clip rather than the same one louder: a huge air is the biggest
   // thing the game can produce and deserves a different shape, not a bigger
@@ -506,7 +520,11 @@ export function createAudio() {
      *
      * A FRESH NODE EVERY TIME -- see the note at the top.
      */
-    play(name, rate = 1) {
+    /**
+     * @param {number} [scale] 0..1 multiplier on the clip's own level, for a
+     *   sound whose LOUDNESS should vary with how big the thing was.
+     */
+    play(name, rate = 1, scale = 1) {
       if (!sfxOn || !running()) return;
       const def = ONESHOTS[name];
       const buf = buffers.get(name);
@@ -515,7 +533,7 @@ export function createAudio() {
       src.buffer = buf;
       src.playbackRate.value = rate;
       const g = ctx.createGain();
-      g.gain.value = def.gain;
+      g.gain.value = def.gain * Math.max(0, Math.min(1, scale));
       src.connect(g).connect(sfxGain);
       src.start();
     },
@@ -554,6 +572,21 @@ export function createAudio() {
      * halfway through a phrase makes it feel like the music was already going on
      * without you.
      */
+    /**
+     * A trick or grind payout, at a level and pitch set by the CHAIN -- see
+     * payoutLevel in core/main.js for why both move together.
+     *
+     * Lives here rather than at the call sites so the two that fire it (a
+     * takeoff and a rail exit) cannot drift apart in how they sound.
+     */
+    payout(huge, chain = 1) {
+      const floor = huge ? 0.7 : 0.4;
+      const t = Math.min(1, Math.max(0, (chain - 1) / 4));
+      api.play(huge ? 'huge' : 'trick',
+        Math.min(1.7, 1 + (chain - 1) * 0.07),
+        floor + (1 - floor) * t);
+    },
+
     setInRun(on) {
       const next = !!on;
       if (next === inRun) return;
