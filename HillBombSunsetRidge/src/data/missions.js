@@ -109,6 +109,18 @@ const CEILING = {
   fullPlate: 28818, ridgeMaster: 27918, doubleDown: 28618, steelRush: 27918,
   highRoller: 27918, sweep: 28218, launchParty: 28818, goldRush: 27918,
   grindCity: 28618, topSpeed: 27918, gauntlet: 27918, lastLight: 28218,
+  // 21-40, measured the same way. All ride the full hill, so they land in the
+  // same 27.9k-28.8k band as 6-20 -- the variety in the back half is the
+  // terrain-and-layout pairing and the size of the ask, not what the ground
+  // pays. Listed individually rather than defaulted, because a mission that
+  // later restricts its content needs its own number and a shared constant
+  // would hide that it had stopped being true.
+  nightShift: 28218, freeFall: 28818, stoneStep: 27918, deepEnd: 28618,
+  loosePack: 27918, switchHouse: 27918, pinchPoint: 28218, longHaul: 28818,
+  stepLadder: 27918, stormChase: 28618,
+  ironWill: 27918, fastCurrent: 27918, cleanSweep: 28218, bigNumbers: 28818,
+  nervePlay: 27918, skyLine: 28618, tightRope: 27918, fullTilt: 27918,
+  lastCall: 28218, sundown: 28818,
 };
 
 /**
@@ -335,7 +347,59 @@ const AUTHORED = [
   ['grindCity',   'GRIND CITY',    'Metal first, everything else after.',      110, { grind: 5, pickup: 36 }],
   ['topSpeed',    'TOP SPEED',     'No brakes. No hesitation.',                 90, { score: 22000 }],
   ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 36, grind: 5, launch: 18 }],
-  ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { score: 24000, pickup: 36, grind: 5 }],
+  // === MISSIONS 21-40 =========================================================
+  //
+  // TWENTY MORE, and the reason they are not twenty more of the same is the
+  // cycle arithmetic. Six terrains against five layouts gives THIRTY unique
+  // pairings before anything repeats, so 21-30 are ten hills the player has
+  // genuinely never ridden -- a new mountain with a new spread of content on it
+  // every time. That comes free and it is most of what makes the block work.
+  //
+  // 31-40 have no new ground to offer: they land back on the pairings from
+  // missions 1-10. So they earn their place a different way -- they are the
+  // hard ladder. The asks climb from roughly a third of what a hill holds to
+  // over half, and the clocks tighten rather than lengthen, because time
+  // pressure is the one difficulty lever that does not depend on the terrain
+  // being new.
+  //
+  // WHAT ESCALATES, and what deliberately does not:
+  //
+  //   PICKUPS AND SCORE climb hardest. Both scale with how much of the hill a
+  //   player actually sweeps, so they reward route-reading, and there is enough
+  //   of both on the ground to ask for more without it becoming a lottery.
+  //
+  //   GRINDS DO NOT. Rails are the scarcest thing on the hill and entering one
+  //   needs a committed line, so they stay at 5-7 authored throughout. Asking
+  //   for more would not be harder, it would be luck about where the rails fell.
+  //
+  //   CLOCKS SHORTEN toward the end -- 120s down to 80s on the last few, with
+  //   the same or larger asks. A mission you could clear with time to spare at
+  //   110s is a different mission at 85s, on the same hill.
+  //
+  // Every number here is AUTHORED and passes through DIFFICULTY (0.7), so the
+  // player sees roughly 70% of what is written. The authored values are what
+  // state the intent.
+  ['nightShift',  'NIGHT SHIFT',   'Same hill, harder line.',                  100, { pickup: 30, grind: 5 }],
+  ['freeFall',    'FREE FALL',     'Let the ground do the work.',               90, { launch: 20, score: 20000 }],
+  ['stoneStep',   'STONE STEP',    'Down the staircase, nothing missed.',      105, { pickup: 34, launch: 14 }],
+  ['deepEnd',     'DEEP END',      'High walls. Use them.',                     95, { score: 26000 }],
+  ['loosePack',   'LOOSE PACK',    'Everything on the hill is worth points.',  110, { pickup: 38, grind: 5, launch: 16 }],
+  ['switchHouse', 'SWITCH HOUSE',  'The road never lets you settle.',          100, { pickup: 34, boost: 8 }],
+  ['pinchPoint',  'PINCH POINT',   'Tight, fast, and no room to waste.',        85, { pickup: 28, launch: 14 }],
+  ['longHaul',    'LONG HAUL',     'Wide open and a long way down.',           115, { score: 27000, grind: 6 }],
+  ['stepLadder',  'STEP LADDER',   'Every drop pays if you land it.',          100, { launch: 24, score: 22000 }],
+  ['stormChase',  'STORM CHASE',   'Deep bowl, full sweep.',                   110, { pickup: 40, grind: 6 }],
+  // --- 31-40: the pairings come back around, so the demands take over --------
+  ['ironWill',    'IRON WILL',     'Rails first. Everything else after.',       95, { grind: 7, pickup: 32 }],
+  ['fastCurrent', 'FAST CURRENT',  'Hold the line and do not slow down.',       80, { score: 24000, boost: 8 }],
+  ['cleanSweep',  'CLEAN SWEEP',   'Leave nothing on the hill.',               105, { pickup: 44 }],
+  ['bigNumbers',  'BIG NUMBERS',   'Chain it. That is the only way.',           90, { score: 30000 }],
+  ['nervePlay',   'NERVE PLAY',    'Three demands, one short clock.',           90, { pickup: 34, grind: 6, launch: 18 }],
+  ['skyLine',     'SKY LINE',      'Every ramp, every time.',                   95, { launch: 28 }],
+  ['tightRope',   'TIGHT ROPE',    'The narrow one, and no margin.',            85, { pickup: 32, grind: 6 }],
+  ['fullTilt',    'FULL TILT',     'Nothing held back.',                        85, { score: 30000, launch: 20 }],
+  ['lastCall',    'LAST CALL',     'Everything you have learned, at once.',    100, { pickup: 42, grind: 6, launch: 22 }],
+  ['sundown',     'SUNDOWN',       'The last run on the ridge.',               110, { score: 32000, pickup: 44, grind: 7 }],
 
   // --- THE OPEN FACE ---------------------------------------------------------
   //
