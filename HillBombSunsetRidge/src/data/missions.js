@@ -347,6 +347,8 @@ const AUTHORED = [
   ['grindCity',   'GRIND CITY',    'Metal first, everything else after.',      110, { grind: 5, pickup: 36 }],
   ['topSpeed',    'TOP SPEED',     'No brakes. No hesitation.',                 90, { score: 22000 }],
   ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 36, grind: 5, launch: 18 }],
+  ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { score: 24000, pickup: 36, grind: 5 }],
+
   // === MISSIONS 21-40 =========================================================
   //
   // TWENTY MORE, and the reason they are not twenty more of the same is the
