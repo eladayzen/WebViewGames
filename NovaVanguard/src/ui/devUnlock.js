@@ -22,6 +22,10 @@ const CODE = '2128';
 // Digits 1-9 only: a 3x3 grid is one glance and one thumb, and the code is
 // chosen from that set so the keypad never needs a zero or a wider row.
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+// How long a wrong code stays on screen before the pad clears itself. Long
+// enough to read as a deliberate rejection, short enough not to punish a
+// mistyped digit.
+const WRONG_MS = 550;
 
 /**
  * @param {Document} doc
@@ -35,6 +39,10 @@ export function installDevUnlock(doc, target, onUnlock) {
   let holdTimer = null;
   let pad = null;
   let entry = '';
+  // Set while a wrong code is being shown, so presses during that pause are
+  // ignored rather than starting the next attempt half-typed.
+  let locked = false;
+  let wrongTimer = null;
 
   // --- the keypad ---------------------------------------------------------
 
@@ -85,22 +93,50 @@ export function installDevUnlock(doc, target, onUnlock) {
   }
 
   function paintDots(dots) {
-    dots.textContent = KEYS.length
-      ? '•'.repeat(entry.length) + '–'.repeat(Math.max(0, CODE.length - entry.length))
-      : '';
+    dots.textContent =
+      '\u2022'.repeat(entry.length) +
+      '\u2013'.repeat(Math.max(0, CODE.length - entry.length));
   }
 
+  /**
+   * EVERY KEY DOES THE SAME VISIBLE THING, and that is the whole security of
+   * this pad.
+   *
+   * The first version compared as-you-type and reset on the first wrong digit,
+   * so a correct digit added a dot and a wrong one did nothing -- which meant
+   * the pad answered each digit on its own. Nine taps found the first digit,
+   * nine more the second, and the "code" was worth about 36 guesses. It also
+   * made the wrong keys feel broken, which is how it was noticed.
+   *
+   * So: every press adds a dot, nothing is judged until the fourth one, and a
+   * wrong code fails exactly the way a right one succeeds until the moment it
+   * does not. That puts a guesser back to 9^4 = 6561 combinations, entered four
+   * taps at a time.
+   */
   function press(k, dots) {
+    if (locked) return;
     entry += k;
-    // Compare only as far as the player has typed. A wrong digit resets
-    // immediately rather than letting them finish and then failing -- the
-    // feedback is the dots snapping back to empty.
-    if (CODE.indexOf(entry) !== 0) entry = '';
     paintDots(dots);
+    if (entry.length < CODE.length) return;
+
     if (entry === CODE) {
       closePad();
       onUnlock();
+      return;
     }
+
+    // Wrong. Hold the full row of dots for a moment before clearing, so the
+    // failure is visibly the SAME event as a success would be -- a fourth dot,
+    // a pause, then something happens. Input is refused during the pause so a
+    // fast tapper cannot get ahead of the reset and desynchronise the buffer.
+    locked = true;
+    if (dots.classList) dots.classList.add('devcode-wrong');
+    wrongTimer = setTimeout(() => {
+      locked = false;
+      entry = '';
+      if (dots.classList) dots.classList.remove('devcode-wrong');
+      paintDots(dots);
+    }, WRONG_MS);
   }
 
   function openPad() {
@@ -114,6 +150,9 @@ export function installDevUnlock(doc, target, onUnlock) {
 
   function closePad() {
     if (!pad) return;
+    clearTimeout(wrongTimer);
+    wrongTimer = null;
+    locked = false;
     pad.remove();
     pad = null;
     entry = '';

@@ -474,8 +474,17 @@ by you on a device with no keyboard. The pattern:
    always on screen (the health bar works) with no hint that it does anything.
    A hold cannot happen by accident the way a tap sequence can.
 2. **Then a numeric pad** — digits and an X, nothing else.
-3. **A wrong digit resets immediately.** No "attempts left", no feedback about
-   how wrong it was.
+3. **Judge the code only when it is complete, and make every key look the
+   same.** This is the part that is easy to get wrong: our first pad compared
+   as-you-type and reset on the first wrong digit, so a correct digit added a
+   dot and a wrong one did nothing. The pad was answering each digit on its own
+   — nine taps found the first, nine more the second, and a 4-digit code was
+   worth about 36 guesses. It also made eight of the nine keys feel broken,
+   which is how it got noticed. Every press adds a dot; nothing is judged until
+   the last one; a wrong code holds the full row for a moment and then clears,
+   so failure looks exactly like success right up until it doesn't. Ignore
+   presses during that pause, or a fast tapper starts the next attempt
+   half-typed.
 4. The backdrop **swallows clicks but does not close** the pad, so a mis-tap
    while entering the code does not dump you back into the game.
 
