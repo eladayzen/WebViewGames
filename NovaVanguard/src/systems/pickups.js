@@ -38,6 +38,7 @@
 // ---------------------------------------------------------------------------
 
 import {
+  levelAt,
   PICKUPS,
   PLAYER,
   PLAYABLE_X,
@@ -98,14 +99,20 @@ export function maybeDropPickup(w, type, x, y) {
   if (w.time - w.pickup.lastDropT < PICKUPS.minGapS) return false;
 
   const chance = PICKUPS.dropChance[type];
-  const p = chance === undefined ? PICKUPS.dropChance.default : chance;
+  const base = chance === undefined ? PICKUPS.dropChance.default : chance;
+  // A level may run a more generous supply than the global rate (levels one and
+  // two do). One multiplier moves BOTH halves -- the roll below and the floor
+  // under it -- because raising only the roll leaves the guaranteed drop as far
+  // apart as it ever was, which is the half a struggling player actually feels.
+  const mul = levelAt(w.surfaceIndex).pickupMul || 1;
+  const p = base * mul;
 
   // THE FLOOR UNDER THE RANDOMNESS. "About two per level" and "sometimes none"
   // are different promises, and the run where a first-time player never sees
   // the mechanic is the run that fails the brief -- so a long enough dry spell
   // forces the next kill to drop. This is what turns an expectation of 2.2 into
   // a reliable 2.
-  const forced = w.pickup.killsSinceDrop >= PICKUPS.maxKillsWithoutDrop;
+  const forced = w.pickup.killsSinceDrop >= PICKUPS.maxKillsWithoutDrop / mul;
   if (!forced && prng.next() >= p) {
     w.pickup.killsSinceDrop++;
     return false;

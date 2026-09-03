@@ -127,12 +127,29 @@ export const MARGIN_TRANSIT_MAX_S = 0.6;
 
 export const INPUT = {
   // The two axes are deliberately asymmetric (§4). Lateral is fast, lightly
-  // deadzoned and precise; vertical is slow and heavily deadzoned so a player
+  // deadzoned and precise; vertical is slower and more deadzoned so a player
   // who never intends to use it never drifts by accident while leaning hard
-  // sideways. Do NOT "fix" the vertical axis by speeding it up or narrowing
-  // its deadzone -- that asymmetry IS the lean-ergonomics finding (§0.5).
+  // sideways. The asymmetry IS the lean-ergonomics finding (§0.5) and stays.
+  //
+  // DEADZONE LOWERED FROM 0.28 (Amit, on the board: forward/back "takes a lot
+  // of time... it's like quarter the speed of left and right").
+  //
+  // He was right, and the old comment here was measuring the wrong thing. It
+  // justified the gap as "vertical is 32% of lateral" -- but that ratio only
+  // holds at a FULL pinned lean, and the deadzone rescale means the gap widens
+  // the gentler the lean gets. At the moderate leans people actually hold:
+  //
+  //     lean   lateral    vertical    ratio
+  //     0.35   247 px/s    26 px/s     11%
+  //     0.50   383 px/s    82 px/s     22%
+  //     1.00   840 px/s   270 px/s     32%
+  //
+  // So the felt speed was a quarter or less, exactly as reported, and most of
+  // that was the deadzone rather than the speed cap. 0.20 is still 2.5x the
+  // lateral deadzone, which is the half of the asymmetry that actually stops
+  // accidental drift while leaning hard sideways.
   deadzoneX: 0.08,
-  deadzoneY: 0.28,
+  deadzoneY: 0.20,
 
   // BOARD AXIS SIGNS -- applied to the window.__gbSensor read ONLY, never to
   // the desktop keyboard fallback.
@@ -163,8 +180,8 @@ export const INPUT = {
   // Full lateral traverse ~= 1.9 s.
   lateralMax: 840, // px/s
 
-  // Vertical. RAISED FROM 190 (Amit, on the board: "vertical movement is too
-  // slow"), and the number he was judging was authored blind against a keyboard.
+  // Vertical. RAISED FROM 190 -> 270 -> 350, each time from the board and each
+  // time by Amit; the original number was authored blind against a keyboard.
   //
   // THE ASYMMETRY IS KEPT, because it is the lean-ergonomics finding expressed
   // as two constants (§0.5, §4) and not a tuning accident: lateral is the
@@ -177,10 +194,13 @@ export const INPUT = {
   //
   // WHAT IT DOES NOT BREAK, checked by /systems/constraints.js rather than by
   // eye: §6.4's vulnerable window still asks for a DRIFT and not a dash. The
-  // climb from the lateral-only line to the reward line is 216 px, which was
-  // 1.14 s and is now 0.80 s -- still over the 0.6 s floor R7 warns below, and
-  // the 3.5 s window still leaves ~1.9 s of firing inside a round trip.
-  verticalMax: 270, // px/s
+  // climb from the lateral-only line to the reward line is 216 px: 1.14 s at
+  // the original 190, 0.80 s at 270, and 0.62 s here -- still above the 0.6 s
+  // floor R7 warns below, and deliberately close to it. THIS IS THE CEILING:
+  // 360 px/s puts the climb under the floor and turns §6.4's drift into a dash
+  // on the axis this product serves worst, so further easing has to come from
+  // the deadzone or from moving the reward line, not from this number.
+  verticalMax: 350, // px/s
   // Roll-state hysteresis so the sprite doesn't strobe at the deadzone edge
   // (§6.1). Roll engages above `rollOn`, releases below `rollOff`.
   rollOn: 0.22,
@@ -903,11 +923,16 @@ export const PICKUPS = {
   //
   // The floor below (maxKillsWithoutDrop) comes down with it, so the dry
   // stretches shorten too rather than only the average.
+  // ROUND 14: UP AGAIN, ~32% ON EVERY ROW. Amit: "a bit more weapon. Pickups
+  // as well. Making quantity." Held in proportion rather than flattened -- the
+  // spread between a Drone and a Warden is what makes killing the dangerous
+  // thing the rewarding thing, and levelling the rows would pay the same for
+  // clearing chaff.
   dropChance: {
-    drone: 0.038,
-    emitter: 0.20,
-    warden: 0.40,
-    splitter: 0.26,
+    drone: 0.050,
+    emitter: 0.26,
+    warden: 0.53,
+    splitter: 0.34,
     // Anything not named above (splitter fragments, bay-launched drones).
     // Zero on purpose: a Splitter that could drop twice through its own
     // fragments would make the type the best farm in the game, which is a
@@ -924,14 +949,14 @@ export const PICKUPS = {
   //
   // It is a second knob in the same block rather than logic buried in the
   // system, for exactly the reason the first one is.
-  maxKillsWithoutDrop: 22,
+  maxKillsWithoutDrop: 16,
 
   // At most one on screen, and never two inside this window. Both are anti-
   // clutter rather than anti-generosity: two canisters drifting at once turn a
   // lure into a scatter of choices, and §5.6's offset cap only means something
   // if there is one thing to be offset FROM.
   maxOnScreen: 1,
-  minGapS: 6.5,
+  minGapS: 5.0,
 
   // --- §5.6's flight-path rules, verbatim ---------------------------------
   // "A pickup's lateral offset from the player is capped at 0.35 of the width,
@@ -1005,13 +1030,13 @@ export const PICKUPS = {
     // "defensive" pickup because they answer different questions: at one
     // segment in front of a boss you want the repair, at full shield crossing a
     // curtain you want the barrier.
-    barrier: { id: 'barrier', effect: 'barrier', durationS: 7.0, textureKey: 'pickupBarrier', tint: 0xffffff, auraTint: 0xffd98a },
+    barrier: { id: 'barrier', effect: 'barrier', durationS: 10.0, textureKey: 'pickupBarrier', tint: 0xffffff, auraTint: 0xffd98a },
     // TWO SEGMENTS, and it stays two. I raised this to 3 on the theory that a
     // rare heal should also be a big one; Amit's call is that rarity alone is
     // the value ("no - 2 bars is enough"). He is right that they are separate
     // levers: 3 of 6 is half the bar in one canister, which starts to undo a
     // bad stretch rather than reward surviving it.
-    repair: { id: 'repair', effect: 'repair', amount: 2, textureKey: 'pickupRepair', tint: 0xffffff, auraTint: 0x9dffc0 },
+    repair: { id: 'repair', effect: 'repair', amount: 3, textureKey: 'pickupRepair', tint: 0xffffff, auraTint: 0x9dffc0 },
     scatter: { id: 'scatter', weapon: 'scatter', textureKey: 'pickupScatter', tint: 0xffffff },
     lance: { id: 'lance', weapon: 'lance', textureKey: 'pickupLance', tint: 0xffffff },
     swarm: { id: 'swarm', weapon: 'swarm', textureKey: 'pickupSwarm', tint: 0xffffff },
@@ -1061,7 +1086,7 @@ export const PICKUPS = {
     // So: BARRIER becomes the common defensive draw and REPAIR the one you
     // notice arriving.
     barrier: 1.45,
-    repair: 0.30,
+    repair: 0.60,
     scatter: 1.00,
     swarm: 0.85,
     flak: 0.65,
@@ -2258,6 +2283,15 @@ export const LEVELS = [
   {
     id: 'ashfall',
     name: 'LEVEL 1',
+
+    // PICKUP SUPPLY, ABOVE THE GLOBAL RATE. Amit asked for more pickups in
+    // levels one and two specifically. These are the levels every run passes
+    // through and the ones a first-time player is learning in, so the mechanic
+    // wants to be demonstrated rather than rationed; the later levels keep the
+    // scarcer supply, where knowing when a canister is coming is part of the
+    // difficulty. Multiplies the drop chance and divides the dry-streak floor,
+    // so both halves of the supply move together -- see /systems/pickups.js.
+    pickupMul: 1.30,
     // LOCKED (Amit is demoing it). By reference, on purpose -- see above.
     waves: POC_SCENARIO.waves,
     hp: null,
@@ -2304,6 +2338,8 @@ export const LEVELS = [
   {
     id: 'skyfield',
     name: 'LEVEL 2',
+    // Same as level one, and for the same reason.
+    pickupMul: 1.30,
     // NO HP OVERRIDE, AND THE ROW IS GONE RATHER THAN EMPTIED.
     //
     // It used to say `hp: { drone: 2 }`, and that single line is what Amit was
