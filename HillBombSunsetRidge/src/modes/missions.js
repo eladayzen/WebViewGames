@@ -248,9 +248,20 @@ const MISSION_MODE = {
         tone: 'success',
         title: 'MISSION COMPLETE',
         subtitle: `${String(mission.number).padStart(2, '0')} \u00b7 ${mission.name}`,
-        // What the extra time actually bought, which is the point of riding it
-        // out. "0s to spare" would be true of every run now and say nothing.
-        detail: `${score.toLocaleString()} points`,
+        /**
+         * NO DETAIL LINE. Amit: "you write Score: X and then a line below X
+         * points -- no need for the last."
+         *
+         * Right, and it was mine: the line used to read "12s to spare", which
+         * stopped meaning anything once every run went to the clock, so I
+         * replaced it with the score -- directly underneath the big SCORE
+         * readout that already says exactly that. Two of the same number, one
+         * above the other.
+         *
+         * Omitting it falls through to the default breakdown in main.js --
+         * distance ridden and top speed -- which is the thing that line is for:
+         * something the numbers above it do not already say.
+         */
         stars: earned,
         rows: recap(),
       });

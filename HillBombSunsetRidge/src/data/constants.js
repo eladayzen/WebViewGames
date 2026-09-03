@@ -161,7 +161,39 @@ export const THETA_MAX = 1.15;
 //              - THETA_DAMP*thetaVel
 // Neutral input therefore settles you in the trough floor -- which preserves the
 // existing design where the RESTFUL posture is the fast one.
-export const THETA_GRAVITY = 34.0;
+/**
+ * 16, DOWN FROM 34 -- past the point where the wall resists, deliberately.
+ *
+ * Tried at 26 first (the last value where running out of road is still
+ * something you feel) and then taken further on purpose, to find out what the
+ * ride is like when the cross-section stops arguing with the player at all.
+ *
+ * Amit wanted the pull to the centre much weaker, and asked what the minimum
+ * was. There is no minimum in the code; the floor is where the trough stops
+ * behaving like a trough, and computed against the carve torque that is three
+ * thresholds:
+ *
+ *     ~26   half a lean already reaches the rim -- the wall stops pushing back
+ *     ~16   a THIRD of a lean does; the cross-section is decoration
+ *     ~10   over 2s to drift back from the rim, longer than most corners, so
+ *           neutral no longer returns you to the floor in time to matter
+ *
+ * At 16, a THIRD of a lean reaches the rim. The trough no longer holds the
+ * rider anywhere -- they go where they are pointed and stay there, and neutral
+ * returns them to the floor slowly enough that on a short straight it may not
+ * happen before the next thing does.
+ *
+ * WHAT TO WATCH FOR, since this is past the point the arithmetic recommends:
+ * the wall stops being a limit to work against, the speed exchange from
+ * climbing and dropping back in weakens with it, and "let go and settle in the
+ * trough" -- the design's central inversion, where the restful posture is the
+ * fast one -- becomes something the player has to wait for rather than feel.
+ * 26 is the value that keeps an edge; 34 was the original.
+ *
+ * All six hills move together and stay matched, because each carries
+ * carveScale = 28/R -- the width compensation is independent of this.
+ */
+export const THETA_GRAVITY = 16.0;
 // Full carve must be able to drive you near the lip against gravity:
 // equilibrium is sin(theta) = TORQUE*R/GRAVITY, so 1.7 reaches theta ~ 1.0 of
 // the 1.15 available.
