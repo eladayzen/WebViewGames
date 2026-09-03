@@ -23,6 +23,11 @@ export const ITEM_TYPES = {
   PIZZA_PURPLE: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'purple', score: 30 },
   PIZZA_RED: { id: 'pizza', sprite: 'pizza_slice', kind: 'good', boxColor: 'red', score: 40 },
   BOMB: { id: 'bomb', sprite: 'bomb', kind: 'hazard' },
+  // Extra-life heart -- its own kind so the catch handler grants a life rather
+  // than scoring/feeding a box. Not part of rollItemType's weighted mix; it's
+  // dropped on a paced schedule (systems/heartDrop.js), ~once per level from
+  // level 2 on.
+  HEART: { id: 'heart', sprite: 'heart', kind: 'life' },
 };
 
 const PIZZA_VARIANT_BY_COLOR = {

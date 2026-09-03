@@ -46,6 +46,16 @@ export function updateDifficulty(d, dt, score) {
   return score >= stage.advanceScore || d.elapsedSec >= stage.advanceTimeSec;
 }
 
+// True the moment the LAST stage's clear threshold is crossed -- i.e. the whole
+// campaign is finished (2026-09-03). Separate from updateDifficulty (which only
+// handles mid-campaign stage advances and returns false on the last stage), so
+// the final stage's score threshold means "you win" rather than "next stage".
+// core/main.js reads this to fire the victory beat.
+export function isFinalStageCleared(d, score) {
+  const isLastStage = d.stageIndex >= STAGES.length - 1;
+  return isLastStage && score >= STAGES[d.stageIndex].advanceScore;
+}
+
 // Actually advances to the next stage -- called once, behind the closed
 // curtain (core/main.js's 'stagecomplete' frame() branch), not the instant
 // updateDifficulty detects the threshold. Advancing by exactly 1 is safe

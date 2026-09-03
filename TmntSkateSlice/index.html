@@ -245,7 +245,7 @@
            board (a run ended by choice still happened). -->
       <div id="quit-overlay" class="board-screen hidden">
         <div class="board-card">
-          <div class="board-title">RUN ENDED</div>
+          <div id="quit-title" class="board-title">RUN ENDED</div>
           <div id="quit-stats" class="board-sub"></div>
           <div id="quit-scoreboard" class="hidden">
             <div id="quit-scoreboard-title">BEST ON THIS ACCOUNT</div>
@@ -254,6 +254,25 @@
           <div class="board-buttons">
             <button id="quit-again" type="button">PLAY AGAIN</button>
             <button id="quit-leave" type="button">QUIT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- CAMPAIGN COMPLETE victory beat -- shown when the final stage (Docks)
+           is cleared. Its OWN screen + button id (victory-continue), NEVER
+           #gameover-overlay/#restart-button, so the host's Space/Enter synth-
+           restart can't fire through it. NO timer and CONTINUE is the only way
+           off it: this is the screen the player earned, and a stray tap while
+           they read it must not take it away. CONTINUE leads to the shared end
+           board (the quit board, reused). See core/main.js completeCampaign /
+           continueFromVictory (mirrors NovaVanguard's victory flow). -->
+      <div id="victory-overlay" class="board-screen hidden">
+        <div class="board-card">
+          <div class="board-title">ALL ZONES CLEARED!</div>
+          <div id="victory-sub" class="board-sub">You cleared all 8 zones</div>
+          <div id="victory-stats" class="board-sub"></div>
+          <div class="board-buttons">
+            <button id="victory-continue" type="button">CONTINUE</button>
           </div>
         </div>
       </div>

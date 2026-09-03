@@ -1091,14 +1091,16 @@ html, body {
 
 /* Primary (continue / play again) -- gold, matching #restart-button. */
 #confirm-stay,
-#quit-again {
+#quit-again,
+#victory-continue {
   background: linear-gradient(180deg, #ffde50, #ffa93c);
   color: #2a1a00;
   box-shadow: 0 4px 0 #a86800, 0 6px 12px rgba(0, 0, 0, 0.4);
 }
 
 #confirm-stay:active,
-#quit-again:active {
+#quit-again:active,
+#victory-continue:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
 }

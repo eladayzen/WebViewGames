@@ -190,7 +190,10 @@ export function createUI() {
     scoreboardRows: document.getElementById('scoreboard-rows'),
     confirmOverlay: document.getElementById('confirm-overlay'),
     quitOverlay: document.getElementById('quit-overlay'),
+    quitTitle: document.getElementById('quit-title'),
     quitStats: document.getElementById('quit-stats'),
+    victoryOverlay: document.getElementById('victory-overlay'),
+    victoryStats: document.getElementById('victory-stats'),
     quitScoreboard: document.getElementById('quit-scoreboard'),
     quitScoreboardTitle: document.getElementById('quit-scoreboard-title'),
     quitScoreboardRows: document.getElementById('quit-scoreboard-rows'),
@@ -933,9 +936,12 @@ export function createUI() {
     isConfirmOpen() {
       return !!(el.confirmOverlay && !el.confirmOverlay.classList.contains('hidden'));
     },
-    // Show the quit board: a run-result line + the same family leaderboard.
-    showQuit(statsText, board, groups) {
+    // Show the end board: a run-result line + the same family leaderboard.
+    // Reused for BOTH a hand-quit ("RUN ENDED") and a campaign clear
+    // ("CAMPAIGN COMPLETE") -- only `title` differs (default "RUN ENDED").
+    showQuit(statsText, board, groups, title = 'RUN ENDED') {
       if (!el.quitOverlay) return;
+      if (el.quitTitle) el.quitTitle.textContent = title;
       if (el.quitStats) el.quitStats.textContent = statsText;
       renderBoardInto(el.quitScoreboard, el.quitScoreboardTitle, el.quitScoreboardRows, board, groups);
       el.quitOverlay.classList.remove('hidden');
@@ -947,6 +953,20 @@ export function createUI() {
     },
     isQuitOpen() {
       return !!(el.quitOverlay && !el.quitOverlay.classList.contains('hidden'));
+    },
+
+    // Campaign-complete victory beat (its own screen; CONTINUE leads to the
+    // end board). Just a show/hide toggle here; main.js owns the flow.
+    showVictory(statsText) {
+      if (!el.victoryOverlay) return;
+      if (el.victoryStats) el.victoryStats.textContent = statsText;
+      el.victoryOverlay.classList.remove('hidden');
+    },
+    hideVictory() {
+      if (el.victoryOverlay) el.victoryOverlay.classList.add('hidden');
+    },
+    isVictoryOpen() {
+      return !!(el.victoryOverlay && !el.victoryOverlay.classList.contains('hidden'));
     },
 
     setPaused(isPaused) {

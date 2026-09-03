@@ -36,6 +36,7 @@ const MANIFEST = {
   pizza_slice: new URL('../assets/pizza_slice.png', import.meta.url).href,
   ooze_canister: new URL('../assets/ooze_canister.png', import.meta.url).href,
   bomb: new URL('../assets/bomb.png', import.meta.url).href,
+  heart: new URL('../assets/heart.png', import.meta.url).href, // extra-life pickup (systems/heartDrop.js)
 
   // Special-ability pickups (progression update, 2026-07-30). ooze_canister
   // above is recolored green->cyan; these 3 are new icons.

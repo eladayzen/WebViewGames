@@ -103,6 +103,14 @@ export const STARTING_LIVES = 3;
 export const MAX_LIVES = 5;
 export const HIT_INVULNERABILITY_SEC = 1.2;
 
+// Extra-life heart drop (2026-09-03, systems/heartDrop.js). From STAGE 2 on,
+// one catchable heart drops per stage at a random time in this window after the
+// stage begins -- "about once a level". Stage 1 never drops one. Window is a
+// touch shorter than a typical stage so it reliably lands; if a stage is
+// cleared before it fires that stage simply skips it (fine -- "about once").
+export const HEART_DROP_MIN_DELAY_SEC = 6;
+export const HEART_DROP_MAX_DELAY_SEC = 22;
+
 // --- Countdown ---
 export const COUNTDOWN_SEC = 3;
 

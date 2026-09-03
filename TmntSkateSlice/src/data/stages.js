@@ -81,7 +81,7 @@ export const STAGES = [
     spawnIntervalSec: 1.15,
     bombChance: 0.32, // a bit more, not a lot (2026-08-05, was 0.28)
     powerUpChance: 0.13,
-    advanceScore: 3000, // real value; testing value was 100 (2026-08-06)
+    advanceScore: 2000, // retuned 2026-09-03 (was 3000)
     advanceTimeSec: Infinity, // score-only advancement
   },
   {
@@ -102,10 +102,7 @@ export const STAGES = [
     spawnIntervalSec: 0.95,
     bombChance: 0.39, // a bit more, not a lot (2026-08-05, was 0.35)
     powerUpChance: 0.14,
-    // No longer the last stage (2026-08-06) -- advances at the L3->L4
-    // threshold the original comment already reserved for this (4500,
-    // +1500 over L2->L3's 2500 -- the "+500 per level from L3 on" pattern).
-    advanceScore: 4500, // real value; testing value was 200 (2026-08-06)
+    advanceScore: 4000, // retuned 2026-09-03 (was 4500)
     advanceTimeSec: Infinity,
   },
   {
@@ -210,9 +207,10 @@ export const STAGES = [
     spawnIntervalSec: 0.52,
     bombChance: 0.50,
     powerUpChance: 0.11,
-    // Last stage: holds here, same as the old alley finale. Denser
-    // late-game ramping beyond this is still Post-MVP scope (§2, §10).
-    advanceScore: Infinity,
+    // Last stage. Clearing it (crossing this cumulative score) FINISHES the
+    // campaign -- see systems/difficulty.js's isFinalStageCleared and
+    // core/main.js's completeCampaign (2026-09-03). Was Infinity (endless).
+    advanceScore: 20000,
     advanceTimeSec: Infinity,
   },
 ];

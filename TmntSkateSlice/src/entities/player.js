@@ -177,17 +177,19 @@ export function isInvulnerable(player) {
 // art/archive/run-cycle-wide-lunge/ in case that look is worth revisiting.
 // Keys are theme-neutral (2026-08-20) -- see core/assets.js's HERO_SPRITES
 // for which actual PNG (mike_* or hero_*) each one resolves to per build.
-// Ping-pong run cycle: frame1 -> frame2 -> frame3 -> frame2 -> (loop). The
-// middle frame (hero_run_2) is the shared passing pose, played on both the
-// out and back swings. TMNT theme maps hero_run_3 back to mike_run_1 (see
-// heroAssets.tmnt.js), so for TMNT this list resolves to
-// mike_run_1, mike_run_3, mike_run_1, mike_run_3 -- i.e. its original clean
-// 2-frame alternation, visually unchanged.
-// Exported so the intro tutorial (ui.js) plays the EXACT same run-cycle
-// sequence the game does, sourced from here rather than a hand-kept copy --
-// a hardcoded 2-frame copy in ui.js silently fell out of sync when this grew
-// to the 3-pose ping-pong (2026-08-31).
-export const RUN_CYCLE_KEYS = ['hero_run_1', 'hero_run_2', 'hero_run_3', 'hero_run_2'];
+// Two-frame stepping run cycle: hero_run_2 <-> hero_run_3. The idle-pose frame
+// (hero_run_1, a copy of hero_idle) is deliberately NOT in the cycle: it made
+// movement look static, because runCyclePhaseTimer resets to 0 on any brief
+// non-moving frame (edge clamp / analog chatter) and each frame is only 0.1s,
+// so the cycle rarely got past that first idle-looking frame (2026-09-02 fix).
+// Now any movement immediately shows a stepping pose; the idle pose shows only
+// when genuinely standing still (drawPlayer's !isMoving path).
+// For the TMNT theme, hero_run_2 -> mike_run_3 and hero_run_3 -> mike_run_1
+// (heroAssets.tmnt.js), so this resolves to mike_run_3 <-> mike_run_1 -- the
+// same two-frame alternation TMNT always had, visually unchanged.
+// Exported so the intro tutorial (ui.js) plays the EXACT same sequence,
+// sourced from here rather than a hand-kept copy that could drift.
+export const RUN_CYCLE_KEYS = ['hero_run_2', 'hero_run_3'];
 export function getRunCycleSpriteKey(player) {
   const phase = Math.floor(player.runCyclePhaseTimer / RUN_CYCLE_FRAME_DURATION_SEC) % RUN_CYCLE_KEYS.length;
   return RUN_CYCLE_KEYS[phase];

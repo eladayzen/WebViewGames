@@ -5,7 +5,7 @@
 
 import { loadAssets, loadAudioAssets } from './assets.js';
 import { setupCanvas, renderFrame } from './render.js';
-import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, triggerIntro, triggerStageComplete, resumeRunning } from './gameState.js';
+import { createGameState, updateCountdown, triggerGameOver, triggerCleared, restartToCountdown, triggerIntro, triggerStageComplete, resumeRunning } from './gameState.js';
 import { INTRO_STEP1_AUTO_ADVANCE_SEC, INTRO_STEP2_AUTO_ADVANCE_SEC, INTRO_RUN_FRAME_DURATION_SEC } from '../data/introTutorial.js';
 import { STAGE_COMPLETE_COUNTDOWN_SEC, STAGE_CURTAIN_CLOSE_DELAY_SEC, STAGE_CURTAIN_TRANSITION_SEC } from '../data/stageTransition.js';
 import { getSteerAxis, applySensitivityToHost } from '../input/input.js';
@@ -28,7 +28,9 @@ import {
   isInvulnerable,
   RUN_CYCLE_KEYS,
 } from '../entities/player.js';
-import { updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
+import { createFallingItem, updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
+import { ITEM_TYPES } from '../data/itemTypes.js';
+import { createHeartDrop, resetHeartDrop, armHeartDropForStage, updateHeartDrop } from '../systems/heartDrop.js';
 import { createSpawner, resetSpawner, updateSpawner } from '../systems/spawner.js';
 import { createBombPresence, resetBombPresence, updateBombPresence } from '../systems/bombPresence.js';
 import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../systems/boxes.js';
@@ -38,7 +40,7 @@ import { rollBoxReward, BOX_COLOR_BY_ID } from '../data/boxColors.js';
 // matches the caught art (an idol in the original theme, pizza_slice in TMNT).
 import { FALLING_SPRITE_KEY_BY_BOX_COLOR } from '@collectible-assets';
 import { BOMB_KILL_SET } from '../data/bombKills.js';
-import { createDifficulty, resetDifficulty, updateDifficulty, commitStageAdvance, getStage, getScoreBand } from '../systems/difficulty.js';
+import { createDifficulty, resetDifficulty, updateDifficulty, isFinalStageCleared, commitStageAdvance, getStage, getScoreBand } from '../systems/difficulty.js';
 import { STAGES } from '../data/stages.js';
 import {
   createScoring,
@@ -78,6 +80,7 @@ async function boot() {
   const player = createPlayer();
   const spawner = createSpawner();
   const bombPresence = createBombPresence();
+  const heartDrop = createHeartDrop();
   const difficulty = createDifficulty();
   const scoring = createScoring();
   const lives = createLives();
@@ -107,6 +110,10 @@ async function boot() {
   // INTEGRATION.md "Quitting").
   let pausedBeforeConfirm = false;
 
+  // Last stage index the heart drop was armed for -- re-arms once per new stage
+  // (systems/heartDrop.js drops one catchable heart per stage from level 2 on).
+  let lastHeartStageIndex = -1;
+
   // Stage-complete transition state (freeze + curtain, ported from
   // HalfShellHustle's level-complete pattern -- data/stageTransition.js's
   // timing knobs) -- all dt-driven from frame()'s 'stagecomplete' branch,
@@ -131,6 +138,8 @@ async function boot() {
     resetPlayer(player);
     resetSpawner(spawner);
     resetBombPresence(bombPresence);
+    resetHeartDrop(heartDrop);
+    lastHeartStageIndex = -1; // updateRunning re-arms for the current stage next frame
     resetDifficulty(difficulty);
     resetScoring(scoring);
     resetLives(lives);
@@ -225,11 +234,43 @@ async function boot() {
     );
   }
 
+  // Cleared the final stage = campaign finished (mirrors NovaVanguard's
+  // completeCampaign). A victory beat of its own -- state 'cleared', its own
+  // overlay, CONTINUE-only, no timer, no #restart-button -- so finishing does
+  // not feel identical to dying. The score is submitted + board shown when the
+  // player taps CONTINUE (continueFromVictory), the same as the quit path.
+  function completeCampaign() {
+    if (gs.current !== 'running') return;
+    triggerCleared(gs);
+    const statsText = `SCORE ${Math.floor(scoring.score).toLocaleString()} · BEST COMBO x${scoring.bestCombo}`;
+    ui.showVictory(statsText);
+    spawnStageCompleteBurst(juice, 0.5, 0.4); // reuse the celebratory burst
+    playSfx(audio, sfx.sfx_stage_advance);
+  }
+
+  // CONTINUE off the victory screen -> the end board. Reuses the quit board
+  // (leaderboard, play again, leave, no timer) with a "CAMPAIGN COMPLETE"
+  // headline; submits the run first so it lands on the board.
+  function continueFromVictory() {
+    if (gs.current !== 'cleared') return;
+    ui.hideVictory();
+    const runScore = scoring.score;
+    const statsText = `SCORE ${Math.floor(runScore).toLocaleString()} · BEST COMBO x${scoring.bestCombo}`;
+    ui.showQuit(statsText, null, [], 'CAMPAIGN COMPLETE');
+    submitRun(runScore).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, runScore);
+        ui.showQuit(statsText, board, near.length ? [top, near] : [top], 'CAMPAIGN COMPLETE');
+      })
+    );
+  }
+
   // PLAY AGAIN from the quit board, and the shared path for the game-over
   // RETRY button: dismiss the quit board, rebuild the world, run the intro,
   // and clear any pause.
   function restartGame() {
     ui.hideQuit();
+    ui.hideVictory();
     fullReset();
     beginIntro();
     setPaused(false);
@@ -315,6 +356,13 @@ async function boot() {
     e.stopPropagation();
     playSfx(audio, sfx.sfx_ui_tap);
     leaveToLobby();
+  });
+  // CONTINUE off the victory screen -> the end board. The ONLY way off that
+  // screen (no timer, no key), so a stray touch can't skip the earned beat.
+  document.getElementById('victory-continue').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx(audio, sfx.sfx_ui_tap);
+    continueFromVictory();
   });
 
   // Settings panel (gear button, 2026-08-19) -- SENSITIVITY/MUSIC/SFX,
@@ -453,6 +501,16 @@ async function boot() {
         // in grantBooster (shared with box-completion rewards).
         grantBooster(effect, item.xFrac, item.yFrac);
       }
+    } else if (item.type.kind === 'life') {
+      // Extra-life heart (systems/heartDrop.js): grants a life (capped at
+      // MAX_LIVES by gainLife). Its own celebratory cue, distinct from a pizza
+      // catch -- a red sparkle + a "+1 LIFE" popup so the reward reads clearly.
+      item.resolved = true;
+      triggerSwing(player);
+      gainLife(lives);
+      spawnPickupSparkle(juice, item.xFrac, item.yFrac, '#ff4d6d');
+      spawnScorePopup(juice, item.xFrac, item.yFrac, '+1 LIFE', '#ff6b8a');
+      playSfx(audio, sfx.sfx_ooze_catch); // shared "pickup caught" cue
     } else {
       // bomb
       if (isShielded(player)) {
@@ -526,6 +584,14 @@ async function boot() {
       return stage;
     }
 
+    // Cleared the final stage = campaign finished. Same immediate-freeze return
+    // as a stage advance, but this ends the run with the victory beat instead
+    // of transitioning to another stage.
+    if (isFinalStageCleared(difficulty, scoring.score)) {
+      completeCampaign();
+      return stage;
+    }
+
     // Bomb presence floor (2026-08-05, raised to a count of 2): if the
     // number of bombs currently on screen has stayed below the floor too
     // long, force the NEXT spawn to be a bomb, at the play-area edge FAR
@@ -537,6 +603,19 @@ async function boot() {
 
     const spawned = updateSpawner(spawner, dt, stage, boxes, forcedBombXFrac);
     if (spawned) items.push(spawned);
+
+    // Extra-life heart drop (systems/heartDrop.js): re-arm on each new stage,
+    // then drop ONE catchable heart per stage from level 2 on. Pushed directly
+    // (not through the weighted spawner) so it never displaces a bomb-floor
+    // spawn; lands at a random reachable x at the stage's own fall speed.
+    if (difficulty.stageIndex !== lastHeartStageIndex) {
+      lastHeartStageIndex = difficulty.stageIndex;
+      armHeartDropForStage(heartDrop, difficulty.stageIndex);
+    }
+    if (updateHeartDrop(heartDrop, dt)) {
+      const heartX = ITEM_MIN_X_FRAC + Math.random() * (ITEM_MAX_X_FRAC - ITEM_MIN_X_FRAC);
+      items.push(createFallingItem(ITEM_TYPES.HEART, heartX, stage.fallSpeedFrac));
+    }
 
     // groundYFrac is per-stage (each background's floor line differs);
     // PLAYER_HEIGHT_FRAC stays global -- Michelangelo is always the same
@@ -561,7 +640,7 @@ async function boot() {
       // Magnet buff: pull good items horizontally toward the player (only
       // kind:'good', never bombs/pickups). Separate pass so updateFallingItem
       // keeps its "straight down" invariant; applyMagnetPull self-clamps x.
-      if (isMagnetBuffed(player) && item.type.kind === 'good') {
+      if (isMagnetBuffed(player) && (item.type.kind === 'good' || item.type.kind === 'life')) {
         applyMagnetPull(item, player.xFrac, dt);
       }
 
@@ -718,6 +797,12 @@ async function boot() {
           // -- which left renderFrame's getShakeOffsetFrac jittering the scene
           // forever behind the game-over overlay (fix 2026-08-02).
           updateJuice(juice, dt);
+        } else if (gs.current === 'cleared') {
+          // Campaign finished: sim frozen, victory overlay already up (shown
+          // once by completeCampaign). Keep ticking VFX so the celebration
+          // burst plays out/settles rather than freezing mid-burst.
+          ui.setCountdown(0);
+          updateJuice(juice, dt);
         }
       }
 
@@ -737,6 +822,13 @@ async function boot() {
     }
   }
 
+  // fullReset() before the FIRST intro too (not just on restart) -- it pushes
+  // the HUD to its starting values immediately. Without it the lives tray keeps
+  // its default-built state (all MAX_LIVES hearts full) through the intro and
+  // countdown, so the player sees 5 hearts pre-game that snap to 3 the instant
+  // the game runs. The systems are freshly created here, so the reset itself is
+  // a no-op; the HUD push is the point (2026-09-03).
+  fullReset();
   beginIntro();
   requestAnimationFrame(frame);
 }

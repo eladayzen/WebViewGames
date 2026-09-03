@@ -58,6 +58,16 @@ export function triggerGameOver(gs) {
   gs.current = 'gameover';
 }
 
+// Campaign finished (cleared the last stage). A SEPARATE state from 'gameover'
+// on purpose (mirrors NovaVanguard's GameState.CLEARED): it freezes the sim the
+// same way, but finishing is not failing -- the victory beat must not auto-
+// restart, and its own state is what the X reads to leave without a confirm and
+// what keeps Space from restarting under the player's fingers while they read
+// the earned screen. See core/main.js's completeCampaign/continueFromVictory.
+export function triggerCleared(gs) {
+  gs.current = 'cleared';
+}
+
 export function triggerStageComplete(gs) {
   gs.current = 'stagecomplete';
 }
