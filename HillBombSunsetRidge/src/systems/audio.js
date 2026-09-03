@@ -66,7 +66,22 @@ const ONESHOTS = {
   launch: { url: launchUrl, gain: 0.55 },
   land: { url: landUrl, gain: 0.45 },
   pickup: { url: pickupUrl, gain: 0.30 },
-  boost: { url: boostUrl, gain: 0.55 },
+  /**
+   * SWAPPED, THEN SWAPPED BACK. The gate had the rising surge, briefly took the
+   * soft pluck, and has the surge again -- Amit asked for the switch twice, and
+   * the second one returns it.
+   *
+   * Worth recording so nobody "fixes" it a third time: the surge belongs on the
+   * GATE because it is literally a speed pickup, and a rising whoosh is what
+   * accelerating sounds like. The reasoning that moved it -- that the bigger
+   * event deserves the bigger sound -- was about the wrong axis: a ramp pays
+   * more points, but the gate is the one that changes how the ride feels.
+   *
+   * The FILES trade places, never the roles: each name keeps its own level and
+   * behaviour, so the payout still scales with the chain and the gate stays a
+   * flat one-shot.
+   */
+  boost: { url: hugeUrl, gain: 0.55 },
   crash: { url: crashUrl, gain: 0.70 },
   /**
    * THE PAYOUT SOUNDS. Amit: "we need to add audio feedback for tricks giving
@@ -99,7 +114,7 @@ const ONESHOTS = {
   // Its own clip rather than the same one louder: a huge air is the biggest
   // thing the game can produce and deserves a different shape, not a bigger
   // copy of the ordinary one.
-  huge: { url: hugeUrl, gain: 0.55 },
+  huge: { url: boostUrl, gain: 0.55 },
   /**
    * THE LOUDEST THING IN THE GAME, and deliberately. Clearing the objective is
    * the single moment a mission is about -- everything before it is working

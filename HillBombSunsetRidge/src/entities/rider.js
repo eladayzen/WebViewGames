@@ -622,6 +622,8 @@ export function createRider(scene, camera) {
   }
 
   return {
+    /** The push clip's live blend weight, so a check can prove it stays at 0. */
+    get pushWeightDebug() { return pushWeight; },
     root,
     ready,
 
@@ -806,7 +808,21 @@ export function createRider(scene, camera) {
         // during a pose, so a push overlapping an absorb dragged the deck off
         // its resting height (measured up to 0.067 of drift on exactly those
         // landings, versus ~0.002 on the clean ones).
-        if (s.airActive || pushLockT > 0 || landPose > 0.001) {
+        /**
+         * `s.held` -- the ride is stopped on a start line and has not begun.
+         *
+         * The rider animates OUTSIDE the simulation gate, because the camera
+         * still has to see a character while a menu or a countdown is up. That
+         * is right for the idle pose and wrong for this one: during 3-2-1 the
+         * kid was kick-pushing on the spot, which is the one thing that says
+         * "already riding" while everything else says "not yet".
+         *
+         * Grouped with the airborne case rather than given its own branch,
+         * because the requirement is identical -- do not show the push, and do
+         * not merely fade it -- and a second branch doing the same thing is a
+         * second place for it to drift.
+         */
+        if (s.held || s.airActive || pushLockT > 0 || landPose > 0.001) {
           // NEVER show the push (leg-kick) animation mid-air -- you can't
           // kick-push off a road that isn't under your foot. This used to be
           // gated only against STARTING a new push (`!s.airActive && !pushing`

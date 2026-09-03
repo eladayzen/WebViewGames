@@ -134,6 +134,26 @@ export function createHud() {
      * Restarted cleanly by removing and re-adding the element, so the CSS
      * animations replay if it is ever fired twice in one run.
      */
+    /**
+     * @param {string|null} face '3', '2', '1', 'GO' -- or null to clear it.
+     *
+     * Each number re-triggers the animation by removing and re-adding the
+     * element's class, so every digit gets its own punch-in. One animation
+     * spanning the whole countdown would read as a single slow fade rather than
+     * as a count.
+     */
+    countdown(face) {
+      const el2 = document.getElementById('race-countdown');
+      if (!el2) return;
+      if (!face) { el2.classList.add('hidden'); return; }
+      const b = el2.querySelector('b');
+      el2.classList.add('hidden');
+      void el2.offsetWidth;
+      b.textContent = face;
+      el2.classList.toggle('go', face === 'GO');
+      el2.classList.remove('hidden');
+    },
+
     objectiveClear() {
       const oc = document.getElementById('objective-clear');
       if (!oc) return;

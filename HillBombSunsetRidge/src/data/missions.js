@@ -257,7 +257,10 @@ const AUTHORED = [
   // 2 -- RAILS. Adds the green metal on top of mission 1's ramps; the
   // objective is rails and nothing else.
   ['railRunner',  'RAIL RUNNER',   'Green metal. Get on it and stay on.',       90,
-    { grind: 6 }, undefined,
+    // 6 rails once DIFFICULTY is applied (9 x 0.7 = 6.3). Amit: "level 2, six
+    // grinds instead of four." Authored rather than hard-set so it still moves
+    // with the global scalar.
+    { grind: 9 }, undefined,
     { kinds: ['launch', 'grind', 'wall', 'scenery'], without: ['woodWall'],
       density: 1, feature: ['grind'] }],
   // 3 -- CRYSTALS. Idols are excluded by type: they are their own lesson two

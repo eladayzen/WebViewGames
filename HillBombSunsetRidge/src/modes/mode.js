@@ -89,6 +89,30 @@ export function createModeHost(ctx) {
       if (active && active.update) active.update(dt);
     },
 
+    /**
+     * IS THE MODE HOLDING THE RIDE STILL? -- a race counting 3-2-1 on the start
+     * line, and nothing else today.
+     *
+     * The ride's whole simulation is gated on this in core/main.js, which is
+     * what makes a start line a start line: the rider, the rivals and the clock
+     * all stop together, so nobody gains a metre before GO. A mode that does
+     * not define it never holds.
+     */
+    holding() {
+      return !!(active && active.holding && active.holding());
+    },
+
+    /**
+     * Ticked while holding, from OUTSIDE the sim gate.
+     *
+     * It has to be outside, because the thing being counted down is the reason
+     * everything else is frozen -- a countdown ticked inside the gate it
+     * controls would never reach zero.
+     */
+    holdUpdate(dt) {
+      if (active && active.holdUpdate) active.holdUpdate(dt);
+    },
+
     panel() {
       return active && active.panel ? active.panel() : null;
     },

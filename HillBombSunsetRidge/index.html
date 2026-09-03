@@ -148,6 +148,10 @@
              banner, which is 30px and shared with labels like BIG AIR that flash
              past several times a run -- the one moment a whole mission builds
              toward cannot be announced in the same voice as a kicker. -->
+        <!-- THE RACE START. Big, centred, and gone the moment the field is
+             released -- see modes/speedRace.js. -->
+        <div id="race-countdown" class="hidden"><b></b></div>
+
         <div id="objective-clear" class="hidden">
           <div class="oc-flash"></div>
           <div class="oc-text">
@@ -281,7 +285,17 @@
       <!-- The render lab lobby. This is the harness's reason to exist: every mode
            differs ONLY in the rider layer, so switching mid-run is an honest A/B
            rather than four separate prototypes. -->
-      <div id="lobby" class="overlay">
+      <!-- HIDDEN AT PAINT. The WebView draws this markup before the bundle has
+           run, so anything without `hidden` is genuinely on screen -- and this
+           is the RENDER LAB, a dev screen behind the dev-options unlock. It was
+           flashing up on every single launch and then being hidden by script.
+           Amit: "for a few frames I can see the original selection lobby, it's
+           not relevant, get rid of it."
+
+           #mode-select is deliberately the other way round: it IS the front
+           door, so painting it early is what stops the first frame being a bare
+           canvas. -->
+      <div id="lobby" class="overlay hidden">
         <div class="lobby-inner">
           <h1>Hill Bomb <span>· Render Lab</span></h1>
           <p class="sub">Same scene, same physics, same camera. Only the rider layer changes.</p>

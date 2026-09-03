@@ -192,8 +192,20 @@ export function createRivals(scene, rider) {
         colour: jersey.colour,
         holder,
         mixer,
-        s: startS + 6 + i * 4.5,
-        theta: (i - (count - 1) / 2) * 0.13,
+        /**
+         * ON THE LINE, ABREAST. They used to start strung out down the road --
+         * 6, 10.5, 15, 19.5 m ahead -- which is what made the first thing a
+         * player felt be "they are already gone". A race starts with everyone
+         * level; the field earns its gaps once it is moving.
+         *
+         * Their stations still pull them apart within the first seconds, which
+         * is the right order of events: level, then a race happens.
+         */
+        s: startS,
+        // Spread ACROSS the road instead, so four riders on one start line are
+        // four riders rather than one stack. Wider than the old 0.13 because
+        // they now share an s and would otherwise overlap on screen.
+        theta: (i - (count - 1) / 2) * 0.34,
         speed: SPEED_REF * 0.8,
         score: 0,
         // PACE, and this is the number that decides whether the race is a race.

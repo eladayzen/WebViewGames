@@ -56,6 +56,24 @@ const FIELD_SIZE = 4;
  */
 const RUNOUT_SECONDS = 2;
 
+/**
+ * THE START LINE. Seconds per number, then a beat on GO.
+ *
+ * Amit: "I read about the mode and then immediately I start riding and the guys
+ * are ahead of me -- I want a 3-2-1-go and everyone goes together."
+ *
+ * The old start was not a start at all: the briefing closed and the ride simply
+ * resumed, with the field already strung out up the road. There was no moment
+ * where the race BEGAN, so the first thing a player felt was being behind.
+ *
+ * 0.85s a number rather than a full second -- three real seconds of staring at
+ * a frozen hill is longer than it sounds, and the count only has to build
+ * anticipation, not measure time.
+ */
+const COUNT_FROM = 3;
+const COUNT_STEP = 0.85;
+const GO_HOLD = 0.55;
+
 export default registerMode({
   id: 'speedRace',
   // Just SPEED RACE. The suffix distinguished it from the open-face variant,
@@ -92,6 +110,10 @@ export default registerMode({
     let finishS = 0;
     /** Seconds of free coasting left after crossing the line. See update(). */
     let runout = 0;
+    /** Seconds until the field is released. > 0 means the ride is held still. */
+    let countdown = COUNT_FROM * COUNT_STEP + GO_HOLD;
+    /** The face last painted, so each number is drawn once rather than per frame. */
+    let shown = null;
     /** Finish order, filled as each racer crosses. */
     const crossed = [];
 
@@ -168,6 +190,33 @@ export default registerMode({
     }
 
     return {
+      /**
+       * HELD UNTIL THE COUNT REACHES GO. core/main.js gates the entire
+       * simulation on this -- rider, rivals and clock all stop together, so
+       * nobody gains a metre before the start.
+       */
+      holding() { return countdown > 0; },
+
+      /**
+       * Ticked from OUTSIDE that gate, which is the only place it can be: a
+       * countdown ticked inside the gate it controls would never reach zero.
+       */
+      holdUpdate(dt) {
+        countdown = Math.max(0, countdown - dt);
+        const left = countdown - GO_HOLD;
+        const face = left > 0 ? String(Math.ceil(left / COUNT_STEP)) : 'GO';
+        if (face !== shown) {
+          shown = face;
+          ctx.hud.countdown(face);
+          // A tick per number and a fuller sound on GO. The ticks are the gate
+          // clip pitched up and quietened, so the four beats read as one phrase
+          // rather than as unrelated noises.
+          if (face === 'GO') ctx.audio.play('objective', 1, 1);
+          else ctx.audio.play('boost', 1.35, 0.5);
+        }
+        if (countdown === 0) ctx.hud.countdown(null);
+      },
+
       start() {
         startS = ctx.getState().s;
         finishS = startS + course.length;
@@ -252,13 +301,29 @@ export default registerMode({
        * carries the prop's own icon, so what to chase and what to dodge are
        * told apart before the run starts rather than during it.
        */
+      /**
+       * TWO ROWS, TWO WORDS EACH. Amit: "very short and clear -- boosts, speed;
+       * barriers, slow. Minimum words."
+       *
+       * The distance row went because it was a FACT rather than an
+       * instruction, and it was the third thing competing for a glance that
+       * lasts a couple of seconds. The goal it carried moved into the subtitle,
+       * where one line can hold it.
+       *
+       * The icons are doing the work now, which is the whole reason they exist:
+       * a player who has seen the gate art does not need "ride the gates"
+       * spelled out beside a picture of one. Cutting the words is what lets the
+       * pictures be read.
+       */
       briefing: () => ({
         name: getRace(pendingId).name,
-        sub: 'Beat 4 rivals to the finish line.',
+        sub: 'First to the finish wins.',
         rows: [
-          { label: 'RIDE THE GATES', text: 'FASTER', kind: 'boost' },
-          { label: 'AVOID THE BARRIERS', text: 'SLOWER', kind: 'wall' },
-          { label: 'FIRST TO THE LINE', text: `${(course.length / 1000).toFixed(1)} KM`, kind: 'score' },
+          // The verb is on the barrier row only, because it is the one that
+          // needs one: a boost is obviously a thing to take, whereas a barrier
+          // has to say AVOID or the row reads as a second thing to collect.
+          { label: 'BOOSTS', text: 'GO FASTER', kind: 'boost' },
+          { label: 'AVOID BARRIERS', text: 'LOSE SPEED', kind: 'wall' },
         ],
       }),
 

@@ -118,7 +118,17 @@ export function createLobby(onChange, onStart) {
   // door ("I don't need to see all of those options in the beginning"). It's
   // still one keypress away: L, or the gear button, opens the lab mid-run and
   // every setting applies live. `?lobby=1` forces it open on load if needed.
-  if (q.get('lobby') !== '1') close();
+  /**
+   * `?lobby=1` OPENS IT EXPLICITLY now.
+   *
+   * It used to work by simply NOT closing -- the element was visible in the
+   * markup, so skipping close() left it up. That also meant it painted on every
+   * ordinary launch and was hidden a frame later, which is the flash Amit saw.
+   * With `hidden` in the markup, "don't close" leaves it hidden too, so the
+   * override has to say what it wants rather than rely on the default.
+   */
+  if (q.get('lobby') === '1') open();
+  else close();
 
   return { config, open, close, isOpen: () => !lobby.classList.contains('hidden') };
 }

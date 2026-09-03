@@ -82,9 +82,14 @@ export function createObjectives() {
        * across the width of the panel.
        */
       const icon = o.kind ? iconFor(o.kind, o.type) : '';
+      // A row may carry a NOTE -- one line under it, for something the label
+      // cannot say. Only the banked-mission row uses it today: "you already
+      // have this, X to finish", which a player has no other way to learn.
+      if (o.note) li.classList.add('has-note');
       li.innerHTML = `<span class="obj-label">${o.label}</span>`
         + `${icon ? `<i class="obj-icon">${icon}</i>` : ''}`
-        + `<b class="obj-count"></b>`;
+        + `<b class="obj-count"></b>`
+        + (o.note ? `<small class="obj-note">${o.note}</small>` : '');
       listEl.appendChild(li);
       return li;
     });
@@ -121,7 +126,17 @@ export function createObjectives() {
       for (let i = 0; i < rows.length; i++) {
         const o = panel.objectives[i];
         const was = prev[i];
-        const count = rows[i].lastElementChild;
+        /**
+         * BY CLASS, not by position. This was `lastElementChild`, which was
+         * true right up until a row gained an optional note after the count --
+         * and then the update quietly wrote the score into the note instead.
+         * Nothing threw; the note simply read "250".
+         *
+         * A positional lookup is a rule about markup that the markup does not
+         * know it is obeying, so the next person to add an element breaks it
+         * from a different file.
+         */
+        const count = rows[i].querySelector('.obj-count');
 
         if (o.done && !was.done) {
           // Completion gets the loudest treatment in the panel: the whole row

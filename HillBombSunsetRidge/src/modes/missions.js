@@ -288,6 +288,32 @@ const MISSION_MODE = {
       },
 
       stop() {
+        /**
+         * LEAVING A CLEARED MISSION STILL CLEARS IT.
+         *
+         * Amit: "if I exit the run after I already qualified, it counts -- I
+         * unlock the next mission."
+         *
+         * Right, and it follows from what `cleared` already means: the moment
+         * the objectives are met the mission is BANKED and cannot be lost, so
+         * the clock afterwards is a victory lap for score. Throwing the result
+         * away because the player chose to stop riding it would contradict the
+         * banner we just showed them, and would quietly punish the reasonable
+         * decision to leave when there is nothing left to do.
+         *
+         * The score is whatever they had when they left, so the STARS may be
+         * lower than riding it out -- that is the honest trade and the reason
+         * to keep going, rather than a penalty for stopping.
+         *
+         * Recorded here rather than in the quit handler because stop() is the
+         * one path every ending goes through: the X, the confirm, switching
+         * modes, or the run being replaced. A quit-only hook would miss the
+         * others.
+         */
+        if (cleared && !finished) {
+          const score = ctx.scoring.state.score;
+          ctx.progress.record(mission.id, starsFor(score), score);
+        }
         // Every subscription, unconditionally. A mission that outlived its run
         // would keep counting into the next one.
         for (const off of unsubs) off();
@@ -381,8 +407,13 @@ const MISSION_MODE = {
             const stars = score >= three ? '\u2605\u2605\u2605' : score >= two ? '\u2605\u2605' : '\u2605';
             return next
               ? { label: `${stars} \u2192 ${Math.round(next).toLocaleString()}`,
-                  text: Math.round(score).toLocaleString(), done: false, kind: 'score' }
-              : { label: stars, text: Math.round(score).toLocaleString(), done: true, kind: 'score' };
+                  text: Math.round(score).toLocaleString(), done: false, kind: 'score',
+                  // Says the quiet part: the mission is already yours, and the
+                  // clock left is only worth riding for the next star. Without
+                  // it a player who wants to stop has no way to know they can.
+                  note: 'BANKED \u2014 \u2715 TO FINISH' }
+              : { label: stars, text: Math.round(score).toLocaleString(), done: true, kind: 'score',
+                  note: 'BANKED \u2014 \u2715 TO FINISH' };
           })()]
           : objectives.map((o) => ({
             label: o.spec ? o.spec.label(o) : o.kind,

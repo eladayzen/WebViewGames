@@ -559,6 +559,21 @@ function reset() {
   // hill, and seeding the spawner at 0 populated nothing at all -- the world was
   // empty until the game loop's first update happened to cover for it.
   props.update(runStartS);
+  /**
+   * BUILD THE ROAD AT THE RUN'S START, not just the props.
+   *
+   * The trough is only rebuilt inside the simulation gate, and the one build at
+   * boot is for s = 0. That was invisible while a run began the moment the
+   * briefing closed -- the first frame of riding rebuilt it. With a countdown
+   * holding everything still, the player now spends three seconds looking at
+   * the road, and on a varying course that road was the wrong stretch of hill
+   * until they moved. Amit: "I need the level to be there while 3-2-1, and not
+   * appear the moment I start moving."
+   *
+   * Cheap, and it belongs here anyway: the same reasoning as the props line
+   * above, which was added for exactly this and stopped one line short.
+   */
+  trough.update(runStartS);
 }
 
 /**
@@ -1295,7 +1310,27 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, clock.getDelta());
 
-  if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !openSelect()
+  /**
+   * THE START LINE. A mode may hold the ride still -- see modes.holding() --
+   * and the countdown ticks out here, outside the gate it controls, because a
+   * countdown inside its own gate never reaches zero.
+   *
+   * IT WAITS FOR THE BRIEFING. Without that check the count ran BEHIND the
+   * card: 3.1 seconds of countdown against a 4.2 second briefing meant 3, 2 and
+   * 1 all happened while the player was still reading, and the card lifted on
+   * GO -- or on nothing at all. Amit spotted it from the outside: "could it be
+   * that some of it is happening while the UI is presented?"
+   *
+   * The same reasoning as the sim gate itself, which has always waited for the
+   * briefing: nothing that the player is meant to react to should happen while
+   * something is covering it.
+   */
+  if (running && !paused && !gameOver && !briefing.isOpen() && modes.holding()) {
+    modes.holdUpdate(dt);
+  }
+
+  if (running && !paused && !gameOver && !modes.holding()
+      && !lobby.isOpen() && !modeSelect.isOpen() && !openSelect()
       && !isConfirmOpen() && !briefing.isOpen() && !isPanelOpen()) {
     let { carve, tuck, brake, pop } = readInput();
     // NO CONTROL WHILE DOWN. Steering out of a crash before the rider has got
@@ -2121,6 +2156,9 @@ function frame() {
     tucking: state.tucking,
     braking: state.braking,
     tailLoad: state.tailLoad,
+    // Stopped on a start line: the rider must idle rather than kick-push. See
+    // the push branch in rider.js.
+    held: modes.holding(),
     airActive: state.airActive,
     airT: state.airT,
     airTrick: state.airTrick,
@@ -2246,10 +2284,22 @@ function frame() {
   // destination that is already sitting there in plain sight -- which is the one
   // thing that would make the flight pointless. briefing.fly() reveals it for
   // long enough to measure and hands it back.
-  objectivesUi.update(briefing.isOpen() ? null : modes.panel());
+  /**
+   * NOTHING TO REPORT ON THE START LINE.
+   *
+   * The panel is hidden while a mode is holding, for the same reason it is
+   * hidden behind the briefing: it would be reporting on a race that has not
+   * happened. With everyone level at gaps of 0 the standings sort is arbitrary,
+   * so it read "5TH PLACE" before the player had moved a metre -- which is a
+   * discouraging thing to say to someone who is, in fact, exactly level.
+   */
+  objectivesUi.update(briefing.isOpen() || modes.holding() ? null : modes.panel());
   hud.boost(state.boostT > 0 ? state.boostT / state.boostDuration : 0, state.boostT);
   hud.update(dt, {
-    speed: state.speed,
+    // Zero on the start line. The rider carries a speed while held -- the value
+    // is real, they are simply not moving with it -- and a readout saying
+    // 34 km/h over a stationary skater is the HUD contradicting the picture.
+    speed: modes.holding() ? 0 : state.speed,
     score: scoring.state.score,
     wobble: scoring.state.wobble,
     chain: scoring.state.chain,

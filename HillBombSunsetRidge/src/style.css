@@ -40,7 +40,7 @@ html, body {
 /* --- chrome buttons (BUILD_NOTES.md convention: top-right, icon-only) --- */
 #gb-back, #pause-button, #settings-button {
   position: absolute;
-  top: 12px;
+  top: var(--ui-edge-y);
   width: 38px;
   height: 38px;
   border: none;
@@ -57,9 +57,10 @@ html, body {
 }
 /* Back outermost, then pause, then the gear -- same order and spacing as
    HalfShellHustle so the two games are muscle-memory compatible. */
-#gb-back { right: 12px; }
-#pause-button { right: 60px; font-size: 16px; }
-#settings-button { right: 108px; font-size: 17px; }
+/* Spaced off the same edge variable, so the row moves as one. */
+#gb-back { right: var(--ui-edge-r); }
+#pause-button { right: calc(var(--ui-edge-r) + 48px); font-size: 16px; }
+#settings-button { right: calc(var(--ui-edge-r) + 96px); font-size: 17px; }
 
 /* --- settings panel (ui/settingsPanel.js) --- */
 #settings-panel {
@@ -269,7 +270,32 @@ html, body {
 #paused-badge.hidden { display: none; }
 
 /* --- HUD --- */
-#hud { position: absolute; inset: 0; pointer-events: none; z-index: 500; }
+/**
+ * THE HUD'S DISTANCE FROM THE EDGE, in one place.
+ *
+ * Amit: "the UI needs padding from the upper and lower -- sometimes it touches
+ * the edges of the screen. Make it smaller and with a bit of padding."
+ *
+ * Every corner element was setting its own inset, so "move the UI in" meant
+ * editing five rules and hoping none were missed -- which is how one of them
+ * ends up flush against the frame while the others look fine.
+ *
+ * SAFE AREA IS FOLDED IN. `env(safe-area-inset-*)` is 0 on a normal screen and
+ * non-zero on a notched or rounded one, and a tablet in a BoBo case is exactly
+ * where a readout in the corner gets clipped by hardware. max() takes whichever
+ * is larger, so the padding is a floor rather than a fixed offset.
+ */
+:root {
+  --ui-edge-y: max(26px, env(safe-area-inset-top, 0px));
+  --ui-edge-b: max(26px, env(safe-area-inset-bottom, 0px));
+  --ui-edge-x: max(20px, env(safe-area-inset-left, 0px));
+  --ui-edge-r: max(20px, env(safe-area-inset-right, 0px));
+}
+
+/* The HUD as a whole reads slightly smaller now. It is glanced at over a moving
+   road, so it wants to be legible rather than large -- and shrinking it is half
+   of what stops it reaching the edges in the first place. */
+#hud { position: absolute; inset: 0; pointer-events: none; z-index: 500; font-size: 0.92em; }
 
 /* ONE SCALE KNOB FOR THE WHOLE LEFT BLOCK.
    Everything below is sized in `em` off this one font-size, so the entire
@@ -283,8 +309,8 @@ html, body {
    stamp on a small phone or a billboard on a desktop browser. */
 #topLeft {
   position: absolute;
-  top: 1.1em;
-  left: 1.3em;
+  top: var(--ui-edge-y);
+  left: var(--ui-edge-x);
   font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
   color: #fff3e4;
@@ -322,8 +348,8 @@ html, body {
   position: absolute;
   font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
-  right: 1.4em;
-  bottom: 1.2em;
+  right: var(--ui-edge-r);
+  bottom: var(--ui-edge-b);
   text-align: right;
   color: #fff3e4;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
@@ -337,7 +363,7 @@ html, body {
 
 #hint {
   position: absolute;
-  bottom: 14px;
+  bottom: var(--ui-edge-b);
   left: 50%;
   transform: translateX(-50%);
   background: var(--deep);
@@ -822,6 +848,17 @@ html, body {
 /* The label takes the slack so the icon and count stay paired on the right. */
 #obj-list li .obj-label { flex: 1; }
 
+/* A row's note wraps to its own line under it. Dimmer than the row, because it
+   is an aside rather than another objective. */
+#obj-list li.has-note { flex-wrap: wrap; }
+.obj-note {
+  flex-basis: 100%;
+  margin-top: 2px;
+  font-size: 0.72em;
+  letter-spacing: 0.12em;
+  opacity: 0.62;
+}
+
 #obj-list li.done { opacity: 0.42; }
 #obj-list li.done .obj-label { text-decoration: line-through; }
 .obj-count {
@@ -1058,7 +1095,7 @@ html, body {
    is left", so it earns the centre of the screen for those few seconds. */
 #boost-top {
   position: absolute;
-  top: 0.9em; left: 50%;
+  top: var(--ui-edge-y); left: 50%;
   transform: translateX(-50%);
   width: min(26em, 46vw);
   font-size: 11px; /* fallback if clamp() is unsupported */
@@ -1479,4 +1516,51 @@ html, body {
   font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+
+/* ---- THE RACE START LINE ---------------------------------------------------
+   Amit: "I read about the mode and then immediately I start riding and the guys
+   are ahead of me. I want a 3-2-1-go and everyone goes together."
+
+   Deliberately the same visual language as OBJECTIVE CLEAR -- large, centred,
+   glowing -- because they are the two moments the game stops to tell you
+   something. Different colour so they are not confusable: the start is amber,
+   the objective is cyan. */
+#race-countdown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 45;
+}
+#race-countdown.hidden { display: none; }
+#race-countdown b {
+  font: 900 clamp(64px, 17vw, 190px)/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: #ffffff;
+  text-shadow:
+    0 0 26px rgba(255, 209, 102, 0.95),
+    0 0 70px rgba(255, 122, 61, 0.55),
+    0 6px 22px rgba(0, 0, 0, 0.8);
+  /* Restarted per number by re-adding the class -- each digit gets its own
+     punch-in rather than one animation spanning the whole countdown. */
+  animation: rc-pop 0.9s cubic-bezier(0.15, 1.6, 0.35, 1);
+}
+#race-countdown.go b {
+  color: #ffd166;
+  animation: rc-go 0.7s cubic-bezier(0.15, 1.6, 0.35, 1);
+}
+@keyframes rc-pop {
+  0%   { opacity: 0; transform: scale(1.5); }
+  18%  { opacity: 1; transform: scale(1); }
+  75%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.9); }
+}
+@keyframes rc-go {
+  0%   { opacity: 0; transform: scale(0.5); }
+  20%  { opacity: 1; transform: scale(1.18); }
+  40%  { transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.3); }
 }
