@@ -11,6 +11,8 @@ import { STAGE_COMPLETE_COUNTDOWN_SEC, STAGE_CURTAIN_CLOSE_DELAY_SEC, STAGE_CURT
 import { getSteerAxis, applySensitivityToHost } from '../input/input.js';
 import { createAudio, playSfx, startMusic, pauseMusic, resumeMusic } from '../systems/audio.js';
 import { initSettingsPanel } from '../ui/settingsPanel.js';
+import { createDevPanel } from '../ui/devPanel.js';
+import { installDevUnlock } from '../ui/devUnlock.js';
 import {
   createPlayer,
   resetPlayer,
@@ -90,6 +92,11 @@ async function boot() {
   const audio = createAudio();
   let items = [];
   let lastCountdownTick = null; // last whole-second value shown, for tick SFX
+
+  // Dev-tools flag object (ui/devPanel.js writes it, the bomb-hit path reads
+  // it). The panel is mounted only behind the long-press-plus-code unlock
+  // (ui/devUnlock.js) or ?dev=1, so this stays false in every real run.
+  const debug = { invincible: false };
 
   // First-run onboarding tutorial state (core/gameState.js's 'intro' state,
   // data/introTutorial.js's timing knobs) -- all dt-driven from frame()'s
@@ -376,6 +383,117 @@ async function boot() {
   // outside the app.
   applySensitivityToHost();
 
+  // ------------------------------------------------------------------------
+  // Dev tools (ui/devPanel.js + ui/devUnlock.js) -- stage jump, score push,
+  // force-win, invincibility. Mounted only behind the unlock gesture or
+  // ?dev=1, so nothing below is reachable in a real run. The actions are
+  // defined here so they can drive the same state/functions the game does.
+  // ------------------------------------------------------------------------
+
+  // Push the HUD to its current values right now -- the setters are otherwise
+  // only called from inside updateRunning, so a dev tweak made while paused or
+  // between states wouldn't show until the next running frame.
+  function pushHud() {
+    const band = getScoreBand(difficulty);
+    ui.setScore(scoring.score, band.prevThreshold, band.nextThreshold);
+    ui.setLives(lives.remaining, lives.capacity);
+    ui.setBuffs(player);
+    ui.setBoxes(boxes);
+    ui.setBombKills(bombKills);
+  }
+
+  // Get straight into a live run from whatever screen we're on, dismissing any
+  // overlay first, so a dev action taken from the intro/countdown/board takes
+  // effect immediately instead of behind a frozen screen.
+  function devEnterRunning() {
+    ui.hideIntroTutorial();
+    ui.hideGameOver();
+    ui.hideVictory();
+    ui.hideQuit();
+    ui.hideConfirm();
+    resumeRunning(gs);
+    setPaused(false);
+  }
+
+  function devJumpToStage(i) {
+    const idx = Math.max(0, Math.min(STAGES.length - 1, i));
+    difficulty.stageIndex = idx;
+    // Align the run score to this stage's floor so the progress bar reads
+    // correctly and it doesn't instantly re-advance out of the stage jumped to.
+    scoring.score = idx > 0 ? STAGES[idx - 1].advanceScore : 0;
+    items = [];
+    lastHeartStageIndex = -1; // re-arm the heart drop for the new stage
+    devEnterRunning();
+    pushHud();
+  }
+
+  function devAddScore(amount) {
+    scoring.score += amount;
+    pushHud();
+  }
+
+  // Jump to the last stage and arm its clear threshold -- the next running
+  // frame's isFinalStageCleared check fires the victory beat (completeCampaign).
+  function devWinNow() {
+    difficulty.stageIndex = STAGES.length - 1;
+    scoring.score = Math.max(scoring.score, STAGES[STAGES.length - 1].advanceScore);
+    devEnterRunning();
+    pushHud();
+  }
+
+  function devAddLife() {
+    gainLife(lives);
+    pushHud();
+  }
+
+  function devFullLives() {
+    while (gainLife(lives)) { /* grow to MAX_LIVES */ }
+    pushHud();
+  }
+
+  function devSpawnHeart() {
+    const stage = getStage(difficulty);
+    const x = ITEM_MIN_X_FRAC + Math.random() * (ITEM_MAX_X_FRAC - ITEM_MIN_X_FRAC);
+    items.push(createFallingItem(ITEM_TYPES.HEART, x, stage.fallSpeedFrac));
+  }
+
+  const devPanel = createDevPanel(document, {
+    stages: STAGES,
+    jumpToStage: devJumpToStage,
+    addScore: devAddScore,
+    winNow: devWinNow,
+    addLife: devAddLife,
+    fullLives: devFullLives,
+    spawnHeart: devSpawnHeart,
+    restart: restartGame,
+    debug,
+  });
+
+  // NOT MOUNTED until unlocked: hold the SCORE readout for seven seconds, then
+  // enter the code (ui/devUnlock.js) -- the gesture makes it undiscoverable,
+  // the code makes it deliberate. `?dev=1` skips the hold for a desktop session.
+  let devMounted = false;
+  const mountDev = () => {
+    if (devMounted) return;
+    devMounted = true;
+    document.body.appendChild(devPanel.button);
+    document.body.appendChild(devPanel.panel);
+    devPanel.toggle();
+  };
+  // Anchor the hold to a big INVISIBLE hit rect (#dev-hit) covering the whole
+  // top-left HUD cluster -- score, progress bar, lives hearts, buff tray. The
+  // HUD itself (#hud) is pointer-events:none, and its text is a tiny, variable-
+  // width target that proved impossible to press-and-hold reliably. This
+  // transparent rect gives the 7-second hold a large, stable area without
+  // changing anything on screen. Appended to <body> (NOT into #hud, so it
+  // actually receives pointer events) and kept clear of the top-right chrome
+  // buttons (back/pause/settings), which stay tappable.
+  const devHit = document.createElement('div');
+  devHit.id = 'dev-hit';
+  document.body.appendChild(devHit);
+  installDevUnlock(document, devHit, mountDev);
+  if (/[?&]dev=1\b/.test(window.location.search || '')) mountDev();
+
   // Apply a booster effect (shield / magnet / wave "blow up"), from either a
   // caught falling pickup OR a box-completion reward (2026-08-02). xFrac/yFrac
   // is the effect's VFX origin. Wave clears every bomb on screen with the same
@@ -521,7 +639,7 @@ async function boot() {
         spawnShieldBlock(juice, item.xFrac, item.yFrac);
         playSfx(audio, sfx.sfx_shield_block);
         killBomb(item);
-      } else if (!isInvulnerable(player)) {
+      } else if (!debug.invincible && !isInvulnerable(player)) {
         item.resolved = true;
         loseLife(lives);
         triggerHit(player);

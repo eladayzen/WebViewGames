@@ -1320,3 +1320,215 @@ html, body {
 
 /* #intro-steer-player's left/right sweep is driven per-frame from JS too
    (ui.js setIntroSweep) -- same compositor-suspended reason as the board. */
+
+/* ===========================================================================
+   DEV TOOLS (ui/devPanel.js + ui/devUnlock.js). Mounted only behind the
+   unlock gesture or ?dev=1, so none of this is visible in a normal run. Ported
+   from NovaVanguard's dev panel; the button sits bottom-left so it never
+   collides with the top chrome row (back/pause/settings) or the score HUD.
+   =========================================================================== */
+
+/* Invisible long-press target for the dev unlock (main.js). Covers the whole
+   top-left HUD cluster (score / bar / hearts / buffs) so the 7-second hold is
+   easy to land -- the visible HUD is pointer-events:none and far too small to
+   press reliably. Transparent, above the canvas + HUD, but well clear of the
+   top-right chrome buttons so those keep working. Full-screen game overlays
+   (intro / countdown / game-over / victory) sit above it, so it's only live
+   during actual play, which is exactly when you want it. */
+#dev-hit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 60%;
+  max-width: 340px;
+  height: 156px;
+  z-index: 60;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-button {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 9999;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: #eafcff;
+  font: 600 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-button.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+}
+
+#dev-panel {
+  position: absolute;
+  bottom: 64px;
+  left: 12px;
+  z-index: 9999;
+  width: 224px;
+  max-height: 76vh;
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+  background: rgba(10, 12, 26, 0.93);
+  border: 1px solid rgba(111, 232, 255, 0.28);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  color: #eafcff;
+  font: 500 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-panel.hidden { display: none; }
+
+.dev-section {
+  margin: 10px 0 5px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: rgba(111, 232, 255, 0.72);
+}
+
+.dev-section:first-child { margin-top: 2px; }
+
+.dev-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.dev-toggle { justify-content: space-between; }
+
+.dev-chip {
+  flex: 1;
+  min-width: 34px;
+  padding: 6px 4px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(30, 40, 70, 0.8);
+  color: #eafcff;
+  font: 600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.dev-toggle .dev-chip { flex: 0 0 52px; }
+
+.dev-chip:hover { background: rgba(45, 60, 100, 0.9); }
+
+.dev-chip.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+  border-color: rgba(55, 200, 230, 0.9);
+}
+
+.dev-note {
+  margin: 2px 0 4px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(234, 252, 255, 0.55);
+}
+
+/* Invincibility has to be impossible to forget about -- a persistent tint on
+   the frame, so "why am I not dying" is answered before it is asked. */
+body.dev-invincible::after {
+  content: 'INVINCIBLE';
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9998;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 96, 96, 0.85);
+  color: #180404;
+  font: 700 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 0.12em;
+  pointer-events: none;
+}
+
+/* The unlock: the held element dims slightly while the seven-second timer runs
+   (ui/devUnlock.js adds .devhold), then a keypad overlay. */
+.devhold { opacity: 0.72; }
+
+#devcode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+}
+
+#devcode-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(111, 232, 255, 0.35);
+}
+
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+#devcode-dots {
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 8px;
+  color: #6fe8ff;
+}
+
+#devcode-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(30, 40, 70, 0.9);
+  color: #eafcff;
+  font: 600 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  gap: 8px;
+}
+
+.devcode-key {
+  height: 62px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 90ms linear;
+}
+
+/* Every key answers a press the same way. A key that looked inert while another
+   lit up was what gave the code away one digit at a time. */
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+
+/* A wrong code, shown for a moment before the row clears. Amber rather than
+   red: this is a mistyped code, not an alarm. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
+}
