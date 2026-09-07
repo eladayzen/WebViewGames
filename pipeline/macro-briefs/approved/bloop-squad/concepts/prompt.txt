@@ -1,0 +1,56 @@
+Four concept frames for Bloop Squad. Model: nano-banana-pro, 16:9.
+All four share: strict overhead camera, wide landscape framing, pod low-centre
+firing upward, monsters at the top AND at both edges AND below the pod (the
+pass-the-player idea), candy + confetti, no text, no UI.
+
+01 — night garden, three large monsters. Style anchor: warm picture-book,
+     rim-lit characters glowing against a dark field.
+02 — night garden, DENSITY TEST: twelve fist-sized monsters plus the bubble
+     ribbon curving to trace where the pod has just been.
+03 — candy world, glossy jelly monsters, plus the Mama monster: haloed, joined
+     to two smaller monsters by golden ribbons of light (the healer tether).
+04 — under the bed, patchwork sock monsters, knitted texture, torchlight.
+
+Verdict recorded in ../brief.md: 02 is the target read, 03 owns the Mama
+tether, 04 is charming but renders too literal and too 3D for the game.
+
+--- second batch: two new worlds, two new rendering idioms ---
+05 — bubble bath. Suds monsters, rubber ducks, warm rim of bathroom light.
+06 — deep sea. Glowing jellyfish monsters, bioluminescence carrying the colour.
+07 — SAME night-garden world as 02, redrawn in flat vector: heavy uniform
+     outlines, no shading, limited palette. An idiom test, not a world test.
+08 — claymation/felt: handmade clay monsters with googly eyes on a felt mat.
+     Idiom test.
+
+Read on the second batch (see brief): 06 is the strongest new world and the
+best silhouettes of all eight; 07 proves flat vector reads at distance but goes
+cold; 08 is the most charming and the least buildable — a clay look needs real
+photographed frames or it dies in code. 05 is cute but its palette is pale
+against a light tub, which is the opposite of what a dark field needs.
+
+--- third batch: 2D, production-simple, closer to the reference, boys aged 8 ---
+Brief for this batch: keep it flat 2D sprite art (bold dark outlines, two-tone
+cel shading, saturated arcade palette, clean cuttable edges), black space
+background like Viral Collapse, monsters with horns/fangs/one eye rather than
+pastel sweetness, coins on death, pod low-centre firing up, monsters at every
+edge including below the pod.
+
+09 — twelve horned/fanged monsters, saucer pod, blue pellet stream, coins and
+     confetti. The roster read.
+10 — busy moment: three size tiers, a horned boss at the top, the curving
+     pellet ribbon tracing the pod's path, a coin burst from a kill.
+11 — limited palette + the Mama healer: crowned purple monster joined to two
+     others by glowing beams. The tether read.
+12 — five distinct monster TYPES in one frame (slime, spiky, fanged, eyestalk,
+     armoured boss). The variety read.
+
+Verdict recorded in ../brief.md: 09 is the art bible (silhouettes + palette),
+10 is the gameplay frame (ribbon, tiers, coin burst), 11 owns the healer tether,
+12 owns the type roster. All four are one visual family and buildable as sprites.
+
+NOTE ON WHAT IS TRACKED. The repo ignores concept PNGs because they are large
+and regenerable from the prompts above. That reasoning does not hold for the ONE
+frame the art is locked to: image generation is not deterministic, so the prompt
+is not a recipe for getting concept-09 back. A downscaled copy is therefore
+committed as art-bible-concept-09.jpg (~200 KB) and is the reference every
+sprite is matched against. The full-resolution PNGs stay local.
