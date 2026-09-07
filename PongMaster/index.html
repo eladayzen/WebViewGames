@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script>
+      // GoBalance integration — see ../GOBALANCE_APP_INTEGRATION.md for the contract this
+      // depends on. Everything below is a no-op outside the Unity WebView (guarded by
+      // `if (window.Unity)` / feature checks), so it is always safe to ship, including when
+      // testing in a normal browser.
+
+      // The only channel for JS errors on-device — there is no devtools console inside the
+      // WebView, so surface them through the native bridge instead.
+      window.addEventListener('error', function (e) {
+        if (window.Unity) window.Unity.call('JS ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        if (window.Unity) window.Unity.call('JS UNHANDLED REJECTION: ' + e.reason);
+      });
+
+      // rAF shim: WKWebView treats the occluded Unity overlay as a background tab and
+      // suspends requestAnimationFrame entirely. Queue callbacks instead of scheduling them
+      // natively; Unity's WebGameController flushes the queue via window.__pumpFrames() every
+      // frame (~60Hz) regardless of tab visibility. A real native rAF loop keeps running
+      // underneath too, so a normal browser behaves exactly as before.
+      //
+      // This lives in tracked source, not in a built file. Hand-patching it into a dist was
+      // how an earlier game silently lost its whole integration on the next build.
+      (function () {
+        var nativeRAF = window.requestAnimationFrame.bind(window);
+        window.__rafQueue = [];
+        window.requestAnimationFrame = function (cb) { window.__rafQueue.push(cb); return window.__rafQueue.length; };
+        window.cancelAnimationFrame = function () {};
+        window.__pumpFrames = function () {
+          var q = window.__rafQueue;
+          if (!q.length) return;
+          window.__rafQueue = [];
+          var t = performance.now();
+          for (var i = 0; i < q.length; i++) {
+            try { q[i](t); }
+            catch (e) {
+              if (window.Unity) window.Unity.call('RAF CB ERROR: ' + e.message);
+              // In a browser window.Unity is undefined, and swallowing here would present a
+              // typo in the frame callback as a game that simply stopped advancing with a
+              // clean console. Re-raising would break the pump, so it is logged instead.
+              else if (typeof console !== 'undefined' && console.error) console.error('RAF CB ERROR:', e);
+            }
+          }
+        };
+        (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+      })();
+    </script>
+    <title>Pong Master</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- The letterboxed 16:9 frame. The Pixi canvas is sized to exactly this box, and every
+         HUD element is positioned inside it as a percentage, so the DOM chrome and the
+         playfield agree on where the margins are.
+
+         `orient-classic` / `orient-lateral` is set from main.js — the score chips have to sit
+         at the two ENDS of the court, which is left/right in one orientation and top/bottom in
+         the other. -->
+    <div id="stage" class="orient-classic">
+      <div id="app"></div>
+
+      <!-- GoBalance: native-bridge Back button. Cross-game HUD convention (BUILD_NOTES.md):
+           back and pause live top-right as icon-only circular buttons, back is a plain X,
+           status lives top-left.
+
+           The inline fallback is not belt-and-braces — a game whose module fails to load must
+           still be escapable, or one broken import strands the player with no keyboard, no
+           gesture and no home button they can reach. -->
+      <button id="gb-back"
+        onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
+        >&times;</button>
+
+      <button id="pause-button" aria-label="Pause">&#9208;</button>
+
+      <!-- Score. Two chips, one per end of the court. -->
+      <div id="score-near" class="score-chip"><span class="score-name">YOU</span><span class="score-value">0</span></div>
+      <div id="score-far" class="score-chip"><span class="score-name">CPU</span><span class="score-value">0</span></div>
+
+      <div id="match-line">MATCH 1</div>
+
+      <!-- Centre message: serve countdown, point calls, match calls. -->
+      <div id="banner" class="hidden"><span id="banner-text"></span></div>
+
+      <!-- THE DEATH SCREEN, and the only thing allowed to use these two ids.
+           The host synth-clicks #restart-button on Space/Enter whenever an element with id
+           `gameover-overlay` is visible and does not carry the literal class `hidden`, so no
+           other screen may reuse either id or that class name. -->
+      <div id="gameover-overlay" class="hidden overlay">
+        <div class="card">
+          <div class="card-kicker">RUN OVER</div>
+          <div class="card-title" id="go-title">BEATEN</div>
+          <div class="card-score"><span id="go-score">0</span><small>POINTS</small></div>
+          <div class="card-sub" id="go-sub"></div>
+          <div class="board-title" id="go-board-title">BEST RUNS</div>
+          <ol class="board" id="go-board"></ol>
+          <button id="restart-button">PLAY AGAIN</button>
+          <div class="card-clock">Restarting in <span id="go-clock">10</span></div>
+        </div>
+      </div>
+
+      <!-- THE QUIT / FINISHED SCREEN — its own id, deliberately.
+           Built once and reused for both endings because quitting and finishing leave the
+           player in exactly the same position: the run is over, the score is banked, and the
+           only question left is play again or leave. They differ in the headline and nothing
+           else. It must NOT be built out of #gameover-overlay, or Space/Enter would fire a
+           restart behind its own buttons. No clock: the player pressed something to get here. -->
+      <div id="result-overlay" class="hidden overlay">
+        <div class="card">
+          <div class="card-kicker" id="result-kicker">RUN ENDED</div>
+          <div class="card-title" id="result-title">STOPPED</div>
+          <div class="card-score"><span id="result-score">0</span><small>POINTS</small></div>
+          <div class="card-sub" id="result-sub"></div>
+          <div class="board-title" id="result-board-title">BEST RUNS</div>
+          <ol class="board" id="result-board"></ol>
+          <div class="card-buttons">
+            <button id="result-again">PLAY AGAIN</button>
+            <button id="result-quit" class="ghost">QUIT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quit confirmation. A modal over the PAUSED game, not a screen: the player has to be
+           able to see the run they are being asked to abandon, and it pauses precisely because
+           the game stays visible — otherwise they watch themselves lose while deciding. -->
+      <div id="confirm-overlay" class="hidden">
+        <div class="card compact">
+          <div class="card-title small">End this run?</div>
+          <div class="card-sub">Your score still counts.</div>
+          <div class="card-buttons">
+            <button id="confirm-yes">END RUN</button>
+            <button id="confirm-no" class="ghost">KEEP PLAYING</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- POC INSTRUMENT PANEL.
+           This is the experiment the game exists to run right now: orientation and input
+           mapping switchable live, on the board, without a rebuild — which is the only way
+           the fore/aft question gets settled in one session instead of two ship cycles.
+
+           It is deliberately visible and unguarded FOR THE POC ONLY. Before this ships it
+           moves behind the hold-then-keypad dev unlock, which exists so debug controls are not
+           reachable by a curious child but stay reachable on a device with no keyboard. -->
+      <div id="dev-panel">
+        <!-- Collapsed by default. In CLASSIC the court fills almost the whole frame, so an
+             always-open panel sits on the playfield and over the near paddle's own travel —
+             obstructing the experiment it exists to run. -->
+        <button id="dev-toggle" type="button">POC</button>
+        <div id="dev-body" class="hidden">
+        <div class="dev-title">CONTROL EXPERIMENT</div>
+        <div class="dev-row">
+          <span class="dev-label">Layout</span>
+          <button class="dev-btn" id="dev-orientation">CLASSIC</button>
+        </div>
+        <div class="dev-row">
+          <span class="dev-label">Mapping</span>
+          <button class="dev-btn" id="dev-mapping">ABSOLUTE</button>
+        </div>
+        <div class="dev-row">
+          <span class="dev-label">Lean sign</span>
+          <button class="dev-btn" id="dev-sign">+1</button>
+        </div>
+        <div class="dev-row">
+          <span class="dev-label">Auto-centre</span>
+          <button class="dev-btn" id="dev-recenter">ON</button>
+        </div>
+        <div class="dev-row">
+          <span class="dev-label">Paddle assist</span>
+          <button class="dev-btn" id="dev-assist">ON</button>
+        </div>
+        <div class="dev-row">
+          <button class="dev-btn wide" id="dev-centre-now">CENTRE ON ME</button>
+        </div>
+        <div class="dev-readout" id="dev-readout">tilt —</div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

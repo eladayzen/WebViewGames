@@ -1,0 +1,462 @@
+/* Everything is sized from --u, one unit that tracks the letterboxed frame
+ * rather than the raw viewport.
+ *
+ * Fixed px anywhere inside a scaled overlay breaks at small viewports
+ * SPECIFICALLY -- invisible at a normal dev-server window size and exactly
+ * what a mobile WebView hits. An earlier game shipped a button copy-pasted
+ * with px sizing that looked correct until it was tested small, where
+ * everything else scaled down together and it ended up dominating the screen.
+ * So: no bare px on anything that has to stay in proportion.
+ *
+ * --u is 1% of the frame's width. The frame is min(100vw, 16/9 * 100vh),
+ * which is the same fit the renderer computes, so the DOM chrome and the
+ * canvas never disagree about where the margins are.
+ */
+:root {
+  --u: min(1vw, 1.77778vh);
+
+  --ink-bg: #070c17;
+  --ink-card: rgba(12, 20, 38, 0.94);
+  --ink-line: #2f4a7a;
+  --ink-text: #e8f4ff;
+  --ink-dim: #8ea6c8;
+  --ink-near: #4fd1ff;
+  --ink-far: #ff7a59;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--ink-bg);
+  color: var(--ink-text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The 16:9 letterbox. Same fit as the renderer's Math.min. */
+#stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(100vw, 177.778vh);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+#app,
+#app canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---- top-right chrome ---------------------------------------------------
+   BUILD_NOTES.md's cross-game convention: back and pause as icon-only
+   circular buttons top-right, back outermost, status top-left. `absolute`
+   rather than `fixed` so they anchor to the visible game frame and not the
+   raw viewport. */
+#gb-back,
+#pause-button {
+  position: absolute;
+  top: calc(var(--u) * 1.2);
+  z-index: 40;
+  width: calc(var(--u) * 4.4);
+  height: calc(var(--u) * 4.4);
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: var(--ink-text);
+  font-size: calc(var(--u) * 2.2);
+  font-weight: 600;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+#gb-back {
+  right: calc(var(--u) * 1.2);
+}
+
+#pause-button {
+  right: calc(var(--u) * 6.2);
+  font-size: calc(var(--u) * 1.8);
+}
+
+/* ---- score --------------------------------------------------------------
+   Each chip sits beside the goal it belongs to. Which side that is depends on
+   the orientation, so the position rules are compound #id.class selectors on
+   the stage -- a bare class rule would lose to the id rule that carries the
+   base transform, silently, which is a mistake this repo has already made
+   once. */
+.score-chip {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--u) * 0.3);
+  padding: calc(var(--u) * 0.8) calc(var(--u) * 1.2);
+  border-radius: calc(var(--u) * 1);
+  background: rgba(10, 16, 32, 0.55);
+}
+
+.score-name {
+  font-size: calc(var(--u) * 1.05);
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+}
+
+.score-value {
+  font-size: calc(var(--u) * 4.2);
+  font-weight: 700;
+  line-height: 1;
+}
+
+#score-near .score-value {
+  color: var(--ink-near);
+}
+
+#score-far .score-value {
+  color: var(--ink-far);
+}
+
+#stage.orient-classic #score-near {
+  left: calc(var(--u) * 1.6);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+#stage.orient-classic #score-far {
+  right: calc(var(--u) * 1.6);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* In LATERAL the court is a narrow column with real margins either side --
+   the deliberate cost of keeping a playable goal-to-paddle proportion on a
+   16:9 frame. The chips move into that margin, which is the one place the
+   trade pays something back. */
+#stage.orient-lateral #score-near {
+  left: calc(var(--u) * 6);
+  bottom: calc(var(--u) * 6);
+}
+
+#stage.orient-lateral #score-far {
+  left: calc(var(--u) * 6);
+  top: calc(var(--u) * 6);
+}
+
+#match-line {
+  position: absolute;
+  z-index: 30;
+  top: calc(var(--u) * 1.6);
+  left: calc(var(--u) * 1.6);
+  font-size: calc(var(--u) * 1.2);
+  letter-spacing: 0.18em;
+  color: var(--ink-dim);
+}
+
+/* ---- centre banner ------------------------------------------------------ */
+#banner {
+  position: absolute;
+  z-index: 35;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  text-align: center;
+  /* The match-end banner is two lines -- who was beaten, who is next. */
+  white-space: pre-line;
+  line-height: 1.25;
+  font-size: calc(var(--u) * 3.6);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-shadow: 0 calc(var(--u) * 0.2) calc(var(--u) * 1.2) rgba(0, 0, 0, 0.8);
+}
+
+/* ---- overlays ----------------------------------------------------------- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 8, 18, 0.86);
+}
+
+/* The confirm is a MODAL over a paused game, not a screen: a light scrim so
+   the run being abandoned stays visible underneath. */
+#confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 8, 18, 0.45);
+}
+
+.card {
+  min-width: calc(var(--u) * 34);
+  padding: calc(var(--u) * 3) calc(var(--u) * 4);
+  border-radius: calc(var(--u) * 1.6);
+  background: var(--ink-card);
+  border: 1px solid var(--ink-line);
+  text-align: center;
+}
+
+.card.compact {
+  min-width: calc(var(--u) * 26);
+  padding: calc(var(--u) * 2.4) calc(var(--u) * 3);
+}
+
+.card-kicker {
+  font-size: calc(var(--u) * 1.1);
+  letter-spacing: 0.24em;
+  color: var(--ink-dim);
+}
+
+.card-title {
+  margin-top: calc(var(--u) * 0.6);
+  font-size: calc(var(--u) * 3.4);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.card-title.small {
+  font-size: calc(var(--u) * 2.2);
+}
+
+.card-score {
+  margin-top: calc(var(--u) * 1.4);
+  font-size: calc(var(--u) * 5.4);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-near);
+}
+
+.card-score small {
+  display: block;
+  margin-top: calc(var(--u) * 0.5);
+  font-size: calc(var(--u) * 1);
+  letter-spacing: 0.24em;
+  color: var(--ink-dim);
+}
+
+.card-sub {
+  margin-top: calc(var(--u) * 1);
+  font-size: calc(var(--u) * 1.3);
+  color: var(--ink-dim);
+}
+
+/* ---- leaderboard -------------------------------------------------------- */
+.board-title {
+  margin-top: calc(var(--u) * 2);
+  font-size: calc(var(--u) * 0.95);
+  letter-spacing: 0.24em;
+  color: var(--ink-dim);
+}
+
+.board {
+  margin: calc(var(--u) * 0.8) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 0.35);
+  min-width: calc(var(--u) * 28);
+}
+
+.board-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 0.8);
+  padding: calc(var(--u) * 0.45) calc(var(--u) * 0.8);
+  border-radius: calc(var(--u) * 0.6);
+  font-size: calc(var(--u) * 1.15);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.board-row.is-you {
+  background: rgba(79, 209, 255, 0.10);
+}
+
+/* The run just played, distinguished from this profile's other rows. */
+.board-row.is-run {
+  background: rgba(79, 209, 255, 0.22);
+  outline: 1px solid rgba(79, 209, 255, 0.55);
+}
+
+.board-rank {
+  width: calc(var(--u) * 1.6);
+  text-align: right;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.board-dot {
+  width: calc(var(--u) * 1.9);
+  height: calc(var(--u) * 1.9);
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--u) * 1);
+  font-weight: 700;
+  color: #06101f;
+  flex: none;
+}
+
+.board-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-empty {
+  padding: calc(var(--u) * 0.6);
+  font-size: calc(var(--u) * 1.05);
+  color: var(--ink-dim);
+}
+
+.card-buttons {
+  margin-top: calc(var(--u) * 2);
+  display: flex;
+  gap: calc(var(--u) * 1.2);
+  justify-content: center;
+}
+
+#restart-button,
+.card-buttons button {
+  padding: calc(var(--u) * 1.1) calc(var(--u) * 2.6);
+  border: none;
+  border-radius: 999px;
+  background: var(--ink-near);
+  color: #04101c;
+  font-size: calc(var(--u) * 1.4);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+#restart-button {
+  margin-top: calc(var(--u) * 2);
+}
+
+.card-buttons button.ghost {
+  background: transparent;
+  border: 1px solid var(--ink-line);
+  color: var(--ink-text);
+}
+
+.card-clock {
+  margin-top: calc(var(--u) * 1.2);
+  font-size: calc(var(--u) * 1.1);
+  color: var(--ink-dim);
+}
+
+/* ---- POC instrument panel ----------------------------------------------- */
+/* Collapsed to a small tab by default: in CLASSIC the court occupies nearly
+   the whole frame, so an open panel covers the playfield and the near paddle's
+   travel. Open it to switch, close it to play. */
+#dev-panel {
+  position: absolute;
+  z-index: 45;
+  left: calc(var(--u) * 1.2);
+  bottom: calc(var(--u) * 1.2);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--u) * 0.6);
+}
+
+#dev-toggle {
+  padding: calc(var(--u) * 0.5) calc(var(--u) * 1);
+  border: 1px solid var(--ink-line);
+  border-radius: calc(var(--u) * 0.6);
+  background: rgba(6, 12, 26, 0.7);
+  color: var(--ink-dim);
+  font-size: calc(var(--u) * 0.9);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  cursor: pointer;
+  order: 2;
+}
+
+#dev-body {
+  order: 1;
+  padding: calc(var(--u) * 1);
+  border-radius: calc(var(--u) * 0.9);
+  background: rgba(6, 12, 26, 0.92);
+  border: 1px solid var(--ink-line);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 0.5);
+}
+
+.dev-title {
+  font-size: calc(var(--u) * 0.85);
+  letter-spacing: 0.2em;
+  color: var(--ink-dim);
+  margin-bottom: calc(var(--u) * 0.3);
+}
+
+.dev-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--u) * 1);
+}
+
+.dev-label {
+  font-size: calc(var(--u) * 1);
+  color: var(--ink-dim);
+}
+
+.dev-btn {
+  min-width: calc(var(--u) * 9);
+  padding: calc(var(--u) * 0.55) calc(var(--u) * 1);
+  border: 1px solid var(--ink-line);
+  border-radius: calc(var(--u) * 0.6);
+  background: rgba(30, 48, 84, 0.7);
+  color: var(--ink-text);
+  font-size: calc(var(--u) * 1);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.dev-btn.wide {
+  width: 100%;
+}
+
+.dev-readout {
+  margin-top: calc(var(--u) * 0.3);
+  font-size: calc(var(--u) * 0.85);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
