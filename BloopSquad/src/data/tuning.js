@@ -76,17 +76,30 @@ export const MONSTERS = {
   // Nothing in this game hunts the player -- being caught is always the result
   // of the player moving into something, or of failing to move out of the way
   // of something that announced itself.
+  // FEWER, TOUGHER (Amit: "less creatures - more hp"). Doubling the health and
+  // halving the crowd trades a busy screen for a readable one: at eight years
+  // old, twelve things drifting at once is not twelve decisions, it is one
+  // blur. A monster that takes a moment to pop is also a monster you have
+  // looked at, which is what makes the size tiers mean anything and what gives
+  // the toys something to be visibly better at.
   tiers: {
-    small:  { radius: 46, hp: 2,  speedMul: 1.15, points: 10, coins: 1, tint: 0x7ed321 },
-    medium: { radius: 68, hp: 5,  speedMul: 0.85, points: 25, coins: 2, tint: 0xf5a623 },
-    large:  { radius: 96, hp: 12, speedMul: 0.60, points: 60, coins: 4, tint: 0x9b59d0 },
+    small:  { radius: 46, hp: 4,  speedMul: 1.15, points: 15, coins: 1, tint: 0x7ed321 },
+    medium: { radius: 68, hp: 11, speedMul: 0.85, points: 40, coins: 3, tint: 0xf5a623 },
+    large:  { radius: 96, hp: 26, speedMul: 0.60, points: 90, coins: 5, tint: 0x9b59d0 },
   },
   tierWeights: { small: 0.62, medium: 0.30, large: 0.08 },
 
   // ---- THE QUESTION, part one: how fast may something drift? --------------
   // Deliberately gentle to start. "Too easy" is easy to judge standing on a
   // board; a first impression of "unfair" is not recoverable with a child.
-  driftPxS: 95,
+  //
+  // SLOWED FROM 95 (Amit, playing it: "make them slower generally"). At 95 the
+  // field moved faster than an eight-year-old can shift their weight -- reading
+  // a monster, deciding, and leaning is a chain of three things on a balance
+  // board, and the whole chain has to fit inside the time the monster gives.
+  // This is the single most important number in the game for that reason, which
+  // is why it also sits on a live dial.
+  driftPxS: 68,
   // Live multiplier, moved with [ and ] during a session.
   driftMul: 1.0,
 
@@ -102,11 +115,22 @@ export const MONSTERS = {
   // this rather than assuming it, and prints the worst case per run.
   reactionFloorS: 1.2,
 
-  maxLive: 26,
-  spawnIntervalS: 0.85,
-  // Spawn side weights. `below` is the whole point of the game: things come up
-  // past the pod as well as down onto it.
-  edgeWeights: { top: 0.52, left: 0.17, right: 0.17, bottom: 0.14 },
+  maxLive: 13,
+  spawnIntervalS: 1.55,
+  // Spawn side weights.
+  //
+  // BOTTOM CUT FROM 0.14 (Amit, playing it: "too much of them are coming from
+  // down to up"). Something rising from behind you is the game's spice, not its
+  // staple -- it works precisely because it is rare enough to surprise. At one
+  // in seven it stopped being a surprise and started being the weather, and it
+  // is also the hardest arrival to read, since it comes from the half of the
+  // screen the player is not looking at.
+  edgeWeights: { top: 0.66, left: 0.14, right: 0.14, bottom: 0.06 },
+  // Side arrivals get a DOWNWARD bias rather than a symmetric one, for the same
+  // reason: a monster entering from the left and drifting up is a riser too,
+  // just a quieter one, and there were far more of those than the bottom weight
+  // suggested. 0 would make every side arrival sink; this leaves a few climbing.
+  sideSkewBias: 0.34,
 };
 
 export const COINS = {
@@ -141,7 +165,9 @@ export const TOYS = {
   // small, and mediums take five hits. A game whose presents arrive twice a
   // minute is a game an eight-year-old never finds out about. Smalls now carry
   // a token chance so the mechanic introduces itself early.
-  dropFrom: { small: 0.03, medium: 0.40, large: 0.85 },
+  // Raised again alongside the tier change: half as many things die now, so the
+  // same per-kill chance would have quietly halved the presents too.
+  dropFrom: { small: 0.05, medium: 0.55, large: 1.0 },
   // No two toys within this window, so a lucky streak cannot hand out three at
   // once and flatten the whole minute after it.
   minGapS: 6,

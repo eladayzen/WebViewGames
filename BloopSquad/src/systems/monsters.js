@@ -49,6 +49,11 @@ export function spawnMonster(w, rng) {
   // A shallow angle across the field rather than a straight line, so the same
   // edge does not always produce the same path.
   const skew = (rng.next() - 0.5) * 0.55;
+  // Side arrivals lean downward: an entry from the left that drifts UP is a
+  // riser as well, and those were the bulk of what read as "too many coming
+  // from below". Top and bottom arrivals keep a symmetric lateral skew, which
+  // only decides how diagonally they cross.
+  const sideSkew = skew + MONSTERS.sideSkewBias;
   if (edge === 'top') {
     x = margin + rng.next() * (DESIGN_W - margin * 2); y = -margin;
     vx = speed * skew; vy = speed;
@@ -57,10 +62,10 @@ export function spawnMonster(w, rng) {
     vx = speed * skew; vy = -speed;
   } else if (edge === 'left') {
     x = -margin; y = margin + rng.next() * (DESIGN_H - margin * 2);
-    vx = speed; vy = speed * skew;
+    vx = speed; vy = speed * sideSkew;
   } else {
     x = DESIGN_W + margin; y = margin + rng.next() * (DESIGN_H - margin * 2);
-    vx = -speed; vy = speed * skew;
+    vx = -speed; vy = speed * sideSkew;
   }
 
   const m = {
