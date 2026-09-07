@@ -77,11 +77,34 @@
 
       <button id="pause-button" aria-label="Pause">&#9208;</button>
 
+      <!-- PLAYER SETTINGS. A gear the player is meant to open, holding only things a player
+           would want to change. Developer tools live behind their own gesture-unlocked panel.
+           Mixing the two is how a player ends up one tap from a spawn-rate slider, and how a
+           developer ends up hunting for sensitivity behind a secret. -->
+      <button id="settings-button" aria-label="Settings">&#9881;</button>
+
+      <div id="settings-panel" class="hidden">
+        <div class="settings-section">BOARD SENSITIVITY</div>
+        <div class="settings-note">Higher reacts to a smaller lean.</div>
+        <div class="settings-row">
+          <button class="settings-step" id="sens-down" type="button">&minus;</button>
+          <span class="settings-value" id="sens-value">55</span>
+          <button class="settings-step" id="sens-up" type="button">+</button>
+        </div>
+      </div>
+
       <!-- Score. Two chips, one per end of the court. -->
       <div id="score-near" class="score-chip"><span class="score-name">YOU</span><span class="score-value">0</span></div>
       <div id="score-far" class="score-chip"><span class="score-name">CPU</span><span class="score-value">0</span></div>
 
       <div id="match-line">MATCH 1</div>
+
+      <!-- Active perk. Sits under the match line in the same top-left status
+           column, and only exists while a perk is running. -->
+      <div id="perk-chip" class="hidden">
+        <span id="perk-name"></span>
+        <span id="perk-left"></span>
+      </div>
 
       <!-- Centre message: serve countdown, point calls, match calls. -->
       <div id="banner" class="hidden"><span id="banner-text"></span></div>

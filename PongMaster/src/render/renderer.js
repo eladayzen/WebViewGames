@@ -14,9 +14,10 @@
  */
 
 import { Application, Container, Graphics } from 'pixi.js';
-import { DESIGN_W, DESIGN_H, SHARED, PROFILES } from '../data/tuning.js';
+import { DESIGN_W, DESIGN_H, SHARED, PROFILES, PICKUPS } from '../data/tuning.js';
 import { courtBox, project, CLASSIC } from '../data/orientation.js';
 import { SIDE_NEAR, SIDE_FAR } from '../sim/world.js';
+import { predictPath, contactPlane } from '../sim/physics.js';
 
 const INK = {
   bg: 0x0a1020,
@@ -25,6 +26,7 @@ const INK = {
   near: 0x4fd1ff,
   far: 0xff7a59,
   ball: 0xf6fbff,
+  perk: 0xfee44f,
 };
 
 export async function createRenderer() {
@@ -49,7 +51,11 @@ export async function createRenderer() {
   const bg = new Graphics();
   const play = new Graphics();
   const trail = new Graphics();
-  root.addChild(bg, trail, play);
+  const traj = new Graphics();
+  const pickupsG = new Graphics();
+  // Trajectory under everything else so it never obscures the ball it is
+  // predicting; pickups above the trail but below the paddles.
+  root.addChild(bg, traj, trail, pickupsG, play);
 
   const box = { x: 0, y: 0, w: DESIGN_W, h: DESIGN_H, scale: 1 };
   let court = null;
@@ -157,6 +163,44 @@ export async function createRenderer() {
       const b = w.ball;
       const p = project(orientation, b.along, b.across, court);
       const rPx = SHARED.ballRadius * court.scale;
+      const now = performance.now() / 1000;
+
+      // --- pickups ---------------------------------------------------------
+      pickupsG.clear();
+      for (const pk of w.pickups) {
+        const c = project(orientation, pk.along, pk.across, court);
+        const rr = PICKUPS.radius * court.scale;
+        const pulse = 0.82 + Math.sin(now * 3 + pk.phase) * 0.18;
+        // Fade out over the last couple of seconds, so a pickup about to
+        // expire says so rather than vanishing mid-approach.
+        const left = PICKUPS.lifetimeSec - pk.age;
+        const alpha = left < 2 ? Math.max(0, left / 2) : 1;
+
+        pickupsG.circle(c.x, c.y, rr * pulse).stroke({ width: 3, color: INK.perk, alpha: 0.9 * alpha });
+        pickupsG.circle(c.x, c.y, rr * 0.55 * pulse).fill({ color: INK.perk, alpha: 0.28 * alpha });
+        pickupsG.circle(c.x, c.y, rr * 0.18).fill({ color: INK.perk, alpha: 0.95 * alpha });
+      }
+
+      // --- trajectory perk -------------------------------------------------
+      traj.clear();
+      if (w.perks.trajectory > 0 && b.live) {
+        const target = contactPlane(w, b.vAlong < 0 ? SIDE_NEAR : SIDE_FAR);
+        const path = predictPath(w, target);
+        // Fade the whole line out over the perk's last second rather than
+        // having it disappear mid-rally with no warning.
+        const fade = Math.min(1, w.perks.trajectory);
+        for (let i = 0; i < path.length - 1; i++) {
+          const a = project(orientation, path[i].along, path[i].across, court);
+          const bb = project(orientation, path[i + 1].along, path[i + 1].across, court);
+          traj.moveTo(a.x, a.y).lineTo(bb.x, bb.y);
+        }
+        traj.stroke({ width: 3, color: INK.perk, alpha: 0.5 * fade });
+        // Mark the bounce corners and the arrival point.
+        for (let i = 1; i < path.length; i++) {
+          const q = project(orientation, path[i].along, path[i].across, court);
+          traj.circle(q.x, q.y, 6).fill({ color: INK.perk, alpha: 0.75 * fade });
+        }
+      }
 
       // Short positional trail. At the top of the speed ramp the ball crosses
       // a good fraction of the court between frames, and a bare dot becomes

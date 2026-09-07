@@ -33,54 +33,62 @@
  * a match and understand the game.
  */
 
-/* EVERY OPPONENT MOVES FAST. None of them is beaten by being slow.
+/* CALM, AND SLOWER THAN THE BALL. Reference Pong, not a twitching machine.
  *
- * They are beaten by being wrong in the way a person on a balance board is
- * wrong -- committing hard to a lean, sailing past the ball, hauling back,
- * overshooting again, and changing their mind on the way. `speed` is a ceiling
- * they all share roughly; `accel` is what actually separates them, because low
- * acceleration against a high ceiling is exactly what over-leaning feels like.
+ * This has now been wrong in both directions, and both are worth remembering.
+ * Capping speed alone made them barely move, which looked broken rather than
+ * beaten. Fixing that with high speed, low acceleration and a target re-picked
+ * three times a second made them hectic -- constantly darting, correcting and
+ * changing their mind, which is exhausting to watch and to play against.
  *
- * Read the table down the `accel` column, not the `speed` one.
+ * Reference Pong's opponent simply tracks the ball toward where it is going,
+ * at a capped speed, and loses because that cap is not quite enough. It reads
+ * as deliberate. That is the target here: the wrongness stays, but it is
+ * committed to rather than re-rolled -- ONE read of the angle per approach,
+ * held, so the paddle travels one clean line and is beaten by being in the
+ * wrong place rather than by flailing between two.
  *
- *   approach  how hard it converges on the target. Higher brakes earlier;
- *             lower means it keeps its foot down and overshoots further.
+ *   speed     the cap. Under the ball's own pace, so it cannot cover
+ *             everything -- this is the main difficulty lever again.
+ *   accel     high enough now to arrive smoothly rather than oscillate.
+ *   rethink   long. One committed read per approach, occasionally corrected,
+ *             instead of a new guess every few frames.
  */
 export const OPPONENTS = [
   {
     id: 'rook',
     name: 'ROOK',
     css: '#9be564',
-    blurb: 'Lunges. Sails straight past it. Every time.',
-    speed: 0.95,
-    accel: 1.00,
-    approach: 2.2,
-    error: 0.30,
-    reaction: 0.55,
-    rethink: 0.30,
+    blurb: 'Reads it late, and never quite gets across.',
+    speed: 0.40,
+    accel: 2.40,
+    approach: 3.0,
+    error: 0.17,
+    reaction: 0.46,
+    rethink: 1.20,
   },
   {
     id: 'vex',
     name: 'VEX',
     css: '#ffa14a',
-    blurb: 'Gets there. Usually a beat late, usually wobbling.',
-    speed: 1.05,
-    accel: 2.10,
-    approach: 3.4,
-    error: 0.19,
-    reaction: 0.36,
-    rethink: 0.50,
+    blurb: 'Covers the middle. Give it a corner and it is gone.',
+    speed: 0.52,
+    accel: 3.20,
+    approach: 3.8,
+    error: 0.155,
+    reaction: 0.33,
+    rethink: 1.00,
   },
   {
     id: 'nyx',
     name: 'NYX',
     css: '#f48dd4',
     blurb: 'Settles where the ball is going, and waits there.',
-    speed: 1.20,
-    accel: 3.60,
-    approach: 5.0,
-    error: 0.095,
-    reaction: 0.20,
+    speed: 0.62,
+    accel: 4.20,
+    approach: 4.6,
+    error: 0.115,
+    reaction: 0.22,
     rethink: 0.85,
   },
 ];

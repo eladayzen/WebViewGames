@@ -99,8 +99,13 @@ export function createInput() {
       const signed = applyDeadzone(centred, p.deadzone) * cfg.sign;
       ch.value = signed;
 
+      // The player's sensitivity setting. In analog mode the host's own
+      // sensitivity call does nothing (it only tunes arrow-key thresholds), so
+      // this multiplier IS the setting -- see ui/settingsPanel.js.
+      const sens = cfg.sensitivityScale || 1;
+
       if (cfg.mapping === ABSOLUTE) {
-        const target = w.A / 2 + signed * p.absGain * (w.A / 2);
+        const target = w.A / 2 + signed * p.absGain * sens * (w.A / 2);
         // Exponential approach rather than a hard set: the published tilt is
         // noisy enough at rest that assigning it straight to a position makes
         // the paddle buzz. Frame-rate independent, so the feel does not change
@@ -108,7 +113,7 @@ export function createInput() {
         const k = 1 - Math.exp(-p.smoothing * dt);
         pad.across += (target - pad.across) * k;
       } else {
-        pad.across += signed * p.rateSpeed * dt;
+        pad.across += signed * p.rateSpeed * sens * dt;
       }
     }
 

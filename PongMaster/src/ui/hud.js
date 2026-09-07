@@ -18,6 +18,9 @@ export function createHud() {
     nameNear: $('score-near').querySelector('.score-name'),
     nameFar: $('score-far').querySelector('.score-name'),
     matchLine: $('match-line'),
+    perkChip: $('perk-chip'),
+    perkName: $('perk-name'),
+    perkLeft: $('perk-left'),
     banner: $('banner'),
     bannerText: $('banner-text'),
 
@@ -76,6 +79,20 @@ export function createHud() {
 
     setMatchLine(text) {
       el.matchLine.textContent = text;
+    },
+
+    /* The active perk, or null. Called every frame, so it writes only when
+     * something actually changed -- a per-frame textContent assignment on an
+     * unchanged string is work the WebView does not need to do. */
+    setPerk(perk) {
+      if (!perk) {
+        if (!el.perkChip.classList.contains('hidden')) el.perkChip.classList.add('hidden');
+        return;
+      }
+      el.perkChip.classList.remove('hidden');
+      if (el.perkName.textContent !== perk.label) el.perkName.textContent = perk.label;
+      const secs = String(Math.ceil(perk.left));
+      if (el.perkLeft.textContent !== secs) el.perkLeft.textContent = secs;
     },
 
     showBanner(text) {

@@ -34,11 +34,17 @@ export const SHARED = {
   // Serve angles stay shallow so a point always opens with a readable ball.
   maxServeAngle: Math.PI / 7,
 
-  // The rally's own escalation, and the only thing that guarantees a point
-  // ends. Once both paddles can cover the court a rally is a stalemate until
-  // the ball outruns one of them, so this is not flavour -- a harness run with
-  // a weak ramp sat at 0.6 points after ten simulated minutes.
-  speedUpPerHit: 1.05,
+  /* The rally's own escalation, and the only thing that guarantees a point
+   * ends: once both paddles can cover the court, a rally is a stalemate until
+   * the ball outruns one of them. A harness run with too weak a ramp sat at
+   * 0.6 points after ten simulated minutes.
+   *
+   * But it is also where "hectic" comes from. At 5% a hit, a 20-exchange
+   * rally -- ordinary against the top opponent -- ends at 1.86, nearly triple
+   * the serve speed, so every long point finishes in a scramble. At 3.5% the
+   * same rally ends around 1.39, which still escalates and still resolves,
+   * without the last third of every point being frantic. */
+  speedUpPerHit: 1.035,
   // How much of the paddle's own motion is inherited by the ball. This is what
   // makes a deliberate swipe at contact feel different from parking the paddle
   // in the ball's path, and it is the one skill expression classic Pong has.
@@ -88,7 +94,9 @@ export const PROFILES = {
    */
   [CLASSIC]: {
     courtRatio: 1.70,
-    paddleHalf: 0.090,
+    // Half-length. Widened from 0.090 -- the paddle is the player's whole
+    // margin for error, and leaning is a coarse way to aim one.
+    paddleHalf: 0.118,
     // 30% down from the original 1.00 / 2.10 (playtest, 2026-09-07). Same
     // reason the ladder moved down a rung: a paddle steered by leaning is
     // slower to commit than one steered by a key, so ball speeds that read as
@@ -121,7 +129,9 @@ export const PROFILES = {
    */
   [LATERAL]: {
     courtRatio: 1.45,
-    paddleHalf: 0.090,
+    // Half-length. Widened from 0.090 -- the paddle is the player's whole
+    // margin for error, and leaning is a coarse way to aim one.
+    paddleHalf: 0.118,
     ballSpeed: 0.70,
     // The cap is a SEPARATE knob from the start speed, and it is deliberately
     // not 30% down with it: the start speed is what a player feels on every
@@ -133,6 +143,43 @@ export const PROFILES = {
     absGain: 1.05,
     rateSpeed: 1.55,
     smoothing: 20,
+  },
+};
+
+/* PICKUPS.
+ *
+ * Targets floating in the middle of the court that arm a perk when YOUR ball
+ * hits them -- your ball specifically, meaning the last paddle to strike it
+ * was a human's. The opponent's ball passes straight through, so a pickup is
+ * always a reward for a shot you chose, and never something that happens to
+ * you while you watch.
+ *
+ * They sit in the middle band of the goal axis, away from both paddle lanes:
+ * near a goal line they would be trivially farmable by an opponent's weak
+ * return, and they would clutter the one region a player is actually reading.
+ */
+export const PICKUPS = {
+  maxAlive: 2,
+  firstSpawnSec: 3.5,
+  spawnEverySec: 6.0,
+  lifetimeSec: 15,
+  radius: 0.048,
+  // As fractions of the goal-axis span.
+  alongMin: 0.28,
+  alongMax: 0.72,
+  // Keep clear of the side walls so a pickup is never half-buried in one.
+  acrossMargin: 0.13,
+};
+
+/* What a pickup can grant. Keyed by id; the renderer and HUD both read this
+ * table, so adding a perk is this entry plus its effect. */
+export const PERKS = {
+  trajectory: {
+    id: 'trajectory',
+    label: 'TRAJECTORY',
+    // 20% down from 9s. Long enough to change how a couple of returns are
+    // played, short enough that going after the next pickup stays the point.
+    durationSec: 7.2,
   },
 };
 

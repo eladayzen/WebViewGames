@@ -70,7 +70,8 @@ body {
    rather than `fixed` so they anchor to the visible game frame and not the
    raw viewport. */
 #gb-back,
-#pause-button {
+#pause-button,
+#settings-button {
   position: absolute;
   top: calc(var(--u) * 1.2);
   z-index: 40;
@@ -96,6 +97,72 @@ body {
 #pause-button {
   right: calc(var(--u) * 6.2);
   font-size: calc(var(--u) * 1.8);
+}
+
+#settings-button {
+  right: calc(var(--u) * 11.2);
+  font-size: calc(var(--u) * 2);
+}
+
+#settings-button.on {
+  background: rgba(79, 209, 255, 0.28);
+}
+
+/* ---- player settings panel ---------------------------------------------- */
+#settings-panel {
+  position: absolute;
+  z-index: 41;
+  top: calc(var(--u) * 6.4);
+  right: calc(var(--u) * 1.2);
+  min-width: calc(var(--u) * 20);
+  padding: calc(var(--u) * 1.2);
+  border-radius: calc(var(--u) * 0.9);
+  background: rgba(6, 12, 26, 0.94);
+  border: 1px solid var(--ink-line);
+  text-align: center;
+}
+
+.settings-section {
+  font-size: calc(var(--u) * 0.95);
+  letter-spacing: 0.22em;
+  color: var(--ink-dim);
+}
+
+.settings-note {
+  margin-top: calc(var(--u) * 0.4);
+  font-size: calc(var(--u) * 0.9);
+  color: var(--ink-dim);
+  opacity: 0.75;
+}
+
+.settings-row {
+  margin-top: calc(var(--u) * 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--u) * 1.2);
+}
+
+/* Big round steppers: this is operated by someone standing on a board, often
+   with a foot of travel between them and the screen. */
+.settings-step {
+  width: calc(var(--u) * 3.4);
+  height: calc(var(--u) * 3.4);
+  border: 1px solid var(--ink-line);
+  border-radius: 999px;
+  background: rgba(30, 48, 84, 0.7);
+  color: var(--ink-text);
+  font-size: calc(var(--u) * 1.8);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-value {
+  min-width: calc(var(--u) * 3.4);
+  font-size: calc(var(--u) * 2.2);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- score --------------------------------------------------------------
@@ -170,6 +237,29 @@ body {
   font-size: calc(var(--u) * 1.2);
   letter-spacing: 0.18em;
   color: var(--ink-dim);
+}
+
+#perk-chip {
+  position: absolute;
+  z-index: 30;
+  top: calc(var(--u) * 3.6);
+  left: calc(var(--u) * 1.6);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 0.6);
+  padding: calc(var(--u) * 0.35) calc(var(--u) * 0.9);
+  border-radius: calc(var(--u) * 0.6);
+  background: rgba(254, 228, 79, 0.14);
+  border: 1px solid rgba(254, 228, 79, 0.55);
+  color: #fee44f;
+  font-size: calc(var(--u) * 1.05);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+#perk-left {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
 }
 
 /* ---- centre banner ------------------------------------------------------ */

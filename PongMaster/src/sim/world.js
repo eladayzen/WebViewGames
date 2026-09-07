@@ -46,6 +46,13 @@ export function createWorld(orientation, rng) {
 
     paddles: [makePaddle(SHARED.paddleInset, p), makePaddle(p.courtRatio - SHARED.paddleInset, p)],
 
+    // Which side last struck the ball. Gates pickup collection: only a ball a
+    // human last hit can collect one.
+    lastHitBy: SIDE_NEAR,
+    pickups: [],
+    spawnIn: 0,
+    perks: { trajectory: 0 },
+
     // Points inside the current match.
     score: [0, 0],
     // One-player ladder progress.
@@ -151,6 +158,7 @@ export function serve(w, side) {
   b.speed = p.ballSpeed;
   b.live = true;
   b.parked = false;
+  w.lastHitBy = side;
 
   const angle = (w.rng() * 2 - 1) * SHARED.maxServeAngle;
   const dir = side === SIDE_NEAR ? 1 : -1;

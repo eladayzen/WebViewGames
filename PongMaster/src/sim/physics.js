@@ -60,7 +60,7 @@ function fold(v, lo, hi) {
 }
 
 /* Where the ball's CENTRE is when it touches a paddle's face. */
-function contactPlane(w, side) {
+export function contactPlane(w, side) {
   const pad = w.paddles[side];
   const off = SHARED.paddleThickness / 2 + SHARED.ballRadius;
   return side === SIDE_NEAR ? pad.along + off : pad.along - off;
@@ -137,6 +137,7 @@ function bounceOffPaddle(w, side, acrossAt, wallFlipped) {
   const b = w.ball;
   const pad = w.paddles[side];
 
+  w.lastHitBy = side;
   if (wallFlipped) b.vAcross = -b.vAcross;
 
   const u = clamp((acrossAt - pad.across) / pad.half, -1, 1);
@@ -165,6 +166,50 @@ function bounceOffPaddle(w, side, acrossAt, wallFlipped) {
     const rest = Math.sqrt(Math.max(0, b.speed * b.speed - minAlong * minAlong));
     b.vAcross = Math.sign(b.vAcross || 1) * rest;
   }
+}
+
+/* The ball's path from here to a given goal-axis position, as the corner
+ * points of its wall bounces. What the TRAJECTORY perk draws.
+ *
+ * Straight-line segments folded off the side walls -- exact, because nothing
+ * changes the ball's velocity between paddles. It stops at the paddle plane
+ * rather than continuing, since what happens after the return depends on where
+ * the paddle is by then, which is precisely what the player is deciding.
+ */
+export function predictPath(w, targetAlong) {
+  const b = w.ball;
+  const pts = [{ along: b.along, across: b.across }];
+  if (!b.live || b.vAlong === 0) return pts;
+
+  let remaining = (targetAlong - b.along) / b.vAlong;
+  if (remaining <= 0) return pts;
+
+  const r = SHARED.ballRadius;
+  const lo = r;
+  const hi = w.A - r;
+  let along = b.along;
+  let across = b.across;
+  let vAcross = b.vAcross;
+
+  for (let guard = 0; guard < 16 && remaining > 0; guard++) {
+    let tWall = Infinity;
+    if (vAcross > 0) tWall = (hi - across) / vAcross;
+    else if (vAcross < 0) tWall = (lo - across) / vAcross;
+
+    if (tWall < remaining) {
+      along += b.vAlong * tWall;
+      across += vAcross * tWall;
+      pts.push({ along, across });
+      vAcross = -vAcross;
+      remaining -= tWall;
+    } else {
+      along += b.vAlong * remaining;
+      across += vAcross * remaining;
+      pts.push({ along, across });
+      break;
+    }
+  }
+  return pts;
 }
 
 /* Where the ball will cross a given goal axis position, with wall bounces

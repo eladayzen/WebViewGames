@@ -18,6 +18,7 @@ import { createRenderer } from './render/renderer.js';
 import { createHud } from './ui/hud.js';
 import { createInput } from './input/input.js';
 import { createDevPanel } from './ui/devPanel.js';
+import { createSettingsPanel } from './ui/settingsPanel.js';
 import { GameState, isOver } from './core/state.js';
 import {
   createWorld,
@@ -33,6 +34,7 @@ import {
 } from './sim/world.js';
 import { stepBall } from './sim/physics.js';
 import { stepAI, resetAIForRally } from './sim/ai.js';
+import { updatePickups, collidePickups, tickPerks, resetPickups, activePerk } from './sim/pickups.js';
 import { SHARED, LADDER, DEFAULT_MAPPING, RECENTER } from './data/tuning.js';
 import { OPPONENTS, tint, isLastOpponent } from './data/opponents.js';
 import { CLASSIC, DEFAULT_TILT_SIGN } from './data/orientation.js';
@@ -65,6 +67,10 @@ const cfg = {
   sign: DEFAULT_TILT_SIGN[CLASSIC],
   recenter: RECENTER.enabled,
   assist: true,
+  // Set from the player's sensitivity setting on boot. Deliberately NOT
+  // persisted here -- settingsPanel.js owns that preference under its own key,
+  // because it is a player setting and this object is a developer experiment.
+  sensitivityScale: 1,
 };
 
 function loadCfg() {
@@ -162,6 +168,12 @@ async function boot() {
     renderer.setOrientation(next);
     hud.setOrientation(next);
   }
+
+  const settings = createSettingsPanel({
+    onChange: (scale) => {
+      cfg.sensitivityScale = scale;
+    },
+  });
 
   const dev = createDevPanel({
     cfg,
@@ -285,6 +297,7 @@ async function boot() {
     world.twoPlayer = pendingTwoPlayer;
     readRoster(true);
     resetRun(world);
+    resetPickups(world);
     hud.setScore(0, 0);
     showFarSide();
     hud.hideBanner();
@@ -338,6 +351,8 @@ async function boot() {
 
     const beaten = world.opponent;
     advanceLadder(world);
+    // A new opponent is a clean court: perks do not carry across a match.
+    resetPickups(world);
     hud.setScore(0, 0);
     showFarSide();
     setState(world, GameState.MATCH_END, 2.2);
@@ -367,12 +382,20 @@ async function boot() {
   }
 
   function simulate(dt) {
+    updatePickups(world, dt);
+    tickPerks(world, dt);
+
     // Sub-stepped so a ball near the top of its speed ramp cannot skip past a
     // paddle between frames.
     const steps = Math.min(8, Math.max(1, Math.ceil(dt / FIXED_STEP)));
     const sub = dt / steps;
     for (let i = 0; i < steps; i++) {
+      const from = { along: world.ball.along, across: world.ball.across };
       const result = stepBall(world, sub);
+      // Pickup collection is tested against the path the ball travelled in
+      // this substep, not its endpoints, so a fast ball cannot pass through
+      // one without touching it.
+      collidePickups(world, from, { along: world.ball.along, across: world.ball.across });
       if (result) return onPoint(result.scoredBy);
     }
   }
@@ -429,6 +452,7 @@ async function boot() {
     // the world never takes one enormous step on the way back.
     if (dt > 0.25) dt = 0.25;
     if (dt > 0) update(dt);
+    hud.setPerk(activePerk(world));
     dev.update(input, world);
     renderer.draw(world);
   }
