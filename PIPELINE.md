@@ -142,6 +142,22 @@ away.
   what a Manager agent would drive too, just triggered by it instead of by
   you.
 
+## Picking up a game that already exists
+
+Stages 1-4 describe building something new. Most work now is CONTINUING a game,
+and each of those has a handoff written for exactly that. Read the game's own
+file first — every one of them records decisions that look arbitrary and are not,
+and reversing one by accident is the most expensive mistake available here.
+
+| Game | Handoff | State |
+|---|---|---|
+| **Nova Vanguard** | `pipeline/build-docs/NovaVanguard-state-of-play.md` | shipped in the product app; the reference implementation for `GOBALANCE_APP_INTEGRATION.md` |
+| **Bloop Squad** | `pipeline/build-docs/BloopSquad-poc.md` | POC, in the SDK sandbox only; two open questions, judged on a board |
+
+**Shipping into the product app** (`~/UnityProjects/gobalance`) is
+`GOBALANCE_APP_INTEGRATION.md`, not `GOBALANCE_SDK.md` — the latter covers the
+older sandbox and the two hosts differ in ways that break a build.
+
 ## Related docs
 
 - `KOLBO_ASSET_PIPELINE.md` — the asset-generation side stage 4 leans on.

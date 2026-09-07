@@ -1,6 +1,14 @@
 # Nova Vanguard — state of play
 
-**Written 2026-09-02, after the game shipped into the GoBalance app.**
+**Written 2026-09-02, updated 2026-09-07. The game is shipped into the GoBalance
+app and is the reference implementation for everything in
+`GOBALANCE_APP_INTEGRATION.md`.**
+
+**If you are picking this game up:** read this file, then
+`GOBALANCE_APP_INTEGRATION.md`, then the app team's own
+`~/UnityProjects/gobalance/Assets/GoBalance/WebGames/README.md`. Then read
+`src/data/tuning.js` — it is 3,700 lines and every constant carries the
+measurement or the quote behind it, which makes it the real design document.
 
 Why this file exists: the build doc (`NovaVanguard.md`) is dated 13 Aug and was
 written before a line of the game existed, and the decision note
@@ -97,6 +105,46 @@ re-litigated:
 
 ---
 
+## Changed since this file was first written (7 Sep)
+
+- **The campaign ends.** Beating level five's boss used to wrap silently back to
+  level one. It now shows CAMPAIGN COMPLETE, then CONTINUE, then the board —
+  reusing the QUIT screen rather than the result screen, because that screen
+  already was the right shape (board, play again, leave, no clock). Finishing
+  and stopping by hand differ only in the headline. `GameState.CLEARED` is
+  separate from `FAILED` on purpose.
+- **Pickups are more generous.** Drop chance +32 % across every type, dry-streak
+  floor 22 → 16 kills, spacing gate 6.5 → 5.0 s (that gate, not the roll, was
+  the real limiter at one canister on screen), and levels one and two carry a
+  further ×1.30 through a per-level `pickupMul` that moves the roll AND the
+  floor together. Simulated: 4.6 → 7.7 pickups per level in levels 1–2.
+- **Shield 7 → 10 s, repair +2 → +3 hull** and it drops twice as often.
+- **The vertical axis is faster.** Deadzone 0.28 → 0.20 and cap 270 → 350 px/s.
+  The old comment defended the gap as "32 % of lateral", which is only true at a
+  full pinned lean; at the moderate leans people actually hold it was 11–22 %.
+  **350 is the ceiling** — R7 warns when the climb to the boss window drops under
+  0.6 s, and at 350 it is 0.62 s.
+- **The dev keypad no longer leaks its code.** It used to compare as-you-type and
+  reset on the first wrong digit, so a correct digit added a dot and a wrong one
+  did nothing — the pad answered each digit individually and a 4-digit code was
+  worth about 36 guesses. Now every press adds a dot, nothing is judged until the
+  last one, and a wrong code holds the full row before clearing. **`devUnlock.js`
+  is a template copied into other games: Hill Bomb still has the leaky version.**
+- **Avatars are derived, not mirrored.** Initial on a colour from `avatarIndex`;
+  the copied PNGs are deleted.
+
+## Open on the app team's side (raised, not fixed)
+
+- `submitScore` resolves before the Firestore write commits, so a board fetched
+  immediately after can miss the run just played.
+- One board per game — the key comes from `folderName` and neither call takes a
+  board id, so per-mode or per-mission boards are impossible today.
+- `MaxRunsKept` is now 100 (was 10), which is what stopped quit-runs vanishing.
+  It is still **best**-100, not last-100, so the same symptom returns for anyone
+  with 100 better runs.
+- Avatar art is not reachable from a page; a host-served endpoint would let every
+  game stop deriving.
+
 ## Where things live
 
 | Path | What |
@@ -120,10 +168,4 @@ Landing into the app is `GOBALANCE_APP_INTEGRATION.md` at the repo root.
 - Level 1's waves are `POC_SCENARIO.waves` by reference. Fine, but it means the
   teaching level is still literally the POC's wave list.
 
-**Theirs (raised, not fixed):**
-- `submitScore` resolves before the Firestore write commits, so a board fetched
-  immediately after can miss the run just played.
-- One board per game — the key comes from `folderName` and neither call takes a
-  board id. Per-mission or per-mode boards are impossible today.
-- Avatar art is not reachable from a page; a host-served endpoint would let
-  every game stop deriving.
+**Theirs:** see "Open on the app team's side" above.
