@@ -1047,24 +1047,12 @@ body.dev-invincible::after {
    touch device gets.
 --------------------------------------------------------------------------- */
 
-#sound-menu {
-  position: absolute;
-  top: 68px;
-  right: 108px;
-  z-index: 9999;
-  width: 210px;
-  padding: 8px;
-  border-radius: 12px;
-  background: rgba(10, 12, 26, 0.94);
-  border: 1px solid rgba(111, 232, 255, 0.30);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  -webkit-tap-highlight-color: transparent;
-}
-
-#sound-menu.hidden { display: none; }
+/* The sound rows live in the gear panel now (see ui/settingsPanel.js); the
+   floating #sound-menu they used to sit in is gone, along with the speaker
+   button that opened it. Only the row styling survives, and it is shared with
+   whatever else the panel grows. */
+#settings-panel .sound-row { width: 100%; margin-top: 8px; }
+.settings-section-later { margin-top: 20px; }
 
 .sound-row {
   display: flex;

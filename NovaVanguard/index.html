@@ -88,42 +88,14 @@
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&#9208;</button>
 
-      <!-- Mute — third in the same top-right row, inboard of pause, in the same
-           38px circular style BUILD_NOTES.md's chrome convention establishes for
-           back and pause. It is a real control rather than a debug affordance:
-           these games are played standing on a board in a room with other people
-           in it, and "turn the sound off" has to be reachable without a menu.
-           The `U` key does the same thing for whoever is tuning the mix.
+      <!-- NO SPEAKER BUTTON. Sound lives in the gear panel now (Amit: two
+           buttons that both open a panel of player preferences are one
+           button and a longer panel). The chrome row is back, pause and
+           the gear -- and the wrench once it is unlocked. `U` still
+           toggles master mute for whoever is tuning the mix.
 
-           Glyph only, no label, matching the pair beside it — speaker for
-           audible, crossed speaker for muted (set from /src/main.js so the
-           button and the audio layer can never disagree about which state they
-           are in). -->
-      <button id="mute-button" aria-label="Mute"
-        style="position:absolute;top:12px;right:124px;z-index:9999;width:48px;height:48px;border:none;
-               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
-               font:600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
-               line-height:1;display:flex;align-items:center;justify-content:center;
-               -webkit-tap-highlight-color:transparent;">&#128264;</button>
-
-      <!-- THE SOUND MENU. Opens from the speaker button above.
-           A player-facing control, not a debug panel: two switches, the words
-           spelled out, no jargon and no numbers.
-
-           Music and effects are separate because they are separately wanted --
-           a player often wants the game's feedback while listening to their own
-           music, and a game offering only all-or-nothing gets silenced entirely
-           by anyone who dislikes its soundtrack. -->
-      <div id="sound-menu" class="hidden">
-        <button class="sound-row" id="sound-music" type="button">
-          <span class="sound-label">Music</span>
-          <span class="sound-state"></span>
-        </button>
-        <button class="sound-row" id="sound-sfx" type="button">
-          <span class="sound-label">Sound effects</span>
-          <span class="sound-state"></span>
-        </button>
-      </div>
+           The sound ROWS moved into /src/ui/settingsPanel.js, which builds
+           them from the audio hooks the game passes it. -->
 
       <!-- THE FRAMING-MODE SWITCH IS GONE FROM THE SCREEN, and only from the
            screen (Amit, playtest round 3).

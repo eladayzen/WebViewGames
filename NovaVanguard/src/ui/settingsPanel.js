@@ -46,9 +46,17 @@ const GEAR = '&#9881;';
  * @param {object} opts
  *   @param {(percent:number)=>void} [opts.onSensitivity] extra hook for a game
  *          that wants to know; the host call is made here regardless.
+ *   @param {object} [opts.audio] the game's audio layer, if it has one:
+ *          `{ isMusicOn, setMusicOn, isSfxOn, setSfxOn }`. Supplying it adds a
+ *          SOUND section; omitting it leaves a sensitivity-only panel. Optional
+ *          precisely so this file stays a template — a game with no audio is
+ *          not a game with a broken settings panel.
  */
 export function createSettingsPanel(doc, opts = {}) {
   const prefs = loadPrefs();
+  // Sections register a repaint here, so opening the panel always shows the
+  // truth no matter who changed it last -- the game, a hotkey, or the host.
+  const repaintHooks = [];
   let sensitivity =
     typeof prefs.sensitivity === 'number' ? prefs.sensitivity : DEFAULT_SENSITIVITY;
 
@@ -109,6 +117,7 @@ export function createSettingsPanel(doc, opts = {}) {
   plus.addEventListener('click', (e) => { e.stopPropagation(); apply(sensitivity + 5, true); });
 
   function setOpen(open) {
+    if (open) repaintHooks.forEach((fn) => fn());
     panel.classList.toggle('hidden', !open);
     btn.classList.toggle('on', open);
   }
@@ -117,6 +126,61 @@ export function createSettingsPanel(doc, opts = {}) {
     setOpen(panel.classList.contains('hidden'));
   });
   doc.addEventListener('click', () => setOpen(false));
+
+  // ---- SOUND, when the game passes its audio layer in ---------------------
+  //
+  // MOVED HERE FROM ITS OWN BUTTON (Amit: "we have the audio button which opens
+  // the audio settings and we have the settings button... remove the audio
+  // button and insert the audio settings into the settings panel"). Two buttons
+  // that both open a panel of player preferences are really one button and a
+  // longer panel, and the chrome row is the most expensive space on a screen a
+  // child plays standing up.
+  //
+  // MUSIC AND EFFECTS STAY SEPARATE ROWS. They are separately wanted -- people
+  // want the game's feedback while listening to their own music -- and a game
+  // offering only all-or-nothing gets silenced entirely by anyone who dislikes
+  // its soundtrack.
+  if (opts.audio) {
+    const a = opts.audio;
+    const soundTitle = doc.createElement('div');
+    soundTitle.className = 'settings-section settings-section-later';
+    soundTitle.textContent = 'SOUND';
+    panel.appendChild(soundTitle);
+
+    const painters = [];
+    const rows = [
+      { label: 'Music', get: a.isMusicOn, set: a.setMusicOn },
+      { label: 'Sound effects', get: a.isSfxOn, set: a.setSfxOn },
+    ];
+    for (const r of rows) {
+      if (typeof r.get !== 'function' || typeof r.set !== 'function') continue;
+      const row = doc.createElement('button');
+      row.type = 'button';
+      row.className = 'sound-row';
+      const label = doc.createElement('span');
+      label.className = 'sound-label';
+      label.textContent = r.label;
+      const state = doc.createElement('span');
+      state.className = 'sound-state';
+      row.appendChild(label);
+      row.appendChild(state);
+      const paint = () => {
+        const on = !!r.get();
+        state.textContent = on ? 'On' : 'Off';
+        row.classList.toggle('on', on);
+        row.setAttribute('aria-pressed', on ? 'true' : 'false');
+      };
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        r.set(!r.get());
+        painters.forEach((fn) => fn());
+      });
+      painters.push(paint);
+      paint();
+      panel.appendChild(row);
+    }
+    repaintHooks.push(() => painters.forEach((fn) => fn()));
+  }
 
   // Push the stored value to the host on boot, so a setting made last session
   // is in force before the first lean rather than after the first adjustment.

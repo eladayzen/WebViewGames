@@ -342,13 +342,22 @@ that "fixes" that by clamping the page's audio recreates the same trap.
 
 ### What a game should do
 
-Ship a **speaker button that opens a small menu with two switches, Music and
-Sound effects**, each on/off. That is the shape Nova Vanguard uses and the one
-to copy:
+Ship **two switches, Music and Sound effects, inside the settings panel** —
+*not* behind a speaker button of their own. Nova Vanguard had a speaker button
+first and it was removed: two buttons in the chrome row that both open a panel of
+player preferences are really one button and a longer panel, and that row is the
+most expensive space on a screen a child plays standing up.
 
 - **Two switches, not one.** They are separately wanted — a player often wants
   the game's feedback while listening to their own music, and an all-or-nothing
   toggle gets a game silenced entirely by anyone who dislikes its soundtrack.
+- **Pass the audio layer into the panel as hooks**, not by importing it there:
+  `createSettingsPanel(document, { audio: { isMusicOn, setMusicOn, isSfxOn,
+  setSfxOn } })`. `settingsPanel.js` is copied verbatim between games and must
+  not know which audio module a given game has. Omit the option and the panel is
+  sensitivity-only, which is correct for a game with no audio.
+- **Repaint the rows when the panel opens.** The game may change these itself —
+  a hotkey, a fresh run, the host — and a stale switch is worse than no switch.
 - **Separate gain buses** under a master, so a switch is one gain write rather
   than a flag every play path has to remember to check.
 - **Persist the choice** (`localStorage`, guarded — it can throw outright in a
@@ -357,9 +366,11 @@ to copy:
   of it on every launch.
 - **Turning music off should stop the source**, not leave it playing into a
   silent gain.
-- **Drive the speaker icon from the effective state** — master muted, or both
-  channels off, both mean silence, and an icon tracking only one contradicts the
-  other.
+- **No icon that reports sound state.** The old speaker glyph had to be driven
+  from the *effective* state — master mute, or both channels off, both mean
+  silence — and an icon tracking one of the three contradicted the others. Rows
+  that read "On"/"Off" cannot disagree with themselves, so that whole class of
+  bug goes away with the button.
 
 ### The one WebAudio rule that still applies
 

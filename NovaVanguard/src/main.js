@@ -102,20 +102,10 @@ async function boot() {
   const world = createWorld();
   const rng = makeRng(POC_SCENARIO.seed);
   const hud = createHud(document);
-  const muteButton = document.getElementById('mute-button');
-
-  /** Repaint the speaker icon from what the player will actually hear. */
-  function paintMute() {
-    // The icon reports whether the player will actually hear anything: the app
-    // muting us, the master mute, or both channels switched off all end in
-    // silence, and an icon that only tracked one of them would contradict the
-    // other two.
-    // Master mute, or both channels off, both end in silence -- an icon that
-    // tracked only one of them would contradict the other.
-    const m = isMuted() || (!isMusicOn() && !isSfxOn());
-    muteButton.textContent = m ? '\u{1F507}' : '\u{1F508}';
-    muteButton.setAttribute('aria-label', m ? 'Sound settings (muted)' : 'Sound settings');
-  }
+  // NO SPEAKER BUTTON AND NO ICON TO KEEP IN SYNC. Sound is two rows in the
+  // gear panel, and the panel repaints them when it opens -- so there is no
+  // longer a glyph that can disagree with what the player actually hears, which
+  // is what the old paintMute() existed to prevent.
   // --- quitting ------------------------------------------------------------
   //
   // The X is the ONLY way out of a game on the board, which cuts both ways: it
@@ -203,50 +193,6 @@ async function boot() {
     leaveToLobby();
   });
 
-  // --- the sound menu (Music / Sound effects) ------------------------------
-  const soundMenu = document.getElementById('sound-menu');
-  const rowMusic = document.getElementById('sound-music');
-  const rowSfx = document.getElementById('sound-sfx');
-
-  function paintSoundMenu() {
-    const rows = [
-      [rowMusic, isMusicOn()],
-      [rowSfx, isSfxOn()],
-    ];
-    for (const [row, on] of rows) {
-      if (!row) continue;
-      row.querySelector('.sound-state').textContent = on ? 'On' : 'Off';
-      row.classList.toggle('on', on);
-      row.setAttribute('aria-pressed', on ? 'true' : 'false');
-    }
-  }
-
-  function setSoundMenuOpen(open) {
-    if (!soundMenu) return;
-    soundMenu.classList.toggle('hidden', !open);
-    if (open) paintSoundMenu();
-  }
-
-  if (rowMusic) {
-    rowMusic.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setMusicOn(!isMusicOn());
-      paintSoundMenu();
-      paintMute();
-    });
-  }
-  if (rowSfx) {
-    rowSfx.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setSfxOn(!isSfxOn());
-      paintSoundMenu();
-      paintMute();
-    });
-  }
-  // Anywhere else closes it, so it can never be left covering the playfield.
-  document.addEventListener('click', () => setSoundMenuOpen(false));
-
-  paintMute();
   const sectorUi = createSectorTransitionUi(document);
   const instr = createInstrumentation();
 
@@ -453,7 +399,6 @@ async function boot() {
 
   function toggleMute() {
     toggleMuted();
-    paintMute();
     // Unmuting resumes the context (a tap on the speaker IS the gesture the
     // autoplay policy wants), which would otherwise start the music bed playing
     // over a paused game. Pause wins.
@@ -524,15 +469,6 @@ async function boot() {
     setPaused(!world.paused);
   });
 
-  // THE SPEAKER OPENS THE MENU rather than toggling master mute. Two switches
-  // that the player can see beat one switch whose meaning they have to infer,
-  // and "turn the music off but keep the hits" is the request a single toggle
-  // cannot answer.
-  muteButton.addEventListener('click', (e) => {
-    e.stopPropagation();
-    setSoundMenuOpen(soundMenu.classList.contains('hidden'));
-  });
-
   // Dev panel (ui/devPanel.js) -- level jump, skip-to-boss, invincibility.
   // Mounted from JS rather than authored into index.html so the whole tool
   // lives in one file and can be dropped by deleting the import.
@@ -556,7 +492,12 @@ async function boot() {
   // meant to change. Separate from the wrench for a reason -- mixing them puts
   // a player one tap from invincibility, and a developer behind a secret when
   // they want sensitivity.
-  const settings = createSettingsPanel(document);
+  const settings = createSettingsPanel(document, {
+    // The gear owns sound now. Passed as hooks rather than imported inside the
+    // panel, because settingsPanel.js is copied verbatim into every game and
+    // must not know which audio module this one happens to have.
+    audio: { isMusicOn, setMusicOn, isSfxOn, setSfxOn },
+  });
   document.body.appendChild(settings.button);
   document.body.appendChild(settings.panel);
 
