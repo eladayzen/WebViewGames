@@ -186,8 +186,14 @@ export const TOYS = {
   kinds: {
     // Shots seek the nearest monster in ANY direction. The purest answer to
     // "there is one right beside me and I can only fire up".
+    // MUCH SHORTER THAN THE OTHERS (Amit, from the board), and it should be:
+    // the wand removes aiming altogether, which is the one thing the game is
+    // actually asking the player to do. Ten seconds of it was ten seconds of
+    // the game playing itself. Five is a burst -- long enough to feel like a
+    // rescue when something is beside you, short enough that you go back to
+    // steering.
     wand: {
-      id: 'wand', label: 'BUBBLE WAND', durationS: 10, tint: 0x74d7ff,
+      id: 'wand', label: 'BUBBLE WAND', durationS: 5, tint: 0x74d7ff,
       intervalS: 0.11, turnRate: 7.5, speedPxS: 1000, seekRadius: 1400,
     },
     // A spray that rotates a full turn about every 1.2 s. Covers everything --
@@ -209,3 +215,50 @@ export const TOYS = {
   // rarity before we know which of them is worth being rare.
   weights: { wand: 1, twirl: 1, buddies: 1 },
 };
+
+// ---------------------------------------------------------------------------
+// DIFFICULTY -- the run gets harder the longer it lasts.
+//
+// A run has no levels and no waves: it is one continuous field, so the only
+// honest way to make it build is against the clock. Everything below ramps from
+// `from` to `to` over `rampS` and then STOPS. The cap is the important half --
+// an endless ramp eventually violates the reaction floor and turns a game an
+// eight-year-old is enjoying into one that shrugs them off, and it does it long
+// after anyone is still watching for it.
+//
+// What escalates, and what deliberately does NOT:
+//   - more monsters, arriving sooner, moving faster, weighted bigger.
+//   - NOT their health. Tougher-over-time makes the same monster take longer to
+//     pop, which reads as the gun getting weaker rather than the game getting
+//     harder. Size tiers already carry that job.
+//   - NOT the pass clearance. That rule is what keeps every threat answerable
+//     with a sideways lean, and it is not a difficulty lever.
+// ---------------------------------------------------------------------------
+
+export const DIFFICULTY = {
+  // Three and a half minutes to full. A run on a balance board is a few minutes
+  // long, so the ramp has to be readable inside one -- but the first thirty
+  // seconds must still be gentle enough to learn in.
+  rampS: 210,
+  // Eased so the early climb is slow and the pressure arrives in the back half,
+  // rather than the game tightening while the player is still working out what
+  // the pod does.
+  ease: 1.6,
+
+  spawnIntervalMul: { from: 1.00, to: 0.50 },  // 1.55s -> 0.78s between arrivals
+  speedMul:         { from: 1.00, to: 1.45 },  // 68 -> 99 px/s base drift
+  maxLive:          { from: 13,   to: 22   },
+  // Late runs lean toward the bigger tiers: the crowd grows, but it also grows
+  // UP, so the field does not simply fill with chaff.
+  largeShareBonus: 0.14,
+};
+
+/** 0 at the start of a run, 1 once the ramp is done. Eased. */
+export function difficulty01(timeS) {
+  const t = Math.max(0, Math.min(1, timeS / DIFFICULTY.rampS));
+  return Math.pow(t, DIFFICULTY.ease);
+}
+
+export function lerpDiff(range, d) {
+  return range.from + (range.to - range.from) * d;
+}

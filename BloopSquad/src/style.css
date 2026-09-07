@@ -21,19 +21,74 @@ html, body {
 
 canvas { display: block; }
 
-#gb-back {
+/* The chrome row: quit, pause, settings, top right, evenly spaced. 52px each
+   because these are pressed by a child, sometimes while standing on a moving
+   board -- the size is an accessibility decision, not a style one. */
+#chrome {
   position: fixed;
-  top: 12px;
-  left: 12px;
-  width: 48px;
-  height: 48px;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  gap: 10px;
+  z-index: 20;
+}
+
+#chrome button,
+#settings-button {
+  width: 52px;
+  height: 52px;
   border-radius: 999px;
   border: none;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
   color: #14213d;
-  font: 700 22px system-ui, sans-serif;
+  font: 700 20px system-ui, sans-serif;
   cursor: pointer;
-  z-index: 20;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#chrome button:active,
+#settings-button:active { background: rgba(215, 232, 255, 0.95); }
+
+#settings-button.on { background: #74d7ff; }
+
+#settings-panel {
+  position: fixed;
+  top: 76px;
+  right: 14px;
+  z-index: 21;
+  min-width: 260px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: rgba(12, 18, 34, 0.96);
+  border: 2px solid rgba(116, 215, 255, 0.35);
+  color: #eaf2ff;
+}
+
+.settings-section { font: 700 15px system-ui, sans-serif; letter-spacing: 0.14em; }
+.settings-note { font-size: 12px; color: #8fb4d9; margin: 6px 0 14px; }
+.settings-row { display: flex; align-items: center; gap: 12px; }
+.settings-step {
+  width: 44px; height: 44px; border-radius: 12px; border: none;
+  background: rgba(40, 56, 92, 0.95); color: #eaf2ff;
+  font: 700 22px system-ui, sans-serif; cursor: pointer;
+}
+.settings-value { font: 700 22px system-ui, sans-serif; min-width: 62px; text-align: center; }
+
+/* PAUSED is a state the player chose, so it says so plainly and does not hide
+   the field behind it -- the same reasoning as the quit confirm elsewhere. */
+#paused-badge {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 19;
+  padding: 18px 44px;
+  border-radius: 16px;
+  background: rgba(12, 18, 34, 0.82);
+  border: 2px solid rgba(116, 215, 255, 0.4);
+  color: #eaf2ff;
+  font: 700 30px system-ui, sans-serif;
+  letter-spacing: 0.2em;
 }
 
 .hidden { display: none !important; }

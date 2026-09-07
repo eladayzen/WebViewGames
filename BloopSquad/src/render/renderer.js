@@ -7,7 +7,7 @@
 // about the art beyond silhouette scale and palette.
 
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
-import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, MONSTERS, TOYS } from '../data/tuning.js';
+import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, MONSTERS, TOYS, difficulty01 } from '../data/tuning.js';
 
 const PALETTE = {
   bg: 0x0b1020,
@@ -57,9 +57,9 @@ export async function createRenderer(canvas) {
     fill, fontFamily: 'system-ui, sans-serif', fontSize: size, fontWeight: '700',
   });
   const scoreText = new Text({ text: '', style: style(38, '#eaf2ff') });
-  scoreText.position.set(84, 20);
+  scoreText.position.set(46, 74);
   const statsText = new Text({ text: '', style: style(22, '#8fb4d9') });
-  statsText.position.set(84, 74);
+  statsText.position.set(46, 122);
   const heartsG = new Graphics();
   hud.addChild(scoreText, statsText, heartsG);
 
@@ -130,15 +130,21 @@ export async function createRenderer(canvas) {
   function drawHud(w) {
     scoreText.text = `${w.stats.score}   ★ ${w.stats.coins}`;
     heartsG.clear();
+    // HEARTS LEFT, CHROME RIGHT. They are the two things always on screen, and
+    // splitting them means neither has to move when the other grows -- a fourth
+    // heart or a fourth button changes nothing about the other side.
     for (let i = 0; i < PLAYER.hearts; i++) {
       const on = i < w.player.hearts;
-      heartsG.circle(DESIGN_W - 60 - i * 52, 44, 17)
+      const x = 46 + i * 52;
+      heartsG.circle(x, 44, 17)
         .fill({ color: on ? PALETTE.heart : 0x2a3550, alpha: on ? 1 : 0.7 });
+      heartsG.circle(x, 44, 17).stroke({ width: 3, color: 0x131a2b, alpha: on ? 0.9 : 0.5 });
     }
     if (!w.stats.showStatsOff) {
       const worst = w.stats.worstReactionS < 90 ? w.stats.worstReactionS.toFixed(2) + 's' : '--';
       statsText.text =
         `camera ${CAMERA.mode}   drift x${MONSTERS.driftMul.toFixed(2)}   ` +
+        `ramp ${Math.round(difficulty01(w.time) * 100)}%   ` +
         `clearance x${MONSTERS.passClearanceMul.toFixed(2)}\n` +
         `passes ${w.stats.passes}   near ${w.stats.nearMisses}   contacts ${w.stats.contacts}   ` +
         `worst reaction ${worst}`;

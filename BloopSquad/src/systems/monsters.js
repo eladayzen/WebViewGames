@@ -10,17 +10,22 @@
 // re-applied. A monster that steered continuously would be chasing the player
 // by another name, and the player could never learn where it was going.
 
-import { MONSTERS, DESIGN_W, DESIGN_H, PLAYER } from '../data/tuning.js';
+import { MONSTERS, DESIGN_W, DESIGN_H, PLAYER, DIFFICULTY, difficulty01, lerpDiff } from '../data/tuning.js';
 
 // How close to the pod's column a crossing has to be before it counts as a
 // pass at all. Roughly "could this have hit me if I had stood still?".
 const PASS_LANE_PX = 420;
 
-function pickTier(rng) {
-  const r = rng.next();
+function pickTier(rng, d) {
+  // The crowd grows UP as well as out: late runs shift weight off the smalls
+  // and onto the bigger tiers, so more monsters does not just mean more chaff.
+  const bonus = DIFFICULTY.largeShareBonus * d;
   const w = MONSTERS.tierWeights;
-  if (r < w.small) return 'small';
-  if (r < w.small + w.medium) return 'medium';
+  const small = Math.max(0, w.small - bonus);
+  const medium = w.medium + bonus * 0.45;
+  const r = rng.next();
+  if (r < small) return 'small';
+  if (r < small + medium) return 'medium';
   return 'large';
 }
 
@@ -37,13 +42,19 @@ function pickEdge(rng) {
 }
 
 export function spawnMonster(w, rng) {
-  if (w.monsters.filter((m) => m.alive).length >= MONSTERS.maxLive) return null;
+  const d = difficulty01(w.time);
+  const cap = Math.round(lerpDiff(DIFFICULTY.maxLive, d));
+  if (w.monsters.filter((m) => m.alive).length >= cap) return null;
 
-  const tierName = pickTier(rng);
+  const tierName = pickTier(rng, d);
   const tier = MONSTERS.tiers[tierName];
   const edge = pickEdge(rng);
   const margin = tier.radius + 20;
-  const speed = MONSTERS.driftPxS * MONSTERS.driftMul * tier.speedMul;
+  // Difficulty moves the SPEED and the CROWD, never the health: a monster that
+  // takes more hits later reads as the gun getting weaker, not the game getting
+  // harder.
+  const speed = MONSTERS.driftPxS * MONSTERS.driftMul * tier.speedMul *
+                lerpDiff(DIFFICULTY.speedMul, d);
 
   let x, y, vx, vy;
   // A shallow angle across the field rather than a straight line, so the same
@@ -160,6 +171,7 @@ export function updateMonsters(w, dt) {
 export function maybeSpawn(w, rng, dt) {
   w.spawnT -= dt;
   if (w.spawnT > 0) return;
-  w.spawnT = MONSTERS.spawnIntervalS;
+  const d = difficulty01(w.time);
+  w.spawnT = MONSTERS.spawnIntervalS * lerpDiff(DIFFICULTY.spawnIntervalMul, d);
   spawnMonster(w, rng);
 }

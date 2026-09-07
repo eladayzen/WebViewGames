@@ -62,8 +62,15 @@
     <!-- The X is the only way out of a game on the board. The inline handler is
          the fallback for a build whose module failed to load: a game that
          cannot boot must still be escapable. -->
-    <button id="gb-back" type="button"
-            onclick="(window.__gbBack ? window.__gbBack() : (window.Unity &amp;&amp; window.Unity.call('nav:back')))">&#10005;</button>
+    <!-- CHROME ROW, TOP RIGHT: quit, pause, settings -- the house format, and
+         the same order in every game so a player who learns one knows them all.
+         Hearts sit on the OTHER side (drawn on the canvas) so the two never
+         crowd each other and neither has to move when the other grows. -->
+    <div id="chrome">
+      <button id="gb-back" type="button" aria-label="Quit"
+              onclick="(window.__gbBack ? window.__gbBack() : (window.Unity &amp;&amp; window.Unity.call('nav:back')))">&#10005;</button>
+      <button id="pause-button" type="button" aria-label="Pause">&#10074;&#10074;</button>
+    </div>
 
     <div id="stage"><canvas id="game"></canvas></div>
 

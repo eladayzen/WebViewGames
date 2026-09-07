@@ -20,7 +20,8 @@ import { initInput, readInput } from './input/input.js';
 import { updateMonsters, maybeSpawn } from './systems/monsters.js';
 import { updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops } from './systems/play.js';
 import { updateFiring, updateToyPickups, equip } from './systems/toys.js';
-import { CAMERA, MONSTERS, TOYS, DESIGN_W } from './data/tuning.js';
+import { createSettingsPanel } from './ui/settingsPanel.js';
+import { CAMERA, MONSTERS, TOYS, DESIGN_W, difficulty01 } from './data/tuning.js';
 
 const CAMERA_MODES = ['fixed', 'drift', 'lateral'];
 
@@ -87,6 +88,7 @@ async function boot() {
       score: s.score, popped: s.popped, coins: s.coins, toysUsed: s.toysUsed,
       toy: world.toy.active ? world.toy.active.id : null,
       minutes: +(world.time / 60).toFixed(2),
+      ramp: +(difficulty01(world.time) * 100).toFixed(0),
     };
   }
 
@@ -131,6 +133,41 @@ async function boot() {
   }
 
   document.getElementById('restart-button')?.addEventListener('click', restart);
+
+  // --- chrome: pause and settings ----------------------------------------
+  const pausedBadge = document.createElement('div');
+  pausedBadge.id = 'paused-badge';
+  pausedBadge.className = 'hidden';
+  pausedBadge.textContent = 'PAUSED';
+  document.body.appendChild(pausedBadge);
+
+  function setPaused(v) {
+    world.paused = v;
+    pausedBadge.classList.toggle('hidden', !v);
+    pauseBtn?.classList.toggle('on', v);
+  }
+  const pauseBtn = document.getElementById('pause-button');
+  pauseBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setPaused(!world.paused);
+  });
+
+  // The gear, lifted from Nova Vanguard unchanged: it owns board sensitivity,
+  // which is the one setting every game on this hardware shares because the
+  // right lean for an adult is not the right lean for a child. The host applies
+  // it to the sensor reading itself -- the game must never also scale the
+  // value, or the two compound and the number stops meaning what it says.
+  const settings = createSettingsPanel(document);
+  document.getElementById('chrome')?.appendChild(settings.button);
+  document.body.appendChild(settings.panel);
+  // Opening settings pauses the run -- nobody should be adjusting their lean
+  // while monsters are still arriving. Done with our own listener rather than a
+  // new option on the template: settingsPanel.js is copied verbatim between
+  // games, and a per-game parameter added here is exactly how those copies
+  // start to drift apart.
+  settings.button.addEventListener('click', () => {
+    if (!settings.panel.classList.contains('hidden')) setPaused(true);
+  });
 
   // The X is the only way out on the board. The inline fallback in index.html
   // covers the case where this module never loads.
