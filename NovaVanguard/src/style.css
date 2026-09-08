@@ -856,7 +856,11 @@ body {
 #dev-button {
   position: absolute;
   top: 12px;
-  right: 236px;
+  /* FOURTH SLOT, following the gear inboard. It only exists once the unlock
+     gesture has been performed, so it is the one button in the row a player
+     never sees -- but when it appears it has to appear in the row, not floating
+     a slot away from it. */
+  right: 180px;
   z-index: 9999;
   width: 48px;
   height: 48px;
@@ -1215,7 +1219,11 @@ body.dev-invincible::after {
 #settings-button {
   position: absolute;
   top: 12px;
-  right: 180px;
+  /* THIRD IN THE ROW, hard against pause. The chrome row runs on a 56px pitch
+     from the right edge -- 12 (quit), 68 (pause), 124, 180 -- and the speaker
+     that used to hold 124 is gone, so the gear moves into it rather than
+     leaving a hole the eye reads as a missing button. */
+  right: 124px;
   z-index: 9999;
   width: 48px;
   height: 48px;
@@ -1240,7 +1248,8 @@ body.dev-invincible::after {
 #settings-panel {
   position: absolute;
   top: 68px;
-  right: 108px;
+  /* Hangs under the gear. Stage-relative like the button it belongs to. */
+  right: 68px;
   z-index: 9999;
   width: 230px;
   padding: 10px 12px 12px;

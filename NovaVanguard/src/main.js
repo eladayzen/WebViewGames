@@ -498,8 +498,15 @@ async function boot() {
     // must not know which audio module this one happens to have.
     audio: { isMusicOn, setMusicOn, isSfxOn, setSfxOn },
   });
-  document.body.appendChild(settings.button);
-  document.body.appendChild(settings.panel);
+  // MOUNTED INTO #stage, NOT body, and that is the whole fix for the chrome row
+  // not lining up. Quit and pause are authored inside #stage -- the letterboxed
+  // play area, whose left/top/width/height are set per frame -- so their
+  // `right:` offsets are measured from the play area's edge. A button hanging
+  // off body measures from the WINDOW instead, which happens to look right at
+  // one aspect ratio and drifts at every other. Same parent, same origin, same
+  // 56px pitch, at any window size.
+  stage.appendChild(settings.button);
+  stage.appendChild(settings.panel);
 
   // THE DEV PANEL IS NOT MOUNTED UNTIL IT IS UNLOCKED.
   //
@@ -512,8 +519,8 @@ async function boot() {
   const mountDev = () => {
     if (devMounted) return;
     devMounted = true;
-    document.body.appendChild(devPanel.button);
-    document.body.appendChild(devPanel.panel);
+    stage.appendChild(devPanel.button);
+    stage.appendChild(devPanel.panel);
     devPanel.toggle();
   };
   installDevUnlock(document, document.getElementById('shield-wrap'), mountDev);
