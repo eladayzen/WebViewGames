@@ -272,6 +272,10 @@ export function createWorld() {
       lastDropT: -999,
       dropped: 0,
       collected: 0,
+      // The last kind a BOSS threshold handed out, so the next one can avoid
+      // repeating it. A fight that pays out the same canister twice reads as
+      // the game having nothing else to give.
+      lastBossKind: '',
     },
 
     // Telegraph markers for anything arriving from the top edge (§5.3).

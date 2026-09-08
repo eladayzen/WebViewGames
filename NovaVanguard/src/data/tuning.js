@@ -951,6 +951,28 @@ export const PICKUPS = {
   // system, for exactly the reason the first one is.
   maxKillsWithoutDrop: 16,
 
+  // WHAT A BOSS THRESHOLD IS ALLOWED TO HAND OUT.
+  //
+  // Amit, on level one: "first boss just gave me like three shields... the
+  // first boss has to give me some kind of a special weapon, because otherwise
+  // it takes too long to kill him and it's just a boring experience."
+  //
+  // Exactly right, and the general rule behind it is that A BOSS IS A DAMAGE
+  // CHECK. The fight is long by design and the player's answer to it is
+  // firepower, so the supply the FIGHT authors has to be firepower. BARRIER and
+  // REPAIR are survival, which is the wave director's business -- offering them
+  // here spends the fight's one reward on the axis the fight is not testing,
+  // and three of them in a row spends the whole fight on it.
+  //
+  // The wave drops are untouched: a random kill can still pay out a shield, and
+  // that is where a shield belongs.
+  bossDrops: {
+    weaponsOnly: true,
+    // ...and not the same weapon twice running. A boss that pays out RAPID
+    // twice has, from the player's side, paid out once.
+    noRepeat: true,
+  },
+
   // At most one on screen, and never two inside this window. Both are anti-
   // clutter rather than anti-generosity: two canisters drifting at once turn a
   // lure into a scatter of choices, and §5.6's offset cap only means something

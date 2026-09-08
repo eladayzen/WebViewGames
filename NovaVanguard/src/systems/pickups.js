@@ -183,12 +183,24 @@ function kindAllowedNow(w, id) {
   return t <= 0 || t <= PICKUPS.chainTailS;
 }
 
-function rollKind(w) {
+/**
+ * @param {object} [opts]
+ *   @param {boolean} [opts.weaponsOnly] leave the effect canisters (barrier,
+ *          repair) out of the pool -- see PICKUPS.bossDrops for why a fight's
+ *          own supply has to be firepower.
+ *   @param {string}  [opts.exclude] a kind id to leave out of this roll.
+ */
+function rollKind(w, opts = {}) {
   const running = w.player.weaponT > 0 ? w.player.weapon : '';
+  const eligible = (id) => {
+    if (PICKUPS.excludeRunningWeapon && PICKUPS.kinds[id].weapon === running) return false;
+    if (opts.weaponsOnly && PICKUPS.kinds[id].effect) return false;
+    if (opts.exclude && id === opts.exclude) return false;
+    return kindAllowedNow(w, id);
+  };
   let total = 0;
   for (const id of Object.keys(PICKUPS.kinds)) {
-    if (PICKUPS.excludeRunningWeapon && PICKUPS.kinds[id].weapon === running) continue;
-    if (!kindAllowedNow(w, id)) continue;
+    if (!eligible(id)) continue;
     total += PICKUPS.weaponWeights[id] || 0;
   }
   // Every candidate excluded or unweighted: fall back to the introductory one
@@ -201,8 +213,7 @@ function rollKind(w) {
   if (total <= 0) return '';
   let r = prng.next() * total;
   for (const id of Object.keys(PICKUPS.kinds)) {
-    if (PICKUPS.excludeRunningWeapon && PICKUPS.kinds[id].weapon === running) continue;
-    if (!kindAllowedNow(w, id)) continue;
+    if (!eligible(id)) continue;
     r -= PICKUPS.weaponWeights[id] || 0;
     if (r <= 0) return id;
   }
@@ -423,9 +434,14 @@ export function devSpawnPickup(w, kind) {
  * Used by the boss HP thresholds (BOSS.pickupAtFractions). Bypasses the drop
  * chance, the minimum gap and the kills-without-drop floor, because none of
  * those are about this: they exist to shape how often a random kill pays out,
- * and a boss reaching 70% is not a random event. The weapon itself is still
- * rolled normally, so the exclude-running-weapon rule still holds and the
- * canister still visibly changes what comes out of the guns.
+ * and a boss reaching 70% is not a random event.
+ *
+ * WEAPONS ONLY, AND NOT THE SAME ONE TWICE (PICKUPS.bossDrops). A boss is a
+ * damage check, and firepower is the player's answer to it -- so the supply the
+ * FIGHT authors is firepower. Shields and repairs are the wave director's
+ * business and still drop from ordinary kills. The exclude-running-weapon rule
+ * still applies on top, so the canister always visibly changes what comes out
+ * of the guns.
  *
  * It does NOT reset killsSinceDrop -- a boss pickup is extra supply, not a
  * substitute for the wave drops, and consuming the dry-spell counter would
@@ -434,10 +450,21 @@ export function devSpawnPickup(w, kind) {
 export function dropAuthoredPickup(w, x, y) {
   if (liveCount(w.pickups) >= PICKUPS.maxOnScreen) return false;
   const before = w.pickup.killsSinceDrop;
-  const kind = rollKind(w);
+  const policy = PICKUPS.bossDrops || {};
+  let kind = rollKind(w, {
+    weaponsOnly: !!policy.weaponsOnly,
+    exclude: policy.noRepeat ? w.pickup.lastBossKind : '',
+  });
+  // If avoiding the repeat leaves nothing eligible, take the repeat rather than
+  // dropping nothing: a fight that silently declines to pay is worse than one
+  // that pays the same thing twice.
+  if (!kind && policy.noRepeat && w.pickup.lastBossKind) {
+    kind = rollKind(w, { weaponsOnly: !!policy.weaponsOnly });
+  }
   if (!kind) return false;
   const q = spawnPickup(w, x, y, kind);
   w.pickup.killsSinceDrop = before;
+  if (q) w.pickup.lastBossKind = kind;
   return !!q;
 }
 
