@@ -678,11 +678,22 @@ body {
 
 .board-screen.hidden { display: none; }
 
+/* SIZED FOR A PLAYER STANDING ON A BOARD, roughly 1.5-2 m from the screen, not
+   for someone at a desk (Amit, on the start screen: "the first UI you see is
+   very small... we can increase it a lot"). Everything below is in vmin, so
+   these are percentages of the short edge -- the whole card scales with the
+   screen rather than being a pixel size that happens to suit one display.
+
+   The three board screens -- start, result, quit -- deliberately share this
+   card, so growing it grows all three. That is the point: they are meant to
+   read as one screen showing the same table at different moments, and a start
+   screen that was legible while the result screen was not would read as two
+   different features. */
 .board-card {
   text-align: center;
-  min-width: 46%;
-  max-width: 62%;
-  padding: 3.4vmin 4vmin;
+  min-width: 62%;
+  max-width: 82%;
+  padding: 4.6vmin 5.4vmin;
   border-radius: 1.6vmin;
   background: rgba(9, 14, 28, 0.72);
   border: 0.18vmin solid rgba(111, 232, 255, 0.22);
@@ -691,25 +702,27 @@ body {
 
 #start-card h1,
 #gameover-card h1 {
-  margin: 0 0 0.9vmin;
-  font-size: 3.4vmin;
+  margin: 0 0 1.6vmin;
+  font-size: 6.6vmin;
   letter-spacing: 0.5vmin;
   color: #eafcff;
   text-shadow: 0 0 2vmin rgba(111, 232, 255, 0.55);
 }
 
 #start-sub {
-  margin: 0 0 1.4vmin;
-  font-size: 1.5vmin;
+  margin: 0 0 2.4vmin;
+  font-size: 3vmin;
   letter-spacing: 0.12vmin;
   color: rgba(207, 233, 245, 0.72);
 }
 
 /* The countdown is the one thing on the start screen that changes, so it is the
    one thing sized to be read from a standing position on a board. */
+/* The line that changes, so it is the one sized to be read from a standing
+   position on a board rather than from a chair. */
 #start-countdown {
-  margin: 2vmin 0 0;
-  font: 700 2.2vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  margin: 3vmin 0 0;
+  font: 700 4.4vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
   letter-spacing: 0.22vmin;
   color: #6fe8ff;
   text-shadow: 0 0 1.6vmin rgba(111, 232, 255, 0.6);
@@ -733,8 +746,8 @@ body {
 }
 
 #gameover-stats {
-  margin: 0 0 2.4vmin;
-  font-size: 1.8vmin;
+  margin: 0 0 2.8vmin;
+  font-size: 2.4vmin;
   color: #9fc0d4;
   letter-spacing: 0.1em;
 }
@@ -990,10 +1003,10 @@ body.dev-invincible::after {
 #scoreboard-title,
 #start-scoreboard-title,
 #quit-scoreboard-title {
-  font: 700 1.25vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
-  letter-spacing: 0.22vmin;
+  font: 700 2.3vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.3vmin;
   color: rgba(111, 232, 255, 0.75);
-  margin-bottom: 1vmin;
+  margin-bottom: 1.5vmin;
   text-align: center;
 }
 
@@ -1005,18 +1018,21 @@ body.dev-invincible::after {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5vmin;
+  gap: 0.8vmin;
 }
 
+/* The row is the thing that actually gets READ, so it takes the largest jump.
+   A name and a score at 1.5vmin is about 16px on a 1080-high display -- fine on
+   a laptop, unreadable from where this game is played. */
 .sb-row {
   display: grid;
-  grid-template-columns: 3.2vmin 3.4vmin 1fr auto;
+  grid-template-columns: 4.4vmin 4.8vmin 1fr auto;
   align-items: baseline;
-  gap: 1vmin;
-  padding: 0.7vmin 1vmin;
-  border-radius: 0.7vmin;
+  gap: 1.4vmin;
+  padding: 1.1vmin 1.6vmin;
+  border-radius: 1vmin;
   background: rgba(20, 34, 54, 0.55);
-  font: 600 1.5vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  font: 600 2.7vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
   color: #cfe9f5;
 }
 
@@ -1105,8 +1121,8 @@ body.dev-invincible::after {
    art cannot be reached from the page, and mirroring it per game was rejected
    as a maintenance cost (see /data/avatars.js). */
 .sb-avatar {
-  width: 3.2vmin;
-  height: 3.2vmin;
+  width: 4.4vmin;
+  height: 4.4vmin;
   border-radius: 999px;
   overflow: hidden;
   display: flex;
@@ -1118,7 +1134,7 @@ body.dev-invincible::after {
 /* Dark text on the light wheel colours, which is legible on every one of them
    and needs no per-colour contrast decision. */
 .sb-avatar {
-  font: 700 1.5vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  font: 700 2.1vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
   color: #06121c;
 }
 
