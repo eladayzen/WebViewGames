@@ -380,8 +380,15 @@ const MISSION_MODE = {
         // sentence that people spend time to look at and it's really confusing
         // and not that funny." It sat between the title and the objectives --
         // the two things that actually say what to do -- and cost a read to
-        // discover it said nothing. mission.brief still labels the row in the
-        // mission list, where browsing is the point.
+        // discover it said nothing.
+        //
+        // THE MISSION LIST HAS SINCE REACHED THE SAME VERDICT. This used to
+        // note that mission.brief still labelled the row there, "where
+        // browsing is the point"; it does not any more. Amit, on the list:
+        // "lose the second tagline, actually show the needed criteria." The
+        // row now spends that line on icons and counts instead, so the flavour
+        // text survives in the data and is rendered nowhere -- browsing turned
+        // out to want the numbers too.
         rows: objectives.map((o) => ({
           label: o.spec && o.spec.action ? o.spec.action(o)
             : o.spec ? o.spec.label(o) : o.kind,
@@ -458,7 +465,21 @@ export default registerMode({
   // Just MISSIONS -- see the same change in speedRace.js. The open-face ladder
   // it was being told apart from is no longer reachable.
   name: 'MISSIONS',
-  tagline: 'The ridge. Twenty runs against the clock.',
+  /**
+   * WHAT YOU GET, NOT WHERE IT HAPPENS. Amit: "no need to say The ridge --
+   * something like 'unlock achievements and new missions'."
+   *
+   * Both lobby lines used to open by naming the hill, which told a player
+   * choosing between two modes the one thing that does not distinguish them:
+   * they are the SAME hill. "Twenty runs against the clock" then spent the rest
+   * of the line on a number that is already stale -- the ladder is forty now --
+   * and on the clock, which both modes have.
+   *
+   * The reason to pick this one is that it is the mode that GROWS: stars,
+   * unlocks, a list that opens as you clear it. That is the promise, and it is
+   * the half the old line never made.
+   */
+  tagline: 'Unlock achievements and new missions.',
 });
 
 

@@ -90,21 +90,37 @@
  * never true of the teaching missions, which exist precisely to strip the hill
  * down to one thing:
  *
- *     mission 1  ramps only, no pickups, no rails    ceiling  9,040
- *     mission 2  ramps and rails, no pickups         ceiling 13,798
- *     mission 4  ramps, rails and gates, no pickups  ceiling 15,658
- *     mission 6+ the full hill                       ceiling ~28,000
+ *     ramps only, no pickups, no rails        ceiling  9,340
+ *     ramps and rails, no pickups             ceiling 14,398
+ *     ramps, rails and gates, no pickups      ceiling 15,658
+ *     the full hill                           ceiling ~28,000
  *
- * Against a 2-star bar of 16,000 on mission 1. Not hard -- arithmetically
- * impossible, and 3 stars more so. An autopilot that took every ramp on that
- * mission scored 7,570. Amit: "it's easy enough to finish them, but I am
- * always getting 1 star, sometimes 2, and it's not clear why."
+ * Against a 2-star bar of 16,000 on the ramps-only one. Not hard --
+ * arithmetically impossible, and 3 stars more so. An autopilot that took every
+ * ramp on that mission scored 7,570. Amit: "it's easy enough to finish them,
+ * but I am always getting 1 star, sometimes 2, and it's not clear why."
  *
  * Which is the real defect: a threshold the player cannot reach reads as the
  * game being broken, not as a challenge, because nothing they do moves it.
+ *
+ * RE-MEASURED AGAIN for the first three, which swapped hills when Amit
+ * reordered them (see AUTHORED). A ceiling belongs to a mission ON A HILL, not
+ * to a mission, so moving one invalidates its number -- and these are the
+ * teaching missions, where a stale ceiling is exactly the unreachable-threshold
+ * bug above. The rows above are described by their CONTENT rather than by a
+ * mission number for the same reason: the numbers move, the shapes do not.
+ *
+ *     crystalRun  25,158 -> 24,258   ridgeNarrows -> ridgeDrops   (and a wider
+ *                                     layout, 0.75/0.05 -> 1.3/0.25)
+ *     firstDrop    9,040 ->  9,340   ridgeDrops   -> ridgeWeave
+ *     railRunner  13,798 -> 14,398   ridgeWeave   -> ridgeNarrows
+ *
+ * The other three of the first six were re-run unchanged as a control and came
+ * back byte-identical -- speedGates 15,658, idolHunt 17,798, crystalHaul 27,918
+ * -- which is what says the difference above is the hill and not the method.
  */
 const CEILING = {
-  firstDrop: 9040, railRunner: 13798, crystalRun: 25158, speedGates: 15658,
+  crystalRun: 24258, firstDrop: 9340, railRunner: 14398, speedGates: 15658,
   idolHunt: 17798, crystalHaul: 27918, ironLine: 27918, fastLane: 28218,
   fullPlate: 28818, ridgeMaster: 27918, doubleDown: 28618, steelRush: 27918,
   highRoller: 27918, sweep: 28218, launchParty: 28818, goldRush: 27918,
@@ -233,13 +249,65 @@ const RIDGE_LAYOUTS = [
 /** The open face's mission course -- see data/courses.js. */
 const FACE = 'openFaceMissions';
 
+/**
+ * THE FIRST THREE ARE COLLECT, RAMPS, RAILS -- IN THAT ORDER.
+ *
+ * Amit: "we need to switch mission number 3, should be number 1. And then
+ * current one should be 2, current 2 should be 3."
+ *
+ * So CRYSTAL RUN leads, FIRST DROP follows, RAIL RUNNER third. It is the right
+ * teaching order and the old one was mine, not designed: collecting is the only
+ * one of the three that asks nothing of the player's technique -- ride past a
+ * thing and it is yours -- while a ramp asks them to aim and a rail asks them
+ * to aim, land on a line and hold it. Opening on ramps put the second-hardest
+ * verb first.
+ *
+ * REORDERING MOVES THE HILLS, WHICH IS THE POINT. Terrain and layout come from
+ * each mission's POSITION in this array (see the cycle below MISSIONS), not from
+ * the mission, so these three swap ground as well as places:
+ *
+ *     1 CRYSTAL RUN   ridgeDrops     duskNeon       violet ground, cyan lines
+ *     2 FIRST DROP    ridgeWeave     midnightPines  dark green, acid lines
+ *     3 RAIL RUNNER   ridgeNarrows   glacier        ice, pale blue lines
+ *
+ * And that is the fix to the second thing Amit raised in the same breath:
+ * "number 3, we might change the background, because learning to go for the
+ * lights which are green when the background is green doesn't work that good."
+ *
+ * Exactly right, and it was the worst possible pairing. The rails are spring
+ * green (0x5cff9e) BECAUSE green means grindable in this palette; RAIL RUNNER
+ * was played on midnightPines, whose ground is dark green and whose road
+ * markings are acid green (0xc9ff5e). The one mission that exists to teach
+ * "aim for the green metal" was the one where green also meant ground, and
+ * paint. Landing it on glacier instead puts those rails on ice with pale blue
+ * markings -- and glacier is also the gentlest ground in the set (two drops,
+ * 4.5 deep, against ridgeWeave's three at 6.5), which a third mission wants
+ * anyway.
+ *
+ * The green hill goes to FIRST DROP, where nothing is green: its ramps are
+ * violet and its objective never mentions a rail.
+ *
+ * ALL SIX HILLS STILL APPEAR IN THE FIRST SIX MISSIONS -- this is a rotation of
+ * three, not an insertion, so 4-6 keep the ground and the numbers they had.
+ * The three that moved were re-measured; see CEILING.
+ */
 const AUTHORED = [
-  // MISSION 1 IS RAMPS, and only ramps. Amit, moving back to the ridge after
+  // 1 -- CRYSTALS, and the gentlest verb in the game. Idols are excluded by
+  // type: they are their own lesson at mission 5, and a rare thing met before
+  // it is introduced is just a confusing crystal.
+  ['crystalRun',  'CRYSTAL RUN',   'Something to collect, and a hill to do it on.', 90,
+    { pickup: 22 }, undefined,
+    { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup'],
+      without: ['woodWall', 'statue'], density: 1, feature: ['pickup'] }],
+  // MISSION 2 IS RAMPS, and only ramps. Amit, moving back to the ridge after
   // parking the open face: "first mission should be around ramps, taking like
   // 15 ramps. Also put in some pink barriers. For now hide or remove the
   // glides, the green glides, any kind of pickup. And the existing ramps -- try
   // to move them a little bit to the side so they won't all be so close to the
   // center."
+  //
+  // That was written when this was mission 1; the ramps-only shape of it is
+  // what he was describing and it still holds where it now sits.
   //
   // `push` is what does that last part and why it exists: four of the ridge's
   // nine ramp placements sit at exactly u = 0, and a multiplier leaves anything
@@ -259,15 +327,19 @@ const AUTHORED = [
     // woodWall is excluded BY TYPE: it shares the 'wall' kind with the blocker,
     // so allowing the kind brought the race's timber plank along with the pink
     // barrier. Only one of them is what was asked for.
+    //
+    // spread/push are authored here rather than taken from the layout cycle, so
+    // this row keeps the exact spacing Amit asked for wherever it sits in the
+    // list. That is why moving it to 2 changed its ground but not its layout.
     { kinds: ['launch', 'wall', 'scenery'], without: ['woodWall'],
-      density: 1, spread: 1.3, push: 0.25 },
-    // THE RIDGE, WITH DROPS. Nothing needed supporting for this -- the drop
-    // system reads terrain fields the half-pipe simply had switched off. It is
-    // its own preset so the other nineteen ridge missions keep ground that does
-    // not move, and their measured star thresholds with it.
-    'ridgeDrops'],
-  // 2 -- RAILS. Adds the green metal on top of mission 1's ramps; the
-  // objective is rails and nothing else.
+      density: 1, spread: 1.3, push: 0.25 }],
+    // NO TERRAIN PIN ANY MORE. This used to name 'ridgeDrops' -- which was
+    // cycle position 1 regardless, so the pin only ever restated where it
+    // already was, and it is what would have put missions 1 and 2 on the same
+    // hill once CRYSTAL RUN took the front. The name still tells the truth on
+    // ridgeWeave: three drops, 6.5 deep, so the ground gives way there too.
+  // 3 -- RAILS, on ice rather than on green. Adds the green metal on top of
+  // mission 2's ramps; the objective is rails and nothing else.
   ['railRunner',  'RAIL RUNNER',   'Green metal. Get on it and stay on.',       90,
     // 6 rails once DIFFICULTY is applied (9 x 0.7 = 6.3). Amit: "level 2, six
     // grinds instead of four." Authored rather than hard-set so it still moves
@@ -275,13 +347,6 @@ const AUTHORED = [
     { grind: 9 }, undefined,
     { kinds: ['launch', 'grind', 'wall', 'scenery'], without: ['woodWall'],
       density: 1, feature: ['grind'] }],
-  // 3 -- CRYSTALS. Idols are excluded by type: they are their own lesson two
-  // missions later, and a rare thing met before it is introduced is just a
-  // confusing crystal.
-  ['crystalRun',  'CRYSTAL RUN',   'Now there is something to collect.',        90,
-    { pickup: 22 }, undefined,
-    { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup'],
-      without: ['woodWall', 'statue'], density: 1, feature: ['pickup'] }],
   // 4 -- SPEED GATES. Crystals come OUT for this one, the same way they did on
   // the open face: a mission about riding arches should not also be a mission
   // about collecting, or the objective is not what the player is doing.
