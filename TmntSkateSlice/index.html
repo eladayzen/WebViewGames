@@ -112,7 +112,12 @@
           <!-- Progression fill bar toward the next level's score threshold
                (2026-08-03) -- hidden on the final stage (no next threshold). -->
           <div id="score-bar"><div id="score-bar-fill"></div></div>
-          <div id="combo" class="hidden">COMBO x1.0</div>
+          <!-- Streak indicator (2026-09-07): label + a timer bar that refills
+               on each catch and drains between catches (ui.js setStreak). -->
+          <div id="combo" class="hidden">
+            <span id="combo-label">STREAK</span>
+            <div id="combo-bar"><div id="combo-bar-fill"></div></div>
+          </div>
         </div>
 
         <div id="lives-tray"></div>

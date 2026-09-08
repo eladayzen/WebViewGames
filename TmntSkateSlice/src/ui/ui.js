@@ -175,6 +175,8 @@ export function createUI() {
     scoreBar: document.getElementById('score-bar'),
     scoreBarFill: document.getElementById('score-bar-fill'),
     combo: document.getElementById('combo'),
+    comboLabel: document.getElementById('combo-label'),
+    comboBarFill: document.getElementById('combo-bar-fill'),
     livesTray: document.getElementById('lives-tray'),
     stageCurtainLeft: document.getElementById('stage-curtain-left'),
     stageCurtainRight: document.getElementById('stage-curtain-right'),
@@ -793,19 +795,28 @@ export function createUI() {
       }
     },
 
-    // DISABLED for now (2026-08-06 feedback) -- core/main.js no longer
-    // calls this, so #combo stays at its default `hidden` (index.html).
-    // Left defined, unused, as the re-enable hook.
-    setCombo(comboCount, multiplier) {
-      const key = comboCount >= 2 ? multiplier.toFixed(1) : null;
-      if (key === lastComboKey) return;
-      lastComboKey = key;
-      if (key !== null) {
-        el.combo.classList.remove('hidden');
-        el.combo.textContent = `COMBO x${key}`;
-      } else {
-        el.combo.classList.add('hidden');
+    // Streak indicator (re-enabled + reworked 2026-09-07). Shown the moment a
+    // streak is building (comboCount >= 1 with time left on the clock), reading
+    // "STREAK" at x1 and "STREAK x1.5/x2.0/..." once the multiplier climbs. The
+    // label only rewrites on change (dirty-checked); the timer bar's width is
+    // set every frame so it drains smoothly, which is the whole point of the
+    // indicator -- it shows how long you have to catch the next item.
+    setStreak(comboCount, multiplier, timerFrac) {
+      const active = comboCount >= 1 && timerFrac > 0;
+      if (!active) {
+        if (lastComboKey !== null) {
+          el.combo.classList.add('hidden');
+          lastComboKey = null;
+        }
+        return;
       }
+      const key = multiplier > 1 ? `STREAK x${multiplier.toFixed(1)}` : 'STREAK';
+      if (key !== lastComboKey) {
+        if (lastComboKey === null) el.combo.classList.remove('hidden');
+        el.comboLabel.textContent = key;
+        lastComboKey = key;
+      }
+      el.comboBarFill.style.width = `${timerFrac * 100}%`;
     },
 
     setLives(remaining, capacity = 3) {

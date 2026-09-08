@@ -75,13 +75,34 @@ export const MAX_SPAWN_X_JUMP_FRAC = 0.4;
 // the combo multiplier below used to scale; removed since nothing reads it
 // anymore.
 export const OOZE_SCORE = 0; // buff-only reward, per §8/§12's "don't double-dip" guidance and the open question there
-// Combo/hot-streak multiplier: DISABLED for now (2026-08-06 feedback,
-// hidden from the HUD and no longer applied to score -- see
-// systems/scoring.js's registerPizzaHit). Kept here, unused, as the
-// re-enable hook.
-export const COMBO_STEP = 3; // every N consecutive pizza hits bumps the multiplier
+// Streak (hot-catch) system (re-enabled + reworked 2026-09-07). A single,
+// CAPPED multiplier applied to each catch's own points -- never compounded
+// onto already-scored points, so it's "more points per item" and NOT
+// "multipliers over multipliers". The streak is kept alive by a timer that
+// REFILLS to STREAK_WINDOW_SEC on every catch and drains between catches; when
+// it empties the streak resets to x1 (a missed slice no longer breaks it -- the
+// clock does -- but a bomb hit still does). Every COMBO_STEP consecutive
+// catches bumps the multiplier by COMBO_MULTIPLIER_STEP, capped at
+// COMBO_MULTIPLIER_MAX.
+export const COMBO_STEP = 3; // every N consecutive catches bumps the multiplier
 export const COMBO_MULTIPLIER_STEP = 0.5;
-export const COMBO_MULTIPLIER_MAX = 3.0;
+export const COMBO_MULTIPLIER_MAX = 1.5; // hard cap -- streak tops out at x1.5, never more (2026-09-08)
+export const STREAK_WINDOW_SEC = 3.0; // catch within this to keep the streak alive
+
+// Goodie-rush bonus waves (2026-09-07). Each time the run's cumulative score
+// first crosses one of these (ascending; each fires once per run), the game
+// drops into a short celebratory window: no bombs at all, a downpour of good
+// items at BONUS_WAVE_SPAWN_INTERVAL_SEC, for BONUS_WAVE_DURATION_SEC. Bombs
+// already on screen are cleared so it's a true breather (systems/bonusWave.js +
+// core/main.js). Placed one inside each of levels 1, 3, and 5:
+//   300  -> level 1 (Rooftop, 0-500)
+//   3000 -> level 3 (Alley, 2000-4000)
+//   7700 -> level 5 (Sewer, 6500-9000)
+// If a stage advance threshold (data/stages.js) changes, revisit these so each
+// still lands inside its intended level.
+export const BONUS_WAVE_TRIGGER_SCORES = [300, 3000, 7700];
+export const BONUS_WAVE_DURATION_SEC = 6;
+export const BONUS_WAVE_SPAWN_INTERVAL_SEC = 0.34;
 
 // Floating "+N" retro score popups: how long each rises and fades (2026-08-02).
 export const SCORE_POPUP_TTL_SEC = 1.75;

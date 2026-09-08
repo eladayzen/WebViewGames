@@ -44,6 +44,12 @@ export function boxCompleteTitle(label) {
   return `${String(label).toUpperCase()} BOX!`;
 }
 
+// Goodie-rush announcement (core/main.js's bonus wave). TMNT keeps the pizza
+// wording; the original theme provides "GEM RUSH!" instead.
+export function bonusWaveTitle() {
+  return 'PIZZA RUSH!';
+}
+
 // Stage-transition curtain -- the original TMNT-branded red drape (pizza /
 // nunchaku / orange masks), unchanged. Each panel is a full curtain shown
 // center-cropped, exactly as it shipped (positions stay 'center'). Kept out of

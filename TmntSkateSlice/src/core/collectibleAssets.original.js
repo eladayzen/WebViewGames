@@ -55,6 +55,12 @@ export function boxCompleteTitle() {
   return 'SET COMPLETE!';
 }
 
+// Goodie-rush announcement (core/main.js's bonus wave). Theme-provided so TMNT
+// keeps its "PIZZA RUSH!" wording -- the original collectibles are gems.
+export function bonusWaveTitle() {
+  return 'GEM RUSH!';
+}
+
 // Stage-transition curtain (the "closing door" between stages) -- theme-varying
 // because the TMNT drape is TMNT-branded (pizza / nunchaku / orange masks).
 // The original curtain is ONE symmetric blue/gold ninja curtain SPLIT down the

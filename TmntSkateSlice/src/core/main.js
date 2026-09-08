@@ -40,7 +40,7 @@ import { createBombKills, resetBombKills, registerBombKill, updateBombKills } fr
 import { rollBoxReward, BOX_COLOR_BY_ID } from '../data/boxColors.js';
 // Per-theme falling-item sprite key by box color, so the fly-to-chip "twin"
 // matches the caught art (an idol in the original theme, pizza_slice in TMNT).
-import { FALLING_SPRITE_KEY_BY_BOX_COLOR } from '@collectible-assets';
+import { FALLING_SPRITE_KEY_BY_BOX_COLOR, bonusWaveTitle } from '@collectible-assets';
 import { BOMB_KILL_SET } from '../data/bombKills.js';
 import { createDifficulty, resetDifficulty, updateDifficulty, isFinalStageCleared, commitStageAdvance, getStage, getScoreBand } from '../systems/difficulty.js';
 import { STAGES } from '../data/stages.js';
@@ -52,12 +52,16 @@ import {
   registerComboBreak,
   registerBoxComplete,
   registerBombKillScore,
+  updateStreak,
+  getComboMultiplier,
+  getStreakTimerFrac,
 } from '../systems/scoring.js';
+import { createBonusWave, resetBonusWave, startBonusWave, shouldStartBonusWave, updateBonusWave } from '../systems/bonusWave.js';
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
 import { submitRun, fetchBoard, resultSections } from '../systems/scoreboard.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
-import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, BOX_COMPLETE_FLY_MS, HUD_SCALE_REFERENCE_HEIGHT_PX, HUD_SCALE_MAX } from '../data/constants.js';
+import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, BOX_COMPLETE_FLY_MS, HUD_SCALE_REFERENCE_HEIGHT_PX, HUD_SCALE_MAX, BONUS_WAVE_TRIGGER_SCORES, BONUS_WAVE_SPAWN_INTERVAL_SEC } from '../data/constants.js';
 
 // Clamp so a tab-resume/frame-hitch never simulates a huge leap. Raised
 // 1/20 -> 1/10 (2026-07-30): the old 1/20 meant any frame slower than 20fps
@@ -83,6 +87,7 @@ async function boot() {
   const spawner = createSpawner();
   const bombPresence = createBombPresence();
   const heartDrop = createHeartDrop();
+  const bonusWave = createBonusWave();
   const difficulty = createDifficulty();
   const scoring = createScoring();
   const lives = createLives();
@@ -146,6 +151,7 @@ async function boot() {
     resetSpawner(spawner);
     resetBombPresence(bombPresence);
     resetHeartDrop(heartDrop);
+    resetBonusWave(bonusWave);
     lastHeartStageIndex = -1; // updateRunning re-arms for the current stage next frame
     resetDifficulty(difficulty);
     resetScoring(scoring);
@@ -171,6 +177,7 @@ async function boot() {
     ui.setBuffs(player);
     ui.setBoxes(boxes);
     ui.setBombKills(bombKills);
+    ui.setStreak(scoring.comboCount, getComboMultiplier(scoring), getStreakTimerFrac(scoring));
   }
 
   // Submit the finished run to the family-account board, then fetch + render
@@ -400,6 +407,7 @@ async function boot() {
     ui.setBuffs(player);
     ui.setBoxes(boxes);
     ui.setBombKills(bombKills);
+    ui.setStreak(scoring.comboCount, getComboMultiplier(scoring), getStreakTimerFrac(scoring));
   }
 
   // Get straight into a live run from whatever screen we're on, dismissing any
@@ -558,11 +566,14 @@ async function boot() {
       // The combo multiplier is disabled for now (hidden from the HUD, no
       // longer applied here); registerPizzaHit still tracks the streak
       // count underneath for a later re-enable.
-      registerPizzaHit(scoring, item.type.score);
+      // Streak-boosted award: registerPizzaHit applies the (capped, single)
+      // streak multiplier to this catch's base points and returns what was
+      // actually scored, so the popup shows the boosted number.
+      const gained = registerPizzaHit(scoring, item.type.score);
       triggerSwing(player);
       spawnPizzaBreak(juice, item.xFrac, item.yFrac);
       // Retro "+N" popup at the slice, showing exactly what the catch was worth.
-      spawnScorePopup(juice, item.xFrac, item.yFrac, `+${item.type.score}`, '#ffe066');
+      spawnScorePopup(juice, item.xFrac, item.yFrac, `+${gained}`, '#ffe066');
       playSfx(audio, sfx.sfx_pizza_splash);
       // Box-colored slice: feed its collection box. registerBoxCatch resets
       // the box and returns its bonus/hex on the completing catch, else null.
@@ -660,11 +671,12 @@ async function boot() {
   // Called once, the frame an item's top edge passes Michelangelo's feet
   // line without ever having been caught above -- the "missed" path (§8).
   function handleItemMissed(item) {
-    if (item.type.kind === 'good') {
-      registerComboBreak(scoring); // missed pizza (§8) -- no sound (removed the
-      // "disappointment" miss cue per feedback 2026-07-30); combo still breaks.
-    }
-    // missed ooze/bomb: no penalty, no combo effect (§5.4, §6)
+    // A missed good item no longer breaks the streak (2026-09-07): the streak
+    // is timer-based now (scoring.js), so letting one slice fall is fine as long
+    // as you catch the next one before the clock runs out. A bomb hit still
+    // hard-breaks it (registerComboBreak, in handleItemOverlap). No miss cue
+    // either (removed 2026-07-30).
+    // missed good/ooze/bomb: no penalty here (§5.4, §6)
   }
 
   // Entered when updateDifficulty detects the next stage's threshold crossed
@@ -710,16 +722,44 @@ async function boot() {
       return stage;
     }
 
+    // Goodie-rush bonus waves (systems/bonusWave.js): each time the score
+    // crosses one of the level-1/3/5 thresholds (once each per run), drop into
+    // a short no-bombs downpour of good items. Clear any bombs already falling
+    // so it's a true breather, kick the spawner so goodies rain immediately,
+    // and announce it with a themed popup + celebratory burst.
+    if (shouldStartBonusWave(bonusWave, scoring.score, BONUS_WAVE_TRIGGER_SCORES)) {
+      startBonusWave(bonusWave);
+      for (const it of items) {
+        if (!it.resolved && it.type.kind === 'hazard') {
+          it.resolved = true;
+          spawnPickupSparkle(juice, it.xFrac, it.yFrac, '#ffd24a');
+        }
+      }
+      spawner.timer = 0; // spawn a goodie this frame instead of finishing the old interval
+      resetBombPresence(bombPresence); // no "too long without a bomb" pressure during the rush
+      spawnScorePopup(juice, 0.5, 0.4, bonusWaveTitle(), '#ffd24a');
+      spawnStageCompleteBurst(juice, 0.5, 0.4);
+      playSfx(audio, sfx.sfx_stage_advance);
+    }
+
     // Bomb presence floor (2026-08-05, raised to a count of 2): if the
     // number of bombs currently on screen has stayed below the floor too
     // long, force the NEXT spawn to be a bomb, at the play-area edge FAR
     // from the player -- directly answers "I can camp an edge and stay
-    // safe." See systems/bombPresence.js.
+    // safe." See systems/bombPresence.js. SUSPENDED during the bonus wave --
+    // the whole point is no bombs (the &&-short-circuit also freezes the
+    // presence timer, so no bomb is forced the instant the rush ends).
     const bombCount = items.reduce((n, it) => n + (!it.resolved && it.type.kind === 'hazard' ? 1 : 0), 0);
-    const forceBomb = updateBombPresence(bombPresence, dt, bombCount);
+    const forceBomb = !bonusWave.active && updateBombPresence(bombPresence, dt, bombCount);
     const forcedBombXFrac = forceBomb ? (player.xFrac < 0.5 ? ITEM_MAX_X_FRAC : ITEM_MIN_X_FRAC) : null;
 
-    const spawned = updateSpawner(spawner, dt, stage, boxes, forcedBombXFrac);
+    // During the rush: no bombs, no power-ups, faster spawns -- a wall of good
+    // items. fallSpeedFrac / groundYFrac stay the stage's own (spread through)
+    // so only the mix and cadence change, not where things land.
+    const spawnStage = bonusWave.active
+      ? { ...stage, bombChance: 0, powerUpChance: 0, spawnIntervalSec: BONUS_WAVE_SPAWN_INTERVAL_SEC }
+      : stage;
+    const spawned = updateSpawner(spawner, dt, spawnStage, boxes, forcedBombXFrac);
     if (spawned) items.push(spawned);
 
     // Extra-life heart drop (systems/heartDrop.js): re-arm on each new stage,
@@ -778,6 +818,13 @@ async function boot() {
     }
 
     updateJuice(juice, dt);
+    // Drain the streak clock (scoring.js): after the catch loop, so a catch
+    // this frame has already refilled it. Lets the streak lapse to x1 when the
+    // player goes too long between catches.
+    updateStreak(scoring, dt);
+    // Tick the bonus-wave countdown; when it ends, reset the bomb-presence
+    // floor so bombs ease back in rather than one being forced immediately.
+    if (updateBonusWave(bonusWave, dt)) resetBombPresence(bombPresence);
     // AFTER the catch loop (see systems/boxes.js): a catch that completes a
     // box this frame is already handled above, so this only expires boxes
     // that got no completing catch -- completion always wins the tie.
@@ -792,6 +839,7 @@ async function boot() {
     ui.setBuffs(player);
     ui.setBoxes(boxes);
     ui.setBombKills(bombKills);
+    ui.setStreak(scoring.comboCount, getComboMultiplier(scoring), getStreakTimerFrac(scoring));
 
     return stage;
   }
