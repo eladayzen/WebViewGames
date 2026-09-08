@@ -497,8 +497,30 @@ export function createAudio() {
      * DOWN the music node every time the game paused -- and a stopped
      * BufferSource cannot be restarted, so resuming would begin the track again
      * from the top. Pausing must freeze what is playing, not discard it.
+     *
+     * AND `!paused` WAS IN IT ANYWAY, which is the bug the paragraph above
+     * describes, sitting directly under the paragraph describing it. Amit: "the
+     * settings button should pause music like the pause button does, not stop it
+     * and then restart it from the beginning."
+     *
+     * Both buttons already route here correctly -- main.js syncAudioPause()
+     * calls setPaused(paused || isPanelOpen()) precisely so the panel and the
+     * pause badge cannot disagree -- and setPaused suspends the AudioContext,
+     * which is the freeze. What undid it was this line: any syncMusic() while
+     * paused computed want === false and stopped the node, and the resume then
+     * built a new one from zero.
+     *
+     * The settings panel is where it showed up because that panel calls
+     * applyAll() on every control it owns, applyAll calls setMusic(), and
+     * setMusic() calls syncMusic() unconditionally -- so touching any row while
+     * the panel held the game paused threw the track away.
+     *
+     * Pausing is the CONTEXT's job, not this function's. Suspending freezes the
+     * clock so the track resumes mid-phrase where the player left it; the
+     * `running()` guard below is what stops a node being built while suspended,
+     * so nothing starts during a pause either.
      */
-    const want = musicOn && inRun && !paused;
+    const want = musicOn && inRun;
     if (want && !musicNode && running()) {
       // Chosen at the moment it starts, and only from tracks that have actually
       // decoded -- picking one that has not arrived yet would leave the run
