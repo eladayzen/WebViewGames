@@ -192,16 +192,21 @@ function kindAllowedNow(w, id) {
  */
 function rollKind(w, opts = {}) {
   const running = w.player.weaponT > 0 ? w.player.weapon : '';
+  // A caller may supply its own weight table -- the boss thresholds do, because
+  // routine supply and a fight's one reward want different odds. Falls back to
+  // the wave table, so nothing else has to know this exists.
+  const weights = opts.weights || PICKUPS.weaponWeights;
   const eligible = (id) => {
     if (PICKUPS.excludeRunningWeapon && PICKUPS.kinds[id].weapon === running) return false;
     if (opts.weaponsOnly && PICKUPS.kinds[id].effect) return false;
     if (opts.exclude && id === opts.exclude) return false;
+    if (opts.excludeList && opts.excludeList.indexOf(id) >= 0) return false;
     return kindAllowedNow(w, id);
   };
   let total = 0;
   for (const id of Object.keys(PICKUPS.kinds)) {
     if (!eligible(id)) continue;
-    total += PICKUPS.weaponWeights[id] || 0;
+    total += weights[id] || 0;
   }
   // Every candidate excluded or unweighted: fall back to the introductory one
   // rather than to nothing. Unreachable with the authored table, and a canister
@@ -214,7 +219,7 @@ function rollKind(w, opts = {}) {
   let r = prng.next() * total;
   for (const id of Object.keys(PICKUPS.kinds)) {
     if (!eligible(id)) continue;
-    r -= PICKUPS.weaponWeights[id] || 0;
+    r -= weights[id] || 0;
     if (r <= 0) return id;
   }
   return 'scatter';
@@ -451,20 +456,38 @@ export function dropAuthoredPickup(w, x, y) {
   if (liveCount(w.pickups) >= PICKUPS.maxOnScreen) return false;
   const before = w.pickup.killsSinceDrop;
   const policy = PICKUPS.bossDrops || {};
+  const used = w.pickup.bossKindsThisFight || [];
+  const base = { weaponsOnly: !!policy.weaponsOnly, weights: policy.weights };
+
+  // A ROTATION, NOT A REWEIGHTING. Four drops in a fight should be four
+  // different weapons; odds can only make that likely, a rotation makes it so.
   let kind = rollKind(w, {
-    weaponsOnly: !!policy.weaponsOnly,
+    ...base,
+    excludeList: policy.noRepeatWithinFight ? used : null,
     exclude: policy.noRepeat ? w.pickup.lastBossKind : '',
   });
-  // If avoiding the repeat leaves nothing eligible, take the repeat rather than
-  // dropping nothing: a fight that silently declines to pay is worse than one
-  // that pays the same thing twice.
-  if (!kind && policy.noRepeat && w.pickup.lastBossKind) {
-    kind = rollKind(w, { weaponsOnly: !!policy.weaponsOnly });
+
+  // Pool exhausted -- every eligible weapon has been offered this fight. Clear
+  // the slate and go round again, still refusing to repeat back-to-back.
+  if (!kind && policy.noRepeatWithinFight && used.length) {
+    w.pickup.bossKindsThisFight = [];
+    kind = rollKind(w, {
+      ...base,
+      exclude: policy.noRepeat ? w.pickup.lastBossKind : '',
+    });
   }
+  // Last resort: pay the repeat rather than nothing. A fight that silently
+  // declines to pay is worse than one that pays the same thing twice.
+  if (!kind) kind = rollKind(w, base);
   if (!kind) return false;
+
   const q = spawnPickup(w, x, y, kind);
   w.pickup.killsSinceDrop = before;
-  if (q) w.pickup.lastBossKind = kind;
+  if (q) {
+    w.pickup.lastBossKind = kind;
+    if (!w.pickup.bossKindsThisFight) w.pickup.bossKindsThisFight = [];
+    if (w.pickup.bossKindsThisFight.indexOf(kind) < 0) w.pickup.bossKindsThisFight.push(kind);
+  }
   return !!q;
 }
 

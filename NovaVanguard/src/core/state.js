@@ -276,6 +276,10 @@ export function createWorld() {
       // repeating it. A fight that pays out the same canister twice reads as
       // the game having nothing else to give.
       lastBossKind: '',
+      // Every kind this FIGHT has handed out, so four drops are four different
+      // weapons. Cleared when a fight begins, and again whenever the pool is
+      // exhausted.
+      bossKindsThisFight: [],
     },
 
     // Telegraph markers for anything arriving from the top edge (§5.3).

@@ -971,6 +971,31 @@ export const PICKUPS = {
     // ...and not the same weapon twice running. A boss that pays out RAPID
     // twice has, from the player's side, paid out once.
     noRepeat: true,
+    // STRONGER THAN noRepeat, now that there are four drops in a fight: a kind
+    // already handed out THIS FIGHT is skipped until every eligible kind has
+    // been offered, then the slate clears. Four drops therefore mean four
+    // different weapons rather than a coin-flip that might land on RAPID three
+    // times. This is the literal answer to "don't overdo the one weapon over
+    // and over again", and it does more than reweighting can: odds cannot
+    // promise variety, a rotation can.
+    noRepeatWithinFight: true,
+    // ITS OWN WEIGHTS, FLATTER THAN THE WAVE TABLE. Amit, after a full stage:
+    // "the multiplier speed... it feels like I am almost only getting him. Is
+    // that right?" It was: RAPID is 52% of wave weapon drops and, once effects
+    // were excluded here, 61% of boss drops.
+    //
+    // Both facts are wanted, and that is why this is a second table rather than
+    // an edit to the first. The WAVE table is deliberately RAPID-heavy -- round
+    // 9's "we need more rapid pickups on general" -- because a wave drop is
+    // routine supply and the routine answer should be the reliable one. A BOSS
+    // drop is the opposite: two of them in a whole fight, and the fight is the
+    // moment the player is most likely to try something they would not
+    // otherwise pick. Handing them the usual thing wastes the only slot in the
+    // game that can afford to surprise.
+    //
+    // Still tilted toward RAPID, just not owned by it -- the odds below are
+    // roughly 35 / 25 / 22 / 18.
+    weights: { rapid: 1.4, scatter: 1.0, flak: 0.9, lance: 0.7, swarm: 0 },
   },
 
   // At most one on screen, and never two inside this window. Both are anti-
@@ -3071,7 +3096,22 @@ export const BOSS = {
   // Fractions of the boss's TOTAL remaining HP, crossed once each and in order.
   // 70% is early enough to change the fight rather than reward its end, and 30%
   // lands where a player is most likely to be losing shield.
-  pickupAtFractions: [0.70, 0.30],
+  // FOUR THRESHOLDS, NOT TWO (Amit: "when I reach the boss, shooting him on my
+  // own basic weapon all the time is boring... you can give me any kind of
+  // weapon, but don't overdo the one weapon over and over again").
+  //
+  // The arithmetic behind the complaint: CINDERJAW's hull is 240 hp and the
+  // base gun does 5.3 shots a second, so the fight is roughly 45 s of firing.
+  // Two canisters at ~11 s each covered at most 22 s of that -- half the fight
+  // on the plain gun, and the first threshold at 0.70 guaranteed the opening
+  // 30% of it was. A boss is the one fight long enough for a temporary weapon
+  // to run out inside it, which is exactly why it needs more of them than a
+  // wave does.
+  //
+  // Four drops at ~11 s is ~44 s against a ~45 s fight: near-continuous, with
+  // the first arriving early enough that the fight starts armed. It is not
+  // free supply -- each one still has to be flown to and collected.
+  pickupAtFractions: [0.86, 0.66, 0.46, 0.26],
   // Dropped below the hull rather than at it: the boss sits at y=0.315 and
   // §5.6 forbids a lure above y=0.62, so a canister at the boss would be one
   // the player must climb for -- the expensive lean, and exactly what §5.6

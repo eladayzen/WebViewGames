@@ -268,6 +268,11 @@ export function beginBoss(w, bossId, aspect) {
   b.deathPodsFired = 0;
   // Supply thresholds (BOSS.pickupAtFractions), consumed in order.
   b.nextPickupIdx = 0;
+  // A fresh fight starts the weapon rotation over, so every boss opens with the
+  // full set available rather than inheriting what the last one happened to
+  // give.
+  w.pickup.bossKindsThisFight = [];
+  w.pickup.lastBossKind = '';
   b.deathPoints = null;
   // Settle the gate's opening state before the first frame is drawn, so a coil
   // arrives with its ends already lit rather than opening them on frame two.
