@@ -115,51 +115,74 @@ export function createMissionSelect(missions, progress, onPick, track = 0, noun 
       // table, which reads as 21-28 on a list of eight.
       const num = `<div class="msel-num">${String(missions.indexOf(m) + 1).padStart(2, '0')}</div>`;
       /**
-       * WHAT THE MISSION IS ABOUT, as icons.
+       * WHAT THE MISSION ASKS FOR, as icons WITH THEIR NUMBERS.
        *
        * The list is where a player chooses what to play, and every row read
        * the same: a name, a mood line, three stars. Nothing said whether the
        * next one was ramps or a crystal sweep -- which is the only question
-       * anyone actually has when picking. The briefing card and the in-run
-       * panel already carry these drawings, so a row showing them means a
-       * player recognises the shape before they commit rather than after the
-       * card appears.
+       * anyone actually has when picking. Icons fixed the "about what"; they
+       * did not fix "how much", and how much is the half that decides whether
+       * you have five minutes for it.
        *
-       * DEDUPED BY KIND: a mission asking crystals and idols shows two
-       * different pickups, but nothing shows the same icon twice.
+       * Amit: "lose the second tagline. I leave the headline and actually show
+       * the needed criteria. For example, four gates and six ramps. Actually
+       * show that. Like a digit next to every icon."
+       *
+       * SO THE CRITERIA TAKE THE TAGLINE'S PLACE -- second line, under the
+       * name, where the mood line was. Not appended to the right of the row:
+       * THE WHOLE FACE carries five objectives, and five icon-and-number pairs
+       * on one line with a name and three stars does not fit a phone. Putting
+       * them where the prose was costs nothing, because losing the prose is
+       * what bought the room.
+       *
+       * SUMMED BY KIND, not deduped. Nothing in the ladder currently asks for
+       * one kind twice, but "25" and "25" rendered as two gems saying 25 would
+       * be a lie about the total, and summing is the answer that stays true if
+       * a mission ever does split one.
        */
-      const kinds = [];
+      const reqs = [];
       for (const o of m.objectives || []) {
-        /**
-         * NO SCORE ICON HERE, though the briefing card has one.
-         *
-         * A score objective's icon is a star, and this row already ends in
-         * three stars that mean the rating -- so FAST LANE rendered a star
-         * immediately left of its rating stars, saying two unrelated things in
-         * the same shape. On the card there are no rating stars to collide
-         * with, so it keeps its icon there.
-         *
-         * An icon that has to be read twice differently is worse than no icon:
-         * the row's job is "what is this one about", and score is the one
-         * answer the stars beside it already imply.
-         */
-        if (o.kind === 'score') continue;
         const key = o.kind === 'pickup' ? (o.type || 'crystal') : o.kind;
-        if (!kinds.includes(key)) kinds.push(key);
+        const hit = reqs.find((r) => r.key === key);
+        if (hit) hit.count += o.count || 0;
+        else reqs.push({ key, count: o.count || 0 });
       }
-      const icons = kinds
-        .map((k) => iconFor(k === 'crystal' || k === 'idol' ? 'pickup' : k, k))
+      const criteria = reqs
+        .map((r) => {
+          /**
+           * SCORE IS A NUMBER WITH A WORD, NOT AN ICON WITH A DIGIT.
+           *
+           * Its icon is a star, and this row ends in three stars that mean the
+           * rating -- so FAST LANE rendered a star immediately left of its
+           * rating stars, saying two unrelated things in the same shape. That
+           * is why score was skipped here entirely when the icons went in.
+           *
+           * Skipping it stops working the moment the tagline goes: four
+           * missions in the ladder ask for SCORE AND NOTHING ELSE (FAST LANE,
+           * HIGH ROLLER, DEEP END, BIG NUMBERS), and those rows would now be a
+           * name over an empty line -- the one shape on the list that tells
+           * you nothing at all.
+           *
+           * "18,000 PTS" collides with neither: a grouped number and a word
+           * cannot be misread as a rating, which was the whole objection, and
+           * it needs no star to say what it is.
+           */
+          if (r.key === 'score') {
+            return `<span class="msel-req-score">${r.count.toLocaleString('en-US')} PTS</span>`;
+          }
+          const svg = iconFor(r.key === 'crystal' || r.key === 'idol' ? 'pickup' : r.key, r.key);
+          if (!svg) return '';
+          return `<span class="msel-req"><i class="msel-icon">${svg}</i>${r.count}</span>`;
+        })
         .filter(Boolean)
-        .map((svg) => `<i class="msel-icon">${svg}</i>`)
         .join('');
 
       row.innerHTML = unlocked
         ? `${num}
            <div class="msel-text">
              <b>${m.name}</b>
-             <small>${m.brief}</small>
+             <div class="msel-reqs">${criteria}</div>
            </div>
-           <div class="msel-icons">${icons}</div>
            <div class="msel-stars">${stars(progress.stars(m.id))}</div>`
         // A locked row names itself but not its brief: knowing there is a
         // SUNSET RUN ahead is the hook; spoiling what it asks for is not.

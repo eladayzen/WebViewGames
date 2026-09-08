@@ -81,7 +81,12 @@ export default registerMode({
   // does not have. Amit: "change the names in the main lobby to just missions
   // and just speed race."
   name: 'SPEED RACE',
-  tagline: 'The ridge. Four rivals, first to the line.',
+  // "The ridge." dropped for the same reason as the missions line: it named the
+  // hill both modes share, so it was two words spent on the thing that does not
+  // tell them apart. What is left was already the whole of it. Four is not
+  // decorative -- it is FIELD_SIZE, so if the field ever changes this line is
+  // wrong and should change with it.
+  tagline: 'Four rivals, first to the line.',
   course: RACE_COURSE,
   /**
    * THE HILL IS THE RACE. It used to be dealt at random from a shuffled bag,
@@ -168,9 +173,22 @@ export default registerMode({
       ctx.endRun(won ? 'complete' : 'timeup', {
         tone: stars > 0 ? 'success' : 'fail',
         title: won ? 'WINNER' : `FINISHED ${ordinal(me.place)}`,
-        // The track, not the mode. Which race it was is the thing worth saying
-        // on a screen that already has "FINISHED 2ND" at the top of it.
-        subtitle: race.name,
+        /**
+         * NO SUBTITLE. Amit, on this screen: "just lose the second title."
+         *
+         * It used to carry `race.name` on the reasoning that the track was
+         * "the thing worth saying on a screen that already has FINISHED 2ND at
+         * the top of it". The flaw in that is what the screen turned into: five
+         * standings rows below it name the field, the detail line names the
+         * distance, and the player picked this track by hand two screens ago.
+         * The track was the one line nobody needed, and on a 480-high board it
+         * was costing height that the standings actually use.
+         *
+         * Dropped from the CARD rather than from the markup, so the missions
+         * keep theirs -- there, the subtitle is "03 · CRYSTAL RUN", which names
+         * something the player did not choose off a labelled tile. Each mode
+         * owns its own result screen; #go-subtitle:empty hides the element.
+         */
         detail: reason === 'timeout'
           ? `time cap  ·  ${Math.round(finishS - me.s)} m short of the line`
           // Says what the bar was when it was missed, so a fourth place reads as

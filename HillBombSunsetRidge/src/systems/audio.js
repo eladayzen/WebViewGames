@@ -51,6 +51,7 @@ import objectiveUrl from '../assets/audio/sfx_objective.mp3?url';
 import musicFlowUrl from '../assets/audio/music_flow.mp3?url';
 import musicDriftUrl from '../assets/audio/music_drift.mp3?url';
 import musicGridUrl from '../assets/audio/music_grid.mp3?url';
+import musicAsphaltUrl from '../assets/audio/music_asphalt.mp3?url';
 
 /**
  * Per-clip mix, here rather than baked into the files so it can be tuned without
@@ -207,6 +208,29 @@ const TRACKS = [
 ];
 
 /**
+ * THE LOBBY TRACK -- deliberately NOT in TRACKS above.
+ *
+ * Amit: "try using the music from here as a lobby music for our game." The file
+ * is `music_asphalt`, one of the six takes from the original generation batch --
+ * it was in the game briefly and came out when the in-run set was trimmed to
+ * three. So it is already ours and already prepared: measured at -18.8 dB mean
+ * against flow's -18.8, drift's -18.7 and grid's -18.8, which is prep_music.py's
+ * common level, so it needs no gain correction and takes trim 1 like the others.
+ *
+ * OUT OF THE BAG ON PURPOSE. TRACKS is a shuffled bag dealt per run, and adding
+ * this to it would make the lobby's music turn up mid-descent and one run in
+ * four open on the menu theme. A lobby track earns its job by being the ONE
+ * thing you hear on that screen every time -- that is what makes it the sound of
+ * the game rather than another card in the deck.
+ *
+ * QUIETER THAN A RUN, at 0.8. MUSIC_GAIN was sized against a run, where wheels,
+ * grinds and one-shots are all playing over it; a menu has none of those, so the
+ * same number that sits "clearly underneath" in a descent is the only thing in
+ * the room on the lobby and reads louder for it.
+ */
+const LOBBY_TRACK = { url: musicAsphaltUrl, name: 'asphalt', trim: 0.8, rate: 1 };
+
+/**
  * THE ONE master music level, at 100% on the volume slider.
  *
  * Sized against the effects rather than picked: a one-shot plays at 0.30-0.70
@@ -242,6 +266,8 @@ export function createAudio() {
   /** Decoded tracks by name; they arrive independently. */
   const musicBuffers = new Map();
   let musicNode = null;
+  /** Which side the live node belongs to -- see the switch in syncMusic. */
+  let musicIsLobby = false;
   /** Which track this run is playing. */
   let track = null;
   /**
@@ -349,7 +375,11 @@ export function createAudio() {
     // it, or the rolling sound never begins on a fast-loading run.
     fetchInto(def.url, (b) => { buffers.set(name, b); syncBeds(); });
   }
-  for (const t of TRACKS) {
+  // The lobby track loads on the same path as the run tracks and into the same
+  // buffer map -- it is only kept out of TRACKS so the run's shuffled bag cannot
+  // deal it. Its syncMusic() callback is what actually starts the lobby music on
+  // a cold boot: the lobby is already on screen by the time this decodes.
+  for (const t of [...TRACKS, LOBBY_TRACK]) {
     fetchInto(t.url, (b) => { musicBuffers.set(t.name, b); syncMusic(); });
   }
 
@@ -498,34 +528,68 @@ export function createAudio() {
      * BufferSource cannot be restarted, so resuming would begin the track again
      * from the top. Pausing must freeze what is playing, not discard it.
      */
-    const want = musicOn && inRun && !paused;
-    if (want && !musicNode && running()) {
+    /**
+     * `inRun` LEFT OUT OF `want`, now that silence is not the answer to it.
+     *
+     * It used to read `musicOn && inRun && !paused` -- music at all only during
+     * a run, because the lobby had no track. It has one now, so `inRun` stops
+     * deciding WHETHER music plays and starts deciding WHICH, which is what the
+     * flag was named for in the first place (see the note on it above).
+     */
+    const want = musicOn && !paused;
+    const wantLobby = !inRun;
+    /**
+     * CROSSING BETWEEN THE LOBBY AND A RUN TEARS THE NODE DOWN.
+     *
+     * A BufferSource's buffer cannot be swapped and a stopped one cannot be
+     * restarted, so changing track means a new node -- there is no in-place
+     * version of this. Folded in with the stop-because-unwanted case below so
+     * there is still exactly ONE place that stops the music.
+     *
+     * `musicIsLobby` is what makes it a switch rather than a restart: without it
+     * every syncMusic() call during a run would look like a side change and
+     * begin the track again from the top. syncMusic runs on every buffer that
+     * decodes, on the gesture unlock and on every context statechange, so that
+     * is not a hypothetical.
+     */
+    if (musicNode && (!want || musicIsLobby !== wantLobby)) {
+      try { musicNode.stop(); } catch { /* already ended */ }
+      musicNode = null;
+    }
+    if (!want || musicNode || !running()) return;
+    let pick;
+    if (wantLobby) {
+      // No fallback and no bag: there is one lobby track, so if it has not
+      // decoded yet the lobby stays quiet and the callback above starts it the
+      // moment it lands.
+      if (!musicBuffers.has(LOBBY_TRACK.name)) return;
+      pick = LOBBY_TRACK;
+    } else {
       // Chosen at the moment it starts, and only from tracks that have actually
       // decoded -- picking one that has not arrived yet would leave the run
       // silent rather than falling back to one that is ready.
       if (!track || !musicBuffers.has(track.name)) {
         const ready = TRACKS.filter((t) => musicBuffers.has(t.name));
         if (!ready.length) return;
-        let pick = nextTrack();
+        let pick2 = nextTrack();
         // Keep dealing until one is ready, rather than giving up on the bag.
-        for (let i = 0; i < TRACKS.length && !musicBuffers.has(pick.name); i++) {
-          pick = nextTrack();
+        for (let i = 0; i < TRACKS.length && !musicBuffers.has(pick2.name); i++) {
+          pick2 = nextTrack();
         }
-        track = musicBuffers.has(pick.name) ? pick : ready[0];
+        track = musicBuffers.has(pick2.name) ? pick2 : ready[0];
       }
-      const src = ctx.createBufferSource();
-      src.buffer = musicBuffers.get(track.name);
-      src.loop = true;
-      src.playbackRate.value = track.rate;
-      const g = ctx.createGain();
-      g.gain.value = track.trim;
-      src.connect(g).connect(musicGain);
-      src.start();
-      musicNode = src;
-    } else if (!want && musicNode) {
-      try { musicNode.stop(); } catch { /* already ended */ }
-      musicNode = null;
+      pick = track;
     }
+    const src = ctx.createBufferSource();
+    src.buffer = musicBuffers.get(pick.name);
+    src.loop = true;
+    src.playbackRate.value = pick.rate;
+    const g = ctx.createGain();
+    g.gain.value = pick.trim;
+    src.connect(g).connect(musicGain);
+    src.start();
+    musicNode = src;
+    musicIsLobby = wantLobby;
   }
 
   const api = {

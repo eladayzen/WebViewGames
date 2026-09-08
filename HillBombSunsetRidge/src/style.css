@@ -597,8 +597,23 @@ html, body {
   color: var(--paper);
   /* Same viewport-relative scale as the HUD -- this screen is read on the same
      ~788px-wide phone, and sizing it in fixed px made it a wall of text there. */
+  /**
+   * DOWN 5%. Amit: "closing screen also a bit too high -- just lose the second
+   * title and reduce in 5%."
+   *
+   * Same width-not-height mistake as #brief-card, and the race is the worst
+   * case of it because this screen grew: three stars, a verdict, a subtitle, a
+   * detail line, FIVE standings rows, then the score and the button. Measured
+   * at 87% of the height on a 960x540 and an 854x480 board.
+   *
+   * The 5% is the smaller half of the fix -- losing the race's subtitle is the
+   * bigger one, and that came out of the card in modes/speedRace.js rather than
+   * out of here, so the missions keep a line that still earns its place. A
+   * gentler cut than the briefing's 20% because this screen has to stay
+   * readable at a glance from a board a metre away.
+   */
   font-size: 11px; /* fallback if clamp() is unsupported */
-  font-size: clamp(9px, 1.34vw, 13px);
+  font-size: clamp(8.55px, 1.273vw, 12.35px);
 }
 
 /* SUCCESS IS ORANGE, FAILURE IS RED. The verdict used to be the same colour
@@ -633,9 +648,14 @@ html, body {
   opacity: 0;
   animation: starIn 0.5s cubic-bezier(.2,1.7,.4,1) forwards;
 }
+/* Paper white, following the mission list -- see .msel-star.earned for why the
+   rating left gold. It has to move in the same commit: this is the screen a
+   player reads the rating ON and the list is where they read it back, and the
+   same three stars meaning gold in one place and white in the other would land
+   as two different awards rather than one. */
 #go-stars .star.earned {
-  color: #ffd166;
-  text-shadow: 0 0 0.35em rgba(255, 209, 102, 0.65);
+  color: var(--paper);
+  text-shadow: 0 0 0.35em rgba(246, 239, 228, 0.6);
 }
 @keyframes starIn {
   0% { transform: scale(0.6) rotate(-25deg); opacity: 0; }
@@ -998,7 +1018,33 @@ html, body {
 /* Unearned stars stay VISIBLE. The gap between two and three is the only
    reason to replay a mission you have already cleared. */
 .msel-star { color: rgba(255, 243, 228, 0.18); }
-.msel-star.earned { color: #ffd166; text-shadow: 0 0 0.3em rgba(255, 209, 102, 0.5); }
+/**
+ * EARNED STARS ARE PAPER WHITE, NOT GOLD.
+ *
+ * Amit: "we need to change the colour of the crystals, they look too much like
+ * the star points." He was looking at a row where an amber crystal (0xffb43c)
+ * sits a few pixels from three #ffd166 stars, and he is right that the two read
+ * as one thing.
+ *
+ * THE CRYSTAL IS THE WRONG END TO FIX IT FROM. Its amber is not decoration --
+ * it is the same hue as the score readout when it bumps, the objective counter
+ * when it kicks, and the air gate: gold means POINTS on this hill, and it means
+ * it in the world where a player learns it at speed. Recolouring the most
+ * collected object in the game to resolve an adjacency on a menu would trade a
+ * UI problem for a much more expensive one, and the palette has no free bright
+ * hue to move it into anyway -- cyan is the boost pad, green the rails, violet
+ * the launchers, magenta the coping, and every theme's road markings cycle
+ * through those same six.
+ *
+ * So the star moves instead, and moving it says something true: a rating is not
+ * a currency. Points are gold and the run pays them out; stars are the mark of
+ * how well it went, and paper white is the one bright value nothing on the road
+ * uses. Gold keeps its single meaning and the two stop competing.
+ */
+.msel-star.earned {
+  color: var(--paper);
+  text-shadow: 0 0 0.3em rgba(246, 239, 228, 0.55);
+}
 .msel-lock { font-size: 1.3em; opacity: 0.7; }
 
 #msel-next {
@@ -1158,8 +1204,34 @@ html, body {
      modest, and this is the only screen that explains what the player is about
      to be asked to do. Roughly 40% up on both the width and the type scale. */
   width: min(38em, 92vw);
-  font-size: 15px; /* fallback if clamp() is unsupported */
-  font-size: clamp(13px, 1.9vw, 19px);
+  /**
+   * DOWN 20% FROM THAT. Amit: "vs mode opening screen's ui is too big and
+   * fills the entire screen, even cuts off -- reduce 20%."
+   *
+   * THE OLD NUMBERS WERE NOT WRONG, THEY WERE MEASURED ON THE WRONG AXIS. Both
+   * stops were sized "against a ~788px-wide phone" -- against WIDTH, on a
+   * portrait screen where height was free. The board is landscape, so the
+   * binding constraint is the short axis, and 1.9vw grows the card as the
+   * screen gets WIDER while the room it has to fit in does not:
+   *
+   *     1920x1080   453px tall   42% of the height    fine
+   *     1280x720    453px tall   63%                  fine
+   *     1024x600    453px tall   76%                  nearly fills
+   *      960x540    438px tall   81%                  nearly fills
+   *      854x480    398px tall   83%                  nearly fills
+   *
+   * Every stop is 80% of what it was, which shrinks the whole card and not just
+   * its type: the width is in em and so is every padding and row inside it, so
+   * one number carries all of it.
+   *
+   * APPLIED TO BOTH MODES, not only the race Amit was playing. It is one card
+   * with one root size, and the mission version of it is the TALLER of the two
+   * -- it carries a number, a subtitle and up to three objective rows against
+   * the race's two -- so scoping the fix to the race would have left the same
+   * defect in place on the worse screen.
+   */
+  font-size: 12px; /* fallback if clamp() is unsupported */
+  font-size: clamp(10.4px, 1.52vw, 15.2px);
   padding: 1.7em 1.8em 1.5em;
   border-radius: 1em;
   /* No panel fill against an opaque backdrop -- a slightly-lighter box on black
@@ -1566,11 +1638,38 @@ html, body {
 }
 
 
-/* Objective icons on a mission-list row -- see ui/missionSelect.js. Small and
-   between the text and the stars, so the row still reads name-first and the
-   icons answer "what is this one about" without becoming the headline. */
-.msel-icons { display: flex; align-items: center; gap: 3px; flex: none; margin-right: 8px; }
+/* WHAT A MISSION ASKS FOR, on the second line of its row -- see
+   ui/missionSelect.js. This is where the mood tagline used to sit, and it
+   inherits the position rather than the styling: the tagline was prose and
+   dimmed to 0.6 so it stayed out of the way, and these are the numbers you
+   pick a mission ON, so they come back up to full strength. */
+.msel-reqs {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 0.3em;
+}
+/* Icon and number are ONE unit and must never be split by the wrap -- a gem
+   ending a line with its 25 starting the next is a different sentence. The
+   column gap is wide (10px) and the icon-to-digit gap tight (3px) so each
+   pair groups by proximity without needing a separator between them. */
+.msel-req {
+  display: inline-flex; align-items: center; gap: 3px;
+  font: 800 0.95em/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+/* Score carries its own unit instead of an icon (a star would collide with the
+   rating stars ending the row) so it is sized to match the pairs and tinted
+   back a little -- it is the one criterion with no picture to anchor it, and
+   at full weight the longest string on the line became the loudest. */
+.msel-req-score {
+  font: 800 0.95em/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
 .msel-icon { display: inline-flex; }
 .msel-icon svg { display: block; width: 22px; height: 18px; }
-/* A locked row has no icons at all -- it does not say what it asks for. */
-.msel-row.locked .msel-icons { display: none; }
+/* A locked row says nothing about what it asks for -- it gets the "clear the
+   one before it" line instead, so there is no criteria strip to hide. */
+.msel-row.locked .msel-reqs { display: none; }
