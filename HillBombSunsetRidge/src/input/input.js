@@ -65,9 +65,14 @@ export const STANCE_MODES = [STANCE_SKATE, STANCE_SQUARE];
 // input the player physically cannot produce is worse than no input, because
 // everything built on it silently never happens.
 //
-// BACK is untouched: the brake still works, and it is the only thing on this
-// axis now. Analog mode is covered too, further down, since a forward LEAN
-// would otherwise still produce a tuck where the key does not.
+// BACK WAS UNTOUCHED WHEN THIS WAS WRITTEN, and is not any more -- see
+// BRAKE_INPUT below, which went false shortly afterwards and took the rest of
+// this axis with it. The line used to claim "the brake still works, and it is
+// the only thing on this axis now", which the constant twenty lines down has
+// contradicted ever since. Nothing reads the fore/aft axis today.
+//
+// Analog mode is covered too, further down, since a forward LEAN would
+// otherwise still produce a tuck where the key does not.
 //
 // A flag rather than deletion. The tuck pose and every constant behind it stay
 // exactly as they are -- Amit: "the animation is not disabled for now" -- so

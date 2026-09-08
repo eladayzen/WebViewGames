@@ -163,10 +163,22 @@
           <!-- No TUCK here any more: the forward lean is disabled (see
                input/input.js), and a hint advertising a control that does
                nothing is worse than no hint. -->
+          <!-- AND NO BRAKE, for exactly that reason, one release late. Amit:
+               "we disabled the ability to brake with backwards and we can
+               still see it at the bottom of the screen saying backwards to
+               brake -- remove that."
+               BRAKE_INPUT went false in input/input.js when he asked for the
+               brake to go, and this line was not updated with it. So the rule
+               written directly above had already been broken by the time it
+               was written: the hint was still promising the one control on
+               the fore/aft axis that had just been switched off. Nothing is
+               left on that axis at all now, which is the point -- steering is
+               purely lateral, the axis the board is actually comfortable on.
+          -->
           <!-- Arrows stay: on the board they read as LEAN directions, not as
                keys. "L lab" was a developer shortcut being advertised to
                players, and the L handler is still there for us. -->
-          <b>&larr; &rarr;</b> carve &nbsp;&middot;&nbsp; <b>&darr;</b> brake
+          <b>&larr; &rarr;</b> carve
         </div>
       </div>
 
