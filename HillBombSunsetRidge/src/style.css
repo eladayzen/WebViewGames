@@ -121,17 +121,39 @@ html, body {
 }
 .sp-row button:active { background: rgba(255, 255, 255, 0.3); }
 
-/* THE VOLUME SLIDERS.
-   Sized so a thumb can actually land on them -- the track is the full width of
-   the row and the handle is deliberately oversized, because this panel is used
-   on a phone-sized WebView as often as on a desktop. */
+/* THE VOLUME AND SENSITIVITY SLIDERS.
+   The handle stays deliberately oversized, because this panel is used on a
+   phone-sized WebView as often as on a desktop.
+
+   ON THE LABEL'S OWN LINE, NOT BELOW IT. Amit: "the volume does not need to be
+   a separated line from the headline. It can be shorter, and in the same level
+   of the SFX volume text."
+
+   `flex: 1 1 100%` was what put it on a line of its own -- a 100% basis in a
+   wrapping row always breaks. The track was the full width of the panel to give
+   a thumb the largest possible target, which was the right instinct on the
+   wrong axis: it bought precision nobody needs on a control that moves in tens,
+   and spent a whole line per slider to do it. Four sliders, four lines.
+
+   96px fixed, so all of them are the same length whatever their labels do --
+   `flex: 1` would have made SENSITIVITY's track longer than SFX VOLUME's purely
+   because its label is shorter, and a row of controls that reads as four
+   different lengths looks like four different ranges. The label keeps flex: 1
+   and pushes each track to the same right-hand edge. */
 .sp-slider {
-  flex: 1 1 100%;
+  flex: 0 0 96px;
+  /* min-width:auto is the flex default and it floors an item at its CONTENT
+     size -- a range input's intrinsic width is ~129px, so the 96px basis above
+     was being quietly ignored and every track came out 129px. Measured, not
+     guessed at. */
+  min-width: 0;
   order: 3;
   -webkit-appearance: none;
   appearance: none;
   height: 4px;
-  margin: 2px 0 0;
+  /* Vertically centred on the label rather than sitting under it: the row is
+     align-items:center and the old top margin was nudging it off that. */
+  margin: 0;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.18);
   outline: none;

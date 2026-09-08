@@ -180,15 +180,23 @@ function applyAll() {
   }
 }
 
-function makeRow(label, note) {
+/**
+ * @param {boolean} [withValue] false for a row whose control IS its readout.
+ *
+ * A slider does not get one. Amit, on the volumes: "we don't need the number."
+ * He is right that it was saying the same thing twice -- a handle three
+ * quarters along a track already reads as 75, and the digit beside it was the
+ * less precise of the two because it only moved in tens.
+ */
+function makeRow(label, note, withValue = true) {
   const el = document.createElement('div');
   el.className = 'sp-row';
   const name = document.createElement('span');
   name.className = 'sp-label';
   name.textContent = label;
   el.appendChild(name);
-  const value = document.createElement('button');
-  el.appendChild(value);
+  const value = withValue ? document.createElement('button') : null;
+  if (value) el.appendChild(value);
   if (note) {
     const n = document.createElement('small');
     n.className = 'sp-note';
@@ -254,10 +262,25 @@ function addChoice({ label, values, get, set, note, relevance, fmt }) {
  * wraps for the two-key path. Neither surface is a degraded version of the
  * other, and the value they move is the same one.
  */
-function addSlider({ label, key, min, max, step, fmt, note, relevance }) {
-  const { el, value } = makeRow(label, note);
-  // The readout stays a button so the row still has something to select and
-  // press on the board, and so it lines up with every other row's value.
+function addSlider({ label, key, min, max, step, note, relevance }) {
+  /**
+   * NO READOUT, AND THE TRACK SITS ON THE LABEL'S OWN LINE.
+   *
+   * Amit: "the volume does not need to be a separated line from the headline.
+   * It can be shorter, and in the same level of the SFX volume text, and we
+   * don't need the number."
+   *
+   * The readout used to be kept "so the row still has something to select and
+   * press on the board" -- which turned out not to be true. The board never
+   * pressed that button: it forwards Enter and Space, and the key handler calls
+   * activate() on the SELECTED ROW, so the button was only ever a second
+   * pointer affordance beside a control a pointer can already drag. Removing it
+   * costs the board nothing.
+   *
+   * `fmt` went with it -- with nothing to print, a formatter is dead weight.
+   * addStepper keeps its own, which is where the numeric rows still live.
+   */
+  const { el } = makeRow(label, note, false);
   const input = document.createElement('input');
   input.type = 'range';
   input.className = 'sp-slider';
@@ -268,7 +291,6 @@ function addSlider({ label, key, min, max, step, fmt, note, relevance }) {
     el,
     relevance,
     refresh() {
-      value.textContent = fmt(state[key]);
       input.value = String(state[key]);
     },
     activate() {
@@ -286,14 +308,12 @@ function addSlider({ label, key, min, max, step, fmt, note, relevance }) {
   input.addEventListener('input', () => {
     state[key] = Number(input.value);
     applyAll();
-    value.textContent = fmt(state[key]);
   });
   // Saved on release rather than on every pixel of the drag -- localStorage
   // writes during a drag are pure waste, and in a restricted WebView each one
   // is a chance to throw.
   input.addEventListener('change', save);
-  value.addEventListener('click', row.activate);
-  el.insertBefore(input, value);
+  el.appendChild(input);
   rows.push(row);
   return row;
 }
@@ -507,12 +527,22 @@ export function initSettingsPanel(hooks = {}) {
   // The two sound switches. ON/OFF as a two-value choice rather than a new
   // widget type: the row model already cycles values on activate, and cycling
   // is the only interaction the board can drive.
+  /**
+   * NO EXPLANATORY NOTES ON THE SOUND ROWS. Amit: "after the SFX there is no
+   * need for additional text... the same thing goes for music of course."
+   *
+   * SFX carried "ramps, rails, pickups, crashes" and MUSIC "independent of
+   * SFX". Both were written to justify having two switches, which is an
+   * argument the panel does not need to make to the player -- the two switches
+   * are visibly there and the words SFX and MUSIC are not ambiguous. A note
+   * earns its line when a row does something a player cannot guess; these did
+   * not, and each one cost a whole line, since .sp-note wraps at 100% basis.
+   */
   addChoice({
     label: 'SFX',
     values: ['on', 'off'],
     get: () => (state.sfx ? 'on' : 'off'),
     set: (v) => { state.sfx = v === 'on'; },
-    note: 'ramps, rails, pickups, crashes',
   });
   addSlider({
     label: 'SFX VOLUME',
@@ -520,7 +550,6 @@ export function initSettingsPanel(hooks = {}) {
     min: 0,
     max: 100,
     step: 10,
-    fmt: (v) => `${Math.round(v)}`,
     // Dimmed rather than hidden when the switch is off: a volume that vanishes
     // makes the player wonder where it went, whereas a greyed one explains
     // itself and shows what it will be when they switch back on.
@@ -531,7 +560,6 @@ export function initSettingsPanel(hooks = {}) {
     values: ['on', 'off'],
     get: () => (state.music ? 'on' : 'off'),
     set: (v) => { state.music = v === 'on'; },
-    note: 'independent of SFX',
   });
   addSlider({
     label: 'MUSIC VOLUME',
@@ -539,8 +567,46 @@ export function initSettingsPanel(hooks = {}) {
     min: 0,
     max: 100,
     step: 10,
-    fmt: (v) => `${Math.round(v)}`,
     relevance: () => state.music,
+  });
+  /**
+   * SENSITIVITY, PROMOTED OUT OF THE DEV PANEL.
+   *
+   * Amit: "we need to add the ability of sensitivity... I'm talking about the
+   * sensitivity of the controller."
+   *
+   * It already existed and already worked -- it has been tuning the host's lean
+   * thresholds over the gb:sensitivity bridge all along -- but it was filed
+   * under DEV OPTIONS, behind a seven-second hold and a code, which for the
+   * player is the same as not existing.
+   *
+   * PUTTING IT BACK IS A REVERSAL, and worth naming as one: it was moved to dev
+   * on the argument that it is "half host-side" and that showing it "invites
+   * the player to break their own controls in ways they cannot diagnose". That
+   * reasoning holds for STEER MODE and the carve numbers, which is why those
+   * stay put. It does not hold for this: controller sensitivity is a setting
+   * every other game on the board exposes, a player who finds the board too
+   * twitchy has no other way to say so, and the failure mode is a value they
+   * can see and move back.
+   *
+   * A SLIDER HERE, THOUGH IT IS A STEPPER IN DEV. Same state, same 0-100 in
+   * fives; a slider matches the volumes directly above it and is one drag
+   * rather than twenty taps. It sits next to STANCE because the two together
+   * are "how the board behaves", which is a different question from how loud
+   * the game is.
+   *
+   * The relevance gate is kept honest rather than dropped: sensitivity only
+   * means anything in REGULAR mode, which is the default and what the board
+   * ships on, so in practice it is live -- but if someone switches to analog in
+   * dev, this dims instead of lying.
+   */
+  addSlider({
+    label: 'SENSITIVITY',
+    key: 'sensitivity',
+    min: 0,
+    max: 100,
+    step: 5,
+    relevance: () => state.mode === STEER_REGULAR,
   });
   /**
    * HIDDEN UNTIL UNLOCKED. Amit: "hide the dev options button."
@@ -612,16 +678,11 @@ export function initSettingsPanel(hooks = {}) {
     note: 'analog only -- softens small leans near centre',
     relevance: () => state.mode !== STEER_REGULAR,
   });
-  addStepper({
-    label: 'SENSITIVITY',
-    key: 'sensitivity',
-    min: 0,
-    max: 100,
-    step: 5,
-    fmt: (v) => `${Math.round(v)}`,
-    note: 'regular mode only -- tunes the HOST thresholds',
-    relevance: () => state.mode === STEER_REGULAR,
-  });
+  // SENSITIVITY IS NOT HERE ANY MORE -- it moved to the player's panel, where
+  // Amit asked for it. Not duplicated: two rows bound to the same state key
+  // would both work and then disagree on screen, since each only refreshes
+  // itself. The dev panel keeps the rows a player genuinely should not touch --
+  // steer mode, the carve numbers, recentre, render lab.
   addAction({
     label: 'RECENTRE BOARD',
     run: () => (recentreBoard() ? 'CENTRED \u2713' : 'NO SENSOR (BROWSER)'),
