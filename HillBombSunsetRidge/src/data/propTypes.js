@@ -461,8 +461,36 @@ export const PATTERNS = [
     build: (W) => [
       { type: 'rail', ds: 0, u: -W * 0.35 },
       { type: 'blocker', ds: 44, u: -W * 0.08 },
-      // Directly behind the blocker at ds 44: go around it, then come back.
-      { type: 'statue', ds: 56, u: -W * 0.07, rare: 2 },
+      /**
+       * NOT BEHIND THE BLOCKER ANY MORE, and no longer on the centreline.
+       *
+       * Amit: "the idols are mostly in the centre, always after some kind of
+       * barrier, or either far in the sides. It's very annoying when I'm coming
+       * to get the idols and then I'm blocked by a barrier."
+       *
+       * This placement was the worst case and it was deliberate -- the note
+       * here used to read "directly behind the blocker at ds 44: go around it,
+       * then come back", which sounds like a nice bit of routing and does not
+       * survive contact with the speed. The gap was TWELVE METRES at u -0.07
+       * against a blocker at -0.08: a lateral gap of 0.01W, so the same line
+       * exactly. At ~29 m/s twelve metres is four tenths of a second, which is
+       * not time to go around anything and come back -- it is only time to hit
+       * the blocker with the reward already in view. The idea needed 40 m and
+       * had 12.
+       *
+       * 0.36W to the OTHER side instead -- in the band the one idol nobody
+       * complained about already sits in (see 'the ladder' in FACE_PATTERNS).
+       * It still costs a carve to reach, which is the whole design of an idol --
+       * it is just a carve that a barrier is not standing in.
+       *
+       * SHALLOWEST OF THE THREE, at 0.36W, and that is a sequence decision
+       * rather than a local one -- see the note on the gauntlet idol for the
+       * cycle these three form. It is also why this one is on the RIGHT: the
+       * left of this pattern at this ds is a kicker at -0.35W, and an idol
+       * parked on a launcher's line gets collected in the air by anyone taking
+       * the ramp, which is a gift rather than a reward.
+       */
+      { type: 'statue', ds: 56, u: W * 0.36, rare: 2 },
       { type: 'rail', ds: 26, u: W * 0.35 },
       { type: 'cone', ds: 14, u: 0 },
       // Strung ALONG the rail line, drifting from one rail to the next, so the
@@ -526,8 +554,25 @@ export const PATTERNS = [
       { type: 'rail', ds: 0, u: W * 0.5 },
       { type: 'bank', ds: 40, u: 0 },
       { type: 'blocker', ds: 66, u: W * 0.14 },
-      // Behind the blocker at ds 66, and further out than the swerve wants.
-      { type: 'statue', ds: 78, u: W * 0.22, rare: 3, rarePhase: 1 },
+      /**
+       * ACROSS THE ROAD FROM THE BLOCKER, not twelve metres behind it. Same
+       * defect and same fix as 'rail run' above -- it sat at 0.22W against a
+       * blocker at 0.14W, a lateral gap of 0.08W, which is the same lane.
+       *
+       * Put on the LEFT specifically, because this pattern already has a boost
+       * gate at 0.44W right beside where the idol would otherwise go: an idol
+       * four metres past a gate on the same line is not a choice, it is a
+       * pickup you collect by accident on your way through something else.
+       * Opposite, it becomes the decision idols are for -- the gate or the
+       * idol, one carve each way.
+       *
+       * Clear of the woodWall at -0.28W too: 0.30W of lateral gap and 32 m of
+       * warning, against that wall's 1.9-unit collider.
+       *
+       * DEEPEST TO THE LEFT, at 0.58W, because this is the idol the next one
+       * has to be crossed from -- see the gauntlet note.
+       */
+      { type: 'statue', ds: 78, u: -W * 0.58, rare: 3, rarePhase: 1 },
       { type: 'boostPad', ds: 74, u: W * 0.44 },
       { type: 'woodWall', ds: 46, u: -W * 0.28 },
       { type: 'hydrant', ds: 20, u: -W * 0.78 },
@@ -545,9 +590,56 @@ export const PATTERNS = [
       { type: 'roadwork', ds: 30, u: W * 0.5 },
       { type: 'longRail', ds: 20, u: W * 0.1 },
       { type: 'blocker', ds: 52, u: -W * 0.06 },
-      // Far rim, opposite the longRail this pattern runs -- taking it means
-      // giving up the grind, which is the decision that makes it worth a look.
-      { type: 'statue', ds: 74, u: -W * 0.88, rare: 3 },
+      /**
+       * IN FROM THE RIM AND ACROSS THE ROAD: 0.88W left -> 0.58W RIGHT. The
+       * distance is the other half of what Amit first said ("or either far in
+       * the sides") -- 0.88W is up against the coping where the trough's own
+       * curve pulls you back down, so holding a line out there is a fight
+       * rather than a carve. The SIDE is the answer to what he said next.
+       *
+       * THE THREE IDOLS ARE A CYCLE, AND THIS IS THE BEAT THAT MAKES IT COST.
+       *
+       * Amit: "the level you fixed is better but it's too easy now, because you
+       * place idols one after the other in the same lane -- try to challenge it
+       * a bit more."
+       *
+       * Measured, and he was describing something exact. The hill repeats one
+       * three-idol figure, and the gaps between them are wildly uneven:
+       *
+       *     rail run   ->  rail plaza    257 m
+       *     rail plaza ->  gauntlet       86 m   <-- the tight one
+       *     gauntlet   ->  rail run      232 m
+       *
+       * Both left-hand idols had landed within 0.04W of each other across that
+       * 86 m gap, so the tightest beat in the cycle was the one that asked for
+       * nothing: carve out once, hold the line for three seconds, collect two.
+       * The two long gaps got the crossings, where there is so much road that a
+       * crossing is free.
+       *
+       * SO THE CROSSING IS SPENT ON THE SHORT GAP INSTEAD. Three idols cannot
+       * alternate sides around a cycle -- an odd loop cannot be two-coloured --
+       * so exactly one adjacency has to repeat a side, and the only question is
+       * which. It should be the 257 m one, not the 86 m one.
+       *
+       * FEASIBLE, NOT MERELY HARDER, and that was measured too: a full carve
+       * sweeps 0.0257 rad per metre, so the 1.3 rad from -0.58W to here needs
+       * about 50 m of the 86 m available. It has to be committed to immediately
+       * -- there is no coasting first -- which is the demand, and there is still
+       * a third of the gap in hand.
+       *
+       * The blocker at -0.06W is not in the way of that crossing either, though
+       * it is close enough to matter: it sits 22 m before this idol, and a
+       * player who starts carving at the previous one passes the centreline
+       * around 25 m in, well ahead of it. Cross late and it is in the way --
+       * which is a timing question with an answer, not a wall.
+       *
+       * THE SACRIFICE CHANGES HANDS RATHER THAN DISAPPEARING. This used to be
+       * "opposite the longRail -- taking it means giving up the grind". From
+       * the right it is opposite the BOOST PAD at -0.38W instead, and a pad is
+       * worth 35-55 m of progress, so the either-or is if anything sharper than
+       * the rail's.
+       */
+      { type: 'statue', ds: 74, u: W * 0.58, rare: 3 },
       { type: 'boostPad', ds: 48, u: -W * 0.38 },
       { type: 'woodWall', ds: 12, u: W * 0.30 },
       { type: 'pothole', ds: 62, u: -W * 0.45 },
@@ -637,11 +729,32 @@ export const FACE_PATTERNS = [
       { type: 'kicker', ds: 84, u: W * 0.16 },
       { type: 'crystal', ds: 92, u: W * 0.60 },
       { type: 'blocker', ds: 100, u: W * 0.30 },
-      // DEAD CENTRE, behind the blocker lane. Amit: "the idols are always on
-      // the sides, it's boring." All three sat past 86% out, so the only idol
-      // anyone ever saw was a rim idol. This one is guarded by the middle
-      // rather than by distance -- you go through something to reach it.
-      { type: 'statue', ds: 78, u: W * 0.08, rare: 2 },
+      /**
+       * OFF THE CENTRELINE, 0.08W -> -0.45W. This row is where the pendulum is
+       * visible: it was moved to DEAD CENTRE because "the idols are always on
+       * the sides, it's boring" -- true, and the fix overshot to the other
+       * extreme, which is what produced "I'm coming to get the idols and then
+       * I'm blocked by a barrier".
+       *
+       * LEFT, and the sign is the whole reason this number was picked twice.
+       * 0.44W on the right cleared everything on the way IN and then dropped
+       * the player onto a blocker at 0.30W twenty-two metres LATER -- the same
+       * complaint one beat further on, which only showed up once the approach
+       * check was run in both directions. -0.45W is the lane with the widest
+       * margin either way: 0.31W of clearance from the barriers before it and
+       * 0.75W from the one after.
+       *
+       * Both notes are right and neither end of the road is the answer. The
+       * middle band, around 0.4-0.55W, is: far enough out that reaching it
+       * costs a carve and it is not collected by riding straight, close enough
+       * in that no barrier lane and no coping is in the way. Every idol in the
+       * game now sits there, which is where the only one nobody complained
+       * about already was ('the ladder', below).
+       *
+       * (Open-face content, currently unreachable -- fixed with the rest so the
+       * shape is right whenever the face comes back, not left as a trap.)
+       */
+      { type: 'statue', ds: 78, u: -W * 0.45, rare: 2 },
     ],
   },
   {
@@ -739,9 +852,31 @@ export const FACE_PATTERNS = [
       // support asking for five. Three placements puts it near five a minute
       // with the override on, and still under two a minute at the authored
       // cadence -- so the incidental case does not become a parade.
-      // One stays at the rim -- a long way out is still a good place for one,
-      // it just cannot be the ONLY place.
-      { type: 'statue', ds: 58, u: -W * 0.88, rare: 3 },
+      /**
+       * THE LAST RIM IDOL COMES IN TOO, 0.88W -> 0.46W, and it was the worst
+       * of the six: a blocker sat at -0.88W thirty metres ahead of it, the SAME
+       * LANE to two decimal places, so the only way to the idol was through the
+       * barrier. Exactly the shape Amit described.
+       *
+       * This row used to argue "one stays at the rim -- a long way out is still
+       * a good place for one, it just cannot be the ONLY place". The variety
+       * point stands; the rim is just not where it should be spent, because the
+       * rim is a fight with the coping whether or not something is parked in
+       * front of it. Variety in an idol comes from what you give up to reach
+       * it -- a grind, a gate, a line -- and this pattern has a blocker at
+       * 0.14W to carve around, which is a better cost than gravity.
+       *
+       * Right side, so it is clear of both the blocker behind it at -0.88W and
+       * the one after it at -0.46W. Reaching it no longer means riding through
+       * anything, and leaving it no longer drops you onto a barrier.
+       *
+       * 0.58W RATHER THAN 0.46W -- the same-lane lesson from the ridge applied
+       * here. 'the ladder' above also sits at 0.46W, so two idols in this set
+       * were asking for the identical carve. A depth change is the least this
+       * can do about it; it cannot become a crossing, because the left of this
+       * pattern is where all three of its blockers live.
+       */
+      { type: 'statue', ds: 58, u: W * 0.58, rare: 3 },
     ],
   },
 ];
