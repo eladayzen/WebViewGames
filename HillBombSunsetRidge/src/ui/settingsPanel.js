@@ -523,6 +523,55 @@ export function initSettingsPanel(hooks = {}) {
   // How do I want to play. Nothing here can misconfigure the controls.
   rows = playerRows;
 
+  /**
+   * SENSITIVITY LEADS THE PANEL, AND IT IS A STEPPER WITH ITS NUMBER SHOWING.
+   *
+   * Amit: "the sensitivity should be first. It should work like the sensitivity
+   * in the rest of the project -- you can see how the other agents do it,
+   * they've got like jumping digits. You should see the value like in the other
+   * games. And the sound and music come afterwards."
+   *
+   * TWO CORRECTIONS TO ME, both worth naming. I had made this a slider and
+   * dropped its readout, on the reasoning that a slider matched the volumes
+   * directly above it and that a handle three quarters along a track already
+   * reads as 75. Both parts were wrong here:
+   *
+   *   - it is not a volume. A volume is judged by EAR while you drag it, so the
+   *     number is decoration. Sensitivity is judged by how the board feels a
+   *     run later, which makes the number the only thing you can actually carry
+   *     between attempts -- "it was 55, I'll try 45". A slider with no readout
+   *     leaves the player nothing to remember.
+   *   - the rest of the project already answered this. HalfShellHustle's
+   *     steeringPanel uses addStepper with fmt Math.round, and the app's own
+   *     settings screen logs `settings_changed_sensitivity` as "the rounded int
+   *     number that the user SEES". Same control, same 0-100 in fives, same
+   *     visible digits. Matching it is worth more than matching the two rows
+   *     underneath it.
+   *
+   * FIRST, because it is the only row here that changes how the board plays.
+   * Amit left the order against STANCE open ("before or after"); above reads
+   * better than below, since the stance row is a tall picture and burying the
+   * one control anybody came to change under it is how it got missed the first
+   * time. Sound follows both.
+   *
+   * It steps and WRAPS at the top rather than clamping -- the board forwards
+   * only Enter and Space, so with one key there is no way back down a control
+   * that has stopped at its maximum.
+   *
+   * The relevance gate stays honest rather than being dropped: sensitivity only
+   * means anything in REGULAR mode, which is the default and what the board
+   * ships on, so in practice it is live -- but if someone switches to analog in
+   * dev, this dims instead of lying.
+   */
+  addStepper({
+    label: 'SENSITIVITY',
+    key: 'sensitivity',
+    min: 0,
+    max: 100,
+    step: 5,
+    fmt: (v) => `${Math.round(v)}`,
+    relevance: () => state.mode === STEER_REGULAR,
+  });
   addStance();
   // The two sound switches. ON/OFF as a two-value choice rather than a new
   // widget type: the row model already cycles values on activate, and cycling
@@ -568,45 +617,6 @@ export function initSettingsPanel(hooks = {}) {
     max: 100,
     step: 10,
     relevance: () => state.music,
-  });
-  /**
-   * SENSITIVITY, PROMOTED OUT OF THE DEV PANEL.
-   *
-   * Amit: "we need to add the ability of sensitivity... I'm talking about the
-   * sensitivity of the controller."
-   *
-   * It already existed and already worked -- it has been tuning the host's lean
-   * thresholds over the gb:sensitivity bridge all along -- but it was filed
-   * under DEV OPTIONS, behind a seven-second hold and a code, which for the
-   * player is the same as not existing.
-   *
-   * PUTTING IT BACK IS A REVERSAL, and worth naming as one: it was moved to dev
-   * on the argument that it is "half host-side" and that showing it "invites
-   * the player to break their own controls in ways they cannot diagnose". That
-   * reasoning holds for STEER MODE and the carve numbers, which is why those
-   * stay put. It does not hold for this: controller sensitivity is a setting
-   * every other game on the board exposes, a player who finds the board too
-   * twitchy has no other way to say so, and the failure mode is a value they
-   * can see and move back.
-   *
-   * A SLIDER HERE, THOUGH IT IS A STEPPER IN DEV. Same state, same 0-100 in
-   * fives; a slider matches the volumes directly above it and is one drag
-   * rather than twenty taps. It sits next to STANCE because the two together
-   * are "how the board behaves", which is a different question from how loud
-   * the game is.
-   *
-   * The relevance gate is kept honest rather than dropped: sensitivity only
-   * means anything in REGULAR mode, which is the default and what the board
-   * ships on, so in practice it is live -- but if someone switches to analog in
-   * dev, this dims instead of lying.
-   */
-  addSlider({
-    label: 'SENSITIVITY',
-    key: 'sensitivity',
-    min: 0,
-    max: 100,
-    step: 5,
-    relevance: () => state.mode === STEER_REGULAR,
   });
   /**
    * HIDDEN UNTIL UNLOCKED. Amit: "hide the dev options button."
