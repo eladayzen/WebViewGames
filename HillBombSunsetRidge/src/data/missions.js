@@ -296,7 +296,13 @@ const AUTHORED = [
   // type: they are their own lesson at mission 5, and a rare thing met before
   // it is introduced is just a confusing crystal.
   ['crystalRun',  'CRYSTAL RUN',   'Something to collect, and a hill to do it on.', 90,
-    { pickup: 22 }, undefined,
+    // 8 crystals once DIFFICULTY is applied (11 x 0.7 = 7.7). Amit, on the
+    // first three now that they lead the ladder: "they need to be easier --
+    // 8 crystals, 5 ramps, 4 rails." Down from 15, which was authored when
+    // this was mission 3 and a player arriving at it had already been taught
+    // ramps and rails. First is a different job: it has to be finishable by
+    // someone still working out what the board does.
+    { pickup: 11 }, undefined,
     { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup'],
       without: ['woodWall', 'statue'], density: 1, feature: ['pickup'] }],
   // MISSION 2 IS RAMPS, and only ramps. Amit, moving back to the ridge after
@@ -319,11 +325,15 @@ const AUTHORED = [
   // allow that kind, so no other ridge mission sees them and none of their
   // measured star thresholds move.
   ['firstDrop',   'FIRST DROP',    'Ramps, and ground that gives way.',         80,
-    // 8 ramps once DIFFICULTY is applied (11 x 0.7 = 7.7). Amit: "8 ramps are
-    // enough." Authored rather than hard-set so it still moves with the global
-    // scalar -- if the board wants another easing pass, this comes down with
-    // everything else instead of being the one row that does not.
-    { launch: 11 }, undefined,
+    // 5 ramps once DIFFICULTY is applied (7 x 0.7 = 4.9). Authored rather than
+    // hard-set so it still moves with the global scalar -- if the board wants
+    // another easing pass, this comes down with everything else instead of
+    // being the one row that does not.
+    //
+    // Down from 8. "8 ramps are enough" was Amit's number when this was mission
+    // ONE and the ladder opened on it; from second, behind a crystal sweep,
+    // the teaching job is smaller and 5 is his: "5 ramps."
+    { launch: 7 }, undefined,
     // woodWall is excluded BY TYPE: it shares the 'wall' kind with the blocker,
     // so allowing the kind brought the race's timber plank along with the pink
     // barrier. Only one of them is what was asked for.
@@ -341,10 +351,16 @@ const AUTHORED = [
   // 3 -- RAILS, on ice rather than on green. Adds the green metal on top of
   // mission 2's ramps; the objective is rails and nothing else.
   ['railRunner',  'RAIL RUNNER',   'Green metal. Get on it and stay on.',       90,
-    // 6 rails once DIFFICULTY is applied (9 x 0.7 = 6.3). Amit: "level 2, six
-    // grinds instead of four." Authored rather than hard-set so it still moves
-    // with the global scalar.
-    { grind: 9 }, undefined,
+    // 4 rails once DIFFICULTY is applied (6 x 0.7 = 4.2). Authored rather than
+    // hard-set so it still moves with the global scalar.
+    //
+    // Down from 6, and this one reverses a specific earlier instruction rather
+    // than just easing a number: "level 2, six grinds instead of four" raised
+    // it TO six back when rails were mission 2. Amit's own correction now that
+    // rails are third and on a new hill: "4 rails." Landing on a rail is the
+    // hardest of the three verbs -- aim, land on a line, hold it -- so it is
+    // the one that least wants a long count in the teaching block.
+    { grind: 6 }, undefined,
     { kinds: ['launch', 'grind', 'wall', 'scenery'], without: ['woodWall'],
       density: 1, feature: ['grind'] }],
   // 4 -- SPEED GATES. Crystals come OUT for this one, the same way they did on
