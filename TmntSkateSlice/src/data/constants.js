@@ -116,11 +116,25 @@ export const SCORE_POPUP_TTL_SEC = 1.75;
 // chip still visibly catching up.
 export const BOX_COMPLETE_FLY_MS = 760;
 
+// Early-game easing (2026-09-09): the first EARLY_GAME_EASE_SEC of a run are a
+// touch gentler so the opening is less punishing -- bomb spawn chance is scaled
+// by EARLY_GAME_BOMB_CHANCE_FACTOR, and the bomb-presence floor only maintains
+// EARLY_GAME_BOMB_FLOOR_MIN_COUNT bomb on screen (vs the usual 2) so that
+// reduction is actually felt rather than refilled by the floor. Keyed to run
+// time (difficulty.elapsedSec), not per stage.
+export const EARLY_GAME_EASE_SEC = 30;
+export const EARLY_GAME_BOMB_CHANCE_FACTOR = 0.7;
+export const EARLY_GAME_BOMB_FLOOR_MIN_COUNT = 1;
+
 // --- Lives (§5.4, §8) ---
-export const STARTING_LIVES = 3;
-// Lives can grow past the starting 3 (the red box's completion reward grants an
-// extra heart, 2026-08-02) up to this cap. The HUD shows one heart slot per
-// point of current capacity.
+// Start at the cap (2026-09-09, was 3) -- a more forgiving opening. Since this
+// equals MAX_LIVES, the tray starts full and dropped hearts only ever refill a
+// lost one (gainLife caps at MAX_LIVES).
+export const STARTING_LIVES = 5;
+// Heart cap. Now equal to STARTING_LIVES (both 5, 2026-09-09), so the tray
+// starts full; the red box's extra-heart reward and dropped hearts refill lost
+// hearts rather than growing capacity. The HUD shows one slot per point of
+// current capacity.
 export const MAX_LIVES = 5;
 export const HIT_INVULNERABILITY_SEC = 1.2;
 

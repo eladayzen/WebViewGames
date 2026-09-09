@@ -61,7 +61,7 @@ import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/
 import { submitRun, fetchBoard, resultSections } from '../systems/scoreboard.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
-import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, BOX_COMPLETE_FLY_MS, HUD_SCALE_REFERENCE_HEIGHT_PX, HUD_SCALE_MAX, BONUS_WAVE_TRIGGER_SCORES, BONUS_WAVE_SPAWN_INTERVAL_SEC } from '../data/constants.js';
+import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, BOX_COMPLETE_FLY_MS, HUD_SCALE_REFERENCE_HEIGHT_PX, HUD_SCALE_MAX, BONUS_WAVE_TRIGGER_SCORES, BONUS_WAVE_SPAWN_INTERVAL_SEC, EARLY_GAME_EASE_SEC, EARLY_GAME_BOMB_CHANCE_FACTOR, EARLY_GAME_BOMB_FLOOR_MIN_COUNT } from '../data/constants.js';
 
 // Clamp so a tab-resume/frame-hitch never simulates a huge leap. Raised
 // 1/20 -> 1/10 (2026-07-30): the old 1/20 meant any frame slower than 20fps
@@ -742,23 +742,35 @@ async function boot() {
       playSfx(audio, sfx.sfx_stage_advance);
     }
 
+    // Early-game easing (2026-09-09): the first EARLY_GAME_EASE_SEC of a run
+    // are a touch gentler. Keyed to run time (difficulty.elapsedSec), so it
+    // spans the opening regardless of stage.
+    const earlyGame = difficulty.elapsedSec < EARLY_GAME_EASE_SEC;
+
     // Bomb presence floor (2026-08-05, raised to a count of 2): if the
     // number of bombs currently on screen has stayed below the floor too
     // long, force the NEXT spawn to be a bomb, at the play-area edge FAR
     // from the player -- directly answers "I can camp an edge and stay
     // safe." See systems/bombPresence.js. SUSPENDED during the bonus wave --
     // the whole point is no bombs (the &&-short-circuit also freezes the
-    // presence timer, so no bomb is forced the instant the rush ends).
+    // presence timer, so no bomb is forced the instant the rush ends). During
+    // early game the floor is relaxed to 1 bomb (vs 2) so fewer are forced.
     const bombCount = items.reduce((n, it) => n + (!it.resolved && it.type.kind === 'hazard' ? 1 : 0), 0);
-    const forceBomb = !bonusWave.active && updateBombPresence(bombPresence, dt, bombCount);
+    const floorMinCount = earlyGame ? EARLY_GAME_BOMB_FLOOR_MIN_COUNT : undefined; // undefined -> default 2
+    const forceBomb = !bonusWave.active && updateBombPresence(bombPresence, dt, bombCount, floorMinCount);
     const forcedBombXFrac = forceBomb ? (player.xFrac < 0.5 ? ITEM_MAX_X_FRAC : ITEM_MIN_X_FRAC) : null;
 
-    // During the rush: no bombs, no power-ups, faster spawns -- a wall of good
-    // items. fallSpeedFrac / groundYFrac stay the stage's own (spread through)
-    // so only the mix and cadence change, not where things land.
-    const spawnStage = bonusWave.active
-      ? { ...stage, bombChance: 0, powerUpChance: 0, spawnIntervalSec: BONUS_WAVE_SPAWN_INTERVAL_SEC }
-      : stage;
+    // Spawn-mix override. During the rush: no bombs, no power-ups, faster
+    // spawns -- a wall of good items. During early game (and not the rush):
+    // just a scaled-down bomb chance. fallSpeedFrac / groundYFrac stay the
+    // stage's own (spread through) so only the mix/cadence change, not where
+    // things land.
+    let spawnStage = stage;
+    if (bonusWave.active) {
+      spawnStage = { ...stage, bombChance: 0, powerUpChance: 0, spawnIntervalSec: BONUS_WAVE_SPAWN_INTERVAL_SEC };
+    } else if (earlyGame) {
+      spawnStage = { ...stage, bombChance: stage.bombChance * EARLY_GAME_BOMB_CHANCE_FACTOR };
+    }
     const spawned = updateSpawner(spawner, dt, spawnStage, boxes, forcedBombXFrac);
     if (spawned) items.push(spawned);
 

@@ -29,8 +29,12 @@ export function resetBombPresence(bp) {
 // long and the next spawn should be forced to a bomb. Self-resets once the
 // count is back at/above the floor (including from the forced spawn itself,
 // the frame after it lands) -- no separate acknowledgement call needed.
-export function updateBombPresence(bp, dt, bombCount) {
-  if (bombCount >= BOMB_PRESENCE_MIN_COUNT) {
+//
+// `minCount` is the floor to maintain; it defaults to the usual value but the
+// caller can pass a lower one to relax the floor (core/main.js lowers it during
+// the early-game easing window so fewer bombs are forced at the start).
+export function updateBombPresence(bp, dt, bombCount, minCount = BOMB_PRESENCE_MIN_COUNT) {
+  if (bombCount >= minCount) {
     bp.gapSec = 0;
     return false;
   }

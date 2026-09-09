@@ -1,6 +1,7 @@
-// Extra-life heart drop (2026-09-03). From STAGE 2 onward, drop exactly one
-// catchable heart per stage at a random time, so a player can recover a life
-// "about once a level". Level 1 (stageIndex 0) never drops one.
+// Extra-life heart drop (2026-09-03; from level 1 onward as of 2026-09-09).
+// Drop exactly one catchable heart per stage -- INCLUDING level 1 -- at a
+// random time, so a player can recover a life "about once a level" from the
+// very start (a bit more heart availability for an easier opening).
 //
 // Deliberately minimal and paced, mirroring systems/bombPresence.js's shape:
 // it only answers "should a heart drop this frame," nothing about difficulty.
@@ -20,20 +21,15 @@ export function resetHeartDrop(hd) {
   hd.delay = 0;
 }
 
-// Call once when a stage begins (including the first). stageIndex 0 = level 1
-// (no heart); >= 1 arms one drop at a random delay into the stage.
+// Call once when a stage begins (including the first). Arms one drop per stage,
+// every stage including level 1 (stageIndex 0), at a random delay into it.
 export function armHeartDropForStage(hd, stageIndex) {
   hd.elapsed = 0;
-  if (stageIndex >= 1) {
-    hd.armed = true;
-    hd.dropped = false;
-    hd.delay =
-      HEART_DROP_MIN_DELAY_SEC +
-      Math.random() * (HEART_DROP_MAX_DELAY_SEC - HEART_DROP_MIN_DELAY_SEC);
-  } else {
-    hd.armed = false;
-    hd.dropped = true; // level 1: never
-  }
+  hd.armed = true;
+  hd.dropped = false;
+  hd.delay =
+    HEART_DROP_MIN_DELAY_SEC +
+    Math.random() * (HEART_DROP_MAX_DELAY_SEC - HEART_DROP_MIN_DELAY_SEC);
 }
 
 // Call once per running frame. Returns true EXACTLY once per armed stage, the
