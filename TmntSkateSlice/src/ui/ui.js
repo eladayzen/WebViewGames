@@ -168,6 +168,20 @@ function renderBoardInto(rootEl, titleEl, listEl, board, groups) {
 }
 
 
+// Pause/play icons as inline SVG (2026-09-09) rather than the characters U+23F8
+// (pause) / U+25B6 (play): U+23F8 defaults to color-emoji presentation, so on
+// mobile WebViews it rendered as a "yellow button". These SVGs use
+// fill:currentColor and render identically on every device. Kept in sync with
+// index.html's initial pause-button markup so toggling pause never swaps in a
+// different-looking glyph -- setPaused writes these, not the old entities.
+const PAUSE_ICON_SVG =
+  '<svg width="14" height="16" viewBox="0 0 14 16" fill="currentColor" aria-hidden="true" focusable="false">' +
+  '<rect x="1.5" y="1" width="3.6" height="14" rx="1.4"></rect>' +
+  '<rect x="8.9" y="1" width="3.6" height="14" rx="1.4"></rect></svg>';
+const PLAY_ICON_SVG =
+  '<svg width="14" height="16" viewBox="0 0 14 16" fill="currentColor" aria-hidden="true" focusable="false">' +
+  '<path d="M2.5 1.2 L12.8 8 L2.5 14.8 Z"></path></svg>';
+
 export function createUI() {
   const el = {
     countdown: document.getElementById('countdown-overlay'),
@@ -981,7 +995,8 @@ export function createUI() {
     },
 
     setPaused(isPaused) {
-      el.pauseButton.innerHTML = isPaused ? '&#9654;' : '&#9208;'; // play : pause glyph
+      // SVG icons, not emoji-presentation characters -- see PAUSE_ICON_SVG.
+      el.pauseButton.innerHTML = isPaused ? PLAY_ICON_SVG : PAUSE_ICON_SVG;
       el.pausedBadge.classList.toggle('hidden', !isPaused);
     },
 

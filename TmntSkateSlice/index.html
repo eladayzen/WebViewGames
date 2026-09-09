@@ -77,14 +77,20 @@
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&times;</button>
 
-      <!-- Pause button -- placeholder glyph icon (real icon art later); sits left of
-           Back per the same convention. -->
-      <button id="pause-button"
+      <!-- Pause button -- sits left of Back per the same convention. Drawn as an
+           inline SVG (two bars) rather than the pause CHARACTER U+23F8: that
+           character defaults to color-emoji presentation, so on mobile WebViews
+           it fell back to the emoji font and rendered as a "yellow button"
+           (fine/monochrome only in the desktop/editor WebView). The SVG uses
+           fill:currentColor, so it inherits the button's white and renders
+           identically on every device -- no font/emoji fallback possible. -->
+      <button id="pause-button" title="Pause"
         style="position:absolute;top:12px;right:60px;z-index:9999;width:38px;height:38px;border:none;
-               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
-               font:600 16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
-               -webkit-tap-highlight-color:transparent;">&#9208;</button>
+               -webkit-tap-highlight-color:transparent;"><svg width="14" height="16" viewBox="0 0 14 16"
+          fill="currentColor" aria-hidden="true" focusable="false"><rect x="1.5" y="1" width="3.6"
+          height="14" rx="1.4"></rect><rect x="8.9" y="1" width="3.6" height="14" rx="1.4"></rect></svg></button>
 
       <!-- Settings button -- sits left of Pause, same icon-button convention.
            Gear glyph; opens #settings-panel (src/ui/settingsPanel.js) with
