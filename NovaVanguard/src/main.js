@@ -391,10 +391,18 @@ async function boot() {
    * bed means freezing the context -- and a paused game that keeps playing its
    * music is the kind of thing that only gets noticed on a device.
    */
+  const pauseButton = document.getElementById('pause-button');
+
   function setPaused(next) {
     world.paused = next;
     if (world.paused) suspendAudio();
     else resumeAudio();
+    // STATE VIA A CLASS, NOT A GLYPH SWAP. The obvious implementation is to
+    // swap the icon between pause and play, and that is exactly how the
+    // colour-emoji bug comes back: the character gets reinstated in the
+    // handler, so the build looks right until the first pause. A class leaves
+    // the shipped SVG untouched.
+    if (pauseButton) pauseButton.classList.toggle('on', !!world.paused);
   }
 
   function toggleMute() {

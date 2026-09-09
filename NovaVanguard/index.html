@@ -93,6 +93,19 @@
                box-shadow:0 0 14px rgba(0,0,0,0.55);
                -webkit-tap-highlight-color:transparent;">&times;</button>
 
+      <!-- NO GLYPH CHARACTERS IN THE CHROME ROW. The pause icon was U+23F8
+           (written as a numeric entity, deliberately not repeated here so a
+           grep for it stays clean) and rendered as a yellow colour-emoji button
+           on device while
+           looking correct in the editor: Unicode's default presentation for it
+           is EMOJI, so a mobile WebView serves it from the emoji font. The X
+           (U+00D7) and the gear default to text and are safe, which is exactly
+           why this was easy to miss -- two of the three buttons were fine.
+           Inline SVG with fill:currentColor cannot be substituted by a font.
+
+           If a paused/unpaused swap is ever added here, do NOT swap characters
+           or innerHTML: this button shows its state with a CSS class, so there
+           is no second place for the glyph to come back in. -->
       <!-- Pause — placeholder glyph icon per the same convention. -->
       <button id="pause-button"
         style="position:absolute;top:12px;right:70px;z-index:9999;width:52px;height:52px;
@@ -100,7 +113,10 @@
                border-radius:999px;background:rgba(16,24,44,0.92);color:#eafcff;
                font:600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
-               -webkit-tap-highlight-color:transparent;">&#9208;</button>
+               -webkit-tap-highlight-color:transparent;"><svg width="20" height="20" viewBox="0 0 20 20"
+          aria-hidden="true" focusable="false"><rect x="4" y="2.5" width="4.5" height="15" rx="1.4"
+          fill="currentColor"/><rect x="11.5" y="2.5" width="4.5" height="15" rx="1.4"
+          fill="currentColor"/></svg></button>
 
       <!-- NO SPEAKER BUTTON. Sound lives in the gear panel now (Amit: two
            buttons that both open a panel of player preferences are one
@@ -131,7 +147,13 @@
            POC (§2, §5.10). Cyan, shield glyph at its foot, per concept-01. -->
       <div id="shield-wrap">
         <div id="shield-gauge"></div>
-        <div id="shield-glyph">&#128737;</div>
+        <!-- SVG, not U+1F6E1. Same class of bug as the pause icon below: the
+             character is in Unicode's emoji set, so a mobile WebView is free to
+             serve it from the colour-emoji font -- or to have no glyph for it at
+             all and draw tofu. A shape we ship cannot be substituted. -->
+        <div id="shield-glyph"><svg width="16" height="18" viewBox="0 0 16 18" aria-hidden="true"
+             focusable="false"><path d="M8 1 L15 3.4 V9.2 C15 13 11.9 15.9 8 17 C4.1 15.9 1 13 1 9.2 V3.4 Z"
+             fill="currentColor"/></svg></div>
       </div>
 
       <!-- The temporary weapon's remaining time (§5.6, and Amit's "for limited

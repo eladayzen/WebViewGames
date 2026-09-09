@@ -1261,6 +1261,14 @@ body.dev-invincible::after {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Paused, shown on the button itself. Deliberately NOT a glyph swap -- see the
+   note in index.html about the pause icon and the colour-emoji font. */
+#pause-button.on {
+  background: rgba(55, 200, 230, 0.85) !important;
+  color: #04121a !important;
+  border-color: rgba(234, 252, 255, 0.9) !important;
+}
+
 #settings-button.on {
   background: rgba(55, 200, 230, 0.85);
   color: #04121a;
