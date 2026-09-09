@@ -414,11 +414,35 @@ function syncAudioPause() {
   audio.setPaused(paused || isPanelOpen());
 }
 
+/**
+ * THE TWO STATES OF THE PAUSE BUTTON, DRAWN RATHER THAN TYPED.
+ *
+ * This line used to be `paused ? '&#9654;' : '&#9208;'`. U+23F8's Unicode
+ * default presentation is EMOJI, so a mobile WebView reaches for the colour
+ * emoji font and the button renders as a yellow pill -- correct on desktop and
+ * in the editor, wrong on the device.
+ *
+ * THE HTML ALONE IS NOT ENOUGH, which is the trap: this handler rewrites the
+ * button's innerHTML on every toggle, so fixing only index.html gives you a
+ * correct icon that turns into a yellow pill the first time anyone pauses.
+ *
+ * PAUSE_ICON IS BYTE-IDENTICAL to the markup in index.html, deliberately.
+ * Un-pausing then puts the button back to exactly the state the page shipped
+ * with, so there is no version of this button that only appears after a
+ * toggle -- which is the shape of bug that hides from a first look.
+ */
+const PAUSE_ICON = '<svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="4" width="3.5" height="16" rx="1.2"/><rect x="13.5" y="4" width="3.5" height="16" rx="1.2"/></svg>';
+// The play triangle is drawn for the same reason rather than because U+25B6 was
+// definitely at fault: it is the other half of a pair, and leaving one as a
+// character means the button's two states could still disagree on a font we
+// have not tested. Same box and the same currentColor fill.
+const PLAY_ICON = '<svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4.6 L19.2 12 L8 19.4 Z"/></svg>';
+
 function setPaused(next) {
   paused = next;
   const pauseButton = document.getElementById('pause-button');
   const pausedBadge = document.getElementById('paused-badge');
-  if (pauseButton) pauseButton.innerHTML = paused ? '&#9654;' : '&#9208;';
+  if (pauseButton) pauseButton.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
   if (pausedBadge) pausedBadge.classList.toggle('hidden', !paused);
   syncAudioPause();
 }

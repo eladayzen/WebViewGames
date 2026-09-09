@@ -72,8 +72,18 @@
         onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
       >&times;</button>
 
-      <!-- Placeholder glyph icon (real icon art later); swaps to ▶ when paused. -->
-      <button id="pause-button" title="Pause">&#9208;</button>
+      <!-- DRAWN, NOT TYPED. This held the character U+23F8 (&#9208;), whose
+           Unicode default presentation is EMOJI -- so a mobile WebView falls
+           back to the colour emoji font and the button renders as a yellow
+           pill. Desktop and the editor have it in the text font, which is why
+           it looked right everywhere we were testing.
+
+           THIS IS ONLY HALF THE FIX. core/main.js swaps this button's
+           innerHTML on every pause/unpause, so the same markup lives there
+           too -- change one and the bar reverts to a yellow pill the first
+           time the player pauses. The un-paused string there is byte-identical
+           to this one on purpose. -->
+      <button id="pause-button" title="Pause"><svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="4" width="3.5" height="16" rx="1.2"/><rect x="13.5" y="4" width="3.5" height="16" rx="1.2"/></svg></button>
 
       <!-- Live settings (gear). Every value that decides how the board feels is
            adjustable mid-run, because the board is the only place any of it can

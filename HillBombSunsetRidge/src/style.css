@@ -62,6 +62,28 @@ html, body {
 #pause-button { right: calc(var(--ui-edge-r) + 48px); font-size: 16px; }
 #settings-button { right: calc(var(--ui-edge-r) + 96px); font-size: 17px; }
 
+/**
+ * THE PAUSE ICON IS DRAWN, NOT TYPED -- see index.html and core/main.js.
+ *
+ * The button used to hold the character U+23F8 (&#9208;). Its Unicode default
+ * presentation is EMOJI, so a mobile WebView falls back to the colour emoji
+ * font and renders a yellow pill instead of a glyph tinted by `color` above.
+ * It looks correct on desktop and in the editor, where the text font has it.
+ *
+ * Sized in `em` rather than px so it still keys off #pause-button's font-size,
+ * which is the knob that sized the glyph. `currentColor` keeps it following the
+ * button's own colour, so nothing else about these three buttons has to change.
+ *
+ * The back ✕ (&times;) and the gear (&#9881;) are fine as characters: both
+ * default to TEXT presentation, so no emoji font gets involved.
+ */
+.chrome-icon {
+  display: block;
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}
+
 /* --- settings panel (ui/settingsPanel.js) --- */
 #settings-panel {
   position: absolute;
