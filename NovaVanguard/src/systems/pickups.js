@@ -195,7 +195,16 @@ function rollKind(w, opts = {}) {
   // A caller may supply its own weight table -- the boss thresholds do, because
   // routine supply and a fight's one reward want different odds. Falls back to
   // the wave table, so nothing else has to know this exists.
-  const weights = opts.weights || PICKUPS.weaponWeights;
+  const baseWeights = opts.weights || PICKUPS.weaponWeights;
+  // A hurt player's odds are not a healthy player's odds -- see
+  // PICKUPS.hurtBias. Applied here rather than at the call sites so every path
+  // that rolls a canister inherits it, including the boss thresholds (where it
+  // is inert, since those are weapons-only).
+  const bias = PICKUPS.hurtBias;
+  const hurt = !!(bias && w.player.shield <= bias.atOrBelow);
+  const weights = hurt
+    ? { ...baseWeights, repair: (baseWeights.repair || 0) * bias.repairMul }
+    : baseWeights;
   const eligible = (id) => {
     if (PICKUPS.excludeRunningWeapon && PICKUPS.kinds[id].weapon === running) return false;
     if (opts.weaponsOnly && PICKUPS.kinds[id].effect) return false;

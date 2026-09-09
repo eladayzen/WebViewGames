@@ -72,18 +72,32 @@
            icon-only circular buttons, back is a plain X, status lives top-left.
            `absolute`, not `fixed`, so it anchors to the visible game frame rather
            than the raw viewport. -->
+      <!-- THE X SITS ABOVE THE BOARD SCREENS (z-index 10001 against their
+           10000). Amit, from the board: "when I lose, in the two end screens
+           there's no X button -- there's just restart. And even after, when I
+           see the scores, there's no X button."
+           He was right, and it was a stacking bug rather than a missing
+           control: .board-screen covers the whole viewport at 10000, so the one
+           button that must ALWAYS work was being painted over by the start,
+           result and quit screens. The rule those screens are built around --
+           the X always works, and leaves without asking from any screen where
+           the player is already stopped -- was silently false on three of
+           them. -->
       <button id="gb-back"
         onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
-        style="position:absolute;top:12px;right:12px;z-index:9999;width:48px;height:48px;border:none;
-               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
-               font:600 25px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+        style="position:absolute;top:12px;right:12px;z-index:10001;width:52px;height:52px;
+               border:2px solid rgba(150,215,240,0.75);
+               border-radius:999px;background:rgba(16,24,44,0.92);color:#eafcff;
+               font:600 26px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
+               box-shadow:0 0 14px rgba(0,0,0,0.55);
                -webkit-tap-highlight-color:transparent;">&times;</button>
 
       <!-- Pause — placeholder glyph icon per the same convention. -->
       <button id="pause-button"
-        style="position:absolute;top:12px;right:68px;z-index:9999;width:48px;height:48px;border:none;
-               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
+        style="position:absolute;top:12px;right:70px;z-index:9999;width:52px;height:52px;
+               border:2px solid rgba(150,215,240,0.55);
+               border-radius:999px;background:rgba(16,24,44,0.92);color:#eafcff;
                font:600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&#9208;</button>

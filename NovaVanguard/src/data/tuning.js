@@ -951,6 +951,24 @@ export const PICKUPS = {
   // system, for exactly the reason the first one is.
   maxKillsWithoutDrop: 16,
 
+  // GENEROUS WHEN IT MATTERS, not generous always.
+  //
+  // A flat share cannot tell the difference between a player cruising at full
+  // shield and one on their last segment -- and it is only the second one who
+  // needs a repair. So the repair weight is multiplied when the bar is low,
+  // which makes the canister that arrives during trouble very likely to be the
+  // one that helps, without flooding a healthy run with pickups it cannot use.
+  //
+  // Deliberately a WEIGHT and not a guarantee: a repair that always appeared at
+  // one segment would make the last segment free, and the tension of a nearly
+  // empty bar is most of what makes the bar worth watching.
+  hurtBias: {
+    // At or below this many of PLAYER.shieldSegments (6), the player is in
+    // trouble by any reading: two more bullet hits, or one collision.
+    atOrBelow: 2,
+    repairMul: 4.0,
+  },
+
   // WHAT A BOSS THRESHOLD IS ALLOWED TO HAND OUT.
   //
   // Amit, on level one: "first boss just gave me like three shields... the
@@ -1133,7 +1151,17 @@ export const PICKUPS = {
     // So: BARRIER becomes the common defensive draw and REPAIR the one you
     // notice arriving.
     barrier: 1.45,
-    repair: 0.60,
+    // REPAIR, RAISED AGAIN -- 0.30 -> 0.60 -> 1.60 (Amit: "the game is
+    // currently too hard, not possible to finish level 2... we need to be more
+    // generous about the life pickups").
+    //
+    // The arithmetic said the same thing. Six shield segments, a bullet costs
+    // one and a collision two, so a run has about four mistakes in it. Against
+    // roughly seven canisters a level at a 7% share, a whole level offered
+    // HALF a repair on average -- a player could clear level one perfectly and
+    // still arrive at level two on a bar they had no way to refill. Now ~17%,
+    // so a level reliably offers one and often two.
+    repair: 1.60,
     scatter: 1.00,
     swarm: 0.85,
     flak: 0.65,
