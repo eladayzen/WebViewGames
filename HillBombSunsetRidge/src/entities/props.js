@@ -990,7 +990,37 @@ export function createProps(scene) {
         u = Math.max(-TERRAIN.thetaMax * 0.8,
           Math.min(TERRAIN.thetaMax * 0.8, from.theta + nudge));
       }
-      add(i % 3 === 2 ? 'airGate' : 'boostPad', at, u);
+      /**
+       * A YELLOW GATE ONLY WHERE SOMETHING CAN ACTUALLY THROW YOU THROUGH IT.
+       *
+       * Amit: "remove all of the yellow speedgates which are impossible to
+       * get -- I think it's 95% of them."
+       *
+       * This line used to read `i % 3 === 2 ? 'airGate' : 'boostPad'`: every
+       * third gate was hung in the air by COUNTER, with no test that anything
+       * could reach it. Two ways that failed, and both were common.
+       *
+       * With no ramp in range, `from` is null and the gate still spawned --
+       * floating 2.6 m over empty road with nothing to launch from. Nothing
+       * about the cadence knew or cared.
+       *
+       * And where there WAS a ramp it was usually the wrong one. The arch's
+       * pass band starts at 2.6 m, and measured peak lift is 1.56 m off a
+       * bank and 2.27 m off a bigKicker -- both below the floor, so the gate
+       * was unreachable however well it was aimed. Only the barrel clears it,
+       * at 4.33 m.
+       *
+       * Note the paragraph above this one: the LATERAL alignment problem was
+       * found and fixed carefully, and the height was never checked. Aiming a
+       * player at something they cannot get to is the same bug twice, once
+       * sideways and once upwards.
+       *
+       * Gated on the launcher's own power rather than its name, so a new
+       * launcher is judged by what it does. 1.7 sits between the bigKicker's
+       * 1.42 and the barrel's 1.9.
+       */
+      const canFly = from && from.def.launch && from.def.launch.power >= 1.7;
+      add(i % 3 === 2 && canFly ? 'airGate' : 'boostPad', at, u);
       nextBoostS += boostEvery;
     }
   }

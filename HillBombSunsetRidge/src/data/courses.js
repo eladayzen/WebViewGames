@@ -83,10 +83,32 @@ export const COURSES = {
      */
     variation: true,
     /**
-     * A SPEED GATE EVERY 110 METRES, on top of whatever the patterns give --
-     * roughly one every four seconds at race pace, against the ~200 m the
-     * shared patterns were producing on their own. Amit: "put more speed
-     * boosters in there."
+     * THINNED TO 0.7. Amit: "the VS mode has way too many stuff in it, feels
+     * flooded with items -- all of them."
+     *
+     * Measured before changing anything, and the count alone did not explain
+     * it: a race carries FEWER objects than a mission (169 against 208 over
+     * the same 2600 m). What differs is what they ask of you. A mission's bulk
+     * is ~100 crystals, which need no reaction -- you drift into them or you
+     * do not. A race is gates to thread and barriers to dodge, and there were
+     * 97 of those against a mission's 35: one every 27 m, roughly one a second
+     * at race pace, on top of four rivals and a faster ride.
+     *
+     * So the fix is not "fewer things" in general, it is fewer things that
+     * DEMAND something. This thins the shared patterns; the two injectors
+     * below are eased in step, since they are the other two thirds of it.
+     */
+    density: 0.7,
+    /**
+     * A SPEED GATE EVERY 150 METRES, on top of whatever the patterns give.
+     *
+     * WAS 110, which came from "put more speed boosters in there" back when
+     * the shared patterns were producing one roughly every 200 m on their own.
+     * That was the right call then and it stacked badly later: with the
+     * patterns also supplying gates, the race ended up with 59 of them against
+     * a mission's 35, and the gates were the largest single contributor to the
+     * flooding. At 150 the cadence is still under five seconds at race pace,
+     * so there is always a next one to reach.
      *
      * This is the mode's whole argument. Without pads a race is "hold forward
      * and do not crash"; with them at this cadence there is always a next one
@@ -94,7 +116,7 @@ export const COURSES = {
      * two thirds of the rim, so the fast line weaves and the race becomes about
      * choosing it. See props.setBoostEvery.
      */
-    boostEvery: 110,
+    boostEvery: 150,
     /**
      * NO WOODEN BARRICADES. Amit: "it still has the old barricades, the wooden
      * ones -- remove them." The race was their last home: they are in the
@@ -105,14 +127,18 @@ export const COURSES = {
      */
     without: ['woodWall'],
     /**
-     * A PINK BARRIER EVERY 130 METRES, scattered rather than placed -- see
-     * props.emitWalls. Roughly one every four or five seconds at race pace,
-     * which puts them at about the cadence of the speed gates without landing
-     * in step with them: the gate you want and the barrier in the way arrive
-     * on different rhythms, so the line through them has to be read rather
-     * than memorised.
+     * A PINK BARRIER EVERY 190 METRES, scattered rather than placed -- see
+     * props.emitWalls. Deliberately not in step with the gates above, so the
+     * gate you want and the barrier in the way arrive on different rhythms and
+     * the line through them has to be read rather than memorised.
+     *
+     * WAS 130. Barriers are the other half of what made this mode feel busy:
+     * the patterns already carry blockers, so the injector was adding to a
+     * pile rather than filling an empty road, and the race was the only mode
+     * with anything to dodge at all. 190 keeps them frequent enough to matter
+     * without a wall arriving on top of every gate.
      */
-    wallEvery: 130,
+    wallEvery: 190,
   },
 
   /**
