@@ -680,9 +680,19 @@ body {
 
 /* SIZED FOR A PLAYER STANDING ON A BOARD, roughly 1.5-2 m from the screen, not
    for someone at a desk (Amit, on the start screen: "the first UI you see is
-   very small... we can increase it a lot"). Everything below is in vmin, so
-   these are percentages of the short edge -- the whole card scales with the
-   screen rather than being a pixel size that happens to suit one display.
+   very small... we can increase it a lot").
+
+   THEN CUT 20% AFTER A TABLET (Amit again: "the opening screens were too big --
+   much too big"). The cause was the unit, not the numbers. vmin is a percentage
+   of the SHORT edge, and on a 4:3 tablet the short edge is a far larger
+   fraction of the width than it is on 16:9 -- so a card tuned on a widescreen
+   display rendered about a third bigger on the tablet without a single value
+   changing.
+
+   Every size below is therefore `min(Xvmin, Yvw)` with Y ~= X * 9/16. On 16:9
+   the two terms are equal and the vmin term governs, exactly as before; on
+   anything squarer the vw term binds first and holds the card to the same
+   share of the WIDTH. The screen shape stops being able to resize the UI.
 
    The three board screens -- start, result, quit -- deliberately share this
    card, so growing it grows all three. That is the point: they are meant to
@@ -693,7 +703,7 @@ body {
   text-align: center;
   min-width: 62%;
   max-width: 82%;
-  padding: 4.6vmin 5.4vmin;
+  padding: min(3.7vmin, 2.1vw) min(4.3vmin, 2.4vw);
   border-radius: 1.6vmin;
   background: rgba(9, 14, 28, 0.72);
   border: 0.18vmin solid rgba(111, 232, 255, 0.22);
@@ -703,7 +713,7 @@ body {
 #start-card h1,
 #gameover-card h1 {
   margin: 0 0 1.6vmin;
-  font-size: 6.6vmin;
+  font-size: min(5.3vmin, 3vw);
   letter-spacing: 0.5vmin;
   color: #eafcff;
   text-shadow: 0 0 2vmin rgba(111, 232, 255, 0.55);
@@ -711,7 +721,7 @@ body {
 
 #start-sub {
   margin: 0 0 2.4vmin;
-  font-size: 3vmin;
+  font-size: min(2.4vmin, 1.35vw);
   letter-spacing: 0.12vmin;
   color: rgba(207, 233, 245, 0.72);
 }
@@ -722,7 +732,7 @@ body {
    position on a board rather than from a chair. */
 #start-countdown {
   margin: 3vmin 0 0;
-  font: 700 4.4vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  font: 700 min(3.5vmin, 2vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
   letter-spacing: 0.22vmin;
   color: #6fe8ff;
   text-shadow: 0 0 1.6vmin rgba(111, 232, 255, 0.6);
@@ -747,7 +757,7 @@ body {
 
 #gameover-stats {
   margin: 0 0 2.8vmin;
-  font-size: 2.4vmin;
+  font-size: min(1.9vmin, 1.1vw);
   color: #9fc0d4;
   letter-spacing: 0.1em;
 }
@@ -1003,7 +1013,7 @@ body.dev-invincible::after {
 #scoreboard-title,
 #start-scoreboard-title,
 #quit-scoreboard-title {
-  font: 700 2.3vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  font: 700 min(1.85vmin, 1.05vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
   letter-spacing: 0.3vmin;
   color: rgba(111, 232, 255, 0.75);
   margin-bottom: 1.5vmin;
@@ -1032,7 +1042,7 @@ body.dev-invincible::after {
   padding: 1.1vmin 1.6vmin;
   border-radius: 1vmin;
   background: rgba(20, 34, 54, 0.55);
-  font: 600 2.7vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  font: 600 min(2.2vmin, 1.25vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
   color: #cfe9f5;
 }
 
@@ -1121,8 +1131,8 @@ body.dev-invincible::after {
    art cannot be reached from the page, and mirroring it per game was rejected
    as a maintenance cost (see /data/avatars.js). */
 .sb-avatar {
-  width: 4.4vmin;
-  height: 4.4vmin;
+  width: min(3.5vmin, 2vw);
+  height: min(3.5vmin, 2vw);
   border-radius: 999px;
   overflow: hidden;
   display: flex;
@@ -1134,7 +1144,7 @@ body.dev-invincible::after {
 /* Dark text on the light wheel colours, which is legible on every one of them
    and needs no per-colour contrast decision. */
 .sb-avatar {
-  font: 700 2.1vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  font: 700 min(1.7vmin, 0.95vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
   color: #06121c;
 }
 
