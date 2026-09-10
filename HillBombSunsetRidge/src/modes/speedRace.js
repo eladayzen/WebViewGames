@@ -28,6 +28,7 @@
 // The line through them is not the straight line, so there is a route to ride.
 
 import { registerMode } from './mode.js';
+import { analytics } from '../systems/analytics.js';
 import { RACE_COURSE, getCourse } from '../data/courses.js';
 import { getRace, RACE_IDS, starsForPlace, RACE_UNLOCK_PLACE } from '../data/races.js';
 
@@ -170,6 +171,22 @@ export default registerMode({
        * would unlock the ladder by losing.
        */
       if (stars > 0) ctx.progress.record(race.id, stars, Math.round(ctx.scoring.state.score));
+      /**
+       * TWO EVENTS, NOT ONE WITH A FLAG, because they answer different
+       * questions. A finish is about the FIELD -- what place, against four
+       * rivals whose pace is authored -- and is the number that says whether a
+       * track's difficulty is right. A time-cap DNF is about the TRACK: it
+       * means the course could not be covered in the time allowed, and the
+       * metres short is the size of the miss. Folding them together would put a
+       * meaningless `place` on the second and a meaningless distance on the
+       * first.
+       *
+       * `race.id` rather than `race.name`, so a renamed track does not fork its
+       * own history -- the same reason the launcher should key on the scene
+       * name (see GOBALANCE_ANALYTICS_REQUEST.md).
+       */
+      if (reason === 'timeout') analytics.raceDnf(race.id, finishS - me.s);
+      else analytics.raceFinished(race.id, me.place, ctx.scoring.state.score);
       ctx.endRun(won ? 'complete' : 'timeup', {
         tone: stars > 0 ? 'success' : 'fail',
         title: won ? 'WINNER' : `FINISHED ${ordinal(me.place)}`,

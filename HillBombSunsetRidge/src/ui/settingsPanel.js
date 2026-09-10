@@ -27,6 +27,7 @@ import {
 } from '../input/input.js';
 import { CONTROL_PRESETS, CONTROLS, setControlPreset } from '../data/controlPresets.js';
 import { CARVE_SMOOTH, CARVE_CURVE } from '../data/constants.js';
+import { analytics } from '../systems/analytics.js';
 
 const STORAGE_KEY = 'hillbomb:settings';
 
@@ -458,12 +459,34 @@ export function closeSettingsPanel() {
   setPanelOpen(false);
 }
 
+/**
+ * Sensitivity as it was when the panel opened, for the report on the way out.
+ *
+ * ON EXIT, NOT ON EVERY STEP -- and that rule is the app's own, quoted in its
+ * event catalogue for this very event: "when user exited the settings screen
+ * and the sensitivity value is different than it was when he entered (we dont
+ * want to send hundreds of events so we need to check at the exit)". A stepper
+ * that wraps 0-100 in fives would otherwise fire twenty times on one long
+ * press. Reusing their event name and their rule means a sensitivity story
+ * reads the same whether it happened in the app or in here.
+ */
+let sensitivityOnOpen = null;
+
 function setPanelOpen(open) {
   panelEl.classList.toggle('hidden', !open);
   if (open) {
+    sensitivityOnOpen = state.sensitivity;
     selected = 0;
     refreshSelection();
   } else {
+    // Rounded on both sides before comparing: the reported value is the int the
+    // player sees, so a change that does not move that int is not a change they
+    // made and should not be an event.
+    if (sensitivityOnOpen != null
+        && Math.round(sensitivityOnOpen) !== Math.round(state.sensitivity)) {
+      analytics.sensitivityChanged(state.sensitivity);
+    }
+    sensitivityOnOpen = null;
     // Always reopen on the player's page. Landing back in DEV OPTIONS because
     // that is where you were last time is a small trap, and it is the one panel
     // a player is not meant to be in.

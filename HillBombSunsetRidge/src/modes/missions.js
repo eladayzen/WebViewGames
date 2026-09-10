@@ -19,6 +19,7 @@
 // go to the progress store, and this mode just runs whatever it was handed.
 
 import { registerMode } from './mode.js';
+import { analytics } from '../systems/analytics.js';
 import { RIDE_EVENTS as EV } from '../core/events.js';
 import { MISSIONS , getMission } from '../data/missions.js';
 import { DEFAULT_COURSE } from '../data/courses.js';
@@ -192,6 +193,9 @@ const MISSION_MODE = {
      * separate flag from `finished` rather than an early return.
      */
     let cleared = false;
+    /** Seconds still on the clock when the objectives were met -- see
+     *  checkComplete(). 0 means it was never cleared. */
+    let clearedWithLeft = 0;
     /** @type {Function[]} */
     const unsubs = [];
 
@@ -229,6 +233,21 @@ const MISSION_MODE = {
     function checkComplete() {
       if (finished || cleared || objectives.some((o) => !o.done)) return;
       cleared = true;
+      /**
+       * THE CLOCK AT THE MOMENT IT WAS WON, kept for the analytics event.
+       *
+       * Not readable at settle(), which is where mission_clear is reported: a
+       * cleared mission still rides out its full timer -- the objective decides
+       * WHICH ending, the clock decides WHEN -- so `left` there is always 0 and
+       * a "headroom" reported from it would be a column of zeroes in every
+       * report. Caught by reading the first measured event rather than by
+       * reasoning about it.
+       *
+       * Here it is the real number: how much time was still on the clock when
+       * the ask was met, which is what says whether a mission is generous or
+       * mean.
+       */
+      clearedWithLeft = left;
       // Say so at the moment it happens, LOUDLY. Without this the only signal
       // was the last objective's counter ticking over, which is a very small
       // thing to carry "the mission is yours, now go and earn the stars".
@@ -244,6 +263,13 @@ const MISSION_MODE = {
       // Recorded BEFORE the results screen is built, so the mission list behind
       // it already reflects this run -- including whatever it just unlocked.
       ctx.progress.record(mission.id, earned, score);
+      // `clearedWithLeft`, NOT `left` -- see checkComplete(). A cleared mission
+      // rides out its whole timer, so `left` here is always 0; the headroom
+      // that means something is what was on the clock when the ask was met. A
+      // mission met with a second to spare and one met in half the time are
+      // different tuning problems, and this is the parameter that tells them
+      // apart.
+      analytics.missionCleared(mission.id, earned, score, clearedWithLeft);
       ctx.endRun('complete', {
         tone: 'success',
         title: 'MISSION COMPLETE',
@@ -290,6 +316,11 @@ const MISSION_MODE = {
         // No banner: the briefing card names the mission far more clearly, and
         // firing both put the name on screen twice at once.
 
+        // The retry counter lives in the analytics module, so this one call
+        // produces both mission_start and, from the second attempt on, the
+        // mission_retry that says a ladder step is holding someone up.
+        analytics.missionStarted(mission.id, mission.number);
+
         for (const o of objectives) {
           if (!o.spec || !o.spec.event) continue;
           unsubs.push(ctx.events.on(o.spec.event, (p) => {
@@ -321,10 +352,22 @@ const MISSION_MODE = {
          * modes, or the run being replaced. A quit-only hook would miss the
          * others.
          */
+        /**
+         * CAPTURED BEFORE ANYTHING BELOW SETS IT. stop() runs on EVERY ending,
+         * including after settle() and after the clock ran out -- so `finished`
+         * is what separates "the player walked out of this run" from "the run
+         * ended on its own and is now being torn down". Without this, every
+         * completed mission would also report a quit.
+         */
+        const quitting = !finished;
         if (cleared && !finished) {
           const score = ctx.scoring.state.score;
           ctx.progress.record(mission.id, starsFor(score), score);
         }
+        // `cleared` is the interesting half: leaving a mission already banked is
+        // the sanctioned behaviour above, while leaving one that was not is a
+        // signal about the mission.
+        if (quitting) analytics.missionQuit(mission.id, cleared);
         // Every subscription, unconditionally. A mission that outlived its run
         // would keep counting into the next one.
         for (const off of unsubs) off();
@@ -353,6 +396,10 @@ const MISSION_MODE = {
           if (cleared) { settle(); return; }
           finished = true;
           const done = objectives.filter((o) => o.done).length;
+          // Both counts, not just the failure: "3 of 4" and "0 of 4" are a
+          // mission that is slightly too hard and one that is mis-tuned, and
+          // the difference is the whole reason to report this at all.
+          analytics.missionFailed(mission.id, done, objectives.length);
           ctx.endRun('timeup', {
             tone: 'fail',
             // The verdict, not just the cause. "TIME UP" alone reads as a

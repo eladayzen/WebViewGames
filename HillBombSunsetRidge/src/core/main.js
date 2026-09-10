@@ -78,6 +78,7 @@ import '../modes/openFace.js';
 import { MISSIONS } from '../data/missions.js';
 import { createProgress } from '../systems/progress.js';
 import { createProfileStore } from '../systems/gbProfile.js';
+import { analytics } from '../systems/analytics.js';
 import { createModeSelect } from '../ui/modeSelect.js';
 import { createMissionSelect } from '../ui/missionSelect.js';
 import { RACE_IDS } from '../data/races.js';
@@ -1085,6 +1086,25 @@ function startRun(id) {
   setChromeVisible(true);
   setPaused(false);
   reset();
+  /**
+   * REPORTED HERE, which is the run beginning rather than the first metre.
+   *
+   * The briefing (and the race's countdown) still gate the hill below, so a
+   * player who reads the card and backs out is counted as having started. That
+   * is the honest place for it: the funnel this feeds is "opened the game ->
+   * actually started something -> finished it", and the app's launcher owns the
+   * first of those (see GOBALANCE_ANALYTICS_REQUEST.md). Putting it after the
+   * card would quietly merge "did not start" with "started and bailed", which
+   * are different problems.
+   *
+   * BEFORE modes.start(), not after: the mode's own start() reports
+   * mission_start, and a stream where the mission begins before the run does
+   * reads backwards to anyone building a funnel out of it. Verified in that
+   * order.
+   *
+   * No-op until the host gains logEvent -- see systems/analytics.js.
+   */
+  analytics.runStarted(id);
   modes.start(id);
   // BRIEF FIRST, RIDE SECOND. The loop is gated on the briefing below, so the
   // hill genuinely does not move until the card has landed -- a freeze frame
@@ -1266,6 +1286,12 @@ window.__gbBack = () => {
     openSelect().close();
     modeSelect.open();
   } else if (modeSelect.isOpen()) {            // top of OUR stack -> leave the game
+    // THE ONE PLACE THE PLAYER ACTUALLY LEAVES. Reported here rather than from
+    // leaveRun(), which fires between runs and would call every trip back to
+    // the lobby the end of a session. Pairs with the launcher's open_game and
+    // carries the two things that event cannot know: how long they stayed and
+    // how much they played.
+    analytics.gameLeft();
     if (window.Unity) window.Unity.call('nav:back');
   } else if (gameOver) {                       // results -> up a level
     restart();
