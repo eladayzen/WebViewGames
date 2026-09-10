@@ -592,8 +592,21 @@ const AUTHORED = [
   // The finale asks for the two things Amit calls the most fun, plus a score
   // that needs the chain -- so the last mission is the game at its best rather
   // than its longest crystal sweep.
+  /**
+   * THE HARDEST MISSION ON THE LADDER, EASED BY ONE GATE. Amit, looking at the
+   * finished budget: "take the hardest one, and make it a bit less hard."
+   * 59 DP -> 53, which is a gate off the ask and nothing else.
+   *
+   * THE GATE RATHER THAN THE IDOL, deliberately, though both cost about the
+   * same to remove. Idols are already at 5 here against the 7 that IDOL HUNT
+   * asks at mission 5 -- an inversion the 60-DP ceiling forces, since IDOL
+   * HUNT alone is 35 DP -- and taking a fourth would widen a gap that is
+   * already the wrong way round. Gates have no such constraint: 4 is still
+   * comfortably above the 4 that SPEED GATES teaches, and the idols are what
+   * this mission is remembered for.
+   */
   ['sundown',     'SUNDOWN',       'Everything the ridge has, one last time.', 115,
-    { idol: 7, boost: 7 }, undefined, { rareAlways: true }],
+    { idol: 7, boost: 6 }, undefined, { rareAlways: true }],
 
 ];
 
