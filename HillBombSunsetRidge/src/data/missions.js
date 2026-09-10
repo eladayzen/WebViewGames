@@ -246,9 +246,6 @@ const RIDGE_LAYOUTS = [
   { spread: 1.00, push: 0 },     // as authored -- the reference layout
 ];
 
-/** The open face's mission course -- see data/courses.js. */
-const FACE = 'openFaceMissions';
-
 /**
  * THE FIRST THREE ARE COLLECT, RAMPS, RAILS -- IN THAT ORDER.
  *
@@ -290,6 +287,69 @@ const FACE = 'openFaceMissions';
  * ALL SIX HILLS STILL APPEAR IN THE FIRST SIX MISSIONS -- this is a rotation of
  * three, not an insertion, so 4-6 keep the ground and the numbers they had.
  * The three that moved were re-measured; see CEILING.
+ */
+
+/**
+ * HOW MISSIONS 10-40 WERE SIZED: DIFFICULTY POINTS.
+ *
+ * Amit, after playing to 9: "we need a more methodical approach for how much
+ * difficulty points per rail, per ramp, per crystal and gate and idol... some
+ * way to compare them, and then not exceed some of it."
+ *
+ * The problem with sizing by feel is that the kinds are not comparable by
+ * count. Fourteen crystals and four rails are not the same job, and a score
+ * target paired with ramps is not the same job as the same target paired with
+ * crystals -- because the ramps you are already hitting pay for most of it.
+ *
+ * THE UNIT. Every objective costs DP:
+ *
+ *     crystal 1   ramp 2   rail 4   gate 4   idol 5      (Amit's numbers)
+ *
+ * A crystal is the baseline: it falls on your line and has a 3.4-wide catch.
+ * A ramp must be aimed at -- the one thing you cannot collect incidentally.
+ * A rail asks three things: aim, land on the line, hold it. Amit set gates
+ * level with rails and idols just above.
+ *
+ * SCORE is measured against what the hill actually pays (the same census that
+ * produced CEILING), and crucially NET of the points the mission's other
+ * objectives hand you on the way -- so "10 ramps + 11k" is scored as the 11k
+ * minus the ~2,800 those ramps pay by themselves.
+ *
+ * MIXING MULTIPLIES. Amit: "the more you mix, the more difficult it is."
+ * One objective x1.0, two x1.30, three x1.70. Switching tasks costs a line you
+ * cannot optimise for either.
+ *
+ * SWEEP. If an ask exceeds 40% of what exists on that hill, it stops being
+ * "collect some" and becomes "hunt them all", and the excess is penalised.
+ * Only GOLD RUSH triggers it now, at 57% of the idols -- which is what makes
+ * it a hunt rather than a haul.
+ *
+ * THE BUDGET, from Amit: under 50 through the middle, and only the last ten
+ * climb, to 60 at most. Missions 1-9 are untouched -- he has played them and
+ * they are the calibration set, spanning 8 DP (CRYSTAL RUN) to 46 (FULL PLATE).
+ *
+ * TWO STRUCTURAL RESULTS FELL OUT OF THE ARITHMETIC, and they shaped the list
+ * more than any single number:
+ *
+ *   A THREE-OBJECTIVE MISSION CANNOT BE GENTLE. The smallest sensible one --
+ *   10 crystals, 3 rails, 5 ramps -- is 32 raw and 54 after mixing. So three
+ *   objectives can only live in the last ten. Missions 19, 20, 25 and 35 were
+ *   three-objective in the middle and each dropped its weakest leg, which was
+ *   rails in all four; that also ended the inversion where late missions asked
+ *   fewer rails than RAIL RUNNER teaches at mission 3.
+ *
+ *   A ONE-OBJECTIVE MISSION CANNOT BE HARD. Reaching 55 DP on crystals alone
+ *   needs 54 of them. So CLEAN SWEEP, SKY LINE, HIGH ROLLER, DEEP END and BIG
+ *   NUMBERS are deliberately breathers at 30-40 DP rather than absurd asks --
+ *   rest points in the back half, not mistakes.
+ *
+ * Score is capped at 15k everywhere, per Amit, which is why the three
+ * score-only missions land where they do.
+ *
+ * Sizes are in EFFECTIVE terms above; the numbers below are authored, and
+ * DIFFICULTY scales them. To re-derive any of this, the supply census and the
+ * model live in the session notes -- but the short version is that every
+ * denominator here was measured on the actual hill, not assumed.
  */
 const AUTHORED = [
   // 1 -- CRYSTALS, and the gentlest verb in the game. Idols are excluded by
@@ -397,7 +457,12 @@ const AUTHORED = [
   // existed, reachable only by stacking a deep trick chain on top. 30,000 is
   // just above the ceiling, so it still wants a chain, but a couple of good
   // ones rather than a flawless run.
-  ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',    75, { score: 20000 }],
+  // EASED to 12,000. Amit: "mission 8 too hard -- reduce to 12,000." Authored
+  // 17,000 because easeScore lands it on the 500 grid: 17000 * 0.7 = 11,900 ->
+  // 12,000. Down from 14,000, which was 50% of what this hill actually pays
+  // (28,218 measured); 12,000 is 43%, and this is the first mission that asks
+  // for score and nothing else, so it is where a player meets the idea.
+  ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',    75, { score: 17000 }],
   // EASED: 24/4/10 down to 16/3/8. Amit: "09 full plate is too hard, lower
   // expectations a bit."
   //
@@ -417,20 +482,57 @@ const AUTHORED = [
   //
   // 14% / 9% / 15% now: plainly the gentle introduction to combination
   // missions, with THE GAUNTLET at 19 as the hard version of the same idea.
-  ['fullPlate',   'FULL PLATE',    'A bit of everything, and no time to spare.', 95, { pickup: 16, grind: 3, launch: 8 }],
-  ['ridgeMaster', 'RIDGE MASTER',  'Prove you have learned the whole ridge.',  100, { score: 22000, pickup: 28 }],
-  ['doubleDown',  'DOUBLE DOWN',   'Twice the crystals, twice the ramps.',      90, { pickup: 29, launch: 13 }],
-  ['steelRush',   'STEEL RUSH',    'Rails pay, and they pay while you are on them.', 105, { grind: 5, score: 23000 }],
-  ['highRoller',  'HIGH ROLLER',   'One number matters. Make it big.',          85, { score: 21000 }],
-  ['sweep',       'SWEEP',         'Sweep the hill, gates and all.',           100, { pickup: 30, boost: 17 }],
-  ['launchParty', 'LAUNCH PARTY',  'Hit every ramp you can find.',              95, { launch: 23 }],
-  ['goldRush',    'GOLD RUSH',     'Crystals, and the idols among them.',      105, { pickup: 30, idol: 6 }],
-  ['grindCity',   'GRIND CITY',    'Metal first, everything else after.',      110, { grind: 5, pickup: 36 }],
+  /**
+   * EASED A SECOND TIME, ramps only. Amit: "mission 09 too hard -- reduce to
+   * 4 ramps." launch 8 -> 6, which is 4 once DIFFICULTY is applied.
+   *
+   * ONLY THE RAMPS MOVED, though the whole mission was called hard. He named
+   * one number, and this is the mission that teaches "several things at once"
+   * -- cutting every leg turns one manageable combination into three trivial
+   * jobs. The ramps were also the right leg to cut: they were the densest ask
+   * of the three, and a ramp is the one objective a player cannot collect
+   * incidentally, since crystals fall on your line and the rails are only two.
+   *
+   * If it is still hard, the crystals are the next cut -- they are the longest
+   * job in it. Note the note above: this mission draws the tightest trough of
+   * the six AND the layout with the hardest push off the centreline, which is
+   * a collision of two cycles rather than anything authored.
+   */
+  ['fullPlate',   'FULL PLATE',    'A bit of everything, and no time to spare.', 95, { pickup: 16, grind: 3, launch: 6 }],
+  ['ridgeMaster', 'RIDGE MASTER',  'Prove you have learned the whole ridge.',  100, { pickup: 23, score: 12000 }],
+  ['doubleDown',  'DOUBLE DOWN',   'Twice the crystals, twice the ramps.',      90, { pickup: 23, launch: 10 }],
+  ['steelRush',   'STEEL RUSH',    'Rails pay, and they pay while you are on them.', 105, { grind: 5, score: 11500 }],
+  ['highRoller',  'HIGH ROLLER',   'One number matters. Make it big.',          85, { score: 21500 }],
+  ['sweep',       'SWEEP',         'Sweep the hill, gates and all.',           100, { pickup: 14, boost: 7 }],
+  ['launchParty', 'LAUNCH PARTY',  'Hit every ramp you can find.',              95, { launch: 28 }],
+  /**
+   * THREE IDOLS, NOT FOUR -- the one mission the difficulty budget could not
+   * fit, and the reason is worth keeping.
+   *
+   * This hill grows SEVEN idols. It does not set rareAlways, unlike IDOL HUNT,
+   * NIGHT SHIFT and STORM CHASE, and that is deliberate: the note on the idol
+   * placements calls this "the scarce version on purpose... a hunt among the
+   * crystals rather than a sweep". So the denominator here is 7, not the ~19
+   * the rareAlways missions get.
+   *
+   * At four, that is 57% of every idol on the hill -- past the 40% line where
+   * an ask stops being "collect some" and becomes "find nearly all of them",
+   * which the budget penalises and which put this mission at 53 DP against a
+   * target of 41. At three it is 43%, the penalty all but vanishes, and it
+   * lands on 41 exactly.
+   *
+   * THE FIX IS THE COUNT, NOT rareAlways. Flooding the hill with idols would
+   * also solve the arithmetic -- 4 of 19 is no sweep at all -- and would throw
+   * away the only mission that asks the player to hunt scarce ones. Three of
+   * seven is still a hunt; four of seven was a sweep wearing a hunt's name.
+   */
+  ['goldRush',    'GOLD RUSH',     'Crystals, and the idols among them.',      105, { pickup: 23, idol: 4 }],
+  ['grindCity',   'GRIND CITY',    'Metal first, everything else after.',      110, { pickup: 31, grind: 4 }],
   // A speed mission that is finally ABOUT speed: the gates are the mechanic,
   // so asking for them is asking for the thing the mission is named after.
-  ['topSpeed',    'TOP SPEED',     'Ride every gate you can reach.',            90, { score: 20000, boost: 21 }],
-  ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 36, grind: 5, launch: 18 }],
-  ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { score: 24000, pickup: 36, grind: 5 }],
+  ['topSpeed',    'TOP SPEED',     'Ride every gate you can reach.',            90, { boost: 5, score: 11500 }],
+  ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 23, launch: 11 }],
+  ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { pickup: 25, score: 15500 }],
 
   // === MISSIONS 21-40 =========================================================
   //
@@ -465,118 +567,34 @@ const AUTHORED = [
   // player sees roughly 70% of what is written. The authored values are what
   // state the intent.
   ['nightShift',  'NIGHT SHIFT',   'The idols are out tonight.',               100,
-    { idol: 11, grind: 5 }, undefined, { rareAlways: true }],
-  ['freeFall',    'FREE FALL',     'Let the ground do the work.',               90, { launch: 20, score: 20000 }],
-  ['stoneStep',   'STONE STEP',    'Ramp to gate, all the way down.',          105, { launch: 14, boost: 17 }],
-  ['deepEnd',     'DEEP END',      'High walls. Use them.',                     95, { score: 26000 }],
-  ['loosePack',   'LOOSE PACK',    'Everything on the hill is worth points.',  110, { pickup: 38, grind: 5, launch: 16 }],
-  ['switchHouse', 'SWITCH HOUSE',  'The road never lets you settle.',          100, { pickup: 34, boost: 8 }],
-  ['pinchPoint',  'PINCH POINT',   'Narrow, and the gates are on the edges.',   85, { boost: 21, launch: 14 }],
-  ['longHaul',    'LONG HAUL',     'Wide open and a long way down.',           115, { score: 27000, grind: 6 }],
-  ['stepLadder',  'STEP LADDER',   'Every drop pays if you land it.',          100, { launch: 24, score: 22000 }],
+    { idol: 7, grind: 4 }, undefined, { rareAlways: true }],
+  ['freeFall',    'FREE FALL',     'Let the ground do the work.',               90, { launch: 13, score: 13500 }],
+  ['stoneStep',   'STONE STEP',    'Ramp to gate, all the way down.',          105, { launch: 7, boost: 8 }],
+  ['deepEnd',     'DEEP END',      'High walls. Use them.',                     95, { score: 21500 }],
+  ['loosePack',   'LOOSE PACK',    'Everything on the hill is worth points.',  110, { pickup: 27, launch: 11 }],
+  ['switchHouse', 'SWITCH HOUSE',  'The road never lets you settle.',          100, { pickup: 25, boost: 5 }],
+  ['pinchPoint',  'PINCH POINT',   'Narrow, and the gates are on the edges.',   85, { launch: 7, boost: 10 }],
+  ['longHaul',    'LONG HAUL',     'Wide open and a long way down.',           115, { grind: 7, score: 14000 }],
+  ['stepLadder',  'STEP LADDER',   'Every drop pays if you land it.',          100, { launch: 14, score: 15500 }],
   ['stormChase',  'STORM CHASE',   'Idols in the bowl. Go and get them.',      110,
-    { idol: 14, grind: 6 }, undefined, { rareAlways: true }],
+    { idol: 7, grind: 4 }, undefined, { rareAlways: true }],
   // --- 31-40: the pairings come back around, so the demands take over --------
-  ['ironWill',    'IRON WILL',     'Rails first. Everything else after.',       95, { grind: 7, pickup: 32 }],
-  ['fastCurrent', 'FAST CURRENT',  'Never stop accelerating.',                  80, { boost: 26, score: 20000 }],
-  ['cleanSweep',  'CLEAN SWEEP',   'Leave nothing on the hill.',               105, { pickup: 44 }],
-  ['bigNumbers',  'BIG NUMBERS',   'Chain it. That is the only way.',           90, { score: 30000 }],
-  ['nervePlay',   'NERVE PLAY',    'Three demands, one short clock.',           90, { pickup: 34, grind: 6, launch: 18 }],
+  ['ironWill',    'IRON WILL',     'Rails first. Everything else after.',       95, { pickup: 31, grind: 5 }],
+  ['fastCurrent', 'FAST CURRENT',  'Never stop accelerating.',                  80, { boost: 7, score: 12000 }],
+  ['cleanSweep',  'CLEAN SWEEP',   'Leave nothing on the hill.',               105, { pickup: 43 }],
+  ['bigNumbers',  'BIG NUMBERS',   'Chain it. That is the only way.',           90, { score: 21500 }],
+  ['nervePlay',   'NERVE PLAY',    'Three demands, one short clock.',           90, { pickup: 28, launch: 15 }],
   ['skyLine',     'SKY LINE',      'Every ramp, every time.',                   95, { launch: 28 }],
   ['tightRope',   'TIGHT ROPE',    'Idols on the tightest hill there is.',      85,
-    { idol: 9, grind: 6 }, undefined, { rareAlways: true }],
-  ['fullTilt',    'FULL TILT',     'Nothing held back.',                        85, { score: 30000, launch: 20 }],
-  ['lastCall',    'LAST CALL',     'Everything you have learned, at once.',    100, { pickup: 42, grind: 6, launch: 22 }],
+    { idol: 7, grind: 5 }, undefined, { rareAlways: true }],
+  ['fullTilt',    'FULL TILT',     'Nothing held back.',                        85, { launch: 17, score: 17500 }],
+  ['lastCall',    'LAST CALL',     'Everything you have learned, at once.',    100, { pickup: 14, grind: 4, launch: 7 }],
   // The finale asks for the two things Amit calls the most fun, plus a score
   // that needs the chain -- so the last mission is the game at its best rather
   // than its longest crystal sweep.
   ['sundown',     'SUNDOWN',       'Everything the ridge has, one last time.', 115,
-    { idol: 13, boost: 21, score: 26000 }, undefined, { rareAlways: true }],
+    { idol: 7, boost: 7 }, undefined, { rareAlways: true }],
 
-  // --- THE OPEN FACE ---------------------------------------------------------
-  //
-  // A TEACHING LADDER, not a difficulty ramp. Amit: "first mission should be
-  // only ramps, and you should not have glides at all on the screen -- and of
-  // course blockers. Then the next mission should be glides, then pickups. But
-  // in the first two we shouldn't have pickups at all. Every time you add some
-  // component, to show the variety of stuff."
-  //
-  // So each of the first five introduces exactly one thing, and -- the part
-  // that matters -- the ones before it do not have that thing ON THE GROUND.
-  // A mission teaching ramps with rails lying around is not teaching ramps; the
-  // player cannot tell what the mission is about from what they can see. That
-  // is why `content` exists and why it filters at SPAWN rather than only
-  // deciding what gets counted.
-  //
-  // Blockers are in every one of them. They are not a component to introduce --
-  // they are the reason to steer at all, and a hill without them is a hill you
-  // hold one line down.
-  //
-  // NO AIRTIME OBJECTIVES anywhere. Amit: "don't do airtime, because airtime is
-  // not something you choose." Exactly right -- it is a consequence of the line
-  // you took and the ground you took it on, so asking for it asks the player to
-  // aim at something they do not directly hold.
-  //
-  // Targets are derived from what each hill offers per minute, against the
-  // fraction the twenty measured ridge missions ask for. See the note above.
-  ['faceRamps',   'RAMP SCHOOL',   'Nothing but takeoffs. Hit them.',           80,
-    // `feature` exempts ramps from the course's thinning, so the lesson's
-    // subject is continuous rather than sampled. Without it the back half of
-    // this mission had stretches with no ramp in sight.
-    // The ridge's own level and its own ramp placements, at full density --
-    // see faceRidgeMatch.
-    //
-    // RAMPS AND NOTHING ELSE. Amit: "remove everything from there that is not
-    // a ramp -- completely." No barriers, no cones, no crystals, not even the
-    // lip lamps: 'launch' is the only kind that reaches the ground.
-    //
-    // Which makes this the cleanest test the project has. The level is one
-    // already known to be fun, the ramp placements are identical to the
-    // original's to the digit, and every other variable is gone -- so whatever
-    // it feels like is the CONTROLLER, and nothing else.
-    { launch: 12 }, FACE,
-    { kinds: ['launch'], density: 1 },
-    'faceRidgeMatch'],
-
-  ['faceGlides',  'RAIL SCHOOL',   'Green metal. Get on it and stay on.',       90,
-    { grind: 5 }, FACE,
-    { kinds: ['launch', 'grind', 'wall', 'scenery'], feature: ['grind'] }, 'faceBasin'],
-
-  ['facePickups', 'CRYSTAL RUN',   'Now there is something to collect.',        90,
-    { pickup: 16 }, FACE,
-    // Crystals, but not idols yet -- the rare thing gets its own mission.
-    { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup'], without: ['statue'],
-      feature: ['pickup'] }, 'faceLongRun'],
-
-  ['faceBoosts',  'SPEED GATES',   'Ride the arches. They give the hill back.', 95,
-    { boost: 5 }, FACE,
-    { kinds: ['launch', 'grind', 'wall', 'scenery', 'boost'], feature: ['boost'] },
-    'faceGorge'],
-
-  ['faceIdols',   'IDOL HUNT',     'Ten of them, and never where you already are.', 130,
-    // TEN, per Amit. Five was set when all three idol placements sat past 86%
-    // out and the only one anyone met was a rim idol. Spread across the hill
-    // and measured on The Amphitheatre at 10.5 a minute, about 22 pass by in
-    // 130s -- so ten is a little under half of them. A hunt rather than a
-    // sweep, and rather than the lottery two would have been at the old rate.
-    { idol: 10 }, FACE,
-    // Idols ONLY among the pickups, and every showing rather than the authored
-    // "every now and then" -- that cadence is for something met incidentally,
-    // and this is the one thing the mission is about.
-    { kinds: ['launch', 'wall', 'scenery', 'pickup'], without: ['crystal'],
-      rareAlways: true, feature: ['pickup'] }, 'faceAmphitheatre'],
-
-  // --- and now the mixing ----------------------------------------------------
-  ['faceMix1',    'BOTH RIMS',     'Left, right, and back again.',              95,
-    { pickup: 18, launch: 10 }, FACE, undefined, 'faceSwitchback'],
-
-  ['faceMix2',    'FULL KIT',      'Ramps, rails, crystals. All of it.',       100,
-    { pickup: 18, grind: 3, launch: 12 }, FACE, undefined, 'faceChute'],
-
-  ['faceMix3',    'THE WHOLE FACE','Everything the mountain has.',             120,
-    { pickup: 20, grind: 3, launch: 12, boost: 4, idol: 2 }, FACE,
-    { kinds: ['launch', 'grind', 'wall', 'scenery', 'pickup', 'boost'],
-      rareAlways: true }, 'faceStaircase'],
 ];
 
 // Objective order on screen: collect, ride, launch, score. Consistent across
@@ -634,8 +652,16 @@ export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course
   // Every count and every score here is the AUTHORED value scaled by
   // DIFFICULTY -- see the note on that constant. The authored numbers are left
   // as written so the intent of each mission stays readable.
-  objectives: KIND_ORDER.filter((k) => targets[k] != null).map((kind) => (
-    kind === 'score'
+  //
+  // ONE SCALAR AGAIN, and deliberately so. A second back-half scalar briefly
+  // lived here (counts x0.70, scores x0.85 from mission 10) as a quick way to
+  // ease everything Amit had not yet played. It is gone: a flat percentage is
+  // exactly the wrong instrument, because it cuts a 25-crystal ask and a
+  // 4-rail ask by the same proportion, and rounding then drops the small one
+  // to something below its own teaching mission. Missions 10-40 are now sized
+  // individually against a measured difficulty budget -- see AUTHORED.
+  objectives: KIND_ORDER.filter((k) => targets[k] != null).map((kind) => {
+    return kind === 'score'
       ? { kind, count: easeScore(targets[kind]) }
       : kind === 'pickup'
         ? { kind, type: 'crystal', count: easeCount(targets[kind]) }
@@ -645,8 +671,8 @@ export const MISSIONS = AUTHORED.map(([id, name, brief, seconds, targets, course
       // in one line without the two counts colliding.
         : kind === 'idol'
           ? { kind: 'pickup', type: 'idol', count: easeCount(targets[kind]) }
-          : { kind, count: easeCount(targets[kind]) }
-  )),
+          : { kind, count: easeCount(targets[kind]) };
+  }),
   };
 });
 

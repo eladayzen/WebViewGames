@@ -48,12 +48,14 @@ function look(race) {
 /**
  * @param {object} progress the shared progress store
  * @param {(id: string) => void} onPick
- * @param {number} track which ladder this is, for the unlock rule
+ * @param {number} track which ladder this is, for the unlock rule. 1 since the
+ *   open face's ladder was removed -- it used to sit between the ridge and the
+ *   races. Must match the order of the chains handed to createProgress().
  */
 /**
  * @param {() => void} [onBack] where the X goes -- the screen ABOVE this one.
  */
-export function createRaceSelect(progress, onPick, track = 2, onBack = null) {
+export function createRaceSelect(progress, onPick, track = 1, onBack = null) {
   const el = document.getElementById('race-select');
   const gridEl = document.getElementById('race-grid');
   const closeEl = document.getElementById('race-back');

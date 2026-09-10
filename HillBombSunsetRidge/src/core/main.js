@@ -73,8 +73,6 @@ import '../modes/rivals.js';
 import { setPendingRace } from '../modes/speedRace.js';
 // ORDER IS LOBBY ORDER. The two ORIGINAL modes register first, then the open
 // face's -- so the front door reads as two games rather than an interleaving.
-import '../modes/faceMissions.js';
-import '../modes/openFace.js';
 import { MISSIONS } from '../data/missions.js';
 import { createProgress } from '../systems/progress.js';
 import { createProfileStore } from '../systems/gbProfile.js';
@@ -233,14 +231,18 @@ const briefing = createBriefing();
 // open from the start rather than sitting behind twenty ridge missions. Stars
 // and scores stay in one store; only the unlock rule is per-track.
 const RIDGE_MISSIONS = MISSIONS.filter((m) => !m.course);
-const FACE_MISSIONS = MISSIONS.filter((m) => m.course);
 const progress = createProgress([
   RIDGE_MISSIONS.map((m) => m.id),
-  FACE_MISSIONS.map((m) => m.id),
-  // THE RACE LADDER, track 2. A third progression through the same store: races
-  // earn stars and unlock the next one exactly as missions do, so the lobby, the
-  // records and the storage all work unchanged. Only the RULE for earning a
-  // clear differs, and that lives in the race mode.
+  // THE RACE LADDER, track 1. A second progression through the same store:
+  // races earn stars and unlock the next one exactly as missions do, so the
+  // lobby, the records and the storage all work unchanged. Only the RULE for
+  // earning a clear differs, and that lives in the race mode.
+  //
+  // WAS TRACK 2, behind the open face's ladder. That ladder is gone, so this
+  // moved down one -- and the race lobby's `track` default moved with it, in
+  // ui/raceSelect.js. They are a pair: nextMissionId() takes the index, so a
+  // lobby asking for a track that no longer exists falls back to the flattened
+  // list of every mission and quietly picks the wrong "next".
   RACE_IDS,
 ], createProfileStore());
 
@@ -888,7 +890,6 @@ const modeSelect = createModeSelect(async (id) => {
   // The lists wait for the profile's save; a mode with no ladder does not need
   // it and should not be delayed by it.
   if (id === 'missions') { await progressReady; missionSelect.open(); }
-  else if (id === 'faceMissions') { await progressReady; faceSelect.open(); }
   else if (id === 'speedRace') { await progressReady; raceSelect.open(); }
   else startRun(id);
 });
@@ -904,7 +905,6 @@ const modeSelect = createModeSelect(async (id) => {
  */
 function openSelect() {
   if (missionSelect.isOpen()) return missionSelect;
-  if (faceSelect.isOpen()) return faceSelect;
   if (raceSelect.isOpen()) return raceSelect;
   return null;
 }
@@ -916,38 +916,6 @@ const missionSelect = createMissionSelect(RIDGE_MISSIONS, progress, (missionId) 
   startRun('missions');
 });
 
-/**
- * THE FACE'S LOBBY IS A DOOR BACK TO THE RIDGE.
- *
- * It used to be a second real mission list -- same component, same progress
- * store, its own ladder. The open face is parked, so the lobby button that led
- * here was removed... which turned out to be a fence around a field with no
- * gate on the other three sides. A player still landed in it. Amit: "make the
- * open valley lobby just something that transfers players to the desired
- * lobby, just in case -- I don't know where they got there from."
- *
- * That last part is the requirement. Rather than find every route in, this
- * stops being a place you can be: whatever calls open() -- the mode button, a
- * finished face run, a saved ?gamemode=faceMissions link, anything added later
- * that has not been thought about yet -- gets the ridge list instead. There is
- * no path in that needs to be known about, because there is no longer anywhere
- * to arrive at.
- *
- * NOT CONSTRUCTING the real list is the point rather than a side effect. Every
- * instance of that component wires a handler onto the one shared NEXT button
- * and a keydown listener onto the window at construction time, and that pair
- * of duplicate listeners IS the bug that sent a ridge run into the open
- * valley. Ownership tracking in the component now stops them firing on each
- * other's panel; not creating the second set means there is nothing to stop.
- *
- * isOpen() is honestly false: this never shows anything, so nothing above it
- * -- the back button, the input gate -- should believe a list is up.
- */
-const faceSelect = {
-  isOpen: () => false,
-  open: () => missionSelect.open(),
-  close: () => {},
-};
 
 /**
  * THE RACE LOBBY. The same component the missions use, on the race ladder --
@@ -1220,8 +1188,7 @@ function leaveRun() {
   // by name. Getting this wrong strands the player on the wrong ladder.
   // Which screen sits above this run. The race has a lobby of its own now, so
   // it belongs in this group rather than dropping back to the mode list.
-  const wasMissions = modes.id === 'missions' || modes.id === 'faceMissions'
-    || modes.id === 'speedRace';
+  const wasMissions = modes.id === 'missions' || modes.id === 'speedRace';
   const returnSelect = modes.id === 'speedRace' ? raceSelect : missionSelect;
   briefing.cancel();
   modes.stop();
@@ -2334,13 +2301,13 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, faceSelect, rivals, finishLine, trough, sky, applyTheme,
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals, finishLine, trough, sky, applyTheme,
   // The sound system, so a headless check can confirm the context actually
   // started and that the two switches move independently.
   audio,
   // The ladder itself, so star thresholds can be checked against what a hill
   // actually pays without re-deriving them outside the game.
-  RIDGE_MISSIONS, FACE_MISSIONS,
+  RIDGE_MISSIONS,
   // The race ladder and its picker, so a headless check can open the lobby and
   // choose a track without clicking through two menus.
   raceSelect, setPendingRace,
