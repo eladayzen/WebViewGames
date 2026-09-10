@@ -468,6 +468,28 @@ half = max(r - l, b - t) / 2
 sq = ob.crop((round(cx - half), round(cy - half), round(cx + half), round(cy + half)))
 save(sq.resize((256, 256), Image.LANCZOS), 'proj-enemy-orb.png')
 
+# THE FRANGIBLE ORB -- enemy fire the player can shoot down (BULLET.frangible).
+#
+# ITS OWN GENERATION, NOT A RECOLOUR OF THE ORB ABOVE, for the same reason the
+# LANCE panel above was abandoned: "much more different" cannot be met by a
+# variant of one silhouette. Amit, on the first version, which was the orb
+# tinted green: "we need them to be more different than one another
+# graphically, because it's hard to understand they are so different."
+#
+# So the contrast is on three axes at once, not one:
+#   SHAPE   -- an angular crystalline star against a smooth round ball, which
+#              is the axis that survives motion blur and peripheral vision.
+#   COLOUR  -- cool mint/cyan against hot magenta/orange.
+#   VALUE   -- a hollow dark core against a bright burning centre, so the two
+#              differ even in a greyscale reading (and for a colour-blind
+#              player, who gets nothing from the second axis).
+fb = Image.open(RAW + 'orb-frangible-raw-01.png').convert('RGB')
+l, t, r, b = luma_bbox(fb, 8)
+cx, cy = (l + r) / 2, (t + b) / 2
+half = max(r - l, b - t) / 2
+sq = fb.crop((round(cx - half), round(cy - half), round(cx + half), round(cy + half)))
+save(sq.resize((256, 256), Image.LANCZOS), 'proj-enemy-shard.png')
+
 # ===========================================================================
 # 5. PROPS -- ONE SET PER SURFACE (6.5: eight per sector surface; four each is
 #    what this slice ships, scattered with runtime rotation and scale).

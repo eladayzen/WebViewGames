@@ -198,6 +198,11 @@ export function createWorld() {
       // presentational -- collision reads `r` and never this -- and stamped at
       // spawn so a volley does not pulse in lockstep.
       phase: 0,
+      // FRANGIBLE ORBS (BULLET.frangible): hp > 0 means the player's guns can
+      // shoot this one down. Zero on every ordinary orb, which is what keeps
+      // the collision pass a single cheap branch.
+      hp: 0,
+      hitFlashT: 0,
     })),
 
     playerBolts: makePool(96, () => ({
@@ -341,6 +346,10 @@ export function createWorld() {
     // authored content, not spawned entities, and there are four of them.
     boss: {
       active: false,
+      // BULLET.frangible or '' -- what this boss's orbs are made of, copied
+      // from its definition at beginBoss and onto each pod, since a pod is what
+      // owns an emitter.
+      bulletKind: '',
       id: '',
       name: '',
       phase: 'done',

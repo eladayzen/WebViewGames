@@ -55,7 +55,7 @@ let _pulseSeq = 0;
  *  cap is a floor of the pacing contract, so it is enforced at the spawner
  *  rather than trusted to authoring: an over-budget volley is silently
  *  trimmed rather than allowed through. */
-function spawnOrb(w, x, y, vx, vy, r, patternId, sine) {
+function spawnOrb(w, x, y, vx, vy, r, patternId, sine, owner) {
   if (liveCount(w.enemyBullets) >= w.caps.bullets) return null;
   const b = alloc(w.enemyBullets);
   if (!b) return null;
@@ -77,10 +77,21 @@ function spawnOrb(w, x, y, vx, vy, r, patternId, sine) {
   b.sW = sine ? sine.rateHz * Math.PI * 2 : 0;
   b.sPhase = sine ? sine.phase : 0;
   b.sT = 0;
+  // FRANGIBLE ORBS (BULLET.frangible). The KIND comes from whoever is firing,
+  // never from the pattern: B1 is the first shape the player ever learns and
+  // has to stay solid everywhere else, while one shooter can change the rule of
+  // its own fire. Putting `bulletKind: 'frangible'` on an ordinary craft later
+  // is then the entire change -- patterns own the shape of fire, shooters own
+  // what it is made of.
+  const kind = owner && owner.bulletKind;
+  const fr = kind === 'frangible' ? BULLET.frangible : null;
+  b.hp = fr ? fr.hp : 0;
+  b.hitFlashT = 0;
+
   // Trade bullet count for bullet size: dense-looking but individually
   // trackable. If a pattern needs more bullets to feel dangerous, it is the
   // wrong pattern (§5.3).
-  b.r = Math.max(w.caps.minBulletRadius, r);
+  b.r = Math.max(w.caps.minBulletRadius, fr ? r * fr.radiusMul : r);
   b.pattern = patternId;
   b.counted = false;
   _pulseSeq += FX.enemyBulletPulse.spawnPhaseStride;
@@ -249,7 +260,7 @@ function fireB1Orb(w, d, owner) {
   const maxVx = d.maxAimRatio * vy;
   vx = Math.max(-maxVx, Math.min(maxVx, vx));
 
-  spawnOrb(w, e.x, e.y + 26, vx, vy, d.orbRadius, 'B1');
+  spawnOrb(w, e.x, e.y + 26, vx, vy, d.orbRadius, 'B1', null, e);
 }
 
 // ---------------------------------------------------------------------------
@@ -569,7 +580,7 @@ function emitFanRow(w, st, d) {
     const sine = d.sine
       ? { amp: d.sine.amp, rateHz: d.sine.rateHz, phase: d.sine.phasePerSlot * i }
       : null;
-    spawnOrb(w, muzzle.x, muzzle.y, vx, vy, d.orbRadius, st.id, sine);
+    spawnOrb(w, muzzle.x, muzzle.y, vx, vy, d.orbRadius, st.id, sine, st.owner);
     fired++;
   }
   // A muzzle flash at the source, every row. This is the other half of the
@@ -660,6 +671,9 @@ export function updateEnemyBullets(w, dt) {
   for (let i = 0; i < pool.length; i++) {
     const b = pool[i];
     if (!b.alive) continue;
+    // The hit flash on a frangible orb that was struck but not destroyed --
+    // the only feedback saying "that shot counted, hit it again".
+    if (b.hitFlashT > 0) b.hitFlashT = Math.max(0, b.hitFlashT - dt);
     b.bx += b.vx * dt;
     b.y += b.vy * dt;
     if (b.sAmp) {

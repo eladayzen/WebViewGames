@@ -91,6 +91,10 @@ export const ASSET_MANIFEST = {
   swarm: 'assets/proj-player-swarm.png',
   flak: 'assets/proj-player-flak.png',
   orb: 'assets/proj-enemy-orb.png',
+  // The frangible orb (BULLET.frangible) is a SEPARATE TEXTURE, not the orb
+  // tinted: shape is the axis that reads at speed and in peripheral vision,
+  // and a recolour of one silhouette cannot carry it.
+  orbShard: 'assets/proj-enemy-shard.png',
   // The canisters (§5.6). One per weapon: the same casing with a different
   // emblem on the face, so which weapon is on offer can be read before the
   // player commits to crossing the frame for it. Spun and pulsed at runtime
@@ -653,6 +657,9 @@ const PLACEHOLDERS = {
   swarm: () => placeholderRound('swarm'),
   flak: () => placeholderRound('flak'),
   orb: placeholderOrb,
+  // Placeholder only: a distinct fallback so a missing asset still reads as a
+  // DIFFERENT projectile rather than silently looking like the solid orb.
+  orbShard: placeholderOrb,
   pickupRapid: () => placeholderPickup('rapid'),
   pickupBarrier: () => placeholderPickup('barrier'),
   pickupRepair: () => placeholderPickup('repair'),

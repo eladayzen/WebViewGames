@@ -278,6 +278,10 @@ export function spawnEntering(w, rng, side, slot, squadron, formationId, pace, t
 
   e.alive = true;
   e.type = def.id;
+  // What this craft's orbs are made of (BULLET.frangible). The spawner asks
+  // whoever owns the emitter, so a craft only has to declare it -- empty for
+  // every type except the Emitter.
+  e.bulletKind = def.bulletKind || '';
   // PER-LEVEL HP (§5.7's sanctioned campaign lever, LEVELS in tuning.js).
   // Level one authors no overrides, so every craft in it has exactly §6.2's
   // HP and its content is bit-for-bit what it was; level two takes the drone
@@ -493,6 +497,10 @@ export function spawnFragment(w, x, y, dir, type, score) {
   const hp = levelHp(w.surfaceIndex, def.id);
   e.alive = true;
   e.type = def.id;
+  // What this craft's orbs are made of (BULLET.frangible). The spawner asks
+  // whoever owns the emitter, so a craft only has to declare it -- empty for
+  // every type except the Emitter.
+  e.bulletKind = def.bulletKind || '';
   e.hp = hp;
   e.maxHp = hp;
   e.shield = def.shieldHits || 0;

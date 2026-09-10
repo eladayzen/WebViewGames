@@ -129,6 +129,10 @@ export function beginBoss(w, bossId, aspect) {
   b.active = true;
   b.id = def.id;
   b.name = def.name;
+  // What this boss's orbs are MADE OF, as opposed to the shape its patterns
+  // fire them in. Copied onto every pod below, because a pod is what actually
+  // owns an emitter and therefore what the spawner asks.
+  b.bulletKind = def.bulletKind || '';
   b.aspect = aspect || 2.7;
   b.phase = BossPhase.ENTERING;
   b.t = 0;
@@ -225,7 +229,10 @@ export function beginBoss(w, bossId, aspect) {
   }
   // Emitters are attached here rather than in the loop above so that the pod
   // record is already complete when it becomes an emitter's owner.
-  for (const pod of b.pods) pod.emitter = bossOwned(createEmitter(pod.patternId, pod));
+  for (const pod of b.pods) {
+    pod.bulletKind = b.bulletKind;
+    pod.emitter = bossOwned(createEmitter(pod.patternId, pod));
+  }
 
   // A HULL BOSS OWNS ITS PATTERNS DIRECTLY.
   //

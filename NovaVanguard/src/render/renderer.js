@@ -29,6 +29,7 @@ import {
   BOSS,
   SURFACE,
   FX,
+  BULLET,
   AISLE_MIN,
   PICKUPS,
   TELEGRAPH,
@@ -304,8 +305,13 @@ export async function createRenderer(mountEl) {
     s.blendMode = 'add';
     return s;
   });
+  // Both orb textures resolved once. The pool swaps between them per bullet --
+  // solid fire and frangible fire are different objects, not one object tinted
+  // twice (see the draw loop, and BULLET.frangible).
+  const orbTex = T('orb');
+  const orbShardTex = T('orbShard');
   const orbSprites = bank(layers.projectiles, 96, () => {
-    const s = new Sprite(T('orb'));
+    const s = new Sprite(orbTex);
     s.blendMode = 'add';
     return s;
   });
@@ -753,7 +759,33 @@ export async function createRenderer(mountEl) {
       sp.y = b.y;
       sp.scale.set(((b.r * 2.9) / Math.max(1, sp.texture.width)) * grow);
       sp.alpha = pulse.glowMin + (pulse.glowMax - pulse.glowMin) * glow;
-      sp.tint = 0xffffff;
+      // FRANGIBLE ORBS ARE A DIFFERENT COLOUR (Amit: "they need to be in
+      // another colour also"), and that is not decoration -- it is the entire
+      // teaching mechanism. A player who cannot tell a shootable orb from a
+      // solid one at arm's length treats the whole screen as solid, and the
+      // mechanic costs them confusion and buys them nothing. Mint green
+      // against the orange-red of everything else, brightening to near-white
+      // for a moment when hit so a shot that landed but did not kill still
+      // reads as progress. Colour, plus the 35% size step from
+      // BULLET.frangible, so it survives a colour-blind player too.
+      if (b.hp > 0) {
+        // A DIFFERENT TEXTURE, not a tint. Amit, on the tinted version: "we
+        // need them to be more different than one another graphically, because
+        // it's hard to understand they are so different." Shape is the axis
+        // that survives speed and peripheral vision -- an angular crystal
+        // against a round plasma ball -- with colour and the hollow dark core
+        // as the second and third readings.
+        if (sp.texture !== orbShardTex) sp.texture = orbShardTex;
+        sp.tint = b.hitFlashT > 0 ? BULLET.frangible.shellTint : 0xffffff;
+        // Slow spin, one more thing the solid orb never does. Keyed to the
+        // orb's own spawn phase so a volley does not rotate in lockstep.
+        sp.rotation = w.time * 1.1 + b.phase;
+        sp.alpha = Math.min(1, sp.alpha + 0.25);
+      } else {
+        if (sp.texture !== orbTex) sp.texture = orbTex;
+        sp.rotation = 0;
+        sp.tint = 0xffffff;
+      }
     }
     for (; oi < orbSprites.length; oi++) orbSprites[oi].visible = false;
 

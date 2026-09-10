@@ -125,6 +125,11 @@ export const BOSSES = {
   // two's waves -- so the fight introduces no new bullet vocabulary at all.
   broodGantry: {
     id: 'broodGantry',
+    // Frangible fire, like every boss after the first (see nadirCoil above for
+    // the mechanism). CINDERJAW is the exception on purpose: boss one is where
+    // a player learns that a boss's fire must be READ and dodged, and every
+    // fight after it adds the second option of shooting the fire down.
+    bulletKind: 'frangible',
     // THE HULL GUN (playtest round 12). One pattern the hull fires itself, for
     // as long as it lives, owned by no pod. It is the floor of threat that
     // destroying pods cannot remove -- see bossEmitters() in /enemies/boss.js
@@ -211,6 +216,12 @@ export const BOSSES = {
   // pressure, no plunge, no diagonal curtain.
   nadirCoil: {
     id: 'nadirCoil',
+    // EVERY ORB THIS BOSS FIRES IS FRANGIBLE (Amit). Declared on the boss
+    // rather than on the pattern because the patterns are shared -- B1 is the
+    // first thing the player ever learned, and it has to stay solid everywhere
+    // else. One boss changes the RULE of its own fire; the patterns keep
+    // owning the shape of it.
+    bulletKind: 'frangible',
     // THE HULL GUN (playtest round 12). One pattern the hull fires itself, for
     // as long as it lives, owned by no pod. It is the floor of threat that
     // destroying pods cannot remove -- see bossEmitters() in /enemies/boss.js
@@ -294,6 +305,11 @@ export const BOSSES = {
   // -------------------------------------------------------------------------
   vespidae: {
     id: 'vespidae',
+    // Frangible fire, like every boss after the first (see nadirCoil above for
+    // the mechanism). CINDERJAW is the exception on purpose: boss one is where
+    // a player learns that a boss's fire must be READ and dodged, and every
+    // fight after it adds the second option of shooting the fire down.
+    bulletKind: 'frangible',
     // THE HULL GUN (playtest round 12). One pattern the hull fires itself, for
     // as long as it lives, owned by no pod. It is the floor of threat that
     // destroying pods cannot remove -- see bossEmitters() in /enemies/boss.js
@@ -345,6 +361,11 @@ export const BOSSES = {
   // -------------------------------------------------------------------------
   siegeWarden: {
     id: 'siegeWarden',
+    // Frangible fire, like every boss after the first (see nadirCoil above for
+    // the mechanism). CINDERJAW is the exception on purpose: boss one is where
+    // a player learns that a boss's fire must be READ and dodged, and every
+    // fight after it adds the second option of shooting the fire down.
+    bulletKind: 'frangible',
     // THE HULL GUN (playtest round 12). One pattern the hull fires itself, for
     // as long as it lives, owned by no pod. It is the floor of threat that
     // destroying pods cannot remove -- see bossEmitters() in /enemies/boss.js

@@ -1401,6 +1401,26 @@ export const ENEMY = {
       // B1 and B2, and the per-craft part is only which of the two it owns.
       // Both are proved; neither can drift out of contract.
       patternVariants: ['B2', 'B2T'],
+      // THE EMITTER TEACHES THE MECHANIC (Amit: "pick one of the regular
+      // enemies to fire those, always just those, so the player knows and
+      // understands it before he reaches the bosses -- the big white ones").
+      //
+      // WHY THE EMITTER. It is the largest sprite and the only craft that OWNS
+      // a pattern (B2, its sweep) -- so it is already the craft a player reads
+      // as "the one that shoots", and its fire is the fire they watch.
+      //
+      // WHAT THIS DOES AND DOES NOT COVER, because the distinction is easy to
+      // get wrong: a type carrying `pattern: null` does not mean it never
+      // shoots. The WAVE owns B1, and lockedShooters() fires it through
+      // whichever craft is locked in formation -- a Drone can shoot. The kind
+      // comes from the craft that fires, so B1 from a Drone is solid and B2
+      // from an Emitter is frangible.
+      //
+      // The result is a screen with BOTH kinds on it at once, which is a
+      // better teacher than either alone: green means shoot it, orange means
+      // move. The player learns the difference in ordinary waves and meets it
+      // again on every boss after the first.
+      bulletKind: 'frangible',
       tint: 0xffffff,
       textureKey: 'emitter',
       // Acid jade, the type's own signature and used by nothing else.
@@ -2027,6 +2047,44 @@ export const BULLET = {
   despawnY: 1.02,
   // Near-miss radius, used by instrumentation (and by the vent at MVP).
   nearMissRadius: 40,
+
+  // ---- FRANGIBLE ORBS: enemy fire the player can shoot down --------------
+  //
+  // Amit: "we need a new type of enemy projectile that all of my weapons can
+  // destroy, and the second boss fires only those."
+  //
+  // WHY THIS IS A DIFFERENT KIND OF THREAT rather than a weaker one. Every
+  // other orb in the game is a thing to be AVOIDED -- the whole lateral-lean
+  // design is built on reading an aisle and standing in it. A frangible orb
+  // asks the opposite question: shoot it, or move? That is a genuinely new
+  // decision, and it is the reason the guns are worth having during a fight
+  // whose hull is behind pods.
+  //
+  // IT MUST LOOK DIFFERENT AT A GLANCE. A player who cannot tell a frangible
+  // orb from a solid one at arm's length will treat the whole screen as
+  // solid, and the mechanic will have cost them nothing but confusion. Hence
+  // its own tint, a visible shell, and a size step up.
+  //
+  // WHO FIRES THEM: every boss except CINDERJAW. Boss one is the fight where a
+  // player learns that boss fire has to be read and dodged; from boss two on,
+  // the same fire also becomes something the guns can answer. Ordinary craft
+  // can be given the same kind by declaring `bulletKind` on the craft -- the
+  // spawner asks whoever is firing, never the pattern.
+  frangible: {
+    // Two bolts of the standard gun, so it is a real decision and not a free
+    // deletion -- but any weapon clears it noticeably faster, which is the
+    // point of "all of my weapons can destroy" it.
+    hp: 2,
+    // Bigger than a solid orb: it reads as a target rather than a hazard, and
+    // it makes the size the tell as well as the colour.
+    radiusMul: 1.35,
+    tint: 0x8affc8,
+    shellTint: 0xd9fff0,
+    // Points for shooting one down. Small on purpose: the reward is not having
+    // been hit, and paying much for it would turn a boss fight into a
+    // bullet-farming exercise.
+    points: 5,
+  },
 };
 
 // ---------------------------------------------------------------------------

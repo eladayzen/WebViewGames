@@ -71,6 +71,39 @@ export function resolveCollisions(w, fx, instr) {
     const b = w.playerBolts[i];
     if (!b.alive) continue;
 
+    // FRANGIBLE ORBS FIRST (BULLET.frangible). Tested before the boss and the
+    // craft because they are physically the nearest thing to the player: an orb
+    // is on its way DOWN and a bolt on its way UP, so the bolt meets it before
+    // anything that fired it. Resolving them in the other order would let a
+    // bolt pass through an orb to hit the boss behind it, which reads as the
+    // shot going through the thing it visibly touched.
+    //
+    // THE COST IS THE POINT. The bolt is consumed, so clearing incoming fire
+    // takes damage away from the boss -- shoot the orb or dodge it and keep the
+    // pressure on. That trade is the whole mechanic; a bolt that destroyed an
+    // orb for free would just be a slower solid orb.
+    let stoppedByOrb = false;
+    for (let k = 0; k < w.enemyBullets.length; k++) {
+      const o = w.enemyBullets[k];
+      if (!o.alive || o.hp <= 0) continue;
+      const dx = o.x - b.x;
+      const dy = o.y - b.y;
+      const rr = o.r + b.r;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      o.hp -= b.dmg;
+      o.hitFlashT = 0.09;
+      b.alive = false;
+      stoppedByOrb = true;
+      if (o.hp <= 0) {
+        o.alive = false;
+        w.stats.score += BULLET.frangible.points;
+        w.stats.orbsShot = (w.stats.orbsShot || 0) + 1;
+        fx.impact(o.x, o.y);
+      }
+      break;
+    }
+    if (stoppedByOrb) continue;
+
     // The boss is tested first, and /enemies/boss.js decides in ONE call both
     // whether the bolt is stopped and what it hit.
     //
