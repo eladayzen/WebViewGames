@@ -76,6 +76,7 @@ import { setPendingRace } from '../modes/speedRace.js';
 import { MISSIONS } from '../data/missions.js';
 import { createProgress } from '../systems/progress.js';
 import { createProfileStore } from '../systems/gbProfile.js';
+import { installGbSdk } from '../systems/gbSdk.js';
 import { createModeSelect } from '../ui/modeSelect.js';
 import { createMissionSelect } from '../ui/missionSelect.js';
 import { RACE_IDS } from '../data/races.js';
@@ -231,6 +232,19 @@ const briefing = createBriefing();
 // open from the start rather than sitting behind twenty ridge missions. Stars
 // and scores stay in one store; only the unlock rule is per-track.
 const RIDGE_MISSIONS = MISSIONS.filter((m) => !m.course);
+/**
+ * OPEN THE BRIDGE BEFORE ANYTHING READS PROGRESS.
+ *
+ * createProfileStore() below asks `window.GoBalance` for the player's save, and
+ * until now that object never existed -- so every profile on a shared board was
+ * reading the same device-wide localStorage bucket. systems/gbSdk.js is the
+ * missing half of the host's protocol; installing it here, one line above the
+ * store that needs it, is what makes the save per PROFILE.
+ *
+ * A no-op outside the WebView, deliberately: at a dev URL there is no host to
+ * talk to and the existing localStorage path is the right one.
+ */
+installGbSdk();
 const progress = createProgress([
   RIDGE_MISSIONS.map((m) => m.id),
   // THE RACE LADDER, track 1. A second progression through the same store:
