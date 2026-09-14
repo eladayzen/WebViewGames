@@ -172,21 +172,29 @@ export default registerMode({
        */
       if (stars > 0) ctx.progress.record(race.id, stars, Math.round(ctx.scoring.state.score));
       /**
-       * TWO EVENTS, NOT ONE WITH A FLAG, because they answer different
-       * questions. A finish is about the FIELD -- what place, against four
-       * rivals whose pace is authored -- and is the number that says whether a
-       * track's difficulty is right. A time-cap DNF is about the TRACK: it
-       * means the course could not be covered in the time allowed, and the
-       * metres short is the size of the miss. Folding them together would put a
-       * meaningless `place` on the second and a meaningless distance on the
-       * first.
+       * ONE EVENT, SPLIT BY `result` -- see the vocabulary note in
+       * systems/analytics.js. These used to be race_finish and race_dnf, on the
+       * reasoning that a finish is about the FIELD and a DNF is about the TRACK
+       * and folding them together would put a meaningless place on one and a
+       * meaningless distance on the other. Both halves of that are still true;
+       * the answer is just that they are parameters rather than event names.
+       * `place` is 0 on a DNF and the distance arrives as `progress_pct`, which
+       * a missions-mode timeout reports in exactly the same field.
+       *
+       * What that buys is the question neither of the old names could answer:
+       * completion rate for a level, in one number, comparable between a race,
+       * a mission, and whatever the next game turns out to be.
        *
        * `race.id` rather than `race.name`, so a renamed track does not fork its
-       * own history -- the same reason the launcher should key on the scene
-       * name (see GOBALANCE_ANALYTICS_REQUEST.md).
+       * own history -- the same reason the launcher keys on the scene name.
        */
-      if (reason === 'timeout') analytics.raceDnf(race.id, finishS - me.s);
-      else analytics.raceFinished(race.id, me.place, ctx.scoring.state.score);
+      if (reason === 'timeout') {
+        analytics.raceDnf(race.id, me.s - startS, course.length,
+          ctx.scoring.state.score, RACE_TIMEOUT - left);
+      } else {
+        analytics.raceFinished(race.id, me.place, ctx.scoring.state.score,
+          RACE_TIMEOUT - left);
+      }
       ctx.endRun(won ? 'complete' : 'timeup', {
         tone: stars > 0 ? 'success' : 'fail',
         title: won ? 'WINNER' : `FINISHED ${ordinal(me.place)}`,
@@ -253,6 +261,18 @@ export default registerMode({
       },
 
       start() {
+        /**
+         * RACES REPORT A START TOO, which they did not before -- only missions
+         * did, because the events were named after missions. Without it a race
+         * had an end and no beginning, so the one number anybody actually wants
+         * from a track (how many who start it finish it) was not computable, and
+         * retries on a track nobody could beat were invisible.
+         *
+         * Its ladder position rather than its id alone: the same `level_number`
+         * a mission sends, so "how far down the ladder do people get" is one
+         * question over both.
+         */
+        analytics.levelStarted(getRace(pendingId).id, RACE_IDS.indexOf(pendingId) + 1);
         startS = ctx.getState().s;
         finishS = startS + course.length;
         rivals.spawn(FIELD_SIZE, startS);
@@ -263,6 +283,24 @@ export default registerMode({
       },
 
       stop() {
+        /**
+         * A RACE THE PLAYER WALKED OUT OF still has to report an end.
+         *
+         * `finished` is already true on every ordinary exit -- settle() sets it
+         * before endRun -- so reaching here with it false means they left mid-
+         * race, which is the one ending that used to vanish. Without this a
+         * track's starts and ends did not balance and every abandonment looked
+         * like a session that simply stopped.
+         *
+         * How far down the course they got, for the same reason missions report
+         * it: quitting at 90% of a track and quitting at 5% are opposite
+         * complaints about it.
+         */
+        if (!finished) {
+          analytics.levelQuit(getRace(pendingId).id,
+            Math.max(0, ctx.getState().s - startS), course.length,
+            ctx.scoring.state.score, RACE_TIMEOUT - left);
+        }
         rivals.despawn();
         ctx.finishLine.hide();
         finished = true;

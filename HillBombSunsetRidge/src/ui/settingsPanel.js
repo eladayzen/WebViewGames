@@ -484,7 +484,7 @@ function setPanelOpen(open) {
     // made and should not be an event.
     if (sensitivityOnOpen != null
         && Math.round(sensitivityOnOpen) !== Math.round(state.sensitivity)) {
-      analytics.sensitivityChanged(state.sensitivity);
+      analytics.settingChanged('sensitivity', state.sensitivity);
     }
     sensitivityOnOpen = null;
     // Always reopen on the player's page. Landing back in DEV OPTIONS because

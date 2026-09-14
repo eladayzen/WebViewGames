@@ -236,7 +236,7 @@ const MISSION_MODE = {
       /**
        * THE CLOCK AT THE MOMENT IT WAS WON, kept for the analytics event.
        *
-       * Not readable at settle(), which is where mission_clear is reported: a
+       * Not readable at settle(), which is where the clear is reported: a
        * cleared mission still rides out its full timer -- the objective decides
        * WHICH ending, the clock decides WHEN -- so `left` there is always 0 and
        * a "headroom" reported from it would be a column of zeroes in every
@@ -269,7 +269,10 @@ const MISSION_MODE = {
       // mission met with a second to spare and one met in half the time are
       // different tuning problems, and this is the parameter that tells them
       // apart.
-      analytics.missionCleared(mission.id, earned, score, clearedWithLeft);
+      // Reported as time SPENT rather than the headroom itself: `mission.seconds`
+      // is the budget and lives here, so converting at the call site means the
+      // report never needs to know what any particular mission's clock was.
+      analytics.levelCleared(mission.id, earned, score, mission.seconds - clearedWithLeft);
       ctx.endRun('complete', {
         tone: 'success',
         title: 'MISSION COMPLETE',
@@ -317,9 +320,9 @@ const MISSION_MODE = {
         // firing both put the name on screen twice at once.
 
         // The retry counter lives in the analytics module, so this one call
-        // produces both mission_start and, from the second attempt on, the
-        // mission_retry that says a ladder step is holding someone up.
-        analytics.missionStarted(mission.id, mission.number);
+        // carries the attempt number too -- which is what says a ladder step is
+        // holding someone up.
+        analytics.levelStarted(mission.id, mission.number);
 
         for (const o of objectives) {
           if (!o.spec || !o.spec.event) continue;
@@ -364,10 +367,15 @@ const MISSION_MODE = {
           const score = ctx.scoring.state.score;
           ctx.progress.record(mission.id, starsFor(score), score);
         }
-        // `cleared` is the interesting half: leaving a mission already banked is
-        // the sanctioned behaviour above, while leaving one that was not is a
-        // signal about the mission.
-        if (quitting) analytics.missionQuit(mission.id, cleared);
+        // HOW FAR THEY GOT, not just that they went. Leaving a mission already
+        // banked is the sanctioned behaviour above and reports as 100%; leaving
+        // one that was not is a signal about the mission, and the fraction of the
+        // ask they had met is the size of that signal.
+        if (quitting) {
+          const done = objectives.filter((o) => o.done).length;
+          analytics.levelQuit(mission.id, done, objectives.length,
+            ctx.scoring.state.score, mission.seconds - left);
+        }
         // Every subscription, unconditionally. A mission that outlived its run
         // would keep counting into the next one.
         for (const off of unsubs) off();
@@ -399,7 +407,9 @@ const MISSION_MODE = {
           // Both counts, not just the failure: "3 of 4" and "0 of 4" are a
           // mission that is slightly too hard and one that is mis-tuned, and
           // the difference is the whole reason to report this at all.
-          analytics.missionFailed(mission.id, done, objectives.length);
+          // The whole clock, because this branch is only reached by it expiring.
+          analytics.levelFailed(mission.id, done, objectives.length,
+            ctx.scoring.state.score, mission.seconds);
           ctx.endRun('timeup', {
             tone: 'fail',
             // The verdict, not just the cause. "TIME UP" alone reads as a

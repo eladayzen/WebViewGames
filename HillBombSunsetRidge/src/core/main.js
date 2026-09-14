@@ -981,6 +981,22 @@ function applyTheme(theme) {
 
 /** @param {string} id a registered mode id */
 function startRun(id) {
+  /**
+   * CLOSE THE OUTGOING RUN FIRST -- before anything below resets the world.
+   *
+   * modes.start() stops the old mode itself, so this looks redundant, and for
+   * the GAME it is: stop() is idempotent, both modes latch on `finished`. What
+   * it is not redundant for is what the old mode reports on its way out. Left
+   * to modes.start(), stop() ran after reset(), so a race abandoned by starting
+   * something else read its own distance and score as zero -- and its level_end
+   * landed after the incoming run's start_game, which reads as one run ending
+   * inside another to anything walking the stream forward.
+   *
+   * Both were measured on the wire, not reasoned about. Reached whenever one
+   * run follows another without a trip to the lobby: the restart button, and a
+   * mode switch straight from the results screen.
+   */
+  modes.stop();
   const def = getMode(id);
   // The course decides what may spawn -- hazards are absent from every course
   // today, which is how "no cones by default" is expressed as data rather than
@@ -1080,9 +1096,10 @@ function startRun(id) {
    * are different problems.
    *
    * BEFORE modes.start(), not after: the mode's own start() reports
-   * mission_start, and a stream where the mission begins before the run does
-   * reads backwards to anyone building a funnel out of it. Verified in that
-   * order.
+   * level_start, and a stream where the level begins before the run does reads
+   * backwards to anyone building a funnel out of it. It also sets the `mode`
+   * that every level event is stamped with, so the order is load-bearing now
+   * and not just tidy. Verified in that order.
    *
    * No-op until the host gains logEvent -- see systems/analytics.js.
    */
