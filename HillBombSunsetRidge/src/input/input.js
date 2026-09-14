@@ -47,8 +47,8 @@ export const STEER_MODES = [STEER_REGULAR, STEER_ANALOG];
 // ONE DEPLOYMENT CONSEQUENCE, and it is not optional. In 'regular' steering the
 // host turns board tilt into synthetic arrow keys, and it only dispatches
 // ArrowUp/ArrowDown when `forwardVerticalAxis` is ticked on the scene -- which
-// is OFF by default and fails silently. In SKATE stance, carve arrives on
-// exactly those keys. So a build shipped with that box unticked does not steer
+// is OFF by default and fails silently. In EITHER skate stance, carve arrives
+// on exactly those keys. So a build shipped with that box unticked does not steer
 // at all: not badly, not partially, not at all. Braking is unaffected, since it
 // lands on the lateral keys the host always sends.
 //
@@ -56,8 +56,23 @@ export const STEER_MODES = [STEER_REGULAR, STEER_ANALOG];
 // tuck, brake -- and never sees the board's axes at all, which is what makes
 // this a change to one mapping rather than a change to the controller.
 export const STANCE_SKATE = 'skate';
+/**
+ * THE OTHER FOOT IN FRONT. Amit: "there should be stand on the other side --
+ * for people who like their other foot to lead."
+ *
+ * Standing across the board is two positions, not one, and which you want is
+ * not a preference anyone can talk themselves out of: a rider who leads with
+ * the other foot and is given only SKATE is standing backwards, so every carve
+ * goes the wrong way. That is indistinguishable from broken steering, and the
+ * player has no reason to suspect a setting.
+ *
+ * It is the same quarter turn as SKATE in the opposite direction, which is why
+ * it costs one more branch below and nothing else: the board's axes are mirrored
+ * and everything downstream still speaks in player terms.
+ */
+export const STANCE_SKATE_SWITCH = 'skateSwitch';
 export const STANCE_SQUARE = 'square';
-export const STANCE_MODES = [STANCE_SKATE, STANCE_SQUARE];
+export const STANCE_MODES = [STANCE_SKATE, STANCE_SKATE_SWITCH, STANCE_SQUARE];
 
 // FORWARD LEAN IS OFF. Amit, on the board: "I cannot do this move." Leaning
 // forward on a balance board is genuinely hard -- it is the same ergonomic fact
@@ -240,8 +255,15 @@ export function readInput() {
   // Doing the rotation HERE, on two numbers, is the whole point: the pendulum,
   // the brake, the poses and every constant behind them keep working in player
   // terms and never learn that a stance exists.
-  const lateral = stance === STANCE_SKATE ? y : x;
-  const fore = stance === STANCE_SKATE ? -x : y;
+  // Three positions, one quarter turn apart: SQUARE is the identity, SKATE
+  // rotates the board one way under the rider and SKATE SWITCH the other. The
+  // switch mapping is exactly SKATE negated, which is what "facing the other
+  // way on the same board" means -- there is no third set of numbers to get
+  // right, and the two skate stances cannot drift apart.
+  const skate = stance === STANCE_SKATE;
+  const switched = stance === STANCE_SKATE_SWITCH;
+  const lateral = skate ? y : switched ? -y : x;
+  const fore = skate ? -x : switched ? x : y;
 
   const carve = applyDeadzone(Math.max(-1, Math.min(1, lateral)));
   let ay = applyDeadzone(Math.max(-1, Math.min(1, fore)));
