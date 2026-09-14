@@ -52,9 +52,13 @@
            Cross-game HUD convention (see BUILD_NOTES.md): back + pause live top-right
            as icon-only buttons, back is a plain X, score/status live top-left.
            absolute (not fixed) -- positioned relative to #stage, the locked-aspect
-           box, so it stays anchored to the visible game frame, not the raw viewport. -->
+           box, so it stays anchored to the visible game frame, not the raw viewport.
+           window.__gbBack (core/main.js), when present, raises the quit-confirm
+           flow (GOBALANCE_APP_INTEGRATION.md "Quitting") instead of leaving
+           immediately -- the inline fallback keeps this escapable even if the
+           game's module fails to load. -->
       <button id="gb-back"
-        onclick="if(window.Unity)window.Unity.call('nav:back');"
+        onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
         style="position:absolute;top:12px;right:12px;z-index:9999;width:38px;height:38px;border:none;
                border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
                font:600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
@@ -203,7 +207,53 @@
              spelled out here instead, which is the natural place for it. -->
         <div id="final-points">0</div>
         <div id="final-breakdown"></div>
+        <!-- Family-account leaderboard (GoBalance submitScore/getScoreboard,
+             see systems/scoreboard.js). Stays hidden outside the app and when
+             empty. Deliberately INSIDE #gameover-overlay and ABOVE
+             #restart-button: the SDK synth-clicks the restart button while
+             this overlay is visible, and the reading order should put the
+             board above the button (GOBALANCE_APP_INTEGRATION.md rule 4). -->
+        <div id="scoreboard" class="hidden">
+          <div id="scoreboard-title">BEST ON THIS ACCOUNT</div>
+          <ol id="scoreboard-rows"></ol>
+        </div>
         <button id="restart-button">RETRY</button>
+      </div>
+
+      <!-- Quit confirm (GOBALANCE_APP_INTEGRATION.md "Quitting"). A MODAL over
+           the still-visible PAUSED game -- a light scrim, not a full screen --
+           so the player sees the run they're being asked to abandon. Raised by
+           #gb-back only mid-run; its own ids, never #gameover-overlay. -->
+      <div id="confirm-overlay" class="modal-overlay hidden">
+        <div class="board-card">
+          <div class="board-title">QUIT?</div>
+          <div class="board-sub">Your score will still be counted.</div>
+          <div class="board-buttons">
+            <button id="confirm-stay" type="button">KEEP PLAYING</button>
+            <button id="confirm-quit" type="button">QUIT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quit board -- shown AFTER confirming a mid-run quit. Its OWN screen
+           and button ids (quit-again / quit-leave), deliberately NOT
+           #gameover-overlay / #restart-button, so the host's Space/Enter
+           synth-restart can't fire behind it. No auto-restart timer: the
+           player chose to stop. The run is still submitted and shown on the
+           board (a run ended by choice still happened). -->
+      <div id="quit-overlay" class="board-screen hidden">
+        <div class="board-card">
+          <div id="quit-title" class="board-title">RUN ENDED</div>
+          <div id="quit-stats" class="board-sub"></div>
+          <div id="quit-scoreboard" class="hidden">
+            <div id="quit-scoreboard-title">BEST ON THIS ACCOUNT</div>
+            <ol id="quit-scoreboard-rows"></ol>
+          </div>
+          <div class="board-buttons">
+            <button id="quit-again" type="button">PLAY AGAIN</button>
+            <button id="quit-leave" type="button">QUIT</button>
+          </div>
+        </div>
       </div>
 
       <!-- First-run onboarding, direct feedback: two auto-cycling explainer

@@ -38,6 +38,16 @@ const livesTrayEl = document.getElementById('lives-tray');
 const gameoverEl = document.getElementById('gameover-overlay');
 const finalPointsEl = document.getElementById('final-points');
 const finalBreakdownEl = document.getElementById('final-breakdown');
+const scoreboardEl = document.getElementById('scoreboard');
+const scoreboardTitleEl = document.getElementById('scoreboard-title');
+const scoreboardRowsEl = document.getElementById('scoreboard-rows');
+const confirmOverlayEl = document.getElementById('confirm-overlay');
+const quitOverlayEl = document.getElementById('quit-overlay');
+const quitTitleEl = document.getElementById('quit-title');
+const quitStatsEl = document.getElementById('quit-stats');
+const quitScoreboardEl = document.getElementById('quit-scoreboard');
+const quitScoreboardTitleEl = document.getElementById('quit-scoreboard-title');
+const quitScoreboardRowsEl = document.getElementById('quit-scoreboard-rows');
 const pausedBadgeEl = document.getElementById('paused-badge');
 const frameDebugEl = document.getElementById('frame-debug');
 const introEl = document.getElementById('intro-tutorial-overlay');
@@ -491,6 +501,98 @@ export function showGameOver(score, meters) {
 
 export function hideGameOver() {
   gameoverEl.classList.add('hidden');
+  // Reset the board for the next run so a stale list never flashes before
+  // the fresh fetch populates it (systems/scoreboard.js is re-fetched fresh
+  // per run, not cached here).
+  scoreboardEl.classList.add('hidden');
+  scoreboardRowsEl.innerHTML = '';
+}
+
+// Shared leaderboard renderer for the game-over overlay AND the quit board --
+// both show the same family-account board (systems/scoreboard.js). `board` is
+// fetchBoard()'s result; `groups` is an array of row-arrays (leaders, and
+// optionally a window around your run) with a `·  ·  ·` separator between
+// them. No avatars: rows are rank | name | score. Safe no-op that hides the
+// section when the board is unavailable or empty. Ported from TmntSkateSlice/
+// NovaVanguard's ui.js -- see systems/scoreboard.js's own header for why this
+// is a family/device board, not a global one.
+function renderBoardInto(rootEl, titleEl, listEl, board, groups) {
+  if (!rootEl) return;
+  const list = (groups || []).filter((g) => g && g.length);
+  if (!board || !board.available || !list.length) {
+    rootEl.classList.add('hidden');
+    return;
+  }
+  titleEl.textContent = board.complete ? 'BEST ON THIS ACCOUNT' : 'BEST ON THIS DEVICE';
+  listEl.innerHTML = '';
+  list.forEach((rows, gi) => {
+    if (gi > 0) {
+      const gap = document.createElement('li');
+      gap.className = 'sb-gap';
+      gap.textContent = '·  ·  ·';
+      listEl.appendChild(gap);
+    }
+    rows.forEach((r) => {
+      const li = document.createElement('li');
+      li.className = 'sb-row' + (r.isRun ? ' sb-you' : r.isYou ? ' sb-mine' : '');
+      const rank = document.createElement('span');
+      rank.className = 'sb-rank';
+      rank.textContent = String(r.rank); // TRUE rank, never the group index
+      const name = document.createElement('span');
+      name.className = 'sb-name';
+      name.textContent = r.name || 'PLAYER';
+      const score = document.createElement('span');
+      score.className = 'sb-score';
+      score.textContent = Number(r.score || 0).toLocaleString();
+      li.appendChild(rank);
+      li.appendChild(name);
+      li.appendChild(score);
+      listEl.appendChild(li);
+    });
+  });
+  rootEl.classList.remove('hidden');
+}
+
+// Render the family-account leaderboard into the game-over overlay.
+export function showScoreboard(board, groups) {
+  renderBoardInto(scoreboardEl, scoreboardTitleEl, scoreboardRowsEl, board, groups);
+}
+
+// --- Quit flow (GOBALANCE_APP_INTEGRATION.md "Quitting") -------------------
+// The X (#gb-back) raises a confirm MODAL over the still-visible paused game
+// mid-run; confirming leads to a quit BOARD screen (its own ids, never
+// #gameover-overlay, so the host's Space/Enter restart can't fire through
+// it). Both are plain show/hide toggles here; core/main.js owns the logic.
+export function showConfirm() {
+  confirmOverlayEl.classList.remove('hidden');
+}
+
+export function hideConfirm() {
+  confirmOverlayEl.classList.add('hidden');
+}
+
+export function isConfirmOpen() {
+  return !confirmOverlayEl.classList.contains('hidden');
+}
+
+// Show the end board: a run-result line + the same family leaderboard.
+// `title` defaults to "RUN ENDED" (a hand quit); core/main.js may pass a
+// different one for other endings.
+export function showQuit(statsText, board, groups, title = 'RUN ENDED') {
+  quitTitleEl.textContent = title;
+  quitStatsEl.textContent = statsText;
+  renderBoardInto(quitScoreboardEl, quitScoreboardTitleEl, quitScoreboardRowsEl, board, groups);
+  quitOverlayEl.classList.remove('hidden');
+}
+
+export function hideQuit() {
+  quitOverlayEl.classList.add('hidden');
+  quitScoreboardEl.classList.add('hidden');
+  quitScoreboardRowsEl.innerHTML = '';
+}
+
+export function isQuitOpen() {
+  return !quitOverlayEl.classList.contains('hidden');
 }
 
 export function setPausedBadge(paused) {

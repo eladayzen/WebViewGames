@@ -51,6 +51,7 @@ import { speedAt, distanceTraveledBy, seedDistanceAt } from '../systems/speed.js
 import {
   createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
 } from '../systems/lives.js';
+import { submitRun, fetchBoard, resultSections } from '../systems/scoreboard.js';
 import {
   createGameState, restartToRunning, triggerGameOver, triggerLevelComplete, triggerIntro,
 } from './gameState.js';
@@ -510,6 +511,22 @@ function boot() {
     hud.openLevelCurtains();
   }
 
+  // Submit the finished run to the family-account board, then fetch + render
+  // it into the game-over overlay. Fire-and-forget: never awaited, never
+  // blocks the death screen, and a no-op outside the app (scoreboard.js
+  // feature-detects). SUBMIT BEFORE FETCH so the run just played is in the
+  // board. Called ONCE from the death site (not tick()'s per-frame gameover
+  // branch, which would resubmit every frame). `justScored` is held locally
+  // so the row can be found + highlighted (entries carry no run id).
+  function submitAndShowBoard(justScored) {
+    submitRun(justScored).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, justScored);
+        hud.showScoreboard(board, near.length ? [top, near] : [top]);
+      })
+    );
+  }
+
   function endRun() {
     triggerGameOver(gs);
     playSfx('sfx_gameover');
@@ -524,6 +541,7 @@ function boot() {
     clearPointsFly();
     hud.updatePoints(score.displayed);
     hud.showGameOver(score, distance);
+    submitAndShowBoard(score.total);
   }
 
   // One life lost, with the feedback that sells it: a camera jolt, a red
@@ -565,6 +583,13 @@ function boot() {
     }
   });
 
+  // PLAY AGAIN off the quit board -- same as the game-over RETRY button, plus
+  // dismissing the board itself first.
+  function restartFromQuit() {
+    hud.hideQuit();
+    restart();
+  }
+
   // TEMPORARY debug view (direct feedback: "lose all the graphics except
   // for the player and the enemies... so I can see what's going on with
   // the basic shapes") -- press G to toggle wireframe on every mesh
@@ -584,9 +609,12 @@ function boot() {
 
   let paused = false;
   const pauseButton = document.getElementById('pause-button');
-  pauseButton.addEventListener('click', () => {
-    playSfx('sfx_ui_tap');
-    paused = !paused;
+
+  // One route for pause, so the icon/badge/audio can never drift out of step
+  // with each other -- used by the pause button AND the quit-confirm flow
+  // (GOBALANCE_APP_INTEGRATION.md "Quitting").
+  function setPaused(value) {
+    paused = value;
     pauseButton.innerHTML = paused ? '&#9654;' : '&#9208;';
     hud.setPausedBadge(paused);
     // Direct request: "pause should pause music as well." Guarded on
@@ -596,6 +624,83 @@ function boot() {
     // and race startNextLevel's own resumeMusic call.
     if (paused) pauseMusic();
     else if (gs.current !== 'levelcomplete') resumeMusic();
+  }
+
+  pauseButton.addEventListener('click', () => {
+    playSfx('sfx_ui_tap');
+    setPaused(!paused);
+  });
+
+  // Leave the game back to the app's games list. Prefer the SDK's back();
+  // fall back to the raw native bridge so a game whose module failed to load
+  // is still escapable (the inline #gb-back onclick has the same fallback).
+  function leaveToLobby() {
+    if (window.GoBalance && typeof window.GoBalance.back === 'function') {
+      window.GoBalance.back();
+      return;
+    }
+    if (window.Unity) window.Unity.call('nav:back');
+  }
+
+  // Quit-confirm flow (GOBALANCE_APP_INTEGRATION.md "Quitting"). Remember
+  // whether the game was already paused when the X raised the confirm, so
+  // KEEP PLAYING restores that state rather than blindly unpausing someone
+  // who had deliberately paused.
+  let pausedBeforeConfirm = false;
+
+  // The X (#gb-back) hook. Only interrupts a LIVE run with a confirm; from
+  // any screen where the player is already stopped (intro/levelcomplete/
+  // gameover, or the quit board itself) it just leaves. Ignores repeat taps
+  // while the confirm is already up so pausedBeforeConfirm isn't clobbered.
+  window.__gbBack = () => {
+    if (hud.isQuitOpen()) return leaveToLobby();
+    if (hud.isConfirmOpen()) return;
+    if (gs.current !== 'running') return leaveToLobby();
+    pausedBeforeConfirm = paused;
+    setPaused(true);
+    hud.showConfirm();
+  };
+
+  // Confirmed a mid-run quit: end the run, submit it (a run ended by choice
+  // still happened), and show the quit board with the family leaderboard.
+  // The board is shown immediately with just the result line; the
+  // leaderboard fills in when the async fetch resolves. No auto-restart
+  // timer -- the player chose to stop.
+  function endRunAndShowQuit() {
+    hud.hideConfirm();
+    setPaused(true);
+    const runScore = score.total;
+    const statsText = `SCORE ${Math.floor(runScore).toLocaleString()}`;
+    hud.showQuit(statsText, null, []);
+    submitRun(runScore).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, runScore);
+        hud.showQuit(statsText, board, near.length ? [top, near] : [top]);
+      })
+    );
+  }
+
+  document.getElementById('confirm-stay').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx('sfx_ui_tap');
+    hud.hideConfirm();
+    setPaused(pausedBeforeConfirm); // restore prior state, not blind unpause
+  });
+  document.getElementById('confirm-quit').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx('sfx_ui_tap');
+    endRunAndShowQuit();
+  });
+  document.getElementById('quit-again').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx('sfx_ui_tap');
+    restartFromQuit();
+    setPaused(false);
+  });
+  document.getElementById('quit-leave').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx('sfx_ui_tap');
+    leaveToLobby();
   });
 
   // SFX + music (systems/audio.js). Called early and unconditionally --

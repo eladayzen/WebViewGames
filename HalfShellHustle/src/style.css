@@ -542,6 +542,199 @@ html, body {
   box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
+/* --- Family-account leaderboard on the game-over overlay AND the quit board
+   (systems/scoreboard.js, ported from NovaVanguard/TmntSkateSlice's .sb-*
+   rules). No avatar column: rank | name | score. Hidden outside the app. --- */
+#scoreboard,
+#quit-scoreboard {
+  width: min(92%, 340px);
+  max-height: 34vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#scoreboard.hidden,
+#quit-scoreboard.hidden {
+  display: none;
+}
+
+#scoreboard-title,
+#quit-scoreboard-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #ffd98a;
+  text-align: center;
+}
+
+#scoreboard-rows,
+#quit-scoreboard-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-row {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+  color: #fff5e0;
+}
+
+/* The run just played -- brightest highlight. */
+.sb-row.sb-you {
+  background: rgba(255, 222, 80, 0.22);
+  outline: 1.5px solid rgba(255, 222, 80, 0.8);
+}
+
+/* The player's other rows on the board -- softer highlight. */
+.sb-row.sb-mine {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.sb-rank {
+  text-align: right;
+  color: #c9a878;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.sb-score {
+  font-weight: 800;
+  color: #ffe066;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-gap {
+  text-align: center;
+  color: #8a6a40;
+  letter-spacing: 2px;
+  font-size: 12px;
+  padding: 1px 0;
+}
+
+/* --- Quit flow: confirm modal + quit board (GOBALANCE_APP_INTEGRATION.md
+   "Quitting"). .modal-overlay is a light scrim OVER the still-visible paused
+   game (the player must see the run they're abandoning). .board-screen is a
+   full, opaque screen (the quit board), like the game-over overlay. --- */
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 5, 15, 0.55);
+  pointer-events: auto;
+}
+
+.board-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 5, 15, 0.9);
+  pointer-events: auto;
+}
+
+.modal-overlay.hidden,
+.board-screen.hidden {
+  display: none;
+}
+
+.board-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 26px 24px;
+  width: min(92%, 380px);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(40, 22, 10, 0.98), rgba(24, 12, 5, 0.98));
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.board-title {
+  font-weight: 900;
+  font-size: 30px;
+  letter-spacing: 1px;
+  color: #ffde50;
+  -webkit-text-stroke: 1.5px #2a1a00;
+  paint-order: stroke fill;
+}
+
+.board-sub {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffd98a;
+  text-align: center;
+}
+
+.board-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.board-buttons button {
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Primary (keep playing / play again) -- gold, matching #restart-button. */
+#confirm-stay,
+#quit-again {
+  background: linear-gradient(180deg, #ffde50, #ffa93c);
+  color: #2a1a00;
+  box-shadow: 0 4px 0 #a86800, 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+#confirm-stay:active,
+#quit-again:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Secondary (quit / leave) -- muted, so it doesn't compete with the primary. */
+#confirm-quit,
+#quit-leave {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff5e0;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+}
+
+#confirm-quit:active,
+#quit-leave:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
 /* --- Level-complete transition (core/main.js's level flow) ---
    Reuses .overlay for the full-screen dim + centering (same z-index, same
    layout skeleton as game-over) but OVERRIDES its background: direct
