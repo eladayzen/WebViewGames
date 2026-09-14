@@ -1,51 +1,84 @@
-Hi — web games currently report nothing to Google Analytics. Not a mission
-cleared, not a race finished, not even that the game was opened. The analytics
-layer itself is fine; the web-game path was just never wired into it (no
-analytics calls anywhere in `GoBalance/WebGames/Scripts/`). Attached doc has the
-detail. Two phases, very different sizes.
+Hi — web games reported nothing to Google Analytics: not a mission cleared, not
+a race finished, not even that the game was opened. The analytics layer itself
+was fine; the web-game path was never wired into it (no analytics calls anywhere
+in `GoBalance/WebGames/Scripts/`).
 
-**Phase A — one line, and I'd suggest doing it regardless.**
-In `GameLauncher.LaunchGame()`, before the existing `changeScene`:
+**This is a handover, not a request — both halves are written and in your repo,
+waiting on your review.** What follows is what changed and what is still open.
+
+---
+
+**1. Which web games get opened — `GameLauncher.LaunchGame()`**
+
+One line before the existing `changeScene`:
 
     AnalyticsManager.Instance.LogOpenGame(entry.sceneName);
 
-That's it. `open_game` and `LogOpenGame()` both already exist, it's Unity-side
-so nothing touches the bridge, and it goes through `AnalyticsManager` so it
-inherits the Firestore mirror and the Pro-tablet guard. It fixes **all five
-active web games at once** — right now you can't tell which web games anyone
-opens, or whether they open at all.
+`open_game` and `LogOpenGame()` both already existed; this is Unity-side so it
+touches no bridge, and it goes through `AnalyticsManager` so it inherits the
+Firestore mirror and the Pro-tablet guard. It fixes **all five active web games
+at once** — until now there was no way to tell which web games anyone opened, or
+whether they opened at all.
 
-Please use `entry.sceneName`, not `displayName` — the label will change (ours
-still says "Skate World") and keying analytics on a label forks the data.
+`entry.sceneName`, not `displayName`: the label changes (ours said "Skate World"
+for a while) and keying analytics on a label forks its own history the day it is
+edited. It also lands in the `Open Game Name` custom dimension you already have
+registered against `screen_name`, so it needs no GA config.
 
-**Phase B — one new bridge method, for what happens inside the game.**
+`GameLauncher.cs` was also missing `using GoBalance.App.Data;` — added, or it
+would not have compiled.
+
+**2. What happens inside a game — one new bridge method**
+
 An eleventh RPC alongside `save.set` / `score.submit`:
 
     GoBalance.logEvent(name, params?)
 
-Routed through `AnalyticsManager` rather than `FirebaseAnalytics` directly, so
-web games can't sidestep the Pro-tablet kill switch, with validation at the
-bridge (name pattern, param cap, rate limit). That gets us mission
-start/clear/fail/quit, race finish/place, and retry counts — the last being what
-tells us where a level is mis-tuned instead of guessing from playtests.
+Routed through a new `AnalyticsManager.LogWebGameEvent` rather than
+`FirebaseAnalytics` directly, so a web game cannot sidestep the Pro-tablet kill
+switch. Validation lives in `WebGameBridge.HandleAnalytics`, where the untrusted
+string arrives, not in `AnalyticsManager`: name pattern, 10-parameter cap,
+100-char values, 60 events/minute, reserved-prefix rejection, and a duplicate-key
+guard — `LogEvent`'s `ToDictionary` would otherwise throw on a repeated key, and
+not at the bridge but downstream.
 
-**Two decisions we'd like from you:**
-1. Per-game event names (`skateboard_mission_clear`) or shared events with a
-   game parameter (`web_game_mission_clear` + `{game: ...}`)? We'd prefer
-   shared — "which game retains best" is then one query instead of five — but
-   the convention is yours.
-2. How should the sub-profile reach GA? Firestore already records `profile`,
-   but GA identifies by app instance, so on a shared family board every child
-   is one GA user and "how many players cleared mission 5" can't be answered
-   there. Cleanest fix is a GA user property on profile switch — that would
-   close the same gap for the native games too.
+The payload is **delimited, not JSON**: `name|key=value|key=value`. There is no
+JSON parser on that side, so accepting JSON would have meant a hand-rolled one
+fed by the least trusted place in the system. Two `Split`s cannot be subtly
+wrong. Numbers are detected and passed to GA as numbers, since a value arriving
+as text cannot be summed or averaged in a report.
 
-**One thing worth flagging:** GA4 won't show event parameters in reports until
-they're registered as custom dimensions. If that step is missed, the events
-arrive and the parameters are invisible, which looks exactly like a broken
-integration.
+**3. Our side**
 
-**On our side:** we'll write our half behind a feature check so it's inert
-until the RPC exists and starts working the day it ships. Happy to hand over
-the Unity-side changes as a reviewable patch plus a short test checklist — we
-can't run the Editor or see DebugView, so verification has to sit with you.
+`window.GoBalance` never existed. The game called it and fell back to
+`localStorage` every time, which is why progress was device-wide rather than per
+profile — the unreproducible "different children see the same progress" report.
+`systems/gbSdk.js` is the missing JS half of your `gb2:` protocol; it installs
+only inside the WebView, so a plain dev URL still uses the local fallback.
+
+---
+
+**Decided since, so you don't need to answer it:** shared event names with a
+`game` parameter, not per-game names. The bridge attaches `game` itself from the
+folder, so games cannot lie about it, and "which of our games retains best" is
+one query rather than five. Our events are now generic on purpose — `level_start`
+/ `level_end` with a `result`, rather than `mission_clear` and `race_dnf` — so
+the GA4 custom dimensions get registered once for the whole catalogue instead of
+per title.
+
+**Still open, and it needs you:** how the sub-profile reaches GA. Firestore
+already records `profile` on every event, but GA identifies by app instance, so
+on a shared family board every child is one GA user and "how many players cleared
+mission 5" cannot be answered there. The clean fix is a GA user property set on
+profile switch — which would close the same gap for the native games.
+
+**Worth flagging:** GA4 will not show event parameters in reports until they are
+registered as custom dimensions. If that step is missed the events arrive and the
+parameters are invisible, which looks exactly like a broken integration. That
+registration is ours to do and is in hand.
+
+**Verification:** Firebase Analytics is a no-op on desktop, so nothing reaches
+GA4 from the Editor — but `AddLogEvent` writes a real Firestore document to
+`users/{uid}/eventLogs`, and Firestore does run on desktop. An Editor session
+therefore proves the whole chain except the final hop into GA4, which needs a
+device build.

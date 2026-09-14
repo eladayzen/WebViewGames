@@ -1,5 +1,21 @@
 # Analytics for web games — Phase A now, Phase B next
 
+> **STATUS: SUPERSEDED — both phases are implemented.** Kept for the reasoning,
+> not as a spec. `GOBALANCE_ANALYTICS_SHORT.md` is the current handover; read
+> that first. Two things below were proposed and then built differently, and the
+> code is what is true:
+>
+> - **The wire prefix is `gb2:`, not `gb:rpc:`.** Written from memory rather than
+>   from `WebGameBridge.cs`, which is the kind of detail that has to be read.
+> - **The `analytics.log` payload is delimited (`name|key=value|...`), not the
+>   JSON proposed below.** There is no JSON parser on the Unity side, so JSON
+>   would have meant hand-rolling one against input from the least trusted place
+>   in the system.
+> - The event vocabulary named below (`mission_clear`, `race_dnf`) was replaced
+>   by a game-neutral one — `level_start` / `level_end` with a `result` — so the
+>   GA4 custom dimensions are registered once for the whole catalogue rather than
+>   per title. See `systems/analytics.js`.
+
 Web games currently report **nothing** to Google Analytics. Not a mission
 cleared, not a race finished, not even that the game was opened.
 
@@ -139,11 +155,18 @@ JS side, matching the existing SDK surface:
 GoBalance.logEvent(name, params?)   // fire and forget; resolves true/false
 ```
 
-Over the wire, in the existing format (`gb:rpc:<id>:<method>:<payload>`):
+Over the wire, in the existing format (`gb2:<id>:<method>:<payload>`) — and an
+id of `0`, since nothing waits on an analytics reply:
 
 ```
-gb:rpc:<id>:analytics.log:{"name":"mission_clear","params":{"mission":"crystal_run","stars":3}}
+gb2:0:analytics.log:level_end|level_id=crystalRun|result=clear|stars=3
 ```
+
+> Both details in this block were wrong when first written: the prefix was given
+> as `gb:rpc:` and the payload as JSON. The prefix came from memory instead of
+> from `WebGameBridge.cs`. The JSON was a worse idea than it looked — there is no
+> parser on that side, so it would have meant hand-rolling one against input from
+> a web page. A delimited line is two `Split`s and cannot desync.
 
 Unity side, in the same shape as the neighbouring cases:
 
