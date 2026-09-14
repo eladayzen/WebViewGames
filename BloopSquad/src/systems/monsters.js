@@ -71,12 +71,18 @@ export function spawnMonster(w, rng) {
   } else if (edge === 'bottom') {
     x = margin + rng.next() * (DESIGN_W - margin * 2); y = DESIGN_H + margin;
     vx = speed * skew; vy = -speed;
-  } else if (edge === 'left') {
-    x = -margin; y = margin + rng.next() * (DESIGN_H - margin * 2);
-    vx = speed; vy = speed * sideSkew;
-  } else {
-    x = DESIGN_W + margin; y = margin + rng.next() * (DESIGN_H - margin * 2);
-    vx = -speed; vy = speed * sideSkew;
+  } else if (edge === 'left' || edge === 'right') {
+    // SIDE ARRIVALS ENTER HIGH, in the top MONSTERS.sideEntryMaxYFrac of the
+    // screen, never down at the pod's row. A top arrival is far away by
+    // construction; a side arrival used to be able to appear at the player's
+    // own height, a screen-width away and closing, with no travel time to read
+    // it in. That is the case the reaction floor exists to catch, and the fix
+    // is to place it out of reach rather than to slow it down.
+    const yMax = Math.max(margin + 1, DESIGN_H * MONSTERS.sideEntryMaxYFrac);
+    y = margin + rng.next() * (yMax - margin);
+    x = edge === 'left' ? -margin : DESIGN_W + margin;
+    vx = edge === 'left' ? speed : -speed;
+    vy = speed * sideSkew;
   }
 
   const m = {
@@ -85,9 +91,17 @@ export function spawnMonster(w, rng) {
     hp: tier.hp, maxHp: tier.hp,
     tint: tier.tint, points: tier.points, coins: tier.coins,
     hitT: 0,
+    squashT: 0,
     // Cosmetic personality, so a wave does not read as one sprite repeated.
-    eyes: 1 + (rng.next() < 0.45 ? 1 : 0),
+    // One, two or three eyes -- all three appear in the locked art frame, and
+    // the eye count is the cheapest way to make two same-tier monsters read as
+    // different creatures rather than one sprite repeated.
+    eyes: rng.next() < 0.34 ? 1 : (rng.next() < 0.62 ? 2 : 3),
     horns: rng.next() < 0.55,
+    // Which way the smile leans, and how fast it blinks. Blinking is the single
+    // most alive-looking thing a static shape can do.
+    blinkPhase: rng.next() * 6,
+    grin: 0.8 + rng.next() * 0.4,
     wobble: rng.next() * Math.PI * 2,
     // Measurement bookkeeping (see world.stats).
     bornT: w.time,
@@ -126,6 +140,23 @@ function applyClearance(w, m) {
   m.clearanceApplied = true;
 }
 
+/**
+ * Register a hit on a monster: the flash and the squash impulse.
+ *
+ * ONE PLACE, called by everything that can hurt something -- bullets, buddy
+ * bots, and whatever gets added next. The two call sites used to each set
+ * `hitT = 0.12` by hand, which is exactly how one of them ends up not doing
+ * the squash after somebody adds it here.
+ */
+export function registerHit(m, damage) {
+  m.hp -= damage;
+  m.hitT = MONSTERS.hit.flashS;
+  // Restart the squash rather than adding to it: a monster under sustained fire
+  // gets a fresh recoil per shot, which is what "every time they get hit"
+  // means. Accumulating would just hold it permanently deformed.
+  m.squashT = MONSTERS.hit.squashS;
+}
+
 export function updateMonsters(w, dt) {
   const p = w.player;
   for (const m of w.monsters) {
@@ -137,6 +168,7 @@ export function updateMonsters(w, dt) {
     m.y += m.vy * dt;
     m.wobble += dt * 2.2;
     if (m.hitT > 0) m.hitT = Math.max(0, m.hitT - dt);
+    if (m.squashT > 0) m.squashT = Math.max(0, m.squashT - dt);
 
     // --- measurement, not gameplay ---------------------------------------
     const nowAbove = m.y < p.y;

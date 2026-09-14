@@ -2,7 +2,7 @@
 // POC ever needed them; at 26 monsters and 220 bullets, plain objects with an
 // `alive` flag are honest and readable.
 
-import { PLAYER, DESIGN_W, DESIGN_H } from '../data/tuning.js';
+import { PLAYER, MONSTERS, DESIGN_W, DESIGN_H } from '../data/tuning.js';
 import { createToyState } from '../systems/toys.js';
 
 export const GameState = { BOOT: 'boot', RUNNING: 'running', FAILED: 'failed' };
@@ -32,7 +32,10 @@ export function createWorld() {
 
     camera: { x: 0, y: 0, starOffset: 0 },
 
-    spawnT: 0,
+    // The warm-up: an empty field for the first few seconds of every run, so
+    // the first thing a child does is find out what the pod does. resetWorld
+    // rebuilds from here, so R gets the same grace as a cold start.
+    spawnT: MONSTERS.warmUpS,
     stats: {
       score: 0,
       coins: 0,

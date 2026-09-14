@@ -1,18 +1,24 @@
 // The temporary weapons: what drops them, what happens when one is collected,
 // and what each one does while its timer runs.
 //
-// The firing itself lives here rather than in play.js because a toy IS the
-// firing rule for as long as it lasts -- keeping it beside the base gun would
-// mean two places deciding what comes out of the pod.
+// The firing itself lives here rather than in play.js so that ONE function
+// decides everything that comes out of the pod. A toy does not take the gun
+// over -- it fires alongside it -- and the only way to keep that honest is for
+// both to be emitted by the same few lines, where a toy branch cannot quietly
+// skip the base gun by returning early. It did exactly that until it was fixed;
+// see updateFiring.
 
 import { TOYS, BULLETS, PLAYER } from '../data/tuning.js';
+import { registerHit } from './monsters.js';
 
 export function createToyState() {
   return {
-    active: null,   // kind object, or null for the plain gun
+    active: null,   // kind object, or null for the plain gun alone
     t: 0,           // seconds left
-    total: 0,       // what it started with, for the ring
+    total: 0,       // what it started with, for the timer bar
+    fireT: 0,       // the TOY's own fire clock, separate from the base gun's
     spin: 0,        // twirl's current angle / buddies' orbit angle
+    side: 1,        // wand: which way the next bubble launches
     buddies: [],
     lastDropT: -99,
   };
@@ -71,14 +77,17 @@ export function updateToyPickups(w, dt) {
   w.toyPickups = w.toyPickups.filter((c) => c.alive);
 }
 
-/** One at a time: a new toy REPLACES whatever is running, remainder discarded.
- *  No inventory, no stacking, nothing for a child to manage. */
+/** One at a time: a new toy REPLACES whatever TOY is running, remainder
+ *  discarded. No inventory, no stacking, nothing for a child to manage -- and
+ *  note this replaces the toy only. The forward cannon is not a toy and is
+ *  untouched by anything in here. */
 export function equip(w, kindName) {
   const kind = TOYS.kinds[kindName];
   if (!kind) return;
   w.toy.active = kind;
   w.toy.t = kind.durationS;
   w.toy.total = kind.durationS;
+  w.toy.fireT = 0;
   w.toy.spin = 0;
   w.toy.buddies = [];
   if (kind.id === 'buddies') {
@@ -89,17 +98,25 @@ export function equip(w, kindName) {
   w.stats.toysUsed++;
 }
 
-function spawnBullet(w, x, y, vx, vy, homing) {
+function spawnBullet(w, x, y, vx, vy, homing, tint) {
   if (w.bullets.length >= BULLETS.maxLive) return;
-  w.bullets.push({ alive: true, x, y, vx, vy, homing: !!homing });
+  w.bullets.push({ alive: true, x, y, vx, vy, homing: !!homing, tint });
 }
 
 /**
  * Fire for this frame. Returns nothing; mutates the bullet list.
  *
- * THE PLAIN GUN IS THE FALLBACK, ALWAYS. Every branch here is additive: there
- * is no toy that takes the base weapon away, so a player can have a worse round
- * but never a worse pod.
+ * THE PLAIN GUN IS NOT A FALLBACK, IT IS THE FLOOR. It fires straight up on its
+ * own clock for the entire run and nothing in this function can stop it, slow
+ * it, or bend it -- which is why it is handled FIRST, before the toy is even
+ * looked at, and why it has no `if` in front of it. Every toy is strictly
+ * additive on top: its own timer, its own bullets, alongside the base stream.
+ *
+ * This is rule 3 in tuning.js and it used to be a comment rather than a fact:
+ * the twirl branch returned before reaching the base gun (nine seconds with the
+ * cannon off) and the wand replaced the straight shot with a homing one. A
+ * player on the board reported it as the gun stopping, which is exactly what it
+ * was. A player can have a worse round; they can never have a worse pod.
  */
 export function updateFiring(w, dt) {
   const p = w.player;
@@ -111,39 +128,56 @@ export function updateFiring(w, dt) {
     if (toy.t <= 0) {
       toy.active = null;
       toy.buddies = [];
+      toy.fireT = 0;
     }
   }
 
-  const kind = toy.active;
+  // ---- THE FORWARD CANNON. Unconditional, and first. ----------------------
+  p.fireT -= dt;
+  if (p.fireT <= 0) {
+    p.fireT = BULLETS.intervalS;
+    spawnBullet(w, p.x, p.y - PLAYER.radius, 0, -BULLETS.speedPxS, false);
+  }
 
-  if (kind && kind.id === 'twirl') {
-    toy.spin += kind.spinRadPerS * dt;
-    p.fireT -= dt;
-    if (p.fireT <= 0) {
-      p.fireT = kind.intervalS;
-      for (let i = 0; i < kind.arms; i++) {
-        const a = toy.spin + (Math.PI * 2 * i) / kind.arms;
-        spawnBullet(w, p.x, p.y, Math.cos(a) * kind.speedPxS, Math.sin(a) * kind.speedPxS, false);
-      }
+  const kind = toy.active;
+  if (!kind) return;
+
+  // ---- ...and whatever the toy adds on top of it. -------------------------
+  if (kind.spinRadPerS) toy.spin += kind.spinRadPerS * dt;
+
+  if (kind.id === 'buddies') {
+    // Buddies emit nothing; they pop by touch (updateBuddies).
+    for (const b of toy.buddies) {
+      if (b.cool > 0) b.cool = Math.max(0, b.cool - dt);
     }
     return;
   }
 
-  if (kind && kind.id === 'buddies') {
-    toy.spin += kind.spinRadPerS * dt;
-    for (const b of toy.buddies) {
-      if (b.cool > 0) b.cool = Math.max(0, b.cool - dt);
+  // The toy keeps its OWN cadence, so its rate is independent of the gun's and
+  // neither one can starve the other.
+  toy.fireT -= dt;
+  if (toy.fireT > 0) return;
+  toy.fireT = kind.intervalS;
+
+  if (kind.id === 'twirl') {
+    for (let i = 0; i < kind.arms; i++) {
+      const a = toy.spin + (Math.PI * 2 * i) / kind.arms;
+      spawnBullet(w, p.x, p.y, Math.cos(a) * kind.speedPxS, Math.sin(a) * kind.speedPxS,
+                  false, kind.tint);
     }
-    // Buddies do not replace the gun; the pod keeps firing underneath them.
+    return;
   }
 
-  // Base gun, and the wand's homing variant of it.
-  p.fireT -= dt;
-  if (p.fireT > 0) return;
-  const homing = !!(kind && kind.id === 'wand');
-  p.fireT = homing ? kind.intervalS : BULLETS.intervalS;
-  const speed = homing ? kind.speedPxS : BULLETS.speedPxS;
-  spawnBullet(w, p.x, p.y - PLAYER.radius, 0, -speed, homing);
+  if (kind.id === 'wand') {
+    // Alternating left/right launch: the base stream already owns the column
+    // straight above the pod, and a bubble fired into it would be invisible
+    // until it peeled off. The homing steer brings it back onto a target.
+    toy.side = toy.side === 1 ? -1 : 1;
+    const a = -Math.PI / 2 + toy.side * kind.launchSpreadRad;
+    spawnBullet(w, p.x, p.y - PLAYER.radius,
+                Math.cos(a) * kind.speedPxS, Math.sin(a) * kind.speedPxS,
+                true, kind.tint);
+  }
 }
 
 /** Homing steering, applied to bullets that have it. Turn rate is limited so a
@@ -189,8 +223,7 @@ export function updateBuddies(w, onPop) {
     for (const m of w.monsters) {
       if (!m.alive) continue;
       if (Math.hypot(m.x - bx, m.y - by) > m.r + kind.radius) continue;
-      m.hp -= kind.damage;
-      m.hitT = 0.12;
+      registerHit(m, kind.damage);
       b.cool = kind.hitCooldownS;
       if (m.hp <= 0) onPop(m);
       break;

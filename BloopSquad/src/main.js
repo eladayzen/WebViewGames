@@ -17,11 +17,11 @@ import { createLoop } from './core/loop.js';
 import { makeRng } from './core/rng.js';
 import { createWorld, resetWorld, GameState } from './core/state.js';
 import { initInput, readInput } from './input/input.js';
-import { updateMonsters, maybeSpawn } from './systems/monsters.js';
+import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js';
 import { updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops } from './systems/play.js';
 import { updateFiring, updateToyPickups, equip } from './systems/toys.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
-import { CAMERA, MONSTERS, TOYS, DESIGN_W, difficulty01 } from './data/tuning.js';
+import { CAMERA, MONSTERS, TOYS, DESIGN_W, DESIGN_H, difficulty01 } from './data/tuning.js';
 
 const CAMERA_MODES = ['fixed', 'drift', 'lateral'];
 
@@ -177,6 +177,48 @@ async function boot() {
   };
 
   window.__bloop = { world, tuning: { CAMERA, MONSTERS, TOYS }, report, restart, equip: (k) => equip(world, k) };
+
+  // ?toy=twirl equips one at boot -- the 1/2/3 keys for something that cannot
+  // press keys. A headless screenshot is the only way to check what the toy
+  // timer and the two bullet streams actually LOOK like without a browser
+  // someone is standing in front of, and the alternative is checking that by
+  // eye and reporting a guess.
+  const q = new URLSearchParams(location.search);
+  const forced = q.get('toy');
+  if (forced && TOYS.kinds[forced]) equip(world, forced);
+
+  // ?art=1 puts one of every tier on screen at fixed positions, immediately.
+  // The art cannot be reviewed from a headless screenshot otherwise: virtual
+  // time barely advances the game clock, so the field is still empty in the
+  // warm-up when the shot is taken, and "the monsters look fine" would be a
+  // guess. The middle one starts mid-hit so the squash and the "oh!" mouth are
+  // in the same frame as the resting ones.
+  if (q.get('art')) {
+    const tiers = ['small', 'medium', 'large'];
+    tiers.forEach((t, i) => {
+      const m = spawnMonster(world, rng);
+      if (!m) return;
+      const tier = MONSTERS.tiers[t];
+      Object.assign(m, {
+        tierName: t, r: tier.radius, hp: tier.hp, maxHp: tier.hp, tint: tier.tint,
+        x: DESIGN_W * (0.24 + i * 0.26), y: DESIGN_H * 0.34,
+        vx: 0, vy: 0, eyes: i + 1, horns: true,
+      });
+      if (i === 1) { m.hitT = MONSTERS.hit.flashS; m.squashT = MONSTERS.hit.squashS * 0.72; }
+    });
+    // ...and one of every toy pickup, so the three silhouettes can be compared
+    // side by side against each other AND against a coin, which is the
+    // comparison that matters: they have to be distinguishable at a glance.
+    ['wand', 'twirl', 'buddies'].forEach((k, i) => {
+      world.toyPickups.push({
+        alive: true, kind: k, t: 999, bob: i * 2,
+        // Clear of the pod's magnet radius, or the art row collects itself
+        // before the screenshot and two thirds of it is missing from the frame.
+        x: DESIGN_W * (0.26 + i * 0.22), y: DESIGN_H * 0.50,
+      });
+    });
+    world.coins.push({ alive: true, x: DESIGN_W * 0.84, y: DESIGN_H * 0.50, vx: 0, vy: 0, t: 999 });
+  }
 }
 
 boot();

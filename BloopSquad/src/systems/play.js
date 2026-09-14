@@ -3,6 +3,10 @@
 
 import { BULLETS, MONSTERS, COINS, PLAYER, DESIGN_W, DESIGN_H } from '../data/tuning.js';
 import { maybeDropToy, steerHomingBullets, updateBuddies } from './toys.js';
+import { registerHit } from './monsters.js';
+
+// The concept's confetti is a party, not the colour of what just popped.
+const CONFETTI = [0x7ed321, 0xf5a623, 0x9b59d0, 0x74d7ff, 0xff6b6b, 0xffc93c];
 
 export function updatePlayer(w, input, dt) {
   const p = w.player;
@@ -17,8 +21,8 @@ export function updatePlayer(w, input, dt) {
 }
 
 /**
- * Move what has been fired. WHAT gets fired is decided in /systems/toys.js,
- * because a toy is the firing rule for as long as it lasts.
+ * Move what has been fired. WHAT gets fired is decided in /systems/toys.js --
+ * the base gun and any active toy, together, from one place.
  *
  * Bullets are born at the pod and are then INDEPENDENT of it, which is what
  * paints a ribbon behind a moving player rather than a column -- the
@@ -52,14 +56,18 @@ export function popMonster(w, m, rng) {
     });
   }
   // Confetti: cosmetic only, and the reason a pop reads as a celebration
-  // rather than a death.
-  for (let i = 0; i < 10; i++) {
+  // rather than a death. MIXED COLOURS, as in the concept frame -- confetti in
+  // the dead monster's own colour reads as debris, which is the one thing rule
+  // 4 (nobody dies) is trying not to show a six-year-old.
+  for (let i = 0; i < 14; i++) {
     const a = rng.next() * Math.PI * 2;
     const s = 90 + rng.next() * 220;
     w.pops.push({
       alive: true, x: m.x, y: m.y,
       vx: Math.cos(a) * s, vy: Math.sin(a) * s,
-      t: 0.5 + rng.next() * 0.4, tint: m.tint, size: 5 + rng.next() * 7,
+      t: 0.5 + rng.next() * 0.4,
+      tint: CONFETTI[Math.floor(rng.next() * CONFETTI.length)],
+      size: 5 + rng.next() * 7,
     });
   }
 }
@@ -77,8 +85,7 @@ export function updateCollisions(w, rng) {
       const dx = b.x - m.x, dy = b.y - m.y;
       if (dx * dx + dy * dy > (m.r + BULLETS.radius) * (m.r + BULLETS.radius)) continue;
       b.alive = false;
-      m.hp -= BULLETS.damage;
-      m.hitT = 0.12;
+      registerHit(m, BULLETS.damage);
       if (m.hp <= 0) popMonster(w, m, rng);
       break;
     }

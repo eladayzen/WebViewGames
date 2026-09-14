@@ -4,6 +4,23 @@
 // the POC exists to answer are marked THE QUESTION. Nova Vanguard's convention:
 // a constant carries the reason it holds that value, or it will be "fixed" by
 // the next person who does not know what it was protecting.
+//
+// ---------------------------------------------------------------------------
+// THE AUDIENCE IS SIX AND EIGHT, not eight alone (Amit, after the board).
+// That one sentence is the reason behind most of the numbers below, so it is
+// written down once here rather than re-argued at each of them.
+//
+// A six-year-old on a balance board is not a worse eight-year-old; the chain is
+// longer at every link -- see the monster, decide, shift weight, hold the aim
+// while the shot lands. The design answer is NOT weaker monsters, it is a
+// field that stays FAR AWAY and EMPTY enough that the whole chain fits:
+//   - fewer things alive at once, arriving further apart
+//   - drifting slower
+//   - arriving from the TOP and high on the sides, so "new" always means "far"
+//   - a ramp that tops out lower, because nobody watches the third minute
+// Sizes still differ, and the big ones are still a commitment. What went away
+// is the crowd, not the challenge.
+// ---------------------------------------------------------------------------
 
 /** The world is exactly one screen. See CAMERA below for why. */
 export const DESIGN_W = 1920;
@@ -76,30 +93,100 @@ export const MONSTERS = {
   // Nothing in this game hunts the player -- being caught is always the result
   // of the player moving into something, or of failing to move out of the way
   // of something that announced itself.
-  // FEWER, TOUGHER (Amit: "less creatures - more hp"). Doubling the health and
-  // halving the crowd trades a busy screen for a readable one: at eight years
-  // old, twelve things drifting at once is not twelve decisions, it is one
-  // blur. A monster that takes a moment to pop is also a monster you have
-  // looked at, which is what makes the size tiers mean anything and what gives
-  // the toys something to be visibly better at.
+  // FEWER, TOUGHER (Amit: "less creatures - more hp"). Halving the crowd trades
+  // a busy screen for a readable one: at six years old, twelve things drifting
+  // at once is not twelve decisions, it is one blur. A monster that takes a
+  // moment to pop is also a monster you have looked at, which is what makes the
+  // size tiers mean anything and what gives the toys something to be visibly
+  // better at.
+  //
+  // HEALTH IS MEASURED IN SECONDS OF HELD AIM, not in hits. That is what it
+  // actually costs the player: at the base gun's 0.11 s cadence, hp * 0.11 is
+  // how long you must keep one target lined up while the rest of the field
+  // drifts. Every argument about these numbers is really about that figure.
+  //
+  // DOUBLED (Amit, playing it: "most of the enemies need like twice HP"), and
+  // note this is a reversal of the cut made one pass earlier -- which is fine,
+  // because the thing that made high health unaffordable was fixed in between.
+  // At the old 68 px/s drift, a 2.9 s kill happened in the player's lap; at
+  // 46 px/s a top-spawned monster now has ~16 s of travel, so even the large
+  // tier's 3.1 s of aim is spent while it is still far away. Slow arrivals are
+  // what buy tough monsters. If drift ever goes back up, these come back down
+  // with it -- they are two halves of one setting.
+  //
+  // Large is a touch under 2x on purpose: "most of the enemies" is the smalls
+  // and mediums (94 % of spawns between them), and the large tier was already
+  // the commitment in the room.
+  // BIGGER AND TOUGHER AGAIN (Amit, from the board). Size and health move
+  // together on purpose: a bigger monster is a bigger target, so raising the
+  // radius alone would make the game EASIER, and raising health alone would
+  // make a small target take longer to chew through, which is the version that
+  // feels like the gun got weaker. Raised together, a large reads as a proper
+  // boss -- a thing you commit to, that is hard to miss while you do.
+  //
+  // Large is now 120 px radius -- 240 px across, 22 % of the screen height.
+  // That is close to the ceiling: much past this and the pass clearance stops
+  // being able to route it around the pod without the swerve being visible.
+  //
+  // MEASURE HEALTH AGAINST TRAVEL TIME, always (headless sim, idle pod):
+  //   small   16.2 s travel, 0.99 s of held aim
+  //   medium  22.6 s travel, 2.64 s of held aim
+  //   large   33.2 s travel, 4.62 s of held aim
+  // The large tier is the one to watch: 4.6 s is well past the 2.9 s that was
+  // cut as too long for a six-year-old two passes ago. It is affordable only
+  // because its 33 s of travel means that aim is spent at a distance -- but it
+  // is now the longest single commitment in the game, and it is the first
+  // number to revisit if a child gets bored of chewing on one monster.
   tiers: {
-    small:  { radius: 46, hp: 4,  speedMul: 1.15, points: 15, coins: 1, tint: 0x7ed321 },
-    medium: { radius: 68, hp: 11, speedMul: 0.85, points: 40, coins: 3, tint: 0xf5a623 },
-    large:  { radius: 96, hp: 26, speedMul: 0.60, points: 90, coins: 5, tint: 0x9b59d0 },
+    small:  { radius: 58,  hp: 9,  speedMul: 1.15, points: 15, coins: 1, tint: 0x7ed321 },
+    medium: { radius: 86,  hp: 24, speedMul: 0.85, points: 40, coins: 3, tint: 0xf5a623 },
+    large:  { radius: 120, hp: 42, speedMul: 0.60, points: 90, coins: 5, tint: 0x9b59d0 },
   },
-  tierWeights: { small: 0.62, medium: 0.30, large: 0.08 },
+
+  // ---- THE HIT REACTION ---------------------------------------------------
+  // Every hit squashes, not just the killing one (Amit: "squash every time they
+  // get hit"). This is the only feedback a player gets that a shot connected on
+  // something that did not die, and with health now doubled it is most of what
+  // they see: a small takes six hits, so five of them used to be a white flash
+  // and nothing else. A monster that visibly recoils reads as "I am hurting
+  // this", which is the difference between a tough enemy and an unresponsive
+  // one -- the same number of hits either way.
+  hit: {
+    flashS: 0.09,
+    // Peak compression, as a fraction of the radius. Along the axis the shot
+    // came from: bullets arrive from below, so it flattens vertically and
+    // spreads sideways, then overshoots back through stretch before settling.
+    //
+    // HALVED from 0.30 (Amit, playing it: "too strong"). At 0.30 a monster
+    // under sustained fire was never at rest -- the recoil fires every 0.11 s
+    // and the impulse lasts 0.26 s, so they overlap, and the whole field looked
+    // like it was made of jelly. The feedback has to read on ONE hit without
+    // the twentieth being exhausting, and 0.15 is the version you stop noticing
+    // and start just feeling.
+    squashAmount: 0.15,
+    squashS: 0.26,
+    // How much of a full oscillation to run. Above 1.0 the blob passes through
+    // stretch on the way back, which is the "and stretch" half -- at exactly
+    // 1.0 it only ever squashes and eases back, which reads as a dent.
+    squashCycles: 1.25,
+  },
+  // Weighted further toward smalls: a small is the tier a six-year-old can pop
+  // on the way past without stopping to commit to it.
+  tierWeights: { small: 0.70, medium: 0.24, large: 0.06 },
 
   // ---- THE QUESTION, part one: how fast may something drift? --------------
   // Deliberately gentle to start. "Too easy" is easy to judge standing on a
   // board; a first impression of "unfair" is not recoverable with a child.
   //
-  // SLOWED FROM 95 (Amit, playing it: "make them slower generally"). At 95 the
-  // field moved faster than an eight-year-old can shift their weight -- reading
-  // a monster, deciding, and leaning is a chain of three things on a balance
-  // board, and the whole chain has to fit inside the time the monster gives.
-  // This is the single most important number in the game for that reason, which
-  // is why it also sits on a live dial.
-  driftPxS: 68,
+  // SLOWED FROM 95, THEN FROM 68 (Amit: "make them slower generally", then
+  // "they'll be moving slower" for the six-year-old). At 95 the field moved
+  // faster than an eight-year-old can shift their weight -- reading a monster,
+  // deciding, and leaning is a chain of three things on a balance board, and
+  // the whole chain has to fit inside the time the monster gives. At 46 a
+  // top-spawned monster takes about 17 s to reach the pod's row, which is the
+  // "far away, and I have time to shoot them" the game was asked for: the time
+  // is spent aiming, not reacting.
+  driftPxS: 46,
   // Live multiplier, moved with [ and ] during a session.
   driftMul: 1.0,
 
@@ -107,16 +194,34 @@ export const MONSTERS = {
   // A monster crossing the pod's row is nudged so that it clears the pod's
   // centre by at least this much. Raise it and the field feels safe; lower it
   // and the field starts asking for real dodges.
-  passClearancePx: 150,
+  //
+  // RAISED 150 -> 240 for the younger end. 150 px is a lean that has to be
+  // roughly right; 240 is a lean that only has to be in the right direction.
+  // Note this is the one difficulty knob the ramp deliberately never touches,
+  // so it is a floor on how mean the game can ever get, at any point in a run.
+  passClearancePx: 240,
   passClearanceMul: 1.0,
 
-  // The reaction floor, inherited: Nova Vanguard requires >= 1.2 s from a
-  // threat first being visible to it reaching the player. The POC MEASURES
-  // this rather than assuming it, and prints the worst case per run.
-  reactionFloorS: 1.2,
+  // The reaction floor, inherited from Nova Vanguard at 1.2 s from a threat
+  // first being visible to it reaching the player, and RAISED TO 1.8 s here
+  // because the audience is younger than Nova Vanguard's. The POC MEASURES
+  // this rather than assuming it, and prints the worst case per run: if a
+  // session reports a worst reaction under this, the field is wrong no matter
+  // how it felt to the adult holding the laptop.
+  reactionFloorS: 1.8,
 
-  maxLive: 13,
-  spawnIntervalS: 1.55,
+  // FEWER THINGS ALIVE, ARRIVING FURTHER APART -- the two numbers that do most
+  // of the work for the six-year-old, and the ones to move first if the board
+  // session still says "too much". Seven on screen is a field a child can
+  // actually count; 2.4 s apart means each arrival gets looked at on its own.
+  maxLive: 7,
+  spawnIntervalS: 2.4,
+
+  // Nothing arrives for the first few seconds of a run. A child needs to find
+  // out what the pod does before anything is asked of them, and the alternative
+  // -- a monster already on screen at t=0 -- means the run's first event is a
+  // surprise rather than a discovery.
+  warmUpS: 3.5,
   // Spawn side weights.
   //
   // BOTTOM CUT FROM 0.14 (Amit, playing it: "too much of them are coming from
@@ -125,12 +230,26 @@ export const MONSTERS = {
   // in seven it stopped being a surprise and started being the weather, and it
   // is also the hardest arrival to read, since it comes from the half of the
   // screen the player is not looking at.
-  edgeWeights: { top: 0.66, left: 0.14, right: 0.14, bottom: 0.06 },
+  // CUT AGAIN for the six-year-old, and this is the change that buys "most of
+  // the time they are far away from me" more than any speed number does. The
+  // top edge is the only one that is far by construction: an arrival there is
+  // 800-plus px up the screen, in the half the player is already looking at,
+  // and it takes many seconds to become anyone's problem. A side arrival is
+  // beside you the moment it exists. So the field is now four out of five from
+  // the top, and the sides and floor are seasoning.
+  edgeWeights: { top: 0.80, left: 0.09, right: 0.09, bottom: 0.02 },
   // Side arrivals get a DOWNWARD bias rather than a symmetric one, for the same
   // reason: a monster entering from the left and drifting up is a riser too,
   // just a quieter one, and there were far more of those than the bottom weight
   // suggested. 0 would make every side arrival sink; this leaves a few climbing.
   sideSkewBias: 0.34,
+  // ...and they enter HIGH: a left/right monster is placed in the top this much
+  // of the screen, never down at the pod's row. Same principle as the edge
+  // weights -- the thing that makes an arrival fair is not how fast it moves,
+  // it is how far away it is when the player first sees it. Without this, one
+  // arrival in six materialised at the player's own height with no travel time
+  // at all, which is exactly the case the reaction floor is meant to catch.
+  sideEntryMaxYFrac: 0.42,
 };
 
 export const COINS = {
@@ -153,9 +272,18 @@ export const HUD = {
 // FOUR RULES, and the first is forced by the hardware:
 //   1. No buttons. A toy activates on contact and runs on a timer.
 //   2. One at a time. A new toy replaces the current one outright.
-//   3. The plain gun never goes away -- a toy is always a bonus on top.
-//   4. The timer is a ring around the pod, not a bar in a corner, so the
-//      player's eyes never leave the field.
+//   3. A TOY ADDS, IT NEVER REPLACES. The forward cannon keeps firing straight
+//      up at its own cadence for the whole run, underneath whatever the toy is
+//      doing, and no toy changes or interrupts it. This was written down from
+//      the start and was NOT what the code did -- twirl silently switched the
+//      gun off for nine seconds and the wand bent its shots into homing ones --
+//      which is what a player noticed from the board as the gun "stopping".
+//      Both now run side by side: see updateFiring() in systems/toys.js, where
+//      the base gun fires before any toy is even looked at.
+//   4. The timer is a BAR UNDER THE POD -- close enough that the player's eyes
+//      never leave the field, but not a ring around the character, which reads
+//      as a shield or a health bar and had a player on the board asking what
+//      was protecting him.
 // ---------------------------------------------------------------------------
 
 export const TOYS = {
@@ -167,11 +295,28 @@ export const TOYS = {
   // a token chance so the mechanic introduces itself early.
   // Raised again alongside the tier change: half as many things die now, so the
   // same per-kill chance would have quietly halved the presents too.
-  dropFrom: { small: 0.05, medium: 0.55, large: 1.0 },
+  // Raised AGAIN with the size/health bump, for the third time and the same
+  // reason each time: every one of these is a chance PER KILL, and every pass
+  // that makes monsters tougher cuts the kill count, which silently cuts the
+  // presents with it. A headless 4-minute run went from 3 toys to 1 on the
+  // size/health change alone. Any future change to health, size or spawn rate
+  // has to re-measure this -- it is the most fragile number in the file.
+  dropFrom: { small: 0.10, medium: 0.65, large: 1.0 },
   // No two toys within this window, so a lucky streak cannot hand out three at
   // once and flatten the whole minute after it.
   minGapS: 6,
   maxLive: 1,
+
+  // The toy timer, drawn as a bar UNDER the pod. Under and not over: everything
+  // the player is actually looking at -- the monsters, their own shots, where
+  // they are aiming -- is up-screen, so a bar above the pod sits in the middle
+  // of the attention and a bar below it sits in dead space while still being
+  // attached to the thing the eye is already tracking.
+  timerBar: {
+    offsetY: 34,      // below the pod's bottom edge
+    width: 180,
+    height: 14,
+  },
 
   // A toy is born slightly ABOVE where it died and drifts down slowly: fetching
   // it is a small act of greed on the expensive axis, never a duty. Same rule
@@ -180,7 +325,12 @@ export const TOYS = {
   driftPxS: 42,
   magnetRadius: 150,
   magnetPxS: 520,
-  radius: 26,
+  // BIGGER, and each kind now draws its own SHAPE rather than a tinted circle
+  // (see drawToyPickup): a star for the wand, a pinwheel for the twirl, a pair
+  // of little faces for the buddies. A circle is the one silhouette already
+  // taken -- by the coins -- and "it looked like a big coin" is exactly what
+  // a player said about it.
+  radius: 34,
   lifeS: 11,
 
   kinds: {
@@ -189,24 +339,38 @@ export const TOYS = {
     // MUCH SHORTER THAN THE OTHERS (Amit, from the board), and it should be:
     // the wand removes aiming altogether, which is the one thing the game is
     // actually asking the player to do. Ten seconds of it was ten seconds of
-    // the game playing itself. Five is a burst -- long enough to feel like a
+    // the game playing itself. Seven is a burst -- long enough to feel like a
     // rescue when something is beside you, short enough that you go back to
-    // steering.
+    // steering. (Five while the wand REPLACED the gun; a little longer now that
+    // it only adds to it, since the player is still aiming the whole time.)
+    //
+    // launchSpreadRad: bubbles leave at an angle, alternating left and right,
+    // instead of straight up. Now that the forward cannon is firing up the same
+    // column, a bubble launched at 0 would spend its first 200 px hidden inside
+    // the base stream and the toy would look like it did nothing.
     wand: {
-      id: 'wand', label: 'BUBBLE WAND', durationS: 5, tint: 0x74d7ff,
-      intervalS: 0.11, turnRate: 7.5, speedPxS: 1000, seekRadius: 1400,
+      id: 'wand', label: 'BUBBLE WAND', durationS: 7, tint: 0x74d7ff,
+      intervalS: 0.13, turnRate: 7.5, speedPxS: 1000, seekRadius: 1400,
+      launchSpreadRad: 0.85,
     },
     // A spray that rotates a full turn about every 1.2 s. Covers everything --
     // if the player holds still, which makes standing your ground a choice
     // rather than a mistake.
+    // Tint moved OFF 0xffc93c, which was the coin's exact colour -- a round
+    // yellow pickup beside round yellow coins is a present nobody picks up on
+    // purpose. Magenta appears nowhere else on the field.
     twirl: {
-      id: 'twirl', label: 'TWIRL', durationS: 9, tint: 0xffc93c,
+      id: 'twirl', label: 'TWIRL', durationS: 9, tint: 0xff5fc8,
       intervalS: 0.055, speedPxS: 900, spinRadPerS: 5.2, arms: 2,
     },
     // Two little monsters orbit the pod and pop what they touch. Answers the
     // ones that sneak up from below, and it is the cutest thing in the game.
+    // Tint moved off 0x7ed321, which was the SMALL MONSTER's exact green -- the
+    // one colour on the field that already means "a thing to shoot". Turquoise
+    // is used by nothing else, and the bots orbit the pod where a moment's
+    // "is that an enemy?" is worst.
     buddies: {
-      id: 'buddies', label: 'BUDDY BOTS', durationS: 12, tint: 0x7ed321,
+      id: 'buddies', label: 'BUDDY BOTS', durationS: 12, tint: 0x2fe3b8,
       count: 2, orbitPx: 132, spinRadPerS: 2.9, radius: 26, damage: 1,
       hitCooldownS: 0.35,
     },
@@ -236,21 +400,36 @@ export const TOYS = {
 // ---------------------------------------------------------------------------
 
 export const DIFFICULTY = {
-  // Three and a half minutes to full. A run on a balance board is a few minutes
-  // long, so the ramp has to be readable inside one -- but the first thirty
-  // seconds must still be gentle enough to learn in.
-  rampS: 210,
+  // Five minutes to full, up from three and a half. A run on a balance board is
+  // a few minutes long, so the ramp has to be readable inside one -- but with
+  // six-year-olds the interesting part of the curve is the first minute, and it
+  // was previously a third of the way to the ceiling by then.
+  rampS: 300,
   // Eased so the early climb is slow and the pressure arrives in the back half,
   // rather than the game tightening while the player is still working out what
-  // the pod does.
+  // the pod does. LEFT AT 1.6 deliberately, having tried 2.0: stretching rampS
+  // AND steepening the ease together made minute three sit at 36% of the ramp,
+  // and since a run is a few minutes long that is a difficulty curve that never
+  // actually happens. Which matters more than it sounds, because with two ages
+  // sharing one build and no difficulty menu, THE RAMP IS THE DIFFICULTY
+  // SETTING: the eight-year-old survives longer and is therefore playing the
+  // harder game, automatically. A ramp nobody reaches takes that away and
+  // leaves the six-year-old's numbers as the only game in the box.
   ease: 1.6,
 
-  spawnIntervalMul: { from: 1.00, to: 0.50 },  // 1.55s -> 0.78s between arrivals
-  speedMul:         { from: 1.00, to: 1.45 },  // 68 -> 99 px/s base drift
-  maxLive:          { from: 13,   to: 22   },
+  // THE CEILING IS THE POINT, and all three came down. What the ramp is allowed
+  // to reach matters more than how fast it gets there, because the top of the
+  // ramp is where the game spends the rest of the run -- and a six-year-old who
+  // is still playing at minute four has earned a game that stopped escalating,
+  // not one that finally caught up with them.
+  spawnIntervalMul: { from: 1.00, to: 0.70 },  // 2.40s -> 1.68s between arrivals
+  speedMul:         { from: 1.00, to: 1.25 },  // 46 -> 58 px/s base drift
+  maxLive:          { from: 7,    to: 12   },
   // Late runs lean toward the bigger tiers: the crowd grows, but it also grows
-  // UP, so the field does not simply fill with chaff.
-  largeShareBonus: 0.14,
+  // UP, so the field does not simply fill with chaff. Halved -- with large now
+  // the 1.8 s commitment, a late field of them is the one shape of this game a
+  // young player cannot get out of.
+  largeShareBonus: 0.07,
 };
 
 /** 0 at the start of a run, 1 once the ramp is done. Eased. */

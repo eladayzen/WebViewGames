@@ -1,6 +1,6 @@
 # Bloop Squad
 
-**Cute-monster field shooter for eight-year-olds. This is a POC.**
+**Cute-monster field shooter for six- and eight-year-olds. This is a POC.**
 
 ## Read this first
 
@@ -14,7 +14,7 @@ Then, in this order:
 | File | Why |
 |---|---|
 | `../pipeline/macro-briefs/approved/bloop-squad/brief.md` | the approved design, including the toy specs not yet built |
-| `.../bloop-squad/concepts/art-bible-concept-09.jpg` | the locked art direction. Everything drawn in code today is a placeholder at the right size |
+| `../pipeline/macro-briefs/approved/bloop-squad/concepts/art-bible-concept-09.jpg` | the locked art direction. Everything drawn in code today is a placeholder at the right size |
 | `src/data/tuning.js` | every knob, each carrying the reason it holds that value |
 | `../GOBALANCE_APP_INTEGRATION.md` | required before this ever goes to the product app |
 
@@ -27,7 +27,10 @@ npm run dev            # a plain browser is a first-class target: no SDK needed
 
 Keyboard stands in for the board: **arrows/WASD** fly · **C** camera mode ·
 **`[` `]`** monster speed · **`-` `=`** pass clearance · **1 2 3** force a toy ·
-**R** restart. `__bloop.report()` in the console dumps the run's numbers.
+**R** restart. `__bloop.report()` in the console dumps the run's numbers, and
+`?toy=twirl` equips one at boot and `?art=1` lines up one of each tier
+mid-hit — both for headless screenshots, since virtual time barely advances the
+game clock and the field is otherwise still empty when the shot is taken.
 
 ## The five rules that are not up for grabs
 
@@ -35,8 +38,12 @@ Keyboard stands in for the board: **arrows/WASD** fly · **C** camera mode ·
    expensive, imprecise axis on this hardware. Vertical movement is for greed --
    a coin, a toy, closing on a monster -- and never for survival.
 2. **No buttons, ever.** Auto-fire; toys activate on contact and run on a timer.
-3. **One toy at a time, and the plain gun never goes away.** A player can have a
-   worse round; they can never have a worse pod.
+3. **A toy ADDS, it never replaces.** One toy at a time, but the forward cannon
+   fires straight up for the whole run underneath whatever the toy is doing, and
+   nothing stops, slows or bends it. A player can have a worse round; they can
+   never have a worse pod. (The code violated this for a while — twirl switched
+   the gun off, the wand bent it. If you touch `updateFiring()`, the base gun
+   comes first and unconditionally.)
 4. **Nobody dies.** A monster out of hearts giggles, puffs into confetti and
    floats off. Failure should be funny.
 5. **No meta-progression.** No IAP, no currency that survives the run, no unlock
