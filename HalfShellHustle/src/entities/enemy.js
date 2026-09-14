@@ -35,6 +35,73 @@ import {
 import { PLATFORM_HEIGHT } from '../data/platformSequence.js';
 import { ENEMY_ON_PLATFORM_CHANCE } from '../data/spawnConfig.js';
 
+// SCRAP-BOT SKIN: the pylon's glowing rings USED to be baked into the art
+// itself (envArt.js/data/enemyTypes.js have the full history of what this
+// prop used to be). Direct feedback: baked-in rings "looked too frozen" --
+// a static texture can't actually move. Regenerated the art without them
+// (same 4 files, rings edited out, everything else pixel-identical -- see
+// art/final/alt/foot_soldier_*_v3_pylon_baked_rings.png for the version
+// this replaced) and rebuilt the rings as real dt-driven sprites instead:
+// two per slot, each looping a vertical trip up the glowing core with a
+// fade in/out at both ends of the trip (so the loop point never pops), on
+// a half-cycle phase offset from each other so they never travel in
+// lockstep -- reads as a continuous flow of energy up the tower rather
+// than a single pulse. Tinted per-type from that type's own poofColors[0]
+// (systems/vfx.js's kill-poof color, already matches each variant's glow)
+// rather than a new data field -- one fewer number to keep in sync.
+function createRingTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  // Hollow annulus: transparent center AND transparent outer edge, bright
+  // in a thin band at ~65% radius -- reads as a glowing ring, not a disc.
+  const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.48, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.62, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.72, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.86, 'rgba(255,255,255,0)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(canvas);
+}
+let cachedRingTexture = null;
+function getRingTexture() {
+  if (!cachedRingTexture) cachedRingTexture = createRingTexture();
+  return cachedRingTexture;
+}
+
+// Seconds for one full bottom-to-top trip.
+const RING_TRAVEL_PERIOD = 2.6;
+// Fraction of a full bottom-to-top trip spent fading in (mirrored at the
+// top for fading out) -- keeps the loop seam invisible.
+const RING_FADE_FRACTION = 0.18;
+// Vertical span the rings travel, as a fraction of the prop's own height,
+// measured from the ground -- matches roughly where the glowing core
+// column actually sits in the art (clear of the base plate/frame and the
+// top housing).
+const RING_TRAVEL_MIN_FRAC = 0.14;
+const RING_TRAVEL_MAX_FRAC = 0.82;
+// Ring sprite size, as fractions of the prop's own height -- scales
+// automatically with it (data/enemyTypes.js's PYLON_HEIGHT) rather than
+// being a fixed world-unit size that would look wrong if that ever changes
+// again.
+const RING_WIDTH_FRACTION = 0.34;
+const RING_DEPTH_FRACTION = 0.1;
+
+function createRingSprite(scene) {
+  const material = new THREE.SpriteMaterial({
+    map: getRingTexture(), transparent: true, depthWrite: false, fog: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const sprite = new THREE.Sprite(material);
+  sprite.visible = false;
+  scene.add(sprite);
+  return sprite;
+}
+
 // TEMPORARY demo bump (direct feedback: "twice as much enemies", plus
 // data/introSequence.js's 3-wide wall needs at least LANE_X.length free
 // slots at once on top of whatever's already scrolling) -- normal value
@@ -71,9 +138,18 @@ function createSlot(scene) {
   shadow.visible = false;
   scene.add(shadow);
 
+  // Two independent rings, not one -- a half-cycle phase offset (set on
+  // spawn) between ringTravel[0]/[1] is what sells "continuous flow" rather
+  // than a single pulse. See the block above for the full why.
+  const ring0 = createRingSprite(scene);
+  const ring1 = createRingSprite(scene);
+
   return {
     sprite,
     shadow,
+    ring0,
+    ring1,
+    ringTravel: [0, 0.5], // 0..1 position in the current trip, per ring
     type: null,
     active: false,
     lane: 1,
@@ -94,6 +170,8 @@ export function resetEnemyPool(field) {
     slot.active = false;
     slot.sprite.visible = false;
     slot.shadow.visible = false;
+    slot.ring0.visible = false;
+    slot.ring1.visible = false;
   }
 }
 
@@ -112,12 +190,33 @@ function spawnOfType(slot, lane, typeKey, z) {
 
   slot.sprite.material.map = getTexture(type.texture.url);
   slot.sprite.scale.set(width, type.height, 1);
-  slot.sprite.position.set(LANE_X[lane], type.height / 2, z);
+  // + type.floatHeight: a purely VISUAL lift (data/enemyTypes.js's own
+  // comment has the why) -- collision reads slot.elevationY, never this, so
+  // a floating chest still bumps at normal street-running height.
+  slot.sprite.position.set(LANE_X[lane], type.height / 2 + type.floatHeight, z);
   slot.sprite.visible = true;
 
   slot.shadow.scale.set(type.shadowWidth, type.shadowDepth, 1);
   slot.shadow.position.set(LANE_X[lane], slot.shadow.position.y, z);
   slot.shadow.visible = true;
+
+  // Rings: tinted from this type's own poof color (matches its core glow),
+  // sized off this type's own height so they scale with it. Randomized
+  // travel start (not just the fixed 0/0.5 phase split) so a pool's worth
+  // of pylons don't all pulse in the same rhythm -- same "randomized phase"
+  // idiom as breatheTimer above.
+  const ringColor = type.poofColors[0];
+  const ringWidth = type.height * RING_WIDTH_FRACTION;
+  const ringDepth = type.height * RING_DEPTH_FRACTION;
+  const ringStart = Math.random();
+  slot.ringTravel[0] = ringStart;
+  slot.ringTravel[1] = (ringStart + 0.5) % 1;
+  for (const ring of [slot.ring0, slot.ring1]) {
+    ring.material.color.setHex(ringColor);
+    ring.scale.set(ringWidth, ringDepth, 1);
+    ring.position.set(LANE_X[lane], 0, z); // y set for real in updateEnemyPool
+    ring.visible = true;
+  }
 }
 
 const ENEMY_TYPE_KEYS = Object.keys(ENEMY_TYPES);
@@ -171,11 +270,15 @@ export function updateEnemyPool(field, dt, speed, platformField) {
     slot.z += speed * dt;
     slot.sprite.position.z = slot.z;
     slot.shadow.position.z = slot.z;
+    slot.ring0.position.z = slot.z;
+    slot.ring1.position.z = slot.z;
 
     if (slot.z > DESPAWN_Z) {
       slot.active = false;
       slot.sprite.visible = false;
       slot.shadow.visible = false;
+      slot.ring0.visible = false;
+      slot.ring1.visible = false;
       continue;
     }
 
@@ -200,9 +303,31 @@ export function updateEnemyPool(field, dt, speed, platformField) {
     // sprite's center anchor -- otherwise scaling up would sink his feet
     // below the street by half the growth amount. elevationY is a separate
     // additive world-space offset on top (platform.js's deck height, or 0
-    // at street level) -- orthogonal to the swell/pivot math.
-    slot.sprite.position.y = baseHeight / 2 + (scaleY - 1) * baseHeight * 0.5 + slot.elevationY;
+    // at street level) -- orthogonal to the swell/pivot math. type.floatHeight
+    // is the same kind of purely-visual additive term (data/enemyTypes.js's
+    // own comment) -- deliberately absent from slot.elevationY, so
+    // checkEnemyHit's collision math is untouched by it.
+    slot.sprite.position.y = baseHeight / 2 + (scaleY - 1) * baseHeight * 0.5
+      + type.floatHeight + slot.elevationY;
     slot.shadow.position.y = 0.015 + slot.elevationY;
+
+    // Rings: each independently advances its own 0..1 trip position, wraps
+    // (the modulo), and fades in/out at both ends of the trip so the wrap
+    // itself is never visible. Positioned along the SAME baseHeight/
+    // elevationY/floatHeight stack as the sprite above, so a ring rides a
+    // platform deck or a future float change exactly like the pylon itself
+    // does.
+    const rings = [slot.ring0, slot.ring1];
+    for (let i = 0; i < rings.length; i++) {
+      slot.ringTravel[i] = (slot.ringTravel[i] + dt / RING_TRAVEL_PERIOD) % 1;
+      const travel = slot.ringTravel[i];
+      const frac = RING_TRAVEL_MIN_FRAC + travel * (RING_TRAVEL_MAX_FRAC - RING_TRAVEL_MIN_FRAC);
+      let opacity = 1;
+      if (travel < RING_FADE_FRACTION) opacity = travel / RING_FADE_FRACTION;
+      else if (travel > 1 - RING_FADE_FRACTION) opacity = (1 - travel) / RING_FADE_FRACTION;
+      rings[i].material.opacity = opacity;
+      rings[i].position.y = baseHeight * frac + type.floatHeight + slot.elevationY;
+    }
   }
 }
 
@@ -228,4 +353,6 @@ export function killEnemy(slot) {
   slot.active = false;
   slot.sprite.visible = false;
   slot.shadow.visible = false;
+  slot.ring0.visible = false;
+  slot.ring1.visible = false;
 }

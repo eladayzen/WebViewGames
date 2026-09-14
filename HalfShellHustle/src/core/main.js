@@ -62,7 +62,7 @@ import {
   updateSteering, pollLaneStep, getLaneTarget, pollJumpPress,
 } from '../input/input.js';
 import * as hud from '../ui/hud.js';
-import { initSteeringPanel } from '../ui/steeringPanel.js';
+import { initSteeringPanel, setNextThemeHandler } from '../ui/steeringPanel.js';
 import {
   initAudio, playSfx, pauseMusic, resumeMusic,
 } from '../systems/audio.js';
@@ -134,6 +134,14 @@ function boot() {
 
   const obstacleField = createObstaclePool(scene);
   const spawnerState = createSpawnerState();
+
+  // Was TEMPORARILY false (direct request to hide enemies for a look at the
+  // rest of the scene) -- restored. Still kept as a named flag rather than
+  // deleted: the "enemy" art itself is being replaced next (scrap-bot skin
+  // has no combat, so a Foot Soldier doesn't fit), and this is the one
+  // switch that turns the whole mechanic off again if that swap needs
+  // isolating from the rest of the scene mid-work.
+  const ENEMIES_ENABLED = true;
 
   // Foot Soldier "bump-to-kill" enemy (direct feedback's addition, entities/
   // enemy.js): own pool/spawner from the barricade obstacles since a hit
@@ -324,7 +332,7 @@ function boot() {
     }
     for (const t of enemies) {
       const z = seedZ(t);
-      if (z !== null) spawnEnemy(enemyField, platformField, null, null, z);
+      if (ENEMIES_ENABLED && z !== null) spawnEnemy(enemyField, platformField, null, null, z);
     }
     for (const t of coins) {
       const z = seedZ(t);
@@ -377,7 +385,7 @@ function boot() {
       // fast -- an unmissable first teaching moment ("killing these is
       // safe/good") instead of several seconds of nothing happening.
       for (let lane = 0; lane < INTRO_WALL_ENEMY_COUNT; lane++) {
-        spawnEnemy(enemyField, platformField, null, lane, INTRO_WALL_SPAWN_Z);
+        if (ENEMIES_ENABLED) spawnEnemy(enemyField, platformField, null, lane, INTRO_WALL_SPAWN_Z);
       }
       lastEnemySpawnTime = gameTime;
       resetSpawner(enemySpawnerState, INTRO_NORMAL_ENEMY_DELAY_SEC);
@@ -603,6 +611,19 @@ function boot() {
   // -- that threshold is a scene field which resets on every scene load, so a
   // saved preference that isn't re-sent does nothing. No-op in a browser.
   initSteeringPanel();
+  // DEV: "jump to next theme" button (ui/steeringPanel.js). Reuses the
+  // exact same beginLevelComplete path a real tier-up takes (curtain,
+  // environment swap, everything) rather than a separate ad-hoc theme
+  // swap -- this exercises the real transition, not a shortcut around it.
+  // Guarded on 'running' the same way the organic tier-up check is, so it
+  // can't misfire mid-transition, during the intro, or on the game-over
+  // screen. Returning false (not throwing/no-op) lets the panel show a
+  // clear "NOT RUNNING" instead of silently doing nothing.
+  setNextThemeHandler(() => {
+    if (gs.current !== 'running') return false;
+    beginLevelComplete(levelIndex + 1);
+    return true;
+  });
 
   // Flying "+N" labels (ui/pointsFly.js). The counter element is the flight
   // TARGET, so it must already exist and be laid out -- hence init here, after
@@ -893,16 +914,16 @@ function boot() {
         updateSpeedStreaks(speedStreaks, dt, currentSpeed);
       }
 
-      // Frame-count HUD readout disabled -- re-enable (uncomment) if a
-      // specific frame needs calling out again during playtest feedback.
-      // if (player.frameIndex !== lastDebugFrame) {
-      //   lastDebugFrame = player.frameIndex;
-      //   const { yOffset, xOffset } = PLAYER_RUN_FRAMES[player.frameIndex];
-      //   hud.updateFrameDebug(
-      //     `frame ${player.frameIndex}: ${FRAME_LABELS[player.frameIndex]} `
-      //     + `(yOffset ${yOffset}, xOffset ${xOffset})`,
-      //   );
-      // }
+      // Re-enabled per direct request while diagnosing the 12-frame scrap-
+      // bot cycle -- see index.html's #frame-debug.
+      if (player.frameIndex !== lastDebugFrame) {
+        lastDebugFrame = player.frameIndex;
+        const { yOffset, xOffset } = PLAYER_RUN_FRAMES[player.frameIndex];
+        hud.updateFrameDebug(
+          `frame ${player.frameIndex}: ${FRAME_LABELS[player.frameIndex]} `
+          + `(yOffset ${yOffset}, xOffset ${xOffset})`,
+        );
+      }
 
       // Assignment, not accumulation: systems/speed.js's closed form is the
       // single source of truth for "how far have we come", shared with the
@@ -1002,7 +1023,7 @@ function boot() {
       // enemy (dissolve poof + score + the player's auto spin-attack)
       // instead of ending the run.
       updateSpawner(enemySpawnerState, dt, () => {
-        if (gameTime - lastObstacleSpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
+        if (ENEMIES_ENABLED && gameTime - lastObstacleSpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
           spawnEnemy(enemyField, platformField);
           lastEnemySpawnTime = gameTime;
         }

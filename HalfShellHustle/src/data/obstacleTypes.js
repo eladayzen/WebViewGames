@@ -38,17 +38,26 @@ export const OBSTACLE_TYPES = {
     // feedback: the barricades needed one like the Foot Soldiers have. Without
     // it a billboard sprite reads as hovering/pasted-on rather than standing on
     // the street, and it was the only street-level entity in the game missing
-    // one. Slightly narrower than the prop itself (a barricade's legs don't
-    // span its full painted width) and shallow, because it's a thin panel
-    // standing across the lane rather than a body with depth.
+    // one.
     // Proportioned against data/enemyTypes.js's footSoldier (1.9 x 0.95 under a
     // 2.3-tall sprite) rather than derived from scratch, since the ask was for
     // one "like the enemy soldiers do". A first pass at 2.41 x 0.8 was measured
     // on screen and came out too faint: the shared shadow texture is a radial
     // gradient, so stretching it wide and shallow spreads its falloff thin and
     // the dark core all but disappears. Narrower and deeper concentrates it.
-    shadowWidth: OBSTACLE_WIDTH * 0.85,
-    shadowDepth: 0.95,
+    //
+    // Round 2, direct feedback: "not touching the edges of the element."
+    // Measured the actual barricade.png alpha footprint directly (its base/
+    // legs span ~97-98% of the sprite's own painted width, not the ~85%
+    // originally guessed) -- the shadow was narrower than the real prop, not
+    // an illusion from the gradient's own feathered falloff. Widened past
+    // 100% of OBSTACLE_WIDTH (not just up to it) specifically BECAUSE of
+    // that same feathering: the shared shadow texture's bright core doesn't
+    // reach the edge of its own plane (it fades out well before 100%
+    // radius), so matching the real footprint exactly would still visually
+    // fall short of it.
+    shadowWidth: OBSTACLE_WIDTH * 1.1,
+    shadowDepth: 1.15,
   },
   // jumpClearHeight = 1.5: same window math as medium above, but against
   // JUMP_HEIGHT=2.4 this holds for a continuous ~0.56s stretch -- ~3x the

@@ -89,10 +89,27 @@ export const TIER_OBSTACLE_INTERVAL_FLOOR_SEC = 1.3;
 // unreferenced here, rather than deleted -- shelved, not lost, in case a
 // street-level reframing of either ever makes sense; see the SHELVED note
 // there for why they're inert.
+// FINAL ORDER v2, direct request: "switch theme 3 and 4. first the city,
+// then the harbour" -- CENTRAL CITY is back in rotation (was shelved in the
+// v1 order below this comment's predecessor), slotted ahead of Harbor
+// Docks; Sunny Street pushed later rather than dropped. spaceCity isn't
+// built yet ("another theme for later") -- its slot is reserved in the
+// comment below but can't be added to the arrays until real art exists for
+// it, or themeForTier would resolve to an undefined THEMES entry.
+// v4, direct request once Space City's art was built: asked where it should
+// slot in rather than assuming (per this comment's own prior instruction),
+// offered append/insert/replace -- answer was "replace Sunny Street" (tier
+// 6). SUNNY STREET is now OUT of the rotation -- its theme definition stays
+// in envArt.js, unreferenced, shelved the same way SUBWAY PLATFORM/ROOFTOP
+// BRIDGE are (see that file's own SHELVED note), in case it's ever wanted
+// back rather than lost.
 export const TIER_NAMES = [
-  'CENTRAL CITY',
-  'HARBOR DOCKS',
-  'SUNNY STREET',
+  'BIG WAREHOUSES -- UNDER ROOF', // "warehouse indoor"
+  'BIG WAREHOUSES', // "warehouse outdoor"
+  'CENTRAL CITY', // "the city"
+  'HARBOR DOCKS', // "the harbour"
+  'FUNKY FOREST',
+  'SPACE CITY',
 ];
 
 // --- Level transition (core/main.js's level-complete flow) ---------------
@@ -147,4 +164,4 @@ export const LEVEL_SWAPS_ENVIRONMENT = true;
 // keep an open-ended tail without ever needing art for a district that
 // doesn't exist yet: the tail just re-tours the ones that do. tierName wraps
 // the exact same way, so the "NEXT: X" announcement always matches.
-export const TIER_THEMES = ['centralCity', 'harborDocks', 'sunnyStreet'];
+export const TIER_THEMES = ['warehouseRoof', 'warehouse', 'centralCity', 'harborDocks', 'funkyForest', 'spaceCity']; // see TIER_NAMES above

@@ -46,6 +46,21 @@ import { getVfxEnabled, setVfxEnabled } from '../systems/vfxSettings.js';
 
 const STORAGE_KEY = 'hsh:steering';
 
+// DEV: "jump to next theme" button, direct request -- with 5+ environment
+// themes now in TIER_THEMES rotation, earning enough points to actually
+// SEE the next one while iterating on art was slow. The real tier-up logic
+// (gs/levelIndex/beginLevelComplete) all lives inside core/main.js's own
+// closure, not reachable from here -- so this file only renders the
+// button; main.js registers what pressing it actually does, same
+// ownership split as every other row here (this file renders, the owning
+// module supplies the behavior). No-ops harmlessly if pressed before
+// main.js finishes registering (shouldn't be reachable in practice, since
+// the panel isn't interactive until boot() has run this far anyway).
+let nextThemeHandler = null;
+export function setNextThemeHandler(fn) {
+  nextThemeHandler = fn;
+}
+
 // 55 maps to pressThreshold ~= 0.3525, within a rounding error of the SDK's own
 // stock 0.35 -- so a fresh install feels exactly as it did before this panel
 // existed, and nothing changes until someone deliberately moves a value.
@@ -335,6 +350,14 @@ export function initSteeringPanel() {
   addAction({
     label: 'RECENTRE BOARD',
     run: () => (recenterBoard() ? 'CENTRED ✓' : 'NO SENSOR (BROWSER)'),
+  });
+  addAction({
+    label: 'NEXT THEME (DEV)',
+    run: () => {
+      if (!nextThemeHandler) return 'NOT READY';
+      const result = nextThemeHandler();
+      return result === false ? 'NOT RUNNING' : 'JUMPING...';
+    },
   });
   addAction({
     label: 'CLOSE',

@@ -105,26 +105,37 @@ export const PICKUP_LIFE_TEXTURE = envTexture('pickup_life.png', 512, 450);
 export const PLATFORM_BOX_TEXTURE = envTexture('platform_box.png', 640, 640);
 export const PLATFORM_RAMP_TEXTURE = envTexture('platform_ramp.png', 480, 640);
 
-// Foot Soldier -- new "bump-to-kill" enemy entity type (direct feedback's
-// addition, not in the original build doc): a Foot Clan grunt standing in a
-// lane, scrolled toward the camera like an obstacle, but dissolves into a
-// particle poof + awards score on player contact instead of ending the run.
-// v2 art: purple-accented armor, combat stance gripping a spiked club.
-// Single static frame for this first pass -- a real idle animation sequence
-// (multiple frames) and a hit-reaction pose are deliberately deferred; see
-// data/enemyTypes.js for this type's size/shadow/breathing/poof-color
-// tuning and entities/enemy.js for how a spawned enemy uses it.
-export const FOOT_SOLDIER_TEXTURE = envTexture('foot_soldier_0.png', 784, 900);
+// SCRAP-BOT SKIN, POC: this pool used to spawn a Foot Clan grunt ("Foot
+// Soldier") -- combat doesn't fit a non-fighting collector hero. First
+// reskin pass replaced it with a floating treasure chest; direct feedback
+// rejected that too, on two counts -- "designed as an item, not good" (a
+// chest reads small/collectible, not a tall standing presence like the
+// original grunt did), and "too much fantasy... we have a robot" (wood/
+// gems/a padlock is medieval-fantasy iconography that clashes with a
+// scrap-tech world). Round 3: a tall standing ENERGY CORE PYLON -- a
+// riveted scrap-metal scaffold frame around a glowing vertical power
+// core, standing directly on a base plate on the ground (not floating --
+// see data/enemyTypes.js, the float mechanism from round 2 is zeroed out,
+// not removed). Modern sci-fi, ties to the hero's own magnet-hands
+// identity (drawn to a power source, not a soldier) instead of generic
+// loot. The FOOT_SOLDIER_* export names, data/enemyTypes.js's ENEMY_TYPES
+// keys, and entities/enemy.js's bump-to-destroy/poof/score mechanic are
+// ALL still unchanged -- this remains a pure art reskin of an existing
+// mechanic, not a new entity kind. Generated as one 2x2 grid (one call,
+// same lineage) so all 4 color variants share the exact same pylon shape/
+// proportions -- only the core glow color differs. Earlier art archived at
+// art/final/alt/foot_soldier_*_v1_soldier.png (original grunt) and
+// _v2_chest.png (the rejected chest).
+export const FOOT_SOLDIER_TEXTURE = envTexture('foot_soldier_0.png', 2028, 2028); // purple glow
 
-// Weapon/color variants -- same character/style/lineage as FOOT_SOLDIER_
-// TEXTURE (one edit call, seeded from that exact asset, generated together
-// as a 3-panel set for the same reason the run-cycle/attack frames are
-// batched -- avoids one variant drifting off-model), each with a clearly
-// different stance, weapon, and accent color (+ matching mask ribbon) for a
-// real feeling of variety, not just a recolor. See data/enemyTypes.js.
-export const FOOT_SOLDIER_SWORD_TEXTURE = envTexture('foot_soldier_sword.png', 476, 669);
-export const FOOT_SOLDIER_NUNCHAKU_TEXTURE = envTexture('foot_soldier_nunchaku.png', 507, 680);
-export const FOOT_SOLDIER_STAFF_TEXTURE = envTexture('foot_soldier_staff.png', 480, 697);
+// Same lineage/style as FOOT_SOLDIER_TEXTURE (one batch generation, not
+// four independent ones -- avoids one variant drifting off-model), each
+// with a different core-glow color matching this type's own poof-color
+// family in data/enemyTypes.js, for a real feeling of variety, not just a
+// single reused prop.
+export const FOOT_SOLDIER_SWORD_TEXTURE = envTexture('foot_soldier_sword.png', 2028, 2028); // red
+export const FOOT_SOLDIER_NUNCHAKU_TEXTURE = envTexture('foot_soldier_nunchaku.png', 2028, 2028); // green
+export const FOOT_SOLDIER_STAFF_TEXTURE = envTexture('foot_soldier_staff.png', 2028, 2028); // teal
 
 export const THEMES = {
   // Bright, cheerful, semi-casual DAYLIGHT palette per direct playtest
@@ -402,6 +413,16 @@ export const THEMES = {
     // closed on the first pass; the top-left corner needed a dedicated
     // second pass after the first left it unfixed) -- pure completion, no
     // other change. Archived: art/final/alt/facade_h2_v3_whitegaps.png.
+    //
+    // GAP FILL, PASS 4, facade_h2 only, much later (direct feedback during
+    // final QA prep: "there is still one asset that has a solid white
+    // area"): a THIRD gap, never caught by the pass-3 review, at the
+    // top-right corner where the lighthouse cupola meets the wall -- pixel-
+    // measured at 7.25% of the canvas before the fix, 0.18% after (the
+    // remainder is legitimate small white details elsewhere, like the
+    // pinned note and window glass, not gap). Same targeted-edit approach:
+    // extend the existing clapboard siding into the white area only,
+    // nothing else touched. Archived: art/final/alt/facade_h2_v4_topright_whitegap.png.
     facades: [
       { tex: envTexture('facade_h1.png', 2048, 2048), bodyColor: 0x69746c }, // teal corrugated-metal cargo warehouse, roll-up door, portholes
       { tex: envTexture('facade_h2.png', 2048, 2048), bodyColor: 0x8b8884 }, // weathered clapboard harbor-master shack, lighthouse cupola, bait counter
@@ -516,6 +537,221 @@ export const THEMES = {
       heightBase: 9, heightMod: 8, heightSideOffset: 13,
       count: 18,
       gapMin: 1, gapRange: 7,
+      leftGapStride: 7, leftGapOffset: 0,
+      rightGapStride: 11, rightGapOffset: 3,
+    },
+  },
+
+  // "Funky Forest" -- SCRAP-BOT SKIN, POC. Direct request: try a genuinely
+  // non-street setting again, this time NOT enclosed (open sky, not the
+  // underground/enclosed idea explicitly ruled out first).
+  //
+  // FACADES, take 2: the first pass tried giant tree TRUNKS standing in for
+  // buildings and it was the wrong call, direct feedback caught it
+  // immediately -- "this won't work with trees, the way we built this game
+  // is with shapes of buildings, of the boxes." Every facade in this engine
+  // is a flat rectangular wall texture tiled onto box geometry
+  // (street.js's tiledFacadeMaterial); an organic, tapering, forking trunk
+  // can never sit cleanly on a box no matter how it's cropped -- confirmed
+  // firsthand, a visible background gap kept bleeding through at the
+  // repeat-wrap seam no matter where the crop line went, because the
+  // SOURCE shape itself isn't a rectangle. Buildings still work as
+  // buildings here -- forest CABINS/treehouses, box-shaped wood structures
+  // (plank siding, porthole windows, a rope ladder), just themed for a
+  // forest instead of a city. This is exactly the trick that already made
+  // harborDocks/sunnyStreet read as clearly distinct themes without
+  // needing a different silhouette -- reskin the box, don't abandon it.
+  // (Not what sank the shelved subwayPlatform theme either, see its own
+  // SHELVED note above -- that kept the box shape and still read as "a
+  // smaller street"; the fix there would be a different problem than this
+  // one.) The SKYLINE below is a flat, non-tiled backdrop plane, not box
+  // geometry, so it has none of this constraint -- organic tree silhouettes
+  // are exactly right there, and stayed.
+  //
+  // "Funky" concept: a bright, cheerful (not dark/mossy-horror) magical
+  // forest -- vivid non-naturalistic canopy colors (magenta/teal/gold
+  // instead of plain green), glowing bioluminescent mushrooms and fireflies
+  // as the small recurring motif (mirrors how every other theme has ONE
+  // small signature detail -- centralCity's water towers, harborDocks'
+  // industrial scale, sunnyStreet's murals).
+  //
+  // Ground/skyline are bespoke, not reused, same reasoning as every other
+  // theme's own note: the ground plane is in frame every frame, and the
+  // skyline needs to actually look like a forest horizon, not a street's.
+  funkyForest: {
+    street: envTexture('street_forest.png', 1792, 2400),
+    skyline: envTexture('skyline_forest.png', 3168, 1344),
+    // Two forest-cabin wall facades -- same one-generation-call-then-split
+    // technique as every other theme's paired facades (avoids one variant
+    // drifting off-model against the other), this time split top/bottom
+    // (the generation came back as two stacked panels, not side-by-side).
+    // bodyColor sampled from each wall's own wood tone, used on the
+    // never-seen box faces instead of a generic placeholder. Rejected
+    // tree-trunk originals archived at
+    // art/final/alt/facade_f{1,2}_v1_treetrunk.png.
+    //
+    // Cropped with a wider inset than the first attempt: that pass left a
+    // ~27px pale border strip from the source panel's own divider along
+    // both left/right edges of each file, invisible on its own but tiled
+    // vertically onto a building's road-facing face it became a solid
+    // bright line running the whole height of every wall's corner --
+    // direct feedback: "white lines in the corners of the walls." Verified
+    // this time by sampling every ~20 rows for a stray near-white column
+    // before shipping, not just spot-checking one row.
+    facades: [
+      { tex: envTexture('facade_f1.png', 1722, 1130), bodyColor: 0xb07a3e }, // warm honey-brown plank wall, teal glowing mushrooms/moss
+      { tex: envTexture('facade_f2.png', 1722, 1130), bodyColor: 0x8c887e }, // cool weathered-grey plank wall, magenta glowing mushrooms/moss
+    ],
+    buildingProfile: {
+      // Wider variety and looser gaps than a tidy city block, but still
+      // real BUILDING proportions (comparable to centralCity's own
+      // widthCycle) -- cabins in a clearing, not a street grid, but not the
+      // rejected trunk pass's forest-canopy-scale spacing either.
+      widthCycle: [12, 17, 10, 20, 14],
+      depth: 11,
+      // MUCH taller than centralCity's own range -- direct request: "why
+      // not? Tall tall buildings... it's fantasy anyway" (this theme is
+      // already a funky/vivid non-naturalistic take, not aiming for
+      // realism). heightBase/heightMod roughly tripled from the previous
+      // building-scale pass.
+      heightBase: 26, heightMod: 24, heightSideOffset: 20,
+      count: 18,
+      gapMin: 1, gapRange: 8, // a bit more irregular than a city block, short of the trunk pass's wide-open spacing
+      leftGapStride: 7, leftGapOffset: 0,
+      rightGapStride: 11, rightGapOffset: 3,
+    },
+  },
+
+  // "Big Warehouses" -- SCRAP-BOT SKIN, POC. Direct request: "big
+  // warehouses -- the first one can be regular with walls of boxes, and
+  // then maybe later we can make weird ones." A deliberately plain,
+  // straightforward pass first (a real industrial cargo warehouse, not a
+  // stylized take) -- distinct from harborDocks (a waterfront/dockside
+  // theme) by being purely a landlocked cargo-storage district, and
+  // literally answering "walls of boxes": rows of stacked shipping crates
+  // built into the base of each facade, not just an industrial palette.
+  //
+  // Facade edge-to-edge fill was verified by measurement (sampled every 40
+  // rows across the full height, both panels) before cropping this time --
+  // direct lesson from funkyForest's white-corner-line bug, caused by an
+  // unverified border strip left over from an earlier crop.
+  //
+  // Skyline, round 2: direct feedback -- "the houses in the mat-painting
+  // need to look much smaller." The first pass put a few large, close-
+  // reading buildings right at the bottom edge; regenerated with the same
+  // palette/mood but shrunk and multiplied many times over, then cropped
+  // from a much hazier/farther band of that same image (skipping past the
+  // near, still-large foreground rows entirely) so nothing in frame reads
+  // as close-up. Only 2048x868 now, not the original 3168x1344 -- the edit
+  // came back square and this is what a correctly-composed (real sky
+  // margin, not just buildings filling the frame) crop of it yielded. Old
+  // too-big version archived at art/final/alt/skyline_warehouse_v1_toobig.png.
+  warehouse: {
+    street: envTexture('street_warehouse.png', 1792, 2400),
+    skyline: envTexture('skyline_warehouse.png', 2048, 868),
+    facades: [
+      { tex: envTexture('facade_w1.png', 1780, 1188), bodyColor: 0x8f97a0 }, // galvanized steel-grey corrugated panel, rust-orange crate stacks
+      { tex: envTexture('facade_w2.png', 1780, 1188), bodyColor: 0xd8c49a }, // warm tan/cream corrugated panel, blue crate stacks
+    ],
+    buildingProfile: {
+      // Wide, blocky warehouse proportions -- wider average than
+      // centralCity's storefronts, matching harborDocks' own "big
+      // industrial slabs, not shop-sized" instinct.
+      widthCycle: [20, 28, 17, 24, 22],
+      depth: 15,
+      // Squat and wide rather than tall -- a warehouse reads as a big box,
+      // not a tower. Deliberately the "regular" pass per direct request;
+      // a later weirder theme can go tall/strange instead.
+      heightBase: 10, heightMod: 8, heightSideOffset: 9,
+      count: 16,
+      gapMin: 1, gapRange: 6, // tighter, more regular spacing than funkyForest -- a tidy depot yard, not a wood
+      leftGapStride: 7, leftGapOffset: 0,
+      rightGapStride: 11, rightGapOffset: 3,
+    },
+  },
+
+  // "Big Warehouses -- Under Roof" -- direct request: "keep the environment
+  // the same, just the matte painting should look like a roof above us --
+  // maybe we can play with lighting a bit." Reuses warehouse's street
+  // UNCHANGED (same envTexture entry, not a copy). The skyline is redrawn
+  // as the underside of a vast hangar roof (steel trusses, skylights,
+  // hanging lamps) instead of a horizon, so it reads as looking up into a
+  // roof far overhead rather than out at a receding skyline -- same
+  // fog-immune backdrop-plane trick every theme's skyline already uses,
+  // just aimed at a ceiling instead of a horizon. "Lighting" is painted
+  // into the art itself (warm sunbeam shafts through the skylights, cooler
+  // shadowed steel) since every material in this engine is unlit
+  // (MeshBasicMaterial, by design -- see street.js's own header comment)
+  // -- there's no real scene light to adjust, the mood has to come from
+  // the matte painting.
+  //
+  // Facades, round 2: direct follow-up once the roof was seen in motion --
+  // "the walls there [need to be] giant piles of boxes, could be
+  // colorful." No longer shares warehouse's corrugated-panel facades;
+  // these are dense, floor-to-ceiling stacks of shipping crates/boxes.
+  // Round 3: direct feedback the first colorful pass was "too colourful,
+  // tone it down a lot" -- redrawn keeping the exact same box pile/
+  // composition/panel layout but with a much more muted, believable
+  // cardboard-and-weathered-wood palette, only soft accent colors left
+  // (dusty blue-grey top panel, warm tan/mustard bottom), not a saturated
+  // rainbow. Same edge-to-edge-fill verification by measurement before
+  // cropping as every facade since the funkyForest lesson. Original
+  // too-saturated pass archived at art/final/alt/facade_wb{1,2}_v1_toocolorful.png.
+  warehouseRoof: {
+    street: envTexture('street_warehouse.png', 1792, 2400),
+    skyline: envTexture('skyline_warehouse_roof.png', 3168, 1344),
+    facades: [
+      { tex: envTexture('facade_wb1.png', 2036, 1012), bodyColor: 0x9aa3ac }, // muted cool box pile: dusty blue-grey, tan
+      { tex: envTexture('facade_wb2.png', 2036, 1012), bodyColor: 0xb08c5e }, // muted warm box pile: tan, weathered wood, mustard
+    ],
+    buildingProfile: {
+      widthCycle: [20, 28, 17, 24, 22],
+      depth: 15,
+      heightBase: 10, heightMod: 8, heightSideOffset: 9,
+      count: 16,
+      gapMin: 1, gapRange: 6,
+      leftGapStride: 7, leftGapOffset: 0,
+      rightGapStride: 11, rightGapOffset: 3,
+    },
+  },
+
+  // SPACE CITY -- direct request: "another theme for later - space city."
+  // Sleek chrome/glass sci-fi towers under a vivid nebula sky (stars,
+  // ringed planets, streaking ships) rather than dark/moody deep-space --
+  // same "bright, cheerful" house style every other theme holds to. Tier 6,
+  // replacing SUNNY STREET in the rotation -- see progression.js's
+  // TIER_NAMES/TIER_THEMES comment for that swap.
+  //
+  // Street art, round 1, was rejected before shipping: the first generation
+  // came back as a vertical wall-panel texture, not the top-down
+  // center-lane-plus-side-border ground texture every other theme's street
+  // asset actually is (see street_warehouse.png/street_harbor.png for the
+  // convention -- flanking border treatment framing a walkable center
+  // lane). Regenerated correctly as a top-down chrome/concrete walkway with
+  // a glowing cyan center strip and grated, hazard-striped side borders.
+  //
+  // Facades came back as a stacked top/bottom pair (this project's usual
+  // batching convention), split at the midline and edge-to-edge verified by
+  // pixel measurement before cropping (0px margin on both, per the
+  // funkyForest lesson) -- worst-case white-pixel fraction elsewhere in
+  // each (10.1% / 0.9%) is legitimate glowing-porthole/light-panel content,
+  // not gap.
+  spaceCity: {
+    street: envTexture('street_space.png', 896, 1200),
+    skyline: envTexture('skyline_space.png', 3168, 1344),
+    facades: [
+      { tex: envTexture('facade_sp1.png', 1792, 1200), bodyColor: 0xaab4d6 }, // cool chrome/lavender panel wall, cyan glowing portholes, satellite dish
+      { tex: envTexture('facade_sp2.png', 1792, 1200), bodyColor: 0x8f8a80 }, // warm grey panel wall, amber glowing portholes, magenta trim piping
+    ],
+    buildingProfile: {
+      // Narrower frontage than centralCity's storefronts, taller than
+      // anything else in rotation -- reads as slim sci-fi towers rather
+      // than street-level blocks.
+      widthCycle: [11, 16, 13, 19, 14],
+      depth: 13,
+      heightBase: 16, heightMod: 14, heightSideOffset: 12, // ~16-42, tallest theme yet
+      count: 18,
+      gapMin: 1, gapRange: 6,
       leftGapStride: 7, leftGapOffset: 0,
       rightGapStride: 11, rightGapOffset: 3,
     },
