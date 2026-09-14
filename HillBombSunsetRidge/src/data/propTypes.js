@@ -513,8 +513,17 @@ export const PATTERNS = [
       { type: 'bigKicker', ds: 56, u: 0 },
       { type: 'boostPad', ds: 14, u: -W * 0.34 },
       { type: 'woodWall', ds: 40, u: W * 0.26 },
-      // Just past the big kicker's lip, where the arc actually is.
-      { type: 'airGate', ds: 64, u: W * 0.30 },
+      /**
+       * A GROUND GATE, NOT AN AIR ONE. This was an airGate "just past the big
+       * kicker's lip, where the arc actually is" -- and the arc is not there.
+       * Measured lift off a bigKicker peaks at 2.27 m; the arch's pass band
+       * starts at 2.6 m. It was never reachable, at any timing or any line.
+       *
+       * The vert wall is the only launcher that clears the band (4.33 m), and
+       * it has its own gate in 'big air' below. Here the reward for taking the
+       * kicker is the landing and the pad waiting on it.
+       */
+      { type: 'boostPad', ds: 64, u: W * 0.30 },
       // Far enough past the kicker to get the speed back before committing.
       { type: 'barrel', ds: 78, u: -W * 0.2 },
       { type: 'cone', ds: 40, u: -W * 0.6 },
@@ -661,8 +670,23 @@ export const PATTERNS = [
       { type: 'longRail', ds: 66, u: 0 },
       { type: 'boostPad', ds: 24, u: W * 0.40 },
       { type: 'woodWall', ds: 76, u: -W * 0.24 },
-      // Off the vert wall, which is the biggest arc on the course.
-      { type: 'airGate', ds: 56, u: -W * 0.32 },
+      /**
+       * NO AIR GATE HERE ANY MORE, though this was the one placement that
+       * genuinely worked -- the vert wall is the only launcher that clears the
+       * arch, at a measured 4.33 m against its 2.6 m floor.
+       *
+       * It goes because a PATTERN cannot guarantee its own launcher. Course
+       * density thins pattern content (the race now runs at 0.7), and thinning
+       * is per item: the barrel above can be dropped while this survives,
+       * leaving a gate hanging over a road with nothing to jump off. Measured
+       * after the density change -- 2 of 19 yellow gates on the race courses
+       * had no launcher within 60 m, and this pattern is where they came from.
+       *
+       * Every air gate in the game is now emitted by the injector in
+       * entities/props.js, which checks the launcher it is pairing with before
+       * choosing the type. One place that can make the guarantee, rather than
+       * two places where only one can.
+       */
       // Over the big kicker's landing: only reachable with real height.
       { type: 'highCrystal', ds: 54, u: 0 },
       { type: 'highCrystal', ds: 60, u: 0 },
