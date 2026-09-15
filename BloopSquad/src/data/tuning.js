@@ -263,6 +263,59 @@ export const MONSTERS = {
   sideEntryMaxYFrac: 0.42,
 };
 
+// ---------------------------------------------------------------------------
+// THE SQUAD -- rescued monsters that trail behind the pod.
+//
+// The game is called Bloop SQUAD and the player flies alone. Rule 4 already says
+// nobody dies: a monster out of hearts giggles, puffs into confetti and floats
+// off. So some of them come back and fall in behind you, and by the end of a
+// good run there is a conga line of friends following the saucer.
+//
+// WHAT THIS IS FOR: it makes the score into a PHYSICAL THING ON SCREEN. A
+// six-year-old does not read "1,400 points"; they see six friends behind them
+// where their brother had three. That is the whole idea -- progress you can
+// count at a glance, by a player who cannot read the HUD.
+//
+// PURELY COSMETIC, and that is a design decision rather than a shortcut. The
+// moment squad members shoot or block, they compete with the Buddy Bots toy and
+// quietly flatten the difficulty ramp -- a run would get easier exactly as fast
+// as it was going well. They have no collision, deal no damage and take none.
+//
+// AND IT RESETS EVERY RUN, which is what keeps it clear of rule 5: no
+// meta-progression, nothing saved, nothing carried between runs. The squad is a
+// readout of THIS run and nothing else.
+// ---------------------------------------------------------------------------
+
+export const SQUAD = {
+  // Every Nth pop recruits. Three is frequent enough that the first one arrives
+  // inside the opening half-minute -- a mechanic a child never sees is a
+  // mechanic that does not exist -- and sparse enough that the line still grows
+  // visibly rather than instantly.
+  everyNPops: 3,
+  // A ceiling, because the line follows the pod's exact path: much past a dozen
+  // and the tail is still crossing screen while the head has turned twice, which
+  // reads as clutter rather than as a parade.
+  maxMembers: 12,
+  // PIXELS between one member and the next, measured ALONG THE PATH -- not
+  // seconds of delay. The difference matters and it is the whole reason this
+  // works: with a time delay, every member reads a position from N frames ago,
+  // so the instant the pod stops moving they all converge on the same point and
+  // the line collapses into a pile. A six-year-old holds still constantly.
+  // Spacing by distance instead means a stopped pod simply leaves the line where
+  // it is, holding its shape.
+  spacingPx: 46,
+  // A new path point is only recorded once the pod has moved this far, so the
+  // history is a PATH rather than a time series -- standing still records
+  // nothing instead of flooding the buffer with identical points.
+  pathStepPx: 4,
+  radius: 20,
+  // How long a newcomer takes to swell from nothing to full size, so joining is
+  // an event you notice rather than a member appearing between frames.
+  joinS: 0.45,
+  bobPxS: 2.6,
+  bobAmp: 4,
+};
+
 export const COINS = {
   radius: 16,
   driftPxS: 60,

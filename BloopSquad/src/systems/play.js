@@ -1,7 +1,7 @@
 // Bullets, coins, collisions and the pod itself. Small enough to live together;
 // the moment any of it grows a second opinion it should split.
 
-import { BULLETS, MONSTERS, COINS, PLAYER, DESIGN_W, DESIGN_H } from '../data/tuning.js';
+import { BULLETS, MONSTERS, COINS, PLAYER, SQUAD, DESIGN_W, DESIGN_H } from '../data/tuning.js';
 import { maybeDropToy, steerHomingBullets, updateBuddies } from './toys.js';
 import { registerHit } from './monsters.js';
 import { playPop, playCoin, playPlayerHit } from './audio.js';
@@ -49,6 +49,10 @@ export function popMonster(w, m, rng) {
   playPop(1 - Math.min(1, m.maxHp / 42));
   w.stats.popped++;
   w.stats.score += m.points;
+  // AFTER the count is incremented: maybeRecruit tests `popped % everyNPops`,
+  // and reading the pre-increment value recruits on the wrong pop -- off by one
+  // forever, and invisible because the line still grows at the right rate.
+  maybeRecruit(w, m);
   maybeDropToy(w, m, rng);
   for (let i = 0; i < m.coins; i++) {
     const a = rng.next() * Math.PI * 2;
@@ -113,6 +117,88 @@ export function updateCollisions(w, rng) {
       if (p.hearts <= 0) p.alive = false;
       break;
     }
+  }
+}
+
+/**
+ * Recruit the monster that just popped, if it is the Nth.
+ *
+ * It keeps its own face -- tint, eye count, horns -- so the line is visibly
+ * made of the specific monsters this run happened to meet, not a row of
+ * identical mascots. That is most of why it reads as "my squad".
+ */
+function maybeRecruit(w, m) {
+  if (w.squad.length >= SQUAD.maxMembers) return;
+  if (w.stats.popped % SQUAD.everyNPops !== 0) return;
+  w.squad.push({
+    tint: m.tint,
+    eyes: m.eyes,
+    horns: m.horns,
+    // Born at zero size and swelling, so joining is an event.
+    joinT: SQUAD.joinS,
+    bob: Math.random() * Math.PI * 2,
+    x: m.x, y: m.y,
+  });
+}
+
+/**
+ * Move the squad.
+ *
+ * Each member reads a position the POD OCCUPIED a moment ago -- deeper into the
+ * history the further back it sits. Nothing here steers or seeks: a follower
+ * that chases the leader's CURRENT position cuts every corner and the line
+ * collapses into a clump the first time the player weaves. Reading a delayed
+ * position instead traces the player's actual route, which is what makes a lean
+ * send a ripple down the whole tail.
+ */
+export function updateSquad(w, dt) {
+  const p = w.player;
+
+  // Record the path, not the clock: a point is only added once the pod has
+  // actually travelled `pathStepPx`. Standing still adds nothing, which is what
+  // lets a stationary line keep its shape instead of collapsing.
+  const last = w.trail[w.trail.length - 1];
+  if (!last || Math.hypot(p.x - last.x, p.y - last.y) >= SQUAD.pathStepPx) {
+    w.trail.push({ x: p.x, y: p.y });
+  }
+  // Enough path to seat a full line, plus slack for the curve.
+  const maxPoints = Math.ceil((SQUAD.maxMembers + 2) * SQUAD.spacingPx / SQUAD.pathStepPx);
+  while (w.trail.length > maxPoints) w.trail.shift();
+
+  // Walk BACK along the path, dropping a member every `spacingPx` of travel.
+  // One pass seats the whole line, and because the walk is by arc length the
+  // spacing survives the player weaving, stopping or reversing.
+  let mi = 0;
+  let travelled = 0;
+  let want = SQUAD.spacingPx;
+  let cx = p.x, cy = p.y;
+  for (let i = w.trail.length - 1; i >= 0 && mi < w.squad.length; i--) {
+    const pt = w.trail[i];
+    const seg = Math.hypot(pt.x - cx, pt.y - cy);
+    while (mi < w.squad.length && travelled + seg >= want) {
+      // Interpolate WITHIN the segment, so spacing is exact rather than snapped
+      // to whichever recorded point happens to be nearest.
+      const f = seg === 0 ? 0 : (want - travelled) / seg;
+      const mem = w.squad[mi];
+      mem.x = cx + (pt.x - cx) * f;
+      mem.y = cy + (pt.y - cy) * f;
+      mi++;
+      want += SQUAD.spacingPx;
+    }
+    travelled += seg;
+    cx = pt.x; cy = pt.y;
+  }
+  // Any member the path is not yet long enough to seat (a fresh run) eases in
+  // behind the pod rather than sitting at the origin.
+  for (; mi < w.squad.length; mi++) {
+    const mem = w.squad[mi];
+    mem.x += (cx - mem.x) * Math.min(1, dt * 3);
+    mem.y += (cy - mem.y) * Math.min(1, dt * 3);
+  }
+
+  for (const mem of w.squad) {
+    if (mem.joinT > 0) mem.joinT = Math.max(0, mem.joinT - dt);
+    mem.bob += dt * SQUAD.bobPxS;
   }
 }
 

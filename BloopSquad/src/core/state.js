@@ -23,6 +23,13 @@ export function createWorld() {
       lean: 0,        // -1..1, for the pod's tilt
     },
 
+    // The rescued squad, and the pod's recent path they follow along. The
+    // history is sampled every frame and read at a delay per member, which is
+    // what makes them trace the player's exact route rather than chase it --
+    // a chase produces a clump on every turn, a delay produces a line.
+    squad: [],
+    trail: [],
+
     bullets: [],
     monsters: [],
     coins: [],

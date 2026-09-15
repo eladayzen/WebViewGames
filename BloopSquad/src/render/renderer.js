@@ -15,7 +15,7 @@
 // not a spec for that.
 
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
-import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, MONSTERS, TOYS, difficulty01 } from '../data/tuning.js';
+import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, MONSTERS, TOYS, SQUAD, difficulty01 } from '../data/tuning.js';
 
 const PALETTE = {
   bg: 0x0b1020,
@@ -474,6 +474,40 @@ export async function createRenderer(canvas) {
     g.closePath();
   }
 
+  /**
+   * One rescued squad member: the monster silhouette at a fraction of the size,
+   * keeping the face it had when it was an enemy.
+   *
+   * Reusing `blobPath` rather than drawing a simplified token is the point --
+   * a child has to recognise the thing behind them as the same creature they
+   * were shooting a minute ago, or the line is just decoration.
+   */
+  function drawSquadMember(mem, time) {
+    // Swell in on join, with a small overshoot so it pops rather than inflates.
+    const t = mem.joinT > 0 ? 1 - mem.joinT / SQUAD.joinS : 1;
+    const grow = t >= 1 ? 1 : Math.sin(t * Math.PI * 0.5) * (1 + (1 - t) * 0.25);
+    const r = SQUAD.radius * grow;
+    if (r < 0.5) return;
+    const y = mem.y + Math.sin(mem.bob) * SQUAD.bobAmp;
+    const lw = Math.max(2.5, r * 0.13);
+
+    blobPath(mem.x, y, r, r);
+    g.fill({ color: mem.tint });
+    blobPath(mem.x, y, r, r);
+    g.stroke({ width: lw, color: PALETTE.outline, alpha: 0.95 });
+
+    // Eyes only -- at this size a mouth and horns turn into noise, and the eyes
+    // are what carry "this is alive and it is with me".
+    const eyeR = r * (mem.eyes === 1 ? 0.30 : 0.22);
+    const spread = mem.eyes === 1 ? [0] : mem.eyes === 2 ? [-0.30, 0.30] : [-0.40, 0, 0.40];
+    for (const ex of spread) {
+      const cx = mem.x + ex * r;
+      g.circle(cx, y - r * 0.10, eyeR).fill({ color: PALETTE.eye });
+      g.circle(cx, y - r * 0.04, eyeR * 0.48).fill({ color: PALETTE.pupil });
+    }
+    void time;
+  }
+
   function drawHud(w) {
     scoreText.text = `${w.stats.score}   ★ ${w.stats.coins}`;
     heartsG.clear();
@@ -532,6 +566,11 @@ export async function createRenderer(canvas) {
           g.circle(b.x + 6, b.y - 4, 3).fill({ color: PALETTE.pupil });
         }
       }
+
+      // Tail first so each member overlaps the one behind it and the line reads
+      // as receding, and all of them before the pod so the player stays the
+      // thing the eye lands on.
+      for (let i = w.squad.length - 1; i >= 0; i--) drawSquadMember(w.squad[i], time);
 
       if (w.player.alive) drawPod(w.player, time);
 

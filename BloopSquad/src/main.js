@@ -18,14 +18,14 @@ import { makeRng } from './core/rng.js';
 import { createWorld, resetWorld, GameState } from './core/state.js';
 import { initInput, readInput } from './input/input.js';
 import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js';
-import { updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops } from './systems/play.js';
+import { updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops, updateSquad } from './systems/play.js';
 import { updateFiring, updateToyPickups, equip } from './systems/toys.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
 import {
   initAudio, startMusic, stopMusic, setAudioPaused, playGameOver,
   getAudioPrefs, setSfxEnabled, setMusicEnabled,
 } from './systems/audio.js';
-import { CAMERA, MONSTERS, TOYS, DESIGN_W, DESIGN_H, difficulty01 } from './data/tuning.js';
+import { CAMERA, MONSTERS, TOYS, SQUAD, DESIGN_W, DESIGN_H, difficulty01 } from './data/tuning.js';
 
 const CAMERA_MODES = ['fixed', 'drift', 'lateral'];
 
@@ -58,6 +58,9 @@ async function boot() {
     updateMonsters(world, dt);
     updateCollisions(world, rng);
     updateCoinsAndPops(world, dt);
+    // After the pod has moved and after collisions, so the trail samples the
+    // position actually rendered this frame rather than last frame's.
+    updateSquad(world, dt);
 
     world.camera.starOffset += CAMERA.driftPxS * dt;
     if (CAMERA.mode === 'lateral') {
@@ -206,6 +209,37 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   const forced = q.get('toy');
   if (forced && TOYS.kinds[forced]) equip(world, forced);
+
+  // ?squad=8 pre-fills the squad and lays a synthetic weave into the pod's path
+  // history, so one frame shows the line's actual SHAPE. Without it the trail
+  // needs seconds of real movement to exist at all, and a headless screenshot
+  // catches a pod with nothing behind it -- which is exactly the thing being
+  // reviewed. The follow maths is the real one; only the history is fabricated.
+  const squadN = parseInt(q.get('squad') || '0', 10);
+  if (squadN > 0) {
+    const tiers = Object.values(MONSTERS.tiers);
+    for (let i = 0; i < Math.min(squadN, SQUAD.maxMembers); i++) {
+      const tier = tiers[i % tiers.length];
+      world.squad.push({
+        tint: tier.tint, eyes: (i % 3) + 1, horns: true,
+        joinT: 0, bob: i * 1.3, x: world.player.x, y: world.player.y,
+      });
+    }
+    // Walk a smooth curve and record a point only every `pathStepPx`, exactly as
+    // the real recorder does. A naive dense sampling folds the path back on
+    // itself and the arc-length walk then zigzags -- which looks like a bug in
+    // the follow code and is not one.
+    let px = world.player.x, py = world.player.y;
+    for (let f = 0; f < 4000; f++) {
+      const t = f / 400;
+      const nx = world.player.x + Math.sin(t * 1.15) * 330;
+      const ny = world.player.y + Math.sin(t * 0.55) * 80;
+      if (Math.hypot(nx - px, ny - py) >= SQUAD.pathStepPx) {
+        world.trail.push({ x: nx, y: ny });
+        px = nx; py = ny;
+      }
+    }
+  }
 
   // ?art=1 puts one of every tier on screen at fixed positions, immediately.
   // The art cannot be reviewed from a headless screenshot otherwise: virtual
