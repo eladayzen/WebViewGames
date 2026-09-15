@@ -693,8 +693,12 @@ async function boot() {
     stageCompleteElapsed = 0;
     stageCurtainsClosed = false;
     stageSwapped = false;
+    // difficulty.stageIndex hasn't advanced yet (commitStageAdvance runs later,
+    // behind the curtain), so it's still the level just cleared -- +1 for the
+    // 1-based number shown in the headline.
+    const clearedLevel = difficulty.stageIndex + 1;
     const nextStage = STAGES[difficulty.stageIndex + 1];
-    ui.showStageComplete(nextStage.name);
+    ui.showStageComplete(nextStage.name, clearedLevel);
     spawnStageCompleteBurst(juice, 0.5, 0.4);
     playSfx(audio, sfx.sfx_stage_advance);
   }

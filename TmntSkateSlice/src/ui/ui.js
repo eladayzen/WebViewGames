@@ -855,9 +855,12 @@ export function createUI() {
     // open (defensive, in case a fast repeat left them mid-close) and
     // restarts the headline pop the same remove/reflow/re-add way every
     // other one-shot animation in this file does.
-    showStageComplete(nextName) {
+    showStageComplete(nextName, clearedLevel) {
       resetStageCurtains();
       lastStageCountdownShown = null;
+      // Name the level just finished in the headline (2026-09-15). Falls back to
+      // the generic text if no number is supplied.
+      el.scHeadline.textContent = clearedLevel ? `STAGE ${clearedLevel} CLEAR!` : 'STAGE CLEAR!';
       el.scNext.textContent = `NEXT: ${nextName.toUpperCase()}`;
       // Seed the headline at the pop's start frame; core/main.js drives it up
       // per-frame via setStageHeadlineAnim (JS, so it rides the WebView pump
