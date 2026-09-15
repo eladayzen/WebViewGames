@@ -380,7 +380,14 @@ async function boot() {
   hud.setMode(modeId());
   panel.setMode(modeId());
   hud.onModeClick((id) => swapMode(id));
-  hud.onRestart(() => restartScenario());
+  // THE RESULT SCREEN CANNOT BE LEFT FOR ITS FIRST FEW SECONDS. Every restart
+  // path comes through here -- the on-screen button, and the host's synthetic
+  // click on the same button when Space or Enter reaches it -- so one gate
+  // covers them all. See START_SCREEN.resultGraceS.
+  hud.onRestart(() => {
+    if (resultT >= 0 && resultT > START_SCREEN.resultSeconds - START_SCREEN.resultGraceS) return;
+    restartScenario();
+  });
 
   // ---------------------------------------------------------------------
   // Debug keys (§5.2's `M`, plus the dev guides POC-1 and §5.4 call for)
@@ -536,14 +543,12 @@ async function boot() {
   // seven seconds of nothing.
   if (/[?&]dev=1\b/.test(window.location.search || '')) mountDev();
 
-  // The SDK forwards Space/Enter, and synthetically clicks #restart-button
-  // while the game-over overlay is visible. Space/Enter also restarts here so
-  // the two paths agree.
-  window.addEventListener('keydown', (e) => {
-    if ((e.code === 'Space' || e.code === 'Enter') && world.state === GameState.FAILED) {
-      restartScenario();
-    }
-  });
+  // NO SPACE/ENTER RESTART OF OUR OWN. The SDK forwards Space and Enter from
+  // the app, and it already synthetically clicks #restart-button while the
+  // game-over overlay is visible -- so the board's own path works without us,
+  // and a second handler here only adds a way for a forwarded keypress to
+  // restart a run the player was still reading. There is no keyboard on the
+  // product anyway.
 
   // ---------------------------------------------------------------------
   // Simulation -- one fixed 60 Hz step (§9.1)
@@ -566,6 +571,9 @@ async function boot() {
       if (secs !== resultShown) {
         resultShown = secs;
         hud.setResultCountdown(secs);
+        // Greys the button while the screen is refusing to be left, so the
+        // player can see that it is not yet rather than guessing.
+        hud.setRestartReady(resultT <= START_SCREEN.resultSeconds - START_SCREEN.resultGraceS);
       }
       if (resultT <= 0) {
         resultT = -1;
@@ -792,18 +800,21 @@ async function boot() {
   // Deliberately does NOT fire while a run is in progress -- it only acts while
   // the result clock is actually counting, so a stray tap mid-run cannot
   // restart the game.
-  const skipResult = () => {
-    if (resultT < 0) return;
-    // THE TAP THAT LEAVES THE VICTORY BEAT MUST NOT ALSO SKIP THE BOARD. One
-    // press can reach both listeners, and the board is what the player pressed
-    // TOWARD -- skipping it would restart the game instead of showing the run
-    // they just finished. A guard on age rather than on listener order, because
-    // ordering is invisible at the call site and this is not.
-    if (resultT > START_SCREEN.resultSeconds - 0.3) return;
-    resultT = -1;
-    restartScenario();
-  };
-  window.addEventListener('pointerdown', skipResult);
+  // THE RESULT SCREEN IS NOT SKIPPED BY A STRAY TOUCH (Amit, from the device:
+  // "restart game won't wait the countdown -- countdown is on 8 and it fires up
+  // the game again").
+  //
+  // It used to restart on ANY pointerdown anywhere on the page. That was
+  // written for a desk, where a click is always deliberate. On a phone or a
+  // board it is not: a palm, a thumb resting on the frame, or the tap that
+  // ended the previous action all reach the window, and the player loses the
+  // one screen carrying their score. The 0.3 s age guard that used to be here
+  // only protected against a double-fire in the same instant, which is not what
+  // was happening two seconds in.
+  //
+  // Two ways off this screen now, both deliberate: press RESTART, or let the
+  // ten-second clock run out. The board's own button still works because the
+  // host synth-clicks #restart-button while this overlay is visible.
 
   // CONTINUE IS THE ONLY WAY OFF THE VICTORY SCREEN -- Amit's call. No clock and
   // no tap-anywhere: this is the one screen the player has earned, and a stray

@@ -699,8 +699,21 @@ body {
    read as one screen showing the same table at different moments, and a start
    screen that was legible while the result screen was not would read as two
    different features. */
+/* THE BUTTONS MUST NEVER LEAVE THE SCREEN (Amit, on mobile: "run ended screen
+   -- the lower buttons are cut out of screen, below screen").
+   The card grew a leaderboard, and on a short landscape phone the title, the
+   stats, ten rows and the buttons do not fit a 390px-high viewport. The card
+   was sized by its content and simply overflowed the bottom edge, taking PLAY
+   AGAIN and QUIT with it.
+   So the card is a column that never exceeds the viewport, and the part that
+   yields is the LIST -- see the rows rule below. Title, score and buttons are
+   fixed furniture; the board is the only thing that can afford to be cut off,
+   and it is also the only thing a player can still read by scrolling. */
 .board-card {
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  max-height: 88%;
   min-width: 62%;
   max-width: 82%;
   padding: min(3.7vmin, 2.1vw) min(4.3vmin, 2.4vw);
@@ -772,6 +785,16 @@ body {
   background: rgba(20, 70, 92, 0.9);
   color: #eafcff;
   cursor: pointer;
+}
+
+/* "Not yet" -- the first seconds of the result screen, where the score is being
+   read and nothing may take the screen away. Visibly disabled rather than
+   silently inert: a control that looks pressable and does nothing reads as a
+   broken game. */
+#restart-button.not-yet {
+  opacity: 0.4;
+  cursor: default;
+  border-color: rgba(111, 232, 255, 0.3);
 }
 
 #restart-button:hover {
@@ -1029,6 +1052,22 @@ body.dev-invincible::after {
   display: flex;
   flex-direction: column;
   gap: 0.8vmin;
+  /* The one part of the card allowed to lose height. `min-height: 0` is the
+     load-bearing half: without it a flex child refuses to shrink below its
+     content and the overflow reappears at the bottom of the card, which is
+     exactly the bug this is fixing. */
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The scoreboard block is what actually shrinks; the rows scroll inside it. */
+#scoreboard,
+#start-scoreboard,
+#quit-scoreboard {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* The row is the thing that actually gets READ, so it takes the largest jump.

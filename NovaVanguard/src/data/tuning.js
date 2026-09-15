@@ -2132,6 +2132,23 @@ export const START_SCREEN = {
   // timeout, which exists so a walk-up queue is not stalled by someone who
   // wandered off. Any input skips it, so nobody who wants to go again waits.
   resultSeconds: 10,
+  // HOW LONG THE RESULT SCREEN REFUSES TO BE DISMISSED (Amit, from the device:
+  // "restart game won't wait the countdown -- countdown is on 8 and it fires up
+  // the game again").
+  //
+  // This screen is the only place a player sees their score and their place on
+  // the board, and it arrives at the exact moment their hands move -- reaching
+  // for the tablet, steadying themselves, stepping off. Anything that can
+  // restart instantly will sometimes restart before they have read a word.
+  // Worse, the input is not always the player's: the host clicks
+  // #restart-button whenever Space or Enter reaches it, which is a real
+  // keypress on a desk and can be a hardware button elsewhere.
+  //
+  // So for this long the screen simply cannot be left: the button is visibly
+  // disabled, and a click on it -- from a finger or from the host -- does
+  // nothing. After it, RESTART works normally and the ten-second clock still
+  // runs out on its own.
+  resultGraceS: 3,
 };
 
 export const POC_SCENARIO = {

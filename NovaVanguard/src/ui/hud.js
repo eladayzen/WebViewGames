@@ -552,6 +552,15 @@ export function createHud(root) {
         secs > 0 ? `Restarting in ${secs}` : '';
     },
 
+    /** The button is DISABLED while the screen refuses to be left, rather than
+     *  silently ignoring presses. A control that looks pressable and does
+     *  nothing reads as a broken game; a greyed one reads as "not yet". */
+    setRestartReady(ready) {
+      if (!el.restart) return;
+      el.restart.classList.toggle('not-yet', !ready);
+      el.restart.disabled = !ready;
+    },
+
     /** "Are you sure?" over the running game. */
     showConfirm() {
       if (el.confirmOverlay) el.confirmOverlay.classList.remove('hidden');
