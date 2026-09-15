@@ -46,6 +46,20 @@ const GEAR = '&#9881;';
  * @param {object} opts
  *   @param {(percent:number)=>void} [opts.onSensitivity] extra hook for a game
  *          that wants to know; the host call is made here regardless.
+ *   @param {{label:string, get:()=>boolean, set:(on:boolean)=>void}[]} [opts.toggles]
+ *          on/off switches, rendered under their own heading.
+ *
+ * ON `toggles`, SINCE THIS FILE IS COPIED BETWEEN GAMES: it is deliberately
+ * GENERIC rather than an `onMusic`/`onSfx` pair, because a per-game parameter
+ * added here is exactly how the copies start to drift apart. Sound is not
+ * per-game -- GOBALANCE_APP_INTEGRATION.md requires every game to ship its own
+ * music and effects switches, since the app's mute button does not reach the
+ * page and `GoBalance.audio` is a stub -- so the capability belongs in the
+ * template and the two switches belong to each game's audio module.
+ *
+ * TWO SWITCHES, NOT ONE: a player often wants the game's feedback while
+ * listening to their own music, and an all-or-nothing toggle gets a game
+ * silenced entirely by anyone who dislikes its soundtrack.
  */
 export function createSettingsPanel(doc, opts = {}) {
   const prefs = loadPrefs();
@@ -107,6 +121,39 @@ export function createSettingsPanel(doc, opts = {}) {
 
   minus.addEventListener('click', (e) => { e.stopPropagation(); apply(sensitivity - 5, true); });
   plus.addEventListener('click', (e) => { e.stopPropagation(); apply(sensitivity + 5, true); });
+
+  if (opts.toggles && opts.toggles.length) {
+    const soundTitle = doc.createElement('div');
+    soundTitle.className = 'settings-section';
+    soundTitle.textContent = 'SOUND';
+    panel.appendChild(soundTitle);
+
+    for (const t of opts.toggles) {
+      const trow = doc.createElement('div');
+      trow.className = 'settings-row settings-toggle-row';
+      const label = doc.createElement('span');
+      label.className = 'settings-toggle-label';
+      label.textContent = t.label;
+      const sw = doc.createElement('button');
+      sw.type = 'button';
+      sw.className = 'settings-toggle';
+      const paint = () => {
+        const on = !!t.get();
+        sw.classList.toggle('on', on);
+        sw.textContent = on ? 'ON' : 'OFF';
+        sw.setAttribute('aria-pressed', String(on));
+      };
+      sw.addEventListener('click', (e) => {
+        e.stopPropagation();
+        t.set(!t.get());
+        paint();
+      });
+      paint();
+      trow.appendChild(label);
+      trow.appendChild(sw);
+      panel.appendChild(trow);
+    }
+  }
 
   function setOpen(open) {
     panel.classList.toggle('hidden', !open);

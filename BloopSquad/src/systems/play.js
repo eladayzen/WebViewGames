@@ -4,6 +4,7 @@
 import { BULLETS, MONSTERS, COINS, PLAYER, DESIGN_W, DESIGN_H } from '../data/tuning.js';
 import { maybeDropToy, steerHomingBullets, updateBuddies } from './toys.js';
 import { registerHit } from './monsters.js';
+import { playPop, playCoin, playPlayerHit } from './audio.js';
 
 // The concept's confetti is a party, not the colour of what just popped.
 const CONFETTI = [0x7ed321, 0xf5a623, 0x9b59d0, 0x74d7ff, 0xff6b6b, 0xffc93c];
@@ -43,6 +44,9 @@ export function updateBullets(w, dt) {
 export function popMonster(w, m, rng) {
   m.alive = false;
   m.hitT = 0;
+  // Pitched by tier, so a big one pops lower than a small one and the field has
+  // a range rather than one repeated noise.
+  playPop(1 - Math.min(1, m.maxHp / 42));
   w.stats.popped++;
   w.stats.score += m.points;
   maybeDropToy(w, m, rng);
@@ -101,6 +105,7 @@ export function updateCollisions(w, rng) {
       p.hearts--;
       p.invulnT = PLAYER.invulnS;
       w.stats.contacts++;
+      playPlayerHit();
       // Being touched clears the toucher: nobody is ground down by one monster
       // parked on top of them, and the hit reads as an event rather than a
       // state.
@@ -133,6 +138,7 @@ export function updateCoinsAndPops(w, dt) {
       c.alive = false;
       w.stats.coins++;
       w.stats.score += 5;
+      playCoin();
     }
     if (c.t <= 0) c.alive = false;
   }

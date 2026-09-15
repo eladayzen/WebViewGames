@@ -423,6 +423,28 @@ export async function createRenderer(canvas) {
       return;
     }
 
+    if (kind.id === 'rapid') {
+      // A lightning bolt: the one silhouette that means "faster" without a word
+      // of text, which matters for an audience that cannot read the label.
+      const bolt = [
+        [0.30, -1.15], [-0.55, 0.10], [-0.05, 0.10], [-0.30, 1.15],
+        [0.58, -0.08], [0.08, -0.08],
+      ];
+      bolt.forEach(([bx, by], i) => {
+        const px = x + bx * R, py = y + by * R;
+        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      });
+      g.closePath();
+      g.fill({ color: kind.tint });
+      bolt.forEach(([bx, by], i) => {
+        const px = x + bx * R, py = y + by * R;
+        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      });
+      g.closePath();
+      g.stroke({ width: 5, color: PALETTE.outline });
+      return;
+    }
+
     // Buddies: two little faces, orbiting each other. The pickup is a preview of
     // what you get, which is the clearest label a non-reader can be given.
     for (let i = 0; i < 2; i++) {

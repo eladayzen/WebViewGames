@@ -10,6 +10,7 @@
 
 import { TOYS, BULLETS, PLAYER } from '../data/tuning.js';
 import { registerHit } from './monsters.js';
+import { playShoot, playPickup } from './audio.js';
 
 export function createToyState() {
   return {
@@ -96,6 +97,7 @@ export function equip(w, kindName) {
     }
   }
   w.stats.toysUsed++;
+  playPickup();
 }
 
 function spawnBullet(w, x, y, vx, vy, homing, tint) {
@@ -133,13 +135,21 @@ export function updateFiring(w, dt) {
   }
 
   // ---- THE FORWARD CANNON. Unconditional, and first. ----------------------
+  //
+  // A toy may make this FASTER (rapid's `baseIntervalS`) and may not do anything
+  // else to it. Rule 3 forbids stopping, replacing or redirecting the cannon; it
+  // does not forbid improving it, which is the opposite failure mode. The tint
+  // rides along so a rate buff -- the hardest kind to see -- is visible.
+  const kind = toy.active;
+  const baseInterval = (kind && kind.baseIntervalS) || BULLETS.intervalS;
   p.fireT -= dt;
   if (p.fireT <= 0) {
-    p.fireT = BULLETS.intervalS;
-    spawnBullet(w, p.x, p.y - PLAYER.radius, 0, -BULLETS.speedPxS, false);
+    p.fireT = baseInterval;
+    spawnBullet(w, p.x, p.y - PLAYER.radius, 0, -BULLETS.speedPxS, false,
+                kind && kind.baseIntervalS ? kind.tint : undefined);
+    playShoot();
   }
 
-  const kind = toy.active;
   if (!kind) return;
 
   // ---- ...and whatever the toy adds on top of it. -------------------------
@@ -152,6 +162,10 @@ export function updateFiring(w, dt) {
     }
     return;
   }
+
+  // Rapid adds no stream of its own -- its whole effect was applied above, to
+  // the cannon's interval. Nothing more to do.
+  if (kind.id === 'rapid') return;
 
   // The toy keeps its OWN cadence, so its rate is independent of the gun's and
   // neither one can starve the other.

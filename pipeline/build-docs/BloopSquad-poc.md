@@ -216,6 +216,63 @@ six-year-old two passes ago. Affordable only because its 33 s of travel spends
 that aim at a distance — but it is the longest single commitment in the game and
 the first number to revisit if a child gets bored chewing on one monster.
 
+### Sound, and the joke it is built around
+
+All **synthesised** — no clips, no files. The brief was "make it funny", and the
+specific idea is that a monster's hit note RISES as it loses health, so chewing
+through a big one plays a run up the keyboard and the kill lands ON the
+punchline. That is a pitch computed per hit, which is what oscillators are for
+and what a folder of mp3s can only fake. It also ships zero audio assets, which
+keeps the game clear of the host's fixed MIME switch and its lack of HTTP Range
+support.
+
+The ladder is **quantised to semitones**, not swept: a smooth glide reads as a
+machine warming up, discrete steps read as a cartoon being squeezed. 19 semitones
+across the monster's full health, so a small is a crisp nine-note run
+(A♯ C D E G A B C♯ D♯) and a large is a long slow climb with each step repeated.
+
+`systems/audio.js` follows the integration doc: separate `sfx`/`music` buses
+under a master, prefs read **before** the graph is built (build from defaults and
+a player who muted the music hears a burst of it every launch), a one-time
+gesture unlock installed once rather than expected of every call site, and every
+pause routed through `setAudioPaused` so the suspend cannot drift out of step
+with the simulation. Nothing touches the audio API at module load — the systems
+still import cleanly into node for the headless sim, which an `new
+AudioContext()` at import time would have broken.
+
+The two switches live in `settingsPanel.js` as a **generic `toggles` option**,
+not an `onMusic`/`onSfx` pair: that file is copied between games and a per-game
+parameter is how the copies drift. Sound is not per-game — the doc requires every
+game to ship its own switches, because the app's mute does not reach the page.
+
+### Fire rate, and what it silently re-tunes
+
+The base gun slowed 35 % (0.11 → 0.17 s) to make room above it: with the cannon
+already near-continuous there was nothing a rapid-fire pickup could offer. The
+old 0.11 is now what the **RAPID** toy hands back, so the number a player used to
+have permanently is the number they now earn.
+
+RAPID is the only toy that touches the base gun, and that does not break rule 3:
+a toy may never stop, replace or redirect the cannon — making it *better* is the
+opposite failure mode. Base shots take its tint while it runs, because a rate
+change is the hardest kind of buff to see.
+
+**The knock-on, which is the part to watch.** Every health value in the file is
+denominated in fire rate: `hp * intervalS` is seconds of held aim. Slowing the
+gun 35 % made every monster 54 % tougher without a single hp changing:
+
+| | before | after |
+|---|---|---|
+| small | 0.99 s | **1.53 s** |
+| medium | 2.64 s | **4.08 s** |
+| large | 4.62 s | **7.14 s** |
+
+Seven seconds on a large, against the 2.9 s once cut as too long for a
+six-year-old. It was not asked for and is not obviously wanted — it is arithmetic
+that came along with the fire-rate change. The fix, if it plays as long as it
+measures, is to divide the tier health by 1.54 (large 42 → 27), which restores
+exactly the feel that was approved on the board while keeping the new rate.
+
 ### The art pass
 
 Still drawn from code, but from the **concept-09 silhouettes** rather than
@@ -252,6 +309,80 @@ avg 6.8 monsters alive, worst reaction 14.2 s against a 1.8 s floor, 3 toys.
 **Not yet measured by a child on a board**, which is the only test that counts.
 The risk now runs the other way — an emptier field can tip into boring — and
 that is a spawn-rate question, so it is answered with `spawnIntervalS`.
+
+## Production readiness — what Nova and TmntSkateSlice actually teach
+
+Researched 2026-09-14, against `GOBALANCE_APP_INTEGRATION.md` (the authority —
+read it, this section does not replace it) and the two games' code.
+
+### The headline: only ONE of the two is a leaderboard reference
+
+| | Nova Vanguard | TmntSkateSlice ("pizza slice") |
+|---|---|---|
+| `submitScore` / `getScoreboard` | **yes** — `src/systems/scoreboard.js`, 135 lines | **none. No `window.GoBalance` call of any kind.** |
+| Audio buses + sound menu | yes | has audio, no menu |
+| `devUnlock.js` | yes | no |
+| Confirm-on-quit, three endings | yes | no |
+| rAF shim, `#gameover-overlay`, `#gb-back`, `__gbSensor` | yes | yes |
+
+TmntSkateSlice ships and runs correctly, but it predates the `GoBalance.*` API
+entirely — it uses only the legacy surface (`__gbSensor`, an inline `nav:back`).
+**Copying its shell gives a game with no leaderboard and no way to quit
+deliberately.** It is the reference for *landing a build*; Nova is the reference
+for *being finished*. A search across all nine games confirms Nova is the only
+one that has ever called `submitScore`.
+
+### What Bloop Squad already has
+
+rAF shim, `#gameover-overlay` + `#restart-button` + literal `hidden`, `#gb-back`
+with the inline fallback, `__gbSensor` polling, and the settings panel with host
+sensitivity. The structural hazards from the doc's "five things that will break
+you" are already handled.
+
+### What is missing, in dependency order
+
+1. **The scoreboard.** Lift `NovaVanguard/src/systems/scoreboard.js` — it is
+   written to be lifted and the reasoning in its comments is the paid-for part:
+   rows are RUNS not per-profile bests, every row carries its true rank assigned
+   once, ties broken stably or the board reshuffles between screens, and the run
+   just played is found by matching an `isYou` row on the exact score submitted
+   (entries carry no timestamp and no run id). Plus `src/data/avatars.js` (51
+   lines) — derive identity from `avatarIndex`, never mirror the app's PNGs.
+2. **The three endings, all banking the score.** Died / quit / finished. Bloop
+   Squad currently has only *died*, and `__gbBack` quits instantly — no confirm
+   over the paused playfield, and **a run ended by choice is not submitted at
+   all**. The doc is explicit that this was a direct instruction: a board that
+   only records deaths teaches players to stand there and die rather than press
+   the button meaning "I'm done". Bloop Squad has no campaign end, so it needs
+   two of the three, not three.
+3. **Audio.** There is none — no `audio.js`, no clips. Two switches (music,
+   effects) over separate gain buses, prefs read *before* building the graph, and
+   a one-time gesture listener to resume the context.
+4. **`devUnlock.js`**, lifted from Nova — 7 s hold plus a 4-digit pad that judges
+   only the completed code. Take Nova's version, not Hill Bomb's: that copy still
+   leaks its code one digit at a time.
+5. **The `?art=1` / `?toy=` debug hooks and the `1 2 3` keys must go**, or move
+   behind the dev unlock, before this is in front of a child.
+
+### Two decisions Bloop Squad has to make that Nova already made
+
+- **What the score IS.** Nova's is points. Bloop Squad currently tracks score,
+  coins and popped separately, and only one number can be submitted — the board
+  takes an integer, and there is exactly one board per game (the key derives from
+  `folderName`; no call takes a board id, so per-mode boards do not exist).
+- **The folder name, which is permanent.** `WebGameKey()` derives the save/score
+  key from it (`NovaVanguard` → `web_nova_vanguard`). Renaming after ship orphans
+  every player's score with no migration. Decide before shipping, not after.
+
+### One thing this POC settles for the whole repo
+
+`WEB_MINIGAME_TECH_RETROSPECTIVE.md` has an open CTO question: stage 4 has no
+agreed 2D default, and four games running had gone 3D or raw-Canvas, skipping
+PixiJS — the retrospective's own recommended option (2) — every time. **Bloop
+Squad is built on PixiJS.** That is the first game to take the recommended path,
+so the open question now has a worked example rather than only a proposal. Worth
+putting in front of whoever owns that decision rather than letting it settle by
+accident.
 
 ## What to build next, in order
 

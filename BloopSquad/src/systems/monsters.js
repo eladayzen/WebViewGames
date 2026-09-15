@@ -11,6 +11,7 @@
 // by another name, and the player could never learn where it was going.
 
 import { MONSTERS, DESIGN_W, DESIGN_H, PLAYER, DIFFICULTY, difficulty01, lerpDiff } from '../data/tuning.js';
+import { playHit } from './audio.js';
 
 // How close to the pod's column a crossing has to be before it counts as a
 // pass at all. Roughly "could this have hit me if I had stood still?".
@@ -151,6 +152,10 @@ function applyClearance(w, m) {
 export function registerHit(m, damage) {
   m.hp -= damage;
   m.hitT = MONSTERS.hit.flashS;
+  // The note climbs as the monster empties -- computed here because this is the
+  // one place that knows both the new hp and the max. Progress is clamped at 1
+  // so the killing blow is the top of the ladder rather than past it.
+  playHit(m.maxHp > 0 ? 1 - Math.max(0, m.hp) / m.maxHp : 1);
   // Restart the squash rather than adding to it: a monster under sustained fire
   // gets a fresh recoil per shot, which is what "every time they get hit"
   // means. Accumulating would just hold it permanently deformed.

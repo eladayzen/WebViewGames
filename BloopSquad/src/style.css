@@ -74,6 +74,19 @@ canvas { display: block; }
 }
 .settings-value { font: 700 22px system-ui, sans-serif; min-width: 62px; text-align: center; }
 
+/* Sound switches. Sized to the same 44px touch target as the steppers: this is
+   operated on a balance board, often by a parent leaning over, and a control
+   you can hit beats a control that looks tidy. */
+.settings-section + .settings-toggle-row { margin-top: 10px; }
+.settings-toggle-row { justify-content: space-between; margin-top: 8px; gap: 18px; }
+.settings-toggle-label { font: 600 15px system-ui, sans-serif; color: #eaf2ff; }
+.settings-toggle {
+  min-width: 74px; height: 44px; border-radius: 12px; border: none;
+  background: rgba(40, 56, 92, 0.95); color: #8fb4d9;
+  font: 700 14px system-ui, sans-serif; letter-spacing: 0.08em; cursor: pointer;
+}
+.settings-toggle.on { background: #2fe3b8; color: #0b1020; }
+
 /* PAUSED is a state the player chose, so it says so plainly and does not hide
    the field behind it -- the same reasoning as the quit confirm elsewhere. */
 #paused-badge {

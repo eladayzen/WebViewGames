@@ -77,7 +77,18 @@ export const PLAYER = {
 
 export const BULLETS = {
   // No fire button, ever. The only verb is where you float.
-  intervalS: 0.11,
+  //
+  // SLOWED 35 % (0.11 -> 0.17, Amit from the board). The old rate did not leave
+  // room above it: with the cannon already near-continuous, a rapid-fire pickup
+  // had nothing to offer, and the only way to make a toy feel like a gift was to
+  // give it a different SHAPE of fire. Dropping the floor creates headroom, and
+  // the old 0.11 is now what the RAPID toy hands back -- so the number a player
+  // used to have all the time is the number they now earn.
+  //
+  // Every health value in the file is denominated in this: hp * intervalS is
+  // seconds of held aim. Changing it silently re-tunes every monster, so the
+  // tier comments quote the figure rather than the hp.
+  intervalS: 0.17,
   speedPxS: 1250,
   radius: 9,
   damage: 1,
@@ -363,6 +374,22 @@ export const TOYS = {
       id: 'twirl', label: 'TWIRL', durationS: 9, tint: 0xff5fc8,
       intervalS: 0.055, speedPxS: 900, spinRadPerS: 5.2, arms: 2,
     },
+    // RAPID: the cannon itself fires faster. The only toy that touches the base
+    // gun, and it is worth being precise about why that does not break rule 3 --
+    // a toy may never STOP, replace or redirect the cannon, but making it better
+    // is the opposite failure mode. The player can still have a worse round and
+    // never a worse pod.
+    //
+    // 0.11 is deliberately the game's old permanent rate: it is a known-good
+    // number that shipped, so it needs no separate balancing, and a returning
+    // player feels it as "this is how it used to be all the time".
+    //
+    // Base shots take the toy's tint while it runs -- the buff is a rate change,
+    // which is the hardest kind of buff to SEE. Colour is what makes it land.
+    rapid: {
+      id: 'rapid', label: 'RAPID FIRE', durationS: 8, tint: 0xff4d4d,
+      baseIntervalS: 0.11,
+    },
     // Two little monsters orbit the pod and pop what they touch. Answers the
     // ones that sneak up from below, and it is the cutest thing in the game.
     // Tint moved off 0x7ed321, which was the SMALL MONSTER's exact green -- the
@@ -375,9 +402,9 @@ export const TOYS = {
       hitCooldownS: 0.35,
     },
   },
-  // Equal weights for the POC: the point is to feel all three, not to tune
+  // Equal weights for the POC: the point is to feel all four, not to tune
   // rarity before we know which of them is worth being rare.
-  weights: { wand: 1, twirl: 1, buddies: 1 },
+  weights: { wand: 1, twirl: 1, buddies: 1, rapid: 1 },
 };
 
 // ---------------------------------------------------------------------------

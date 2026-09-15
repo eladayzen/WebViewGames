@@ -21,6 +21,10 @@ import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js'
 import { updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops } from './systems/play.js';
 import { updateFiring, updateToyPickups, equip } from './systems/toys.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
+import {
+  initAudio, startMusic, stopMusic, setAudioPaused, playGameOver,
+  getAudioPrefs, setSfxEnabled, setMusicEnabled,
+} from './systems/audio.js';
 import { CAMERA, MONSTERS, TOYS, DESIGN_W, DESIGN_H, difficulty01 } from './data/tuning.js';
 
 const CAMERA_MODES = ['fixed', 'drift', 'lateral'];
@@ -32,6 +36,11 @@ async function boot() {
   window.addEventListener('resize', () => renderer.resize());
 
   initInput();
+  // Installs the one-time gesture unlock. The context itself is not built until
+  // something plays, and nothing plays before a gesture -- so this is safe to
+  // call at boot and is the only place that needs to know about it.
+  initAudio();
+  startMusic();
   const rng = makeRng(0x1005);
   const world = createWorld();
   world.state = GameState.RUNNING;
@@ -117,6 +126,7 @@ async function boot() {
   function showGameOver() {
     const el = document.getElementById('gameover-overlay');
     if (el) el.classList.remove('hidden');
+    playGameOver();
     const s = document.getElementById('gameover-stats');
     if (s) {
       const r = report();
@@ -141,10 +151,14 @@ async function boot() {
   pausedBadge.textContent = 'PAUSED';
   document.body.appendChild(pausedBadge);
 
+  // EVERY pause goes through here, so the audio suspend can never drift out of
+  // step with the simulation -- the failure mode being music playing on over a
+  // frozen game, or worse, a resume that never happens.
   function setPaused(v) {
     world.paused = v;
     pausedBadge.classList.toggle('hidden', !v);
     pauseBtn?.classList.toggle('on', v);
+    setAudioPaused(v);
   }
   const pauseBtn = document.getElementById('pause-button');
   pauseBtn?.addEventListener('click', (e) => {
@@ -157,7 +171,13 @@ async function boot() {
   // right lean for an adult is not the right lean for a child. The host applies
   // it to the sensor reading itself -- the game must never also scale the
   // value, or the two compound and the number stops meaning what it says.
-  const settings = createSettingsPanel(document);
+  const settings = createSettingsPanel(document, {
+    toggles: [
+      { label: 'Music', get: () => getAudioPrefs().music,
+        set: (on) => { setMusicEnabled(on); if (on) startMusic(); else stopMusic(); } },
+      { label: 'Sound effects', get: () => getAudioPrefs().sfx, set: setSfxEnabled },
+    ],
+  });
   document.getElementById('chrome')?.appendChild(settings.button);
   document.body.appendChild(settings.panel);
   // Opening settings pauses the run -- nobody should be adjusting their lean
@@ -209,12 +229,12 @@ async function boot() {
     // ...and one of every toy pickup, so the three silhouettes can be compared
     // side by side against each other AND against a coin, which is the
     // comparison that matters: they have to be distinguishable at a glance.
-    ['wand', 'twirl', 'buddies'].forEach((k, i) => {
+    ['wand', 'twirl', 'buddies', 'rapid'].forEach((k, i) => {
       world.toyPickups.push({
         alive: true, kind: k, t: 999, bob: i * 2,
         // Clear of the pod's magnet radius, or the art row collects itself
         // before the screenshot and two thirds of it is missing from the frame.
-        x: DESIGN_W * (0.26 + i * 0.22), y: DESIGN_H * 0.50,
+        x: DESIGN_W * (0.18 + i * 0.18), y: DESIGN_H * 0.50,
       });
     });
     world.coins.push({ alive: true, x: DESIGN_W * 0.84, y: DESIGN_H * 0.50, vx: 0, vy: 0, t: 999 });
