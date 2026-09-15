@@ -214,12 +214,27 @@ export default registerMode({
          * something the player did not choose off a labelled tile. Each mode
          * owns its own result screen; #go-subtitle:empty hides the element.
          */
+        /**
+         * NO DETAIL LINE ON A FINISH. Amit: "after the score there is more text
+         * -- not important, lose it."
+         *
+         * It used to read "2.6 km · 3 of 5 home", and neither half survives the
+         * question of who it was for. The distance is a property of the track,
+         * identical every run, so it says nothing about the one just ridden. The
+         * finisher count is already on screen underneath, spelled out as five
+         * standings rows with places against names -- so the line was a worse
+         * summary of the thing directly below it.
+         *
+         * The two cases that DO say something are kept. A time cap has no
+         * placement to show, so the distance short is the only account of what
+         * happened. And a finish outside the unlock bar has to explain itself,
+         * or fourth place reads as an unexplained refusal rather than as "one
+         * more place and it opens".
+         */
         detail: reason === 'timeout'
           ? `time cap  ·  ${Math.round(finishS - me.s)} m short of the line`
-          // Says what the bar was when it was missed, so a fourth place reads as
-          // "one more place and it opens" rather than as an unexplained refusal.
           : stars > 0
-            ? `${(course.length / 1000).toFixed(1)} km  ·  ${homeCount} of ${FIELD_SIZE + 1} home`
+            ? ''
             : `${ordinal(RACE_UNLOCK_PLACE)} or better unlocks the next race`,
         stars,
         rows: rows.map((r) => ({
@@ -417,7 +432,19 @@ export default registerMode({
           objectives: rows.map((r) => ({
             label: r.name,
             text: r.finishedAt >= 0 ? ordinal(r.place) : ordinal(r.place),
-            done: r.you,
+            /**
+             * `you`, NOT `done`. Amit: "when you lead, your location looks grey
+             * and crossed with a line -- there is no reason for that."
+             *
+             * Quite right, and it was never a race decision. This panel is the
+             * missions panel, where a row going `done` means an objective is
+             * ticked off and the CSS strikes it through and fades it to 42%.
+             * Marking the player's row done to pick it out borrowed the one
+             * flag that means finished-with -- so the row you most need to read
+             * was the only dim one on screen, and it got dimmer the better you
+             * were doing.
+             */
+            you: r.you,
           })),
         };
       },

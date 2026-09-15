@@ -86,6 +86,11 @@ export function createObjectives() {
       // cannot say. Only the banked-mission row uses it today: "you already
       // have this, X to finish", which a player has no other way to learn.
       if (o.note) li.classList.add('has-note');
+      // THE PLAYER'S OWN ROW, in a list that is otherwise all other people --
+      // the race standings. Set once here rather than in the update loop
+      // because which row is yours cannot change during a run, and because
+      // `done` is the only other row state and it means the opposite thing.
+      if (o.you) li.classList.add('you');
       li.innerHTML = `<span class="obj-label">${o.label}</span>`
         + `${icon ? `<i class="obj-icon">${icon}</i>` : ''}`
         + `<b class="obj-count"></b>`

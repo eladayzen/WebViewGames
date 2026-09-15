@@ -90,7 +90,23 @@ function idolIcon() {
 }
 
 function gateIcon() {
-  const c = colours('airGate');
+  /**
+   * BLUE, FROM THE PAD -- not yellow, from the arch. Amit: "colour of the
+   * SpeedGate UI element, turn to blue instead of yellow."
+   *
+   * There are two speed-gate props and one objective counting both. The icon
+   * took the airGate's yellow, which was defensible while the two were evenly
+   * mixed; it stopped being so when the unreachable yellow gates were culled
+   * (props.js only raises an arch off a launcher strong enough to reach it), so
+   * the icon was drawn in the colour of the variant you now rarely meet. Nearly
+   * every gate a player actually rides is a cyan pad, the boost timer is cyan,
+   * and the speed readout goes cyan while boosting -- the icon was the one
+   * place the boost was a different colour.
+   *
+   * Still read from PROP_TYPES rather than typed in, so it is the pad's real
+   * colour and moves if the pad ever does.
+   */
+  const c = colours('boostPad');
   // The arch you ride THROUGH, which is the thing to recognise -- two posts and
   // a span, not a pad on the floor.
   return `<svg ${BOX} aria-hidden="true">

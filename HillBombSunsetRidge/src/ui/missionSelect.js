@@ -206,8 +206,21 @@ export function createMissionSelect(missions, progress, onPick, track = 0, noun 
       listEl.appendChild(more);
     }
 
-    const total = progress.totalStars;
-    totalEl.innerHTML = `<span class="msel-star earned">&#9733;</span> ${total} / ${missions.length * 3}`;
+    /**
+     * NO RUNNING STAR TOTAL. Amit: "in the missions lobby there is an x/120
+     * stars counter -- remove it."
+     *
+     * It was a completion meter for a ladder nobody is meant to complete. Forty
+     * missions at three stars each is 120, so the number a player sees early is
+     * something like 7/120 -- which reads as how far behind they are rather than
+     * how far they have come, and gets worse the longer they play. Every row in
+     * the list already shows its own stars, which is the same information
+     * attached to the thing you can actually do something about.
+     *
+     * Emptied rather than deleted from the markup: #msel-total:empty collapses,
+     * so the header simply closes up.
+     */
+    totalEl.textContent = '';
     const nextM = missions.find((m) => m.id === nextId);
     nextBtn.textContent = progress.cleared(nextId)
       ? `PLAY ${String(missions.indexOf(nextM) + 1).padStart(2, '0')} AGAIN`

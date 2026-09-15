@@ -224,8 +224,12 @@ html, body {
   transition: transform 160ms ease;
 }
 /* SKATE is the board turned a quarter under the rider. The artwork's own
-   footprints and arrows rotate with it, which is the entire explanation. */
+   footprints and arrows rotate with it, which is the entire explanation.
+   SWITCH is the same turn the other way, for the rider whose other foot leads
+   -- so the two skate stances are visibly mirror images rather than two words
+   that have to be read and compared. */
 .sp-board-skate { transform: rotate(90deg); }
+.sp-board-switch { transform: rotate(-90deg); }
 .sp-stance-name {
   font: 800 9px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   letter-spacing: 0.8px;
@@ -744,7 +748,13 @@ html, body {
 #go-recap li.missed { background: rgba(255, 255, 255, 0.05); color: rgba(255, 243, 228, 0.6); }
 #go-recap li.missed b { color: var(--verdict, var(--hot)); }
 #go-recap li b { font-variant-numeric: tabular-nums; }
-#go-recap li.done b::after { content: ' \2713'; }
+/* NO TICK ADDED HERE. Amit: "every completed objective has two ticks, it should
+   be one." It was: counterText() in modes/missions.js already returns U+2713 as
+   the row's text when an objective is done, and this rule appended a second one
+   after it. The text is the better place to own it -- the live panel reads the
+   same function, so one tick is now one tick in both -- and dropping the rule
+   also takes the meaningless "1ST ✓" off the race standings, where `done` marks
+   the player's own row rather than anything completed. */
 
 .go-score-label {
   font: 700 0.85em system-ui, sans-serif;
@@ -768,6 +778,9 @@ html, body {
   font: 600 0.95em/1.7 system-ui, sans-serif;
   opacity: 0.55;
 }
+/* An empty line still costs its margin and a line-box of height, which on a
+   480-high board is height the standings want. Same rule as #go-subtitle. */
+#final-breakdown:empty { display: none; }
 #restart-button {
   margin-top: 1.7em;
   padding: 1em 3em;
@@ -925,6 +938,23 @@ html, body {
 
 #obj-list li.done { opacity: 0.42; }
 #obj-list li.done .obj-label { text-decoration: line-through; }
+/* YOUR row in the race standings -- the opposite treatment to `done`, which is
+   what it used to borrow. Brighter than the rest and carrying a small marker in
+   the margin, so the eye finds it without reading four names. No background
+   plate: this list sits over a moving road, and a filled row at this size reads
+   as a button. */
+#obj-list li.you { opacity: 1; }
+#obj-list li.you .obj-label { color: #fff3e4; }
+#obj-list li.you .obj-count { color: #fff3e4; }
+#obj-list li.you::before {
+  content: '';
+  position: absolute;
+  left: -0.55em; top: 50%;
+  width: 3px; height: 0.92em;
+  margin-top: -0.46em;
+  border-radius: 2px;
+  background: #7ef0a8;
+}
 .obj-count {
   font: 800 1.12em/1 system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
@@ -981,6 +1011,9 @@ html, body {
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
+/* The star total is gone -- see missionSelect.js. An empty element would still
+   hold a line-box open in the header flex row. */
+#msel-total:empty { display: none; }
 
 #mission-list {
   display: flex; flex-direction: column; gap: 0.6em;

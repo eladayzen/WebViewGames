@@ -1198,7 +1198,18 @@ function showGameOver(reason = 'wipeout', card = null) {
   goInnerEl.classList.toggle('compact', !!rows);
 
   finalScoreEl.textContent = Math.round(sc.score).toLocaleString();
-  finalBreakdownEl.textContent = card && card.detail
+  /**
+   * A MODE CAN ASK FOR NO LINE AT ALL, which an empty string now means.
+   *
+   * This used to test `card.detail` for truthiness, so '' fell through to the
+   * ride summary below -- there was no way to express "nothing here", only a
+   * choice between two sentences. The race wants neither: its standings rows
+   * say more than any summary of them could. See modes/speedRace.js.
+   *
+   * A mode that provides no `detail` key at all still gets the default, which
+   * is what the free ride and the missions rely on.
+   */
+  finalBreakdownEl.textContent = card && card.detail !== undefined
     ? card.detail
     : `${km} km ridden  \u00b7  top ${Math.round(sc.topSpeed * 2.6)} km/h`;
 

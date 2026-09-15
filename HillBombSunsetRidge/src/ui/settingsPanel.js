@@ -23,7 +23,7 @@ import boardUrl from '../assets/ui_board.png?url';
 
 import {
   STEER_MODES, STEER_REGULAR, setSteerMode, recentreBoard,
-  STANCE_MODES, STANCE_SQUARE, STANCE_SKATE, setStance,
+  STANCE_MODES, STANCE_SQUARE, STANCE_SKATE, STANCE_SKATE_SWITCH, setStance,
 } from '../input/input.js';
 import { CONTROL_PRESETS, CONTROLS, setControlPreset } from '../data/controlPresets.js';
 import { CARVE_SMOOTH, CARVE_CURVE } from '../data/constants.js';
@@ -353,15 +353,38 @@ function addStance() {
   name.className = 'sp-stance-name';
   value.appendChild(img);
   value.appendChild(name);
+  /**
+   * THREE POSITIONS, CYCLED -- it was a two-way flip.
+   *
+   * The added one is SKATE facing the other way, for a rider whose other foot
+   * leads. Still one tap and still one control, because the interaction that
+   * made the flip work is the picture: the board turns a quarter under the
+   * rider, and the artwork's own footprints and arrows turn with it. A third
+   * position is that same turn in the other direction, so the image keeps
+   * explaining itself and nothing has to be written down.
+   *
+   * SWITCH rather than GOOFY, which is the term for it. REGULAR is already
+   * taken here by the square stance, so labelling its mirror GOOFY would read
+   * as the regular/goofy pair every skater knows and quietly say that SKATE is
+   * a third unrelated thing. SWITCH says "the same stance, the other way
+   * round", which is exactly what it is.
+   */
+  const ORDER = [STANCE_SQUARE, STANCE_SKATE, STANCE_SKATE_SWITCH];
+  const LABEL = {
+    [STANCE_SQUARE]: 'REGULAR',
+    [STANCE_SKATE]: 'SKATE',
+    [STANCE_SKATE_SWITCH]: 'SKATE SWITCH',
+  };
   const row = {
     el,
     refresh() {
-      const skate = state.stance !== STANCE_SQUARE;
-      img.classList.toggle('sp-board-skate', skate);
-      name.textContent = skate ? 'SKATE' : 'REGULAR';
+      img.classList.toggle('sp-board-skate', state.stance === STANCE_SKATE);
+      img.classList.toggle('sp-board-switch', state.stance === STANCE_SKATE_SWITCH);
+      name.textContent = LABEL[state.stance] || LABEL[STANCE_SQUARE];
     },
     activate() {
-      state.stance = state.stance === STANCE_SQUARE ? STANCE_SKATE : STANCE_SQUARE;
+      const at = ORDER.indexOf(state.stance);
+      state.stance = ORDER[(at + 1) % ORDER.length];
       applyAll();
       save();
       row.refresh();
