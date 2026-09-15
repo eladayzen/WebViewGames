@@ -151,13 +151,10 @@ export function initSettingsPanel(playUiTap) {
     setPanelOpen(panelEl.classList.contains('hidden'));
   });
 
-  // The key scheme is not discoverable, and inside Unity it's the only way
-  // to drive this panel at all -- so it's stated on the panel rather than
-  // left to be remembered.
-  const keyHint = document.createElement('div');
-  keyHint.className = 'sp-keyhint';
-  keyHint.textContent = 'ENTER = next row   SPACE = change';
-  panelEl.appendChild(keyHint);
+  // No on-panel key hint (removed 2026-09-15): this ships as a mobile app where
+  // the panel is touch-driven, so an "ENTER = next row / SPACE = change" line
+  // just adds keyboard noise. The Enter/Space handling below is kept (harmless,
+  // and still handy for desktop/editor), just not advertised on screen.
 
   addStepper({
     label: 'SENSITIVITY',
