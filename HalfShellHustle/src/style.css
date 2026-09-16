@@ -458,6 +458,155 @@ html, body {
   opacity: 0.28;
 }
 
+/* --- Dev tools (ui/devPanel.js, ui/devUnlock.js) -------------------------
+   Wrench button, bottom-left corner -- deliberately away from the top-right
+   chrome row (back/pause/settings), which stays reachable at all times. Not
+   in index.html at all: created in JS and only appended to the DOM once
+   unlocked, so there is nothing dev-related in the shipped markup for a
+   player who never finds the gesture. Rows reuse the settings panel's own
+   .sp-* classes (ui/panelRows.js) for a consistent look/feel and identical
+   two-key navigation. --- */
+#dev-hit {
+  /* The whole wide area around the lives tray (direct request), NOT the
+     heart icons themselves -- those are small, individually-animated (see
+     .life-icon), and would make a reliable 7-second hold impossible to land
+     on. Covers #topLeft's own 18px/20px offset with room to spare. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 60%;
+  max-width: 340px;
+  height: 156px;
+  z-index: 60;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-button {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 9999;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: #eafcff;
+  font: 600 17px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-button.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+}
+
+#dev-panel {
+  position: absolute;
+  bottom: 58px;
+  left: 12px;
+  z-index: 9999;
+  width: 232px;
+  max-height: 76vh;
+  overflow-y: auto;
+  background: rgba(10, 12, 26, 0.93);
+  border: 1px solid rgba(111, 232, 255, 0.28);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #eafcff;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-panel.hidden {
+  display: none;
+}
+
+/* The unlock: the held element dims slightly while the seven-second timer
+   runs (ui/devUnlock.js adds .devhold), then a keypad overlay. */
+.devhold {
+  opacity: 0.72;
+}
+
+#devcode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+}
+
+#devcode-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(111, 232, 255, 0.35);
+}
+
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+#devcode-dots {
+  font: 700 22px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 8px;
+  color: #6fe8ff;
+}
+
+/* A wrong code, shown for a moment before the row clears. Amber rather than
+   red: this is a mistyped code, not an alarm. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
+}
+
+#devcode-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(30, 40, 70, 0.9);
+  color: #eafcff;
+  font: 600 20px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer;
+}
+
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  gap: 8px;
+}
+
+.devcode-key {
+  height: 62px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 90ms linear;
+}
+
+/* Every key answers a press the same way. A key that looked inert while
+   another lit up was what gave the code away one digit at a time. */
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+
 #paused-badge {
   position: absolute;
   top: 50%;

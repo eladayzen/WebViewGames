@@ -63,7 +63,9 @@ import {
   updateSteering, pollLaneStep, getLaneTarget, pollJumpPress,
 } from '../input/input.js';
 import * as hud from '../ui/hud.js';
-import { initSteeringPanel, setNextThemeHandler } from '../ui/steeringPanel.js';
+import { initSteeringPanel } from '../ui/steeringPanel.js';
+import { initDevPanel, setNextThemeHandler } from '../ui/devPanel.js';
+import { installDevUnlock } from '../ui/devUnlock.js';
 import {
   initAudio, playSfx, pauseMusic, resumeMusic,
 } from '../systems/audio.js';
@@ -711,24 +713,49 @@ function boot() {
   // is the natural first gesture that satisfies it.
   initAudio();
 
-  // Board steering panel (ui/steeringPanel.js): steering mode + every tilt
-  // threshold, tunable live. Also re-sends the stored host sensitivity at boot
-  // -- that threshold is a scene field which resets on every scene load, so a
-  // saved preference that isn't re-sent does nothing. No-op in a browser.
+  // Player settings panel (ui/steeringPanel.js): SENSITIVITY + SFX/MUSIC only
+  // now (2026-09-16 split -- see that file's header). Also re-sends the
+  // stored host sensitivity at boot -- that threshold is a scene field which
+  // resets on every scene load, so a saved preference that isn't re-sent
+  // does nothing. No-op in a browser.
   initSteeringPanel();
-  // DEV: "jump to next theme" button (ui/steeringPanel.js). Reuses the
-  // exact same beginLevelComplete path a real tier-up takes (curtain,
-  // environment swap, everything) rather than a separate ad-hoc theme
-  // swap -- this exercises the real transition, not a shortcut around it.
-  // Guarded on 'running' the same way the organic tier-up check is, so it
-  // can't misfire mid-transition, during the intro, or on the game-over
-  // screen. Returning false (not throwing/no-op) lets the panel show a
-  // clear "NOT RUNNING" instead of silently doing nothing.
+
+  // Dev tools panel (ui/devPanel.js): steering MODE + every absolute-mode
+  // tilt threshold, VFX, RECENTRE BOARD, and the theme-skip button below --
+  // everything that used to live in the player settings panel except
+  // sensitivity/SFX/music. Built now but not appended to the DOM until
+  // unlocked (devPanel.mount, passed to installDevUnlock below).
+  const devPanel = initDevPanel();
+  // DEV: "jump to next theme" button (ui/devPanel.js). Reuses the exact same
+  // beginLevelComplete path a real tier-up takes (curtain, environment swap,
+  // everything) rather than a separate ad-hoc theme swap -- this exercises
+  // the real transition, not a shortcut around it. Guarded on 'running' the
+  // same way the organic tier-up check is, so it can't misfire mid-transition,
+  // during the intro, or on the game-over screen. Returning false (not
+  // throwing/no-op) lets the panel show a clear "NOT RUNNING" instead of
+  // silently doing nothing.
   setNextThemeHandler(() => {
     if (gs.current !== 'running') return false;
     beginLevelComplete(levelIndex + 1);
     return true;
   });
+
+  // Dev tools unlock (ui/devUnlock.js, TEMPLATE FILE ported verbatim from
+  // NovaVanguard -- see its own header): a 7-second hold, then a 4-digit
+  // code, gates the panel above so nothing dev-only is one accidental tap
+  // away for a real player. Anchored to a big INVISIBLE hit rect (#dev-hit,
+  // styled in style.css) covering the whole wide area around the lives tray
+  // (direct request) rather than the hearts themselves -- those are tiny,
+  // individually-animated icons that would make a reliable 7-second hold
+  // impossible to land. Appended to <body> (NOT into #hud, which is
+  // pointer-events:none) and kept clear of the top-right chrome buttons
+  // (back/pause/settings), which stay tappable. `?dev=1` skips the hold for
+  // a desktop session.
+  const devHit = document.createElement('div');
+  devHit.id = 'dev-hit';
+  document.body.appendChild(devHit);
+  installDevUnlock(document, devHit, devPanel.mount);
+  if (/[?&]dev=1\b/.test(window.location.search || '')) devPanel.mount();
 
   // Flying "+N" labels (ui/pointsFly.js). The counter element is the flight
   // TARGET, so it must already exist and be laid out -- hence init here, after
@@ -1005,7 +1032,7 @@ function boot() {
       }
 
       updateContactShadow(contactShadow, player, dt);
-      // VFX toggle (ui/steeringPanel.js's VFX row, systems/vfxSettings.js):
+      // VFX toggle (ui/devPanel.js's VFX row, systems/vfxSettings.js):
       // hide the whole pool/mesh rather than just skipping spawns above --
       // otherwise particles already in flight at the moment of toggling OFF
       // would sit frozen on screen (update/scrollZ stop touching them) and

@@ -153,7 +153,12 @@ export const LANE_RESPONSE = 10; // exponential lane-follow rate
 export const STEERING_STEPPED = 'stepped';
 export const STEERING_ABSOLUTE = 'absolute';
 export const STEERING_MODES = [STEERING_STEPPED, STEERING_ABSOLUTE];
-export const DEFAULT_STEERING_MODE = STEERING_ABSOLUTE;
+// Direct request: "always always always... the default mode is stepped, not
+// absolute" unless the dev tools panel's MODE row (ui/devPanel.js) has
+// explicitly changed it -- which persists via systems/steeringSettings.js
+// the same as any other tuning value. A fresh install / cleared storage
+// always lands here, on stepped.
+export const DEFAULT_STEERING_MODE = STEERING_STEPPED;
 
 // Zone edge: |tilt.x| past this leaves the centre lane's zone. 0.35 matches the
 // SDK's own pressThreshold, so 'absolute' starts out as responsive as
