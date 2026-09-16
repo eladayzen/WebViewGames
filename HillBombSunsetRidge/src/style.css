@@ -1666,6 +1666,21 @@ html, body {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+
+/* A wrong code, shown for a moment before the row clears. Amber rather than red:
+   this is a mistyped code, not an alarm.
+
+   REQUIRED BY THE NEW PAD, not decoration. The unlock no longer judges digits as
+   they are typed -- see ui/devUnlock.js -- so a wrong code now looks exactly
+   like a right one until the fourth dot lands. This is the only thing that says
+   it was refused; without it a failed attempt is a silent clear. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
+}
 
 
 /* ---- THE RACE START LINE ---------------------------------------------------

@@ -1295,6 +1295,23 @@ initSettingsPanel({
   // The panel counts as paused: it is over the game and the player is not
   // riding. See syncAudioPause.
   onToggle: () => syncAudioPause(),
+  /**
+   * DEV OPTIONS ▸ UNLOCK ALL. Opens every mission and race at one star each --
+   * see systems/progress.js for why one and not three.
+   *
+   * REDRAWS THE LOBBY BEHIND THE PANEL, which is the part that is easy to miss.
+   * Both selects re-read progress in open(), so closing and reopening one shows
+   * the change -- but the settings panel is reachable FROM an open lobby, which
+   * is exactly where someone would use this. Without the redraw the rows stay
+   * locked on screen while the save says otherwise, and the honest conclusion
+   * from that is that the button does not work.
+   */
+  unlockAll: () => {
+    const opened = progress.unlockAll();
+    const open = openSelect();
+    if (open) open.open();
+    return opened;
+  },
 });
 // Hidden until a run starts. The first screen is a menu, so the chrome has
 // nothing to act on yet -- see setChromeVisible.
