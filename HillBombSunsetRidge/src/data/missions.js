@@ -303,12 +303,36 @@ const RIDGE_LAYOUTS = [
  *
  * THE UNIT. Every objective costs DP:
  *
- *     crystal 1   ramp 2   rail 4   gate 4   idol 5      (Amit's numbers)
+ *     crystal 1   ramp 3   rail 4   gate 4   idol 5      (Amit's numbers)
  *
  * A crystal is the baseline: it falls on your line and has a 3.4-wide catch.
  * A ramp must be aimed at -- the one thing you cannot collect incidentally.
  * A rail asks three things: aim, land on the line, hold it. Amit set gates
  * level with rails and idols just above.
+ *
+ * A RAMP WENT FROM 2 TO 3 after it was played. Amit: "getting more than 12
+ * ramps is really really hard -- I just did an amazing run and got 18." A ramp
+ * sat level with two crystals on the theory that it has to be aimed at; what
+ * that missed is that a crystal you aim at and miss is one crystal, while a
+ * ramp you aim at and miss is gone for good and there is no second pass.
+ *
+ * SUPPLY IS A CEILING, AND IT WAS NEVER CHECKED FOR RAMPS -- the expensive
+ * mistake here, so it is written down rather than just fixed. The sweep rule
+ * below existed from the start and was only ever applied to pickups and idols.
+ * Ramps were sized purely by DP, which prices how hard ONE ramp is to hit and
+ * never asks how many there are.
+ *
+ * Measured headless across three hills: ramps arrive at 10.5-12.3 per 1000m, so
+ * a 95-second run passes about 22 of them. LAUNCH PARTY asked for 20. That is
+ * 91% of every ramp on the hill, with one or two misses allowed across the whole
+ * run, on a balance board -- not a hard mission, a different category. It scored
+ * 40 DP and sailed through a budget of 50. SKY LINE was the same mission again,
+ * to the number, twenty-one places later.
+ *
+ * So RAMPS ARE CAPPED AT 8 EFFECTIVE (authored 11), which is ~36% of supply --
+ * level with THE GAUNTLET and DOUBLE DOWN, the two ramp missions nobody has
+ * complained about. Any future ramp ask should be checked against supply first
+ * and DP second.
  *
  * SCORE is measured against what the hill actually pays (the same census that
  * produced CEILING), and crucially NET of the points the mission's other
@@ -500,11 +524,14 @@ const AUTHORED = [
    */
   ['fullPlate',   'FULL PLATE',    'A bit of everything, and no time to spare.', 95, { pickup: 16, grind: 3, launch: 6 }],
   ['ridgeMaster', 'RIDGE MASTER',  'Prove you have learned the whole ridge.',  100, { pickup: 23, score: 12000 }],
-  ['doubleDown',  'DOUBLE DOWN',   'Twice the crystals, twice the ramps.',      90, { pickup: 23, launch: 10 }],
+  // "Twice the ramps" stopped being true when ramps were capped -- it now asks
+  // five, the same as FIRST DROP. Crystal-led on purpose, so it stays a
+  // different mission from LAUNCH PARTY, which is ramp-led on the same pair.
+  ['doubleDown',  'DOUBLE DOWN',   'Crystals everywhere, ramps in between.',    90, { pickup: 23, launch: 7 }],
   ['steelRush',   'STEEL RUSH',    'Rails pay, and they pay while you are on them.', 105, { grind: 5, score: 11500 }],
   ['highRoller',  'HIGH ROLLER',   'One number matters. Make it big.',          85, { score: 21500 }],
   ['sweep',       'SWEEP',         'Sweep the hill, gates and all.',           100, { pickup: 14, boost: 7 }],
-  ['launchParty', 'LAUNCH PARTY',  'Hit every ramp you can find.',              95, { launch: 28 }],
+  ['launchParty', 'LAUNCH PARTY',  'Every ramp you can reach, and what lies between.',              95, { launch: 11, pickup: 10 }],
   /**
    * THREE IDOLS, NOT FOUR -- the one mission the difficulty budget could not
    * fit, and the reason is worth keeping.
@@ -531,7 +558,7 @@ const AUTHORED = [
   // A speed mission that is finally ABOUT speed: the gates are the mechanic,
   // so asking for them is asking for the thing the mission is named after.
   ['topSpeed',    'TOP SPEED',     'Ride every gate you can reach.',            90, { boost: 5, score: 11500 }],
-  ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 23, launch: 11 }],
+  ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 11, launch: 11 }],
   ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { pickup: 25, score: 15500 }],
 
   // === MISSIONS 21-40 =========================================================
@@ -568,14 +595,14 @@ const AUTHORED = [
   // state the intent.
   ['nightShift',  'NIGHT SHIFT',   'The idols are out tonight.',               100,
     { idol: 7, grind: 4 }, undefined, { rareAlways: true }],
-  ['freeFall',    'FREE FALL',     'Let the ground do the work.',               90, { launch: 13, score: 13500 }],
-  ['stoneStep',   'STONE STEP',    'Ramp to gate, all the way down.',          105, { launch: 7, boost: 8 }],
+  ['freeFall',    'FREE FALL',     'Let the ground do the work.',               90, { launch: 11, score: 9300 }],
+  ['stoneStep',   'STONE STEP',    'Ramp to gate, all the way down.',          105, { launch: 7, boost: 7 }],
   ['deepEnd',     'DEEP END',      'High walls. Use them.',                     95, { score: 21500 }],
-  ['loosePack',   'LOOSE PACK',    'Everything on the hill is worth points.',  110, { pickup: 27, launch: 11 }],
+  ['loosePack',   'LOOSE PACK',    'Everything on the hill is worth points.',  110, { pickup: 16, launch: 11 }],
   ['switchHouse', 'SWITCH HOUSE',  'The road never lets you settle.',          100, { pickup: 25, boost: 5 }],
-  ['pinchPoint',  'PINCH POINT',   'Narrow, and the gates are on the edges.',   85, { launch: 7, boost: 10 }],
+  ['pinchPoint',  'PINCH POINT',   'Narrow, and the gates are on the edges.',   85, { launch: 7, boost: 9 }],
   ['longHaul',    'LONG HAUL',     'Wide open and a long way down.',           115, { grind: 7, score: 14000 }],
-  ['stepLadder',  'STEP LADDER',   'Every drop pays if you land it.',          100, { launch: 14, score: 15500 }],
+  ['stepLadder',  'STEP LADDER',   'Every drop pays if you land it.',          100, { launch: 11, score: 12850 }],
   ['stormChase',  'STORM CHASE',   'Idols in the bowl. Go and get them.',      110,
     { idol: 7, grind: 4 }, undefined, { rareAlways: true }],
   // --- 31-40: the pairings come back around, so the demands take over --------
@@ -583,12 +610,12 @@ const AUTHORED = [
   ['fastCurrent', 'FAST CURRENT',  'Never stop accelerating.',                  80, { boost: 7, score: 12000 }],
   ['cleanSweep',  'CLEAN SWEEP',   'Leave nothing on the hill.',               105, { pickup: 43 }],
   ['bigNumbers',  'BIG NUMBERS',   'Chain it. That is the only way.',           90, { score: 21500 }],
-  ['nervePlay',   'NERVE PLAY',    'Three demands, one short clock.',           90, { pickup: 28, launch: 15 }],
-  ['skyLine',     'SKY LINE',      'Every ramp, every time.',                   95, { launch: 28 }],
+  ['nervePlay',   'NERVE PLAY',    'Three demands, one short clock.',           90, { pickup: 26, launch: 11 }],
+  ['skyLine',     'SKY LINE',      'Ramps into gates, and nothing slower.',                   95, { launch: 11, boost: 7 }],
   ['tightRope',   'TIGHT ROPE',    'Idols on the tightest hill there is.',      85,
     { idol: 7, grind: 5 }, undefined, { rareAlways: true }],
-  ['fullTilt',    'FULL TILT',     'Nothing held back.',                        85, { launch: 17, score: 17500 }],
-  ['lastCall',    'LAST CALL',     'Everything you have learned, at once.',    100, { pickup: 14, grind: 4, launch: 7 }],
+  ['fullTilt',    'FULL TILT',     'Nothing held back.',                        85, { launch: 11, score: 16400 }],
+  ['lastCall',    'LAST CALL',     'Everything you have learned, at once.',    100, { pickup: 7, grind: 4, launch: 7 }],
   // The finale asks for the two things Amit calls the most fun, plus a score
   // that needs the chain -- so the last mission is the game at its best rather
   // than its longest crystal sweep.
