@@ -1594,12 +1594,20 @@ html, body {
 }
 
 
-/* The one HUD element that accepts a press. The HUD is pointer-events:none so
-   taps fall through to the game, which also meant the dev-unlock hold could
-   never land -- see ui/devUnlock.js. Re-enabled for this element only, and it
-   costs nothing: the game is driven by the board and the keyboard, so nothing
-   is lost by the speed readout swallowing a tap. */
-#speed-readout { pointer-events: auto; }
+/* THE HUD ELEMENTS THAT ACCEPT A PRESS. #hud is pointer-events:none so taps
+   fall through to the game, which also means a dev-unlock hold can never land
+   on anything inside it -- see ui/devUnlock.js.
+
+   #objectives is the hold target now (Amit: "the whole UI panel on the left --
+   title, timer, black background, the whole thing"), so it has to opt back in
+   or the press is not delivered at all. Found by holding it for eight seconds
+   in a headless run and getting no keypad.
+
+   The readout keeps the rule it already had rather than losing it: it costs
+   nothing, and a game driven by a board and a keyboard loses nothing to either
+   element swallowing a tap. */
+#speed-readout,
+#objectives { pointer-events: auto; }
 
 /* ---- DEV UNLOCK -----------------------------------------------------------
    Styling for ui/devUnlock.js, which is a TEMPLATE FILE copied verbatim across

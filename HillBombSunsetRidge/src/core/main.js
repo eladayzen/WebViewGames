@@ -1318,17 +1318,28 @@ initSettingsPanel({
 setChromeVisible(false);
 
 /**
- * THE DEV UNLOCK: hold the speed readout for seven seconds, then the code.
+ * THE DEV UNLOCK: hold the objectives panel for seven seconds, then the code.
  *
- * The speed readout is the target devUnlock.js asks for -- always on screen
- * during a run and never otherwise interactive, so nobody reaches it by trying
- * things. The hold is what makes it undiscoverable (nobody holds a HUD readout
- * for seven seconds by accident) and the code is what makes it deliberate.
+ * THE WHOLE PANEL, not the speed readout. Amit: "the 7-second trigger should be
+ * on the whole UI panel on the left -- title, timer, black background, the whole
+ * thing."
+ *
+ * The readout was a 90px number in the opposite corner, which is a hard thing to
+ * find and hold with a thumb on a board -- and it is the one HUD element that
+ * changes every frame, so a finger resting on it hides the number it is sitting
+ * on. The objectives panel is the largest fixed target on screen and nothing
+ * about it moves, so a press lands anywhere in it. `.devhold` dims whatever is
+ * held, which on a panel this size is unmistakable feedback that the hold has
+ * started -- on the readout it was easy to miss.
+ *
+ * Still not discoverable by accident: seven seconds is a long time to rest a
+ * thumb on a HUD, there is nothing interactive in the panel to invite a tap, and
+ * the code is what makes getting in deliberate rather than lucky.
  *
  * Guarded inside installDevUnlock: a missing element must not take the boot
  * down over a debugging convenience.
  */
-installDevUnlock(document, document.getElementById('speed-readout'), unlockDevOptions);
+installDevUnlock(document, document.getElementById('objectives'), unlockDevOptions);
 
 // --- HUD --------------------------------------------------------------------
 let fpsAccum = 0;
