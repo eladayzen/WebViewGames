@@ -614,7 +614,12 @@ const AUTHORED = [
   ['skyLine',     'SKY LINE',      'Ramps into gates, and nothing slower.',                   95, { launch: 11, boost: 7 }],
   ['tightRope',   'TIGHT ROPE',    'Idols on the tightest hill there is.',      85,
     { idol: 7, grind: 5 }, undefined, { rareAlways: true }],
-  ['fullTilt',    'FULL TILT',     'Nothing held back.',                        85, { launch: 11, score: 16400 }],
+  // SEVEN RAMPS, NOT EIGHT. The cap is 8, and this is the one mission where 8
+  // was still 40% of supply: the clock is 85s, the shortest in the game, so the
+  // hill hands over fewer ramps here than anywhere else. The cap is a count; the
+  // thing that actually matters is the share, and on a short clock those come
+  // apart. Amit's call, and it puts the last ramp mission at 35% like the rest.
+  ['fullTilt',    'FULL TILT',     'Nothing held back.',                        85, { launch: 10, score: 16400 }],
   ['lastCall',    'LAST CALL',     'Everything you have learned, at once.',    100, { pickup: 7, grind: 4, launch: 7 }],
   // The finale asks for the two things Amit calls the most fun, plus a score
   // that needs the chain -- so the last mission is the game at its best rather
