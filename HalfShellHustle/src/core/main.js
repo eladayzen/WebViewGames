@@ -94,7 +94,7 @@ import {
   PICKUP_FIRST_SPAWN_DELAY_SEC, PICKUP_SPAWN_INTERVAL_SEC,
   PICKUP_MAGNET_SPAWN_CHANCE, PICKUP_LIFE_SPAWN_CHANCE,
 } from '../data/spawnConfig.js';
-import { FRAME_LABELS, PLAYER_RUN_FRAMES, RUN_FRAME_DURATION } from '../data/playerSprite.js';
+import { PLAYER_RUN_FRAMES, RUN_FRAME_DURATION } from '../data/playerSprite.js';
 import { COIN_TYPES } from '../data/coinTypes.js';
 import {
   ParticlePool, spawnDustPuff, spawnEnemyPoof, spawnCoinSparkle,
@@ -787,7 +787,6 @@ function boot() {
   window.addEventListener('resize', fitStageToAspect);
   fitStageToAspect();
 
-  let lastDebugFrame = -1;
   let lastContactFrame = player.frameIndex;
 
   const clock = new THREE.Clock();
@@ -1017,17 +1016,6 @@ function boot() {
         dustPool.update(dt);
         dustPool.scrollZ(currentSpeed * dt, DUST_FAN_RATE);
         updateSpeedStreaks(speedStreaks, dt, currentSpeed);
-      }
-
-      // Re-enabled per direct request while diagnosing the 12-frame scrap-
-      // bot cycle -- see index.html's #frame-debug.
-      if (player.frameIndex !== lastDebugFrame) {
-        lastDebugFrame = player.frameIndex;
-        const { yOffset, xOffset } = PLAYER_RUN_FRAMES[player.frameIndex];
-        hud.updateFrameDebug(
-          `frame ${player.frameIndex}: ${FRAME_LABELS[player.frameIndex]} `
-          + `(yOffset ${yOffset}, xOffset ${xOffset})`,
-        );
       }
 
       // Assignment, not accumulation: systems/speed.js's closed form is the

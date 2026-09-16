@@ -49,7 +49,6 @@ const quitScoreboardEl = document.getElementById('quit-scoreboard');
 const quitScoreboardTitleEl = document.getElementById('quit-scoreboard-title');
 const quitScoreboardRowsEl = document.getElementById('quit-scoreboard-rows');
 const pausedBadgeEl = document.getElementById('paused-badge');
-const frameDebugEl = document.getElementById('frame-debug');
 const introEl = document.getElementById('intro-tutorial-overlay');
 const introStepLanesEl = document.getElementById('intro-step-lanes');
 const introStepJumpEl = document.getElementById('intro-step-jump');
@@ -483,11 +482,6 @@ export function updateLives(lives) {
   for (let i = 0; i < icons.length; i++) {
     icons[i].classList.toggle('spent', i >= lives);
   }
-}
-
-// TEMPORARY: see index.html's #frame-debug comment.
-export function updateFrameDebug(text) {
-  frameDebugEl.textContent = text;
 }
 
 // The recap is where the merged counter's hidden breakdown comes back out --

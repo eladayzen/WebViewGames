@@ -155,13 +155,6 @@ export const PLAYER_RUN_FRAMES = FRAMES_RAW.map(({ file, holdUnits, yOffset, xOf
   xOffset,
 }));
 
-// Short labels for the temporary on-screen frame-debug readout (ui/hud.js,
-// wired in core/main.js) -- lets direct feedback reference "frame 1"
-// unambiguously instead of describing a pose in words.
-export const FRAME_LABELS = [
-  'push-off', 'peak-R', 'descend', 'push-off-mirror', 'peak-L', 'descend-mirror',
-];
-
 // Seconds per hold-unit (see holdUnits above). 0.75 was a deliberate
 // slow-motion value for diagnosing the frame sequence (now fixed, see the
 // FRAMES_RAW reassignment note above) -- back to a real gameplay pace, in
@@ -205,8 +198,7 @@ export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
   frames: PLAYER_RUN_FRAMES.map((f) => ({ url: f.url })),
 }));
 
-// --- Jump frames (art only -- not wired into core/main.js's frame-debug
-// HUD). entities/player.js plays PLAYER_JUMP_FRAMES once, evenly sliced
+// --- Jump frames. entities/player.js plays PLAYER_JUMP_FRAMES once, evenly sliced
 // across JUMP_RISE_DURATION, then holds the LAST entry for the rest of the
 // jump (hold and fall). After PASS 3 below shipped, the game code was
 // briefly simplified to show only ONE static pose for the entire jump
