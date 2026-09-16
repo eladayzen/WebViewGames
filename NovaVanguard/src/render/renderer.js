@@ -1285,6 +1285,7 @@ export async function createRenderer(mountEl) {
     // is genuinely silent in a browser. See the shim note in index.html.
     fx: {
       explosion: (x, y) => particles.explosion(x, y),
+      firework: (x, y, tint) => particles.firework(x, y, tint),
       impact: (x, y) => particles.impact(x, y),
       bossImpact: (x, y) => particles.bossImpact(x, y),
       deflect: (x, y) => particles.deflect(x, y),

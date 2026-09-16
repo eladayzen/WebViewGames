@@ -1460,6 +1460,17 @@ body.dev-invincible::after {
 /* CAMPAIGN COMPLETE -- the beat between the last boss and the board. Same card
    as the other screens so the game does not suddenly change visual language at
    its best moment; the difference is the accent and the absence of a board. */
+/* THE ONE SCREEN THAT DOES NOT HIDE THE GAME. Every other board screen paints a
+   near-opaque ground, because the playfield behind it is over and looking at it
+   is a distraction. Here the opposite is true: the fireworks ARE the reward, and
+   an opaque backdrop hid them completely -- the first build of this screen fired
+   them faithfully into a sky nobody could see. */
+#victory-overlay {
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(31, 58, 96, 0.42) 0%, rgba(5, 8, 18, 0.55) 62%),
+    rgba(4, 6, 14, 0.42);
+}
+
 #victory-overlay .board-card {
   text-align: center;
   border-color: rgba(255, 214, 122, 0.55);
@@ -1469,6 +1480,101 @@ body.dev-invincible::after {
 #victory-overlay h1 {
   color: #ffd67a;
   letter-spacing: 0.12em;
+}
+
+/* THE RANK IS THE HEADLINE. It is the first thing on the card and the largest
+   thing on it -- larger than "CAMPAIGN COMPLETE", because the title is the same
+   every time and the rank is the part that belongs to this run. */
+#victory-rank {
+  font: 800 min(7.4vmin, 4.2vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.3vmin;
+  color: #ffd67a;
+  text-shadow: 0 0 2.6vmin rgba(255, 198, 88, 0.65);
+  margin-bottom: 0.4vmin;
+  animation: victory-rank-in 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes victory-rank-in {
+  from { opacity: 0; transform: scale(0.72); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+#victory-best {
+  align-self: center;
+  margin: 0.8vmin 0 0.4vmin;
+  padding: 0.5vmin 1.6vmin;
+  border-radius: 999px;
+  background: rgba(255, 214, 122, 0.16);
+  border: 0.18vmin solid rgba(255, 214, 122, 0.7);
+  color: #ffe9b8;
+  font: 700 min(1.7vmin, 1vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.24em;
+  animation: victory-rank-in 420ms ease-out both;
+}
+
+/* The counting number. Tabular figures so the digits do not jitter sideways
+   while it climbs -- the count should read as a total rising, not as text
+   being retyped. */
+#victory-score {
+  font: 800 min(5.6vmin, 3.2vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: #eafcff;
+  margin: 1.4vmin 0 0.6vmin;
+}
+
+#victory-awards {
+  list-style: none;
+  margin: 1.2vmin 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7vmin;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.victory-award {
+  display: flex;
+  justify-content: space-between;
+  gap: 2vmin;
+  padding: 0.8vmin 1.6vmin;
+  border-radius: 1vmin;
+  background: rgba(20, 34, 54, 0.55);
+  font: 600 min(2.1vmin, 1.2vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  color: #cfe9f5;
+  /* Each award slides in from the left as it lands, so the list reads as
+     arriving rather than as having always been there. */
+  animation: award-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes award-in {
+  from { opacity: 0; transform: translateX(-1.4vmin); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.award-value {
+  color: #ffd67a;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The card is a flex column now, so a button left to itself stretches the full
+   width and stops reading as a button. */
+#victory-continue {
+  align-self: center;
+  margin-top: 2vmin;
+  padding: 1.3vmin 5vmin;
+}
+
+/* CONTINUE stays out of the way until the run has finished being read back. */
+#victory-continue.not-yet {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* Respect a reduced-motion preference: the sequence still happens, it just
+   stops sliding and scaling. */
+@media (prefers-reduced-motion: reduce) {
+  #victory-rank, #victory-best, .victory-award { animation: none; }
 }
 
 #victory-sub {

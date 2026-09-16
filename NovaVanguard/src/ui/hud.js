@@ -56,7 +56,11 @@ export function createHud(root) {
     quitScoreboardRows: root.querySelector('#quit-scoreboard-rows'),
     startCountdown: root.querySelector('#start-countdown'),
     victory: root.querySelector('#victory-overlay'),
-    victoryStats: root.querySelector('#victory-stats'),
+    victoryRank: root.querySelector('#victory-rank'),
+    victoryBest: root.querySelector('#victory-best'),
+    victoryScore: root.querySelector('#victory-score'),
+    victoryAwards: root.querySelector('#victory-awards'),
+    victoryContinue: root.querySelector('#victory-continue'),
     quitTitle: root.querySelector('#quit-title'),
     gameoverCountdown: root.querySelector('#gameover-countdown'),
     startScoreboard: root.querySelector('#start-scoreboard'),
@@ -345,6 +349,12 @@ export function createHud(root) {
   // is re-rendered from whichever lands second.
   let startBoardUp = false;
   let startSecs = null;
+  // The victory tally's own state. Lives here rather than in the world because
+  // it is presentation: the simulation is stopped while this runs.
+  let victoryTarget = 0;
+  let victoryShownScore = 0;
+  let victoryAwardQueue = [];
+  let victoryAwardT = 0;
 
   function renderStartCountdown() {
     if (!el.startCountdown) return;
@@ -522,12 +532,75 @@ export function createHud(root) {
     },
 
     /** The victory beat, between the last boss dying and the board. */
-    showVictory(w) {
-      if (el.victoryStats) {
-        el.victoryStats.textContent =
-          `${w.stats.kills} destroyed \u00b7 score ${w.stats.score.toLocaleString()}`;
-      }
+    /**
+     * The end of the campaign, staged rather than printed.
+     *
+     * WHY IT IS A SEQUENCE. A finished run is the one moment the game has
+     * something to give back, and a card that arrives complete gives it all
+     * away in the first glance -- there is nothing left to watch. So the score
+     * counts up, the awards land one at a time with a sound each, and CONTINUE
+     * only appears once the tally is done. The player is never waiting on a
+     * timer; they are watching their own run being read back to them.
+     *
+     * `opts.rank`, `opts.awards` and `opts.isBest` are decided by the caller
+     * (main.js) -- the HUD renders what it is handed and judges nothing.
+     */
+    showVictory(w, opts = {}) {
+      const stats = w.stats;
+      if (el.victoryRank) el.victoryRank.textContent = opts.rank || '';
+      if (el.victoryBest) el.victoryBest.classList.toggle('hidden', !opts.isBest);
+      if (el.victoryScore) el.victoryScore.textContent = '0';
+      if (el.victoryAwards) el.victoryAwards.textContent = '';
+      // Hidden until the tally finishes, so nobody skips the one screen the
+      // game made for them.
+      if (el.victoryContinue) el.victoryContinue.classList.add('not-yet');
       if (el.victory) el.victory.classList.remove('hidden');
+      victoryTarget = stats.score;
+      victoryShownScore = 0;
+      victoryAwardQueue = (opts.awards || []).slice();
+      victoryAwardT = 0;
+    },
+
+    /** The badge, once the board has answered. Separate from showVictory
+     *  because the answer arrives after the screen does. */
+    markVictoryBest() {
+      if (el.victoryBest) el.victoryBest.classList.remove('hidden');
+    },
+
+    /** Drive the count-up and the awards. Returns true while still animating,
+     *  so the caller knows when the screen has finished telling its story. */
+    tickVictory(dt, onTick, onAward) {
+      if (!el.victory || el.victory.classList.contains('hidden')) return false;
+      let busy = false;
+
+      if (victoryShownScore < victoryTarget) {
+        busy = true;
+        // Fixed DURATION rather than fixed rate: a 3,000-point run and a
+        // 90,000-point run should both take about a second and a half to read,
+        // or the big score -- the one worth celebrating -- becomes a wait.
+        const step = Math.max(1, Math.ceil((victoryTarget / 1.5) * dt));
+        victoryShownScore = Math.min(victoryTarget, victoryShownScore + step);
+        if (el.victoryScore) el.victoryScore.textContent = victoryShownScore.toLocaleString();
+        if (onTick) onTick();
+      } else if (victoryAwardQueue.length) {
+        busy = true;
+        victoryAwardT -= dt;
+        if (victoryAwardT <= 0) {
+          victoryAwardT = 0.45;
+          const a = victoryAwardQueue.shift();
+          if (el.victoryAwards) {
+            const li = document.createElement('li');
+            li.className = 'victory-award';
+            li.innerHTML = `<span class="award-label">${a.label}</span>` +
+                           `<span class="award-value">${a.value}</span>`;
+            el.victoryAwards.appendChild(li);
+          }
+          if (onAward) onAward();
+        }
+      } else if (el.victoryContinue) {
+        el.victoryContinue.classList.remove('not-yet');
+      }
+      return busy;
     },
     hideVictory() {
       if (el.victory) el.victory.classList.add('hidden');

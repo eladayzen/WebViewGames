@@ -2149,6 +2149,32 @@ export const START_SCREEN = {
   // nothing. After it, RESTART works normally and the ten-second clock still
   // runs out on its own.
   resultGraceS: 3,
+
+  // THE END OF THE CAMPAIGN, as a celebration rather than a receipt.
+  //
+  // RANKS are cut by score. The thresholds are deliberately generous at the
+  // bottom -- anyone who reaches the end of five sectors has done the hard
+  // part, and the screen that greets them should say so. The top rank is the
+  // one worth coming back for.
+  victoryRanks: [
+    { at: 60000, label: 'ACE' },
+    { at: 35000, label: 'VETERAN' },
+    { at: 18000, label: 'PILOT' },
+    { at: 0,     label: 'SURVIVOR' },
+  ],
+  // Fireworks behind the card, for as long as the screen is up.
+  victoryFireworks: {
+    // Two a second, forever -- this screen has no clock, so the sky should not
+    // run out while someone is still reading.
+    everyS: 0.5,
+    // Warm and cool alternating, none of them the orange-red of enemy fire:
+    // nothing on this screen should read as a threat.
+    tints: [0xffd67a, 0x74d7ff, 0x8affc8, 0xff9ad5, 0xfff2b0],
+    // Kept out of the band the card occupies, so they frame it instead of
+    // firing behind the text where they would fight it for attention.
+    bandTop: 0.06,
+    bandBottom: 0.86,
+  },
 };
 
 export const POC_SCENARIO = {

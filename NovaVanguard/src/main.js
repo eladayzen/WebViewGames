@@ -70,7 +70,7 @@ import {
 import { createHud } from './ui/hud.js';
 import { createInstrumentation } from './debug/instrumentation.js';
 import { createPanel } from './debug/panel.js';
-import { POC_SCENARIO, SECTOR_TRANSITION, PICKUPS, START_SCREEN } from './data/tuning.js';
+import { POC_SCENARIO, SECTOR_TRANSITION, PICKUPS, START_SCREEN, DESIGN_W, DESIGN_H } from './data/tuning.js';
 import * as TUNING from './data/tuning.js';
 
 const stage = document.getElementById('stage');
@@ -563,6 +563,7 @@ async function boot() {
       tickCountdown(dt);
       return;
     }
+    tickVictory(dt);
     // The result screen counts itself down to a restart. Runs before the
     // RUNNING gate because the state is FAILED while it is up.
     if (resultT >= 0) {
@@ -670,7 +671,57 @@ async function boot() {
   function completeCampaign() {
     if (world.state !== GameState.RUNNING) return;
     world.state = GameState.CLEARED;
-    hud.showVictory(world);
+
+    const s = world.stats;
+    const shots = Math.max(1, s.shotsFired);
+    const accuracy = Math.round((s.hits / shots) * 100);
+    const rank = (START_SCREEN.victoryRanks.find((r) => s.score >= r.at) || { label: '' }).label;
+
+    // AWARDS ARE EARNED, NOT LISTED. Every line here is a fact about THIS run
+    // that the player could have changed -- which is what makes reading them
+    // feel like a report rather than a receipt. The flawless line only exists
+    // when it is true; an award nobody can miss is not an award.
+    const awards = [
+      { label: 'Destroyed', value: s.kills.toLocaleString() },
+      { label: 'Accuracy', value: accuracy + '%' },
+      { label: 'Bosses beaten', value: '5' },
+    ];
+    if (s.damageTaken === 0) awards.push({ label: 'Untouched', value: 'FLAWLESS' });
+
+    hud.showVictory(world, { rank, awards, isBest: false });
+    fireworksT = 0;
+
+    // Was this the best run on the account? Asked after the screen is already
+    // up: the badge appears when the answer arrives, and a slow or absent
+    // board simply means no badge rather than a delayed celebration.
+    fetchBoard().then((board) => {
+      if (world.state !== GameState.CLEARED) return;
+      const best = (board.rows || []).reduce((m, r) => Math.max(m, r.score || 0), 0);
+      if (s.score > best) hud.markVictoryBest();
+    });
+  }
+
+  // Fireworks behind the card, and the tally that reads the run back. Both run
+  // while the simulation is stopped, which is why they are driven from here
+  // rather than from the world update.
+  let fireworksT = 0;
+  function tickVictory(dt) {
+    if (world.state !== GameState.CLEARED) return;
+    const fw = START_SCREEN.victoryFireworks;
+    fireworksT -= dt;
+    if (fireworksT <= 0) {
+      fireworksT = fw.everyS;
+      const x = DESIGN_W * (0.08 + Math.random() * 0.84);
+      const y = DESIGN_H * (fw.bandTop + Math.random() * (fw.bandBottom - fw.bandTop));
+      renderer.fx.firework(x, y, fw.tints[(Math.random() * fw.tints.length) | 0]);
+    }
+    hud.tickVictory(
+      dt,
+      // One tick per frame of counting would be a machine-gun; the pickup blip
+      // every few frames reads as a tally.
+      () => { if (Math.random() < 0.25) sfx('pickup', 0.5); },
+      () => sfx('sector')
+    );
   }
 
   /** Leave the victory beat for the ending board. Guarded on the state rather

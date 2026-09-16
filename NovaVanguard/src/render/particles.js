@@ -68,6 +68,39 @@ export function createParticles(container, texture) {
     },
 
     /** A bolt landed but did not kill. */
+    /**
+     * A firework. Not an explosion recoloured: an explosion is a thing being
+     * destroyed and reads as damage, which is the opposite of what the end of
+     * the campaign should feel like.
+     *
+     * Three differences carry that: it opens as a RING rather than a cloud, so
+     * it expands outward instead of bursting apart; the sparks are slow and
+     * long-lived so they hang and drift down like real fireworks rather than
+     * snapping out; and the colour is authored per burst so a sky full of them
+     * is varied instead of one palette repeated.
+     */
+    firework(x, y, tint) {
+      // The flash at the centre, brief and white -- the "crack" of the shell.
+      spawn(x, y, 0, 0, 0.18, 4.2, 0xffffff, 0.8);
+      const n = 22;
+      const speed = 190 + Math.random() * 90;
+      for (let i = 0; i < n; i++) {
+        // Even ring, jittered, so it reads as a sphere rather than a wheel.
+        const a = (i / n) * Math.PI * 2 + Math.random() * 0.22;
+        const v = speed * (0.75 + Math.random() * 0.5);
+        spawn(
+          x, y,
+          Math.cos(a) * v,
+          Math.sin(a) * v,
+          0.9 + Math.random() * 0.5,
+          1.7 + Math.random() * 1.1,
+          tint,
+          // Low drag: the sparks travel and then hang, instead of stopping dead.
+          0.975
+        );
+      }
+    },
+
     impact(x, y) {
       for (let i = 0; i < FX.impactParticles; i++) {
         const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;

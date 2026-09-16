@@ -342,9 +342,19 @@
            celebrating. -->
       <div id="victory-overlay" class="board-screen hidden">
         <div id="victory-card" class="board-card">
+          <!-- The rank is the headline, not the score: "ACE" lands on an
+               eight-year-old in a way that 48,250 does not, and it gives a
+               reason to come back that a number alone does not carry. -->
+          <div id="victory-rank"></div>
           <h1>CAMPAIGN COMPLETE</h1>
           <p id="victory-sub">ALL FIVE SECTORS CLEARED</p>
-          <p id="victory-stats"></p>
+          <!-- NEW BEST only appears when it is true. A badge that is always
+               there is wallpaper. -->
+          <div id="victory-best" class="hidden">NEW PERSONAL BEST</div>
+          <div id="victory-score"></div>
+          <!-- The awards arrive one at a time, each with a sound, so the screen
+               is a sequence of small wins rather than one wall of numbers. -->
+          <ul id="victory-awards"></ul>
           <button id="victory-continue" type="button">CONTINUE</button>
         </div>
       </div>
