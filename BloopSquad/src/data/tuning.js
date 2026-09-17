@@ -299,6 +299,19 @@ export const MONSTERS = {
 // ---------------------------------------------------------------------------
 
 export const SQUAD = {
+  // OFF. The trail is parked, not deleted -- the code stays because the blast it
+  // proved out is now what the Buddy Bombs do, and because "we might need to
+  // reverse that" reads better as a decision with the thing still here.
+  // `?squad=N` forces it on for review.
+  //
+  // Why it is off: measured 3-13 detonations across a four-minute run, and ZERO
+  // for a pod that holds still, because the tail occupies the path the pod just
+  // travelled -- which applyClearance keeps monsters out of by design. It fired
+  // almost exclusively when the player was flying badly. The orbiting buddies
+  // have the opposite geometry: they sit in the ring around the pod, which is
+  // where monsters actually arrive.
+  enabled: false,
+
   // Every Nth pop recruits. Three is frequent enough that the first one arrives
   // inside the opening half-minute -- a mechanic a child never sees is a
   // mechanic that does not exist -- and sparse enough that the line still grows
@@ -348,12 +361,73 @@ export const SQUAD = {
   bobAmp: 4,
 };
 
+// ---------------------------------------------------------------------------
+// HEARTS -- the only pickup that undoes a mistake.
+//
+// The pod has three hearts and, until now, no way to get one back: a run was a
+// one-way slide from three to zero. For six-year-olds that is the difference
+// between a game that forgives a bad thirty seconds and one that quietly
+// decides the run is over long before it ends.
+//
+// DROPPED BY BIG MONSTERS ONLY, and never above the cap. The large tier is the
+// one that takes real commitment to kill, so the reward points at the thing
+// worth doing -- and a heart that appears when you are already full is a reward
+// that reads as nothing, so it simply does not drop.
+// ---------------------------------------------------------------------------
+
+export const HEARTS = {
+  // Per kill, and only from these tiers. Deliberately not from smalls: a heart
+  // from chaff would make the hearts meaningless and the cap permanent.
+  dropFrom: { small: 0, medium: 0.10, large: 0.55 },
+  // No two hearts inside this window, so a lucky pair of large kills cannot
+  // hand back a whole run's worth of mistakes at once.
+  minGapS: 18,
+  maxLive: 1,
+  radius: 26,
+  // Drifts DOWN toward the player rather than sitting where it dropped -- the
+  // one pickup a player in trouble must not have to climb for, since climbing
+  // is the expensive axis and they are already being hit.
+  driftPxS: 54,
+  magnetRadius: 230,
+  magnetPxS: 620,
+  lifeS: 12,
+};
+
 export const COINS = {
   radius: 16,
   driftPxS: 60,
   magnetRadius: 190,
   magnetPxS: 620,
   lifeS: 9,
+};
+
+// ---------------------------------------------------------------------------
+// XP AND LEVELS -- the celebration, and nothing else.
+//
+// WITHIN A RUN ONLY. Levels reset to 1 on every restart and nothing is saved.
+// That is rule 5 (no meta-progression) and it is not negotiable, but it is also
+// the better design here: an arcade run is whole or it is nothing, and a level
+// carried in from yesterday would mean two children never play the same game.
+//
+// LEVELS GRANT NOTHING. No stat, no weapon, no shield. The entire payload is a
+// big number, a colour and a noise -- which for a six-year-old is the payload.
+// The moment a level grants power it starts fighting the difficulty ramp, and
+// the ramp is already this game's only difficulty setting.
+// ---------------------------------------------------------------------------
+
+export const XP = {
+  // Earned from what the player already does. Weighted to POPPING rather than
+  // collecting, so the celebration tracks the thing the game is about.
+  perPop: { small: 10, medium: 26, large: 55 },
+  perCoin: 4,
+  // Level N costs base * N^curve. Slightly super-linear: the first level arrives
+  // fast enough to teach what the popup means, and the fifth still feels earned.
+  base: 120,
+  curve: 1.25,
+  // How long the celebration holds the screen. It never pauses and never asks
+  // for input -- there are no buttons, and a child should not have to dismiss
+  // their own reward.
+  popupS: 1.9,
 };
 
 export const HUD = {
@@ -481,10 +555,31 @@ export const TOYS = {
     // one colour on the field that already means "a thing to shoot". Turquoise
     // is used by nothing else, and the bots orbit the pod where a moment's
     // "is that an enemy?" is worst.
+    //
+    // TWO ORBITING BOMBS. They used to be chip-damage pets that ground monsters
+    // down one hit at a time on a cooldown, which made them the dullest toy in
+    // the game -- you could not tell they were working.
+    //
+    // Now each one DETONATES on contact and is spent. Two bombs, two bangs, and
+    // the toy ends when both are gone rather than when a timer runs out, so the
+    // player decides when to spend them by deciding where to fly. That is the
+    // only real decision any toy here has offered, and it needs no button.
+    //
+    // This is the blast the squad trail proved out, moved somewhere the geometry
+    // works: orbiters sit in the ring around the pod, which is where monsters
+    // actually arrive -- unlike a tail, which trails through space the pass
+    // clearance has already swept clean.
     buddies: {
-      id: 'buddies', label: 'BUDDY BOTS', durationS: 12, tint: 0x2fe3b8,
-      count: 2, orbitPx: 132, spinRadPerS: 2.9, radius: 26, damage: 1,
-      hitCooldownS: 0.35,
+      id: 'buddies', label: 'BUDDY BOMBS', durationS: 14, tint: 0x2fe3b8,
+      count: 2, orbitPx: 132, spinRadPerS: 2.9, radius: 26,
+      // Harder-hitting than a squad member was: there are only ever two, they
+      // are the whole toy, and a bomb that fails to clear what it touched is a
+      // disappointment rather than a rescue. 22 one-shots a small, halves a
+      // large, and the radius catches whatever came in alongside it.
+      blastDamage: 22,
+      blastRadiusPx: 200,
+      // Long enough that a bomb cannot detonate on the thing it spawned beside.
+      armS: 0.35,
     },
   },
   // Equal weights for the POC: the point is to feel all four, not to tune

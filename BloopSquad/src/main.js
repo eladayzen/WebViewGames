@@ -20,7 +20,7 @@ import { initInput, readInput } from './input/input.js';
 import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js';
 import {
   updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops,
-  updateSquad, updateSquadBombs, updateBlasts,
+  updateSquad, updateSquadBombs, updateBlasts, updateLevelPopup, updateHearts,
 } from './systems/play.js';
 import { updateFiring, updateToyPickups, equip } from './systems/toys.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
@@ -61,6 +61,7 @@ async function boot() {
     updateMonsters(world, dt);
     updateCollisions(world, rng);
     updateCoinsAndPops(world, dt);
+    updateHearts(world, dt);
     // After the pod has moved and after collisions, so the trail samples the
     // position actually rendered this frame rather than last frame's.
     updateSquad(world, dt);
@@ -68,6 +69,7 @@ async function boot() {
     // is drawn rather than where it was a frame ago.
     updateSquadBombs(world, rng);
     updateBlasts(world, dt);
+    updateLevelPopup(world, dt);
 
     world.camera.starOffset += CAMERA.driftPxS * dt;
     if (CAMERA.mode === 'lateral') {
@@ -224,6 +226,7 @@ async function boot() {
   // reviewed. The follow maths is the real one; only the history is fabricated.
   const squadN = parseInt(q.get('squad') || '0', 10);
   if (squadN > 0) {
+    SQUAD.enabled = true;   // the feature is parked; this forces it on to look at
     const tiers = Object.values(MONSTERS.tiers);
     for (let i = 0; i < Math.min(squadN, SQUAD.maxMembers); i++) {
       const tier = tiers[i % tiers.length];
@@ -246,6 +249,15 @@ async function boot() {
         px = nx; py = ny;
       }
     }
+  }
+
+  // ?level=N holds the celebration on screen so it can be looked at. It lasts
+  // under two seconds in play and fires on a threshold, which is not a thing a
+  // headless screenshot can catch by waiting.
+  const lvl = parseInt(q.get('level') || '0', 10);
+  if (lvl > 0) {
+    world.level = lvl;
+    world.levelPopup = { t: 999, total: 999 * 1.4, level: lvl };
   }
 
   // ?art=1 puts one of every tier on screen at fixed positions, immediately.
@@ -279,6 +291,7 @@ async function boot() {
       });
     });
     world.coins.push({ alive: true, x: DESIGN_W * 0.84, y: DESIGN_H * 0.50, vx: 0, vy: 0, t: 999 });
+    world.hearts.push({ alive: true, x: DESIGN_W * 0.91, y: DESIGN_H * 0.50, t: 999, bob: 0 });
   }
 }
 

@@ -1,10 +1,10 @@
 // Bullets, coins, collisions and the pod itself. Small enough to live together;
 // the moment any of it grows a second opinion it should split.
 
-import { BULLETS, MONSTERS, COINS, PLAYER, SQUAD, DESIGN_W, DESIGN_H } from '../data/tuning.js';
+import { BULLETS, MONSTERS, COINS, HEARTS, PLAYER, SQUAD, XP, DESIGN_W, DESIGN_H } from '../data/tuning.js';
 import { maybeDropToy, steerHomingBullets, updateBuddies } from './toys.js';
 import { registerHit } from './monsters.js';
-import { playPop, playCoin, playPlayerHit, playBlast } from './audio.js';
+import { playPop, playCoin, playPlayerHit, playBlast, playLevelUp, playHeart } from './audio.js';
 
 // The concept's confetti is a party, not the colour of what just popped.
 const CONFETTI = [0x7ed321, 0xf5a623, 0x9b59d0, 0x74d7ff, 0xff6b6b, 0xffc93c];
@@ -49,6 +49,8 @@ export function popMonster(w, m, rng) {
   playPop(1 - Math.min(1, m.maxHp / 42));
   w.stats.popped++;
   w.stats.score += m.points;
+  addXp(w, XP.perPop[m.tierName] || 10);
+  maybeDropHeart(w, m, rng);
   // AFTER the count is incremented: maybeRecruit tests `popped % everyNPops`,
   // and reading the pre-increment value recruits on the wrong pop -- off by one
   // forever, and invisible because the line still grows at the right rate.
@@ -81,9 +83,9 @@ export function popMonster(w, m, rng) {
 }
 
 export function updateCollisions(w, rng) {
-  // The buddy bots pop by touch, which is how they answer the monsters that
-  // arrive from below without the player having to turn toward them.
-  updateBuddies(w, (m) => popMonster(w, m, rng));
+  // The buddy bombs detonate by touch, which is how they answer the monsters
+  // that arrive from below without the player having to turn toward them.
+  updateBuddies(w, (x, y, tint, dmg, radius) => detonate(w, x, y, tint, rng, dmg, radius));
 
   // Bullets vs monsters.
   for (const b of w.bullets) {
@@ -128,6 +130,7 @@ export function updateCollisions(w, rng) {
  * identical mascots. That is most of why it reads as "my squad".
  */
 function maybeRecruit(w, m) {
+  if (!SQUAD.enabled) return;
   if (w.squad.length >= SQUAD.maxMembers) return;
   if (w.stats.popped % SQUAD.everyNPops !== 0) return;
   w.squad.push({
@@ -153,6 +156,7 @@ function maybeRecruit(w, m) {
  * send a ripple down the whole tail.
  */
 export function updateSquad(w, dt) {
+  if (!SQUAD.enabled) return;
   const p = w.player;
 
   // Record the path, not the clock: a point is only added once the pod has
@@ -217,6 +221,7 @@ export function updateSquad(w, dt) {
  * and everything behind it shifts forward a place.
  */
 export function updateSquadBombs(w, rng) {
+  if (!SQUAD.enabled) return;
   for (let i = w.squad.length - 1; i >= 0; i--) {
     const mem = w.squad[i];
     if (mem.armT > 0 || mem.joinT > 0) continue;
@@ -231,22 +236,28 @@ export function updateSquadBombs(w, rng) {
     if (!touched) continue;
 
     w.squad.splice(i, 1);
-    detonate(w, mem.x, mem.y, mem.tint, rng);
+    detonate(w, mem.x, mem.y, mem.tint, rng, SQUAD.bomb.damage, SQUAD.bomb.radiusPx);
   }
 }
 
-/** The blast itself: damage everything in the radius, then the spectacle. */
-function detonate(w, x, y, tint, rng) {
+/**
+ * The blast itself: damage everything in the radius, then the spectacle.
+ *
+ * Shared by the (parked) squad trail and the Buddy Bombs, with damage and radius
+ * passed in rather than read from one config -- they are different weapons and
+ * the only thing they have in common is what an explosion looks like.
+ */
+export function detonate(w, x, y, tint, rng, damage, radiusPx) {
   playBlast();
   for (const m of w.monsters) {
     if (!m.alive) continue;
-    if (Math.hypot(m.x - x, m.y - y) > SQUAD.bomb.radiusPx + m.r) continue;
-    registerHit(m, SQUAD.bomb.damage);
+    if (Math.hypot(m.x - x, m.y - y) > radiusPx + m.r) continue;
+    registerHit(m, damage);
     if (m.hp <= 0) popMonster(w, m, rng);
   }
   // The ring is the readout: it says exactly how far the blast reached, which is
   // the only way a player learns the radius without being told it.
-  w.blasts.push({ alive: true, x, y, t: 0.42, total: 0.42, tint });
+  w.blasts.push({ alive: true, x, y, t: 0.42, total: 0.42, tint, radiusPx });
   for (let i = 0; i < 18; i++) {
     const a = rng.next() * Math.PI * 2;
     const sp = 150 + rng.next() * 320;
@@ -266,6 +277,81 @@ export function updateBlasts(w, dt) {
     if (b.t <= 0) b.alive = false;
   }
   w.blasts = w.blasts.filter((b) => b.alive);
+}
+
+/** What the next level costs. Super-linear, so early levels teach the popup and
+ *  later ones still feel earned. */
+export function xpForLevel(level) {
+  return Math.round(XP.base * Math.pow(level, XP.curve));
+}
+
+/**
+ * Bank experience, and fire the celebration when it crosses.
+ *
+ * `while`, not `if`: one big pop plus a handful of coins can cross two
+ * thresholds at once, and an `if` would swallow the second level silently --
+ * the player would watch the bar fill and nothing happen.
+ */
+export function addXp(w, amount) {
+  w.xp += amount;
+  let need = xpForLevel(w.level);
+  while (w.xp >= need) {
+    w.xp -= need;
+    w.level++;
+    w.levelPopup = { t: XP.popupS, total: XP.popupS, level: w.level };
+    playLevelUp(w.level);
+    need = xpForLevel(w.level);
+  }
+}
+
+export function updateLevelPopup(w, dt) {
+  if (!w.levelPopup) return;
+  w.levelPopup.t -= dt;
+  if (w.levelPopup.t <= 0) w.levelPopup = null;
+}
+
+/**
+ * Roll for a heart where a big monster died.
+ *
+ * Refused outright when the player is already full: a pickup that grants nothing
+ * is worse than no pickup, because a child will still fly across the screen for
+ * it and be taught that hearts sometimes lie.
+ */
+function maybeDropHeart(w, m, rng) {
+  const chance = HEARTS.dropFrom[m.tierName] || 0;
+  if (!chance) return;
+  if (w.player.hearts >= PLAYER.hearts) return;
+  if (w.hearts.length >= HEARTS.maxLive) return;
+  if (w.time - w.lastHeartT < HEARTS.minGapS) return;
+  if (rng.next() >= chance) return;
+  w.lastHeartT = w.time;
+  w.hearts.push({ alive: true, x: m.x, y: m.y, t: HEARTS.lifeS, bob: 0 });
+}
+
+export function updateHearts(w, dt) {
+  const p = w.player;
+  for (const h of w.hearts) {
+    if (!h.alive) continue;
+    h.t -= dt;
+    h.bob += dt * 3.2;
+    const dx = p.x - h.x, dy = p.y - h.y;
+    const d = Math.hypot(dx, dy) || 1;
+    if (d < HEARTS.magnetRadius) {
+      h.x += (dx / d) * HEARTS.magnetPxS * dt;
+      h.y += (dy / d) * HEARTS.magnetPxS * dt;
+    } else {
+      h.y += HEARTS.driftPxS * dt;
+    }
+    if (d < PLAYER.radius + HEARTS.radius) {
+      h.alive = false;
+      // Clamped, not assumed: a heart collected in the same frame the cap was
+      // reached must not push the player to four.
+      if (p.hearts < PLAYER.hearts) p.hearts++;
+      playHeart();
+    }
+    if (h.t <= 0) h.alive = false;
+  }
+  w.hearts = w.hearts.filter((h) => h.alive);
 }
 
 export function updateCoinsAndPops(w, dt) {
@@ -290,6 +376,7 @@ export function updateCoinsAndPops(w, dt) {
       c.alive = false;
       w.stats.coins++;
       w.stats.score += 5;
+      addXp(w, XP.perCoin);
       playCoin();
     }
     if (c.t <= 0) c.alive = false;

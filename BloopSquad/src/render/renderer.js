@@ -15,7 +15,7 @@
 // not a spec for that.
 
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
-import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, MONSTERS, TOYS, SQUAD, difficulty01 } from '../data/tuning.js';
+import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, XP, difficulty01 } from '../data/tuning.js';
 
 const PALETTE = {
   bg: 0x0b1020,
@@ -89,9 +89,18 @@ export async function createRenderer(canvas) {
   const scoreText = new Text({ text: '', style: style(38, '#eaf2ff') });
   scoreText.position.set(46, 74);
   const statsText = new Text({ text: '', style: style(22, '#8fb4d9') });
-  statsText.position.set(46, 122);
+  statsText.position.set(46, 146);
   const heartsG = new Graphics();
-  hud.addChild(scoreText, statsText, heartsG);
+  // The level-up celebration. Two lines: a shout anyone recognises, and a big
+  // numeral -- the number is the message, since the audience cannot read the
+  // word above it.
+  const levelG = new Graphics();
+  const yayText = new Text({ text: 'YAY!', style: style(64, '#fff3a8') });
+  const levelText = new Text({ text: '', style: style(150, '#ffffff') });
+  yayText.anchor.set(0.5);
+  levelText.anchor.set(0.5);
+  const xpG = new Graphics();
+  hud.addChild(scoreText, statsText, heartsG, xpG, levelG, yayText, levelText);
 
   function drawStars(w) {
     starG.clear();
@@ -362,6 +371,29 @@ export async function createRenderer(canvas) {
     g.circle(b.x - R * 0.25, b.y - R * 0.25, R * 0.4).fill({ color: 0xffffff, alpha: 0.8 });
   }
 
+  /** A heart pickup: the same shape as the HUD hearts, so what it gives you is
+   *  obvious without a word. Pulses, because it is the one pickup a player in
+   *  trouble has to spot immediately. */
+  function drawHeart(h, time) {
+    const r = HEARTS.radius;
+    const y = h.y + Math.sin(h.bob) * 5;
+    const pulse = 1 + Math.sin(time * 5 + h.bob) * 0.10;
+    g.circle(h.x, y, r * 1.5 * pulse).fill({ color: PALETTE.heart, alpha: 0.18 });
+    heartPath(h.x, y, r * pulse);
+    g.fill({ color: PALETTE.heart });
+    heartPath(h.x, y, r * pulse);
+    g.stroke({ width: 4, color: PALETTE.outline });
+    g.circle(h.x - r * 0.34, y - r * 0.30, r * 0.18).fill({ color: 0xffffff, alpha: 0.7 });
+  }
+
+  /** A heart outline: two lobes into a point. */
+  function heartPath(cx, cy, r) {
+    g.moveTo(cx, cy + r * 0.85);
+    g.bezierCurveTo(cx - r * 1.30, cy - r * 0.10, cx - r * 0.62, cy - r * 1.05, cx, cy - r * 0.32);
+    g.bezierCurveTo(cx + r * 0.62, cy - r * 1.05, cx + r * 1.30, cy - r * 0.10, cx, cy + r * 0.85);
+    g.closePath();
+  }
+
   function drawCoin(c) {
     g.circle(c.x, c.y, COINS.radius).fill({ color: PALETTE.coin });
     g.circle(c.x, c.y, COINS.radius).stroke({ width: 3.5, color: PALETTE.coinShade });
@@ -445,19 +477,28 @@ export async function createRenderer(canvas) {
       return;
     }
 
-    // Buddies: two little faces, orbiting each other. The pickup is a preview of
-    // what you get, which is the clearest label a non-reader can be given.
+    // Buddies: two little BOMBS orbiting each other. The pickup is a preview of
+    // what you get, which is the clearest label a non-reader can be given -- so
+    // when the buddies became bombs, this had to become bombs too. A pickup that
+    // shows the old behaviour is worse than one that shows nothing.
     for (let i = 0; i < 2; i++) {
       const a = spin * 1.6 + Math.PI * i;
       const bx = x + Math.cos(a) * R * 0.52;
       const by = y + Math.sin(a) * R * 0.52;
-      const br = R * 0.62;
-      g.circle(bx, by, br).fill({ color: kind.tint });
-      g.circle(bx, by, br).stroke({ width: 4.5, color: PALETTE.outline });
-      g.circle(bx - br * 0.30, by - br * 0.18, br * 0.26).fill({ color: PALETTE.eye });
-      g.circle(bx + br * 0.30, by - br * 0.18, br * 0.26).fill({ color: PALETTE.eye });
-      g.circle(bx - br * 0.30, by - br * 0.14, br * 0.13).fill({ color: PALETTE.pupil });
-      g.circle(bx + br * 0.30, by - br * 0.14, br * 0.13).fill({ color: PALETTE.pupil });
+      const br = R * 0.60;
+      g.circle(bx, by, br).fill({ color: 0x25304a });
+      g.circle(bx, by, br).stroke({ width: 4, color: PALETTE.outline });
+      g.circle(bx, by, br).stroke({ width: 2, color: kind.tint, alpha: 0.8 });
+      g.circle(bx - br * 0.28, by - br * 0.06, br * 0.24).fill({ color: PALETTE.eye });
+      g.circle(bx + br * 0.28, by - br * 0.06, br * 0.24).fill({ color: PALETTE.eye });
+      g.circle(bx - br * 0.28, by - br * 0.02, br * 0.12).fill({ color: PALETTE.pupil });
+      g.circle(bx + br * 0.28, by - br * 0.02, br * 0.12).fill({ color: PALETTE.pupil });
+      // Fuse and spark, same as the real thing.
+      const fx = bx + br * 0.78, fy = by - br * 1.30;
+      g.moveTo(bx + br * 0.14, by - br * 0.92)
+       .quadraticCurveTo(bx + br * 0.70, by - br * 0.98, fx, fy)
+       .stroke({ width: 4, color: PALETTE.horn });
+      g.circle(fx, fy, br * 0.26).fill({ color: PALETTE.coin });
     }
   }
 
@@ -516,8 +557,132 @@ export async function createRenderer(canvas) {
     void time;
   }
 
+  /**
+   * A Buddy Bomb: a cartoon bomb that is still a character.
+   *
+   * Dark body, cream fuse, a spark that flickers -- the universal "this will go
+   * off" silhouette, readable by someone who cannot read. The eyes stay, because
+   * the thing orbiting your pod is a friend doing you a favour and rule 4 says
+   * nothing in this game dies unhappily.
+   *
+   * An UNARMED bomb (the first fraction of a second) shows no spark, so the one
+   * state that changes what it does is the one state you can see.
+   */
+  function drawBuddyBomb(b, kind, time) {
+    const r = kind.radius;
+    const armed = !(b.armT > 0);
+
+    // Halo, pulsing, in the toy's colour so the pickup and the bomb agree.
+    if (armed) {
+      const pulse = 1 + Math.sin(time * 9 + b.a) * 0.13;
+      g.circle(b.x, b.y, r * 1.45 * pulse).fill({ color: kind.tint, alpha: 0.18 });
+    }
+
+    // Body: dark, so it reads as a bomb rather than as another blob to shoot.
+    g.circle(b.x, b.y, r).fill({ color: 0x25304a });
+    g.circle(b.x, b.y, r).stroke({ width: 4.5, color: PALETTE.outline });
+    // One rim light in the toy's colour keeps it tied to its pickup.
+    g.circle(b.x, b.y, r).stroke({ width: 2, color: kind.tint, alpha: 0.75 });
+    g.circle(b.x - r * 0.34, b.y - r * 0.34, r * 0.20).fill({ color: 0xffffff, alpha: 0.28 });
+
+    g.circle(b.x - r * 0.26, b.y - r * 0.06, r * 0.24).fill({ color: PALETTE.eye });
+    g.circle(b.x + r * 0.26, b.y - r * 0.06, r * 0.24).fill({ color: PALETTE.eye });
+    g.circle(b.x - r * 0.26, b.y - r * 0.02, r * 0.12).fill({ color: PALETTE.pupil });
+    g.circle(b.x + r * 0.26, b.y - r * 0.02, r * 0.12).fill({ color: PALETTE.pupil });
+
+    // FUSE LAST, and reaching well outside the body. Drawn before the body it
+    // was painted over and invisible -- which cost the bomb the one feature
+    // that says "bomb" to someone who cannot read the label.
+    const fx = b.x + r * 0.80, fy = b.y - r * 1.34;
+    g.moveTo(b.x + r * 0.16, b.y - r * 0.94)
+     .quadraticCurveTo(b.x + r * 0.72, b.y - r * 1.00, fx, fy)
+     .stroke({ width: 5, color: PALETTE.horn });
+    if (armed) {
+      // Flicker on a fast irregular beat: a steady dot reads as an LED, a
+      // jumping one reads as burning.
+      const flick = 0.7 + Math.abs(Math.sin(time * 17 + b.a * 3)) * 0.6;
+      g.circle(fx, fy, r * 0.42 * flick).fill({ color: PALETTE.coin, alpha: 0.45 });
+      g.circle(fx, fy, r * 0.22 * flick).fill({ color: 0xffffff });
+    }
+  }
+
+  /**
+   * The level-up popup.
+   *
+   * IN THE LOWER THIRD, never the top: the top of the screen is where four out
+   * of five monsters arrive, and a celebration that covers an incoming threat
+   * turns a reward into a death. It also never pauses and never asks to be
+   * dismissed -- there are no buttons, and a child should not have to clear
+   * their own prize.
+   *
+   * Scales in with an overshoot, holds, then lifts and fades.
+   */
+  function drawLevelPopup(w) {
+    const pop = w.levelPopup;
+    if (!pop) {
+      yayText.visible = false;
+      levelText.visible = false;
+      levelG.clear();
+      return;
+    }
+    const p01 = 1 - pop.t / pop.total;
+    // Punch in over the first 18%, hold, fade out over the last 25%.
+    const grow = p01 < 0.18
+      ? Math.sin((p01 / 0.18) * Math.PI * 0.5) * 1.15
+      : 1 + Math.max(0, (0.18 - p01)) * 0.5;
+    const alpha = p01 > 0.75 ? Math.max(0, 1 - (p01 - 0.75) / 0.25) : 1;
+    const rise = p01 > 0.6 ? (p01 - 0.6) * 150 : 0;
+    const cx = DESIGN_W * 0.5;
+    // 0.52 keeps the whole thing clear of the pod at 0.72 while staying well
+    // out of the top half, where four arrivals in five come from.
+    const cy = DESIGN_H * 0.52 - rise;
+
+    levelG.clear();
+    // A soft burst behind it, so the text never sits on raw starfield.
+    levelG.circle(cx, cy, 215 * grow).fill({ color: 0x74d7ff, alpha: 0.12 * alpha });
+    levelG.circle(cx, cy, 140 * grow).fill({ color: 0xffc93c, alpha: 0.12 * alpha });
+    // Rays, spinning slowly: the universal "big deal" frame.
+    // WARM, not white. White at 5 % over a near-black field renders as grey
+    // smudges that read as damage to the screen rather than as light.
+    for (let i = 0; i < 10; i++) {
+      const a = (Math.PI * 2 * i) / 10 + p01 * 0.8;
+      levelG.moveTo(cx, cy)
+        .lineTo(cx + Math.cos(a) * 250 * grow, cy + Math.sin(a) * 250 * grow)
+        .stroke({ width: 13, color: 0xffc93c, alpha: 0.09 * alpha });
+    }
+
+    yayText.visible = true;
+    levelText.visible = true;
+    yayText.text = 'YAY!';
+    levelText.text = String(pop.level);
+    yayText.position.set(cx, cy - 92 * grow);
+    levelText.position.set(cx, cy + 32 * grow);
+    yayText.scale.set(grow);
+    levelText.scale.set(grow);
+    yayText.alpha = alpha;
+    levelText.alpha = alpha;
+  }
+
+  /** A thin XP bar under the score. Deliberately small and unlabelled: it is
+   *  there so the popup is not a surprise out of nowhere, not to be read. */
+  function drawXpBar(w) {
+    const need = Math.round(XP.base * Math.pow(w.level, XP.curve));
+    const frac = Math.max(0, Math.min(1, w.xp / need));
+    // y=112 sits between the score and the stats block. It was 156, which is
+    // inside the two-line stats readout -- the bar drew straight over it.
+    const x = 46, y = 112, wid = 260, h = 12;
+    xpG.clear();
+    xpG.roundRect(x, y, wid, h, h / 2).fill({ color: 0x1b2540, alpha: 0.9 });
+    if (frac > 0) {
+      xpG.roundRect(x, y, Math.max(h, wid * frac), h, h / 2).fill({ color: 0x74d7ff });
+    }
+    xpG.roundRect(x, y, wid, h, h / 2).stroke({ width: 2, color: 0x0b1020, alpha: 0.8 });
+  }
+
   function drawHud(w) {
-    scoreText.text = `${w.stats.score}   ★ ${w.stats.coins}`;
+    drawXpBar(w);
+    drawLevelPopup(w);
+    scoreText.text = `LV ${w.level}   ${w.stats.score}   ★ ${w.stats.coins}`;
     heartsG.clear();
     // HEARTS LEFT, CHROME RIGHT. They are the two things always on screen, and
     // splitting them means neither has to move when the other grows -- a fourth
@@ -556,6 +721,7 @@ export async function createRenderer(canvas) {
       for (const b of w.bullets) drawBullet(b);
       for (const m of w.monsters) if (m.alive) drawMonster(m, time);
       for (const c of w.coins) drawCoin(c);
+      for (const h of w.hearts) drawHeart(h, time);
       for (const f of w.pops) {
         g.rect(f.x, f.y, f.size, f.size).fill({ color: f.tint, alpha: Math.min(1, f.t * 2) });
       }
@@ -566,12 +732,7 @@ export async function createRenderer(canvas) {
       if (toy && toy.id === 'buddies') {
         for (const b of w.toy.buddies) {
           if (b.x === undefined) continue;
-          g.circle(b.x, b.y, toy.radius).fill({ color: toy.tint });
-          g.circle(b.x, b.y, toy.radius).stroke({ width: 4, color: PALETTE.outline });
-          g.circle(b.x - 6, b.y - 4, 6).fill({ color: PALETTE.eye });
-          g.circle(b.x + 6, b.y - 4, 6).fill({ color: PALETTE.eye });
-          g.circle(b.x - 6, b.y - 4, 3).fill({ color: PALETTE.pupil });
-          g.circle(b.x + 6, b.y - 4, 3).fill({ color: PALETTE.pupil });
+          drawBuddyBomb(b, toy, time);
         }
       }
 
@@ -580,7 +741,10 @@ export async function createRenderer(canvas) {
       // learns is the radius the code actually used.
       for (const b of w.blasts) {
         const p01 = 1 - b.t / b.total;
-        const r = SQUAD.bomb.radiusPx * (0.25 + 0.75 * p01);
+        // Each blast carries the radius it actually used -- the trail's bombs
+        // and the buddy bombs are different sizes, and a ring drawn at the wrong
+        // one teaches the player a reach that is not real.
+        const r = (b.radiusPx || SQUAD.bomb.radiusPx) * (0.25 + 0.75 * p01);
         g.circle(b.x, b.y, r).stroke({
           width: 10 * (1 - p01) + 2, color: b.tint, alpha: 0.75 * (1 - p01),
         });

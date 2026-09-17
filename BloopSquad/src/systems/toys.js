@@ -93,7 +93,7 @@ export function equip(w, kindName) {
   w.toy.buddies = [];
   if (kind.id === 'buddies') {
     for (let i = 0; i < kind.count; i++) {
-      w.toy.buddies.push({ a: (Math.PI * 2 * i) / kind.count, cool: 0 });
+      w.toy.buddies.push({ a: (Math.PI * 2 * i) / kind.count, armT: kind.armS });
     }
   }
   w.stats.toysUsed++;
@@ -156,9 +156,9 @@ export function updateFiring(w, dt) {
   if (kind.spinRadPerS) toy.spin += kind.spinRadPerS * dt;
 
   if (kind.id === 'buddies') {
-    // Buddies emit nothing; they pop by touch (updateBuddies).
+    // Bombs emit nothing; they detonate by touch (updateBuddies).
     for (const b of toy.buddies) {
-      if (b.cool > 0) b.cool = Math.max(0, b.cool - dt);
+      if (b.armT > 0) b.armT = Math.max(0, b.armT - dt);
     }
     return;
   }
@@ -222,25 +222,39 @@ export function steerHomingBullets(w, dt) {
   }
 }
 
-/** Buddy bots vs monsters. They pop things by touching them, which is why they
- *  answer the monsters that arrive from below without the player turning. */
-export function updateBuddies(w, onPop) {
+/**
+ * Buddy Bombs vs monsters.
+ *
+ * Each orbiter detonates on contact and is SPENT. Two bombs, two bangs, and when
+ * both are gone the toy is over -- which is what turns them from a passive pet
+ * into a decision: the player chooses when to spend one by choosing where to
+ * fly, and that is the only choice any toy offers in a game with no buttons.
+ *
+ * Iterated back to front and spliced, because a detonation removes the buddy.
+ */
+export function updateBuddies(w, onDetonate) {
   const kind = w.toy.active;
   if (!kind || kind.id !== 'buddies') return;
   const p = w.player;
-  for (const b of w.toy.buddies) {
+  for (let i = w.toy.buddies.length - 1; i >= 0; i--) {
+    const b = w.toy.buddies[i];
     const a = w.toy.spin + b.a;
     const bx = p.x + Math.cos(a) * kind.orbitPx;
     const by = p.y + Math.sin(a) * kind.orbitPx;
     b.x = bx; b.y = by;
-    if (b.cool > 0) continue;
+    if (b.armT > 0) continue;
     for (const m of w.monsters) {
       if (!m.alive) continue;
       if (Math.hypot(m.x - bx, m.y - by) > m.r + kind.radius) continue;
-      registerHit(m, kind.damage);
-      b.cool = kind.hitCooldownS;
-      if (m.hp <= 0) onPop(m);
+      w.toy.buddies.splice(i, 1);
+      onDetonate(bx, by, kind.tint, kind.blastDamage, kind.blastRadiusPx);
       break;
     }
+  }
+  // Spent, not expired: the toy ends when the bombs are gone. Ending on the
+  // timer instead would take a bomb away from a player who was saving it.
+  if (w.toy.buddies.length === 0) {
+    w.toy.active = null;
+    w.toy.t = 0;
   }
 }

@@ -247,6 +247,36 @@ export function playBlast() {
   noise({ dur: 0.22, gain: 0.12, hp: 1800, delay: 0.04 });
 }
 
+/**
+ * LEVEL UP. The biggest, happiest noise in the game, and the only one that is a
+ * full chord rather than a blip.
+ *
+ * It climbs a step with each level, so the tenth sounds triumphantly higher than
+ * the second -- the same trick as the hit ladder, applied across a whole run
+ * instead of across one monster. Capped at an octave: past that it stops reading
+ * as "better" and starts reading as "shriller".
+ */
+export function playLevelUp(level) {
+  const lift = Math.min(12, (level - 1) * 1.5);
+  const root = 392 * Math.pow(2, lift / 12);
+  // A major arpeggio, then the octave on top: the single most unambiguous
+  // "something good happened" four notes in western music, which is exactly
+  // what you want for a payload that carries no other information.
+  [0, 4, 7, 12].forEach((semi, i) => {
+    note({ freq: root * Math.pow(2, semi / 12), dur: 0.22, type: 'triangle',
+           gain: 0.17, delay: i * 0.075 });
+  });
+  note({ freq: root * 2, dur: 0.5, type: 'sine', gain: 0.12, delay: 0.3 });
+  noise({ dur: 0.3, gain: 0.07, hp: 2400, delay: 0.29 });
+}
+
+/** Collecting a heart: warm and round, and distinctly NOT the toy arpeggio --
+ *  getting a life back and getting a weapon are different kinds of good news. */
+export function playHeart() {
+  note({ freq: 523.25, dur: 0.16, type: 'sine', gain: 0.17, bend: 1.5 });
+  note({ freq: 784, dur: 0.30, type: 'sine', gain: 0.15, delay: 0.1, bend: 1.25 });
+}
+
 /** Game over: the descent, slower and lower, three notes. */
 export function playGameOver() {
   [0, -3, -7].forEach((semi, i) => {

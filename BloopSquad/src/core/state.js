@@ -29,11 +29,18 @@ export function createWorld() {
     // a chase produces a clump on every turn, a delay produces a line.
     squad: [],
     trail: [],
-    blasts: [],      // expanding rings from squad detonations
+    blasts: [],      // expanding rings from detonations
+
+    // XP and levels: WITHIN THIS RUN ONLY. Nothing is saved and nothing is
+    // granted -- a level is a number, a colour and a noise. See tuning.js XP.
+    xp: 0,
+    level: 1,
+    levelPopup: null,
 
     bullets: [],
     monsters: [],
     coins: [],
+    hearts: [],      // heart pickups; see popMonster / updateHearts
     toyPickups: [],
     toy: createToyState(),
     pops: [],         // confetti bursts, purely cosmetic
@@ -44,6 +51,7 @@ export function createWorld() {
     // the first thing a child does is find out what the pod does. resetWorld
     // rebuilds from here, so R gets the same grace as a cold start.
     spawnT: MONSTERS.warmUpS,
+    lastHeartT: -99,
     stats: {
       score: 0,
       coins: 0,
