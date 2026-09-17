@@ -23,7 +23,7 @@ Counts are EFFECTIVE: what the player is actually asked for, after the
 | 5 | **IDOL HUNT** | 130s | ridgeStaircase | 7 idols | 35 | — | 7,000 | 10,500 | 17,647 |
 | 6 | **CRYSTAL HAUL** | 85s | ridgeBowl | 18 crystals | 18 | — | 10,500 | 16,500 | 27,731 |
 | 7 | **IRON LINE** | 100s | ridgeDrops | 4 rails + 6 ramps | 44 | 26% | 10,500 | 16,500 | 27,731 |
-| 8 | **FAST LANE** | 75s | ridgeWeave | 12.0k pts | 27 | — | 11,000 | 17,000 | 28,571 |
+| 8 | **FAST LANE** | 100s | ridgeWeave | 9.0k pts | 20 | — | 11,000 | 17,000 | 28,571 |
 | 9 | **FULL PLATE** | 95s | ridgeNarrows | 11 crystals + 2 rails + 4 ramps | 53 | 18% | 11,000 | 17,000 | 28,571 |
 | 10 | **RIDGE MASTER** | 100s | ridgeLongFall | 16 crystals + 8.5k pts | 40 | — | 10,500 | 16,500 | 27,731 |
 | 11 | **DOUBLE DOWN** | 90s | ridgeStaircase | 16 crystals + 5 ramps | 40 | 24% | 11,000 | 17,000 | 28,571 |
@@ -102,7 +102,7 @@ Counts are EFFECTIVE: what the player is actually asked for, after the
 
 ## Totals
 
-- 40 missions, 65m 0s of clock end to end
+- 40 missions, 65m 25s of clock end to end
 - DP from 8 to 57
 - over budget (DP > 60): none
 - ramp asks over 40% of supply: none

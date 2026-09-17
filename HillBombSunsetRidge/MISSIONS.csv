@@ -6,7 +6,7 @@ number,id,name,brief,seconds,terrain,crystal,idol,ramp,rail,gate,pts,dp,ramp_pct
 5,idolHunt,"IDOL HUNT","Ten of them, and never where you already are.",130,ridgeStaircase,,7,,,,,35,,7000,10500,17647
 6,crystalHaul,"CRYSTAL HAUL","Leave nothing shining behind you.",85,ridgeBowl,18,,,,,,18,,10500,16500,27731
 7,ironLine,"IRON LINE","Find the rails. Ride them properly.",100,ridgeDrops,,,6,4,,,44,26,10500,16500,27731
-8,fastLane,"FAST LANE","Tuck low and let the hill do the work.",75,ridgeWeave,,,,,,12000,27,,11000,17000,28571
+8,fastLane,"FAST LANE","Tuck low and let the hill do the work.",100,ridgeWeave,,,,,,9000,20,,11000,17000,28571
 9,fullPlate,"FULL PLATE","A bit of everything, and no time to spare.",95,ridgeNarrows,11,,4,2,,,53,18,11000,17000,28571
 10,ridgeMaster,"RIDGE MASTER","Prove you have learned the whole ridge.",100,ridgeLongFall,16,,,,,8500,40,,10500,16500,27731
 11,doubleDown,"DOUBLE DOWN","Crystals everywhere, ramps in between.",90,ridgeStaircase,16,,5,,,,40,24,11000,17000,28571

@@ -481,12 +481,21 @@ const AUTHORED = [
   // existed, reachable only by stacking a deep trick chain on top. 30,000 is
   // just above the ceiling, so it still wants a chain, but a couple of good
   // ones rather than a flawless run.
-  // EASED to 12,000. Amit: "mission 8 too hard -- reduce to 12,000." Authored
-  // 17,000 because easeScore lands it on the 500 grid: 17000 * 0.7 = 11,900 ->
-  // 12,000. Down from 14,000, which was 50% of what this hill actually pays
-  // (28,218 measured); 12,000 is 43%, and this is the first mission that asks
-  // for score and nothing else, so it is where a player meets the idea.
-  ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',    75, { score: 17000 }],
+  // EASED TWICE. Amit first: "mission 8 too hard -- reduce to 12,000." Then, off
+  // his own spreadsheet: 1:15 -> 1:40 and 12,000 -> 9,000.
+  //
+  // Both at once, deliberately, because they ease different things. The clock
+  // was the tightest in the game at 75s and this is the FIRST mission that asks
+  // for score and nothing else -- so it is where a player meets the idea, with
+  // less time than they have ever had to try it. 100s is the ordinary length of
+  // the missions around it.
+  //
+  // 9,000 is 32% of what this hill actually pays (28,218 measured), down from
+  // 43%. Authored 12,850 rather than 9,000 because easeScore scales it: 12850 *
+  // 0.7 = 8,995, which lands on 9,000 on the 500 grid. Writing 9,000 here would
+  // ask for 6,500 -- the exact mistake I made on three missions earlier, so the
+  // arithmetic is spelled out rather than trusted.
+  ['fastLane',    'FAST LANE',     'Tuck low and let the hill do the work.',   100, { score: 12850 }],
   // EASED: 24/4/10 down to 16/3/8. Amit: "09 full plate is too hard, lower
   // expectations a bit."
   //
