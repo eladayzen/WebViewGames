@@ -867,21 +867,22 @@ html, body {
    (ui/hud.js's VICTORY_CONFETTI_COUNT + size/shape variety, see
    .confetti-piece below). --- */
 #victory-overlay {
-  /* Overrides .board-screen's flat dark background -- a warm, saturated
-     radial glow instead of a wash, so the screen itself feels celebratory
-     before the card even loads. */
-  background: radial-gradient(circle at 50% 42%, rgba(255, 190, 60, 0.5), rgba(40, 8, 30, 0.94) 68%);
+  /* Dark fallback base -- the actual warm background is #victory-overlay::after
+     below, layered explicitly ABOVE the spinning rays (::before). */
+  background: rgba(20, 5, 25, 0.96);
   overflow: hidden;
 }
 
-/* Slow-spinning sunburst rays behind everything else (confetti + card both
-   paint after this in DOM order, so they sit on top without needing an
-   explicit z-index). Oversized (200% inset) so the rotation never reveals a
-   corner. */
+/* Explicit stacking, back to front, all inside #victory-overlay:
+     ::before (rays, z 0) -> ::after (warm glow, z 1) -> #victory-confetti
+     (z 2) -> .board-card (z 2). Direct feedback: the rays need to sit BEHIND
+   the warm background glow, not on top of it -- without this they were the
+   dominant, washed-out layer instead of a subtle spinning backdrop. */
 #victory-overlay::before {
   content: '';
   position: absolute;
   inset: -50%;
+  z-index: 0;
   background: repeating-conic-gradient(
     from 0deg,
     rgba(255, 222, 80, 0.22) 0deg 9deg,
@@ -896,9 +897,30 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
+/* The warm radial glow -- its own layer now, ON TOP of the rays (unlike the
+   rays, this one does NOT rotate, so the glow itself stays put while the
+   rays spin underneath it). */
+#victory-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: radial-gradient(circle at 50% 42%, rgba(255, 190, 60, 0.5), rgba(40, 8, 30, 0.55) 68%);
+  pointer-events: none;
+}
+
+#victory-confetti {
+  z-index: 2;
+}
+
 /* Bright celebratory gradient card, replacing .board-card's dark brown --
-   plus a pulsing colored glow so the card itself feels alive, not static. */
+   plus a pulsing colored glow so the card itself feels alive, not static.
+   position:relative + z-index:2 puts it above the ::after glow layer above
+   (a static, non-positioned .board-card would otherwise still paint under a
+   positioned z-indexed pseudo-element). */
 #victory-overlay .board-card {
+  position: relative;
+  z-index: 2;
   background: linear-gradient(155deg, #ff8a3c 0%, #ffde50 48%, #ff6bb0 100%);
   box-shadow: 0 0 10px 4px rgba(255, 210, 100, 0.6), 0 10px 40px rgba(0, 0, 0, 0.5);
   animation: victory-card-glow 1.6s ease-in-out infinite alternate;
@@ -915,6 +937,12 @@ html, body {
   font-size: 40px;
   color: #2a0a30;
   -webkit-text-stroke: 1.5px #fff5e0;
+  /* Direct feedback: "title should be centered" -- at this size "ALL TIERS
+     CLEARED!" wraps to two lines, and .board-title has no text-align of its
+     own (every other title here is a short one-liner where it never
+     mattered), so the wrapped lines were reading as left-justified inside
+     the centered card. */
+  text-align: center;
   animation: victory-title-pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
