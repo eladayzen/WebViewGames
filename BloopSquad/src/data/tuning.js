@@ -276,10 +276,22 @@ export const MONSTERS = {
 // where their brother had three. That is the whole idea -- progress you can
 // count at a glance, by a player who cannot read the HUD.
 //
-// PURELY COSMETIC, and that is a design decision rather than a shortcut. The
-// moment squad members shoot or block, they compete with the Buddy Bots toy and
-// quietly flatten the difficulty ramp -- a run would get easier exactly as fast
-// as it was going well. They have no collision, deal no damage and take none.
+// THEY ARE BOMBS. The first version was purely cosmetic, on the reasoning that
+// anything which fights competes with the Buddy Bots toy and flattens the
+// difficulty ramp. That reasoning was sound and it did not matter: a line that
+// only follows you is decoration, and Amit's verdict on playing it was that it
+// was stupid. Correct -- a mechanic that cannot do anything is not a mechanic.
+//
+// So a squad member DETONATES on contact with a monster, damaging everything in
+// a radius and being consumed doing it. Which makes the line a RESOURCE rather
+// than a trophy: it is protection you spend, it shortens visibly when it saves
+// you, and it has to be rebuilt by popping more. It also answers the tail's own
+// worst problem -- ten members sweeping across the field obscuring monsters --
+// because the ones in the way are exactly the ones that get used up.
+//
+// The ramp concern is real and now TESTABLE rather than theoretical: the counter
+// is that bombs are spent, so a player who is doing well is also constantly
+// losing the thing that helps them.
 //
 // AND IT RESETS EVERY RUN, which is what keeps it clear of rule 5: no
 // meta-progression, nothing saved, nothing carried between runs. The squad is a
@@ -309,6 +321,21 @@ export const SQUAD = {
   // nothing instead of flooding the buffer with identical points.
   pathStepPx: 4,
   radius: 20,
+
+  // The blast. Damage is deliberately a ONE-SHOT on a small (9 hp), a serious
+  // dent in a medium (24) and about a third of a large (42): a bomb has to feel
+  // like an event, and one that merely chips the thing that ran into it reads as
+  // a bug. The radius is wide enough to catch a neighbour, so a tail detonating
+  // in a crowd is the best thing that happens in a run.
+  bomb: {
+    damage: 14,
+    radiusPx: 175,
+    // A newly recruited member cannot detonate until it has taken its place --
+    // it is born where its monster died, which is frequently touching whatever
+    // that monster was drifting next to, and an instant chain of detonations at
+    // the moment of recruiting reads as random.
+    armS: 0.6,
+  },
   // How long a newcomer takes to swell from nothing to full size, so joining is
   // an event you notice rather than a member appearing between frames.
   joinS: 0.45,

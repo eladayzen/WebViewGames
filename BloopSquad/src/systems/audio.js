@@ -237,6 +237,16 @@ export function playPlayerHit() {
   noise({ dur: 0.2, gain: 0.09, hp: 250 });
 }
 
+/** A squad member detonating. The biggest noise in the game, and still not an
+ *  explosion: a low thump under a fast rising whistle, so it lands as a firework
+ *  rather than as ordnance. Nobody dies here, including the bomb. */
+export function playBlast() {
+  note({ freq: 150, dur: 0.34, type: 'sawtooth', gain: 0.2, bend: 0.35 });
+  note({ freq: 520, dur: 0.22, type: 'triangle', gain: 0.16, bend: 3.2 });
+  noise({ dur: 0.34, gain: 0.2, hp: 180 });
+  noise({ dur: 0.22, gain: 0.12, hp: 1800, delay: 0.04 });
+}
+
 /** Game over: the descent, slower and lower, three notes. */
 export function playGameOver() {
   [0, -3, -7].forEach((semi, i) => {

@@ -491,6 +491,14 @@ export async function createRenderer(canvas) {
     const y = mem.y + Math.sin(mem.bob) * SQUAD.bobAmp;
     const lw = Math.max(2.5, r * 0.13);
 
+    // An armed member carries a faint halo that breathes -- the only way to tell
+    // a live bomb from one still taking its place, and the difference decides
+    // whether flying into something is protection or a waste.
+    if (mem.armT <= 0 && mem.joinT <= 0) {
+      const pulse = 1 + Math.sin(mem.bob * 1.6) * 0.14;
+      g.circle(mem.x, y, r * 1.5 * pulse).fill({ color: mem.tint, alpha: 0.16 });
+    }
+
     blobPath(mem.x, y, r, r);
     g.fill({ color: mem.tint });
     blobPath(mem.x, y, r, r);
@@ -565,6 +573,18 @@ export async function createRenderer(canvas) {
           g.circle(b.x - 6, b.y - 4, 3).fill({ color: PALETTE.pupil });
           g.circle(b.x + 6, b.y - 4, 3).fill({ color: PALETTE.pupil });
         }
+      }
+
+      // Blast rings, under everything: they are a readout of reach, not an
+      // effect to look at. Drawn expanding and fading, so the radius the player
+      // learns is the radius the code actually used.
+      for (const b of w.blasts) {
+        const p01 = 1 - b.t / b.total;
+        const r = SQUAD.bomb.radiusPx * (0.25 + 0.75 * p01);
+        g.circle(b.x, b.y, r).stroke({
+          width: 10 * (1 - p01) + 2, color: b.tint, alpha: 0.75 * (1 - p01),
+        });
+        g.circle(b.x, b.y, r * 0.66).fill({ color: 0xffffff, alpha: 0.22 * (1 - p01) });
       }
 
       // Tail first so each member overlaps the one behind it and the line reads

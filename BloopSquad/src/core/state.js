@@ -29,6 +29,7 @@ export function createWorld() {
     // a chase produces a clump on every turn, a delay produces a line.
     squad: [],
     trail: [],
+    blasts: [],      // expanding rings from squad detonations
 
     bullets: [],
     monsters: [],

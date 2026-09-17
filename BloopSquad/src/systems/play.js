@@ -4,7 +4,7 @@
 import { BULLETS, MONSTERS, COINS, PLAYER, SQUAD, DESIGN_W, DESIGN_H } from '../data/tuning.js';
 import { maybeDropToy, steerHomingBullets, updateBuddies } from './toys.js';
 import { registerHit } from './monsters.js';
-import { playPop, playCoin, playPlayerHit } from './audio.js';
+import { playPop, playCoin, playPlayerHit, playBlast } from './audio.js';
 
 // The concept's confetti is a party, not the colour of what just popped.
 const CONFETTI = [0x7ed321, 0xf5a623, 0x9b59d0, 0x74d7ff, 0xff6b6b, 0xffc93c];
@@ -136,6 +136,7 @@ function maybeRecruit(w, m) {
     horns: m.horns,
     // Born at zero size and swelling, so joining is an event.
     joinT: SQUAD.joinS,
+    armT: SQUAD.bomb.armS,
     bob: Math.random() * Math.PI * 2,
     x: m.x, y: m.y,
   });
@@ -198,8 +199,71 @@ export function updateSquad(w, dt) {
 
   for (const mem of w.squad) {
     if (mem.joinT > 0) mem.joinT = Math.max(0, mem.joinT - dt);
+    if (mem.armT > 0) mem.armT = Math.max(0, mem.armT - dt);
     mem.bob += dt * SQUAD.bobPxS;
   }
+}
+
+/**
+ * Squad members detonate on contact.
+ *
+ * Runs AFTER the line has been positioned, so a member blows up where it is
+ * actually drawn rather than where it was last frame -- at these speeds that is
+ * a visible difference on a fast weave.
+ *
+ * Iterated back to front and spliced, because a detonation removes the member
+ * and everything behind it shifts forward a place.
+ */
+export function updateSquadBombs(w, rng) {
+  for (let i = w.squad.length - 1; i >= 0; i--) {
+    const mem = w.squad[i];
+    if (mem.armT > 0 || mem.joinT > 0) continue;
+
+    let touched = null;
+    for (const m of w.monsters) {
+      if (!m.alive) continue;
+      if (Math.hypot(m.x - mem.x, m.y - mem.y) > m.r + SQUAD.radius) continue;
+      touched = m;
+      break;
+    }
+    if (!touched) continue;
+
+    w.squad.splice(i, 1);
+    detonate(w, mem.x, mem.y, mem.tint, rng);
+  }
+}
+
+/** The blast itself: damage everything in the radius, then the spectacle. */
+function detonate(w, x, y, tint, rng) {
+  playBlast();
+  for (const m of w.monsters) {
+    if (!m.alive) continue;
+    if (Math.hypot(m.x - x, m.y - y) > SQUAD.bomb.radiusPx + m.r) continue;
+    registerHit(m, SQUAD.bomb.damage);
+    if (m.hp <= 0) popMonster(w, m, rng);
+  }
+  // The ring is the readout: it says exactly how far the blast reached, which is
+  // the only way a player learns the radius without being told it.
+  w.blasts.push({ alive: true, x, y, t: 0.42, total: 0.42, tint });
+  for (let i = 0; i < 18; i++) {
+    const a = rng.next() * Math.PI * 2;
+    const sp = 150 + rng.next() * 320;
+    w.pops.push({
+      alive: true, x, y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      t: 0.45 + rng.next() * 0.4,
+      tint: CONFETTI[Math.floor(rng.next() * CONFETTI.length)],
+      size: 6 + rng.next() * 8,
+    });
+  }
+}
+
+export function updateBlasts(w, dt) {
+  for (const b of w.blasts) {
+    b.t -= dt;
+    if (b.t <= 0) b.alive = false;
+  }
+  w.blasts = w.blasts.filter((b) => b.alive);
 }
 
 export function updateCoinsAndPops(w, dt) {

@@ -18,7 +18,10 @@ import { makeRng } from './core/rng.js';
 import { createWorld, resetWorld, GameState } from './core/state.js';
 import { initInput, readInput } from './input/input.js';
 import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js';
-import { updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops, updateSquad } from './systems/play.js';
+import {
+  updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops,
+  updateSquad, updateSquadBombs, updateBlasts,
+} from './systems/play.js';
 import { updateFiring, updateToyPickups, equip } from './systems/toys.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
 import {
@@ -61,6 +64,10 @@ async function boot() {
     // After the pod has moved and after collisions, so the trail samples the
     // position actually rendered this frame rather than last frame's.
     updateSquad(world, dt);
+    // Detonations resolve after the line is placed, so a bomb goes off where it
+    // is drawn rather than where it was a frame ago.
+    updateSquadBombs(world, rng);
+    updateBlasts(world, dt);
 
     world.camera.starOffset += CAMERA.driftPxS * dt;
     if (CAMERA.mode === 'lateral') {
