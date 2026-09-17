@@ -1,0 +1,41 @@
+number,id,name,brief,seconds,terrain,crystal,idol,ramp,rail,gate,pts,dp,ramp_pct,star2,star3,ceiling
+1,crystalRun,"CRYSTAL RUN","Something to collect, and a hill to do it on.",90,ridgeDrops,8,,,,,,8,,9500,14500,24370
+2,firstDrop,"FIRST DROP","Ramps, and ground that gives way.",80,ridgeWeave,,,5,,,,15,26,3500,5500,9244
+3,railRunner,"RAIL RUNNER","Green metal. Get on it and stay on.",90,ridgeNarrows,,,,4,,,16,,5500,8500,14286
+4,speedGates,"SPEED GATES","Ride the arches. They give the hill back.",95,ridgeLongFall,,,,,4,,16,,6000,9500,15966
+5,idolHunt,"IDOL HUNT","Ten of them, and never where you already are.",130,ridgeStaircase,,7,,,,,35,,7000,10500,17647
+6,crystalHaul,"CRYSTAL HAUL","Leave nothing shining behind you.",85,ridgeBowl,18,,,,,,18,,10500,16500,27731
+7,ironLine,"IRON LINE","Find the rails. Ride them properly.",100,ridgeDrops,,,6,4,,,44,26,10500,16500,27731
+8,fastLane,"FAST LANE","Tuck low and let the hill do the work.",75,ridgeWeave,,,,,,12000,27,,11000,17000,28571
+9,fullPlate,"FULL PLATE","A bit of everything, and no time to spare.",95,ridgeNarrows,11,,4,2,,,53,18,11000,17000,28571
+10,ridgeMaster,"RIDGE MASTER","Prove you have learned the whole ridge.",100,ridgeLongFall,16,,,,,8500,40,,10500,16500,27731
+11,doubleDown,"DOUBLE DOWN","Crystals everywhere, ramps in between.",90,ridgeStaircase,16,,5,,,,40,24,11000,17000,28571
+12,steelRush,"STEEL RUSH","Rails pay, and they pay while you are on them.",105,ridgeBowl,,,,4,,8000,42,,10500,16500,27731
+13,highRoller,"HIGH ROLLER","One number matters. Make it big.",85,ridgeDrops,,,,,,15000,35,,10500,16500,27731
+14,sweep,"SWEEP","Sweep the hill, gates and all.",100,ridgeWeave,10,,,,5,,39,,11000,17000,28571
+15,launchParty,"LAUNCH PARTY","Every ramp you can reach, and what lies between.",95,ridgeNarrows,7,,8,,,,40,36,11000,17000,28571
+16,goldRush,"GOLD RUSH","Crystals, and the idols among them.",105,ridgeLongFall,16,3,,,,,40,,10500,16500,27731
+17,grindCity,"GRIND CITY","Metal first, everything else after.",110,ridgeStaircase,22,,,3,,,44,,11000,17000,28571
+18,topSpeed,"TOP SPEED","Ride every gate you can reach.",90,ridgeBowl,,,,,4,8000,44,,10500,16500,27731
+19,gauntlet,"THE GAUNTLET","All three, all at once, all downhill.",110,ridgeDrops,8,,8,,,,42,31,10500,16500,27731
+20,lastLight,"LAST LIGHT","The last run before the sun goes.",120,ridgeWeave,18,,,,,11000,49,,11000,17000,28571
+21,nightShift,"NIGHT SHIFT","The idols are out tonight.",100,ridgeNarrows,,5,,3,,,48,,11000,17000,28571
+22,freeFall,"FREE FALL","Let the ground do the work.",90,ridgeLongFall,,,8,,,6500,44,38,11000,17000,28571
+23,stoneStep,"STONE STEP","Ramp to gate, all the way down.",105,ridgeStaircase,,,5,,5,,46,21,10500,16500,27731
+24,deepEnd,"DEEP END","High walls. Use them.",95,ridgeBowl,,,,,,15000,34,,11000,17000,28571
+25,loosePack,"LOOSE PACK","Everything on the hill is worth points.",110,ridgeDrops,11,,8,,,,46,31,10500,16500,27731
+26,switchHouse,"SWITCH HOUSE","The road never lets you settle.",100,ridgeWeave,18,,,,4,,44,,10500,16500,27731
+27,pinchPoint,"PINCH POINT","Narrow, and the gates are on the edges.",85,ridgeNarrows,,,5,,6,,51,25,11000,17000,28571
+28,longHaul,"LONG HAUL","Wide open and a long way down.",115,ridgeLongFall,,,,5,,10000,51,,11000,17000,28571
+29,stepLadder,"STEP LADDER","Every drop pays if you land it.",100,ridgeStaircase,,,8,,,9000,52,35,10500,16500,27731
+30,stormChase,"STORM CHASE","Idols in the bowl. Go and get them.",110,ridgeBowl,,5,,3,,,48,,11000,17000,28571
+31,ironWill,"IRON WILL","Rails first. Everything else after.",95,ridgeDrops,22,,,4,,,49,,10500,16500,27731
+32,fastCurrent,"FAST CURRENT","Never stop accelerating.",80,ridgeWeave,,,,,5,8500,51,,10500,16500,27731
+33,cleanSweep,"CLEAN SWEEP","Leave nothing on the hill.",105,ridgeNarrows,30,,,,,,30,,11000,17000,28571
+34,bigNumbers,"BIG NUMBERS","Chain it. That is the only way.",90,ridgeLongFall,,,,,,15000,34,,11000,17000,28571
+35,nervePlay,"NERVE PLAY","Three demands, one short clock.",90,ridgeStaircase,18,,8,,,,55,38,10500,16500,27731
+36,skyLine,"SKY LINE","Ramps into gates, and nothing slower.",95,ridgeBowl,,,8,,5,,57,36,11000,17000,28571
+37,tightRope,"TIGHT ROPE","Idols on the tightest hill there is.",85,ridgeDrops,,5,,4,,,53,,10500,16500,27731
+38,fullTilt,"FULL TILT","Nothing held back.",85,ridgeWeave,,,7,,,11500,57,35,10500,16500,27731
+39,lastCall,"LAST CALL","Everything you have learned, at once.",100,ridgeNarrows,5,,5,3,,,54,22,11000,17000,28571
+40,sundown,"SUNDOWN","Everything the ridge has, one last time.",115,ridgeLongFall,,5,,,4,,53,,11000,17000,28571
