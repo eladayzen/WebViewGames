@@ -18,6 +18,7 @@ export function createToyState() {
     t: 0,           // seconds left
     total: 0,       // what it started with, for the timer bar
     fireT: 0,       // the TOY's own fire clock, separate from the base gun's
+    chain: [],      // bomb-chain links (verlet: x/y plus previous px/py)
     spin: 0,        // twirl's current angle / buddies' orbit angle
     side: 1,        // wand: which way the next bubble launches
     buddies: [],
@@ -33,7 +34,13 @@ export function maybeDropToy(w, m, rng) {
   if (w.time - w.toy.lastDropT < TOYS.minGapS) return;
   if (rng.next() >= chance) return;
 
-  const names = Object.keys(TOYS.kinds);
+  // Only toys the player has reached the level for. The roster grows through a
+  // run rather than being complete from the first pop, which is what makes
+  // levelling feel like it opened something.
+  const names = Object.keys(TOYS.kinds).filter(
+    (n) => (TOYS.unlockLevel[n] || 1) <= w.level
+  );
+  if (!names.length) return;
   let total = 0;
   for (const n of names) total += TOYS.weights[n] || 0;
   let r = rng.next() * total;
@@ -85,15 +92,31 @@ export function updateToyPickups(w, dt) {
 export function equip(w, kindName) {
   const kind = TOYS.kinds[kindName];
   if (!kind) return;
+  // Levels lengthen a toy a little. Deliberately small and capped: the
+  // escalation a player should feel is MORE KINDS of toy, not the same one
+  // overstaying -- a 60 % longer twirl is not exciting, it is a twirl you are
+  // waiting out.
+  const bonus = Math.min(TOYS.levelDurationCap, 1 + (w.level - 1) * TOYS.levelDurationBonus);
+  const dur = kind.durationS * bonus;
   w.toy.active = kind;
-  w.toy.t = kind.durationS;
-  w.toy.total = kind.durationS;
+  w.toy.t = dur;
+  w.toy.total = dur;
   w.toy.fireT = 0;
   w.toy.spin = 0;
   w.toy.buddies = [];
+  w.toy.chain = [];
   if (kind.id === 'buddies') {
     for (let i = 0; i < kind.count; i++) {
       w.toy.buddies.push({ a: (Math.PI * 2 * i) / kind.count, armT: kind.armS });
+    }
+  }
+  if (kind.id === 'chain') {
+    // Born hanging straight down, at rest. `px/py` are the verlet PREVIOUS
+    // positions: equal to the current ones means zero starting velocity, so the
+    // chain settles into place instead of being flung on the frame it appears.
+    for (let i = 0; i < kind.links; i++) {
+      const y = w.player.y + PLAYER.radius + kind.linkPx * (i + 1);
+      w.toy.chain.push({ x: w.player.x, y, px: w.player.x, py: y, armT: kind.armS });
     }
   }
   w.stats.toysUsed++;
@@ -164,8 +187,14 @@ export function updateFiring(w, dt) {
   }
 
   // Rapid adds no stream of its own -- its whole effect was applied above, to
-  // the cannon's interval. Nothing more to do.
+  // the cannon's interval. The chain's effect is physical, in updateChain.
   if (kind.id === 'rapid') return;
+  if (kind.id === 'chain') {
+    for (const c of toy.chain) {
+      if (c.armT > 0) c.armT = Math.max(0, c.armT - dt);
+    }
+    return;
+  }
 
   // The toy keeps its OWN cadence, so its rate is independent of the gun's and
   // neither one can starve the other.
@@ -219,6 +248,82 @@ export function steerHomingBullets(w, dt) {
     const sp = Math.hypot(b.vx, b.vy);
     b.vx = Math.cos(a) * sp;
     b.vy = Math.sin(a) * sp;
+  }
+}
+
+/**
+ * The bomb chain: verlet integration, then constraint relaxation.
+ *
+ * VERLET rather than stored velocities, because the entire behaviour the toy
+ * exists for -- swinging out under acceleration, overshooting when the pod
+ * stops, whipping on a direction change -- is what you get for free when
+ * position is derived from the previous position. Nothing here scripts a swing:
+ * the pod moves, the anchor moves with it, and the rest is consequence.
+ *
+ * The anchor is the pod's underside, set absolutely every frame, and that is
+ * what transmits the player's acceleration into the rope: link 0 is yanked to a
+ * new place while its previous position stays behind, and that gap IS the
+ * velocity the physics then carries down the chain.
+ */
+export function updateChain(w, dt) {
+  const kind = w.toy.active;
+  if (!kind || kind.id !== 'chain' || !w.toy.chain.length) return;
+  const p = w.player;
+  const anchorX = p.x;
+  const anchorY = p.y + PLAYER.radius;
+
+  // Fixed step, clamped: a dropped frame should slow the chain, never explode it.
+  const h = Math.min(dt, 1 / 30);
+  for (const c of w.toy.chain) {
+    const vx = (c.x - c.px) * kind.damping;
+    const vy = (c.y - c.py) * kind.damping;
+    c.px = c.x;
+    c.py = c.y;
+    c.x += vx;
+    c.y += vy + kind.gravityPxS2 * h * h;
+  }
+
+  // Relax: pin link 0 to the pod, then hold each pair linkPx apart. Several
+  // passes, because one pass leaves the rope visibly stretched at exactly the
+  // moment the player is looking at it -- a hard direction change.
+  for (let it = 0; it < kind.iterations; it++) {
+    let prevX = anchorX, prevY = anchorY;
+    for (const c of w.toy.chain) {
+      const dx = c.x - prevX, dy = c.y - prevY;
+      const d = Math.hypot(dx, dy) || 0.0001;
+      const diff = (d - kind.linkPx) / d;
+      // The anchor end is immovable and the link takes the whole correction.
+      // Sharing it would let the rope drag the pod around -- handing the
+      // player's own steering over to a physics object.
+      c.x -= dx * diff;
+      c.y -= dy * diff;
+      prevX = c.x;
+      prevY = c.y;
+    }
+  }
+}
+
+/** Chain links detonate on contact like every other bomb. A spent link is
+ *  removed and the rope simply gets shorter: the links below re-hang from the
+ *  one above on the next relaxation pass, with no special case for a gap. */
+export function updateChainBombs(w, onDetonate) {
+  const kind = w.toy.active;
+  if (!kind || kind.id !== 'chain') return;
+  for (let i = w.toy.chain.length - 1; i >= 0; i--) {
+    const c = w.toy.chain[i];
+    if (c.armT > 0) continue;
+    for (const m of w.monsters) {
+      if (!m.alive) continue;
+      if (Math.hypot(m.x - c.x, m.y - c.y) > m.r + kind.radius) continue;
+      w.toy.chain.splice(i, 1);
+      onDetonate(c.x, c.y, kind.tint, kind.blastDamage, kind.blastRadiusPx);
+      break;
+    }
+  }
+  // Spent, not expired -- same rule as the orbiting bombs.
+  if (w.toy.chain.length === 0) {
+    w.toy.active = null;
+    w.toy.t = 0;
   }
 }
 

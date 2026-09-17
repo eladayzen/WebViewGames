@@ -2,7 +2,7 @@
 // the moment any of it grows a second opinion it should split.
 
 import { BULLETS, MONSTERS, COINS, HEARTS, PLAYER, SQUAD, XP, DESIGN_W, DESIGN_H } from '../data/tuning.js';
-import { maybeDropToy, steerHomingBullets, updateBuddies } from './toys.js';
+import { maybeDropToy, steerHomingBullets, updateBuddies, updateChainBombs } from './toys.js';
 import { registerHit } from './monsters.js';
 import { playPop, playCoin, playPlayerHit, playBlast, playLevelUp, playHeart } from './audio.js';
 
@@ -85,7 +85,9 @@ export function popMonster(w, m, rng) {
 export function updateCollisions(w, rng) {
   // The buddy bombs detonate by touch, which is how they answer the monsters
   // that arrive from below without the player having to turn toward them.
-  updateBuddies(w, (x, y, tint, dmg, radius) => detonate(w, x, y, tint, rng, dmg, radius));
+  const boom = (x, y, tint, dmg, radius) => detonate(w, x, y, tint, rng, dmg, radius);
+  updateBuddies(w, boom);
+  updateChainBombs(w, boom);
 
   // Bullets vs monsters.
   for (const b of w.bullets) {

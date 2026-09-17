@@ -22,7 +22,7 @@ import {
   updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops,
   updateSquad, updateSquadBombs, updateBlasts, updateLevelPopup, updateHearts,
 } from './systems/play.js';
-import { updateFiring, updateToyPickups, equip } from './systems/toys.js';
+import { updateFiring, updateToyPickups, equip, updateChain } from './systems/toys.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
 import {
   initAudio, startMusic, stopMusic, setAudioPaused, playGameOver,
@@ -55,6 +55,9 @@ async function boot() {
     const input = readInput(dt);
     updatePlayer(world, input, dt);
     updateFiring(world, dt);
+    // After the pod has moved: the anchor's new position is what drives the
+    // swing, so simulating before the move would lag the rope by a frame.
+    updateChain(world, dt);
     updateBullets(world, dt);
     updateToyPickups(world, dt);
     maybeSpawn(world, rng, dt);
@@ -128,6 +131,8 @@ async function boot() {
       case 'Digit1':       equip(world, 'wand'); break;
       case 'Digit2':       equip(world, 'twirl'); break;
       case 'Digit3':       equip(world, 'buddies'); break;
+      case 'Digit4':       equip(world, 'rapid'); break;
+      case 'Digit5':       equip(world, 'chain'); break;
       case 'KeyR':         restart(); break;
       case 'Enter':
       case 'Space':        if (world.state === GameState.FAILED) restart(); break;

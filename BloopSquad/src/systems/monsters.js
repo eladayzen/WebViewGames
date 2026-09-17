@@ -44,7 +44,16 @@ function pickEdge(rng) {
 
 export function spawnMonster(w, rng) {
   const d = difficulty01(w.time);
-  const cap = Math.round(lerpDiff(DIFFICULTY.maxLive, d));
+  // The crowd grows with the CLOCK (the ramp) and with the PLAYER'S LEVEL, so
+  // the escalation is felt on both sides: levels hand out toys, and levels also
+  // fill the field. The level term is capped hard because it stacks on the time
+  // ramp, and the two together are how a game for six-year-olds quietly becomes
+  // unplayable at minute five.
+  const levelBonus = Math.min(
+    DIFFICULTY.maxLiveLevelCap,
+    (w.level - 1) * DIFFICULTY.maxLivePerLevel
+  );
+  const cap = Math.round(lerpDiff(DIFFICULTY.maxLive, d) + levelBonus);
   if (w.monsters.filter((m) => m.alive).length >= cap) return null;
 
   const tierName = pickTier(rng, d);

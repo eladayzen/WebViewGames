@@ -409,10 +409,21 @@ export const COINS = {
 // the better design here: an arcade run is whole or it is nothing, and a level
 // carried in from yesterday would mean two children never play the same game.
 //
-// LEVELS GRANT NOTHING. No stat, no weapon, no shield. The entire payload is a
-// big number, a colour and a noise -- which for a six-year-old is the payload.
-// The moment a level grants power it starts fighting the difficulty ramp, and
-// the ramp is already this game's only difficulty setting.
+// LEVELS NOW GRANT SOMETHING, and this reverses an earlier decision here. The
+// first version granted nothing on the reasoning that power fights the
+// difficulty ramp. Amit, playing it: by level three or four the action has to
+// visibly go up -- more creatures AND more that the player can do.
+//
+// So a level does two things and only two: it UNLOCKS toys (see TOYS.unlockLevel)
+// and it lengthens them slightly. It never touches the cannon, the hearts or the
+// clearance -- the three things the six-year-old work depends on.
+//
+// The ramp concern was right and is answered by pairing them: levels add crowd
+// as well as power (`DIFFICULTY.maxLivePerLevel`), so the game escalates on both
+// sides at once rather than the player simply outgrowing it. And because levels
+// come from KILLS rather than from the clock, the escalation tracks how well
+// someone is actually doing -- a struggling player is not handed a harder game
+// for having survived four minutes.
 // ---------------------------------------------------------------------------
 
 export const XP = {
@@ -549,6 +560,53 @@ export const TOYS = {
       id: 'rapid', label: 'RAPID FIRE', durationS: 8, tint: 0xff4d4d,
       baseIntervalS: 0.11,
     },
+    // THE BOMB CHAIN: a rope of bombs hanging BELOW the pod, simulated rather
+    // than animated. Verlet integration plus distance constraints, anchored to
+    // the pod -- so it swings out when you accelerate, keeps swinging when you
+    // stop, and whips when you change direction. Nothing about that motion is
+    // scripted; it falls out of the physics, which is why it reads as real.
+    //
+    // WHY THIS IS THE RIGHT TOY FOR THIS HARDWARE: the swing is driven by
+    // LATERAL acceleration, and lateral lean is the comfortable axis on a
+    // balance board. It turns the one movement a child can make confidently into
+    // a weapon, and it rewards the thing a good player already does -- committing
+    // to a direction and then cutting the other way.
+    //
+    // It hangs BELOW because below the pod is the one region the cannon cannot
+    // reach: the gun fires straight up, so the chain covers exactly the gap.
+    chain: {
+      id: 'chain', label: 'BOMB CHAIN', durationS: 15, tint: 0xffa63c,
+      // 5 x 44 = 220 px of rope. Measured rather than guessed: at 260 the tip
+      // sat exactly on the screen's bottom edge with the pod at its start
+      // height, and vanished off-screen entirely whenever the player flew low --
+      // a toy you cannot see is a toy that is not there. Even at 220 a player
+      // sitting at the very bottom of their range loses the last link or two,
+      // which is the trade for a rope long enough to swing visibly.
+      links: 5,
+      linkPx: 44,
+      // The toy timer moves ABOVE the pod while this is running. The bar's home
+      // is below -- up-screen is where the monsters and the aim are -- but this
+      // toy OCCUPIES below, and the bar drew straight through the rope. A rule
+      // with one honest exception beats a rule that produces a mess.
+      timerAbove: true,
+      radius: 18,
+      // Gravity is deliberately strong: a limp chain trails behind and reads as
+      // seaweed. A heavy one hangs straight down at rest and snaps out sideways
+      // when the pod moves, which is the whole appeal.
+      gravityPxS2: 2600,
+      // Per-frame velocity retention. Below ~0.97 the swing dies before the
+      // player sees it; at 1.0 it never settles and the chain ispermanently in motion,
+      // which is noise rather than feedback.
+      damping: 0.985,
+      // Constraint relaxation passes. Fewer and the rope stretches visibly on a
+      // fast direction change -- the exact moment the player is looking at it.
+      iterations: 8,
+      // Smaller blasts than the orbiting bombs: there are five of them and they
+      // sweep a wide arc, so the same damage would clear the screen.
+      blastDamage: 16,
+      blastRadiusPx: 150,
+      armS: 0.3,
+    },
     // Two little monsters orbit the pod and pop what they touch. Answers the
     // ones that sneak up from below, and it is the cutest thing in the game.
     // Tint moved off 0x7ed321, which was the SMALL MONSTER's exact green -- the
@@ -584,7 +642,21 @@ export const TOYS = {
   },
   // Equal weights for the POC: the point is to feel all four, not to tune
   // rarity before we know which of them is worth being rare.
-  weights: { wand: 1, twirl: 1, buddies: 1, rapid: 1 },
+  weights: { wand: 1, twirl: 1, buddies: 1, rapid: 1, chain: 1 },
+
+  // WHAT EACH LEVEL OPENS UP. A toy cannot drop until the player has reached
+  // its level, so the roster grows through a run instead of being complete from
+  // the first pop. Two are available immediately -- a first toy has to arrive
+  // early enough to teach what a toy IS -- and the chain is last because it is
+  // the biggest and the strangest.
+  unlockLevel: { wand: 1, twirl: 1, rapid: 2, buddies: 3, chain: 4 },
+
+  // Every level past the first adds this much to a toy's duration, capped.
+  // Small on purpose: the escalation the player should feel is MORE KINDS of
+  // toy, not the same toy overstaying. A 60 % longer twirl is not exciting, it
+  // is just a twirl you are waiting out.
+  levelDurationBonus: 0.07,
+  levelDurationCap: 1.5,
 };
 
 // ---------------------------------------------------------------------------
@@ -637,6 +709,13 @@ export const DIFFICULTY = {
   // the 1.8 s commitment, a late field of them is the one shape of this game a
   // young player cannot get out of.
   largeShareBonus: 0.07,
+
+  // MORE CREATURES AS THE PLAYER LEVELS, so the escalation is felt on both
+  // sides: levels hand out toys, and levels also fill the field. Capped hard --
+  // this stacks on top of the time ramp, and the two together are how a game
+  // for six-year-olds quietly becomes unplayable at minute five.
+  maxLivePerLevel: 0.5,
+  maxLiveLevelCap: 4,
 };
 
 /** 0 at the start of a run, 1 once the ramp is done. Eased. */

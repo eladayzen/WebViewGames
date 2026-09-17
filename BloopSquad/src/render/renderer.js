@@ -455,6 +455,25 @@ export async function createRenderer(canvas) {
       return;
     }
 
+    if (kind.id === 'chain') {
+      // Three bombs hanging on a rope -- the pickup previews the silhouette the
+      // toy actually makes, which is the only label a non-reader can use.
+      const xs = [-0.42, 0.02, 0.44];
+      const ys = [-0.62, 0.10, 0.78];
+      g.moveTo(x + xs[0] * R, y + ys[0] * R);
+      for (let i = 1; i < 3; i++) g.lineTo(x + xs[i] * R, y + ys[i] * R);
+      g.stroke({ width: 5, color: PALETTE.horn });
+      for (let i = 0; i < 3; i++) {
+        const bx = x + xs[i] * R, by = y + ys[i] * R;
+        g.circle(bx, by, R * 0.34).fill({ color: 0x25304a });
+        g.circle(bx, by, R * 0.34).stroke({ width: 3.5, color: PALETTE.outline });
+        g.circle(bx, by, R * 0.34).stroke({ width: 2, color: kind.tint, alpha: 0.85 });
+        g.circle(bx - R * 0.10, by - R * 0.04, R * 0.10).fill({ color: PALETTE.eye });
+        g.circle(bx + R * 0.10, by - R * 0.04, R * 0.10).fill({ color: PALETTE.eye });
+      }
+      return;
+    }
+
     if (kind.id === 'rapid') {
       // A lightning bolt: the one silhouette that means "faster" without a word
       // of text, which matters for an audience that cannot read the label.
@@ -568,8 +587,8 @@ export async function createRenderer(canvas) {
    * An UNARMED bomb (the first fraction of a second) shows no spark, so the one
    * state that changes what it does is the one state you can see.
    */
-  function drawBuddyBomb(b, kind, time) {
-    const r = kind.radius;
+  function drawBuddyBomb(b, kind, time, radiusOverride) {
+    const r = radiusOverride || kind.radius;
     const armed = !(b.armT > 0);
 
     // Halo, pulsing, in the toy's colour so the pickup and the bomb agree.
@@ -729,6 +748,21 @@ export async function createRenderer(canvas) {
 
       // Buddy bots orbit OUTSIDE the pod, drawn before it so the pod stays the
       // thing the eye lands on.
+      // The bomb chain, drawn under the pod. Rope first so the links sit on it.
+      if (toy && toy.id === 'chain' && w.toy.chain.length) {
+        let px = w.player.x, py = w.player.y + PLAYER.radius;
+        for (const c of w.toy.chain) {
+          g.moveTo(px, py).lineTo(c.x, c.y)
+           .stroke({ width: 7, color: PALETTE.outline, alpha: 0.9 });
+          g.moveTo(px, py).lineTo(c.x, c.y)
+           .stroke({ width: 3, color: toy.tint, alpha: 0.55 });
+          px = c.x; py = c.y;
+        }
+        for (const c of w.toy.chain) {
+          drawBuddyBomb({ x: c.x, y: c.y, a: c.x * 0.01, armT: c.armT }, toy, time, toy.radius);
+        }
+      }
+
       if (toy && toy.id === 'buddies') {
         for (const b of w.toy.buddies) {
           if (b.x === undefined) continue;
@@ -774,7 +808,11 @@ export async function createRenderer(canvas) {
         const frac = Math.max(0, Math.min(1, w.toy.t / w.toy.total));
         const bar = TOYS.timerBar;
         const bx = w.player.x - bar.width / 2;
-        const by = w.player.y + PLAYER.radius + bar.offsetY;
+        // Above the pod only when the active toy occupies the space below it
+        // (the bomb chain). Everything else keeps the bar where it belongs.
+        const by = toy.timerAbove
+          ? w.player.y - PLAYER.radius - bar.offsetY - bar.height - 18
+          : w.player.y + PLAYER.radius + bar.offsetY;
         const r = bar.height / 2;
         g.roundRect(bx, by, bar.width, bar.height, r)
          .fill({ color: PALETTE.outline, alpha: 0.85 });
