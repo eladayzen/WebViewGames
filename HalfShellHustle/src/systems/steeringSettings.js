@@ -23,7 +23,19 @@ import {
   setSteeringMode, setLaneZoneThreshold, setLaneZoneHysteresis, setJumpTiltThreshold,
 } from '../input/input.js';
 
-const STORAGE_KEY = 'hsh:steering';
+// RoboRun-specific, NOT 'hsh:steering' -- this file was copied unchanged
+// from the TMNT source (HalfShellHustle/src/ui/steeringPanel.js), which
+// still uses that literal key AND still defaults to absolute mode. Direct
+// report: "the default state is not stepped" when tested in the real
+// GoBalance app -- root cause was this key collision, not the default
+// itself: if the two games' WebView content ever shares a localStorage
+// origin (e.g. reusing the same local port across game launches), testing
+// the TMNT original first persists its 'absolute' default under this same
+// key, and RoboRun then silently inherits it. A reskin must never share a
+// persisted-settings key with the game it was copied from -- same principle
+// as never reusing its StreamingAssets folder name. See systems/vfxSettings.js
+// and systems/audio.js, which had the identical latent collision.
+const STORAGE_KEY = 'roborun:steering';
 
 // 55 maps to pressThreshold ~= 0.3525, within a rounding error of the SDK's own
 // stock 0.35 -- so a fresh install feels exactly as it did before this panel

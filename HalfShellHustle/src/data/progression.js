@@ -105,8 +105,13 @@ export const TIER_OBSTACLE_INTERVAL_FLOOR_SEC = 1.3;
 // in envArt.js, unreferenced, shelved the same way SUBWAY PLATFORM/ROOFTOP
 // BRIDGE are (see that file's own SHELVED note), in case it's ever wanted
 // back rather than lost.
+// Direct report, testing in the real GoBalance app: tier 1's old name ("BIG
+// WAREHOUSES -- UNDER ROOF", 29 chars) broke the line inside #tier-bar's HUD
+// pill (#tier-label has no wrap/overflow handling, and 34vmin is a narrow
+// bar). Shortened to match every other name's ~10-14 char budget -- "BIG
+// WAREHOUSES" (tier 2) is the longest that's ever fit cleanly.
 export const TIER_NAMES = [
-  'BIG WAREHOUSES -- UNDER ROOF', // "warehouse indoor"
+  'WAREHOUSE ROOF', // "warehouse indoor"
   'BIG WAREHOUSES', // "warehouse outdoor"
   'CENTRAL CITY', // "the city"
   'HARBOR DOCKS', // "the harbour"

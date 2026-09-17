@@ -7,7 +7,9 @@
 // feedback (telling the player they got hit), not flourish, and turning
 // them off would make getting hit read as nothing happened.
 
-const STORAGE_KEY = 'hsh:vfx';
+// RoboRun-specific -- see systems/steeringSettings.js's header for why this
+// can't be the shared 'hsh:vfx' key the TMNT source still uses.
+const STORAGE_KEY = 'roborun:vfx';
 
 const state = { vfxEnabled: true };
 

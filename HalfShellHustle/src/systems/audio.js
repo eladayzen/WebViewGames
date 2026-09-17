@@ -17,7 +17,9 @@
 
 import { AUDIO_MANIFEST } from '../data/audioAssets.js';
 
-const STORAGE_KEY = 'hsh:audio';
+// RoboRun-specific -- see systems/steeringSettings.js's header for why this
+// can't be the shared 'hsh:audio' key the TMNT source still uses.
+const STORAGE_KEY = 'roborun:audio';
 const SFX_VOLUME = 0.6;
 const MUSIC_VOLUME = 0.35;
 
