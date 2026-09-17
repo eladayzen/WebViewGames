@@ -19,6 +19,9 @@ export function createToyState() {
     total: 0,       // what it started with, for the timer bar
     fireT: 0,       // the TOY's own fire clock, separate from the base gun's
     chain: [],      // bomb-chain links (verlet: x/y plus previous px/py)
+    charges: 0,     // shield: saves remaining
+    graceT: 0,      // shield: brief immunity after a save
+    punch: null,    // punch arm: { phase, t, cool, tx, ty }
     spin: 0,        // twirl's current angle / buddies' orbit angle
     side: 1,        // wand: which way the next bubble launches
     buddies: [],
@@ -110,6 +113,13 @@ export function equip(w, kindName) {
       w.toy.buddies.push({ a: (Math.PI * 2 * i) / kind.count, armT: kind.armS });
     }
   }
+  if (kind.id === 'shield') {
+    w.toy.charges = kind.charges;
+    w.toy.graceT = 0;
+  }
+  if (kind.id === 'punch') {
+    w.toy.punch = { phase: 'idle', t: 0, cool: 0, tx: 0, ty: 0 };
+  }
   if (kind.id === 'chain') {
     // Born hanging straight down, at rest. `px/py` are the verlet PREVIOUS
     // positions: equal to the current ones means zero starting velocity, so the
@@ -152,6 +162,8 @@ export function updateFiring(w, dt) {
   const toy = w.toy;
   if (!p.alive) return;
 
+  if (toy.graceT > 0) toy.graceT = Math.max(0, toy.graceT - dt);
+
   if (toy.active) {
     toy.t -= dt;
     if (toy.t <= 0) {
@@ -193,6 +205,8 @@ export function updateFiring(w, dt) {
   // Rapid adds no stream of its own -- its whole effect was applied above, to
   // the cannon's interval. The chain's effect is physical, in updateChain.
   if (kind.id === 'rapid') return;
+  if (kind.id === 'shield') return;   // see consumeShield, called from collisions
+  if (kind.id === 'punch') return;    // see updatePunch
   if (kind.id === 'chain') {
     for (const c of toy.chain) {
       if (c.armT > 0) c.armT = Math.max(0, c.armT - dt);
@@ -205,6 +219,19 @@ export function updateFiring(w, dt) {
   toy.fireT -= dt;
   if (toy.fireT > 0) return;
   toy.fireT = kind.intervalS;
+
+  if (kind.id === 'cross') {
+    // Four fixed axes. Spawned at the pod's edge rather than its centre so the
+    // shots leave the hull instead of appearing inside the pilot.
+    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    for (const [dx, dy] of dirs) {
+      spawnBullet(w,
+        p.x + dx * PLAYER.radius, p.y + dy * PLAYER.radius,
+        dx * kind.speedPxS, dy * kind.speedPxS,
+        false, kind.tint, kind.damage);
+    }
+    return;
+  }
 
   if (kind.id === 'twirl') {
     for (let i = 0; i < kind.arms; i++) {
@@ -253,6 +280,96 @@ export function steerHomingBullets(w, dt) {
     b.vx = Math.cos(a) * sp;
     b.vy = Math.sin(a) * sp;
   }
+}
+
+/**
+ * Spend a shield charge instead of a heart. Returns true if the hit was eaten.
+ *
+ * Called from the monster-vs-pod branch of collisions, BEFORE the heart is
+ * taken -- which is the whole point, and why this returns a boolean rather than
+ * doing anything itself. The caller still pops the monster: rule 4 does not get
+ * an exception for being blocked.
+ */
+export function consumeShield(w) {
+  const kind = w.toy.active;
+  if (!kind || kind.id !== 'shield') return false;
+  if (w.toy.charges <= 0) return false;
+  if (w.toy.graceT > 0) return true;   // already saved this instant; eat it free
+  w.toy.charges--;
+  w.toy.graceT = kind.graceS;
+  if (w.toy.charges <= 0) {
+    // Spent, not expired -- the same rule the bombs use. A shield that ran out
+    // of time while the player was flying carefully would punish playing well.
+    w.toy.active = null;
+    w.toy.t = 0;
+  }
+  return true;
+}
+
+/**
+ * The punch arm: pick the nearest monster in reach, then punch it.
+ *
+ * Auto-targeted and auto-fired, because there are no buttons. Damage lands at
+ * FULL EXTENSION rather than on contact along the way -- a punch that hurt
+ * things it passed through would be a lance, and the toy's whole job is to
+ * answer the one thing that is already beside you.
+ */
+export function updatePunch(w, dt, onHit) {
+  const kind = w.toy.active;
+  if (!kind || kind.id !== 'punch' || !w.toy.punch) return;
+  const st = w.toy.punch;
+  const p = w.player;
+
+  if (st.phase === 'idle') {
+    st.cool = Math.max(0, st.cool - dt);
+    if (st.cool > 0) return;
+    // Nearest monster in reach. Nearest rather than weakest or biggest: the
+    // threat a player wants dealt with is always the closest one.
+    let best = null, bestD = kind.reachPx;
+    for (const m of w.monsters) {
+      if (!m.alive) continue;
+      const d = Math.hypot(m.x - p.x, m.y - p.y);
+      if (d < bestD) { bestD = d; best = m; }
+    }
+    if (!best) return;
+    st.phase = 'out';
+    st.t = 0;
+    st.tx = best.x;
+    st.ty = best.y;
+    return;
+  }
+
+  st.t += dt;
+  if (st.phase === 'out' && st.t >= kind.extendS) {
+    st.phase = 'hold';
+    st.t = 0;
+    // Land it. The target position was locked when the punch started, so a
+    // monster that drifted out of the way genuinely dodges -- which is fairer
+    // than a fist that curves after it, and reads better.
+    for (const m of w.monsters) {
+      if (!m.alive) continue;
+      if (Math.hypot(m.x - st.tx, m.y - st.ty) > m.r + kind.fistPx) continue;
+      onHit(m);
+      break;
+    }
+    return;
+  }
+  if (st.phase === 'hold' && st.t >= kind.holdS) { st.phase = 'back'; st.t = 0; return; }
+  if (st.phase === 'back' && st.t >= kind.retractS) {
+    st.phase = 'idle';
+    st.t = 0;
+    st.cool = kind.cooldownS;
+  }
+}
+
+/** 0 at the pod, 1 at full stretch. Drives both the drawing and nothing else. */
+export function punchExtension(w) {
+  const kind = w.toy.active;
+  const st = w.toy.punch;
+  if (!kind || kind.id !== 'punch' || !st || st.phase === 'idle') return 0;
+  if (st.phase === 'out') return Math.min(1, st.t / kind.extendS);
+  if (st.phase === 'hold') return 1;
+  return Math.max(0, 1 - st.t / kind.retractS);
 }
 
 /**

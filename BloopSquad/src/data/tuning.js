@@ -435,10 +435,43 @@ export const XP = {
   // fast enough to teach what the popup means, and the fifth still feels earned.
   base: 120,
   curve: 1.25,
-  // How long the celebration holds the screen. It never pauses and never asks
-  // for input -- there are no buttons, and a child should not have to dismiss
-  // their own reward.
-  popupS: 1.9,
+  // ---- THE CELEBRATION LADDER --------------------------------------------
+  //
+  // EVERY LEVEL IS A BIGGER PARTY THAN THE LAST, up to ten (Amit: "each one
+  // should be more and more celebrative... bigger, more party... plan that in
+  // ten, the whole screen goes").
+  //
+  // The reason this is worth building properly rather than scaling one number:
+  // a reward that is identical every time stops being a reward on about the
+  // third showing. A child who has seen level 3 has to be able to tell that
+  // level 7 is BIGGER, at a glance, without reading the numeral -- so each tier
+  // adds a new KIND of thing, not just more of the last one.
+  //
+  // The ladder, and what appears when:
+  //   1-2   the burst, rays and the numeral. The baseline.
+  //   3+    confetti fires out of the popup itself.
+  //   5+    confetti rains from the top of the screen, and the rays double.
+  //   7+    the whole screen washes with colour, twice.
+  //   10    everything at once, longest, plus a ring of bursts around the edge.
+  //         Ten is the ceiling on purpose: past it a run is long over.
+  popupS: 1.6,
+  // Each level past the first adds this, capped -- so ten holds noticeably
+  // longer than two without a late level parking the screen.
+  popupPerLevelS: 0.14,
+  popupMaxS: 3.1,
+
+  // Confetti fired by the popup itself, from level `confettiFromLevel` up.
+  confettiFromLevel: 3,
+  confettiPerLevel: 16,
+  confettiMax: 190,
+  // Confetti raining from the top of the screen.
+  rainFromLevel: 5,
+  rainPerLevel: 14,
+  rainMax: 150,
+  // Full-screen colour washes.
+  washFromLevel: 7,
+  // The everything-at-once level.
+  finaleLevel: 10,
 };
 
 export const HUD = {
@@ -603,14 +636,20 @@ export const TOYS = {
       // with one honest exception beats a rule that produces a mess.
       timerAbove: true,
       radius: 18,
-      // Gravity is deliberately strong: a limp chain trails behind and reads as
-      // seaweed. A heavy one hangs straight down at rest and snaps out sideways
-      // when the pod moves, which is the whole appeal.
-      gravityPxS2: 2600,
+      // CALMED DOWN (Amit: "a bit too jumpy"). Gravity 2600 -> 1700 and damping
+      // 0.985 -> 0.93. Those two do different jobs and both were wrong: heavy
+      // gravity made the rope snap back hard, and near-zero damping meant it
+      // then kept snapping for seconds afterwards. A chain that never settles is
+      // not lively, it is noise -- and it is noise directly under the pod, in
+      // the space the player is trying to read.
+      //
+      // Still strong enough to hang straight at rest, which is what stops it
+      // reading as seaweed; it just stops ringing once the swing is over.
+      gravityPxS2: 1700,
       // Per-frame velocity retention. Below ~0.97 the swing dies before the
       // player sees it; at 1.0 it never settles and the chain ispermanently in motion,
       // which is noise rather than feedback.
-      damping: 0.985,
+      damping: 0.93,
       // Constraint relaxation passes. Fewer and the rope stretches visibly on a
       // fast direction change -- the exact moment the player is looking at it.
       iterations: 8,
@@ -620,6 +659,71 @@ export const TOYS = {
       blastRadiusPx: 150,
       armS: 0.3,
     },
+    // THE CROSS: four shots at once, up, down, left and right.
+    //
+    // FIXED AXES, never rotating -- that is the twirl's job and the difference
+    // between the two toys has to be legible in one glance. A cross is a shape
+    // the player can aim BY POSITIONING: line up a column and everything in it
+    // dies, and the sideways arms cover the approach the cannon cannot. It makes
+    // lateral lean into aiming, which is the comfortable axis.
+    //
+    // Down matters as much as up. The cannon only fires up, so the downward arm
+    // is the only sustained answer in the game to something rising from below.
+    cross: {
+      id: 'cross', label: 'CROSS FIRE', durationS: 8, tint: 0x9be564,
+      // A bit quicker than the cannon's 0.17, and four barrels -- so it is ~5x
+      // the base output. Short duration is what pays for that.
+      intervalS: 0.13,
+      speedPxS: 1100,
+      damage: 1,
+    },
+
+    // THE SHIELD ORB: a bubble that eats contacts instead of hearts.
+    //
+    // The only toy that is purely DEFENSIVE, and the only one that changes what
+    // happens when the player makes a mistake rather than what happens when they
+    // aim well. That matters for a six-year-old more than any weapon does -- the
+    // failure it prevents is the one that ends the run.
+    //
+    // CHARGES, not a timer, decide when it ends: three saves and it is gone,
+    // however long that takes. A shield that expires while you were flying
+    // carefully is a punishment for playing well.
+    //
+    // A monster that hits the shield still giggles away rather than bouncing --
+    // rule 4 does not get an exception for being blocked.
+    shield: {
+      id: 'shield', label: 'SHIELD ORB', durationS: 18, tint: 0x8fd4ff,
+      charges: 3,
+      radiusPx: 86,
+      // A beat of grace after a save, so one monster cannot eat two charges by
+      // still being on top of the pod the frame after the first.
+      graceS: 0.5,
+    },
+
+    // THE PUNCH ARM: reaches out and hits whatever is closest.
+    //
+    // Answers the case nothing else does -- something already beside you, too
+    // close for the cannon (which fires straight up) and not yet touching, which
+    // for a child is the most frightening moment in a run and the one they have
+    // no answer to. It auto-targets and auto-fires, because there are no buttons.
+    //
+    // It punches ONE thing at a time, hard. A weapon that helps when you are
+    // cornered has to be legible in the instant it acts, and an area effect in
+    // that moment reads as the screen doing something rather than as help.
+    punch: {
+      id: 'punch', label: 'PUNCH ARM', durationS: 13, tint: 0xffd166,
+      reachPx: 340,
+      damage: 20,
+      cooldownS: 0.75,
+      // The three phases of a punch. Fast out, a beat at full stretch, slower
+      // back -- the asymmetry is what makes it read as a punch rather than as a
+      // telescope. Damage lands at full extension, not on contact with the arm.
+      extendS: 0.10,
+      holdS: 0.07,
+      retractS: 0.16,
+      fistPx: 26,
+    },
+
     // Two little monsters orbit the pod and pop what they touch. Answers the
     // ones that sneak up from below, and it is the cutest thing in the game.
     // Tint moved off 0x7ed321, which was the SMALL MONSTER's exact green -- the
@@ -653,16 +757,23 @@ export const TOYS = {
       armS: 0.35,
     },
   },
-  // Equal weights for the POC: the point is to feel all four, not to tune
-  // rarity before we know which of them is worth being rare.
-  weights: { wand: 1, twirl: 1, buddies: 1, rapid: 1, chain: 1 },
+  // NO LONGER EQUAL. The POC's equal weights did their job -- they were there to
+  // find out which toys were worth being rare, and playing it answered that.
+  //
+  // Amit: "everything with bombs is fun, rapid is fun... the pink shots, it's
+  // not that fun so you shouldn't give it so much." So the weights now follow
+  // the verdict: bombs and rapid are common, twirl is the rare one. The twirl
+  // was ALSO the most-seen toy by accident -- equal weight plus the longest
+  // duration meant it occupied more seconds of a run than anything else, so its
+  // share of screen time was well above its share of drops.
+  weights: { wand: 0.7, twirl: 0.35, buddies: 1.4, rapid: 1.3, chain: 1.3, shield: 1.0, punch: 1.1, cross: 1.2 },
 
   // WHAT EACH LEVEL OPENS UP. A toy cannot drop until the player has reached
   // its level, so the roster grows through a run instead of being complete from
   // the first pop. Two are available immediately -- a first toy has to arrive
   // early enough to teach what a toy IS -- and the chain is last because it is
   // the biggest and the strangest.
-  unlockLevel: { wand: 1, twirl: 1, rapid: 2, buddies: 3, chain: 4 },
+  unlockLevel: { wand: 1, twirl: 1, rapid: 2, cross: 3, buddies: 4, punch: 5, chain: 6, shield: 7 },
 
   // Every level past the first adds this much to a toy's duration, capped.
   // Small on purpose: the escalation the player should feel is MORE KINDS of

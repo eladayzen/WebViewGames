@@ -1,10 +1,16 @@
 // Bullets, coins, collisions and the pod itself. Small enough to live together;
 // the moment any of it grows a second opinion it should split.
 
-import { BULLETS, MONSTERS, COINS, HEARTS, PLAYER, SQUAD, XP, DESIGN_W, DESIGN_H } from '../data/tuning.js';
-import { maybeDropToy, steerHomingBullets, updateBuddies, updateChainBombs } from './toys.js';
+import { BULLETS, MONSTERS, COINS, HEARTS, PLAYER, SQUAD, TOYS, XP, DESIGN_W, DESIGN_H } from '../data/tuning.js';
+import {
+  maybeDropToy, steerHomingBullets, updateBuddies, updateChainBombs,
+  consumeShield, updatePunch,
+} from './toys.js';
 import { registerHit } from './monsters.js';
-import { playPop, playCoin, playPlayerHit, playBlast, playLevelUp, playHeart } from './audio.js';
+import {
+  playPop, playCoin, playPlayerHit, playBlast, playLevelUp, playHeart,
+  playShieldSave, playPunch,
+} from './audio.js';
 
 // The concept's confetti is a party, not the colour of what just popped.
 const CONFETTI = [0x7ed321, 0xf5a623, 0x9b59d0, 0x74d7ff, 0xff6b6b, 0xffc93c];
@@ -82,12 +88,17 @@ export function popMonster(w, m, rng) {
   }
 }
 
-export function updateCollisions(w, rng) {
+export function updateCollisions(w, rng, dt) {
   // The buddy bombs detonate by touch, which is how they answer the monsters
   // that arrive from below without the player having to turn toward them.
   const boom = (x, y, tint, dmg, radius) => detonate(w, x, y, tint, rng, dmg, radius);
   updateBuddies(w, boom);
   updateChainBombs(w, boom);
+  updatePunch(w, dt, (m) => {
+    playPunch();
+    registerHit(m, TOYS.kinds.punch.damage);
+    if (m.hp <= 0) popMonster(w, m, rng);
+  });
 
   // Bullets vs monsters.
   for (const b of w.bullets) {
@@ -110,6 +121,14 @@ export function updateCollisions(w, rng) {
       if (!m.alive) continue;
       const d = Math.hypot(m.x - p.x, m.y - p.y);
       if (d > m.r + PLAYER.radius) continue;
+      // THE SHIELD GETS FIRST REFUSAL. Checked before the heart is taken, which
+      // is the only order that works -- and the monster still giggles away
+      // either way, because rule 4 has no exception for being blocked.
+      if (consumeShield(w)) {
+        playShieldSave();
+        popMonster(w, m, rng);
+        break;
+      }
       p.hearts--;
       p.invulnT = PLAYER.invulnS;
       w.stats.contacts++;
@@ -300,9 +319,81 @@ export function addXp(w, amount) {
   while (w.xp >= need) {
     w.xp -= need;
     w.level++;
-    w.levelPopup = { t: XP.popupS, total: XP.popupS, level: w.level };
+    celebrate(w, w.level);
     playLevelUp(w.level);
     need = xpForLevel(w.level);
+  }
+}
+
+/**
+ * Fire the celebration for a level.
+ *
+ * Each tier adds a new KIND of thing rather than more of the last one, because
+ * a child has to be able to tell level 7 from level 3 at a glance without
+ * reading the numeral -- and "more confetti" is not something anyone can see
+ * the difference in once there is already confetti.
+ */
+export function celebrate(w, level) {
+  const dur = Math.min(XP.popupMaxS, XP.popupS + (level - 1) * XP.popupPerLevelS);
+  const finale = level >= XP.finaleLevel;
+  w.levelPopup = {
+    t: dur,
+    total: dur,
+    level,
+    // Precomputed so the renderer never re-decides the tier mid-animation.
+    rays: level >= XP.rainFromLevel ? 20 : 10,
+    wash: level >= XP.washFromLevel,
+    finale,
+  };
+
+  // Confetti out of the popup itself.
+  if (level >= XP.confettiFromLevel) {
+    const n = Math.min(XP.confettiMax, (level - XP.confettiFromLevel + 1) * XP.confettiPerLevel);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 160 + Math.random() * 520;
+      w.pops.push({
+        alive: true, x: DESIGN_W * 0.5, y: DESIGN_H * 0.52,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        t: 0.7 + Math.random() * 0.8,
+        tint: CONFETTI[Math.floor(Math.random() * CONFETTI.length)],
+        size: 6 + Math.random() * 10,
+      });
+    }
+  }
+
+  // Confetti raining from above. Spread across the FULL width and given a
+  // spread of start times, so it falls as weather rather than as one curtain.
+  if (level >= XP.rainFromLevel) {
+    const n = Math.min(XP.rainMax, (level - XP.rainFromLevel + 1) * XP.rainPerLevel);
+    for (let i = 0; i < n; i++) {
+      w.pops.push({
+        alive: true,
+        x: Math.random() * DESIGN_W,
+        y: -40 - Math.random() * 500,
+        vx: (Math.random() - 0.5) * 120,
+        vy: 90 + Math.random() * 160,
+        t: 1.4 + Math.random() * 1.4,
+        tint: CONFETTI[Math.floor(Math.random() * CONFETTI.length)],
+        size: 6 + Math.random() * 11,
+      });
+    }
+  }
+
+  // The finale: a ring of bursts around the edge of the screen, so the party is
+  // not just in the middle. Purely cosmetic -- these damage nothing.
+  if (finale) {
+    for (let i = 0; i < 10; i++) {
+      const a = (Math.PI * 2 * i) / 10;
+      w.blasts.push({
+        alive: true,
+        x: DESIGN_W * 0.5 + Math.cos(a) * DESIGN_W * 0.36,
+        y: DESIGN_H * 0.5 + Math.sin(a) * DESIGN_H * 0.34,
+        t: 0.7, total: 0.7,
+        tint: CONFETTI[i % CONFETTI.length],
+        radiusPx: 190,
+      });
+    }
   }
 }
 

@@ -20,7 +20,7 @@ import { initInput, readInput } from './input/input.js';
 import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js';
 import {
   updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops,
-  updateSquad, updateSquadBombs, updateBlasts, updateLevelPopup, updateHearts,
+  updateSquad, updateSquadBombs, updateBlasts, updateLevelPopup, updateHearts, celebrate,
 } from './systems/play.js';
 import { updateFiring, updateToyPickups, equip, updateChain } from './systems/toys.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
@@ -62,7 +62,7 @@ async function boot() {
     updateToyPickups(world, dt);
     maybeSpawn(world, rng, dt);
     updateMonsters(world, dt);
-    updateCollisions(world, rng);
+    updateCollisions(world, rng, dt);
     updateCoinsAndPops(world, dt);
     updateHearts(world, dt);
     // After the pod has moved and after collisions, so the trail samples the
@@ -133,6 +133,9 @@ async function boot() {
       case 'Digit3':       equip(world, 'buddies'); break;
       case 'Digit4':       equip(world, 'rapid'); break;
       case 'Digit5':       equip(world, 'chain'); break;
+      case 'Digit6':       equip(world, 'shield'); break;
+      case 'Digit7':       equip(world, 'punch'); break;
+      case 'Digit8':       equip(world, 'cross'); break;
       case 'KeyR':         restart(); break;
       case 'Enter':
       case 'Space':        if (world.state === GameState.FAILED) restart(); break;
@@ -262,7 +265,14 @@ async function boot() {
   const lvl = parseInt(q.get('level') || '0', 10);
   if (lvl > 0) {
     world.level = lvl;
-    world.levelPopup = { t: 999, total: 999 * 1.4, level: lvl };
+    // Through the REAL celebration, so a screenshot shows what actually plays.
+    // The earlier version built the popup object by hand and therefore missed
+    // every tier the ladder adds -- it would have shown level 10 as level 1.
+    celebrate(world, lvl);
+    // Held near its peak for the shot: the punch-in is ~18 % of the duration,
+    // so parking p01 just past that catches it at full size.
+    world.levelPopup.total = 12;
+    world.levelPopup.t = 12 * 0.75;
   }
 
   // ?art=1 puts one of every tier on screen at fixed positions, immediately.
@@ -287,16 +297,16 @@ async function boot() {
     // ...and one of every toy pickup, so the three silhouettes can be compared
     // side by side against each other AND against a coin, which is the
     // comparison that matters: they have to be distinguishable at a glance.
-    ['wand', 'twirl', 'buddies', 'rapid'].forEach((k, i) => {
+    Object.keys(TOYS.kinds).forEach((k, i) => {
       world.toyPickups.push({
         alive: true, kind: k, t: 999, bob: i * 2,
         // Clear of the pod's magnet radius, or the art row collects itself
         // before the screenshot and two thirds of it is missing from the frame.
-        x: DESIGN_W * (0.18 + i * 0.18), y: DESIGN_H * 0.50,
+        x: DESIGN_W * (0.10 + i * 0.115), y: DESIGN_H * 0.50,
       });
     });
-    world.coins.push({ alive: true, x: DESIGN_W * 0.84, y: DESIGN_H * 0.50, vx: 0, vy: 0, t: 999 });
-    world.hearts.push({ alive: true, x: DESIGN_W * 0.91, y: DESIGN_H * 0.50, t: 999, bob: 0 });
+    world.coins.push({ alive: true, x: DESIGN_W * 0.03, y: DESIGN_H * 0.62, vx: 0, vy: 0, t: 999 });
+    world.hearts.push({ alive: true, x: DESIGN_W * 0.09, y: DESIGN_H * 0.62, t: 999, bob: 0 });
   }
 }
 

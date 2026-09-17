@@ -16,6 +16,7 @@
 
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, XP, difficulty01 } from '../data/tuning.js';
+import { punchExtension } from '../systems/toys.js';
 
 const PALETTE = {
   bg: 0x0b1020,
@@ -455,6 +456,49 @@ export async function createRenderer(canvas) {
       return;
     }
 
+    if (kind.id === 'cross') {
+      // A plus with arrowheads: the shape of what it fires, which is the
+      // clearest label available to someone who cannot read "CROSS FIRE".
+      const arm = R * 0.92, w2 = R * 0.17;
+      g.roundRect(x - w2, y - arm, w2 * 2, arm * 2, w2).fill({ color: kind.tint });
+      g.roundRect(x - arm, y - w2, arm * 2, w2 * 2, w2).fill({ color: kind.tint });
+      for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+        const tx = x + dx * arm, ty = y + dy * arm;
+        g.moveTo(tx + dx * R * 0.22 - dy * R * 0.26, ty + dy * R * 0.22 + dx * R * 0.26)
+         .lineTo(tx + dx * R * 0.40, ty + dy * R * 0.40)
+         .lineTo(tx + dx * R * 0.22 + dy * R * 0.26, ty + dy * R * 0.22 - dx * R * 0.26)
+         .closePath()
+         .fill({ color: kind.tint });
+      }
+      g.circle(x, y, R * 0.26).fill({ color: 0xffffff, alpha: 0.85 });
+      return;
+    }
+
+    if (kind.id === 'shield') {
+      // A ring with a gap, around a dot: the universal "protected" mark.
+      g.circle(x, y, R * 0.94).stroke({ width: 9, color: kind.tint });
+      g.circle(x, y, R * 0.94).stroke({ width: 3, color: PALETTE.outline, alpha: 0.5 });
+      g.circle(x, y, R * 0.34).fill({ color: kind.tint });
+      g.circle(x - R * 0.12, y - R * 0.14, R * 0.12).fill({ color: 0xffffff, alpha: 0.9 });
+      return;
+    }
+
+    if (kind.id === 'punch') {
+      // A fist with three knuckles and a short cuff, angled like a jab.
+      const a = Math.sin(spin) * 0.25;
+      const fx = x + Math.cos(a) * R * 0.18, fy = y + Math.sin(a) * R * 0.18;
+      g.moveTo(x - R * 0.95, y + R * 0.28)
+       .lineTo(fx - R * 0.30, fy + R * 0.20)
+       .stroke({ width: 11, color: kind.tint });
+      g.circle(fx, fy, R * 0.62).fill({ color: kind.tint });
+      g.circle(fx, fy, R * 0.62).stroke({ width: 4.5, color: PALETTE.outline });
+      for (const k of [-0.42, 0, 0.42]) {
+        g.circle(fx + k * R * 0.42, fy - R * 0.24, R * 0.11)
+         .fill({ color: 0xffffff, alpha: 0.6 });
+      }
+      return;
+    }
+
     if (kind.id === 'chain') {
       // Three bombs hanging on a rope -- the pickup previews the silhouette the
       // toy actually makes, which is the only label a non-reader can use.
@@ -661,13 +705,30 @@ export async function createRenderer(canvas) {
     levelG.circle(cx, cy, 215 * grow).fill({ color: 0x74d7ff, alpha: 0.12 * alpha });
     levelG.circle(cx, cy, 140 * grow).fill({ color: 0xffc93c, alpha: 0.12 * alpha });
     // Rays, spinning slowly: the universal "big deal" frame.
+    // The full-screen colour wash, from level 7. Drawn FIRST so everything else
+    // sits on top of it -- a wash over the numeral would grey out the one thing
+    // the popup exists to show.
+    if (pop.wash) {
+      const beats = pop.finale ? 3 : 2;
+      const ph = (p01 * beats) % 1;
+      const strength = (1 - ph) * alpha * (pop.finale ? 0.20 : 0.13);
+      const tint = CONFETTI[Math.floor(p01 * beats) % CONFETTI.length];
+      levelG.rect(0, 0, DESIGN_W, DESIGN_H).fill({ color: tint, alpha: strength });
+    }
+
     // WARM, not white. White at 5 % over a near-black field renders as grey
     // smudges that read as damage to the screen rather than as light.
-    for (let i = 0; i < 10; i++) {
-      const a = (Math.PI * 2 * i) / 10 + p01 * 0.8;
+    const rays = pop.rays || 10;
+    for (let i = 0; i < rays; i++) {
+      const a = (Math.PI * 2 * i) / rays + p01 * 0.8;
       levelG.moveTo(cx, cy)
-        .lineTo(cx + Math.cos(a) * 250 * grow, cy + Math.sin(a) * 250 * grow)
-        .stroke({ width: 13, color: 0xffc93c, alpha: 0.09 * alpha });
+        .lineTo(cx + Math.cos(a) * (pop.finale ? 900 : 250) * grow,
+                cy + Math.sin(a) * (pop.finale ? 900 : 250) * grow)
+        // Narrow and pale rather than wide and gold: at width 20 the rays
+        // rendered as opaque brown bars laid over the field, which read as
+        // damage to the screen instead of as light bursting out of the popup.
+        .stroke({ width: pop.finale ? 9 : 7, color: 0xfff0b8,
+                  alpha: (pop.finale ? 0.10 : 0.075) * alpha });
     }
 
     yayText.visible = true;
@@ -676,8 +737,11 @@ export async function createRenderer(canvas) {
     levelText.text = String(pop.level);
     yayText.position.set(cx, cy - 92 * grow);
     levelText.position.set(cx, cy + 32 * grow);
-    yayText.scale.set(grow);
-    levelText.scale.set(grow);
+    // The numeral grows with the level, capped: by ten it is half the screen,
+    // which is the "whole screen goes" the ladder builds toward.
+    const sizeUp = Math.min(1.9, 1 + (pop.level - 1) * 0.10);
+    yayText.scale.set(grow * Math.min(1.5, sizeUp));
+    levelText.scale.set(grow * sizeUp);
     yayText.alpha = alpha;
     levelText.alpha = alpha;
   }
@@ -760,6 +824,56 @@ export async function createRenderer(canvas) {
         }
         for (const c of w.toy.chain) {
           drawBuddyBomb({ x: c.x, y: c.y, a: c.x * 0.01, armT: c.armT }, toy, time, toy.radius);
+        }
+      }
+
+      // The shield: a bubble the player is inside, with one arc per remaining
+      // charge around its rim. The charges are the number that matters, and a
+      // child counts arcs faster than they read a digit.
+      if (toy && toy.id === 'shield' && w.toy.charges > 0) {
+        const R = toy.radiusPx;
+        const px = w.player.x, py = w.player.y;
+        const breathe = 1 + Math.sin(time * 3) * 0.03;
+        g.circle(px, py, R * breathe).fill({ color: toy.tint, alpha: 0.13 });
+        g.circle(px, py, R * breathe).stroke({ width: 4, color: toy.tint, alpha: 0.5 });
+        for (let i = 0; i < w.toy.charges; i++) {
+          const a0 = -Math.PI / 2 + (Math.PI * 2 * i) / w.toy.charges + time * 0.5;
+          const a1 = a0 + Math.PI * 2 / w.toy.charges * 0.62;
+          g.moveTo(px + Math.cos(a0) * R * breathe, py + Math.sin(a0) * R * breathe)
+           .arc(px, py, R * breathe, a0, a1)
+           .stroke({ width: 9, color: toy.tint, alpha: 0.95 });
+        }
+        // A brighter flash for the instant right after a save.
+        if (w.toy.graceT > 0) {
+          g.circle(px, py, R * breathe).fill({ color: 0xffffff, alpha: 0.22 * (w.toy.graceT / toy.graceS) });
+        }
+      }
+
+      // The punch arm: segments out to a fist. Drawn before the pod so the arm
+      // emerges from behind it rather than sitting on top of the pilot.
+      if (toy && toy.id === 'punch') {
+        const ext = punchExtension(w);
+        if (ext > 0) {
+          const st = w.toy.punch;
+          const px = w.player.x, py = w.player.y;
+          const hx = px + (st.tx - px) * ext;
+          const hy = py + (st.ty - py) * ext;
+          // Segments thin toward the fist, which is what makes it read as an arm
+          // reaching rather than as a beam.
+          const segs = 5;
+          for (let i = 1; i <= segs; i++) {
+            const f = i / segs;
+            const sx = px + (hx - px) * f, sy = py + (hy - py) * f;
+            g.circle(sx, sy, 13 - i * 1.2).fill({ color: toy.tint });
+            g.circle(sx, sy, 13 - i * 1.2).stroke({ width: 3, color: PALETTE.outline, alpha: 0.8 });
+          }
+          g.circle(hx, hy, toy.fistPx).fill({ color: toy.tint });
+          g.circle(hx, hy, toy.fistPx).stroke({ width: 5, color: PALETTE.outline });
+          // Knuckles, so the fist is a fist.
+          for (const k of [-0.45, 0, 0.45]) {
+            g.circle(hx + k * toy.fistPx * 0.9, hy - toy.fistPx * 0.34, toy.fistPx * 0.17)
+             .fill({ color: 0xffffff, alpha: 0.55 });
+          }
         }
       }
 

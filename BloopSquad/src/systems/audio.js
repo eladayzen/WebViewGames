@@ -268,6 +268,31 @@ export function playLevelUp(level) {
   });
   note({ freq: root * 2, dur: 0.5, type: 'sine', gain: 0.12, delay: 0.3 });
   noise({ dur: 0.3, gain: 0.07, hp: 2400, delay: 0.29 });
+
+  // THE LADDER, in sound as well as on screen. From level 5 a second voice
+  // doubles the arpeggio an octave DOWN, so the chord gains weight rather than
+  // only pitch; from 7 it also runs back down, which is what a fanfare does and
+  // a single rising run does not. Ten adds a held major chord underneath -- the
+  // one moment the game sounds like an ending.
+  if (level >= 5) {
+    [0, 4, 7, 12].forEach((semi, i) => {
+      note({ freq: root * Math.pow(2, semi / 12) / 2, dur: 0.3, type: 'square',
+             gain: 0.07, delay: i * 0.075 });
+    });
+  }
+  if (level >= 7) {
+    [12, 7, 4, 0].forEach((semi, i) => {
+      note({ freq: root * Math.pow(2, semi / 12) * 2, dur: 0.18, type: 'triangle',
+             gain: 0.10, delay: 0.34 + i * 0.07 });
+    });
+  }
+  if (level >= 10) {
+    [0, 4, 7].forEach((semi) => {
+      note({ freq: root * Math.pow(2, semi / 12), dur: 1.5, type: 'sine',
+             gain: 0.09, delay: 0.5 });
+    });
+    noise({ dur: 0.7, gain: 0.09, hp: 1600, delay: 0.52 });
+  }
 }
 
 /** Collecting a heart: warm and round, and distinctly NOT the toy arpeggio --
@@ -275,6 +300,21 @@ export function playLevelUp(level) {
 export function playHeart() {
   note({ freq: 523.25, dur: 0.16, type: 'sine', gain: 0.17, bend: 1.5 });
   note({ freq: 784, dur: 0.30, type: 'sine', gain: 0.15, delay: 0.1, bend: 1.25 });
+}
+
+/** The shield eating a hit: a bright glassy ping, unmistakably GOOD news at the
+ *  exact moment the player expected bad news. That contrast is the whole job. */
+export function playShieldSave() {
+  note({ freq: 1180, dur: 0.22, type: 'sine', gain: 0.18, bend: 1.35 });
+  note({ freq: 1760, dur: 0.30, type: 'sine', gain: 0.12, delay: 0.05, bend: 1.2 });
+  noise({ dur: 0.22, gain: 0.08, hp: 2600 });
+}
+
+/** The punch landing: a short thump with a rising tail, cartoon not combat. */
+export function playPunch() {
+  note({ freq: 240, dur: 0.14, type: 'square', gain: 0.18, bend: 0.5 });
+  note({ freq: 620, dur: 0.16, type: 'triangle', gain: 0.12, delay: 0.03, bend: 1.7 });
+  noise({ dur: 0.12, gain: 0.14, hp: 500 });
 }
 
 /** Game over: the descent, slower and lower, three notes. */
