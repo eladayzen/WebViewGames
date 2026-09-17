@@ -141,10 +141,40 @@ for (const r of rows) {
   ].join(','));
 }
 
+// ---- the QA view -----------------------------------------------------------
+//
+// A THIRD FILE, because a tester and a designer need different tables and a
+// shared one serves neither.
+//
+// This drops `dp` and `ramp_pct`. Both are design instruments: DP is a sizing
+// budget that exists to be argued about, and ramp_pct is a diagnostic whose
+// denominator is a measured average -- one that was WRONG for a while, because
+// the first sample of it included teaching missions, which strip props off their
+// hills. A tester reading a number like that has no way to know it is provisional
+// and every reason to treat it as fact.
+//
+// What is left is only what a tester can verify against the screen: the clock in
+// the format the HUD shows it, the ask in the words the briefing card uses, and
+// the two star bars. Nothing here is derived from a model -- it is read straight
+// off the mission.
+
+const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+const qa = [];
+qa.push(['#', 'mission', 'clock', 'brief', 'objectives', '2_stars', '3_stars', 'hill'].join(','));
+for (const r of rows) {
+  qa.push([
+    r.number, `"${r.name}"`, mmss(r.seconds), `"${r.brief.replace(/"/g, '""')}"`,
+    `"${r.asks}"`, r.stars[0], r.stars[1], r.terrain || '',
+  ].join(','));
+}
+
 if (process.argv.includes('--csv')) {
   console.log(csv.join('\n'));
+} else if (process.argv.includes('--qa')) {
+  console.log(qa.join('\n'));
 } else {
   writeFileSync(join(ROOT, 'MISSIONS.md'), md.join('\n'));
   writeFileSync(join(ROOT, 'MISSIONS.csv'), csv.join('\n') + '\n');
-  console.log(`wrote MISSIONS.md and MISSIONS.csv — ${rows.length} missions`);
+  writeFileSync(join(ROOT, 'MISSIONS-QA.csv'), qa.join('\n') + '\n');
+  console.log(`wrote MISSIONS.md, MISSIONS.csv and MISSIONS-QA.csv — ${rows.length} missions`);
 }

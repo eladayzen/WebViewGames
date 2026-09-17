@@ -1,0 +1,41 @@
+#,mission,clock,brief,objectives,2_stars,3_stars,hill
+1,"CRYSTAL RUN",1:30,"Something to collect, and a hill to do it on.","8 crystals",9500,14500,ridgeDrops
+2,"FIRST DROP",1:20,"Ramps, and ground that gives way.","5 ramps",3500,5500,ridgeWeave
+3,"RAIL RUNNER",1:30,"Green metal. Get on it and stay on.","4 rails",5500,8500,ridgeNarrows
+4,"SPEED GATES",1:35,"Ride the arches. They give the hill back.","4 gates",6000,9500,ridgeLongFall
+5,"IDOL HUNT",2:10,"Ten of them, and never where you already are.","7 idols",7000,10500,ridgeStaircase
+6,"CRYSTAL HAUL",1:25,"Leave nothing shining behind you.","18 crystals",10500,16500,ridgeBowl
+7,"IRON LINE",1:40,"Find the rails. Ride them properly.","4 rails + 6 ramps",10500,16500,ridgeDrops
+8,"FAST LANE",1:40,"Tuck low and let the hill do the work.","9.0k pts",11000,17000,ridgeWeave
+9,"FULL PLATE",1:35,"A bit of everything, and no time to spare.","11 crystals + 2 rails + 4 ramps",11000,17000,ridgeNarrows
+10,"RIDGE MASTER",1:40,"Prove you have learned the whole ridge.","16 crystals + 8.5k pts",10500,16500,ridgeLongFall
+11,"DOUBLE DOWN",1:45,"Crystals everywhere, ramps in between.","16 crystals + 5 ramps",11000,17000,ridgeStaircase
+12,"STEEL RUSH",1:45,"Rails pay, and they pay while you are on them.","4 rails + 8.0k pts",10500,16500,ridgeBowl
+13,"HIGH ROLLER",2:00,"One number matters. Make it big.","10.0k pts",10500,16500,ridgeDrops
+14,"SWEEP",2:00,"Sweep the hill, gates and all.","10 crystals + 5 gates",11000,17000,ridgeWeave
+15,"LAUNCH PARTY",2:00,"Every ramp you can reach, and what lies between.","7 crystals + 8 ramps",11000,17000,ridgeNarrows
+16,"GOLD RUSH",2:00,"Crystals, and the idols among them.","16 crystals + 3 idols",10500,16500,ridgeLongFall
+17,"GRIND CITY",2:00,"Metal first, everything else after.","22 crystals + 3 rails",11000,17000,ridgeStaircase
+18,"TOP SPEED",2:00,"Ride every gate you can reach.","4 gates + 11.0k pts",10500,16500,ridgeBowl
+19,"THE GAUNTLET",2:00,"All three, all at once, all downhill.","8 crystals + 8 ramps",10500,16500,ridgeDrops
+20,"LAST LIGHT",2:00,"The last run before the sun goes.","18 crystals + 10.0k pts",11000,17000,ridgeWeave
+21,"NIGHT SHIFT",2:00,"The idols are out tonight.","5 idols + 3 rails",11000,17000,ridgeNarrows
+22,"FREE FALL",2:00,"Let the ground do the work.","8 ramps + 6.5k pts",11000,17000,ridgeLongFall
+23,"STONE STEP",2:00,"Ramp to gate, all the way down.","5 ramps + 5 gates",10500,16500,ridgeStaircase
+24,"DEEP END",2:00,"High walls. Use them.","12.0k pts",11000,17000,ridgeBowl
+25,"LOOSE PACK",2:00,"Everything on the hill is worth points.","11 crystals + 8 ramps",10500,16500,ridgeDrops
+26,"SWITCH HOUSE",2:00,"The road never lets you settle.","18 crystals + 4 gates",10500,16500,ridgeWeave
+27,"PINCH POINT",2:00,"Narrow, and the gates are on the edges.","5 ramps + 6 gates",11000,17000,ridgeNarrows
+28,"LONG HAUL",2:00,"Wide open and a long way down.","5 rails + 10.0k pts",11000,17000,ridgeLongFall
+29,"STEP LADDER",2:00,"Every drop pays if you land it.","8 ramps + 9.0k pts",10500,16500,ridgeStaircase
+30,"STORM CHASE",2:00,"Idols in the bowl. Go and get them.","5 idols + 3 rails + 2 gates",11000,17000,ridgeBowl
+31,"IRON WILL",2:00,"Rails first. Everything else after.","22 crystals + 4 rails",10500,16500,ridgeDrops
+32,"FAST CURRENT",2:00,"Never stop accelerating.","5 gates + 8.5k pts",10500,16500,ridgeWeave
+33,"CLEAN SWEEP",2:00,"Leave nothing on the hill.","30 crystals",11000,17000,ridgeNarrows
+34,"BIG NUMBERS",2:00,"Chain it. That is the only way.","13.0k pts",11000,17000,ridgeLongFall
+35,"NERVE PLAY",2:00,"Three demands, one short clock.","18 crystals + 8 ramps",10500,16500,ridgeStaircase
+36,"SKY LINE",2:00,"Ramps into gates, and nothing slower.","8 ramps + 5 gates",11000,17000,ridgeBowl
+37,"TIGHT ROPE",2:00,"Idols on the tightest hill there is.","5 idols + 4 rails + 2 gates",10500,16500,ridgeDrops
+38,"FULL TILT",2:00,"Nothing held back.","7 ramps + 11.5k pts",10500,16500,ridgeWeave
+39,"LAST CALL",2:00,"Everything you have learned, at once.","5 crystals + 3 rails + 5 ramps",11000,17000,ridgeNarrows
+40,"SUNDOWN",2:00,"Everything the ridge has, one last time.","5 idols + 4 rails + 4 gates",11000,17000,ridgeLongFall

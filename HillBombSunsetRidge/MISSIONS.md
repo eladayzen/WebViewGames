@@ -26,36 +26,36 @@ Counts are EFFECTIVE: what the player is actually asked for, after the
 | 8 | **FAST LANE** | 100s | ridgeWeave | 9.0k pts | 20 | — | 11,000 | 17,000 | 28,571 |
 | 9 | **FULL PLATE** | 95s | ridgeNarrows | 11 crystals + 2 rails + 4 ramps | 53 | 18% | 11,000 | 17,000 | 28,571 |
 | 10 | **RIDGE MASTER** | 100s | ridgeLongFall | 16 crystals + 8.5k pts | 40 | — | 10,500 | 16,500 | 27,731 |
-| 11 | **DOUBLE DOWN** | 90s | ridgeStaircase | 16 crystals + 5 ramps | 40 | 24% | 11,000 | 17,000 | 28,571 |
+| 11 | **DOUBLE DOWN** | 105s | ridgeStaircase | 16 crystals + 5 ramps | 40 | 21% | 11,000 | 17,000 | 28,571 |
 | 12 | **STEEL RUSH** | 105s | ridgeBowl | 4 rails + 8.0k pts | 42 | — | 10,500 | 16,500 | 27,731 |
-| 13 | **HIGH ROLLER** | 85s | ridgeDrops | 15.0k pts | 35 | — | 10,500 | 16,500 | 27,731 |
-| 14 | **SWEEP** | 100s | ridgeWeave | 10 crystals + 5 gates | 39 | — | 11,000 | 17,000 | 28,571 |
-| 15 | **LAUNCH PARTY** | 95s | ridgeNarrows | 7 crystals + 8 ramps | 40 | 36% | 11,000 | 17,000 | 28,571 |
-| 16 | **GOLD RUSH** | 105s | ridgeLongFall | 16 crystals + 3 idols | 40 | — | 10,500 | 16,500 | 27,731 |
-| 17 | **GRIND CITY** | 110s | ridgeStaircase | 22 crystals + 3 rails | 44 | — | 11,000 | 17,000 | 28,571 |
-| 18 | **TOP SPEED** | 90s | ridgeBowl | 4 gates + 8.0k pts | 44 | — | 10,500 | 16,500 | 27,731 |
-| 19 | **THE GAUNTLET** | 110s | ridgeDrops | 8 crystals + 8 ramps | 42 | 31% | 10,500 | 16,500 | 27,731 |
-| 20 | **LAST LIGHT** | 120s | ridgeWeave | 18 crystals + 11.0k pts | 49 | — | 11,000 | 17,000 | 28,571 |
-| 21 | **NIGHT SHIFT** | 100s | ridgeNarrows | 5 idols + 3 rails | 48 | — | 11,000 | 17,000 | 28,571 |
-| 22 | **FREE FALL** | 90s | ridgeLongFall | 8 ramps + 6.5k pts | 44 | 38% | 11,000 | 17,000 | 28,571 |
-| 23 | **STONE STEP** | 105s | ridgeStaircase | 5 ramps + 5 gates | 46 | 21% | 10,500 | 16,500 | 27,731 |
-| 24 | **DEEP END** | 95s | ridgeBowl | 15.0k pts | 34 | — | 11,000 | 17,000 | 28,571 |
-| 25 | **LOOSE PACK** | 110s | ridgeDrops | 11 crystals + 8 ramps | 46 | 31% | 10,500 | 16,500 | 27,731 |
-| 26 | **SWITCH HOUSE** | 100s | ridgeWeave | 18 crystals + 4 gates | 44 | — | 10,500 | 16,500 | 27,731 |
-| 27 | **PINCH POINT** | 85s | ridgeNarrows | 5 ramps + 6 gates | 51 | 25% | 11,000 | 17,000 | 28,571 |
-| 28 | **LONG HAUL** | 115s | ridgeLongFall | 5 rails + 10.0k pts | 51 | — | 11,000 | 17,000 | 28,571 |
-| 29 | **STEP LADDER** | 100s | ridgeStaircase | 8 ramps + 9.0k pts | 52 | 35% | 10,500 | 16,500 | 27,731 |
-| 30 | **STORM CHASE** | 110s | ridgeBowl | 5 idols + 3 rails | 48 | — | 11,000 | 17,000 | 28,571 |
-| 31 | **IRON WILL** | 95s | ridgeDrops | 22 crystals + 4 rails | 49 | — | 10,500 | 16,500 | 27,731 |
-| 32 | **FAST CURRENT** | 80s | ridgeWeave | 5 gates + 8.5k pts | 51 | — | 10,500 | 16,500 | 27,731 |
-| 33 | **CLEAN SWEEP** | 105s | ridgeNarrows | 30 crystals | 30 | — | 11,000 | 17,000 | 28,571 |
-| 34 | **BIG NUMBERS** | 90s | ridgeLongFall | 15.0k pts | 34 | — | 11,000 | 17,000 | 28,571 |
-| 35 | **NERVE PLAY** | 90s | ridgeStaircase | 18 crystals + 8 ramps | 55 | 38% | 10,500 | 16,500 | 27,731 |
-| 36 | **SKY LINE** | 95s | ridgeBowl | 8 ramps + 5 gates | 57 | 36% | 11,000 | 17,000 | 28,571 |
-| 37 | **TIGHT ROPE** | 85s | ridgeDrops | 5 idols + 4 rails | 53 | — | 10,500 | 16,500 | 27,731 |
-| 38 | **FULL TILT** | 85s | ridgeWeave | 7 ramps + 11.5k pts | 57 | 35% | 10,500 | 16,500 | 27,731 |
-| 39 | **LAST CALL** | 100s | ridgeNarrows | 5 crystals + 3 rails + 5 ramps | 54 | 22% | 11,000 | 17,000 | 28,571 |
-| 40 | **SUNDOWN** | 115s | ridgeLongFall | 5 idols + 4 gates | 53 | — | 11,000 | 17,000 | 28,571 |
+| 13 | **HIGH ROLLER** | 120s | ridgeDrops | 10.0k pts | 23 | — | 10,500 | 16,500 | 27,731 |
+| 14 | **SWEEP** | 120s | ridgeWeave | 10 crystals + 5 gates | 39 | — | 11,000 | 17,000 | 28,571 |
+| 15 | **LAUNCH PARTY** | 120s | ridgeNarrows | 7 crystals + 8 ramps | 40 | 29% | 11,000 | 17,000 | 28,571 |
+| 16 | **GOLD RUSH** | 120s | ridgeLongFall | 16 crystals + 3 idols | 40 | — | 10,500 | 16,500 | 27,731 |
+| 17 | **GRIND CITY** | 120s | ridgeStaircase | 22 crystals + 3 rails | 44 | — | 11,000 | 17,000 | 28,571 |
+| 18 | **TOP SPEED** | 120s | ridgeBowl | 4 gates + 11.0k pts | 53 | — | 10,500 | 16,500 | 27,731 |
+| 19 | **THE GAUNTLET** | 120s | ridgeDrops | 8 crystals + 8 ramps | 42 | 29% | 10,500 | 16,500 | 27,731 |
+| 20 | **LAST LIGHT** | 120s | ridgeWeave | 18 crystals + 10.0k pts | 47 | — | 11,000 | 17,000 | 28,571 |
+| 21 | **NIGHT SHIFT** | 120s | ridgeNarrows | 5 idols + 3 rails | 48 | — | 11,000 | 17,000 | 28,571 |
+| 22 | **FREE FALL** | 120s | ridgeLongFall | 8 ramps + 6.5k pts | 44 | 29% | 11,000 | 17,000 | 28,571 |
+| 23 | **STONE STEP** | 120s | ridgeStaircase | 5 ramps + 5 gates | 46 | 18% | 10,500 | 16,500 | 27,731 |
+| 24 | **DEEP END** | 120s | ridgeBowl | 12.0k pts | 27 | — | 11,000 | 17,000 | 28,571 |
+| 25 | **LOOSE PACK** | 120s | ridgeDrops | 11 crystals + 8 ramps | 46 | 29% | 10,500 | 16,500 | 27,731 |
+| 26 | **SWITCH HOUSE** | 120s | ridgeWeave | 18 crystals + 4 gates | 44 | — | 10,500 | 16,500 | 27,731 |
+| 27 | **PINCH POINT** | 120s | ridgeNarrows | 5 ramps + 6 gates | 51 | 18% | 11,000 | 17,000 | 28,571 |
+| 28 | **LONG HAUL** | 120s | ridgeLongFall | 5 rails + 10.0k pts | 51 | — | 11,000 | 17,000 | 28,571 |
+| 29 | **STEP LADDER** | 120s | ridgeStaircase | 8 ramps + 9.0k pts | 52 | 29% | 10,500 | 16,500 | 27,731 |
+| 30 | **STORM CHASE** | 120s | ridgeBowl | 5 idols + 3 rails + 2 gates | 77 | — | 11,000 | 17,000 | 28,571 |
+| 31 | **IRON WILL** | 120s | ridgeDrops | 22 crystals + 4 rails | 49 | — | 10,500 | 16,500 | 27,731 |
+| 32 | **FAST CURRENT** | 120s | ridgeWeave | 5 gates + 8.5k pts | 51 | — | 10,500 | 16,500 | 27,731 |
+| 33 | **CLEAN SWEEP** | 120s | ridgeNarrows | 30 crystals | 30 | — | 11,000 | 17,000 | 28,571 |
+| 34 | **BIG NUMBERS** | 120s | ridgeLongFall | 13.0k pts | 30 | — | 11,000 | 17,000 | 28,571 |
+| 35 | **NERVE PLAY** | 120s | ridgeStaircase | 18 crystals + 8 ramps | 55 | 29% | 10,500 | 16,500 | 27,731 |
+| 36 | **SKY LINE** | 120s | ridgeBowl | 8 ramps + 5 gates | 57 | 29% | 11,000 | 17,000 | 28,571 |
+| 37 | **TIGHT ROPE** | 120s | ridgeDrops | 5 idols + 4 rails + 2 gates | 83 | — | 10,500 | 16,500 | 27,731 |
+| 38 | **FULL TILT** | 120s | ridgeWeave | 7 ramps + 11.5k pts | 57 | 25% | 10,500 | 16,500 | 27,731 |
+| 39 | **LAST CALL** | 120s | ridgeNarrows | 5 crystals + 3 rails + 5 ramps | 54 | 18% | 11,000 | 17,000 | 28,571 |
+| 40 | **SUNDOWN** | 120s | ridgeLongFall | 5 idols + 4 rails + 4 gates | 97 | — | 11,000 | 17,000 | 28,571 |
 
 ## Briefs
 
@@ -102,8 +102,8 @@ Counts are EFFECTIVE: what the player is actually asked for, after the
 
 ## Totals
 
-- 40 missions, 65m 25s of clock end to end
-- DP from 8 to 57
-- over budget (DP > 60): none
+- 40 missions, 75m 35s of clock end to end
+- DP from 8 to 97
+- over budget (DP > 60): 30 STORM CHASE, 37 TIGHT ROPE, 40 SUNDOWN
 - ramp asks over 40% of supply: none
-- missions asking for each kind: crystal 17, ramp 15, rail 11, gate 9, idol 6, pts 13
+- missions asking for each kind: crystal 17, ramp 15, rail 12, gate 11, idol 6, pts 13

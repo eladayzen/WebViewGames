@@ -536,11 +536,11 @@ const AUTHORED = [
   // "Twice the ramps" stopped being true when ramps were capped -- it now asks
   // five, the same as FIRST DROP. Crystal-led on purpose, so it stays a
   // different mission from LAUNCH PARTY, which is ramp-led on the same pair.
-  ['doubleDown',  'DOUBLE DOWN',   'Crystals everywhere, ramps in between.',    90, { pickup: 23, launch: 7 }],
+  ['doubleDown',  'DOUBLE DOWN',   'Crystals everywhere, ramps in between.',    105, { pickup: 23, launch: 7 }],
   ['steelRush',   'STEEL RUSH',    'Rails pay, and they pay while you are on them.', 105, { grind: 5, score: 11500 }],
-  ['highRoller',  'HIGH ROLLER',   'One number matters. Make it big.',          85, { score: 21500 }],
-  ['sweep',       'SWEEP',         'Sweep the hill, gates and all.',           100, { pickup: 14, boost: 7 }],
-  ['launchParty', 'LAUNCH PARTY',  'Every ramp you can reach, and what lies between.',              95, { launch: 11, pickup: 10 }],
+  ['highRoller',  'HIGH ROLLER',   'One number matters. Make it big.',          120, { score: 14300 }],
+  ['sweep',       'SWEEP',         'Sweep the hill, gates and all.',           120, { pickup: 14, boost: 7 }],
+  ['launchParty', 'LAUNCH PARTY',  'Every ramp you can reach, and what lies between.',              120, { launch: 11, pickup: 10 }],
   /**
    * THREE IDOLS, NOT FOUR -- the one mission the difficulty budget could not
    * fit, and the reason is worth keeping.
@@ -562,13 +562,13 @@ const AUTHORED = [
    * away the only mission that asks the player to hunt scarce ones. Three of
    * seven is still a hunt; four of seven was a sweep wearing a hunt's name.
    */
-  ['goldRush',    'GOLD RUSH',     'Crystals, and the idols among them.',      105, { pickup: 23, idol: 4 }],
-  ['grindCity',   'GRIND CITY',    'Metal first, everything else after.',      110, { pickup: 31, grind: 4 }],
+  ['goldRush',    'GOLD RUSH',     'Crystals, and the idols among them.',      120, { pickup: 23, idol: 4 }],
+  ['grindCity',   'GRIND CITY',    'Metal first, everything else after.',      120, { pickup: 31, grind: 4 }],
   // A speed mission that is finally ABOUT speed: the gates are the mechanic,
   // so asking for them is asking for the thing the mission is named after.
-  ['topSpeed',    'TOP SPEED',     'Ride every gate you can reach.',            90, { boost: 5, score: 11500 }],
-  ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    110, { pickup: 11, launch: 11 }],
-  ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { pickup: 25, score: 15500 }],
+  ['topSpeed',    'TOP SPEED',     'Ride every gate you can reach.',            120, { boost: 6, score: 15700 }],
+  ['gauntlet',    'THE GAUNTLET',  'All three, all at once, all downhill.',    120, { pickup: 11, launch: 11 }],
+  ['lastLight',   'LAST LIGHT',    'The last run before the sun goes.',        120, { pickup: 26, score: 14300 }],
 
   // === MISSIONS 21-40 =========================================================
   //
@@ -602,34 +602,34 @@ const AUTHORED = [
   // Every number here is AUTHORED and passes through DIFFICULTY (0.7), so the
   // player sees roughly 70% of what is written. The authored values are what
   // state the intent.
-  ['nightShift',  'NIGHT SHIFT',   'The idols are out tonight.',               100,
+  ['nightShift',  'NIGHT SHIFT',   'The idols are out tonight.',               120,
     { idol: 7, grind: 4 }, undefined, { rareAlways: true }],
-  ['freeFall',    'FREE FALL',     'Let the ground do the work.',               90, { launch: 11, score: 9300 }],
-  ['stoneStep',   'STONE STEP',    'Ramp to gate, all the way down.',          105, { launch: 7, boost: 7 }],
-  ['deepEnd',     'DEEP END',      'High walls. Use them.',                     95, { score: 21500 }],
-  ['loosePack',   'LOOSE PACK',    'Everything on the hill is worth points.',  110, { pickup: 16, launch: 11 }],
-  ['switchHouse', 'SWITCH HOUSE',  'The road never lets you settle.',          100, { pickup: 25, boost: 5 }],
-  ['pinchPoint',  'PINCH POINT',   'Narrow, and the gates are on the edges.',   85, { launch: 7, boost: 9 }],
-  ['longHaul',    'LONG HAUL',     'Wide open and a long way down.',           115, { grind: 7, score: 14000 }],
-  ['stepLadder',  'STEP LADDER',   'Every drop pays if you land it.',          100, { launch: 11, score: 12850 }],
-  ['stormChase',  'STORM CHASE',   'Idols in the bowl. Go and get them.',      110,
-    { idol: 7, grind: 4 }, undefined, { rareAlways: true }],
+  ['freeFall',    'FREE FALL',     'Let the ground do the work.',               120, { launch: 11, score: 9300 }],
+  ['stoneStep',   'STONE STEP',    'Ramp to gate, all the way down.',          120, { launch: 7, boost: 7 }],
+  ['deepEnd',     'DEEP END',      'High walls. Use them.',                     120, { score: 17150 }],
+  ['loosePack',   'LOOSE PACK',    'Everything on the hill is worth points.',  120, { pickup: 16, launch: 11 }],
+  ['switchHouse', 'SWITCH HOUSE',  'The road never lets you settle.',          120, { pickup: 25, boost: 5 }],
+  ['pinchPoint',  'PINCH POINT',   'Narrow, and the gates are on the edges.',   120, { launch: 7, boost: 9 }],
+  ['longHaul',    'LONG HAUL',     'Wide open and a long way down.',           120, { grind: 7, score: 14000 }],
+  ['stepLadder',  'STEP LADDER',   'Every drop pays if you land it.',          120, { launch: 11, score: 12850 }],
+  ['stormChase',  'STORM CHASE',   'Idols in the bowl. Go and get them.',      120,
+    { idol: 7, grind: 4, boost: 3 }, undefined, { rareAlways: true }],
   // --- 31-40: the pairings come back around, so the demands take over --------
-  ['ironWill',    'IRON WILL',     'Rails first. Everything else after.',       95, { pickup: 31, grind: 5 }],
-  ['fastCurrent', 'FAST CURRENT',  'Never stop accelerating.',                  80, { boost: 7, score: 12000 }],
-  ['cleanSweep',  'CLEAN SWEEP',   'Leave nothing on the hill.',               105, { pickup: 43 }],
-  ['bigNumbers',  'BIG NUMBERS',   'Chain it. That is the only way.',           90, { score: 21500 }],
-  ['nervePlay',   'NERVE PLAY',    'Three demands, one short clock.',           90, { pickup: 26, launch: 11 }],
-  ['skyLine',     'SKY LINE',      'Ramps into gates, and nothing slower.',                   95, { launch: 11, boost: 7 }],
-  ['tightRope',   'TIGHT ROPE',    'Idols on the tightest hill there is.',      85,
-    { idol: 7, grind: 5 }, undefined, { rareAlways: true }],
+  ['ironWill',    'IRON WILL',     'Rails first. Everything else after.',       120, { pickup: 31, grind: 5 }],
+  ['fastCurrent', 'FAST CURRENT',  'Never stop accelerating.',                  120, { boost: 7, score: 12000 }],
+  ['cleanSweep',  'CLEAN SWEEP',   'Leave nothing on the hill.',               120, { pickup: 43 }],
+  ['bigNumbers',  'BIG NUMBERS',   'Chain it. That is the only way.',           120, { score: 18550 }],
+  ['nervePlay',   'NERVE PLAY',    'Three demands, one short clock.',           120, { pickup: 26, launch: 11 }],
+  ['skyLine',     'SKY LINE',      'Ramps into gates, and nothing slower.',                   120, { launch: 11, boost: 7 }],
+  ['tightRope',   'TIGHT ROPE',    'Idols on the tightest hill there is.',      120,
+    { idol: 7, grind: 6, boost: 3 }, undefined, { rareAlways: true }],
   // SEVEN RAMPS, NOT EIGHT. The cap is 8, and this is the one mission where 8
   // was still 40% of supply: the clock is 85s, the shortest in the game, so the
   // hill hands over fewer ramps here than anywhere else. The cap is a count; the
   // thing that actually matters is the share, and on a short clock those come
   // apart. Amit's call, and it puts the last ramp mission at 35% like the rest.
-  ['fullTilt',    'FULL TILT',     'Nothing held back.',                        85, { launch: 10, score: 16400 }],
-  ['lastCall',    'LAST CALL',     'Everything you have learned, at once.',    100, { pickup: 7, grind: 4, launch: 7 }],
+  ['fullTilt',    'FULL TILT',     'Nothing held back.',                        120, { launch: 10, score: 16400 }],
+  ['lastCall',    'LAST CALL',     'Everything you have learned, at once.',    120, { pickup: 7, grind: 4, launch: 7 }],
   // The finale asks for the two things Amit calls the most fun, plus a score
   // that needs the chain -- so the last mission is the game at its best rather
   // than its longest crystal sweep.
@@ -646,8 +646,8 @@ const AUTHORED = [
    * comfortably above the 4 that SPEED GATES teaches, and the idols are what
    * this mission is remembered for.
    */
-  ['sundown',     'SUNDOWN',       'Everything the ridge has, one last time.', 115,
-    { idol: 7, boost: 6 }, undefined, { rareAlways: true }],
+  ['sundown',     'SUNDOWN',       'Everything the ridge has, one last time.', 120,
+    { idol: 7, grind: 6, boost: 6 }, undefined, { rareAlways: true }],
 
 ];
 
