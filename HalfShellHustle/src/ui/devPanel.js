@@ -9,9 +9,9 @@
 // RECENTRE BOARD, and the "NEXT THEME (DEV)" theme-skip button. None of that
 // is a real player's business; a curious tap on "absolute" mode or a
 // theme-skip mid-run is not a thing to leave one accidental gesture away.
-// ADD POINTS (+100/+300/+500/+1000, 2026-09-17) joined the same reasoning --
-// reaching a tier (or the final one, to check the victory screen) by
-// actually playing is slow while iterating.
+// ADD POINTS (+100/+300/+500/+1000, 2026-09-17) and SHOW FINAL ENDING SCREEN
+// joined the same reasoning -- reaching a tier (or the final one, to check
+// the victory screen) by actually playing is slow while iterating.
 //
 // MODE IN PARTICULAR IS DEV-ONLY NOW: data/constants.js's
 // DEFAULT_STEERING_MODE is stepped, always, on a fresh install -- absolute
@@ -59,6 +59,15 @@ export function setNextThemeHandler(fn) {
 let addScoreHandler = null;
 export function setAddScoreHandler(fn) {
   addScoreHandler = fn;
+}
+
+// "Show final ending screen" (direct request) -- jumps straight to the
+// victory beat regardless of actual score, so it can be checked/iterated on
+// without grinding every tier first. Same underlying function a real
+// clear calls (core/main.js's completeRun), not a separate mock screen.
+let showVictoryHandler = null;
+export function setShowVictoryHandler(fn) {
+  showVictoryHandler = fn;
 }
 
 export function initDevPanel() {
@@ -171,6 +180,14 @@ export function initDevPanel() {
       return result === false ? 'NOT RUNNING' : 'ADDED';
     },
   })));
+  rp.addAction({
+    label: 'SHOW FINAL ENDING SCREEN',
+    run: () => {
+      if (!showVictoryHandler) return 'NOT READY';
+      const result = showVictoryHandler();
+      return result === false ? 'NOT RUNNING' : 'SHOWING...';
+    },
+  });
   rp.addAction({
     label: 'CLOSE',
     run: () => { setOpen(false); return null; },

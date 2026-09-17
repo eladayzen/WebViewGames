@@ -67,7 +67,9 @@ import {
 } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import { initSteeringPanel } from '../ui/steeringPanel.js';
-import { initDevPanel, setNextThemeHandler, setAddScoreHandler } from '../ui/devPanel.js';
+import {
+  initDevPanel, setNextThemeHandler, setAddScoreHandler, setShowVictoryHandler,
+} from '../ui/devPanel.js';
 import { installDevUnlock } from '../ui/devUnlock.js';
 import {
   initAudio, playSfx, pauseMusic, resumeMusic,
@@ -821,6 +823,16 @@ function boot() {
   setAddScoreHandler((amount) => {
     if (gs.current !== 'running') return false;
     devAddPoints(amount);
+    return true;
+  });
+
+  // DEV: "show final ending screen" (ui/devPanel.js). Jumps straight to the
+  // real victory beat regardless of actual score -- completeRun itself
+  // doesn't check the score at all, only gs.current, so this is the exact
+  // same path a genuine clear takes, not a mock/separate screen.
+  setShowVictoryHandler(() => {
+    if (gs.current !== 'running') return false;
+    completeRun();
     return true;
   });
 

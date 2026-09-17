@@ -857,14 +857,70 @@ html, body {
   paint-order: stroke fill;
 }
 
-/* The one board-title that gets its own entrance -- "QUIT?"/"RUN ENDED" are
-   plain by design (own the moment quietly), but this is the biggest beat in
-   the game (direct request: "very celebrative"), so it gets the same kind of
-   bouncy pop the level-complete headline already uses (.lc-headline-play),
-   just triggered by the overlay itself becoming visible rather than a class
-   restart -- it's shown once per victory, never replayed mid-screen. */
+/* --- Victory screen: its OWN loud, bright treatment -----------------------
+   Direct feedback: reusing .board-screen/.board-card's flat dark wash (built
+   for the neutral QUIT?/RUN ENDED cards) made the single biggest, happiest
+   moment in the game read as "super not fun or celebrative" -- same somber
+   background as a screen about giving up. This is the one place in the whole
+   overlay family that gets to be loud: strong saturated color, a spinning
+   sunburst behind the card, a pulsing glow, and a much bigger confetti burst
+   (ui/hud.js's VICTORY_CONFETTI_COUNT + size/shape variety, see
+   .confetti-piece below). --- */
+#victory-overlay {
+  /* Overrides .board-screen's flat dark background -- a warm, saturated
+     radial glow instead of a wash, so the screen itself feels celebratory
+     before the card even loads. */
+  background: radial-gradient(circle at 50% 42%, rgba(255, 190, 60, 0.5), rgba(40, 8, 30, 0.94) 68%);
+  overflow: hidden;
+}
+
+/* Slow-spinning sunburst rays behind everything else (confetti + card both
+   paint after this in DOM order, so they sit on top without needing an
+   explicit z-index). Oversized (200% inset) so the rotation never reveals a
+   corner. */
+#victory-overlay::before {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 222, 80, 0.22) 0deg 9deg,
+    transparent 9deg 18deg
+  );
+  animation: victory-rays-spin 26s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes victory-rays-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Bright celebratory gradient card, replacing .board-card's dark brown --
+   plus a pulsing colored glow so the card itself feels alive, not static. */
+#victory-overlay .board-card {
+  background: linear-gradient(155deg, #ff8a3c 0%, #ffde50 48%, #ff6bb0 100%);
+  box-shadow: 0 0 10px 4px rgba(255, 210, 100, 0.6), 0 10px 40px rgba(0, 0, 0, 0.5);
+  animation: victory-card-glow 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes victory-card-glow {
+  0% { box-shadow: 0 0 10px 4px rgba(255, 210, 100, 0.55), 0 10px 40px rgba(0, 0, 0, 0.5); }
+  100% { box-shadow: 0 0 26px 10px rgba(255, 110, 180, 0.75), 0 10px 40px rgba(0, 0, 0, 0.5); }
+}
+
+/* Dark text now -- the card itself is bright, so the gold-on-dark language
+   the other board-cards use would vanish here. */
 #victory-overlay .board-title {
+  font-size: 40px;
+  color: #2a0a30;
+  -webkit-text-stroke: 1.5px #fff5e0;
   animation: victory-title-pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+#victory-overlay .board-sub {
+  color: #3a1020;
+  font-weight: 800;
 }
 
 @keyframes victory-title-pop {
@@ -1121,9 +1177,20 @@ html, body {
   height: 2.3vmin;
   opacity: 0;
   will-change: transform, opacity;
-  /* left / background / --drift / --spin / animation-delay / -duration are all
-     set per-piece inline by JS at build time -- each piece needs its own
-     random values, which a shared class alone can't express. */
+  /* left / background / --drift / --spin / animation-delay / -duration /
+     width / height are all set per-piece inline by JS at build time -- each
+     piece needs its own random values, which a shared class alone can't
+     express. */
+}
+
+/* A star-shaped subset of the victory pool (ui/hud.js's buildConfettiInto,
+   "very celebrative" -- direct feedback the plain rectangle confetti alone
+   read as flat). Same fall animation, just a different silhouette. */
+.confetti-star {
+  clip-path: polygon(
+    50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%,
+    50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%
+  );
 }
 
 /* Only animates while this class is present, so a freshly-built (not yet

@@ -322,12 +322,17 @@ export function updatePoints(points, punch = false, variant = null) {
 // same thing better. All that survives is the bar's own sweep, which reads for
 // the instant before the overlay covers it.
 
-const CONFETTI_COLORS = ['#ffe066', '#ffc93f', '#5fe0ff', '#ff8fa3', '#7fd8ff', '#97ff6b', '#ffb43c'];
+const CONFETTI_COLORS = [
+  '#ffe066', '#ffc93f', '#5fe0ff', '#ff8fa3', '#7fd8ff', '#97ff6b', '#ffb43c',
+  '#ff6bb0', '#c58cff', '#4dffb8',
+];
 const CONFETTI_COUNT = 34;
-// The victory screen gets roughly double the level-complete burst (direct
-// request: "very celebrative") -- it's the one screen in the whole game with
-// no next level to get back to, so it can afford to be the biggest moment.
-const VICTORY_CONFETTI_COUNT = 70;
+// The victory screen gets over 3x the level-complete burst plus size/shape
+// variety (direct feedback: the screen read as "super not fun or
+// celebrative" -- more/bigger/varied particles, "kid just beat the whole
+// game" energy) -- it's the one screen in the whole game with no next level
+// to get back to, so it can afford to be the biggest moment.
+const VICTORY_CONFETTI_COUNT = 120;
 
 // Built once at module load, not per celebration -- creating dozens of DOM
 // nodes on every level-up (or, once, ever, for the victory screen) would be a
@@ -341,14 +346,25 @@ const VICTORY_CONFETTI_COUNT = 70;
 // Delay/duration ranges are chosen so pieces are still falling ~5s in --
 // covering roughly the whole LEVEL_COUNTDOWN_SECONDS window, not just the
 // first second or two -- without needing a second timed burst.
-function buildConfettiInto(container, count) {
+//
+// `fancy` (victory pool only): random per-piece SIZE (not one fixed
+// rectangle for every piece) and a star-shaped subset (.confetti-star),
+// instead of uniform confetti rectangles -- the extra variety is what
+// actually reads as "particles", not just "more of the same dot".
+function buildConfettiInto(container, count, fancy = false) {
   if (!container) return;
   const frag = document.createDocumentFragment();
   for (let i = 0; i < count; i++) {
     const el = document.createElement('div');
-    el.className = 'confetti-piece';
+    const isStar = fancy && Math.random() < 0.3;
+    el.className = isStar ? 'confetti-piece confetti-star' : 'confetti-piece';
     el.style.left = `${Math.random() * 100}%`;
     el.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+    if (fancy) {
+      const scale = 0.7 + Math.random() * 1.3;
+      el.style.width = `${(isStar ? 2.6 : 1.1) * scale}vmin`;
+      el.style.height = `${(isStar ? 2.6 : 2.3) * scale}vmin`;
+    }
     el.style.setProperty('--drift', `${(Math.random() * 2 - 1) * 24}vw`);
     el.style.setProperty('--spin', `${(Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 3) * 360}deg`);
     el.style.animationDuration = `${2 + Math.random() * 1.4}s`;
@@ -358,7 +374,7 @@ function buildConfettiInto(container, count) {
   container.appendChild(frag);
 }
 buildConfettiInto(lcConfettiEl, CONFETTI_COUNT);
-buildConfettiInto(victoryConfettiEl, VICTORY_CONFETTI_COUNT);
+buildConfettiInto(victoryConfettiEl, VICTORY_CONFETTI_COUNT, true);
 
 // `finishedTier` is the level JUST ended (core/main.js's levelIndex, still
 // the OLD value when this is called -- it only becomes `nextTier` inside
