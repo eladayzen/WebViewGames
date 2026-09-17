@@ -46,7 +46,7 @@ import {
   initPointsFly, spawnPointsFly, updatePointsFly, clearPointsFly,
   refreshPointsFlyTarget,
 } from '../ui/pointsFly.js';
-import { progressAt, themeForTier, obstacleIntervalForTier } from '../systems/progression.js';
+import { progressAt, tierName, themeForTier, obstacleIntervalForTier } from '../systems/progression.js';
 import { speedAt, distanceTraveledBy, seedDistanceAt } from '../systems/speed.js';
 import {
   createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
@@ -672,7 +672,11 @@ function boot() {
     hud.hideConfirm();
     setPaused(true);
     const runScore = score.total;
-    const statsText = `SCORE ${Math.floor(runScore).toLocaleString()}`;
+    // Same "SCORE X · Y" pattern as TmntSkateSlice's quit board (there, Y is
+    // BEST COMBO -- this game has no combo, so tier reached is the closest
+    // equivalent headline second stat, same source as the death screen's own
+    // breakdown (hud.js's showGameOver).
+    const statsText = `SCORE ${Math.floor(runScore).toLocaleString()} · ${tierName(progressAt(runScore).tier)}`;
     hud.showQuit(statsText, null, []);
     submitRun(runScore).then(() =>
       fetchBoard().then((board) => {
