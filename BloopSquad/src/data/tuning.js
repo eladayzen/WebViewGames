@@ -308,6 +308,11 @@ export const SQUAD = {
   // and the tail is still crossing screen while the head has turned twice, which
   // reads as clutter rather than as a parade.
   maxMembers: 12,
+  // Gap from the POD to the first member, kept separate from the gap between
+  // members because they answer different questions. This one is about the pod
+  // staying legible: at 46 px the first member sat inside the saucer's own
+  // silhouette, reading as part of the ship rather than as someone following it.
+  leadPx: 104,
   // PIXELS between one member and the next, measured ALONG THE PATH -- not
   // seconds of delay. The difference matters and it is the whole reason this
   // works: with a time delay, every member reads a position from N frames ago,
@@ -315,7 +320,7 @@ export const SQUAD = {
   // the line collapses into a pile. A six-year-old holds still constantly.
   // Spacing by distance instead means a stopped pod simply leaves the line where
   // it is, holding its shape.
-  spacingPx: 46,
+  spacingPx: 76,
   // A new path point is only recorded once the pod has moved this far, so the
   // history is a PATH rather than a time series -- standing still records
   // nothing instead of flooding the buffer with identical points.

@@ -163,7 +163,8 @@ export function updateSquad(w, dt) {
     w.trail.push({ x: p.x, y: p.y });
   }
   // Enough path to seat a full line, plus slack for the curve.
-  const maxPoints = Math.ceil((SQUAD.maxMembers + 2) * SQUAD.spacingPx / SQUAD.pathStepPx);
+  const lineLen = SQUAD.leadPx + (SQUAD.maxMembers + 1) * SQUAD.spacingPx;
+  const maxPoints = Math.ceil(lineLen / SQUAD.pathStepPx);
   while (w.trail.length > maxPoints) w.trail.shift();
 
   // Walk BACK along the path, dropping a member every `spacingPx` of travel.
@@ -171,7 +172,8 @@ export function updateSquad(w, dt) {
   // spacing survives the player weaving, stopping or reversing.
   let mi = 0;
   let travelled = 0;
-  let want = SQUAD.spacingPx;
+  // The first member sits `leadPx` back; every one after it adds `spacingPx`.
+  let want = SQUAD.leadPx;
   let cx = p.x, cy = p.y;
   for (let i = w.trail.length - 1; i >= 0 && mi < w.squad.length; i--) {
     const pt = w.trail[i];
