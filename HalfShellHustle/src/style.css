@@ -416,6 +416,33 @@ html, body {
   background: rgba(255, 255, 255, 0.3);
 }
 
+/* A row of small chip buttons sharing one line (ui/panelRows.js's
+   addChipRow) -- e.g. dev tools' ADD POINTS quick-adds. Same visual language
+   as .sp-wide, just narrower per button and several to a row. */
+.sp-chip-row {
+  display: flex;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.sp-chip {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #eafcff;
+  font: 800 11px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sp-chip:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 /* Key legend at the top of the panel. */
 .sp-keyhint {
   font-size: 9px;

@@ -9,6 +9,9 @@
 // RECENTRE BOARD, and the "NEXT THEME (DEV)" theme-skip button. None of that
 // is a real player's business; a curious tap on "absolute" mode or a
 // theme-skip mid-run is not a thing to leave one accidental gesture away.
+// ADD POINTS (+100/+300/+500/+1000, 2026-09-17) joined the same reasoning --
+// reaching a tier (or the final one, to check the victory screen) by
+// actually playing is slow while iterating.
 //
 // MODE IN PARTICULAR IS DEV-ONLY NOW: data/constants.js's
 // DEFAULT_STEERING_MODE is stepped, always, on a fresh install -- absolute
@@ -46,6 +49,16 @@ const WRENCH = '&#128295;'; // 🔧 -- distinct from the settings gear (&#9881;)
 let nextThemeHandler = null;
 export function setNextThemeHandler(fn) {
   nextThemeHandler = fn;
+}
+
+// "Add N points" quick-adds (direct request) -- same reasoning as the theme
+// skip above: reaching a tier (or the final one, to check the victory
+// screen) by actually playing is slow while iterating. Same ownership split
+// -- the real score/tier-up logic lives in core/main.js's closure; this file
+// only renders the buttons and calls back into whatever main.js registers.
+let addScoreHandler = null;
+export function setAddScoreHandler(fn) {
+  addScoreHandler = fn;
 }
 
 export function initDevPanel() {
@@ -145,6 +158,19 @@ export function initDevPanel() {
       return result === false ? 'NOT RUNNING' : 'JUMPING...';
     },
   });
+  const addPointsLabel = document.createElement('div');
+  addPointsLabel.className = 'sp-label';
+  addPointsLabel.style.marginTop = '10px';
+  addPointsLabel.textContent = 'ADD POINTS';
+  panelEl.appendChild(addPointsLabel);
+  rp.addChipRow([100, 300, 500, 1000].map((amount) => ({
+    label: `+${amount}`,
+    run: () => {
+      if (!addScoreHandler) return 'NOT READY';
+      const result = addScoreHandler(amount);
+      return result === false ? 'NOT RUNNING' : 'ADDED';
+    },
+  })));
   rp.addAction({
     label: 'CLOSE',
     run: () => { setOpen(false); return null; },

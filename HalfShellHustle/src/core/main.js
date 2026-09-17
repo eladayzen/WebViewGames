@@ -67,7 +67,7 @@ import {
 } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import { initSteeringPanel } from '../ui/steeringPanel.js';
-import { initDevPanel, setNextThemeHandler } from '../ui/devPanel.js';
+import { initDevPanel, setNextThemeHandler, setAddScoreHandler } from '../ui/devPanel.js';
 import { installDevUnlock } from '../ui/devUnlock.js';
 import {
   initAudio, playSfx, pauseMusic, resumeMusic,
@@ -795,6 +795,29 @@ function boot() {
   setNextThemeHandler(() => {
     if (gs.current !== 'running') return false;
     beginLevelComplete(levelIndex + 1);
+    return true;
+  });
+
+  // DEV: "add N points" quick-adds (ui/devPanel.js). Takes the exact same
+  // path a real landed label does -- credit + the final-tier/tier-up check
+  // (completeRun/beginLevelComplete) -- just crediting `displayed` instantly
+  // instead of animating a flying label, since this is a debug shortcut, not
+  // a real catch. Guarded on 'running' the same way NEXT THEME is.
+  function devAddPoints(amount) {
+    score.total += amount;
+    const before = progressAt(score.displayed).tier;
+    score.displayed = score.total;
+    hud.updatePoints(score.displayed, true);
+    if (isFinalTierCleared(score.displayed)) {
+      completeRun();
+      return;
+    }
+    const after = progressAt(score.displayed).tier;
+    if (after > before) beginLevelComplete(after);
+  }
+  setAddScoreHandler((amount) => {
+    if (gs.current !== 'running') return false;
+    devAddPoints(amount);
     return true;
   });
 

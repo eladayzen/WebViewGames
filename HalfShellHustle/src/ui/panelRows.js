@@ -127,6 +127,40 @@ export function createRowPanel(panelEl) {
     return row;
   }
 
+  // A compact row of several small chip buttons sharing one line (e.g. a
+  // set of "+N" quick-add buttons) -- addAction's full-width button per row
+  // gets unreadable/tall fast once there are more than a couple of these
+  // (same lesson NovaVanguard's own devPanel.js learned about cramming too
+  // much into one row: split into groups). Each chip is still its OWN
+  // independently-selectable/-navigable row (same Enter/Space model as
+  // every other row here) -- only the visual layout is shared.
+  function addChipRow(items) {
+    const container = document.createElement('div');
+    container.className = 'sp-chip-row';
+    panelEl.appendChild(container);
+    return items.map(({ label, run }) => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'sp-chip';
+      el.textContent = label;
+      const row = {
+        el,
+        refresh: () => {},
+        activate: () => {
+          playSfx('sfx_ui_tap');
+          const msg = run();
+          if (!msg) return;
+          el.textContent = msg;
+          window.setTimeout(() => { el.textContent = label; }, 1200);
+        },
+      };
+      el.addEventListener('click', row.activate);
+      container.appendChild(el);
+      rows.push(row);
+      return row;
+    });
+  }
+
   // Rows belonging to the OTHER steering mode are dimmed, never hidden: a
   // panel that reflows as you change modes is miserable to poke at while
   // standing on a board, and dimming keeps it visible that the other mode
@@ -149,6 +183,7 @@ export function createRowPanel(panelEl) {
     addStepper,
     addChoice,
     addAction,
+    addChipRow,
     refreshRelevance,
     refreshSelection,
     getSelected: () => selected,
