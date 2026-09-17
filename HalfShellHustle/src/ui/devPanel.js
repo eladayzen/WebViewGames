@@ -173,6 +173,8 @@ export function initDevPanel() {
     if (gameover && !gameover.classList.contains('hidden')) return;
     const levelComplete = document.getElementById('level-complete');
     if (levelComplete && !levelComplete.classList.contains('hidden')) return;
+    const victory = document.getElementById('victory-overlay');
+    if (victory && !victory.classList.contains('hidden')) return;
 
     e.preventDefault();
     if (e.code === 'Enter') {

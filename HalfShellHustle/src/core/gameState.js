@@ -6,6 +6,19 @@
 //   'levelcomplete' -- a tier was reached; world frozen behind the transition
 //                      overlay while its countdown runs
 //   'gameover'      -- out of lives
+//   'cleared'       -- the LAST authored tier's own threshold was crossed --
+//                      the whole run is won, not just a tier reached (direct
+//                      request, 2026-09-17: "an end screen after our current
+//                      last theme"). A SEPARATE state from 'gameover' on
+//                      purpose (mirrors NovaVanguard/TmntSkateSlice's
+//                      GameState.CLEARED): it freezes the sim the same way,
+//                      but finishing is not failing -- the victory beat must
+//                      not auto-restart, and its own state is what the X
+//                      reads to leave without a confirm and what keeps
+//                      Space/Enter from restarting or popping a panel under
+//                      the player's fingers while they read the earned
+//                      screen. See core/main.js's completeRun/
+//                      continueFromVictory.
 //
 // GOBALANCE_SDK.md's contract: the game's first playable/countdown state
 // must be reachable on page load with NO KEY REQUIRED. 'intro' satisfies
@@ -39,4 +52,8 @@ export function triggerLevelComplete(gs) {
 
 export function triggerIntro(gs) {
   gs.current = 'intro';
+}
+
+export function triggerCleared(gs) {
+  gs.current = 'cleared';
 }

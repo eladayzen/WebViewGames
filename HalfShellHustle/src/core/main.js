@@ -46,7 +46,9 @@ import {
   initPointsFly, spawnPointsFly, updatePointsFly, clearPointsFly,
   refreshPointsFlyTarget,
 } from '../ui/pointsFly.js';
-import { progressAt, tierName, themeForTier, obstacleIntervalForTier } from '../systems/progression.js';
+import {
+  progressAt, tierName, themeForTier, obstacleIntervalForTier, isFinalTierCleared,
+} from '../systems/progression.js';
 import { speedAt, distanceTraveledBy, seedDistanceAt } from '../systems/speed.js';
 import {
   createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
@@ -54,6 +56,7 @@ import {
 import { submitRun, fetchBoard, resultSections } from '../systems/scoreboard.js';
 import {
   createGameState, restartToRunning, triggerGameOver, triggerLevelComplete, triggerIntro,
+  triggerCleared,
 } from './gameState.js';
 import {
   INTRO_LANE_CYCLE, INTRO_LANE_STATE_HOLD_SEC, INTRO_JUMP_CYCLE,
@@ -572,6 +575,7 @@ function boot() {
 
   function restart() {
     hud.hideGameOver();
+    hud.hideVictory(); // defensive: a fast repeat could reach here mid-celebration
     fullReset();
     beginIntro();
   }
@@ -709,6 +713,56 @@ function boot() {
     leaveToLobby();
   });
 
+  // Cleared the final tier (systems/progression.js's isFinalTierCleared) =
+  // the whole run is won. Direct request, 2026-09-17: "an end screen after
+  // our current last theme, very celebrative." Mirrors NovaVanguard/
+  // TmntSkateSlice's completeCampaign -- a victory beat of its own (state
+  // 'cleared', its own overlay, CONTINUE-only, no timer, no
+  // #restart-button), so finishing does not feel identical to dying. Guarded
+  // on 'running' the same way endRun is; isFinalTierCleared stays true
+  // forever once crossed, so a later frame hitting this same check harmlessly
+  // no-ops here (gs.current is no longer 'running' by then).
+  function completeRun() {
+    if (gs.current !== 'running') return;
+    triggerCleared(gs);
+    playSfx('sfx_level_complete');
+    // Anything still mid-flight is credited immediately -- same reasoning as
+    // endRun/beginLevelComplete: a label that never landed must not cost the
+    // player points on the recap.
+    settleScore(score);
+    clearPointsFly();
+    hud.updatePoints(score.displayed);
+    hud.showVictory(`SCORE ${Math.floor(score.total).toLocaleString()}`);
+  }
+
+  // CONTINUE off the victory screen -> the shared end board (leaderboard,
+  // play again, leave, no timer) with an "ALL TIERS CLEARED!" headline. The
+  // score is submitted first so it lands on the board -- same as the quit
+  // path, and the same "a run is whole, or it is nothing" rule every ending
+  // here follows.
+  function continueFromVictory() {
+    if (gs.current !== 'cleared') return;
+    hud.hideVictory();
+    const runScore = score.total;
+    const statsText = `SCORE ${Math.floor(runScore).toLocaleString()}`;
+    hud.showQuit(statsText, null, [], 'ALL TIERS CLEARED!');
+    submitRun(runScore).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, runScore);
+        hud.showQuit(statsText, board, near.length ? [top, near] : [top], 'ALL TIERS CLEARED!');
+      })
+    );
+  }
+
+  // NO timer and CONTINUE is the only way off this screen: a stray touch
+  // must not take away the earned beat the way it could on a death/quit
+  // screen with an auto-timer.
+  document.getElementById('victory-continue').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx('sfx_ui_tap');
+    continueFromVictory();
+  });
+
   // SFX + music (systems/audio.js). Called early and unconditionally --
   // GOBALANCE_SDK.md requires the game reach a playable state on load with
   // no key needed, so this can't block boot: it kicks off buffer loading in
@@ -776,6 +830,15 @@ function boot() {
       const before = progressAt(score.displayed).tier;
       creditDisplayed(score, points);
       hud.updatePoints(score.displayed, true, variant);
+      // The LAST authored tier's own threshold ends the run in victory, not
+      // a tier-up transition -- checked BEFORE the normal tier-up compare
+      // below, since progressAt now pins at that tier forever (after > before
+      // would never fire again past it anyway, but this is the actual
+      // ending, not a no-op to fall through past).
+      if (gs.current === 'running' && isFinalTierCleared(score.displayed)) {
+        completeRun();
+        return;
+      }
       const after = progressAt(score.displayed).tier;
       // Compares tier NUMBERS rather than testing one boundary: a single award
       // can cross more than one threshold, and the level should end on the tier

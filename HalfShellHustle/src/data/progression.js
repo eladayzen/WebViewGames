@@ -25,9 +25,11 @@
 export const TIER_THRESHOLDS = [300, 800, 1500];
 
 // Every tier past the end of that list needs this many more points than the
-// one before it, forever -- so tier 4 lands at 2500, tier 5 at 3500, and so
-// on. This exists because a run has no maximum: without it the last
-// authored threshold would be a wall the bar sits pinned against.
+// one before it -- so tier 4 lands at 2500, tier 5 at 3500, tier 6 (the
+// last authored one, TIER_THEMES.length) at 4500. That final number IS the
+// run's maximum now (2026-09-17: the run ends in victory there instead of
+// looping) -- this constant is what still derives it, not a step toward an
+// unbounded tail anymore.
 export const TIER_STEP_AFTER_LAST = 1000;
 
 // ========================================================================
@@ -156,12 +158,11 @@ export const LEVEL_SWAPS_ENVIRONMENT = true;
 // TIER_NAMES above -- they describe the same sequence from two angles (what to
 // call it, what to render).
 //
-// Past the end of this list, systems/progression.js's themeForTier WRAPS back
-// to index 0 rather than leaving the theme unchanged -- direct feedback:
-// "rotation after the last actual theme is being presented. The next one
-// will start out from the first one." So tier 4 replays centralCity, tier 5
-// harborDocks, and so on, forever -- which is also what lets TIER_THRESHOLDS
-// keep an open-ended tail without ever needing art for a district that
-// doesn't exist yet: the tail just re-tours the ones that do. tierName wraps
-// the exact same way, so the "NEXT: X" announcement always matches.
+// v5, direct request (2026-09-17): "an end screen after our current last
+// theme, very celebrative." SUPERSEDES the earlier "loop forever" design --
+// this list's length is now THE END OF THE RUN. Reaching this array's last
+// entry's own tier threshold triggers core/main.js's completeRun (the
+// victory screen), not a tier-up into a 7th environment; see systems/
+// progression.js's progressAt (caps here) and isFinalTierCleared. Nothing
+// past index length-1 is ever reached in practice anymore.
 export const TIER_THEMES = ['warehouseRoof', 'warehouse', 'centralCity', 'harborDocks', 'funkyForest', 'spaceCity']; // see TIER_NAMES above

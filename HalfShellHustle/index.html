@@ -248,6 +248,31 @@
         </div>
       </div>
 
+      <!-- ALL TIERS CLEARED victory beat -- shown when the last authored tier
+           (data/progression.js's TIER_THEMES) has its own threshold crossed
+           (direct request, 2026-09-17: "an end screen after our current last
+           theme, very celebrative"). Its OWN screen + button id
+           (victory-continue), NEVER #gameover-overlay/#restart-button, so the
+           host's Space/Enter synth-restart can't fire through it. NO timer
+           and CONTINUE is the only way off it: this is the screen the player
+           earned, and a stray tap while they read it must not take it away.
+           CONTINUE leads to the shared end board (the quit board, reused --
+           see core/main.js's completeRun/continueFromVictory, mirrors
+           NovaVanguard/TmntSkateSlice's victory flow). #victory-confetti is
+           its own pool (ui/hud.js), separate from #lc-confetti -- they live
+           inside two different, mutually-hidden overlays. -->
+      <div id="victory-overlay" class="board-screen hidden">
+        <div id="victory-confetti"></div>
+        <div class="board-card">
+          <div class="board-title">ALL TIERS CLEARED!</div>
+          <div id="victory-sub" class="board-sub"></div>
+          <div id="victory-stats" class="board-sub"></div>
+          <div class="board-buttons">
+            <button id="victory-continue" type="button">CONTINUE</button>
+          </div>
+        </div>
+      </div>
+
       <!-- First-run onboarding, direct feedback: two auto-cycling explainer
            steps ("really explanatory", an actual moving diagram, not a
            screenshot with an arrow drawn on it) shown before the world

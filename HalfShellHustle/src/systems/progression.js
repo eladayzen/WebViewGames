@@ -26,25 +26,23 @@ export function thresholdForTier(tier) {
 }
 
 // Wraps rather than falling back to "TIER n" past the end of the authored
-// list -- direct feedback: "rotation after the last actual theme is being
-// presented. The next one will start out from the first one." Kept in sync
-// with themeForTier's own wraparound below so the name always matches
-// whichever environment tier n actually plays in (tier 4 announces "CENTRAL
-// CITY" again, not a generic label, since that's genuinely where it's
-// heading back to).
+// list. Harmless safety net now that progressAt (below) caps tier at
+// TIER_THEMES.length before it ever reaches this far -- kept rather than
+// simplified in case something someday calls tierName with a raw,
+// uncapped tier number.
 export function tierName(tier) {
   if (TIER_NAMES.length === 0) return `TIER ${tier}`;
   return TIER_NAMES[(tier - 1) % TIER_NAMES.length];
 }
 
 // The environment key a tier plays in (data/envArt.js's THEMES). Wraps back
-// to index 0 past the end of TIER_THEMES rather than returning null --
-// direct feedback: once the last authored theme (currently sunnyStreet, tier
-// 3) is reached, the NEXT tier should cycle back to the first one
-// (centralCity), not freeze on the last theme forever. core/main.js's own
-// swap guard (only rebuild if the theme key actually CHANGED) still does its
-// job unmodified: at tier 4 this returns 'centralCity' while currentThemeKey
-// is still 'sunnyStreet', so the swap fires exactly like any other tier-up.
+// to index 0 past the end of TIER_THEMES rather than returning null, same
+// harmless-safety-net reasoning as tierName above -- core/main.js never
+// actually calls this with a tier past TIER_THEMES.length in practice
+// anymore, since progressAt caps there and isFinalTierCleared ends the run
+// instead of ever requesting a tier-up past it (2026-09-17: "an end screen
+// after our current last theme", superseding the earlier "rotate back to
+// the first theme forever" design).
 export function themeForTier(tier) {
   if (TIER_THEMES.length === 0) return null;
   return TIER_THEMES[(tier - 1) % TIER_THEMES.length];
@@ -72,6 +70,16 @@ export function obstacleIntervalForTier(tier, baseIntervalSec) {
 // misconfigured TIER_STEP_AFTER_LAST of 0 every threshold past the list would
 // be identical and a naive loop would never terminate. Guarded rather than
 // assumed, because that config file is meant to be edited casually.
+//
+// CAPPED at the last AUTHORED tier (TIER_THEMES.length) -- direct request,
+// 2026-09-17: "an end screen after our current last theme." Past that point
+// the run is heading toward isFinalTierCleared/completeRun (core/main.js),
+// not another tier-up transition, so this pins the return at the final tier
+// with a full bar and no next threshold to show -- the same "no bar on the
+// last stage" convention every other GoBalance game's finite campaign uses
+// (see e.g. TmntSkateSlice's getScoreBand). TIER_STEP_AFTER_LAST still
+// computes tiers past the authored TIER_THRESHOLDS list internally (tier 4
+// onward derive from it), it just never surfaces past TIER_THEMES.length now.
 export function progressAt(points) {
   let tier = 1;
   let start = 0;
@@ -85,7 +93,22 @@ export function progressAt(points) {
     if (t <= start) { next = start; break; }
     next = t;
   }
+
+  const maxTier = TIER_THEMES.length;
+  if (maxTier > 0 && tier > maxTier) {
+    return { tier: maxTier, start: thresholdForTier(maxTier), next: Infinity, frac: 1 };
+  }
+
   const span = next - start;
   const frac = span > 0 ? Math.min(1, Math.max(0, (points - start) / span)) : 1;
   return { tier, start, next, frac };
+}
+
+// True the moment the LAST authored tier's own threshold is crossed -- i.e.
+// the whole run is won (2026-09-17, direct request: "an end screen after our
+// current last theme, very celebrative"). Checked directly against
+// thresholdForTier rather than through progressAt's now-capped tier number,
+// so it stays a plain score comparison independent of that pinning.
+export function isFinalTierCleared(points) {
+  return TIER_THEMES.length > 0 && points >= thresholdForTier(TIER_THEMES.length);
 }

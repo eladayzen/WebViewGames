@@ -830,6 +830,22 @@ html, body {
   paint-order: stroke fill;
 }
 
+/* The one board-title that gets its own entrance -- "QUIT?"/"RUN ENDED" are
+   plain by design (own the moment quietly), but this is the biggest beat in
+   the game (direct request: "very celebrative"), so it gets the same kind of
+   bouncy pop the level-complete headline already uses (.lc-headline-play),
+   just triggered by the overlay itself becoming visible rather than a class
+   restart -- it's shown once per victory, never replayed mid-screen. */
+#victory-overlay .board-title {
+  animation: victory-title-pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes victory-title-pop {
+  0% { transform: scale(0.2) rotate(-8deg); opacity: 0; }
+  60% { transform: scale(1.15) rotate(3deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
 .board-sub {
   font-size: 15px;
   font-weight: 600;
@@ -856,16 +872,19 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Primary (keep playing / play again) -- gold, matching #restart-button. */
+/* Primary (keep playing / play again / continue) -- gold, matching
+   #restart-button. */
 #confirm-stay,
-#quit-again {
+#quit-again,
+#victory-continue {
   background: linear-gradient(180deg, #ffde50, #ffa93c);
   color: #2a1a00;
   box-shadow: 0 4px 0 #a86800, 0 6px 12px rgba(0, 0, 0, 0.4);
 }
 
 #confirm-stay:active,
-#quit-again:active {
+#quit-again:active,
+#victory-continue:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
 }
@@ -1060,7 +1079,8 @@ html, body {
    entirely in screen space above the WebGL canvas, so a world-space particle
    would be the wrong tool. Positioned absolute within #level-complete so it's
    naturally clipped to the overlay and never bleeds under the HUD chrome. */
-#lc-confetti {
+#lc-confetti,
+#victory-confetti {
   position: absolute;
   inset: 0;
   overflow: hidden;

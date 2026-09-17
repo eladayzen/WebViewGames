@@ -130,6 +130,12 @@ export function initSteeringPanel() {
     // wanted there.
     const levelComplete = document.getElementById('level-complete');
     if (levelComplete && !levelComplete.classList.contains('hidden')) return;
+    // Same for the victory screen -- CONTINUE is the only way off it, and a
+    // stray Enter/Space popping the settings panel over an earned screen
+    // would be the same "taken away from you" feeling a mid-celebration
+    // panel is elsewhere here.
+    const victory = document.getElementById('victory-overlay');
+    if (victory && !victory.classList.contains('hidden')) return;
 
     if (panelEl.classList.contains('hidden')) {
       // Closed: only Enter opens it. Space stays inert so it can't be opened by

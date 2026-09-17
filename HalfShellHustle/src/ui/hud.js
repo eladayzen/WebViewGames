@@ -11,6 +11,7 @@
 // systems/scoring.js and surface on the game-over recap.
 
 import { progressAt, tierName } from '../systems/progression.js';
+import { TIER_THEMES } from '../data/progression.js';
 import { PLAYER_RUN_FRAMES, PLAYER_JUMP_FRAMES } from '../data/playerSprite.js';
 import { getVfxEnabled } from '../systems/vfxSettings.js';
 
@@ -48,6 +49,10 @@ const quitStatsEl = document.getElementById('quit-stats');
 const quitScoreboardEl = document.getElementById('quit-scoreboard');
 const quitScoreboardTitleEl = document.getElementById('quit-scoreboard-title');
 const quitScoreboardRowsEl = document.getElementById('quit-scoreboard-rows');
+const victoryOverlayEl = document.getElementById('victory-overlay');
+const victorySubEl = document.getElementById('victory-sub');
+const victoryStatsEl = document.getElementById('victory-stats');
+const victoryConfettiEl = document.getElementById('victory-confetti');
 const pausedBadgeEl = document.getElementById('paused-badge');
 const introEl = document.getElementById('intro-tutorial-overlay');
 const introStepLanesEl = document.getElementById('intro-step-lanes');
@@ -318,21 +323,27 @@ export function updatePoints(points, punch = false, variant = null) {
 
 const CONFETTI_COLORS = ['#ffe066', '#ffc93f', '#5fe0ff', '#ff8fa3', '#7fd8ff', '#97ff6b', '#ffb43c'];
 const CONFETTI_COUNT = 34;
+// The victory screen gets roughly double the level-complete burst (direct
+// request: "very celebrative") -- it's the one screen in the whole game with
+// no next level to get back to, so it can afford to be the biggest moment.
+const VICTORY_CONFETTI_COUNT = 70;
 
-// Built once at module load, not per celebration -- creating ~34 DOM nodes on
-// every level-up would be a needless allocation on a path that already has to
-// stay smooth. Each piece gets its own randomized drift/spin/timing baked in
-// as inline styles at BUILD time (CSS custom properties read by the
-// confetti-fall keyframe in style.css), since a shared class can't express
-// per-element randomness on its own.
+// Built once at module load, not per celebration -- creating dozens of DOM
+// nodes on every level-up (or, once, ever, for the victory screen) would be a
+// needless allocation on a path that already has to stay smooth. Each piece
+// gets its own randomized drift/spin/timing baked in as inline styles at
+// BUILD time (CSS custom properties read by the confetti-fall keyframe in
+// style.css), since a shared class can't express per-element randomness on
+// its own. Shared by both #lc-confetti (level-complete) and
+// #victory-confetti (completeRun) -- two separate pools, same technique.
 //
 // Delay/duration ranges are chosen so pieces are still falling ~5s in --
 // covering roughly the whole LEVEL_COUNTDOWN_SECONDS window, not just the
 // first second or two -- without needing a second timed burst.
-function buildConfetti() {
-  if (!lcConfettiEl) return;
+function buildConfettiInto(container, count) {
+  if (!container) return;
   const frag = document.createDocumentFragment();
-  for (let i = 0; i < CONFETTI_COUNT; i++) {
+  for (let i = 0; i < count; i++) {
     const el = document.createElement('div');
     el.className = 'confetti-piece';
     el.style.left = `${Math.random() * 100}%`;
@@ -343,9 +354,10 @@ function buildConfetti() {
     el.style.animationDelay = `${Math.random() * 2}s`;
     frag.appendChild(el);
   }
-  lcConfettiEl.appendChild(frag);
+  container.appendChild(frag);
 }
-buildConfetti();
+buildConfettiInto(lcConfettiEl, CONFETTI_COUNT);
+buildConfettiInto(victoryConfettiEl, VICTORY_CONFETTI_COUNT);
 
 export function showLevelComplete(nextTier) {
   // VFX toggle (ui/steeringPanel.js's VFX row): the tier-bar sweep and
@@ -587,6 +599,29 @@ export function hideQuit() {
 
 export function isQuitOpen() {
   return !quitOverlayEl.classList.contains('hidden');
+}
+
+// Campaign-complete victory beat (its own screen; CONTINUE leads to the end
+// board, showQuit above, reused). Just a show/hide toggle here; core/main.js
+// owns the flow (completeRun/continueFromVictory).
+export function showVictory(statsText) {
+  victorySubEl.textContent = `You cleared all ${TIER_THEMES.length} tiers.`;
+  victoryStatsEl.textContent = statsText;
+  if (getVfxEnabled()) {
+    victoryConfettiEl.classList.remove('lc-confetti-play');
+    void victoryConfettiEl.offsetWidth;
+    victoryConfettiEl.classList.add('lc-confetti-play');
+  }
+  victoryOverlayEl.classList.remove('hidden');
+}
+
+export function hideVictory() {
+  victoryOverlayEl.classList.add('hidden');
+  victoryConfettiEl.classList.remove('lc-confetti-play');
+}
+
+export function isVictoryOpen() {
+  return !victoryOverlayEl.classList.contains('hidden');
 }
 
 export function setPausedBadge(paused) {
