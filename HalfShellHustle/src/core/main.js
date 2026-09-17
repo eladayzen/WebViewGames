@@ -502,7 +502,10 @@ function boot() {
     levelCurtainsClosed = false;
     levelEnvironmentSwapped = false;
     hud.setLevelCountdown(LEVEL_COUNTDOWN_SECONDS);
-    hud.showLevelComplete(nextTier);
+    // levelIndex is still the tier JUST FINISHED here -- it only becomes
+    // nextTier inside startNextLevel, later. Direct request: say which
+    // level that was ("Level 1", for example).
+    hud.showLevelComplete(levelIndex, nextTier);
   }
 
   function startNextLevel() {

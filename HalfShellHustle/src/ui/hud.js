@@ -30,6 +30,7 @@ const tierFillEl = document.getElementById('tier-fill');
 const tierLabelEl = document.getElementById('tier-label');
 const lcEl = document.getElementById('level-complete');
 const lcHeadlineEl = document.getElementById('lc-headline');
+const lcTitleEl = document.getElementById('lc-title');
 const lcNextEl = document.getElementById('lc-next');
 const lcCountdownEl = document.getElementById('lc-countdown');
 const lcConfettiEl = document.getElementById('lc-confetti');
@@ -359,7 +360,13 @@ function buildConfettiInto(container, count) {
 buildConfettiInto(lcConfettiEl, CONFETTI_COUNT);
 buildConfettiInto(victoryConfettiEl, VICTORY_CONFETTI_COUNT);
 
-export function showLevelComplete(nextTier) {
+// `finishedTier` is the level JUST ended (core/main.js's levelIndex, still
+// the OLD value when this is called -- it only becomes `nextTier` inside
+// startNextLevel, later). Direct request: say which level that was ("Level
+// 1", for example) rather than the generic "LEVEL COMPLETE" this used to be
+// stuck at no matter which tier actually finished.
+export function showLevelComplete(finishedTier, nextTier) {
+  lcTitleEl.textContent = `LEVEL ${finishedTier} COMPLETE`;
   // VFX toggle (ui/steeringPanel.js's VFX row): the tier-bar sweep and
   // confetti are pure celebration flourish, gated; the headline text pop
   // below stays regardless -- it's the actual "what's next" announcement.
