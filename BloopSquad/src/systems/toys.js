@@ -123,9 +123,13 @@ export function equip(w, kindName) {
   playPickup();
 }
 
-function spawnBullet(w, x, y, vx, vy, homing, tint) {
+/** `damage` is per bullet and defaults to the cannon's. It is carried on the
+ *  bullet rather than read from the active toy at impact time, because a bullet
+ *  outlives the toy that fired it -- a twirl shot still in flight when the timer
+ *  runs out must still land for three. */
+function spawnBullet(w, x, y, vx, vy, homing, tint, damage) {
   if (w.bullets.length >= BULLETS.maxLive) return;
-  w.bullets.push({ alive: true, x, y, vx, vy, homing: !!homing, tint });
+  w.bullets.push({ alive: true, x, y, vx, vy, homing: !!homing, tint, damage });
 }
 
 /**
@@ -206,7 +210,7 @@ export function updateFiring(w, dt) {
     for (let i = 0; i < kind.arms; i++) {
       const a = toy.spin + (Math.PI * 2 * i) / kind.arms;
       spawnBullet(w, p.x, p.y, Math.cos(a) * kind.speedPxS, Math.sin(a) * kind.speedPxS,
-                  false, kind.tint);
+                  false, kind.tint, kind.damage);
     }
     return;
   }

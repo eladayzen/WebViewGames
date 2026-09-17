@@ -541,8 +541,21 @@ export const TOYS = {
     // yellow pickup beside round yellow coins is a present nobody picks up on
     // purpose. Magenta appears nowhere else on the field.
     twirl: {
-      id: 'twirl', label: 'TWIRL', durationS: 9, tint: 0xff5fc8,
+      id: 'twirl', label: 'TWIRL', durationS: 4.5, tint: 0xff5fc8,
       intervalS: 0.055, speedPxS: 900, spinRadPerS: 5.2, arms: 2,
+      // x3 PER SHOT, HALF AS LONG (Amit, playing it: "very annoying").
+      //
+      // The complaint was the nine seconds, not the spray: at 0.055 s across two
+      // arms this thing emits ~36 bullets a second, and nine seconds of that is
+      // 320 pink dots crossing everything else on screen. It was the longest toy
+      // in the game and the busiest, which is the worst pairing available.
+      //
+      // Shorter AND harder is the trade: half the wall of bullets, and each one
+      // worth three, so total damage over the toy's life goes UP by half while
+      // the time spent looking at it is halved. A burst you notice beats a
+      // period you wait out -- the same reasoning that took the wand to five
+      // seconds when it was doing the aiming for you.
+      damage: 3,
     },
     // RAPID: the cannon itself fires faster. The only toy that touches the base
     // gun, and it is worth being precise about why that does not break rule 3 --

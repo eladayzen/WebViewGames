@@ -97,7 +97,7 @@ export function updateCollisions(w, rng) {
       const dx = b.x - m.x, dy = b.y - m.y;
       if (dx * dx + dy * dy > (m.r + BULLETS.radius) * (m.r + BULLETS.radius)) continue;
       b.alive = false;
-      registerHit(m, BULLETS.damage);
+      registerHit(m, b.damage || BULLETS.damage);
       if (m.hp <= 0) popMonster(w, m, rng);
       break;
     }
