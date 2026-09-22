@@ -15,7 +15,7 @@
 // not a spec for that.
 
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
-import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, SKY, XP, difficulty01 } from '../data/tuning.js';
+import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, SKY, POD, XP, difficulty01 } from '../data/tuning.js';
 import { punchExtension, activeToy } from '../systems/toys.js';
 
 const PALETTE = {
@@ -325,27 +325,84 @@ export async function createRenderer(canvas) {
    * the glass can sit OVER the pilot with real transparency, which is the whole
    * reason the dome reads as glass and not as a hat.
    */
-  function drawPod(p, time) {
+  // The pod's recent path, for the level-7 ribbon. Recorded by DISTANCE rather
+  // than per frame, for the same reason the squad trail was: a stationary pod
+  // would otherwise fill the buffer with identical points and the ribbon would
+  // collapse to a dot the moment the player held still.
+  const podTrail = [];
+
+  function drawPod(p, time, level) {
     const blink = p.invulnT > 0 && Math.floor(p.invulnT * 12) % 2 === 0;
-    if (blink) return;
     const r = PLAYER.radius;
     const lw = Math.max(4, r * 0.11);
     const tilt = p.lean * 0.18;
     const cx = p.x + tilt * r * 0.5;
+    const tier = Math.max(1, level || 1);
+    const gold = tier >= POD.goldFrom;
+    const trim = gold ? PALETTE.coin : PALETTE.hullShade;
 
-    // Thruster, flickering. Two flames, the inner one brighter and shorter.
+    // The ribbon is recorded and drawn even while the pod is blinking after a
+    // hit -- a trail that vanished on every hit would flicker with the pod.
+    if (tier >= POD.trailFrom) {
+      const last = podTrail[podTrail.length - 1];
+      if (!last || Math.hypot(p.x - last.x, p.y - last.y) >= POD.trailStepPx) {
+        podTrail.push({ x: p.x, y: p.y });
+      }
+      while (podTrail.length > POD.trailPoints) podTrail.shift();
+      for (let i = 1; i < podTrail.length; i++) {
+        const f = i / podTrail.length;
+        g.moveTo(podTrail[i - 1].x, podTrail[i - 1].y)
+         .lineTo(podTrail[i].x, podTrail[i].y)
+         .stroke({ width: r * 0.5 * f, color: PALETTE.thruster, alpha: 0.32 * f });
+      }
+    } else if (podTrail.length) {
+      podTrail.length = 0;
+    }
+
+    if (blink) return;
+
+    // A halo ring, sitting behind everything.
+    if (tier >= POD.haloFrom) {
+      const pulse = 1 + Math.sin(time * 2.4) * 0.04;
+      g.ellipse(p.x, p.y + r * 0.26, r * 1.72 * pulse, r * 0.56 * pulse)
+       .stroke({ width: 5, color: gold ? PALETTE.coin : PALETTE.dome, alpha: 0.55 });
+    }
+
+    // Thruster, flickering. One exhaust to start, two from tier 6 -- a second
+    // nozzle reads as a bigger engine, where a longer single flame just reads as
+    // the same engine drawn larger.
     const flick = 0.82 + Math.sin(time * 22) * 0.18;
     const fy = p.y + r * 0.52;
-    g.ellipse(cx, fy + r * 0.5, r * 0.34, r * 0.62 * flick)
-     .fill({ color: PALETTE.thruster, alpha: 0.30 });
-    g.moveTo(cx - r * 0.22, fy)
-     .quadraticCurveTo(cx, fy + r * 1.20 * flick, cx + r * 0.22, fy)
-     .closePath()
-     .fill({ color: PALETTE.thruster });
-    g.moveTo(cx - r * 0.10, fy)
-     .quadraticCurveTo(cx, fy + r * 0.70 * flick, cx + r * 0.10, fy)
-     .closePath()
-     .fill({ color: 0xffffff, alpha: 0.85 });
+    const nozzles = tier >= POD.twinThrustFrom ? [-0.30, 0.30] : [0];
+    for (const nx of nozzles) {
+      const ex = cx + nx * r;
+      g.ellipse(ex, fy + r * 0.5, r * 0.34, r * 0.62 * flick)
+       .fill({ color: PALETTE.thruster, alpha: 0.30 });
+      g.moveTo(ex - r * 0.22, fy)
+       .quadraticCurveTo(ex, fy + r * 1.20 * flick, ex + r * 0.22, fy)
+       .closePath()
+       .fill({ color: PALETTE.thruster });
+      g.moveTo(ex - r * 0.10, fy)
+       .quadraticCurveTo(ex, fy + r * 0.70 * flick, ex + r * 0.10, fy)
+       .closePath()
+       .fill({ color: 0xffffff, alpha: 0.85 });
+    }
+
+    // Swept fins either side of the hull, from tier 4.
+    if (tier >= POD.finsFrom) {
+      for (const sgn of [-1, 1]) {
+        g.moveTo(p.x + sgn * r * 1.10, p.y + r * 0.20)
+         .lineTo(p.x + sgn * r * 1.68, p.y - r * 0.18)
+         .lineTo(p.x + sgn * r * 1.58, p.y + r * 0.40)
+         .closePath()
+         .fill({ color: trim });
+        g.moveTo(p.x + sgn * r * 1.10, p.y + r * 0.20)
+         .lineTo(p.x + sgn * r * 1.68, p.y - r * 0.18)
+         .lineTo(p.x + sgn * r * 1.58, p.y + r * 0.40)
+         .closePath()
+         .stroke({ width: lw * 0.8, color: PALETTE.outline });
+      }
+    }
 
     // Hull: the underside first, then the top plate, so the rim reads as an
     // edge rather than a line drawn on a disc.
@@ -353,8 +410,16 @@ export async function createRenderer(canvas) {
     g.ellipse(p.x, p.y + r * 0.44, r * 1.16, r * 0.34).stroke({ width: lw, color: PALETTE.outline });
     g.ellipse(p.x, p.y + r * 0.30, r * 1.34, r * 0.42).fill({ color: PALETTE.hull });
     g.ellipse(p.x, p.y + r * 0.30, r * 1.34, r * 0.42).stroke({ width: lw, color: PALETTE.outline });
-    // Rim lights, as in the concept.
-    for (const s of [-1, -0.33, 0.33, 1]) {
+    if (gold) {
+      g.ellipse(p.x, p.y + r * 0.30, r * 1.34, r * 0.42)
+       .stroke({ width: 3, color: PALETTE.coin, alpha: 0.9 });
+    }
+    // Rim lights, as in the concept. Six from tier 8 rather than four -- a
+    // count is something a child can actually check against a sibling's ship.
+    const lights = tier >= POD.extraLightsFrom
+      ? [-1, -0.6, -0.2, 0.2, 0.6, 1]
+      : [-1, -0.33, 0.33, 1];
+    for (const s of lights) {
       g.circle(p.x + s * r * 0.92, p.y + r * 0.34, r * 0.10)
        .fill({ color: PALETTE.coin });
       g.circle(p.x + s * r * 0.92, p.y + r * 0.34, r * 0.10)
@@ -382,9 +447,26 @@ export async function createRenderer(canvas) {
      .quadraticCurveTo(cx, py + r * 0.18, cx - r * 0.16, py + r * 0.10)
      .fill({ color: PALETTE.mouth });
 
+    // A SECOND PILOT from tier 5, sitting beside the first. The pod is called a
+    // squad's ship and at this point it stops being flown alone -- which is the
+    // one upgrade that says something about the game rather than about the
+    // hardware. Drawn before the dome so the glass covers them both.
+    if (tier >= POD.bigDomeFrom) {
+      const bx = cx - r * 0.40, by = py + r * 0.12;
+      g.circle(bx, by, r * 0.26).fill({ color: PALETTE.thruster });
+      g.circle(bx, by, r * 0.26).stroke({ width: lw * 0.6, color: PALETTE.outline, alpha: 0.9 });
+      g.circle(bx - r * 0.09, by - r * 0.05, r * 0.07).fill({ color: PALETTE.eye });
+      g.circle(bx + r * 0.09, by - r * 0.05, r * 0.07).fill({ color: PALETTE.eye });
+      g.circle(bx - r * 0.09, by - r * 0.03, r * 0.035).fill({ color: PALETTE.pupil });
+      g.circle(bx + r * 0.09, by - r * 0.03, r * 0.035).fill({ color: PALETTE.pupil });
+    }
+
     // The glass dome, over the pilot. Low alpha plus one bright sweep.
-    g.circle(cx, py + r * 0.04, r * 0.74).fill({ color: PALETTE.dome, alpha: 0.26 });
-    g.circle(cx, py + r * 0.04, r * 0.74).stroke({ width: lw, color: PALETTE.outline, alpha: 0.9 });
+    // Taller from tier 5, because it now has two of them to cover.
+    const domeR = r * (tier >= POD.bigDomeFrom ? 0.92 : 0.74);
+    g.circle(cx, py + r * 0.04, domeR).fill({ color: PALETTE.dome, alpha: 0.26 });
+    g.circle(cx, py + r * 0.04, domeR)
+     .stroke({ width: lw, color: gold ? PALETTE.coin : PALETTE.outline, alpha: 0.9 });
     g.moveTo(cx - r * 0.50, py - r * 0.26)
      .quadraticCurveTo(cx - r * 0.20, py - r * 0.62, cx + r * 0.16, py - r * 0.56)
      .stroke({ width: lw * 0.9, color: 0xffffff, alpha: 0.55 });
@@ -954,7 +1036,7 @@ export async function createRenderer(canvas) {
       // thing the eye lands on.
       for (let i = w.squad.length - 1; i >= 0; i--) drawSquadMember(w.squad[i], time);
 
-      if (w.player.alive) drawPod(w.player, time);
+      if (w.player.alive) drawPod(w.player, time, w.level);
 
       // THE TOY TIMER: A BAR UNDER THE POD.
       //

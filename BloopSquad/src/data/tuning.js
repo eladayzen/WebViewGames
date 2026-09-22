@@ -494,6 +494,42 @@ export const XP = {
 // run is going -- which is what two children comparing runs actually want.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// THE POD EVOLVES -- the third progression signal, and the most personal one.
+//
+// The sky says where you are and the music says how big the run got. This says
+// it about YOU: the saucer is the one thing a player's eyes never leave, so an
+// upgrade bolted to it is progress they cannot miss and never have to look away
+// to read. Two children on two boards can see whose ship is further along
+// without a word or a number passing between them.
+//
+// PURELY COSMETIC, all of it. Not a single line below changes a hitbox, a rate
+// or a heart. The moment a visible upgrade also made the pod stronger it would
+// be fighting the difficulty ramp -- which levels already feed on the other side
+// by adding monsters -- and a six-year-old would be handed a compounding
+// advantage exactly when the field is getting harder to read.
+//
+// EACH TIER ADDS A NEW PART rather than scaling the last one, for the same
+// reason the celebration ladder does: "slightly bigger" is not a difference
+// anyone can see, and a child has to be able to tell tier 7 from tier 4 at a
+// glance. Ten is the ceiling; past it a run is long over.
+// ---------------------------------------------------------------------------
+
+export const POD = {
+  finsFrom: 4,        // swept fins either side of the hull
+  bigDomeFrom: 5,     // a taller canopy -- and a second pilot to fill it
+  twinThrustFrom: 6,  // two exhausts instead of one
+  trailFrom: 7,       // a fading ribbon behind the pod
+  extraLightsFrom: 8, // six rim lights instead of four
+  haloFrom: 9,        // a ring around the saucer
+  goldFrom: 10,       // gold trim on everything
+  // How much of the pod's recent path the ribbon covers. Short on purpose: a
+  // long one crosses the field and competes with the monsters for attention,
+  // and this is the one upgrade drawn OUTSIDE the ship's own silhouette.
+  trailPoints: 16,
+  trailStepPx: 9,
+};
+
 export const SKY = {
   // MEASURED AND REDONE. The first palette held luminance at 16-22 to protect
   // contrast, and sampling the rendered pixels showed why that failed: level 4
