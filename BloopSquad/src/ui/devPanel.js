@@ -36,6 +36,8 @@ const WRENCH = '&#128295;'; // 🔧
  *   @param {(id:string)=>void}  actions.giveToy     equip one by id
  *   @param {()=>void}           actions.clearToys   drop everything active
  *   @param {(n:number)=>void}   actions.setLevel    jump to a level (fires the celebration)
+ *   @param {(xp:number)=>void}  actions.grantXp     bank experience the real way
+ *   @param {()=>number}         actions.xpToNext    XP remaining to the next level
  *   @param {(tier:string)=>void} actions.spawnTier  put one monster on screen
  *   @param {()=>void}           actions.clearField  pop everything alive
  *   @param {()=>void}           actions.restart
@@ -43,8 +45,8 @@ const WRENCH = '&#128295;'; // 🔧
  *   @param {string[]}           actions.toyIds
  */
 export function createDevPanel(doc, actions) {
-  const { giveToy, clearToys, setLevel, spawnTier, clearField, restart,
-          world, toyIds = [] } = actions;
+  const { giveToy, clearToys, setLevel, grantXp, xpToNext, spawnTier, clearField,
+          restart, world, toyIds = [] } = actions;
 
   const btn = doc.createElement('button');
   btn.id = 'dev-button';
@@ -103,6 +105,24 @@ export function createDevPanel(doc, actions) {
   chips(['ALL', 'CLEAR'], (i) => {
     if (i === 0) toyIds.forEach(giveToy);
     else clearToys();
+  });
+
+  // --- XP. The ORGANIC path, and the one to reach for first ----------------
+  //
+  // Granting experience runs the real code: addXp crosses the thresholds itself,
+  // fires the celebration, steps the music layer, moves the sky and evolves the
+  // pod -- and it crosses SEVERAL levels at once if the grant is big enough,
+  // which is the case the `while` loop in addXp exists for and the one a jump
+  // can never exercise.
+  //
+  // JUMP TO LEVEL below sets the number directly. That is the right tool for
+  // "show me tier 7's ship" and the wrong one for "does levelling work", because
+  // it skips the entire path that a player actually takes. Both are here because
+  // they answer different questions.
+  section('GRANT XP');
+  chips(['+100', '+500', '+2K', 'NEXT LV'], (i) => {
+    if (i === 3) grantXp(xpToNext());
+    else grantXp([100, 500, 2000][i]);
   });
 
   // --- LEVELS. Unlocks and the celebration ladder both hang off this. -------

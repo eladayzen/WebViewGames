@@ -21,7 +21,7 @@ import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js'
 import {
   updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops,
   updateSquad, updateSquadBombs, updateBlasts, updateLevelPopup, updateHearts,
-  celebrate, popMonster,
+  celebrate, popMonster, addXp, xpForLevel,
 } from './systems/play.js';
 import { updateFiring, updateToyPickups, equip, updateChain } from './systems/toys.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
@@ -234,6 +234,12 @@ async function boot() {
       world,
       toyIds: Object.keys(TOYS.kinds),
       giveToy: (id) => equip(world, id),
+      grantXp: (n) => addXp(world, n),
+      // What the next level still costs. +1 so the grant actually CROSSES the
+      // threshold rather than landing exactly on it -- addXp tests `>=`, but
+      // leaving a run of testing sat on the boundary is the kind of off-by-one
+      // that gets mistaken for the levelling being broken.
+      xpToNext: () => Math.max(1, xpForLevel(world.level) - world.xp + 1),
       clearToys: () => { world.toys = []; },
       setLevel: (n) => {
         world.level = n;
