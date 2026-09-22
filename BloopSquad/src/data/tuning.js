@@ -525,7 +525,14 @@ export const TOYS = {
   //
   // Large stays at 1.0 deliberately. It is the longest commitment in the game
   // and the one kill a child plans; a guaranteed present is what pays for it.
-  dropFrom: { small: 0.45, medium: 0.6, large: 1.0 },
+  // HALVED AGAIN (Amit: "still way too much"). 0.52 -> 0.26 expected per kill.
+  //
+  // Worth recording why two halvings were needed rather than one big cut: the
+  // monster count went UP in the same pass that made greens drop presents, so
+  // kills per minute rose at the same time as drops per kill. Halving the rate
+  // while the kill count climbed did not halve what the player actually saw.
+  // These are the two numbers that multiply, and only one of them was moving.
+  dropFrom: { small: 0.22, medium: 0.3, large: 0.6 },
   // No two toys within this window, so a lucky streak cannot hand out three at
   // once and flatten the whole minute after it.
   // 6s -> 2.5s, and two pickups may be on the field at once. Both had to move
@@ -535,8 +542,11 @@ export const TOYS = {
   // two at a time, which would make the whole stacking change invisible.
   // The gap is now the real limiter rather than the roll, which is the right way
   // round: the ceiling on presents should be a number we set, not a dice streak.
-  minGapS: 1.6,
-  maxLive: 3,
+  // The gap does the rest. At 3 s a lucky cluster of kills still cannot produce
+  // a stream of presents, which is the shape that reads as "too much" even when
+  // the average is fine -- a player notices the burst, not the mean.
+  minGapS: 3.0,
+  maxLive: 2,
 
   // The toy timer, drawn as a bar UNDER the pod. Under and not over: everything
   // the player is actually looking at -- the monsters, their own shots, where
