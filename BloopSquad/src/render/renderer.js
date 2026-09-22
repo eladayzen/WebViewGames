@@ -72,7 +72,7 @@ export async function createRenderer(canvas) {
   const starPts = [];
   let seed = 1337;
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < 270; i++) {
     starPts.push({
       x: rnd() * DESIGN_W, y: rnd() * DESIGN_H * 2,
       r: 1 + rnd() * 2.2, a: 0.25 + rnd() * 0.6,
@@ -92,6 +92,8 @@ export async function createRenderer(canvas) {
   const statsText = new Text({ text: '', style: style(22, '#8fb4d9') });
   statsText.position.set(46, 146);
   const heartsG = new Graphics();
+  // Above everything, for the scene-change flash.
+  const hudFlash = new Graphics();
   // The level-up celebration. Two lines: a shout anyone recognises, and a big
   // numeral -- the number is the message, since the audience cannot read the
   // word above it.
@@ -101,62 +103,136 @@ export async function createRenderer(canvas) {
   yayText.anchor.set(0.5);
   levelText.anchor.set(0.5);
   const xpG = new Graphics();
-  hud.addChild(scoreText, statsText, heartsG, xpG, levelG, yayText, levelText);
+  hud.addChild(scoreText, statsText, heartsG, xpG, levelG, yayText, levelText, hudFlash);
 
-  // The sky eases toward the current level's colour rather than cutting to it.
-  // Held as separate channels because interpolating packed ints channel-wise is
-  // the only way to avoid sliding through a bright colour on the way between two
-  // dark ones -- which would be a flash, and a flash is the one thing the
-  // luminance rule exists to prevent.
-  let skyR = (SKY.colors[0] >> 16) & 0xff;
-  let skyG = (SKY.colors[0] >> 8) & 0xff;
-  let skyB = SKY.colors[0] & 0xff;
+  // --- THE SCENE ----------------------------------------------------------
+  //
+  // Swapped instantly on a level change and covered by a flash, rather than
+  // eased. See SKY in tuning.js for why the ease went.
+  let sceneIdx = 0;
+  let flashT = 0;
+  const sceneG = new Graphics();
+  stars.addChildAt(sceneG, 0);   // behind the starfield, which is behind the world
+
+  function sceneFor(level) {
+    return SKY.scenes[(Math.max(1, level) - 1) % SKY.scenes.length];
+  }
 
   function updateSky(w, dt) {
-    const target = SKY.colors[(Math.max(1, w.level) - 1) % SKY.colors.length];
-    const tr = (target >> 16) & 0xff, tg = (target >> 8) & 0xff, tb = target & 0xff;
-    // `?level=` sets this so a headless screenshot shows the DESTINATION. Under
-    // virtual time Pixi's ticker reports a near-zero delta, so the ease never
-    // runs and every shot came back showing the starting navy -- which had me
-    // rewriting the palette twice before the test itself was the problem.
-    if (w.skySnap) {
-      skyR = tr; skyG = tg; skyB = tb;
+    const want = (Math.max(1, w.level) - 1) % SKY.scenes.length;
+    if (want !== sceneIdx || w.skySnap) {
+      sceneIdx = want;
+      // No flash on a snap: `?level=` and the dev panel want the destination,
+      // not a frame of white over it.
+      flashT = w.skySnap ? 0 : SKY.flashS;
       w.skySnap = false;
+      drawScene();
     }
-    // 95 % of the way in `lerpS`, frame-rate independent.
-    //
-    // This was `dt / lerpS`, which is an exponential decay whose TIME CONSTANT
-    // is lerpS -- so it reached only 63 % in 1.5 s and needed ~4.5 s to arrive.
-    // Sampling the rendered pixels caught it: level 4 came out rgb(16,20,48)
-    // against a target of (42,15,46), and I had blamed the palette first.
-    const k = 1 - Math.exp((-3 * dt) / SKY.lerpS);
-    skyR += (tr - skyR) * k;
-    skyG += (tg - skyG) * k;
-    skyB += (tb - skyB) * k;
-    app.renderer.background.color =
-      (Math.round(skyR) << 16) | (Math.round(skyG) << 8) | Math.round(skyB);
+    if (flashT > 0) flashT = Math.max(0, flashT - dt);
+    app.renderer.background.color = sceneFor(w.level).sky;
+  }
+
+  /** Redrawn only when the scene changes -- these are static props and there is
+   *  no reason to re-emit a planet sixty times a second. */
+  function drawScene() {
+    const sc = SKY.scenes[sceneIdx];
+    sceneG.clear();
+
+    // Nebula: three stacked soft discs. Cheap, and at this alpha the banding
+    // that would show on a real gradient never appears.
+    if (sc.nebula) {
+      const n = sc.nebula;
+      const nx = n.x * DESIGN_W, ny = n.y * DESIGN_H, nr = n.r * DESIGN_H;
+      for (const [k, a] of [[1.0, 0.10], [0.66, 0.10], [0.38, 0.12]]) {
+        sceneG.circle(nx, ny, nr * k).fill({ color: n.color, alpha: a });
+      }
+    }
+
+    if (sc.planet) {
+      const pl = sc.planet;
+      const px = pl.x * DESIGN_W, py = pl.y * DESIGN_H, pr = pl.r * DESIGN_H;
+      // The BACK half of the ring first, so the planet occludes it and the ring
+      // reads as passing behind rather than lying on top.
+      if (pl.ring) drawRing(px, py, pr, pl.ring, true);
+      sceneG.circle(px, py, pr).fill({ color: pl.color });
+      // One rim light up-left, the same lighting direction as the monsters'
+      // gloss and the pod's -- a scene lit from elsewhere is what makes a
+      // background look pasted on.
+      sceneG.moveTo(px - pr, py)
+        .arc(px, py, pr * 0.97, Math.PI, Math.PI * 1.62)
+        .stroke({ width: pr * 0.055, color: pl.rim, alpha: 0.5 });
+      if (pl.ring) drawRing(px, py, pr, pl.ring, false);
+    }
+
+    for (const m of sc.moons || []) {
+      const mx = m.x * DESIGN_W, my = m.y * DESIGN_H, mr = m.r * DESIGN_H;
+      sceneG.circle(mx, my, mr).fill({ color: m.color });
+      sceneG.moveTo(mx - mr, my)
+        .arc(mx, my, mr * 0.95, Math.PI, Math.PI * 1.6)
+        .stroke({ width: mr * 0.12, color: m.rim, alpha: 0.55 });
+    }
+  }
+
+  /** Half a tilted ellipse, so the ring can be drawn behind and in front of its
+   *  planet as two passes. */
+  function drawRing(px, py, pr, ring, back) {
+    const steps = 40;
+    const rx = pr * ring.rx, ry = pr * ring.ry;
+    const cos = Math.cos(ring.tilt), sin = Math.sin(ring.tilt);
+    for (const width of [0.10, 0.045]) {
+      let started = false;
+      for (let i = 0; i <= steps; i++) {
+        const a = Math.PI * (i / steps) + (back ? Math.PI : 0);
+        const ex = Math.cos(a) * rx, ey = Math.sin(a) * ry;
+        const x = px + ex * cos - ey * sin;
+        const y = py + ex * sin + ey * cos;
+        if (!started) { sceneG.moveTo(x, y); started = true; } else sceneG.lineTo(x, y);
+      }
+      sceneG.stroke({ width: pr * width, color: ring.color, alpha: back ? 0.22 : 0.42 });
+    }
+  }
+
+  /** The flash that covers the cut. Drawn over everything, in the NEW scene's
+   *  own colour lifted toward white -- a pure white flash on a dark field is a
+   *  camera bulb, a tinted one reads as the place changing. */
+  function drawSceneFlash() {
+    if (flashT <= 0) return;
+    const f = flashT / SKY.flashS;
+    hudFlash.clear();
+    hudFlash.rect(0, 0, DESIGN_W, DESIGN_H)
+      .fill({ color: 0xffffff, alpha: 0.42 * f * f });
   }
 
   function drawStars(w) {
     starG.clear();
+    const sc = sceneFor(w.level);
+    const sky = sc.sky;
+    const skyR = (sky >> 16) & 0xff, skyG = (sky >> 8) & 0xff, skyB = sky & 0xff;
     // Stars pick up a fraction of the sky, so they belong to it.
     const sr = Math.round(255 + (skyR - 255) * SKY.starTint);
     const sg = Math.round(255 + (skyG - 255) * SKY.starTint);
     const sb = Math.round(255 + (skyB - 255) * SKY.starTint);
     const starColor = (sr << 16) | (sg << 8) | sb;
+    // Per-scene star density. The pool is larger than any scene draws so a
+    // denser sky is more stars rather than the same stars brighter -- brightness
+    // is the one axis the background is not allowed to move.
+    const density = sc.stars || 1;
+    const count = Math.min(starPts.length, Math.round(160 * density));
+
     const off = CAMERA.mode === 'drift' ? w.camera.starOffset % DESIGN_H : 0;
-    for (const s of starPts) {
-      const y = ((s.y + off) % (DESIGN_H * 2)) - DESIGN_H * 0.5;
+    for (let i = 0; i < count; i++) {
+      const st = starPts[i];
+      const y = ((st.y + off) % (DESIGN_H * 2)) - DESIGN_H * 0.5;
       if (y < -10 || y > DESIGN_H + 10) continue;
-      if (s.spark) {
-        const r = s.r * 3.2;
-        starG.moveTo(s.x, y - r).quadraticCurveTo(s.x, y, s.x + r, y)
-             .quadraticCurveTo(s.x, y, s.x, y + r)
-             .quadraticCurveTo(s.x, y, s.x - r, y)
-             .quadraticCurveTo(s.x, y, s.x, y - r)
-             .fill({ color: starColor, alpha: s.a });
+      if (st.spark) {
+        const rr = st.r * 3.2;
+        starG.moveTo(st.x, y - rr).quadraticCurveTo(st.x, y, st.x + rr, y)
+             .quadraticCurveTo(st.x, y, st.x, y + rr)
+             .quadraticCurveTo(st.x, y, st.x - rr, y)
+             .quadraticCurveTo(st.x, y, st.x, y - rr)
+             .fill({ color: starColor, alpha: st.a });
       } else {
-        starG.circle(s.x, y, s.r).fill({ color: starColor, alpha: s.a });
+        starG.circle(st.x, y, st.r).fill({ color: starColor, alpha: st.a });
       }
     }
   }
@@ -1084,6 +1160,7 @@ export async function createRenderer(canvas) {
          .stroke({ width: 3, color: 0x0b1020, alpha: 0.9 });
       }
       drawHud(w);
+      drawSceneFlash();
     },
     resize() {
       const scale = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);

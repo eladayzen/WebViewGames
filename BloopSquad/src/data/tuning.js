@@ -565,34 +565,80 @@ export const POD = {
   trailStepPx: 9,
 };
 
+// ---------------------------------------------------------------------------
+// THE SKY -- a SCENE per level, not a hue.
+//
+// The first version eased the background colour between ten dark shades. It was
+// measurable and it was not good: at the brightness the monsters need behind
+// them, a hue is a hue, and sliding between two of them over a second and a half
+// is a change nobody can point at. Amit: "the hue changes... it doesn't look
+// super good."
+//
+// So the background is now a PLACE rather than a colour. A handful of simple
+// code-drawn props -- a planet, a ring, a moon or two, a nebula smudge, a star
+// density -- arranged differently per scene. Five skies shared between them
+// instead of ten, because the colour is no longer doing the work: the props are.
+//
+// AND IT SWAPS INSTANTLY. The ease was there to stop a mid-fight colour change
+// reading as a bug, and a scene change is far too big to sneak past anyone
+// gently. Instead it lands on the frame the celebration punches in, when the
+// screen is already full of light and confetti -- so the flash motivates the
+// cut. That is the oldest trick there is for hiding an edit and the only reason
+// a dramatic swap is affordable at all.
+//
+// EVERYTHING STAYS DARK. Props sit at or below the sky's own luminance with a
+// single rim light for shape. The monsters run luma 150+; nothing back here may
+// approach that or the field stops reading, which is the constraint the whole
+// six-year-old pass was built on.
+// ---------------------------------------------------------------------------
+
+const SKY_NAVY = 0x0e1430;
+const SKY_PLUM = 0x231038;
+const SKY_TEAL = 0x07262b;
+const SKY_WINE = 0x2b1018;
+const SKY_PINE = 0x0d2a20;
+
 export const SKY = {
-  // MEASURED AND REDONE. The first palette held luminance at 16-22 to protect
-  // contrast, and sampling the rendered pixels showed why that failed: level 4
-  // came out rgb(12,16,32) against level 1's rgb(11,16,32). At that brightness
-  // hue is essentially invisible -- the rule was right about contrast and wrong
-  // about the feature, because a sky nobody can see is not feedback.
-  //
-  // These sit at luma 23-37 with much higher saturation. Still deeply dark: the
-  // monsters run 150+ (the small green is ~150, the coin ~200), so contrast
-  // stays above 4:1 everywhere, and the playfield never approaches the blobs.
-  // The trade is deliberate and it is the whole feature -- a background that
-  // cannot be told apart between levels is not worth drawing.
-  colors: [
-    0x0e1430, // 1  navy (home)
-    0x1d1140, // 2  indigo
-    0x07262b, // 3  teal
-    0x2a0f2e, // 4  plum
-    0x0b2a18, // 5  forest
-    0x300f1c, // 6  wine
-    0x14203f, // 7  slate
-    0x06303c, // 8  deep cyan
-    0x260d3a, // 9  aubergine
-    0x0d2f26, // 10 pine
+  // Positions are fractions of the design screen, so a prop keeps its place on
+  // any window. Planets are deliberately allowed off the edges -- a whole disc
+  // floating in frame reads as a sticker, a cropped one reads as scenery.
+  scenes: [
+    { name: 'home', sky: SKY_NAVY, stars: 1.0 },
+
+    { name: 'ringed giant', sky: SKY_PLUM, stars: 0.8,
+      planet: { x: 0.17, y: 1.06, r: 0.42, color: 0x3a2150, rim: 0x453058,
+                ring: { rx: 1.85, ry: 0.42, tilt: -0.34, color: 0x5c4278 } } },
+
+    { name: 'twin moons', sky: SKY_TEAL, stars: 1.35,
+      moons: [{ x: 0.80, y: 0.17, r: 0.085, color: 0x16404a, rim: 0x1f444b },
+              { x: 0.90, y: 0.29, r: 0.048, color: 0x123640, rim: 0x1c3c44 }] },
+
+    { name: 'red dwarf', sky: SKY_WINE, stars: 0.7,
+      planet: { x: 1.02, y: 0.44, r: 0.34, color: 0x4a1a22, rim: 0x662830 },
+      nebula: { x: 0.28, y: 0.62, r: 0.34, color: 0x6b2230 } },
+
+    { name: 'nebula drift', sky: SKY_PLUM, stars: 1.6,
+      nebula: { x: 0.62, y: 0.32, r: 0.46, color: 0x4a2a70 },
+      moons: [{ x: 0.20, y: 0.22, r: 0.055, color: 0x2a1a44, rim: 0x443063 }] },
+
+    { name: 'ice world', sky: SKY_PINE, stars: 1.1,
+      planet: { x: 0.86, y: 1.08, r: 0.38, color: 0x14403a, rim: 0x24493f,
+                ring: { rx: 1.6, ry: 0.30, tilt: 0.22, color: 0x357d70 } } },
   ],
-  lerpS: 1.5,
-  // How far the starfield follows the sky. Stars staying pure white against a
-  // shifted sky is what makes a recoloured background look like a filter laid
-  // over the game rather than a different place.
+  // How long the flash covering the swap lasts. Short: it is a cut, not a fade.
+  flashS: 0.34,
+  // RIM LIGHTS ARE DIMMER THAN THE DIMMEST MONSTER, and that is a hard rule
+  // rather than a preference. The first pass had ice world's rim at luma 134
+  // against the large tier's 122 -- a background arc BRIGHTER than a monster,
+  // which is precisely how a purple large vanishes while crossing it. Every rim
+  // is now at or under 61, keeping at least 2:1 under the dimmest blob.
+  //
+  // It was caught by computing the numbers, not by looking: the scenes read
+  // beautifully in a screenshot and the failure only shows when a monster of the
+  // wrong colour happens to pass over the wrong arc.
+
+  // How far the starfield takes the sky's colour, so stars belong to the scene
+  // rather than sitting on it.
   starTint: 0.30,
 };
 
