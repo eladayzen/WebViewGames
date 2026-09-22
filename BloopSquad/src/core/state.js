@@ -47,6 +47,9 @@ export function createWorld() {
     // to a toy in the first place.
     toys: [],
     lastToyDropT: -99,
+    // When each toy family last produced a present. Drives the rotation that
+    // stops a run handing out four shooters and no bombs -- see pickToyKind.
+    familyLastDropT: { shooter: -99, bomb: -99, close: -99 },
     pops: [],         // confetti bursts, purely cosmetic
 
     camera: { x: 0, y: 0, starOffset: 0 },

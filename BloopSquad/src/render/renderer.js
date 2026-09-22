@@ -459,10 +459,12 @@ export async function createRenderer(canvas) {
     if (kind.id === 'cross') {
       // A plus with arrowheads: the shape of what it fires, which is the
       // clearest label available to someone who cannot read "CROSS FIRE".
+      // Three arms, matching what it fires. The icon has to lose the up arm too
+      // or the pickup promises a barrel the toy no longer has.
       const arm = R * 0.92, w2 = R * 0.17;
-      g.roundRect(x - w2, y - arm, w2 * 2, arm * 2, w2).fill({ color: kind.tint });
+      g.roundRect(x - w2, y - w2, w2 * 2, arm + w2, w2).fill({ color: kind.tint });
       g.roundRect(x - arm, y - w2, arm * 2, w2 * 2, w2).fill({ color: kind.tint });
-      for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+      for (const [dx, dy] of kind.dirs) {
         const tx = x + dx * arm, ty = y + dy * arm;
         g.moveTo(tx + dx * R * 0.22 - dy * R * 0.26, ty + dy * R * 0.22 + dx * R * 0.26)
          .lineTo(tx + dx * R * 0.40, ty + dy * R * 0.40)

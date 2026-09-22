@@ -518,11 +518,14 @@ export const TOYS = {
   // presents with it. A headless 4-minute run went from 3 toys to 1 on the
   // size/health change alone. Any future change to health, size or spawn rate
   // has to re-measure this -- it is the most fragile number in the file.
-  // GREEN MEANS PRESENT (Amit: "give me them from killing green enemies").
-  // Every small drops a toy, and smalls are 70 % of the field -- so the rule a
-  // child learns is one sentence with no probability in it: pop a green one, get
-  // a present. A 42 % chance is not a rule anybody can learn, it is weather.
-  dropFrom: { small: 1.0, medium: 1.0, large: 1.0 },
+  // HALVED (Amit: "way too much for sure"). Expected drops per kill went 1.00 ->
+  // 0.52, which is the half he asked for measured properly -- halving only the
+  // smalls would have reached 0.65, because mediums and larges contribute a
+  // third of the total despite being 30 % of the field.
+  //
+  // Large stays at 1.0 deliberately. It is the longest commitment in the game
+  // and the one kill a child plans; a guaranteed present is what pays for it.
+  dropFrom: { small: 0.45, medium: 0.6, large: 1.0 },
   // No two toys within this window, so a lucky streak cannot hand out three at
   // once and flatten the whole minute after it.
   // 6s -> 2.5s, and two pickups may be on the field at once. Both had to move
@@ -532,8 +535,8 @@ export const TOYS = {
   // two at a time, which would make the whole stacking change invisible.
   // The gap is now the real limiter rather than the roll, which is the right way
   // round: the ceiling on presents should be a number we set, not a dice streak.
-  minGapS: 0.8,
-  maxLive: 4,
+  minGapS: 1.6,
+  maxLive: 3,
 
   // The toy timer, drawn as a bar UNDER the pod. Under and not over: everything
   // the player is actually looking at -- the monsters, their own shots, where
@@ -587,8 +590,14 @@ export const TOYS = {
     // Tint moved OFF 0xffc93c, which was the coin's exact colour -- a round
     // yellow pickup beside round yellow coins is a present nobody picks up on
     // purpose. Magenta appears nowhere else on the field.
+    // OFF (Amit: "disable the pink swirl shooter, don't give him any more").
+    // Kept in the file rather than deleted: it still works on key 2 for testing,
+    // and its history -- the x3 damage burst rework, the drop-weight cut -- is
+    // the record of two passes that did not save it. A spray that crosses
+    // everything else on screen was never going to sit well beside toys that
+    // now all run at the same time.
     twirl: {
-      id: 'twirl', label: 'TWIRL', durationS: 4.5, tint: 0xff5fc8,
+      id: 'twirl', label: 'TWIRL', durationS: 4.5, tint: 0xff5fc8, enabled: false,
       intervalS: 0.055, speedPxS: 900, spinRadPerS: 5.2, arms: 2,
       // x3 PER SHOT, HALF AS LONG (Amit, playing it: "very annoying").
       //
@@ -685,8 +694,12 @@ export const TOYS = {
     // is the only sustained answer in the game to something rising from below.
     cross: {
       id: 'cross', label: 'CROSS FIRE', durationS: 10, tint: 0x9be564,
-      // A bit quicker than the cannon's 0.17, and four barrels -- so it is ~5x
-      // the base output. Short duration is what pays for that.
+      // THREE ARMS, NOT FOUR: down, left and right. The up arm was deleted
+      // (Amit) and it was the redundant one -- the cannon already fires straight
+      // up and never stops, so that barrel was the only part of the cross
+      // duplicating something the player already had. What is left is exactly
+      // the three directions nothing else covers.
+      dirs: [[0, 1], [-1, 0], [1, 0]],
       intervalS: 0.13,
       speedPxS: 1100,
       damage: 1,
@@ -782,12 +795,43 @@ export const TOYS = {
   // share of screen time was well above its share of drops.
   weights: { wand: 0.7, twirl: 0.35, buddies: 1.4, rapid: 1.3, chain: 1.3, shield: 1.0, punch: 1.1, cross: 1.2 },
 
+  // ---- FAMILIES, AND WHY THE DROP IS NOT A PURE ROLL ----------------------
+  //
+  // Amit: "for some reason I got only shooter-related toys, and not the bombs
+  // and close weapons, for a very long time."
+  //
+  // That is not a bug and better weights cannot fix it. Weighted random has no
+  // memory, so streaks are not merely possible, they are expected -- with three
+  // shooters in a pool of seven, four shooters in a row is an ordinary outcome
+  // and it happens often enough that a child will meet it.
+  //
+  // So the drop ROTATES BY FAMILY: each present comes from whichever family has
+  // gone longest without one, and the weights then choose within that family.
+  // The effect is that you cannot get two bombs in a row while a close-weapon is
+  // waiting, and the roster a player sees stays spread across the kinds of thing
+  // the game can do, rather than across whatever the dice liked today.
+  families: {
+    shooter: ['wand', 'cross'],
+    bomb: ['buddies', 'chain'],
+    close: ['punch', 'shield', 'rapid'],
+  },
+
   // WHAT EACH LEVEL OPENS UP. A toy cannot drop until the player has reached
   // its level, so the roster grows through a run instead of being complete from
   // the first pop. Two are available immediately -- a first toy has to arrive
   // early enough to teach what a toy IS -- and the chain is last because it is
   // the biggest and the strangest.
-  unlockLevel: { wand: 1, twirl: 1, rapid: 2, cross: 3, buddies: 4, punch: 5, chain: 6, shield: 7 },
+  // EVERY FAMILY HAS A LEVEL-1 MEMBER, and that is the point of these numbers
+  // rather than the escalation. The rotation can only rotate between families
+  // that have something unlocked, so the old ladder (wand 1, rapid 2, cross 3,
+  // buddies 4...) meant level 1 offered ONE toy, level 2 offered two shooters
+  // and nothing else -- measured as shooter 18 / close 15 / bomb 7 across a run,
+  // with three shooters in a row early on. Exactly the complaint, caused by the
+  // unlock table and not by the roll.
+  //
+  // So: one shooter, one bomb and one close weapon from the first present, and
+  // the rest arrive with levels. Variety first, escalation second.
+  unlockLevel: { wand: 1, buddies: 1, rapid: 1, twirl: 1, cross: 3, punch: 4, chain: 5, shield: 6 },
 
   // Every level past the first adds this much to a toy's duration, capped.
   //

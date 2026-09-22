@@ -63,21 +63,8 @@ export function maybeDropToy(w, m, rng) {
   if (w.time - w.lastToyDropT < TOYS.minGapS) return;
   if (rng.next() >= chance) return;
 
-  // Only toys the player has reached the level for. The roster grows through a
-  // run rather than being complete from the first pop, which is what makes
-  // levelling feel like it opened something.
-  const names = Object.keys(TOYS.kinds).filter(
-    (n) => (TOYS.unlockLevel[n] || 1) <= w.level
-  );
-  if (!names.length) return;
-  let total = 0;
-  for (const n of names) total += TOYS.weights[n] || 0;
-  let r = rng.next() * total;
-  let pick = names[0];
-  for (const n of names) {
-    r -= TOYS.weights[n] || 0;
-    if (r <= 0) { pick = n; break; }
-  }
+  const pick = pickToyKind(w, rng);
+  if (!pick) return;
 
   w.lastToyDropT = w.time;
   w.toyPickups.push({
@@ -89,6 +76,50 @@ export function maybeDropToy(w, m, rng) {
     t: TOYS.lifeS,
     bob: 0,
   });
+}
+
+/**
+ * Choose what drops, by FAMILY ROTATION rather than a pure weighted roll.
+ *
+ * Pure weighting has no memory, so streaks are not a risk, they are the expected
+ * behaviour -- with three shooters in a pool of seven, four shooters in a row is
+ * ordinary, and a player meets it often. Rotating by family means the roster
+ * stays spread across the KINDS of thing the game can do.
+ *
+ * The family that has waited longest goes next; the weights then choose within
+ * it. Ties break by the order in TOYS.families, which only matters on the first
+ * drop of a run, when every family has waited forever.
+ *
+ * Returns null when nothing is eligible -- every family still locked, or all of
+ * its toys disabled.
+ */
+export function pickToyKind(w, rng) {
+  const eligible = (name) => {
+    const kind = TOYS.kinds[name];
+    if (!kind || kind.enabled === false) return false;
+    return (TOYS.unlockLevel[name] || 1) <= w.level;
+  };
+
+  let bestFamily = null;
+  let bestSeen = Infinity;
+  for (const [family, names] of Object.entries(TOYS.families)) {
+    if (!names.some(eligible)) continue;
+    const seen = w.familyLastDropT[family] ?? -Infinity;
+    if (seen < bestSeen) { bestSeen = seen; bestFamily = family; }
+  }
+  if (!bestFamily) return null;
+
+  const names = TOYS.families[bestFamily].filter(eligible);
+  let total = 0;
+  for (const n of names) total += TOYS.weights[n] || 0;
+  let r = rng.next() * total;
+  let pick = names[0];
+  for (const n of names) {
+    r -= TOYS.weights[n] || 0;
+    if (r <= 0) { pick = n; break; }
+  }
+  w.familyLastDropT[bestFamily] = w.time;
+  return pick;
 }
 
 export function updateToyPickups(w, dt) {
@@ -252,7 +283,7 @@ export function updateFiring(w, dt) {
     if (kind.id === 'cross') {
       // Four fixed axes. Spawned at the pod's edge rather than its centre so the
       // shots leave the hull instead of appearing inside the pilot.
-      for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+      for (const [dx, dy] of kind.dirs) {
         spawnBullet(w,
           p.x + dx * PLAYER.radius, p.y + dy * PLAYER.radius,
           dx * kind.speedPxS, dy * kind.speedPxS,
