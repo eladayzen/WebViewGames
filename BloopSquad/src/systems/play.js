@@ -124,6 +124,7 @@ export function updateCollisions(w, rng, dt) {
       // THE SHIELD GETS FIRST REFUSAL. Checked before the heart is taken, which
       // is the only order that works -- and the monster still giggles away
       // either way, because rule 4 has no exception for being blocked.
+      if (w.debug.invincible) { popMonster(w, m, rng); break; }
       if (consumeShield(w)) {
         playShieldSave();
         popMonster(w, m, rng);

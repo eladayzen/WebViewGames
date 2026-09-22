@@ -20,13 +20,16 @@ import { initInput, readInput } from './input/input.js';
 import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js';
 import {
   updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops,
-  updateSquad, updateSquadBombs, updateBlasts, updateLevelPopup, updateHearts, celebrate,
+  updateSquad, updateSquadBombs, updateBlasts, updateLevelPopup, updateHearts,
+  celebrate, popMonster,
 } from './systems/play.js';
 import { updateFiring, updateToyPickups, equip, updateChain } from './systems/toys.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
+import { installDevUnlock } from './ui/devUnlock.js';
+import { createDevPanel } from './ui/devPanel.js';
 import {
   initAudio, startMusic, stopMusic, setAudioPaused, playGameOver,
-  getAudioPrefs, setSfxEnabled, setMusicEnabled,
+  getAudioPrefs, setSfxEnabled, setMusicEnabled, setMusicLevel,
 } from './systems/audio.js';
 import { CAMERA, MONSTERS, TOYS, SQUAD, DESIGN_W, DESIGN_H, difficulty01 } from './data/tuning.js';
 
@@ -216,6 +219,50 @@ async function boot() {
     if (window.Unity) window.Unity.call('nav:back');
   };
 
+  // --- DEV TOOLS, behind the hold-and-code -------------------------------
+  //
+  // The hold target is an invisible corner of the screen rather than a HUD
+  // element, because this game's HUD is drawn into the canvas and there is no
+  // DOM node to press. Bottom-left, unlabelled, never otherwise interactive --
+  // nobody holds a blank corner for seven seconds by accident.
+  const holdTarget = document.createElement('div');
+  holdTarget.id = 'dev-hold-target';
+  document.body.appendChild(holdTarget);
+
+  const openDevPanel = () => {
+    const dev = createDevPanel(document, {
+      world,
+      toyIds: Object.keys(TOYS.kinds),
+      giveToy: (id) => equip(world, id),
+      clearToys: () => { world.toys = []; },
+      setLevel: (n) => {
+        world.level = n;
+        world.xp = 0;
+        celebrate(world, n);
+        setMusicLevel(n);
+      },
+      spawnTier: (tier) => {
+        const m = spawnMonster(world, rng);
+        if (!m) return;
+        const t = MONSTERS.tiers[tier];
+        Object.assign(m, {
+          tierName: tier, r: t.radius, hp: t.hp, maxHp: t.hp,
+          tint: t.tint, points: t.points, coins: t.coins,
+        });
+      },
+      clearField: () => {
+        for (const m of world.monsters) if (m.alive) popMonster(world, m, rng);
+      },
+      restart,
+    });
+    document.getElementById('chrome')?.appendChild(dev.button);
+    document.body.appendChild(dev.panel);
+    return dev;
+  };
+
+  installDevUnlock(document, holdTarget, openDevPanel);
+
+
   window.__bloop = { world, tuning: { CAMERA, MONSTERS, TOYS }, report, restart, equip: (k) => equip(world, k) };
 
   // ?toy=twirl equips one at boot -- the 1/2/3 keys for something that cannot
@@ -226,6 +273,25 @@ async function boot() {
   const q = new URLSearchParams(location.search);
   // Comma-separated, because toys stack now and the interesting thing to look
   // at is a STACK: ?toy=cross,wand,shield,chain
+  // ?dev=1 skips the hold-and-code, and is REFUSED INSIDE THE APP: the guard is
+  // `window.GoBalance`, which the host injects and which does not exist at a dev
+  // URL. On a board there is no address bar to type it into, so the param can
+  // only be set by someone at a keyboard running the dev server -- exactly who
+  // the panel is for.
+  //
+  // It exists because the gate is otherwise untestable: a seven-second hold plus
+  // a four-digit code cannot be driven from a headless screenshot, and a panel
+  // nobody has looked at is a panel that does not work.
+  //
+  // IT LIVES HERE, WITH THE OTHER HOOKS, and that is load-bearing: its first
+  // version sat 12 lines above `const q = ...` and threw a temporal-dead-zone
+  // ReferenceError that killed the rest of boot() silently -- the renderer had
+  // already started, so the game still drew and only the things after the throw
+  // went missing. It took `?toy=`, `?art=` and `?level=` down with it.
+  if (q.get('dev') && !window.GoBalance) {
+    openDevPanel().button.click();
+  }
+
   const forced = q.get('toy');
   if (forced) {
     for (const name of forced.split(',')) {

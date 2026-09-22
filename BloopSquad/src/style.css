@@ -138,3 +138,295 @@ canvas { display: block; }
   letter-spacing: 0.2em;
   cursor: pointer;
 }
+
+
+/* ---------------------------------------------------------------------------
+   DEV TOOLS -- lifted from NovaVanguard/src/style.css alongside devUnlock.js.
+   The unlock flow is meant to be identical in every GoBalance game, so that
+   anyone who knows it for one game knows it for all of them; the panel's
+   CONTENTS are per-game, but the keypad and the wrench are not.
+   --------------------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------------------
+   Dev panel (ui/devPanel.js)
+   ---------------------------------------------------------------------------
+   Fourth button in the top-right chrome row, continuing the 48px spacing of
+   back / pause / mute. Deliberately styled like the rest of the chrome rather
+   than as a debug overlay: it is a tool Amit uses while judging the game, so
+   it should not fight the art while it is open.
+--------------------------------------------------------------------------- */
+
+#dev-button {
+  position: absolute;
+  top: 12px;
+  /* FOURTH SLOT, following the gear inboard. It only exists once the unlock
+     gesture has been performed, so it is the one button in the row a player
+     never sees -- but when it appears it has to appear in the row, not floating
+     a slot away from it. */
+  right: 186px;
+  z-index: 9999;
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: #eafcff;
+  font: 600 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+#dev-button.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+}
+#dev-panel {
+  position: absolute;
+  top: 68px;
+  right: 12px;
+  z-index: 9999;
+  width: 232px;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+  background: rgba(10, 12, 26, 0.93);
+  border: 1px solid rgba(111, 232, 255, 0.28);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  color: #eafcff;
+  font: 500 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+#dev-panel.hidden { display: none; }
+.dev-section {
+  margin: 10px 0 5px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: rgba(111, 232, 255, 0.72);
+}
+.dev-section:first-child { margin-top: 2px; }
+.dev-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.dev-toggle { justify-content: space-between; }
+.dev-chip {
+  flex: 1;
+  min-width: 34px;
+  padding: 6px 4px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(30, 40, 70, 0.8);
+  color: #eafcff;
+  font: 600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+.dev-toggle .dev-chip { flex: 0 0 52px; }
+.dev-chip:hover { background: rgba(45, 60, 100, 0.9); }
+.dev-chip.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+  border-color: rgba(55, 200, 230, 0.9);
+}
+.dev-note {
+  margin: 2px 0 4px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(234, 252, 255, 0.55);
+}
+/* Invincibility has to be impossible to forget about -- a persistent tint on
+   the frame, so "why am I not dying" is answered before it is asked. */
+body.dev-invincible::after {
+  content: 'INVINCIBLE';
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9998;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 96, 96, 0.85);
+  color: #180404;
+  font: 700 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 0.12em;
+  pointer-events: none;
+}
+/* ---------------------------------------------------------------------------
+   Player settings (gear) and the dev-tools unlock.
+   ---------------------------------------------------------------------------
+   TEMPLATE. The same two controls, in the same places, should appear in every
+   GoBalance web game: a gear the player is meant to press, and a wrench that
+   only exists once unlocked.
+--------------------------------------------------------------------------- */
+
+#settings-button {
+  position: absolute;
+  top: 12px;
+  /* Matched to the X and pause beside it: a dark circle on a dark screen is
+     technically visible and practically missable, which is how the X on the
+     board screens went unnoticed even once it was on top. */
+  border: 0.2vmin solid rgba(150, 215, 240, 0.55);
+  box-shadow: 0 0 1.4vmin rgba(0, 0, 0, 0.5);
+  /* THIRD IN THE ROW, hard against pause. The row runs on a 58px pitch from the
+     right edge -- 12 (quit), 70 (pause), 128, 186 -- and the speaker that used
+     to hold the third slot is gone, so the gear moves into it rather than
+     leaving a hole the eye reads as a missing button. */
+  right: 128px;
+  z-index: 9999;
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: #eafcff;
+  font: 600 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+/* The gauge being held, so a seven-second press gives some sign it is doing
+   something -- without hinting at it to anyone not already holding. */
+.devhold { opacity: 0.72; }
+#devcode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+}
+#devcode-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(111, 232, 255, 0.35);
+}
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+#devcode-dots {
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 8px;
+  color: #6fe8ff;
+}
+#devcode-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(30, 40, 70, 0.9);
+  color: #eafcff;
+  font: 600 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  gap: 8px;
+}
+.devcode-key {
+  height: 62px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 90ms linear;
+}
+/* Every key answers a press the same way. A key that looked inert while another
+   lit up was what gave the code away one digit at a time. */
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+/* A wrong code, shown for a moment before the row clears. Amber rather than red:
+   this is a mistyped code, not an alarm. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
+}
+
+/* The dev-unlock hold target: an invisible, unlabelled corner. This game's HUD
+   is drawn into the canvas, so there is no existing DOM element to press --
+   Nova uses its health bar. Bottom-left, because the pod lives centre-bottom and
+   the chrome row owns top-right. `devhold` is added by devUnlock during the
+   press and is deliberately given no visible style: a corner that lit up would
+   be a corner a child investigates. */
+#dev-hold-target {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 72px;
+  height: 72px;
+  z-index: 5;
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   LAYOUT OVERRIDES for the copied dev CSS.
+   
+   Nova positions #dev-button absolutely at `right: 186px` -- the fourth slot in
+   ITS chrome row, counted in pixels. Bloop's #chrome is a flexbox with a gap, so
+   a child button only needs to exist to be in the row; the absolute positioning
+   took the wrench out of the flex flow and parked it off the visible row
+   entirely, which is why the first screenshot showed three buttons and no
+   wrench.
+   
+   This is the cost of copying a stylesheet verbatim alongside a template file:
+   the JS was genuinely portable, the CSS encoded one game's layout. Overridden
+   here rather than edited above, so the copied block stays a clean copy and the
+   diff against Nova stays readable.
+   --------------------------------------------------------------------------- */
+
+#dev-button {
+  position: static;
+  top: auto;
+  right: auto;
+  background: rgba(255, 255, 255, 0.92);
+  color: #14213d;
+}
+#dev-button.on {
+  background: #2fe3b8;
+  color: #0b1020;
+}
+#dev-panel {
+  position: fixed;
+  top: 78px;
+  right: 14px;
+  z-index: 30;
+  max-height: 78vh;
+  overflow-y: auto;
+}
+
+/* The toy row has eight chips and Nova's .dev-row never wrapped -- its rows were
+   five levels and three toggles. Eight overflowed the panel and cut `shield`,
+   `punch` and `buddies` off the right edge entirely, which is most of the row
+   that justifies the panel existing. */
+.dev-row { flex-wrap: wrap; }
+#dev-panel { width: 244px; }
+
+/* Adding a fourth button exposed that one chrome child was out of the flex flow:
+   the back X and the gear rendered stacked on each other, the X hidden behind.
+   That matters more than it looks -- #gb-back is the only way off a board, and
+   GOBALANCE_APP_INTEGRATION.md is explicit that it must always work.
+
+   Rather than hunt which rule did it, every child of the row is pinned back into
+   the flow. A chrome row is a flex row and nothing in it should ever position
+   itself; stating that once is more durable than fixing one offender. */
+#chrome { align-items: center; }
+#chrome > * {
+  position: static;
+  flex: 0 0 auto;
+  margin: 0;
+}

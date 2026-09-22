@@ -54,6 +54,12 @@ export function createWorld() {
 
     camera: { x: 0, y: 0, starOffset: 0 },
 
+    // The debug contract. Read by the collision code and the renderer every
+    // frame; written only by the dev panel. Lives on the world rather than in a
+    // module so resetWorld clears it -- a flag that survived a restart would be
+    // the worst possible kind of bug to chase.
+    debug: { invincible: false },
+
     // The warm-up: an empty field for the first few seconds of every run, so
     // the first thing a child does is find out what the pod does. resetWorld
     // rebuilds from here, so R gets the same grace as a cold start.
