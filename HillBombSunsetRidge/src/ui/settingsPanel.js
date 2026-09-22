@@ -112,6 +112,8 @@ let rows = playerRows;
 let showingDev = false;
 let selected = 0;
 let onOpenLab = null;
+/** Opens every mission and race. Dev options only -- see the row that calls it. */
+let onUnlockAll = null;
 /** The sound system, so the two audio rows can drive it. Optional. */
 let audio = null;
 /** Told whenever the panel opens or closes -- see initSettingsPanel's hooks. */
@@ -539,6 +541,9 @@ export function initSettingsPanel(hooks = {}) {
   onOpenLab = hooks.openLab || null;
   audio = hooks.audio || null;
   onPanelToggle = hooks.onToggle || null;
+  // Passed in rather than imported: the progress store is created in main.js
+  // against a profile, so importing one here would be a second, different store.
+  onUnlockAll = hooks.unlockAll || null;
   load();
 
   const button = document.getElementById('settings-button');
@@ -739,6 +744,31 @@ export function initSettingsPanel(hooks = {}) {
   // would both work and then disagree on screen, since each only refreshes
   // itself. The dev panel keeps the rows a player genuinely should not touch --
   // steer mode, the carve numbers, recentre, render lab.
+  /**
+   * OPEN THE WHOLE LADDER, for whoever has to look at the far end of it.
+   *
+   * Forty missions and six races gated one behind the next means checking a
+   * late mission costs an hour of clearing the ones before it -- so the levels
+   * that get looked at least are the ones furthest from a first play, which is
+   * exactly backwards. This is the same argument as Nova Vanguard's one-key jump
+   * to its boss fight, and it is here for the same reason.
+   *
+   * ONE STAR EACH, so nothing a real run could earn is taken away -- see
+   * progress.unlockAll(). Says how many it opened rather than just "DONE",
+   * because on a save that is already complete the honest answer is "none", and
+   * a row that always claims success cannot be told from one that silently
+   * failed.
+   */
+  if (onUnlockAll) {
+    addAction({
+      label: 'UNLOCK ALL',
+      run: () => {
+        const n = onUnlockAll();
+        return n > 0 ? `OPENED ${n} \u2713` : 'ALREADY OPEN';
+      },
+      note: 'every mission and race, one star each',
+    });
+  }
   addAction({
     label: 'RECENTRE BOARD',
     run: () => (recentreBoard() ? 'CENTRED \u2713' : 'NO SENSOR (BROWSER)'),

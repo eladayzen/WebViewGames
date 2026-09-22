@@ -1594,12 +1594,20 @@ html, body {
 }
 
 
-/* The one HUD element that accepts a press. The HUD is pointer-events:none so
-   taps fall through to the game, which also meant the dev-unlock hold could
-   never land -- see ui/devUnlock.js. Re-enabled for this element only, and it
-   costs nothing: the game is driven by the board and the keyboard, so nothing
-   is lost by the speed readout swallowing a tap. */
-#speed-readout { pointer-events: auto; }
+/* THE HUD ELEMENTS THAT ACCEPT A PRESS. #hud is pointer-events:none so taps
+   fall through to the game, which also means a dev-unlock hold can never land
+   on anything inside it -- see ui/devUnlock.js.
+
+   #objectives is the hold target now (Amit: "the whole UI panel on the left --
+   title, timer, black background, the whole thing"), so it has to opt back in
+   or the press is not delivered at all. Found by holding it for eight seconds
+   in a headless run and getting no keypad.
+
+   The readout keeps the rule it already had rather than losing it: it costs
+   nothing, and a game driven by a board and a keyboard loses nothing to either
+   element swallowing a tap. */
+#speed-readout,
+#objectives { pointer-events: auto; }
 
 /* ---- DEV UNLOCK -----------------------------------------------------------
    Styling for ui/devUnlock.js, which is a TEMPLATE FILE copied verbatim across
@@ -1665,6 +1673,21 @@ html, body {
   font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+
+/* A wrong code, shown for a moment before the row clears. Amber rather than red:
+   this is a mistyped code, not an alarm.
+
+   REQUIRED BY THE NEW PAD, not decoration. The unlock no longer judges digits as
+   they are typed -- see ui/devUnlock.js -- so a wrong code now looks exactly
+   like a right one until the fourth dot lands. This is the only thing that says
+   it was refused; without it a failed attempt is a silent clear. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
 }
 
 

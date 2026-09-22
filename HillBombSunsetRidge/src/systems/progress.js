@@ -139,6 +139,35 @@ export function createProgress(tracks, store) {
       return JSON.parse(JSON.stringify(records));
     },
 
+    /**
+     * DEV ONLY -- open every mission and race at once. Reached from the dev
+     * options, which are themselves behind a seven-second hold and a code (see
+     * ui/devUnlock.js).
+     *
+     * ONE STAR, NOT THREE, and that is the point rather than modesty. `record`
+     * only ever improves, so three-starring everything here would overwrite real
+     * results with fakes that can never be undone by playing -- and a tester
+     * checking whether mission 34's three-star bar is reachable would find it
+     * already claimed. One star clears the gate (`cleared` is `stars > 0`) and
+     * leaves every star target still to be earned, which is exactly what a
+     * tester jumping to a late mission needs.
+     *
+     * Scores are left alone for the same reason: a fake best would break the
+     * star thresholds the next real run is measured against.
+     *
+     * @returns {number} how many were newly opened, so the caller can say so.
+     */
+    unlockAll() {
+      let opened = 0;
+      for (const id of missionIds) {
+        if (api.cleared(id)) continue;
+        records[id] = { stars: 1, score: (records[id] && records[id].score) || 0 };
+        opened += 1;
+      }
+      save();
+      return opened;
+    },
+
     reset() {
       records = {};
       save();
