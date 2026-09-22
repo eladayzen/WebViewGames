@@ -516,16 +516,44 @@ export const XP = {
 // ---------------------------------------------------------------------------
 
 export const POD = {
-  finsFrom: 4,        // swept fins either side of the hull
-  bigDomeFrom: 5,     // a taller canopy -- and a second pilot to fill it
-  twinThrustFrom: 6,  // two exhausts instead of one
-  trailFrom: 7,       // a fading ribbon behind the pod
-  extraLightsFrom: 8, // six rim lights instead of four
-  haloFrom: 9,        // a ring around the saucer
-  goldFrom: 10,       // gold trim on everything
-  // How much of the pod's recent path the ribbon covers. Short on purpose: a
-  // long one crosses the field and competes with the monsters for attention,
-  // and this is the one upgrade drawn OUTSIDE the ship's own silhouette.
+  // FOUR SHIPS, NOT SEVEN BOLT-ONS. The first version added a part per tier --
+  // fins, a halo, extra rim lights, gold trim -- and Amit's verdict was that it
+  // "revealed a lower production value feeling". He was right, and the diagnosis
+  // is worth keeping because it applies to anything added here later:
+  //
+  // The monsters work because they all follow ONE RECIPE -- blob silhouette,
+  // thick dark outline on every form, a gloss highlight up-left, a belly shade,
+  // big eyes with catchlights. Basic, but coherent, and coherent basic reads as
+  // a style. The bolted-on upgrades shared none of it: flat triangles with no
+  // shading, a bare stroked ellipse with no outline, a colour swap. They read as
+  // ACCRETION -- a saucer with bits stuck on -- and because they sat at a
+  // different fidelity from everything around them they dragged the whole
+  // screen's perceived quality down with them.
+  //
+  // So: four whole ships, each a silhouette you could recognise in black, each
+  // drawn with the monsters' recipe. A tier changes the OUTLINE, never adds a
+  // part. The wings are points on the hull path, not separate shapes.
+  //
+  // CUT ENTIRELY: the halo ring, the gold trim, the rim-light count change.
+  // None of them altered the silhouette and all three read cheap.
+  tiers: [
+    // hullW    half-width, in pod radii -- the headline of each silhouette
+    // tipRise  how far the wingtips lift above the hull's centre line
+    // topH     crown height
+    // underY / keel  the underside, which is what gives a ship mass
+    // THE CANOPY IS SMALL. The first pass had it at 0.74-1.02 radii against a
+    // hull only ~0.9 tall, so the dome dwarfed the ship and the whole thing read
+    // as a head with little wings rather than as a craft. A saucer is a WIDE
+    // BODY with a bubble on top; the body has to dominate.
+    { from: 1,  name: 'scout',    hullW: 1.32, tipRise: 0.02, topH: 0.16, underY: 0.30, keel: 0.54, thrusters: 1, dome: 0.46, pilots: 1 },
+    { from: 4,  name: 'cruiser',  hullW: 1.70, tipRise: 0.20, topH: 0.22, underY: 0.32, keel: 0.60, thrusters: 2, dome: 0.52, pilots: 2 },
+    { from: 7,  name: 'heavy',    hullW: 1.98, tipRise: 0.32, topH: 0.28, underY: 0.36, keel: 0.68, thrusters: 3, dome: 0.58, pilots: 2 },
+    { from: 10, name: 'flagship', hullW: 2.24, tipRise: 0.44, topH: 0.34, underY: 0.38, keel: 0.76, thrusters: 3, dome: 0.64, pilots: 3 },
+  ],
+  // The exhaust ribbon, from the cruiser up. Kept because it is a thruster
+  // effect rather than a part bolted to the hull -- it reads as the ship doing
+  // something, which is the test the cut upgrades failed.
+  trailFrom: 4,
   trailPoints: 16,
   trailStepPx: 9,
 };
