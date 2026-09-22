@@ -545,10 +545,17 @@ export const POD = {
     // hull only ~0.9 tall, so the dome dwarfed the ship and the whole thing read
     // as a head with little wings rather than as a craft. A saucer is a WIDE
     // BODY with a bubble on top; the body has to dominate.
-    { from: 1,  name: 'scout',    hullW: 1.32, tipRise: 0.02, topH: 0.16, underY: 0.30, keel: 0.54, thrusters: 1, dome: 0.46, pilots: 1 },
-    { from: 4,  name: 'cruiser',  hullW: 1.70, tipRise: 0.20, topH: 0.22, underY: 0.32, keel: 0.60, thrusters: 2, dome: 0.52, pilots: 2 },
-    { from: 7,  name: 'heavy',    hullW: 1.98, tipRise: 0.32, topH: 0.28, underY: 0.36, keel: 0.68, thrusters: 3, dome: 0.58, pilots: 2 },
-    { from: 10, name: 'flagship', hullW: 2.24, tipRise: 0.44, topH: 0.34, underY: 0.38, keel: 0.76, thrusters: 3, dome: 0.64, pilots: 3 },
+    // ONE PILOT, ALWAYS (Amit: "having 2 characters inside the spaceship - not a
+    // good idea"). It was the tier-5 upgrade and it was the wrong kind: the
+    // pilot is the player, and a second face in the canopy quietly asks who the
+    // player now is. It also crowded a bubble sized for one. The tiers carry
+    // plenty without it -- hull width, wing sweep, thruster count, canopy size
+    // and keel depth all move, and those are silhouette changes rather than
+    // passengers.
+    { from: 1,  name: 'scout',    hullW: 1.32, tipRise: 0.02, topH: 0.16, underY: 0.30, keel: 0.54, thrusters: 1, dome: 0.46 },
+    { from: 4,  name: 'cruiser',  hullW: 1.70, tipRise: 0.20, topH: 0.22, underY: 0.32, keel: 0.60, thrusters: 2, dome: 0.52 },
+    { from: 7,  name: 'heavy',    hullW: 1.98, tipRise: 0.32, topH: 0.28, underY: 0.36, keel: 0.68, thrusters: 3, dome: 0.58 },
+    { from: 10, name: 'flagship', hullW: 2.24, tipRise: 0.44, topH: 0.34, underY: 0.38, keel: 0.76, thrusters: 3, dome: 0.64 },
   ],
   // The exhaust ribbon, from the cruiser up. Kept because it is a thruster
   // effect rather than a part bolted to the hull -- it reads as the ship doing
@@ -587,6 +594,18 @@ export const SKY = {
   // shifted sky is what makes a recoloured background look like a filter laid
   // over the game rather than a different place.
   starTint: 0.30,
+};
+
+// Dev tools. `alwaysVisible` puts the wrench in the chrome row from boot instead
+// of behind the seven-second hold and the code.
+//
+// TRUE ONLY WHILE THE GAME IS BEING BUILT, and it has to go back to false before
+// this is in front of a child: every row in that panel either skips content or
+// removes a failure condition, and a visible wrench is a wrench a six-year-old
+// presses. The gate itself is untouched and still works -- this only decides
+// whether it is in the way.
+export const DEV = {
+  alwaysVisible: true,
 };
 
 export const HUD = {

@@ -454,16 +454,12 @@ export async function createRenderer(canvas) {
     }
 
     // Crew, then the canopy over them.
-    // The crew sit just above the hull's crown and the canopy rides on them --
-    // both anchored to `topH` so a taller ship raises its bubble rather than
-    // leaving it floating over a bigger body.
+    // ONE PILOT. He is the player, and a second face in the canopy quietly asks
+    // who the player is now. Sits just above the hull's crown, with the canopy
+    // riding on him -- both anchored to `topH`, so a taller ship raises its
+    // bubble rather than leaving it floating over a bigger body.
     const py = p.y - r * (t.topH + 0.22);
-    const seats = t.pilots === 1 ? [0] : t.pilots === 2 ? [-0.26, 0.26] : [-0.46, 0, 0.46];
-    const bodies = [PALETTE.pilot, PALETTE.thruster, 0x9be564];
-    seats.forEach((sx, i) => {
-      drawPilot(cx + sx * r, py + (sx === 0 ? 0 : r * 0.04),
-                r * (t.pilots === 1 ? 0.30 : 0.23), bodies[i % bodies.length], lw * 0.6);
-    });
+    drawPilot(cx, py, r * 0.30, PALETTE.pilot, lw * 0.6);
 
     const domeR = r * t.dome;
     g.circle(cx, py + r * 0.04, domeR).fill({ color: PALETTE.dome, alpha: 0.24 });

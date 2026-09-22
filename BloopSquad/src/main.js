@@ -31,7 +31,7 @@ import {
   initAudio, startMusic, stopMusic, setAudioPaused, playGameOver,
   getAudioPrefs, setSfxEnabled, setMusicEnabled, setMusicLevel,
 } from './systems/audio.js';
-import { CAMERA, MONSTERS, TOYS, SQUAD, DESIGN_W, DESIGN_H, difficulty01 } from './data/tuning.js';
+import { CAMERA, DEV, MONSTERS, TOYS, SQUAD, DESIGN_W, DESIGN_H, difficulty01 } from './data/tuning.js';
 
 const CAMERA_MODES = ['fixed', 'drift', 'lateral'];
 
@@ -267,6 +267,12 @@ async function boot() {
   };
 
   installDevUnlock(document, holdTarget, openDevPanel);
+
+  // DEV.alwaysVisible puts the wrench up from boot, skipping the gate entirely
+  // while the game is being built. The gate is untouched and still works; this
+  // only decides whether it is in the way. It must go back to false before a
+  // child sees this -- see the note in tuning.js.
+  if (DEV.alwaysVisible) openDevPanel();
 
 
   window.__bloop = { world, tuning: { CAMERA, MONSTERS, TOYS }, report, restart, equip: (k) => equip(world, k) };
