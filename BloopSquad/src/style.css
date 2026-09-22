@@ -357,19 +357,30 @@ body.dev-invincible::after {
   color: #ffb45c;
 }
 
-/* The dev-unlock hold target: an invisible, unlabelled corner. This game's HUD
-   is drawn into the canvas, so there is no existing DOM element to press --
-   Nova uses its health bar. Bottom-left, because the pod lives centre-bottom and
-   the chrome row owns top-right. `devhold` is added by devUnlock during the
-   press and is deliberately given no visible style: a corner that lit up would
-   be a corner a child investigates. */
+/* The dev-unlock hold target.
+   
+   OVER THE HUD -- the level, score, XP bar and hearts in the top-left (Amit:
+   "the secret 7-second pressing zone should be all around the level/stars/life
+   UI area"). It was a 72 px invisible square in the bottom-left corner, which
+   satisfied "unlabelled and never otherwise interactive" and failed the more
+   important test: a hold target nobody can FIND is a gate nobody can open, and
+   seven seconds is a long time to hold a corner you are guessing at.
+   
+   Nova presses its health bar for the same reason -- press the thing that is
+   obviously the HUD. This game's HUD is drawn into the canvas, so there is no
+   element to attach to and this box stands in for one. It is sized generously
+   in viewport units because the canvas is letterboxed and centred, so the HUD's
+   position on screen moves with the window: an exact box would miss.
+   
+   Top-LEFT only. The chrome row owns the top-right, and a target overlapping it
+   would eat the quit button -- which is the only way off a board. */
 #dev-hold-target {
   position: fixed;
   left: 0;
-  bottom: 0;
-  width: 72px;
-  height: 72px;
-  z-index: 5;
+  top: 0;
+  width: min(34vw, 620px);
+  height: min(26vh, 300px);
+  z-index: 15;
   background: transparent;
 }
 
@@ -424,7 +435,16 @@ body.dev-invincible::after {
    Rather than hunt which rule did it, every child of the row is pinned back into
    the flow. A chrome row is a flex row and nothing in it should ever position
    itself; stating that once is more durable than fixing one offender. */
-#chrome { align-items: center; }
+/* RIGHT TO LEFT: X, Pause, Settings, Dev (Amit). The DOM order is the natural
+   one -- quit first in the markup, dev appended last when it is unlocked -- so
+   row-reverse gets the requested order without anything having to be inserted
+   at an index. It also means the quit button keeps the SAME screen position
+   whether or not the dev wrench exists, which matters: #gb-back is the only way
+   off a board and it should not move because a developer unlocked a panel. */
+#chrome {
+  align-items: center;
+  flex-direction: row-reverse;
+}
 #chrome > * {
   position: static;
   flex: 0 0 auto;
