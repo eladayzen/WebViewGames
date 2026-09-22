@@ -15,7 +15,7 @@
 // not a spec for that.
 
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
-import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, XP, difficulty01 } from '../data/tuning.js';
+import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, SKY, XP, difficulty01 } from '../data/tuning.js';
 import { punchExtension, activeToy } from '../systems/toys.js';
 
 const PALETTE = {
@@ -103,8 +103,47 @@ export async function createRenderer(canvas) {
   const xpG = new Graphics();
   hud.addChild(scoreText, statsText, heartsG, xpG, levelG, yayText, levelText);
 
+  // The sky eases toward the current level's colour rather than cutting to it.
+  // Held as separate channels because interpolating packed ints channel-wise is
+  // the only way to avoid sliding through a bright colour on the way between two
+  // dark ones -- which would be a flash, and a flash is the one thing the
+  // luminance rule exists to prevent.
+  let skyR = (SKY.colors[0] >> 16) & 0xff;
+  let skyG = (SKY.colors[0] >> 8) & 0xff;
+  let skyB = SKY.colors[0] & 0xff;
+
+  function updateSky(w, dt) {
+    const target = SKY.colors[(Math.max(1, w.level) - 1) % SKY.colors.length];
+    const tr = (target >> 16) & 0xff, tg = (target >> 8) & 0xff, tb = target & 0xff;
+    // `?level=` sets this so a headless screenshot shows the DESTINATION. Under
+    // virtual time Pixi's ticker reports a near-zero delta, so the ease never
+    // runs and every shot came back showing the starting navy -- which had me
+    // rewriting the palette twice before the test itself was the problem.
+    if (w.skySnap) {
+      skyR = tr; skyG = tg; skyB = tb;
+      w.skySnap = false;
+    }
+    // 95 % of the way in `lerpS`, frame-rate independent.
+    //
+    // This was `dt / lerpS`, which is an exponential decay whose TIME CONSTANT
+    // is lerpS -- so it reached only 63 % in 1.5 s and needed ~4.5 s to arrive.
+    // Sampling the rendered pixels caught it: level 4 came out rgb(16,20,48)
+    // against a target of (42,15,46), and I had blamed the palette first.
+    const k = 1 - Math.exp((-3 * dt) / SKY.lerpS);
+    skyR += (tr - skyR) * k;
+    skyG += (tg - skyG) * k;
+    skyB += (tb - skyB) * k;
+    app.renderer.background.color =
+      (Math.round(skyR) << 16) | (Math.round(skyG) << 8) | Math.round(skyB);
+  }
+
   function drawStars(w) {
     starG.clear();
+    // Stars pick up a fraction of the sky, so they belong to it.
+    const sr = Math.round(255 + (skyR - 255) * SKY.starTint);
+    const sg = Math.round(255 + (skyG - 255) * SKY.starTint);
+    const sb = Math.round(255 + (skyB - 255) * SKY.starTint);
+    const starColor = (sr << 16) | (sg << 8) | sb;
     const off = CAMERA.mode === 'drift' ? w.camera.starOffset % DESIGN_H : 0;
     for (const s of starPts) {
       const y = ((s.y + off) % (DESIGN_H * 2)) - DESIGN_H * 0.5;
@@ -115,9 +154,9 @@ export async function createRenderer(canvas) {
              .quadraticCurveTo(s.x, y, s.x, y + r)
              .quadraticCurveTo(s.x, y, s.x - r, y)
              .quadraticCurveTo(s.x, y, s.x, y - r)
-             .fill({ color: PALETTE.star, alpha: s.a });
+             .fill({ color: starColor, alpha: s.a });
       } else {
-        starG.circle(s.x, y, s.r).fill({ color: PALETTE.star, alpha: s.a });
+        starG.circle(s.x, y, s.r).fill({ color: starColor, alpha: s.a });
       }
     }
   }
@@ -792,7 +831,8 @@ export async function createRenderer(canvas) {
 
   return {
     app,
-    draw(w) {
+    draw(w, dt = 1 / 60) {
+      updateSky(w, dt);
       drawStars(w);
       world.x = CAMERA.mode === 'lateral' ? -w.camera.x : 0;
       g.clear();

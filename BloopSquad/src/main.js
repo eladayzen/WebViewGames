@@ -95,7 +95,7 @@ async function boot() {
   const loop = createLoop((dt) => update(dt));
   renderer.app.ticker.add((t) => {
     loop.step(Math.max(0, t.deltaMS / 1000));
-    renderer.draw(world);
+    renderer.draw(world, Math.max(0, t.deltaMS / 1000));
   });
   renderer.app.ticker.start();
 
@@ -275,6 +275,7 @@ async function boot() {
     // The earlier version built the popup object by hand and therefore missed
     // every tier the ladder adds -- it would have shown level 10 as level 1.
     celebrate(world, lvl);
+    world.skySnap = true;   // show the destination, not the journey
     // Held near its peak for the shot: the punch-in is ~18 % of the duration,
     // so parking p01 just past that catches it at full size.
     world.levelPopup.total = 12;

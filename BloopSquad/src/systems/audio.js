@@ -154,9 +154,10 @@ function note({ freq, dur = 0.12, type = 'square', gain = 0.18, bend = 1, delay 
 }
 
 /** Short filtered noise, for pops and thumps. */
-function noise({ dur = 0.18, gain = 0.16, hp = 400, delay = 0 }) {
+function noise({ dur = 0.18, gain = 0.16, hp = 400, delay = 0, bus = null }) {
   const c = ensureCtx();
-  if (!c || !sfxBus || c.state === 'suspended') return;
+  const out = bus || sfxBus;
+  if (!c || !out || c.state === 'suspended') return;
   const t0 = c.currentTime + delay;
   const frames = Math.floor(c.sampleRate * dur);
   const buf = c.createBuffer(1, frames, c.sampleRate);
@@ -170,7 +171,7 @@ function noise({ dur = 0.18, gain = 0.16, hp = 400, delay = 0 }) {
   const g = c.createGain();
   g.gain.setValueAtTime(gain, t0);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  src.connect(filt); filt.connect(g); g.connect(sfxBus);
+  src.connect(filt); filt.connect(g); g.connect(out);
   src.start(t0);
 }
 
@@ -332,7 +333,37 @@ export function playGameOver() {
 
 let musicTimer = null;
 let musicStep = 0;
+let musicLevel = 1;
+
+// A i-vi-VII-v sort of loop in A minor, one semitone set per eighth. Deliberately
+// simple: it plays under an entire run and the hit ladder has to stay audible
+// over it, which is the whole point of the sound design.
 const BASS = [0, 0, 5, 5, 7, 7, 5, 3];
+// The harmony sits a third above the bass and moves half as often, so it reads
+// as a second instrument rather than as the bass being louder.
+const HARMONY = [12, 16, 15, 19];
+// The counter-melody is the only line with a shape of its own -- it is what a
+// player will hum, and it does not arrive until level 5.
+const COUNTER = [24, 27, 31, 27, 24, 19, 24, 27];
+
+/**
+ * THE MUSIC GAINS A LAYER PER LEVEL, which is the cheapest large win available:
+ * the buses and the synth already exist, so a whole new voice costs four lines.
+ *
+ * Nobody consciously notices a layer arriving. They notice that the run got
+ * bigger -- which is exactly the feedback a progression wants, because it works
+ * continuously rather than only at the instant of levelling, and it costs no
+ * screen space in a game whose screen is already the constraint.
+ *
+ *   1-2  bass only
+ *   3+   harmony, a third above
+ *   5+   a counter-melody with a shape of its own
+ *   7+   percussion on the off-beats
+ *   10   a held pad underneath everything
+ */
+export function setMusicLevel(level) {
+  musicLevel = Math.max(1, level | 0);
+}
 
 export function startMusic() {
   if (typeof window === 'undefined' || musicTimer || !prefs.music) return;
@@ -341,10 +372,30 @@ export function startMusic() {
   const stepS = 0.32;
   musicTimer = window.setInterval(() => {
     if (!prefs.music || !musicBus) return;
-    const semi = BASS[musicStep % BASS.length];
-    note({ freq: 110 * Math.pow(2, semi / 12), dur: 0.26, type: 'triangle', gain: 0.10, bus: musicBus });
-    if (musicStep % 4 === 0) {
-      note({ freq: 440 * Math.pow(2, semi / 12), dur: 0.16, type: 'sine', gain: 0.05, bus: musicBus });
+    const step = musicStep;
+    const semi = BASS[step % BASS.length];
+    note({ freq: 110 * Math.pow(2, semi / 12), dur: 0.26, type: 'triangle',
+           gain: 0.10, bus: musicBus });
+
+    if (musicLevel >= 3 && step % 2 === 0) {
+      const h = HARMONY[(step / 2) % HARMONY.length];
+      note({ freq: 110 * Math.pow(2, h / 12), dur: 0.30, type: 'sine',
+             gain: 0.055, bus: musicBus });
+    }
+    if (musicLevel >= 5) {
+      const m = COUNTER[step % COUNTER.length];
+      note({ freq: 110 * Math.pow(2, m / 12), dur: 0.16, type: 'triangle',
+             gain: 0.045, bus: musicBus });
+    }
+    if (musicLevel >= 7 && step % 2 === 1) {
+      // Off-beats only: on the beat it fights the bass, off it drives.
+      noise({ dur: 0.07, gain: 0.05, hp: 3000, bus: musicBus });
+    }
+    if (musicLevel >= 10 && step % 8 === 0) {
+      for (const semiP of [0, 7]) {
+        note({ freq: 55 * Math.pow(2, semiP / 12), dur: 2.4, type: 'sine',
+               gain: 0.05, bus: musicBus });
+      }
     }
     musicStep++;
   }, stepS * 1000);

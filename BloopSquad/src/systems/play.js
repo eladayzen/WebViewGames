@@ -9,7 +9,7 @@ import {
 import { registerHit } from './monsters.js';
 import {
   playPop, playCoin, playPlayerHit, playBlast, playLevelUp, playHeart,
-  playShieldSave, playPunch,
+  playShieldSave, playPunch, setMusicLevel,
 } from './audio.js';
 
 // The concept's confetti is a party, not the colour of what just popped.
@@ -321,6 +321,9 @@ export function addXp(w, amount) {
     w.level++;
     celebrate(w, w.level);
     playLevelUp(w.level);
+    // The bed gains a voice at 3, 5, 7 and 10. Set here rather than polled, so
+    // the new layer arrives on the same beat as the fanfare.
+    setMusicLevel(w.level);
     need = xpForLevel(w.level);
   }
 }

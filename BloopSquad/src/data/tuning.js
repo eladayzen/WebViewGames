@@ -477,6 +477,54 @@ export const XP = {
   finaleLevel: 10,
 };
 
+// ---------------------------------------------------------------------------
+// THE SKY -- one colour per level.
+//
+// THE RULE THAT MAKES THIS SAFE: shift HUE, hold LUMINANCE. Every colour below
+// sits in the same narrow brightness band (16-22 on a 0-255 luma scale), because
+// the monsters are saturated blobs read against near-black and the entire
+// six-year-old pass depends on that contrast. A sky that got lighter as the
+// player improved would punish them for improving.
+//
+// It eases rather than cuts. A hard colour change mid-fight reads as a bug or as
+// having been hit; slid under the celebration it registers as the world having
+// changed without anyone noticing the moment.
+//
+// And because levels reset every run, the sky doubles as a readout of how THIS
+// run is going -- which is what two children comparing runs actually want.
+// ---------------------------------------------------------------------------
+
+export const SKY = {
+  // MEASURED AND REDONE. The first palette held luminance at 16-22 to protect
+  // contrast, and sampling the rendered pixels showed why that failed: level 4
+  // came out rgb(12,16,32) against level 1's rgb(11,16,32). At that brightness
+  // hue is essentially invisible -- the rule was right about contrast and wrong
+  // about the feature, because a sky nobody can see is not feedback.
+  //
+  // These sit at luma 23-37 with much higher saturation. Still deeply dark: the
+  // monsters run 150+ (the small green is ~150, the coin ~200), so contrast
+  // stays above 4:1 everywhere, and the playfield never approaches the blobs.
+  // The trade is deliberate and it is the whole feature -- a background that
+  // cannot be told apart between levels is not worth drawing.
+  colors: [
+    0x0e1430, // 1  navy (home)
+    0x1d1140, // 2  indigo
+    0x07262b, // 3  teal
+    0x2a0f2e, // 4  plum
+    0x0b2a18, // 5  forest
+    0x300f1c, // 6  wine
+    0x14203f, // 7  slate
+    0x06303c, // 8  deep cyan
+    0x260d3a, // 9  aubergine
+    0x0d2f26, // 10 pine
+  ],
+  lerpS: 1.5,
+  // How far the starfield follows the sky. Stars staying pure white against a
+  // shifted sky is what makes a recoloured background look like a filter laid
+  // over the game rather than a different place.
+  starTint: 0.30,
+};
+
 export const HUD = {
   // The POC prints what the session needs to remember, because a number written
   // down beats a memory of how it felt.
