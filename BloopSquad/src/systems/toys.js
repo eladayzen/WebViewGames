@@ -24,7 +24,7 @@ import { playShoot, playPickup } from './audio.js';
  * three of them. The alternative -- per-kind shapes -- saves nothing that
  * matters at eight instances and costs a type check at every read.
  */
-export function createToyInstance(kind, durationS) {
+export function createToyInstance(w, kind, durationS) {
   const inst = {
     kind,
     t: durationS,
@@ -45,6 +45,22 @@ export function createToyInstance(kind, durationS) {
   }
   if (kind.id === 'shield') inst.charges = kind.charges;
   if (kind.id === 'punch') inst.punch = { phase: 'idle', t: 0, cool: 0, tx: 0, ty: 0 };
+  if (kind.id === 'chain') {
+    // Born hanging straight down, at rest. `px/py` are the verlet PREVIOUS
+    // positions: equal to the current ones means zero starting velocity, so the
+    // rope settles into place instead of being flung on the frame it appears.
+    //
+    // THIS WAS MISSING and the chain did nothing at all. Moving per-kind setup
+    // out of equip() and into here during the stacking refactor carried buddies,
+    // shield and punch across and dropped this one -- so the instance existed
+    // with an empty link array, updateChain returned early on it, and
+    // updateChainBombs read "no links left" as "spent" and expired the toy on
+    // its first frame. Picked up, nothing happened, no error anywhere.
+    for (let i = 0; i < kind.links; i++) {
+      const y = w.player.y + PLAYER.radius + kind.linkPx * (i + 1);
+      inst.chain.push({ x: w.player.x, y, px: w.player.x, py: y, armT: kind.armS });
+    }
+  }
   return inst;
 }
 
@@ -182,7 +198,7 @@ export function equip(w, kindName) {
     existing.total = dur;
     if (kind.id === 'shield') existing.charges = kind.charges;
   } else {
-    w.toys.push(createToyInstance(kind, dur));
+    w.toys.push(createToyInstance(w, kind, dur));
   }
   w.stats.toysUsed++;
   playPickup();
