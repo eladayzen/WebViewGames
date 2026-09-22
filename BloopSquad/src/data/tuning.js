@@ -599,6 +599,15 @@ const SKY_WINE = 0x2b1018;
 const SKY_PINE = 0x0d2a20;
 
 export const SKY = {
+  // THE SKY COLOUR IS LOCKED (Amit: "disable the hue colour changing for now").
+  // Every scene paints on the same navy; the per-scene `sky` values below are
+  // kept rather than deleted because the scenes were authored against them and
+  // flipping `useSceneSky` back on is how you see that. What changes between
+  // levels is now entirely the PROPS -- planets, rings, moons, nebulae, stars --
+  // which was the half that worked.
+  useSceneSky: false,
+  fixedSky: 0x0e1430,
+
   // Positions are fractions of the design screen, so a prop keeps its place on
   // any window. Planets are deliberately allowed off the edges -- a whole disc
   // floating in frame reads as a sticker, a cropped one reads as scenery.
@@ -638,8 +647,43 @@ export const SKY = {
   // wrong colour happens to pass over the wrong arc.
 
   // How far the starfield takes the sky's colour, so stars belong to the scene
-  // rather than sitting on it.
-  starTint: 0.30,
+  // rather than sitting on it. LOW now -- the stars carry their own colours and
+  // washing them toward the sky was most of what made them look like dust.
+  starTint: 0.10,
+
+  // ---- THE STARFIELD ------------------------------------------------------
+  //
+  // Amit: "give them a bit more opacity and saturation... different size and
+  // shapes... see more of them in the frame. I'm looking to create a completely
+  // different, like a matte painting, with this procedurally generated art."
+  //
+  // The old field was 150 near-identical faint white dots -- correct about
+  // staying in the background and wrong about everything else. It read as noise
+  // on the screen rather than as a sky.
+  //
+  // WHY BRIGHT STARS ARE SAFE WHERE BRIGHT PLANET RIMS WERE NOT: contrast is
+  // about AREA as well as luminance. A rim light is an arc hundreds of pixels
+  // long that a monster crosses; a star is two pixels. A field of bright points
+  // cannot hide a 120 px blob, so stars may go to full white where a planet's
+  // edge may not exceed luma 61.
+  stars: {
+    // Drawn from this pool; each scene takes a fraction (see `stars` per scene).
+    pool: 520,
+    // Four classes, rolled by weight. The spread is the point -- one size at one
+    // opacity is the thing that reads as wallpaper.
+    classes: [
+      { w: 0.56, rMin: 0.7, rMax: 1.5, aMin: 0.30, aMax: 0.60, shape: 'dot' },
+      { w: 0.28, rMin: 1.4, rMax: 2.4, aMin: 0.55, aMax: 0.85, shape: 'dot' },
+      { w: 0.12, rMin: 1.8, rMax: 2.8, aMin: 0.75, aMax: 1.00, shape: 'spark4' },
+      { w: 0.04, rMin: 2.4, rMax: 3.6, aMin: 0.85, aMax: 1.00, shape: 'glow' },
+    ],
+    // Real star colours are close to white with a bias, not saturated -- a sky
+    // of coloured dots reads as confetti. These are white nudged a few percent.
+    tints: [0xffffff, 0xffffff, 0xfff0d4, 0xd8e4ff, 0xffe0e8, 0xdaf6ff],
+    // The sparkle's arms, as a multiple of the star's radius.
+    sparkArms: 3.4,
+    glowMul: 3.2,
+  },
 };
 
 // Dev tools. `alwaysVisible` puts the wrench in the chrome row from boot instead

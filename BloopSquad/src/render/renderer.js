@@ -69,15 +69,33 @@ export async function createRenderer(canvas) {
   // ever looking empty at a seam.
   const starG = new Graphics();
   stars.addChild(starG);
+  // The star pool. Generated once with a fixed seed, so the sky is the SAME sky
+  // every run -- a field that reshuffled on restart would read as static rather
+  // than as a place. Each star carries its own class, radius, alpha, tint and
+  // shape; see SKY.stars for why the spread matters.
   const starPts = [];
   let seed = 1337;
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-  for (let i = 0; i < 270; i++) {
+  const SC = SKY.stars;
+  for (let i = 0; i < SC.pool; i++) {
+    let roll = rnd();
+    let cls = SC.classes[SC.classes.length - 1];
+    for (const c of SC.classes) {
+      if (roll < c.w) { cls = c; break; }
+      roll -= c.w;
+    }
     starPts.push({
-      x: rnd() * DESIGN_W, y: rnd() * DESIGN_H * 2,
-      r: 1 + rnd() * 2.2, a: 0.25 + rnd() * 0.6,
-      // A few are four-point sparkles rather than dots, as in the concept.
-      spark: rnd() < 0.12,
+      x: rnd() * DESIGN_W,
+      // Two screens tall so `drift` has somewhere to scroll from.
+      y: rnd() * DESIGN_H * 2,
+      r: cls.rMin + rnd() * (cls.rMax - cls.rMin),
+      a: cls.aMin + rnd() * (cls.aMax - cls.aMin),
+      shape: cls.shape,
+      tint: SC.tints[Math.floor(rnd() * SC.tints.length)],
+      // A slow individual twinkle. Offset per star so the field never pulses
+      // together, which is what makes a starfield look like a string of lights.
+      tw: rnd() * Math.PI * 2,
+      twAmt: 0.10 + rnd() * 0.22,
     });
   }
 
@@ -129,7 +147,7 @@ export async function createRenderer(canvas) {
       drawScene();
     }
     if (flashT > 0) flashT = Math.max(0, flashT - dt);
-    app.renderer.background.color = sceneFor(w.level).sky;
+    app.renderer.background.color = SKY.useSceneSky ? sceneFor(w.level).sky : SKY.fixedSky;
   }
 
   /** Redrawn only when the scene changes -- these are static props and there is
@@ -203,38 +221,57 @@ export async function createRenderer(canvas) {
       .fill({ color: 0xffffff, alpha: 0.42 * f * f });
   }
 
-  function drawStars(w) {
+  function drawStars(w, time) {
     starG.clear();
     const sc = sceneFor(w.level);
-    const sky = sc.sky;
+    const sky = SKY.useSceneSky ? sc.sky : SKY.fixedSky;
     const skyR = (sky >> 16) & 0xff, skyG = (sky >> 8) & 0xff, skyB = sky & 0xff;
-    // Stars pick up a fraction of the sky, so they belong to it.
-    const sr = Math.round(255 + (skyR - 255) * SKY.starTint);
-    const sg = Math.round(255 + (skyG - 255) * SKY.starTint);
-    const sb = Math.round(255 + (skyB - 255) * SKY.starTint);
-    const starColor = (sr << 16) | (sg << 8) | sb;
-    // Per-scene star density. The pool is larger than any scene draws so a
-    // denser sky is more stars rather than the same stars brighter -- brightness
-    // is the one axis the background is not allowed to move.
-    const density = sc.stars || 1;
-    const count = Math.min(starPts.length, Math.round(160 * density));
 
+    // Per-scene density. The pool is far larger than any scene draws, so a
+    // denser sky is MORE STARS rather than the same stars brighter -- brightness
+    // is the one axis back here that may not move.
+    const count = Math.min(starPts.length, Math.round(340 * (sc.stars || 1)));
     const off = CAMERA.mode === 'drift' ? w.camera.starOffset % DESIGN_H : 0;
+
     for (let i = 0; i < count; i++) {
       const st = starPts[i];
       const y = ((st.y + off) % (DESIGN_H * 2)) - DESIGN_H * 0.5;
-      if (y < -10 || y > DESIGN_H + 10) continue;
-      if (st.spark) {
-        const rr = st.r * 3.2;
-        starG.moveTo(st.x, y - rr).quadraticCurveTo(st.x, y, st.x + rr, y)
-             .quadraticCurveTo(st.x, y, st.x, y + rr)
-             .quadraticCurveTo(st.x, y, st.x - rr, y)
-             .quadraticCurveTo(st.x, y, st.x, y - rr)
-             .fill({ color: starColor, alpha: st.a });
+      if (y < -12 || y > DESIGN_H + 12) continue;
+
+      // Each star keeps its own colour, pulled only slightly toward the sky so
+      // it belongs to the scene without being washed into it.
+      const tr = (st.tint >> 16) & 0xff, tg = (st.tint >> 8) & 0xff, tb = st.tint & 0xff;
+      const col = ((Math.round(tr + (skyR - tr) * SKY.starTint) << 16) |
+                   (Math.round(tg + (skyG - tg) * SKY.starTint) << 8) |
+                    Math.round(tb + (skyB - tb) * SKY.starTint));
+      // Slow individual twinkle, offset per star so the field never pulses as
+      // one -- a sky that breathes together reads as a string of fairy lights.
+      const a = st.a * (1 - st.twAmt + st.twAmt * (0.5 + 0.5 * Math.sin(time * 0.9 + st.tw)));
+
+      if (st.shape === 'glow') {
+        // The rare hero stars: a soft halo, a four-point flare and a hot core.
+        starG.circle(st.x, y, st.r * SKY.stars.glowMul)
+             .fill({ color: col, alpha: a * 0.13 });
+        starG.circle(st.x, y, st.r * 1.7).fill({ color: col, alpha: a * 0.22 });
+        spark(st.x, y, st.r * SKY.stars.sparkArms * 1.25, col, a * 0.9);
+        starG.circle(st.x, y, st.r * 0.62).fill({ color: 0xffffff, alpha: a });
+      } else if (st.shape === 'spark4') {
+        spark(st.x, y, st.r * SKY.stars.sparkArms, col, a);
+        starG.circle(st.x, y, st.r * 0.5).fill({ color: 0xffffff, alpha: a * 0.9 });
       } else {
-        starG.circle(st.x, y, st.r).fill({ color: starColor, alpha: st.a });
+        starG.circle(st.x, y, st.r).fill({ color: col, alpha: a });
       }
     }
+  }
+
+  /** A four-point star: two tapered spikes crossed. Drawn as one path per arm so
+   *  the points stay sharp -- a stroked cross reads as a plus sign. */
+  function spark(x, y, arm, col, alpha) {
+    const w2 = Math.max(0.6, arm * 0.13);
+    starG.moveTo(x, y - arm).lineTo(x + w2, y).lineTo(x, y + arm).lineTo(x - w2, y)
+         .closePath().fill({ color: col, alpha });
+    starG.moveTo(x - arm, y).lineTo(x, y - w2).lineTo(x + arm, y).lineTo(x, y + w2)
+         .closePath().fill({ color: col, alpha });
   }
 
   /**
@@ -988,8 +1025,15 @@ export async function createRenderer(canvas) {
   return {
     app,
     draw(w, dt = 1 / 60) {
+      // `time` FIRST. It used to be declared below the toy lookups, and adding a
+      // `time` argument to drawStars put a read above the declaration -- a
+      // temporal-dead-zone ReferenceError that the bundler does not catch and
+      // that would have thrown every frame. Second time that trap has bitten in
+      // this file's neighbourhood; declaring it at the top of the function ends
+      // the category.
+      const time = w.time;
       updateSky(w, dt);
-      drawStars(w);
+      drawStars(w, time);
       world.x = CAMERA.mode === 'lateral' ? -w.camera.x : 0;
       g.clear();
       // Several toys run at once now; each block below asks for its own.
@@ -997,7 +1041,6 @@ export async function createRenderer(canvas) {
       const shieldToy = activeToy(w, 'shield');
       const punchToy = activeToy(w, 'punch');
       const buddiesToy = activeToy(w, 'buddies');
-      const time = w.time;
 
       // TINTED PER BULLET, not per active toy. The base gun and the toy fire at
       // the same time now, so one colour for everything on screen would hide
