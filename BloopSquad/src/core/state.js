@@ -3,7 +3,6 @@
 // `alive` flag are honest and readable.
 
 import { PLAYER, MONSTERS, DESIGN_W, DESIGN_H } from '../data/tuning.js';
-import { createToyState } from '../systems/toys.js';
 
 export const GameState = { BOOT: 'boot', RUNNING: 'running', FAILED: 'failed' };
 
@@ -42,7 +41,12 @@ export function createWorld() {
     coins: [],
     hearts: [],      // heart pickups; see popMonster / updateHearts
     toyPickups: [],
-    toy: createToyState(),
+    // EVERY ACTIVE TOY, not one. Each instance carries its own timers and its
+    // own state, which is the whole of what lets them cooperate -- see
+    // createToyInstance. `lastToyDropT` is world bookkeeping and never belonged
+    // to a toy in the first place.
+    toys: [],
+    lastToyDropT: -99,
     pops: [],         // confetti bursts, purely cosmetic
 
     camera: { x: 0, y: 0, starOffset: 0 },

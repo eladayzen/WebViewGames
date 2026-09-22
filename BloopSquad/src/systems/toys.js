@@ -12,21 +12,47 @@ import { TOYS, BULLETS, PLAYER } from '../data/tuning.js';
 import { registerHit } from './monsters.js';
 import { playShoot, playPickup } from './audio.js';
 
-export function createToyState() {
-  return {
-    active: null,   // kind object, or null for the plain gun alone
-    t: 0,           // seconds left
-    total: 0,       // what it started with, for the timer bar
-    fireT: 0,       // the TOY's own fire clock, separate from the base gun's
-    chain: [],      // bomb-chain links (verlet: x/y plus previous px/py)
-    charges: 0,     // shield: saves remaining
-    graceT: 0,      // shield: brief immunity after a save
-    punch: null,    // punch arm: { phase, t, cool, tx, ty }
-    spin: 0,        // twirl's current angle / buddies' orbit angle
-    side: 1,        // wand: which way the next bubble launches
+/**
+ * One ACTIVE TOY. Several run at once -- see `w.toys`.
+ *
+ * This used to be a single shared bag on the world, with every toy's fields
+ * mixed together and `equip` overwriting the lot. That was the only thing
+ * stopping toys from cooperating: nothing about the toys themselves conflicts,
+ * they just all wrote to one `fireT`, one `spin`, one `chain`.
+ *
+ * Every instance carries the full field set even though each kind uses two or
+ * three of them. The alternative -- per-kind shapes -- saves nothing that
+ * matters at eight instances and costs a type check at every read.
+ */
+export function createToyInstance(kind, durationS) {
+  const inst = {
+    kind,
+    t: durationS,
+    total: durationS,
+    fireT: 0,        // this toy's own fire clock, independent of every other
+    spin: 0,         // twirl's angle / buddies' orbit angle
+    side: 1,         // wand: which way the next bubble launches
     buddies: [],
-    lastDropT: -99,
+    chain: [],
+    charges: 0,      // shield: saves remaining
+    graceT: 0,       // shield: brief immunity after a save
+    punch: null,     // punch arm: { phase, t, cool, tx, ty }
   };
+  if (kind.id === 'buddies') {
+    for (let i = 0; i < kind.count; i++) {
+      inst.buddies.push({ a: (Math.PI * 2 * i) / kind.count, armT: kind.armS });
+    }
+  }
+  if (kind.id === 'shield') inst.charges = kind.charges;
+  if (kind.id === 'punch') inst.punch = { phase: 'idle', t: 0, cool: 0, tx: 0, ty: 0 };
+  return inst;
+}
+
+/** The running instance of one kind, or null. The renderer and the collision
+ *  hooks ask by id rather than walking the list themselves. */
+export function activeToy(w, id) {
+  for (const inst of w.toys) if (inst.kind.id === id) return inst;
+  return null;
 }
 
 /** Roll for a toy where a monster just died. */
@@ -34,7 +60,7 @@ export function maybeDropToy(w, m, rng) {
   const chance = TOYS.dropFrom[m.tierName] || 0;
   if (!chance) return;
   if (w.toyPickups.filter((t) => t.alive).length >= TOYS.maxLive) return;
-  if (w.time - w.toy.lastDropT < TOYS.minGapS) return;
+  if (w.time - w.lastToyDropT < TOYS.minGapS) return;
   if (rng.next() >= chance) return;
 
   // Only toys the player has reached the level for. The roster grows through a
@@ -53,7 +79,7 @@ export function maybeDropToy(w, m, rng) {
     if (r <= 0) { pick = n; break; }
   }
 
-  w.toy.lastDropT = w.time;
+  w.lastToyDropT = w.time;
   w.toyPickups.push({
     alive: true,
     kind: pick,
@@ -88,10 +114,24 @@ export function updateToyPickups(w, dt) {
   w.toyPickups = w.toyPickups.filter((c) => c.alive);
 }
 
-/** One at a time: a new toy REPLACES whatever TOY is running, remainder
- *  discarded. No inventory, no stacking, nothing for a child to manage -- and
- *  note this replaces the toy only. The forward cannon is not a toy and is
- *  untouched by anything in here. */
+/**
+ * Collect a toy. EVERYTHING STACKS.
+ *
+ * A new toy runs alongside whatever is already going; the only thing it ever
+ * replaces is another copy of ITSELF, which refreshes the timer rather than
+ * adding a duplicate. Amit: "when I pick up a new one it should not disable the
+ * other unless it's a must" -- and it turns out almost nothing is a must. The
+ * toys occupy different space by construction (the shield's bubble at 86 px,
+ * the buddies' orbit at 132, the chain hanging below, the punch reaching out)
+ * and the shooters only ever ADD bullets.
+ *
+ * THE OLD RULE'S REASON SURVIVES INTACT. "One at a time; no inventory, no
+ * stacking, nothing for a child to manage" was about not handing a six-year-old
+ * things to juggle. Stacking automatically is still zero management: no buttons,
+ * no choosing, no dropping. What changed is only that good luck compounds.
+ *
+ * The forward cannon is not a toy and is untouched by anything in here.
+ */
 export function equip(w, kindName) {
   const kind = TOYS.kinds[kindName];
   if (!kind) return;
@@ -101,33 +141,17 @@ export function equip(w, kindName) {
   // waiting out.
   const bonus = Math.min(TOYS.levelDurationCap, 1 + (w.level - 1) * TOYS.levelDurationBonus);
   const dur = kind.durationS * bonus;
-  w.toy.active = kind;
-  w.toy.t = dur;
-  w.toy.total = dur;
-  w.toy.fireT = 0;
-  w.toy.spin = 0;
-  w.toy.buddies = [];
-  w.toy.chain = [];
-  if (kind.id === 'buddies') {
-    for (let i = 0; i < kind.count; i++) {
-      w.toy.buddies.push({ a: (Math.PI * 2 * i) / kind.count, armT: kind.armS });
-    }
-  }
-  if (kind.id === 'shield') {
-    w.toy.charges = kind.charges;
-    w.toy.graceT = 0;
-  }
-  if (kind.id === 'punch') {
-    w.toy.punch = { phase: 'idle', t: 0, cool: 0, tx: 0, ty: 0 };
-  }
-  if (kind.id === 'chain') {
-    // Born hanging straight down, at rest. `px/py` are the verlet PREVIOUS
-    // positions: equal to the current ones means zero starting velocity, so the
-    // chain settles into place instead of being flung on the frame it appears.
-    for (let i = 0; i < kind.links; i++) {
-      const y = w.player.y + PLAYER.radius + kind.linkPx * (i + 1);
-      w.toy.chain.push({ x: w.player.x, y, px: w.player.x, py: y, armT: kind.armS });
-    }
+
+  const existing = activeToy(w, kind.id);
+  if (existing) {
+    // Refresh, do not stack a second copy. Two chains would be two ropes from
+    // one anchor and two shields would double the charges invisibly -- the
+    // player picked up "more of this", not "another one of these".
+    existing.t = dur;
+    existing.total = dur;
+    if (kind.id === 'shield') existing.charges = kind.charges;
+  } else {
+    w.toys.push(createToyInstance(kind, dur));
   }
   w.stats.toysUsed++;
   playPickup();
@@ -159,19 +183,14 @@ function spawnBullet(w, x, y, vx, vy, homing, tint, damage) {
  */
 export function updateFiring(w, dt) {
   const p = w.player;
-  const toy = w.toy;
   if (!p.alive) return;
 
-  if (toy.graceT > 0) toy.graceT = Math.max(0, toy.graceT - dt);
-
-  if (toy.active) {
-    toy.t -= dt;
-    if (toy.t <= 0) {
-      toy.active = null;
-      toy.buddies = [];
-      toy.fireT = 0;
-    }
+  // Expire finished toys first, so nothing fires on the frame it ends.
+  for (const inst of w.toys) {
+    inst.t -= dt;
+    if (inst.graceT > 0) inst.graceT = Math.max(0, inst.graceT - dt);
   }
+  w.toys = w.toys.filter((inst) => inst.t > 0);
 
   // ---- THE FORWARD CANNON. Unconditional, and first. ----------------------
   //
@@ -179,78 +198,88 @@ export function updateFiring(w, dt) {
   // else to it. Rule 3 forbids stopping, replacing or redirecting the cannon; it
   // does not forbid improving it, which is the opposite failure mode. The tint
   // rides along so a rate buff -- the hardest kind to see -- is visible.
-  const kind = toy.active;
-  const baseInterval = (kind && kind.baseIntervalS) || BULLETS.intervalS;
+  //
+  // Read from whichever active toy supplies a base interval, taking the FASTEST
+  // if several ever do. `rapid` is the only one today, but reducing across the
+  // list rather than finding the first one means a second never silently loses
+  // to list order.
+  let baseInterval = BULLETS.intervalS;
+  let baseTint;
+  for (const inst of w.toys) {
+    if (inst.kind.baseIntervalS && inst.kind.baseIntervalS < baseInterval) {
+      baseInterval = inst.kind.baseIntervalS;
+      baseTint = inst.kind.tint;
+    }
+  }
   p.fireT -= dt;
   if (p.fireT <= 0) {
     p.fireT = baseInterval;
-    spawnBullet(w, p.x, p.y - PLAYER.radius, 0, -BULLETS.speedPxS, false,
-                kind && kind.baseIntervalS ? kind.tint : undefined);
+    spawnBullet(w, p.x, p.y - PLAYER.radius, 0, -BULLETS.speedPxS, false, baseTint);
     playShoot();
   }
 
-  if (!kind) return;
+  // ---- ...and whatever every active toy adds on top of it. ----------------
+  //
+  // One pass per instance, each on its OWN clock. This is the whole of the
+  // stacking change: the wand, the twirl and the cross can all be running and
+  // none of them can starve another, because no two of them share a timer.
+  for (const inst of w.toys) {
+    const kind = inst.kind;
+    if (kind.spinRadPerS) inst.spin += kind.spinRadPerS * dt;
 
-  // ---- ...and whatever the toy adds on top of it. -------------------------
-  if (kind.spinRadPerS) toy.spin += kind.spinRadPerS * dt;
-
-  if (kind.id === 'buddies') {
-    // Bombs emit nothing; they detonate by touch (updateBuddies).
-    for (const b of toy.buddies) {
-      if (b.armT > 0) b.armT = Math.max(0, b.armT - dt);
+    if (kind.id === 'buddies') {
+      // Bombs emit nothing; they detonate by touch (updateBuddies).
+      for (const b of inst.buddies) {
+        if (b.armT > 0) b.armT = Math.max(0, b.armT - dt);
+      }
+      continue;
     }
-    return;
-  }
-
-  // Rapid adds no stream of its own -- its whole effect was applied above, to
-  // the cannon's interval. The chain's effect is physical, in updateChain.
-  if (kind.id === 'rapid') return;
-  if (kind.id === 'shield') return;   // see consumeShield, called from collisions
-  if (kind.id === 'punch') return;    // see updatePunch
-  if (kind.id === 'chain') {
-    for (const c of toy.chain) {
-      if (c.armT > 0) c.armT = Math.max(0, c.armT - dt);
+    if (kind.id === 'chain') {
+      for (const c of inst.chain) {
+        if (c.armT > 0) c.armT = Math.max(0, c.armT - dt);
+      }
+      continue;
     }
-    return;
-  }
+    // Rapid's whole effect was applied above, to the cannon's interval.
+    if (kind.id === 'rapid') continue;
+    if (kind.id === 'shield') continue;   // see consumeShield, from collisions
+    if (kind.id === 'punch') continue;    // see updatePunch
 
-  // The toy keeps its OWN cadence, so its rate is independent of the gun's and
-  // neither one can starve the other.
-  toy.fireT -= dt;
-  if (toy.fireT > 0) return;
-  toy.fireT = kind.intervalS;
+    inst.fireT -= dt;
+    if (inst.fireT > 0) continue;
+    inst.fireT = kind.intervalS;
 
-  if (kind.id === 'cross') {
-    // Four fixed axes. Spawned at the pod's edge rather than its centre so the
-    // shots leave the hull instead of appearing inside the pilot.
-    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-    for (const [dx, dy] of dirs) {
-      spawnBullet(w,
-        p.x + dx * PLAYER.radius, p.y + dy * PLAYER.radius,
-        dx * kind.speedPxS, dy * kind.speedPxS,
-        false, kind.tint, kind.damage);
+    if (kind.id === 'cross') {
+      // Four fixed axes. Spawned at the pod's edge rather than its centre so the
+      // shots leave the hull instead of appearing inside the pilot.
+      for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+        spawnBullet(w,
+          p.x + dx * PLAYER.radius, p.y + dy * PLAYER.radius,
+          dx * kind.speedPxS, dy * kind.speedPxS,
+          false, kind.tint, kind.damage);
+      }
+      continue;
     }
-    return;
-  }
 
-  if (kind.id === 'twirl') {
-    for (let i = 0; i < kind.arms; i++) {
-      const a = toy.spin + (Math.PI * 2 * i) / kind.arms;
-      spawnBullet(w, p.x, p.y, Math.cos(a) * kind.speedPxS, Math.sin(a) * kind.speedPxS,
-                  false, kind.tint, kind.damage);
+    if (kind.id === 'twirl') {
+      for (let i = 0; i < kind.arms; i++) {
+        const a = inst.spin + (Math.PI * 2 * i) / kind.arms;
+        spawnBullet(w, p.x, p.y, Math.cos(a) * kind.speedPxS, Math.sin(a) * kind.speedPxS,
+                    false, kind.tint, kind.damage);
+      }
+      continue;
     }
-    return;
-  }
 
-  if (kind.id === 'wand') {
-    // Alternating left/right launch: the base stream already owns the column
-    // straight above the pod, and a bubble fired into it would be invisible
-    // until it peeled off. The homing steer brings it back onto a target.
-    toy.side = toy.side === 1 ? -1 : 1;
-    const a = -Math.PI / 2 + toy.side * kind.launchSpreadRad;
-    spawnBullet(w, p.x, p.y - PLAYER.radius,
-                Math.cos(a) * kind.speedPxS, Math.sin(a) * kind.speedPxS,
-                true, kind.tint);
+    if (kind.id === 'wand') {
+      // Alternating left/right launch: the base stream already owns the column
+      // straight above the pod, and a bubble fired into it would be invisible
+      // until it peeled off. The homing steer brings it back onto a target.
+      inst.side = inst.side === 1 ? -1 : 1;
+      const a = -Math.PI / 2 + inst.side * kind.launchSpreadRad;
+      spawnBullet(w, p.x, p.y - PLAYER.radius,
+                  Math.cos(a) * kind.speedPxS, Math.sin(a) * kind.speedPxS,
+                  true, kind.tint);
+    }
   }
 }
 
@@ -291,17 +320,16 @@ export function steerHomingBullets(w, dt) {
  * an exception for being blocked.
  */
 export function consumeShield(w) {
-  const kind = w.toy.active;
-  if (!kind || kind.id !== 'shield') return false;
-  if (w.toy.charges <= 0) return false;
-  if (w.toy.graceT > 0) return true;   // already saved this instant; eat it free
-  w.toy.charges--;
-  w.toy.graceT = kind.graceS;
-  if (w.toy.charges <= 0) {
+  const inst = activeToy(w, 'shield');
+  if (!inst) return false;
+  if (inst.charges <= 0) return false;
+  if (inst.graceT > 0) return true;   // already saved this instant; eat it free
+  inst.charges--;
+  inst.graceT = inst.kind.graceS;
+  if (inst.charges <= 0) {
     // Spent, not expired -- the same rule the bombs use. A shield that ran out
     // of time while the player was flying carefully would punish playing well.
-    w.toy.active = null;
-    w.toy.t = 0;
+    inst.t = 0;
   }
   return true;
 }
@@ -315,9 +343,10 @@ export function consumeShield(w) {
  * answer the one thing that is already beside you.
  */
 export function updatePunch(w, dt, onHit) {
-  const kind = w.toy.active;
-  if (!kind || kind.id !== 'punch' || !w.toy.punch) return;
-  const st = w.toy.punch;
+  const inst = activeToy(w, 'punch');
+  if (!inst || !inst.punch) return;
+  const kind = inst.kind;
+  const st = inst.punch;
   const p = w.player;
 
   if (st.phase === 'idle') {
@@ -364,9 +393,10 @@ export function updatePunch(w, dt, onHit) {
 
 /** 0 at the pod, 1 at full stretch. Drives both the drawing and nothing else. */
 export function punchExtension(w) {
-  const kind = w.toy.active;
-  const st = w.toy.punch;
-  if (!kind || kind.id !== 'punch' || !st || st.phase === 'idle') return 0;
+  const inst = activeToy(w, 'punch');
+  if (!inst || !inst.punch || inst.punch.phase === 'idle') return 0;
+  const kind = inst.kind;
+  const st = inst.punch;
   if (st.phase === 'out') return Math.min(1, st.t / kind.extendS);
   if (st.phase === 'hold') return 1;
   return Math.max(0, 1 - st.t / kind.retractS);
@@ -387,15 +417,16 @@ export function punchExtension(w) {
  * velocity the physics then carries down the chain.
  */
 export function updateChain(w, dt) {
-  const kind = w.toy.active;
-  if (!kind || kind.id !== 'chain' || !w.toy.chain.length) return;
+  const inst = activeToy(w, 'chain');
+  if (!inst || !inst.chain.length) return;
+  const kind = inst.kind;
   const p = w.player;
   const anchorX = p.x;
   const anchorY = p.y + PLAYER.radius;
 
   // Fixed step, clamped: a dropped frame should slow the chain, never explode it.
   const h = Math.min(dt, 1 / 30);
-  for (const c of w.toy.chain) {
+  for (const c of inst.chain) {
     const vx = (c.x - c.px) * kind.damping;
     const vy = (c.y - c.py) * kind.damping;
     c.px = c.x;
@@ -409,7 +440,7 @@ export function updateChain(w, dt) {
   // moment the player is looking at it -- a hard direction change.
   for (let it = 0; it < kind.iterations; it++) {
     let prevX = anchorX, prevY = anchorY;
-    for (const c of w.toy.chain) {
+    for (const c of inst.chain) {
       const dx = c.x - prevX, dy = c.y - prevY;
       const d = Math.hypot(dx, dy) || 0.0001;
       const diff = (d - kind.linkPx) / d;
@@ -428,23 +459,23 @@ export function updateChain(w, dt) {
  *  removed and the rope simply gets shorter: the links below re-hang from the
  *  one above on the next relaxation pass, with no special case for a gap. */
 export function updateChainBombs(w, onDetonate) {
-  const kind = w.toy.active;
-  if (!kind || kind.id !== 'chain') return;
-  for (let i = w.toy.chain.length - 1; i >= 0; i--) {
-    const c = w.toy.chain[i];
+  const inst = activeToy(w, 'chain');
+  if (!inst) return;
+  const kind = inst.kind;
+  for (let i = inst.chain.length - 1; i >= 0; i--) {
+    const c = inst.chain[i];
     if (c.armT > 0) continue;
     for (const m of w.monsters) {
       if (!m.alive) continue;
       if (Math.hypot(m.x - c.x, m.y - c.y) > m.r + kind.radius) continue;
-      w.toy.chain.splice(i, 1);
+      inst.chain.splice(i, 1);
       onDetonate(c.x, c.y, kind.tint, kind.blastDamage, kind.blastRadiusPx);
       break;
     }
   }
   // Spent, not expired -- same rule as the orbiting bombs.
-  if (w.toy.chain.length === 0) {
-    w.toy.active = null;
-    w.toy.t = 0;
+  if (inst.chain.length === 0) {
+    inst.t = 0;
   }
 }
 
@@ -459,12 +490,13 @@ export function updateChainBombs(w, onDetonate) {
  * Iterated back to front and spliced, because a detonation removes the buddy.
  */
 export function updateBuddies(w, onDetonate) {
-  const kind = w.toy.active;
-  if (!kind || kind.id !== 'buddies') return;
+  const inst = activeToy(w, 'buddies');
+  if (!inst) return;
+  const kind = inst.kind;
   const p = w.player;
-  for (let i = w.toy.buddies.length - 1; i >= 0; i--) {
-    const b = w.toy.buddies[i];
-    const a = w.toy.spin + b.a;
+  for (let i = inst.buddies.length - 1; i >= 0; i--) {
+    const b = inst.buddies[i];
+    const a = inst.spin + b.a;
     const bx = p.x + Math.cos(a) * kind.orbitPx;
     const by = p.y + Math.sin(a) * kind.orbitPx;
     b.x = bx; b.y = by;
@@ -472,15 +504,14 @@ export function updateBuddies(w, onDetonate) {
     for (const m of w.monsters) {
       if (!m.alive) continue;
       if (Math.hypot(m.x - bx, m.y - by) > m.r + kind.radius) continue;
-      w.toy.buddies.splice(i, 1);
+      inst.buddies.splice(i, 1);
       onDetonate(bx, by, kind.tint, kind.blastDamage, kind.blastRadiusPx);
       break;
     }
   }
   // Spent, not expired: the toy ends when the bombs are gone. Ending on the
   // timer instead would take a bomb away from a player who was saving it.
-  if (w.toy.buddies.length === 0) {
-    w.toy.active = null;
-    w.toy.t = 0;
+  if (inst.buddies.length === 0) {
+    inst.t = 0;
   }
 }

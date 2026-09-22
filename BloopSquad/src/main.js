@@ -110,7 +110,7 @@ async function boot() {
       worstReactionS: s.worstReactionS < 90 ? +s.worstReactionS.toFixed(2) : null,
       floorS: MONSTERS.reactionFloorS,
       score: s.score, popped: s.popped, coins: s.coins, toysUsed: s.toysUsed,
-      toy: world.toy.active ? world.toy.active.id : null,
+      toys: world.toys.map((inst) => inst.kind.id),
       minutes: +(world.time / 60).toFixed(2),
       ramp: +(difficulty01(world.time) * 100).toFixed(0),
     };
@@ -224,8 +224,14 @@ async function boot() {
   // someone is standing in front of, and the alternative is checking that by
   // eye and reporting a guess.
   const q = new URLSearchParams(location.search);
+  // Comma-separated, because toys stack now and the interesting thing to look
+  // at is a STACK: ?toy=cross,wand,shield,chain
   const forced = q.get('toy');
-  if (forced && TOYS.kinds[forced]) equip(world, forced);
+  if (forced) {
+    for (const name of forced.split(',')) {
+      if (TOYS.kinds[name.trim()]) equip(world, name.trim());
+    }
+  }
 
   // ?squad=8 pre-fills the squad and lays a synthetic weave into the pod's path
   // history, so one frame shows the line's actual SHAPE. Without it the trail

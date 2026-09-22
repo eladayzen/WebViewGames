@@ -225,8 +225,11 @@ export const MONSTERS = {
   // of the work for the six-year-old, and the ones to move first if the board
   // session still says "too much". Seven on screen is a field a child can
   // actually count; 2.4 s apart means each arrival gets looked at on its own.
-  maxLive: 7,
-  spawnIntervalS: 2.4,
+  // More monsters to feed the presents (Amit: "if needed we can bring more
+  // enemies also"). Raised with the drop rule, not before it -- a field that
+  // grew first would just be harder.
+  maxLive: 9,
+  spawnIntervalS: 1.9,
 
   // Nothing arrives for the first few seconds of a run. A child needs to find
   // out what the pod does before anything is asked of them, and the alternative
@@ -515,11 +518,22 @@ export const TOYS = {
   // presents with it. A headless 4-minute run went from 3 toys to 1 on the
   // size/health change alone. Any future change to health, size or spawn rate
   // has to re-measure this -- it is the most fragile number in the file.
-  dropFrom: { small: 0.10, medium: 0.65, large: 1.0 },
+  // GREEN MEANS PRESENT (Amit: "give me them from killing green enemies").
+  // Every small drops a toy, and smalls are 70 % of the field -- so the rule a
+  // child learns is one sentence with no probability in it: pop a green one, get
+  // a present. A 42 % chance is not a rule anybody can learn, it is weather.
+  dropFrom: { small: 1.0, medium: 1.0, large: 1.0 },
   // No two toys within this window, so a lucky streak cannot hand out three at
   // once and flatten the whole minute after it.
-  minGapS: 6,
-  maxLive: 1,
+  // 6s -> 2.5s, and two pickups may be on the field at once. Both had to move
+  // when toys started stacking: the gap existed so a lucky streak could not hand
+  // out three toys that each cancelled the last, and that reason is gone -- three
+  // toys now all run. With the old gap a player would almost never hold more than
+  // two at a time, which would make the whole stacking change invisible.
+  // The gap is now the real limiter rather than the roll, which is the right way
+  // round: the ceiling on presents should be a number we set, not a dice streak.
+  minGapS: 0.8,
+  maxLive: 4,
 
   // The toy timer, drawn as a bar UNDER the pod. Under and not over: everything
   // the player is actually looking at -- the monsters, their own shots, where
@@ -563,7 +577,7 @@ export const TOYS = {
     // column, a bubble launched at 0 would spend its first 200 px hidden inside
     // the base stream and the toy would look like it did nothing.
     wand: {
-      id: 'wand', label: 'BUBBLE WAND', durationS: 7, tint: 0x74d7ff,
+      id: 'wand', label: 'BUBBLE WAND', durationS: 9, tint: 0x74d7ff,
       intervalS: 0.13, turnRate: 7.5, speedPxS: 1000, seekRadius: 1400,
       launchSpreadRad: 0.85,
     },
@@ -603,7 +617,7 @@ export const TOYS = {
     // Base shots take the toy's tint while it runs -- the buff is a rate change,
     // which is the hardest kind of buff to SEE. Colour is what makes it land.
     rapid: {
-      id: 'rapid', label: 'RAPID FIRE', durationS: 8, tint: 0xff4d4d,
+      id: 'rapid', label: 'RAPID FIRE', durationS: 11, tint: 0xff4d4d,
       baseIntervalS: 0.11,
     },
     // THE BOMB CHAIN: a rope of bombs hanging BELOW the pod, simulated rather
@@ -670,7 +684,7 @@ export const TOYS = {
     // Down matters as much as up. The cannon only fires up, so the downward arm
     // is the only sustained answer in the game to something rising from below.
     cross: {
-      id: 'cross', label: 'CROSS FIRE', durationS: 8, tint: 0x9be564,
+      id: 'cross', label: 'CROSS FIRE', durationS: 10, tint: 0x9be564,
       // A bit quicker than the cannon's 0.17, and four barrels -- so it is ~5x
       // the base output. Short duration is what pays for that.
       intervalS: 0.13,
@@ -776,9 +790,15 @@ export const TOYS = {
   unlockLevel: { wand: 1, twirl: 1, rapid: 2, cross: 3, buddies: 4, punch: 5, chain: 6, shield: 7 },
 
   // Every level past the first adds this much to a toy's duration, capped.
-  // Small on purpose: the escalation the player should feel is MORE KINDS of
-  // toy, not the same toy overstaying. A 60 % longer twirl is not exciting, it
-  // is just a twirl you are waiting out.
+  //
+  // THE ARGUMENT AGAINST LONG DURATIONS DIED WHEN TOYS STARTED STACKING. It used
+  // to be "a 60 % longer twirl is not exciting, it is a twirl you are waiting
+  // out" -- which was true while only one toy could run, because its duration
+  // was exactly the time before you could have a different one. Now a longer
+  // toy is one you STILL HAVE when the next arrives, which is the whole point.
+  // Durations went up with the same change (wand 7->9, rapid 8->11, cross 8->10)
+  // for that reason and no other. Twirl stayed at 4.5: it is the one toy asked
+  // to be rarer, not commoner.
   levelDurationBonus: 0.07,
   levelDurationCap: 1.5,
 };
@@ -827,7 +847,7 @@ export const DIFFICULTY = {
   // not one that finally caught up with them.
   spawnIntervalMul: { from: 1.00, to: 0.70 },  // 2.40s -> 1.68s between arrivals
   speedMul:         { from: 1.00, to: 1.25 },  // 46 -> 58 px/s base drift
-  maxLive:          { from: 7,    to: 12   },
+  maxLive:          { from: 9,    to: 15   },
   // Late runs lean toward the bigger tiers: the crowd grows, but it also grows
   // UP, so the field does not simply fill with chaff. Halved -- with large now
   // the 1.8 s commitment, a late field of them is the one shape of this game a

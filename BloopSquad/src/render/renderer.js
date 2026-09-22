@@ -16,7 +16,7 @@
 
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, XP, difficulty01 } from '../data/tuning.js';
-import { punchExtension } from '../systems/toys.js';
+import { punchExtension, activeToy } from '../systems/toys.js';
 
 const PALETTE = {
   bg: 0x0b1020,
@@ -794,7 +794,11 @@ export async function createRenderer(canvas) {
       drawStars(w);
       world.x = CAMERA.mode === 'lateral' ? -w.camera.x : 0;
       g.clear();
-      const toy = w.toy.active;
+      // Several toys run at once now; each block below asks for its own.
+      const chainToy = activeToy(w, 'chain');
+      const shieldToy = activeToy(w, 'shield');
+      const punchToy = activeToy(w, 'punch');
+      const buddiesToy = activeToy(w, 'buddies');
       const time = w.time;
 
       // TINTED PER BULLET, not per active toy. The base gun and the toy fire at
@@ -813,16 +817,17 @@ export async function createRenderer(canvas) {
       // Buddy bots orbit OUTSIDE the pod, drawn before it so the pod stays the
       // thing the eye lands on.
       // The bomb chain, drawn under the pod. Rope first so the links sit on it.
-      if (toy && toy.id === 'chain' && w.toy.chain.length) {
+      if (chainToy && chainToy.chain.length) {
+        const toy = chainToy.kind;
         let px = w.player.x, py = w.player.y + PLAYER.radius;
-        for (const c of w.toy.chain) {
+        for (const c of chainToy.chain) {
           g.moveTo(px, py).lineTo(c.x, c.y)
            .stroke({ width: 7, color: PALETTE.outline, alpha: 0.9 });
           g.moveTo(px, py).lineTo(c.x, c.y)
            .stroke({ width: 3, color: toy.tint, alpha: 0.55 });
           px = c.x; py = c.y;
         }
-        for (const c of w.toy.chain) {
+        for (const c of chainToy.chain) {
           drawBuddyBomb({ x: c.x, y: c.y, a: c.x * 0.01, armT: c.armT }, toy, time, toy.radius);
         }
       }
@@ -830,31 +835,33 @@ export async function createRenderer(canvas) {
       // The shield: a bubble the player is inside, with one arc per remaining
       // charge around its rim. The charges are the number that matters, and a
       // child counts arcs faster than they read a digit.
-      if (toy && toy.id === 'shield' && w.toy.charges > 0) {
+      if (shieldToy && shieldToy.charges > 0) {
+        const toy = shieldToy.kind;
         const R = toy.radiusPx;
         const px = w.player.x, py = w.player.y;
         const breathe = 1 + Math.sin(time * 3) * 0.03;
         g.circle(px, py, R * breathe).fill({ color: toy.tint, alpha: 0.13 });
         g.circle(px, py, R * breathe).stroke({ width: 4, color: toy.tint, alpha: 0.5 });
-        for (let i = 0; i < w.toy.charges; i++) {
-          const a0 = -Math.PI / 2 + (Math.PI * 2 * i) / w.toy.charges + time * 0.5;
-          const a1 = a0 + Math.PI * 2 / w.toy.charges * 0.62;
+        for (let i = 0; i < shieldToy.charges; i++) {
+          const a0 = -Math.PI / 2 + (Math.PI * 2 * i) / shieldToy.charges + time * 0.5;
+          const a1 = a0 + Math.PI * 2 / shieldToy.charges * 0.62;
           g.moveTo(px + Math.cos(a0) * R * breathe, py + Math.sin(a0) * R * breathe)
            .arc(px, py, R * breathe, a0, a1)
            .stroke({ width: 9, color: toy.tint, alpha: 0.95 });
         }
         // A brighter flash for the instant right after a save.
-        if (w.toy.graceT > 0) {
-          g.circle(px, py, R * breathe).fill({ color: 0xffffff, alpha: 0.22 * (w.toy.graceT / toy.graceS) });
+        if (shieldToy.graceT > 0) {
+          g.circle(px, py, R * breathe).fill({ color: 0xffffff, alpha: 0.22 * (shieldToy.graceT / toy.graceS) });
         }
       }
 
       // The punch arm: segments out to a fist. Drawn before the pod so the arm
       // emerges from behind it rather than sitting on top of the pilot.
-      if (toy && toy.id === 'punch') {
+      if (punchToy) {
+        const toy = punchToy.kind;
         const ext = punchExtension(w);
         if (ext > 0) {
-          const st = w.toy.punch;
+          const st = punchToy.punch;
           const px = w.player.x, py = w.player.y;
           const hx = px + (st.tx - px) * ext;
           const hy = py + (st.ty - py) * ext;
@@ -877,8 +884,9 @@ export async function createRenderer(canvas) {
         }
       }
 
-      if (toy && toy.id === 'buddies') {
-        for (const b of w.toy.buddies) {
+      if (buddiesToy) {
+        const toy = buddiesToy.kind;
+        for (const b of buddiesToy.buddies) {
           if (b.x === undefined) continue;
           drawBuddyBomb(b, toy, time);
         }
@@ -918,28 +926,39 @@ export async function createRenderer(canvas) {
       // A bar still travels with the pod, so the eyes stay on the field, but it
       // cannot be mistaken for armour. Under rather than over: up-screen is
       // where the monsters, the shots and the aim all are.
-      if (toy && w.toy.total > 0) {
-        const frac = Math.max(0, Math.min(1, w.toy.t / w.toy.total));
-        const bar = TOYS.timerBar;
-        const bx = w.player.x - bar.width / 2;
-        // Above the pod only when the active toy occupies the space below it
-        // (the bomb chain). Everything else keeps the bar where it belongs.
-        const by = toy.timerAbove
-          ? w.player.y - PLAYER.radius - bar.offsetY - bar.height - 18
-          : w.player.y + PLAYER.radius + bar.offsetY;
+      // ONE BAR PER ACTIVE TOY, stacked. Each in its own tint, so the stack is
+      // a legend as well as a countdown: a child can see they have three things
+      // running and watch them expire at different times, without reading a word.
+      //
+      // Narrower than the single bar was, because five of them at full width
+      // would be a wall under the pod rather than a readout.
+      const bar = TOYS.timerBar;
+      const stack = w.toys.filter((inst) => inst.total > 0);
+      // Anything that occupies the space BELOW the pod pushes the whole stack
+      // above it -- the chain drew straight through the old single bar.
+      const above = stack.some((inst) => inst.kind.timerAbove);
+      const rowH = bar.height + 6;
+      for (let i = 0; i < stack.length; i++) {
+        const inst = stack[i];
+        const frac = Math.max(0, Math.min(1, inst.t / inst.total));
+        const wid = bar.width * 0.78;
+        const bx = w.player.x - wid / 2;
+        const by = above
+          ? w.player.y - PLAYER.radius - bar.offsetY - bar.height - 18 - i * rowH
+          : w.player.y + PLAYER.radius + bar.offsetY + i * rowH;
         const r = bar.height / 2;
-        g.roundRect(bx, by, bar.width, bar.height, r)
+        g.roundRect(bx, by, wid, bar.height, r)
          .fill({ color: PALETTE.outline, alpha: 0.85 });
         if (frac > 0) {
-          // Shrinks from both ends toward the centre, so the bar stays centred
+          // Shrinks from both ends toward the centre, so a bar stays centred
           // under the pod instead of appearing to slide off to the left as it
           // empties -- at this size, an off-centre bar reads as the pod being
           // lopsided rather than as a timer running out.
-          const wFill = Math.max(bar.height, bar.width * frac);
+          const wFill = Math.max(bar.height, wid * frac);
           g.roundRect(w.player.x - wFill / 2, by, wFill, bar.height, r)
-           .fill({ color: toy.tint });
+           .fill({ color: inst.kind.tint });
         }
-        g.roundRect(bx, by, bar.width, bar.height, r)
+        g.roundRect(bx, by, wid, bar.height, r)
          .stroke({ width: 3, color: 0x0b1020, alpha: 0.9 });
       }
       drawHud(w);
