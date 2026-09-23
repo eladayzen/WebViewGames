@@ -166,12 +166,14 @@ export async function createRenderer(canvas) {
       }
     }
 
-    if (sc.planet) {
-      const pl = sc.planet;
+    // Every body is a ringed world -- see SKY.scenes for why a plain circle is
+    // not a planet. Drawn largest-first so a small one in front of a big one
+    // overlaps correctly.
+    for (const pl of [...(sc.planets || [])].sort((a, b) => b.r - a.r)) {
       const px = pl.x * DESIGN_W, py = pl.y * DESIGN_H, pr = pl.r * DESIGN_H;
       // The BACK half of the ring first, so the planet occludes it and the ring
       // reads as passing behind rather than lying on top.
-      if (pl.ring) drawRing(px, py, pr, pl.ring, true);
+      drawRing(px, py, pr, pl.ring, true);
       sceneG.circle(px, py, pr).fill({ color: pl.color });
       // One rim light up-left, the same lighting direction as the monsters'
       // gloss and the pod's -- a scene lit from elsewhere is what makes a
@@ -179,15 +181,7 @@ export async function createRenderer(canvas) {
       sceneG.moveTo(px - pr, py)
         .arc(px, py, pr * 0.97, Math.PI, Math.PI * 1.62)
         .stroke({ width: pr * 0.055, color: pl.rim, alpha: 0.5 });
-      if (pl.ring) drawRing(px, py, pr, pl.ring, false);
-    }
-
-    for (const m of sc.moons || []) {
-      const mx = m.x * DESIGN_W, my = m.y * DESIGN_H, mr = m.r * DESIGN_H;
-      sceneG.circle(mx, my, mr).fill({ color: m.color });
-      sceneG.moveTo(mx - mr, my)
-        .arc(mx, my, mr * 0.95, Math.PI, Math.PI * 1.6)
-        .stroke({ width: mr * 0.12, color: m.rim, alpha: 0.55 });
+      drawRing(px, py, pr, pl.ring, false);
     }
   }
 

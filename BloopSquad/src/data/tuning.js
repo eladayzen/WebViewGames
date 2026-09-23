@@ -611,29 +611,54 @@ export const SKY = {
   // Positions are fractions of the design screen, so a prop keeps its place on
   // any window. Planets are deliberately allowed off the edges -- a whole disc
   // floating in frame reads as a sticker, a cropped one reads as scenery.
+  // EVERY BODY HAS A RING, and every scene has at least one body.
+  //
+  // Amit: "either we have one big star in one of the corners, which looks good,
+  // or we don't have nothing at all... once I saw two circles in the background,
+  // it's not clear what they are. I think all of them should be with a ring."
+  //
+  // Both halves of that are the same observation. A plain dark circle in a
+  // starfield is not a planet -- it is an unexplained shape, and the eye files
+  // it as a smudge or a bug. A RING is what says "planet" instantly, with no
+  // other detail required, which is exactly the kind of one-mark read this art
+  // has to run on. So the moons are gone and every body is a ringed world.
+  //
+  // And the empty scene is gone too. "Sometimes something good, sometimes
+  // nothing" is not variety, it is an inconsistent screen: the run that draws
+  // `home` just looks like the background failed to load.
+  //
+  // Variation now comes from size, position, colour, ring tilt and count --
+  // which is more range than moons-or-not ever gave.
   scenes: [
-    { name: 'home', sky: SKY_NAVY, stars: 1.0 },
+    { name: 'home', stars: 1.0, sky: SKY_NAVY,
+      planets: [{ x: 0.13, y: -0.06, r: 0.26, color: 0x1e2448, rim: 0x31395e,
+                  ring: { rx: 1.9, ry: 0.36, tilt: 0.30, color: 0x4b5694 } }] },
 
-    { name: 'ringed giant', sky: SKY_PLUM, stars: 0.8,
-      planet: { x: 0.17, y: 1.06, r: 0.42, color: 0x3a2150, rim: 0x453058,
-                ring: { rx: 1.85, ry: 0.42, tilt: -0.34, color: 0x5c4278 } } },
+    { name: 'ringed giant', stars: 0.8, sky: SKY_PLUM,
+      planets: [{ x: 0.17, y: 1.06, r: 0.42, color: 0x3a2150, rim: 0x453058,
+                  ring: { rx: 1.85, ry: 0.42, tilt: -0.34, color: 0x5c4278 } }] },
 
-    { name: 'twin moons', sky: SKY_TEAL, stars: 1.35,
-      moons: [{ x: 0.80, y: 0.17, r: 0.085, color: 0x16404a, rim: 0x1f444b },
-              { x: 0.90, y: 0.29, r: 0.048, color: 0x123640, rim: 0x1c3c44 }] },
+    { name: 'twin worlds', stars: 1.35, sky: SKY_TEAL,
+      planets: [{ x: 0.88, y: 0.16, r: 0.20, color: 0x16404a, rim: 0x1f444b,
+                  ring: { rx: 1.75, ry: 0.34, tilt: 0.26, color: 0x2c6270 } },
+                { x: 0.14, y: 0.74, r: 0.11, color: 0x123640, rim: 0x1c3c44,
+                  ring: { rx: 1.9, ry: 0.30, tilt: -0.40, color: 0x235260 } }] },
 
-    { name: 'red dwarf', sky: SKY_WINE, stars: 0.7,
-      planet: { x: 1.02, y: 0.44, r: 0.34, color: 0x4a1a22, rim: 0x662830 },
-      nebula: { x: 0.28, y: 0.62, r: 0.34, color: 0x6b2230 } },
+    { name: 'red dwarf', stars: 0.7, sky: SKY_WINE,
+      nebula: { x: 0.26, y: 0.64, r: 0.34, color: 0x6b2230 },
+      planets: [{ x: 1.04, y: 0.42, r: 0.34, color: 0x4a1a22, rim: 0x662830,
+                  ring: { rx: 1.7, ry: 0.30, tilt: 0.18, color: 0x71333c } }] },
 
-    { name: 'nebula drift', sky: SKY_PLUM, stars: 1.6,
-      nebula: { x: 0.62, y: 0.32, r: 0.46, color: 0x4a2a70 },
-      moons: [{ x: 0.20, y: 0.22, r: 0.055, color: 0x2a1a44, rim: 0x443063 }] },
+    { name: 'nebula drift', stars: 1.6, sky: SKY_PLUM,
+      nebula: { x: 0.64, y: 0.30, r: 0.46, color: 0x4a2a70 },
+      planets: [{ x: 0.17, y: 0.20, r: 0.135, color: 0x2a1a44, rim: 0x443063,
+                  ring: { rx: 2.0, ry: 0.34, tilt: -0.24, color: 0x4a3470 } }] },
 
-    { name: 'ice world', sky: SKY_PINE, stars: 1.1,
-      planet: { x: 0.86, y: 1.08, r: 0.38, color: 0x14403a, rim: 0x24493f,
-                ring: { rx: 1.6, ry: 0.30, tilt: 0.22, color: 0x357d70 } } },
+    { name: 'ice world', stars: 1.1, sky: SKY_PINE,
+      planets: [{ x: 0.86, y: 1.08, r: 0.38, color: 0x14403a, rim: 0x24493f,
+                  ring: { rx: 1.6, ry: 0.30, tilt: 0.22, color: 0x357d70 } }] },
   ],
+
   // How long the flash covering the swap lasts. Short: it is a cut, not a fade.
   flashS: 0.34,
   // RIM LIGHTS ARE DIMMER THAN THE DIMMEST MONSTER, and that is a hard rule
@@ -768,6 +793,19 @@ export const TOYS = {
   // the average is fine -- a player notices the burst, not the mean.
   minGapS: 3.0,
   maxLive: 2,
+
+  // MORE PRESENTS EARLY (Amit: "I need a bit more pickups, I would say 20% more
+  // -- not sure about higher levels, mainly level 1 and 2").
+  //
+  // Weighted to the start of a run rather than raised across the board, and the
+  // reason that is the right shape: at level 1 only three toys are unlocked and
+  // the player has met none of them. The opening minute is where a present
+  // TEACHES something, and where a long gap reads as the game having nothing to
+  // give. By level 4 the roster is wide, several toys are usually running at
+  // once, and the rate he already approved is the rate that felt right.
+  //
+  // Multiplies the drop chance; indexed by level, last entry used from there on.
+  earlyBonus: [1.5, 1.35, 1.15, 1.0],
 
   // The toy timer, drawn as a bar UNDER the pod. Under and not over: everything
   // the player is actually looking at -- the monsters, their own shots, where

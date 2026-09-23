@@ -73,7 +73,9 @@ export function activeToy(w, id) {
 
 /** Roll for a toy where a monster just died. */
 export function maybeDropToy(w, m, rng) {
-  const chance = TOYS.dropFrom[m.tierName] || 0;
+  const eb = TOYS.earlyBonus;
+  const chance = (TOYS.dropFrom[m.tierName] || 0) *
+                 eb[Math.min(eb.length - 1, Math.max(0, w.level - 1))];
   if (!chance) return;
   if (w.toyPickups.filter((t) => t.alive).length >= TOYS.maxLive) return;
   if (w.time - w.lastToyDropT < TOYS.minGapS) return;
