@@ -171,13 +171,42 @@ export function registerHit(m, damage) {
   m.squashT = MONSTERS.hit.squashS;
 }
 
+/** How hard monsters are pulled toward the pod at this level. 0 before the
+ *  threshold, which is the state the whole six-year-old pass was tuned in. */
+export function attractionAt(level) {
+  const a = MONSTERS.attraction;
+  if ((level || 1) < a.fromLevel) return 0;
+  return Math.min(a.max, (level - a.fromLevel + 1) * a.perLevel);
+}
+
 export function updateMonsters(w, dt) {
   const p = w.player;
+  const pull = attractionAt(w.level);
+  const A = MONSTERS.attraction;
   for (const m of w.monsters) {
     if (!m.alive) continue;
     const wasAbove = m.y < p.y;
 
     applyClearance(w, m);
+
+    // ATTRACTION, applied after clearance and therefore overriding it. Lateral
+    // only: a monster that dived would demand the forward/back axis, which is
+    // the expensive one on this hardware.
+    //
+    // The clamp is on the SPEED, not the acceleration, so a monster crossing the
+    // full screen cannot accumulate sideways momentum the whole way and arrive
+    // moving faster sideways than forwards. That would read as a dash, and
+    // nothing in this game dashes -- being caught still has to be something the
+    // player could see coming.
+    if (pull > 0) {
+      const dx = p.x - m.x;
+      if (Math.abs(dx) > 2) {
+        m.vx += Math.sign(dx) * A.accelPxS2 * pull * dt;
+        const cap = A.maxLateralPxS * pull;
+        if (m.vx > cap) m.vx = cap;
+        if (m.vx < -cap) m.vx = -cap;
+      }
+    }
     m.x += m.vx * dt;
     m.y += m.vy * dt;
     m.wobble += dt * 2.2;

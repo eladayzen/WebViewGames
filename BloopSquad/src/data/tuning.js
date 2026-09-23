@@ -213,6 +213,52 @@ export const MONSTERS = {
   passClearancePx: 240,
   passClearanceMul: 1.0,
 
+  // ---- ATTRACTION: monsters that come toward you ---------------------------
+  //
+  // EXPERIMENTAL, AND IT OVERRIDES A PAID-FOR RULE. Amit wants to try it and may
+  // revert; `fromLevel: 99` disables the whole thing in one edit.
+  //
+  // What it fights: `applyClearance` steers every monster AWAY from the pod's
+  // column -- once, while it is 1-6 s out -- so that it misses by 240 px plus
+  // both radii. That is why the only way to get hit today is a drifter, and it
+  // is not an accident: "every threat must be answerable by leaning sideways"
+  // was the design's founding constraint, and clearance is what enforces it.
+  //
+  // So attraction is the opposite force, and past the threshold level it wins.
+  // The trade is explicit: the game stops guaranteeing that a lean is enough.
+  //
+  // LATERAL ONLY, which is the one part that is not negotiable. A monster that
+  // dived at the pod would demand the forward/back axis, and that axis is
+  // expensive and imprecise on a balance board -- the hardware finding this
+  // whole game is built around. Pulling sideways keeps the answer a lean; it
+  // just makes the lean necessary instead of optional.
+  attraction: {
+    // Nothing before this level. Ramps per level after it, capped.
+    // GENTLE, AND CAPPED LOW, because the danger curve is NOT monotonic and
+    // measuring it was the only way to find that out. At 2-minute runs with the
+    // pod holding still, contacts went 0.3 (no pull) -> 7.2 (pull 0.22) -> 4.7
+    // (0.44) -> 2.2 (0.66) -> 1.2 (1.00). Harder attraction makes the game
+    // SAFER.
+    //
+    // The cause is the cannon. It fires straight up and never stops, so a strong
+    // pull drags everything into the pod's own column and they queue up to be
+    // shot; at full strength nothing reaches the player's row at all. The sweet
+    // spot is a pull that makes monsters LEAN toward the player without
+    // committing them to the firing line.
+    //
+    // So this ramps slowly and stops around a fifth of the old ceiling.
+    fromLevel: 5,
+    perLevel: 0.055,
+    max: 0.26,
+    // Lateral acceleration toward the pod at full strength, px/s^2.
+    accelPxS2: 240,
+    // Ceiling on the lateral speed attraction alone may produce. Without this a
+    // monster crossing the whole screen accumulates sideways speed the entire
+    // way and arrives moving faster sideways than forwards, which reads as a
+    // dash -- and nothing in this game dashes.
+    maxLateralPxS: 150,
+  },
+
   // The reaction floor, inherited from Nova Vanguard at 1.2 s from a threat
   // first being visible to it reaching the player, and RAISED TO 1.8 s here
   // because the audience is younger than Nova Vanguard's. The POC MEASURES
