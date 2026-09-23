@@ -247,8 +247,20 @@ export const MONSTERS = {
     // committing them to the firing line.
     //
     // So this ramps slowly and stops around a fifth of the old ceiling.
+    // STRETCHED (Amit: "it starts at the right time but it gets too hard too
+    // easy -- what's happening at level 9 should be happening around 15").
+    // perLevel 0.055 -> 0.024 puts the ceiling at level 15 instead of 9, so the
+    // climb takes eleven levels rather than five. The start and the ceiling are
+    // both unchanged; only the slope between them moved.
+    //
+    // NOTE FOR THE BOARD TEST: Amit's own read is that the top of this ramp is
+    // "probably impossible for GoBalance control" -- fine on a keyboard, likely
+    // not on a board where the whole answer is a weight shift. That is a real
+    // possibility and it is the cap, not the slope, that would have to come
+    // down. Levels past about 8 are rare in a normal run anyway, so the top of
+    // this curve is mostly theoretical until someone strong reaches it.
     fromLevel: 5,
-    perLevel: 0.055,
+    perLevel: 0.024,
     max: 0.26,
     // Lateral acceleration toward the pod at full strength, px/s^2.
     accelPxS2: 240,
