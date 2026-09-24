@@ -38,7 +38,7 @@ catalogue of ~50 events, each with an inline comment saying when it fires and
 what its value means. `AnalyticsManager.LogEvent` sends every event to two
 sinks: `FirebaseAnalytics.LogEvent(name, parameters)` for Google Analytics, and
 `MyFirebaseFirestore.AddLogEvent`, which mirrors it to
-`users/{uid}/{eventLogsCol}` as `{ event_name, timestamp, profile, parameters }`.
+`users/{uid}/event_log` as `{ event_name, timestamp, profile, parameters }`.
 Both sit behind `MyFirebaseManager.UseFirebaseAnalytics()`.
 
 **Web games are wired into none of it.** No analytics calls exist anywhere in
@@ -125,7 +125,7 @@ Being explicit so the data is not over-read:
 
 1. one `open_game` in GA4 DebugView with `screen_name` = the scene name, from a
    real device
-2. the same event in Firestore under `users/{uid}/{eventLogsCol}` with the right
+2. the same event in Firestore under `users/{uid}/event_log` with the right
    `profile`
 3. nothing logged on the Pro tablet — confirming the kill switch covers it
 4. native games' `open_game` unchanged

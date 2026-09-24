@@ -1,7 +1,7 @@
 // WHAT THE GAME REPORTS, and the one place that knows how to report it.
 //
 // The board's app has a complete analytics layer -- every event lands in Google
-// Analytics AND in a Firestore mirror at users/{uid}/eventLogs, stamped with the
+// Analytics AND in a Firestore mirror at users/{uid}/event_log, stamped with the
 // sub-profile -- and web games were wired into none of it.
 //
 // Nothing here throws and nothing blocks a frame. With no host at all (a plain

@@ -79,6 +79,6 @@ registration is ours to do and is in hand.
 
 **Verification:** Firebase Analytics is a no-op on desktop, so nothing reaches
 GA4 from the Editor — but `AddLogEvent` writes a real Firestore document to
-`users/{uid}/eventLogs`, and Firestore does run on desktop. An Editor session
+`users/{uid}/event_log`, and Firestore does run on desktop. An Editor session
 therefore proves the whole chain except the final hop into GA4, which needs a
 device build.

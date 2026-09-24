@@ -21,9 +21,47 @@ So the registration below wants doing **before an APK reaches real players**,
 not after the first interesting week of data.
 
 It is not a data-loss risk, only a reporting one: the Firestore mirror at
-`users/{uid}/eventLogs` records the full parameter set with the sub-profile
+`users/{uid}/event_log` records the full parameter set with the sub-profile
 stamped on each event, and that is independent of anything configured in GA4.
 Worst case, early data is readable there and not chartable in GA.
+
+## PROVEN END TO END (2026-09-24)
+
+A mission played in the Unity Editor produced real documents in Firestore, with
+the whole chain exercised: game -> `window.Unity.call` -> `WebGameBridge` parse
+-> validation -> `AnalyticsManager` -> `event_log`. Two runs, one cleared and one
+abandoned, both recorded correctly:
+
+```
+web_level_end   speedGates  #4   clear  100%  11,172 pts  3 stars  33s
+web_level_end   lastCall    #39  quit     0%       0 pts  0 stars   1s
+```
+
+`game: "HillBombSunsetRidge"` was attached by the bridge, `profile` was stamped
+server-side, and every number arrived as a number rather than a string -- so the
+numeric inference in `HandleAnalytics` works and the metrics can be summed.
+
+Only the final hop into GA4 is unproven, and that needs an APK: Firebase
+Analytics is a no-op stub on desktop, and DebugView additionally only shows
+devices explicitly in debug mode.
+
+### The bug that run found, which reading could not have
+
+`installGbSdk()` opened with `if (window.GoBalance) return true`, on the belief
+that nothing else provided the object. THE APP PROVIDES IT: WebGameController
+serves `Resources/GoBalanceWebSdk.txt` at `/__gobalance/sdk.js` and injects the
+tag as the first script in `<head>`. It is absent from every shipped index.html
+because the host rewrites the HTML as it serves it -- which is exactly why an
+audit of the built games found no trace of it and drew the wrong conclusion.
+
+That SDK has sixteen methods and no `logEvent`, so the guard saw the host's
+object, declared victory, and left `analytics.js` feature-checking for a method
+that was never going to appear. Every event was a silent no-op. The shim now
+adds the one method the host lacks and touches nothing else.
+
+**The lesson for the rollout:** an audit of shipped builds cannot see what the
+host injects at serve time. Check `WebGameController` before concluding anything
+about what a web game has available to it.
 
 ## What is blocking it
 
