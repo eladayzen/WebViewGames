@@ -139,7 +139,50 @@ function parseBody(json) {
 export function installGbSdk() {
   if (typeof window === 'undefined') return false;
   if (!host()) return false;
-  if (window.GoBalance) return true;         // never install twice
+
+  /**
+   * THE APP SHIPS ITS OWN SDK, and this file was written believing it did not.
+   *
+   * WebGameController serves Resources/GoBalanceWebSdk.txt at
+   * /__gobalance/sdk.js and injects the tag as the FIRST script in <head>, so
+   * `window.GoBalance` exists before any of the game's code runs. It is not in
+   * any shipped index.html because the host rewrites the HTML as it serves it
+   * -- which is exactly why looking at the built games found no trace of it and
+   * the wrong conclusion got drawn.
+   *
+   * Its api has sixteen methods -- load, save, submitScore, getScoreboard,
+   * getProfile, getPlayers, back, setSensitivity, log, on, off and the rest --
+   * and NOT ONE of them is analytics. So the old `return true` here was worse
+   * than doing nothing: it saw the host object, declared victory and left
+   * systems/analytics.js feature-checking for a `logEvent` that was never
+   * going to appear. Every event in the game was a silent no-op, which is
+   * precisely what a run in the Editor showed -- the bridge received the HUD
+   * diagnostic and not one `analytics.log`.
+   *
+   * So when the host's SDK is there, ADD THE ONE METHOD IT LACKS and touch
+   * nothing else. Not a merge, not a replacement: the host owns save, score,
+   * profile and the roster, and its `__gb` is wired to its own pending map --
+   * clobbering either would break the things that do work.
+   */
+  if (window.GoBalance) {
+    if (typeof window.GoBalance.logEvent !== 'function') {
+      /**
+       * Deliberately NOT routed through send() above. That allocates an id and
+       * parks a promise in a pending map that the HOST's `__gb._resolve` knows
+       * nothing about, so every reply would time out into a rejection five
+       * seconds later. An analytics event wants no reply at all, and id 0 is
+       * the protocol's own way of saying so -- one call, nothing to clean up,
+       * and no chance of colliding with an id the host has issued.
+       */
+      window.GoBalance.logEvent = (name, params) => {
+        try {
+          host().call(PREFIX + '0:analytics.log:' + encodeEvent(name, params));
+        } catch { /* telemetry must never break a run */ }
+        return Promise.resolve(null);
+      };
+    }
+    return true;
+  }
 
   /** The app calls into this. Every entry must tolerate being called at any
    *  time, including before the game is ready for it. */
