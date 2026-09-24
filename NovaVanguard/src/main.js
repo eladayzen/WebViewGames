@@ -70,13 +70,28 @@ import {
 import { createHud } from './ui/hud.js';
 import { createInstrumentation } from './debug/instrumentation.js';
 import { createPanel } from './debug/panel.js';
-import { POC_SCENARIO, SECTOR_TRANSITION, PICKUPS, START_SCREEN, DESIGN_W, DESIGN_H } from './data/tuning.js';
+import { installGbSdk } from './systems/gbSdk.js';
+import { analytics } from './systems/analytics.js';
+import { POC_SCENARIO, SECTOR_TRANSITION, PICKUPS, START_SCREEN, DESIGN_W, DESIGN_H, levelWaves } from './data/tuning.js';
 import * as TUNING from './data/tuning.js';
 
 const stage = document.getElementById('stage');
 const mount = document.getElementById('app');
 
 boot();
+
+/**
+ * TEACH THE HOST'S SDK ONE MORE METHOD, before anything can try to use it.
+ *
+ * The app injects its own GoBalance SDK as the first script in <head>, and that
+ * SDK has no analytics call -- see systems/gbSdk.js. This adds `logEvent` to it
+ * and touches nothing else. A no-op outside the WebView, so the dev URL is
+ * unaffected.
+ *
+ * At module scope rather than inside boot(): it costs one property assignment,
+ * and the alternative is remembering to order it against every future caller.
+ */
+installGbSdk();
 
 async function boot() {
   resolveBootMode();
@@ -252,6 +267,19 @@ async function boot() {
    * clearing, and both modes replay the identical squadron script.
    */
   function restartScenario() {
+    /**
+     * A RUN BEGINS HERE, and this is the only place that is true.
+     *
+     * Seven call sites reach this function -- the start button, PLAY AGAIN, the
+     * result countdown, the dev restart key -- and every one of them is a fresh
+     * run. Reporting from beginRun() instead covered only the first.
+     *
+     * GATED ON `started`, because boot calls this once to build the world before
+     * the start screen is even up. Without the guard that produced a level_start
+     * before any start_game, which reads backwards to anything walking the
+     * stream forward -- caught on the wire, not in review.
+     */
+    if (started) analytics.runStarted();
     // Stop the result clock, or a manual restart would be followed by an
     // automatic one a few seconds later.
     resultT = -1;
@@ -273,6 +301,9 @@ async function boot() {
     // standing on Kesselring would leave the wrong texture under the action.
     sectorUi.hide();
     renderer.setSurface(surfaceAt(world.surfaceIndex));
+    // The first surface of the run. Transitions report their own -- see
+    // swapSurface() -- so this is only ever surface one.
+    if (started) reportLevelStart();
     rng.reseed(POC_SCENARIO.seed);
     // Pickups roll on their OWN stream (see /systems/pickups.js) so that adding
     // drops cannot shift a single draw of the scenario's stream -- which is
@@ -297,6 +328,26 @@ async function boot() {
   /** Fire the beat. Cycles through /data/surfaces.js, so triggering it
    *  repeatedly walks Ashfall -> Kesselring -> Bulwark -> Hive -> Ashfall and
    *  can be watched over and over without a reload. */
+  /**
+   * The analytics view of where a run is. Three small readers rather than
+   * reaching into the director from the report sites, so the mapping from
+   * Nova's shape to the shared vocabulary lives in one place.
+   *
+   * A SURFACE IS A LEVEL -- see systems/analytics.js for why. `waveIndex` counts
+   * waves cleared across the whole run and wraps per surface, so how far into
+   * THIS surface they got is the remainder.
+   */
+  function wavesPerSurface() {
+    return Math.max(1, levelWaves(world.surfaceIndex).length);
+  }
+  function wavesDoneHere() {
+    return world.director.waveIndex % wavesPerSurface();
+  }
+  function reportLevelStart() {
+    const s = surfaceAt(world.surfaceIndex);
+    analytics.levelStarted(s.id, world.surfaceIndex + 1);
+  }
+
   function nextSurface() {
     if (world.state !== GameState.RUNNING) return;
     const to = (world.surfaceIndex + 1) % SURFACES.length;
@@ -307,6 +358,10 @@ async function boot() {
   /** The exchange itself, run once, at the instant the cover is opaque. */
   function swapSurface(surface) {
     renderer.setSurface(surface);
+    // The new surface has begun. Reported at the SWAP rather than when the
+    // transition is requested: the shutter takes 2.35s, and a level_start sent
+    // early would put the old surface's death inside the new surface's window.
+    reportLevelStart();
     renderer.clearFx();
     // Clear the playfield rather than carrying it across: a squadron that
     // survived the old sector would arrive already in formation over the new
@@ -622,9 +677,14 @@ async function boot() {
       // and nothing said. Amit: level five is the end of the campaign, and
       // finishing it should be a screen.
       if (world.surfaceIndex >= SURFACES.length - 1) {
+        // The final surface cleared, then the campaign ends. Two events, not
+        // one: the last level was survived like any other, and reporting only
+        // the campaign would leave level five with starts that never end.
+        analytics.levelCleared(world.stats.score);
         completeCampaign();
         return;
       }
+      analytics.levelCleared(world.stats.score);
       nextSurface();
       if (world.transition.active) return;
     }
@@ -654,6 +714,9 @@ async function boot() {
 
     // Zero segments = failed. No revive, no continue, no cost to retry (§5.10).
     if (!world.player.alive && world.state === GameState.RUNNING) {
+      // BEFORE the state changes, because the surface they died on is a fact
+      // about the run that is still true here and gone a line later.
+      analytics.levelFailed(world.stats.score, wavesDoneHere(), wavesPerSurface());
       world.state = GameState.FAILED;
       showResult();
     }
