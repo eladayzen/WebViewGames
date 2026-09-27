@@ -58,6 +58,8 @@ import {
 } from '../systems/scoring.js';
 import { createBonusWave, resetBonusWave, startBonusWave, shouldStartBonusWave, updateBonusWave } from '../systems/bonusWave.js';
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
+import { installGbSdk } from '../systems/gbSdk.js';
+import { analytics } from '../systems/analytics.js';
 import { submitRun, fetchBoard, resultSections } from '../systems/scoreboard.js';
 import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
@@ -75,6 +77,16 @@ const MAX_DT = 1 / 10;
 // another in a quick popcorn ripple rather than all at once (feedback
 // 2026-07-30) -- reads clearly as "this clears every bomb on screen".
 const WAVE_DETONATE_STAGGER_SEC = 0.07;
+
+/**
+ * TEACH THE HOST'S SDK ONE MORE METHOD, before anything can try to use it.
+ *
+ * The app injects its own GoBalance SDK as the first script in <head>, and that
+ * SDK has no analytics call -- see systems/gbSdk.js for the whole story. This
+ * adds `logEvent` to it and touches nothing else. A no-op outside the WebView,
+ * so the dev URL is unaffected.
+ */
+installGbSdk();
 
 async function boot() {
   const canvas = document.getElementById('renderCanvas');
@@ -210,6 +222,12 @@ async function boot() {
   // back to the raw native bridge so a game whose module failed to load is
   // still escapable (the inline #gb-back onclick has the same fallback).
   function leaveToLobby() {
+    /**
+     * THE ONE PLACE THE PLAYER DELIBERATELY LEAVES, so it is where the session
+     * closes. The heartbeat in systems/analytics.js covers every exit that never
+     * reaches this line -- an app killed from the switcher, a flat battery.
+     */
+    analytics.gameLeft();
     if (window.GoBalance && typeof window.GoBalance.back === 'function') {
       window.GoBalance.back();
       return;
@@ -312,6 +330,16 @@ async function boot() {
 
   function dismissIntro() {
     ui.hideIntroTutorial();
+    /**
+     * A RUN BEGINS HERE. Not at boot and not at restartGame(): both of those
+     * lead into the intro tutorial, which the player may sit on or back out of,
+     * and counting those as runs would inflate every start the funnel reports.
+     * This is the moment they commit.
+     *
+     * Before the first stage is reported, so the stream reads forward.
+     */
+    analytics.runStarted();
+    reportStageStart();
     restartToCountdown(gs);
   }
 
@@ -659,6 +687,9 @@ async function boot() {
         triggerScreenShake(juice, 0.26, 0.018);
         playSfx(audio, sfx.sfx_bomb_hit);
         if (isDead(lives)) {
+          // BEFORE the state changes: how far into the stage's score band they
+          // got is a fact about the run that is still true here.
+          reportStageFailed();
           triggerGameOver(gs);
           playSfx(audio, sfx.sfx_game_over);
           submitAndShowBoard(scoring.score);
@@ -688,7 +719,36 @@ async function boot() {
   // the curtain opens back onto the new stage already in motion. Reads the
   // NEXT stage's name before anything advances -- difficulty.stageIndex
   // itself doesn't move until commitStageAdvance runs, later.
+  /**
+   * The analytics view of where a run is -- two small readers, so the mapping
+   * from this game's shape to the shared vocabulary lives in one place rather
+   * than at each report site.
+   *
+   * A STAGE IS A LEVEL, as a surface is in Nova and a mission is in Skateboard
+   * Extreme. Progress through one is progress through its SCORE BAND: stages
+   * advance on cumulative score, so the fraction of the band covered is the
+   * honest answer to "how far into this stage did they get".
+   *
+   * Every stage has a finite advanceScore, including the last (20,000) -- the
+   * "Infinity on the final stage" in difficulty.js's comment is stale, so the
+   * denominator is always real and no special case is needed.
+   */
+  function reportStageStart() {
+    const st = getStage(difficulty);
+    analytics.levelStarted(st.id, difficulty.stageIndex + 1);
+  }
+
+  function reportStageFailed() {
+    const band = getScoreBand(difficulty);
+    const span = band.nextThreshold - band.prevThreshold;
+    analytics.levelFailed(scoring.score, scoring.score - band.prevThreshold, span);
+  }
+
   function beginStageComplete() {
+    // REPORTED HERE, not after commitStageAdvance: difficulty.stageIndex still
+    // points at the stage just cleared, which is the one the event is about.
+    // A few hundred milliseconds later it points at the next one.
+    analytics.levelCleared(scoring.score);
     triggerStageComplete(gs);
     stageCompleteElapsed = 0;
     stageCurtainsClosed = false;
@@ -961,6 +1021,9 @@ async function boot() {
               && stageCompleteElapsed >= STAGE_CURTAIN_CLOSE_DELAY_SEC + STAGE_CURTAIN_TRANSITION_SEC) {
             stageSwapped = true;
             commitStageAdvance(difficulty);
+            // The new stage has begun. After the commit, so it names the stage
+            // the player is about to see rather than the one they just left.
+            reportStageStart();
             stage = getStage(difficulty); // hidden behind the still-closed curtain until it reopens
           }
 
