@@ -51,6 +51,13 @@ const EV = {
   SETTINGS: 'settings_changed',
   /** They left the game for the app. */
   END: 'game_end',
+  /**
+   * Still playing, every 30 seconds, carrying the time played so far.
+   *
+   * The only event here that exists for a measurement rather than a moment --
+   * see the session block below for why an end event alone cannot be trusted.
+   */
+  HEARTBEAT: 'heartbeat',
 };
 
 /**
@@ -109,14 +116,33 @@ function pct(done, total) {
 // page starts a run and closes when the player leaves for the app. Runs inside
 // it are counted so game_end can say how much was actually played, which is the
 // difference between someone who bounced and someone who stayed.
-let sessionStart = 0;
+const HEARTBEAT_MS = 30000;
+
+/** Whether a session is open at all. Distinct from `playedMs > 0`, since a
+ *  session that has just begun has legitimately played for zero. */
+let inSession = false;
+/** Active milliseconds banked from previous visible stretches. */
+let playedMs = 0;
+/** When the current visible stretch began, or 0 while hidden. */
+let resumedAt = 0;
+let beat = null;
 let runs = 0;
+/** Attempts per surface id, within this session. The question is "did they keep
+ *  trying now", not a lifetime total. */
+const attempts = Object.create(null);
+/**
+ * The surface in progress.
+ *
+ * SNAPSHOTTED AT START AND NEVER RE-READ. Skateboard Extreme had a bug here
+ * worth not repeating: it read the current mode at SEND time, so a level ending
+ * while the next run was already starting got stamped with the wrong one. The
+ * facts a level_end needs are the facts that were true when it began.
+ */
 /** The mode of the run being STARTED. Only ever read by runStarted and by
  *  levelStarted, which copies it -- see `current.mode` below. */
 let mode = '';
 /** Attempts per level id. Reset per session, since the question is "did they
  *  keep trying now", not a lifetime total. */
-const attempts = Object.create(null);
 /**
  * The level in progress, so an end event does not have to be handed facts the
  * start already established.
@@ -150,6 +176,63 @@ function levelBase(id) {
   };
 }
 
+/** Active seconds played this session, counting the stretch in progress. */
+function playedSeconds() {
+  const live = resumedAt ? now() - resumedAt : 0;
+  return Math.max(0, Math.round((playedMs + live) / 1000));
+}
+
+/** One heartbeat. Carries the level so a long session can still be attributed
+ *  to where it was spent, and skipped entirely outside a session. */
+function sendBeat(force) {
+  if (!inSession) return;
+  // The interval keeps firing while the page is hidden -- throttled, but firing
+  // -- and every one of those would re-send the same frozen number. The hide
+  // handler sends one deliberately (force) and then there is nothing to say
+  // until the page comes back.
+  if (!resumedAt && !force) return;
+  const params = { duration_seconds: playedSeconds() };
+  if (current) params.level_id = current.id;
+  send(EV.HEARTBEAT, params);
+}
+
+/**
+ * Page visibility, installed once and never removed.
+ *
+ * ON HIDE the clock stops and a final heartbeat goes out immediately, because
+ * backgrounding is how most app shutdowns begin -- this is usually the last
+ * moment anything can be sent, and `visibilitychange` fires on Android where
+ * `pagehide` often does not.
+ *
+ * HIDING DOES NOT END THE SESSION. A player who takes a call and comes back is
+ * still in the same visit, and ending it here would either lose the rest or
+ * start a phantom second session.
+ */
+function watchVisibility() {
+  if (typeof document === 'undefined' || watchVisibility.done) return;
+  watchVisibility.done = true;
+  document.addEventListener('visibilitychange', () => {
+    if (!inSession) return;
+    if (document.visibilityState === 'hidden') {
+      if (resumedAt) { playedMs += now() - resumedAt; resumedAt = 0; }
+      sendBeat(true);
+    } else if (!resumedAt) {
+      resumedAt = now();
+    }
+  });
+}
+
+/** The parameters every level event carries. Nova sends no `place`, so there is
+ *  room inside the bridge's nine-parameter budget without choosing. */
+function base() {
+  return {
+    level_id: current.id,
+    level_number: current.number,
+    attempt: current.attempt,
+    mode: 'campaign',
+  };
+}
+
 export const analytics = {
   /**
    * A run has begun -- after the briefing, when the hill actually starts.
@@ -159,7 +242,14 @@ export const analytics = {
    * actually start -> did they finish. Once-per-session would lose the middle.
    */
   runStarted(runMode) {
-    if (!sessionStart) sessionStart = perfNow();
+    if (!inSession) {
+      inSession = true;
+      playedMs = 0;
+      resumedAt = now();
+      watchVisibility();
+      if (beat) clearInterval(beat);
+      beat = setInterval(sendBeat, HEARTBEAT_MS);
+    }
     runs += 1;
     mode = runMode;
     send(EV.START, { mode });
@@ -168,9 +258,12 @@ export const analytics = {
   /** The player has left the game for the app. Pairs with the launcher's
    *  open_game, and carries the two numbers that open_game cannot know. */
   gameLeft() {
-    if (!sessionStart) return; // never played; the launcher already logged the open
-    send(EV.END, { duration_seconds: whole((perfNow() - sessionStart) / 1000), runs });
-    sessionStart = 0;
+    if (!inSession) return; // never played; the launcher already logged the open
+    if (resumedAt) { playedMs += now() - resumedAt; resumedAt = 0; }
+    send(EV.END, { duration_seconds: playedSeconds(), runs });
+    if (beat) { clearInterval(beat); beat = null; }
+    inSession = false;
+    playedMs = 0;
     runs = 0;
   },
 
@@ -293,7 +386,7 @@ export const analytics = {
 
 /** Monotonic where possible; Date.now() is only a fallback for a very old
  *  WebView, and a clock that steps backwards would produce negative sessions. */
-function perfNow() {
+function now() {
   return (typeof performance !== 'undefined' && performance.now)
     ? performance.now() : Date.now();
 }
