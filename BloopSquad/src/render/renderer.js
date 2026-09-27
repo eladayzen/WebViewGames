@@ -105,12 +105,28 @@ export async function createRenderer(canvas) {
   const style = (size, fill) => new TextStyle({
     fill, fontFamily: 'system-ui, sans-serif', fontSize: size, fontWeight: '700',
   });
-  const scoreText = new Text({ text: '', style: style(34, '#17223d') });
-  scoreText.position.set(60, 66);
+  /**
+   * Text with its own heavy outline.
+   *
+   * THIS IS WHAT LETS THE PANEL GO. A filled card behind the HUD was the only
+   * thing making dark text legible, and the card was the thing blocking the top
+   * corner -- where four arrivals in five come from. Outlined text carries its
+   * own contrast onto any background, so the panel can drop to a hint and the
+   * field underneath stays visible.
+   */
+  const outlined = (size, fill, stroke = 6) => new TextStyle({
+    fill,
+    fontFamily: 'system-ui, sans-serif',
+    fontSize: size,
+    fontWeight: '900',
+    stroke: { color: '#131a2b', width: stroke, join: 'round' },
+  });
+  const scoreText = new Text({ text: '', style: outlined(36, '#fff6e5') });
+  scoreText.position.set(50, 82);
   // The dev readout sits BELOW the plaque rather than inside it -- it is not
   // part of the game's furniture and should not look like it is.
   const statsText = new Text({ text: '', style: style(20, '#5d7597') });
-  statsText.position.set(30, 166);
+  statsText.position.set(28, 180);
   const heartsG = new Graphics();
   // Above everything, for the scene-change flash.
   const hudFlash = new Graphics();
@@ -993,36 +1009,43 @@ export async function createRenderer(canvas) {
    * looks at one thing instead of hunting three.
    */
   function drawPlaque(w) {
-    const x = 26, y = 20, wid = 340, hgt = 132, r = 26;
+    // TRANSLUCENT, because the plaque sits in the top-left and four arrivals in
+    // five come from the top edge -- a solid panel there hides the one thing the
+    // player most needs to see early. The OUTLINE stays near-solid: it is what
+    // holds the shape together once the fill stops doing it, and without it a
+    // half-transparent card reads as a smudge rather than as an object.
+    const x = 24, y = 18, wid = 352, hgt = 150, r = 28;
     xpG.clear();
-    xpG.roundRect(x, y, wid, hgt, r).fill({ color: 0xfff6e5 });
-    // The gloss every surface in this game carries, as a lift at the top.
-    xpG.roundRect(x + 8, y + 7, wid - 16, hgt * 0.34, r * 0.7)
-       .fill({ color: 0xffffff, alpha: 0.55 });
-    xpG.roundRect(x, y, wid, hgt, r).stroke({ width: 7, color: PALETTE.outline });
+    // A HINT, not a card. At 0.52 the cream turned into a flat grey slab that
+    // still hid whatever was behind it; at 0.16 it groups the readouts without
+    // concealing an arrival. The elements carry their own contrast now -- the
+    // text is outlined and the hearts and bar have their own strokes -- so the
+    // fill no longer has to make anything legible.
+    xpG.roundRect(x, y, wid, hgt, r).fill({ color: 0x0b1020, alpha: 0.34 });
+    xpG.roundRect(x, y, wid, hgt, r).stroke({ width: 5, color: PALETTE.outline, alpha: 0.55 });
 
-    // HEARTS, as hearts. They were circles -- a red dot is a dot, and the shape
-    // is what says "life" to someone who cannot read the word.
+    // HEARTS, big. They are the only thing on this plaque a player checks mid
+    // fight -- the score is read afterwards and the XP bar is ambient -- so they
+    // get the size, and the rest of the plaque is laid out around them.
     for (let i = 0; i < PLAYER.hearts; i++) {
       const on = i < w.player.hearts;
-      const hx = x + 34 + i * 44;
-      const hy = y + 36;
-      heartPath(xpG, hx, hy, 15);
-      xpG.fill({ color: on ? PALETTE.heart : 0xd8cdb6 });
-      heartPath(xpG, hx, hy, 15);
-      xpG.stroke({ width: 4.5, color: PALETTE.outline, alpha: on ? 1 : 0.55 });
+      const hx = x + 46 + i * 62;
+      const hy = y + 44;
+      heartPath(xpG, hx, hy, 24);
+      xpG.fill({ color: on ? PALETTE.heart : 0x8e8778, alpha: on ? 1 : 0.55 });
+      heartPath(xpG, hx, hy, 24);
+      xpG.stroke({ width: 5.5, color: PALETTE.outline, alpha: on ? 1 : 0.5 });
     }
 
-    // The XP bar, inset and outlined like everything else.
     const need = Math.round(XP.base * Math.pow(w.level, XP.curve));
     const frac = Math.max(0, Math.min(1, w.xp / need));
-    const bx = x + 22, by = y + hgt - 34, bw = wid - 44, bh = 16;
-    xpG.roundRect(bx, by, bw, bh, bh / 2).fill({ color: 0xe0d3ba });
+    const bx = x + 22, by = y + hgt - 32, bw = wid - 44, bh = 15;
+    xpG.roundRect(bx, by, bw, bh, bh / 2).fill({ color: 0x0b1020, alpha: 0.7 });
     if (frac > 0) {
       xpG.roundRect(bx, by, Math.max(bh, bw * frac), bh, bh / 2)
          .fill({ color: 0x74d7ff });
     }
-    xpG.roundRect(bx, by, bw, bh, bh / 2).stroke({ width: 4, color: PALETTE.outline });
+    xpG.roundRect(bx, by, bw, bh, bh / 2).stroke({ width: 4, color: PALETTE.outline, alpha: 0.9 });
   }
 
   function drawHud(w) {
