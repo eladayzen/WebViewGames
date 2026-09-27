@@ -116,28 +116,6 @@ canvas { display: block; }
   background: rgba(5, 8, 18, 0.92);
 }
 
-#gameover-card {
-  text-align: center;
-  padding: 40px 56px;
-  border-radius: 20px;
-  background: rgba(16, 24, 44, 0.9);
-  border: 2px solid rgba(116, 215, 255, 0.35);
-  color: #eaf2ff;
-}
-
-#gameover-card h1 { font-size: 42px; letter-spacing: 0.12em; margin-bottom: 10px; }
-#gameover-stats { color: #8fb4d9; margin-bottom: 22px; }
-
-#restart-button {
-  padding: 14px 44px;
-  border-radius: 12px;
-  border: 2px solid #74d7ff;
-  background: rgba(20, 70, 92, 0.9);
-  color: #eafcff;
-  font: 700 20px system-ui, sans-serif;
-  letter-spacing: 0.2em;
-  cursor: pointer;
-}
 
 
 /* ---------------------------------------------------------------------------
@@ -517,3 +495,94 @@ body.dev-invincible::after {
 .board-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-score { font-weight: 800; }
 .board-sep { text-align: center; color: #4a5f80; padding: 2px 0; }
+
+/* ---------------------------------------------------------------------------
+   END-OF-RUN ART -- for a six-year-old, not for a settings dialog.
+   
+   The old cards were dark navy panels with a hairline cyan border and system-ui
+   text: correct-looking UI, and completely unlike the game behind them. The
+   monsters read as a style because they all share one recipe -- BRIGHT FILL,
+   THICK DARK OUTLINE, a gloss highlight -- and the screens now follow the same
+   recipe, so a card looks like something from this world rather than something
+   the operating system put on top of it.
+   
+   A bright card on a near-black field also does the one thing a child's UI must:
+   it is unmistakably the thing to look at.
+   --------------------------------------------------------------------------- */
+
+.board-card {
+  min-width: 320px;
+  max-width: 86vw;
+  padding: 30px 34px 26px;
+  /* Chunky radius and a heavy outline, the monsters' own. */
+  border-radius: 34px;
+  /* The gloss lives IN the fill as a soft vertical lift, not as a separate bar.
+     Drawn as an element it read as a stray blank strip -- like an empty progress
+     bar someone forgot to fill. */
+  background: linear-gradient(#fffdf7 0%, #fff6e5 34%, #f6e9d2 100%);
+  border: 7px solid #131a2b;
+  /* A solid drop, not a blur: the art has no soft shadows anywhere else. */
+  box-shadow: 0 10px 0 rgba(19, 26, 43, 0.55);
+  color: #17223d;
+  text-align: center;
+}
+.board-title, #gameover-card h1 {
+  font: 900 38px/1.05 system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  color: #17223d;
+  margin: 0;
+}
+.board-sub, #gameover-stats {
+  font: 700 16px system-ui, sans-serif;
+  color: #6b7a9c;
+  margin: 10px 0 0;
+}
+
+.board-buttons { display: flex; gap: 14px; justify-content: center; margin-top: 22px; }
+/* CANDY BUTTONS: a flat top with a darker bottom edge that collapses on press.
+   A child should be able to see that a thing is pressable before pressing it. */
+.board-buttons button,
+#restart-button {
+  min-width: 160px;
+  padding: 16px 22px 18px;
+  border: 5px solid #131a2b;
+  border-radius: 20px;
+  font: 900 18px system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  background: #7ed321;
+  color: #17223d;
+  box-shadow: 0 6px 0 #131a2b;
+  transform: translateY(0);
+  transition: transform 70ms, box-shadow 70ms;
+}
+.board-buttons button:active,
+#restart-button:active { transform: translateY(5px); box-shadow: 0 1px 0 #131a2b; }
+/* The second button is always the way OUT, and it must not compete. */
+.board-buttons button + button { background: #cfd8e8; color: #3a4a68; }
+
+/* The board, restyled to match: chunky pills, your run in the game's yellow. */
+#scoreboard, #quit-scoreboard { margin-top: 20px; text-align: left; }
+#scoreboard-title, #quit-scoreboard-title {
+  font: 900 13px system-ui, sans-serif; letter-spacing: 0.12em;
+  color: #6b7a9c; margin-bottom: 10px; text-align: center;
+}
+.board-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; margin-bottom: 5px;
+  border-radius: 14px;
+  background: #ece2cd;
+  font: 800 16px system-ui, sans-serif;
+  color: #17223d;
+}
+.board-row.is-you { background: #ffc93c; border: 3px solid #131a2b; padding: 5px 8px; }
+.board-rank { width: 26px; text-align: right; color: #6b7a9c; }
+.board-dot {
+  width: 28px; height: 28px; border-radius: 999px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  border: 3px solid #131a2b;
+  font: 900 13px system-ui, sans-serif; color: #17223d;
+}
+.board-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-score { font-weight: 900; }
+.board-sep { text-align: center; color: #9aa7c0; padding: 0 0 4px; font-weight: 900; }

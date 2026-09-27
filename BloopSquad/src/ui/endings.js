@@ -155,6 +155,9 @@ export function createEndings(doc, { getScore, getStatsLine, restart, leave, onS
 
   els('confirm-stay')?.addEventListener('click', (e) => { e.stopPropagation(); onStay(); });
   els('confirm-quit')?.addEventListener('click', (e) => { e.stopPropagation(); showQuitBoard(); });
+  // Dying and stopping leave the player in the same position, so the death
+  // screen offers the same way out as the quit screen does.
+  els('gameover-quit')?.addEventListener('click', (e) => { e.stopPropagation(); leave(); });
   els('quit-again')?.addEventListener('click', (e) => { e.stopPropagation(); hideQuitBoard(); restart(); });
   els('quit-leave')?.addEventListener('click', (e) => { e.stopPropagation(); leave(); });
 

@@ -114,9 +114,9 @@
          #gameover-overlay is visible, so exactly one of each may exist and no
          other screen may reuse these ids. -->
     <div id="gameover-overlay" class="hidden">
-      <div id="gameover-card">
-        <h1>OOPS!</h1>
-        <p id="gameover-stats"></p>
+      <div id="gameover-card" class="board-card">
+        <h1 class="board-title">OOPS!</h1>
+        <p id="gameover-stats" class="board-sub"></p>
         <!-- The family board. Hidden outside the app and when empty, and
              deliberately ABOVE #restart-button: the host synth-clicks that
              button while this overlay is visible, so the reading order has to
@@ -125,7 +125,15 @@
           <div id="scoreboard-title">BEST RUNS</div>
           <ol id="scoreboard-rows"></ol>
         </div>
-        <button id="restart-button" type="button">PLAY AGAIN</button>
+        <!-- QUIT alongside PLAY AGAIN, matching the X flow: dying and stopping
+             leave the player in the same position, so they should offer the same
+             way out. #restart-button keeps its id and stays FIRST -- the host
+             synth-clicks it on Space/Enter while this overlay is visible, and
+             there must remain exactly one of it in the document. -->
+        <div class="board-buttons">
+          <button id="restart-button" type="button">PLAY AGAIN</button>
+          <button id="gameover-quit" type="button">QUIT</button>
+        </div>
       </div>
     </div>
 
