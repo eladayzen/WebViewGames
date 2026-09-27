@@ -53,6 +53,8 @@ import { speedAt, distanceTraveledBy, seedDistanceAt } from '../systems/speed.js
 import {
   createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
 } from '../systems/lives.js';
+import { installGbSdk } from '../systems/gbSdk.js';
+import { analytics } from '../systems/analytics.js';
 import { submitRun, fetchBoard, resultSections } from '../systems/scoreboard.js';
 import {
   createGameState, restartToRunning, triggerGameOver, triggerLevelComplete, triggerIntro,
@@ -107,6 +109,15 @@ import {
   ParticlePool, spawnDustPuff, spawnEnemyPoof, spawnCoinSparkle,
   createSpeedStreaks, updateSpeedStreaks,
 } from '../systems/vfx.js';
+
+/**
+ * TEACH THE HOST'S SDK ONE MORE METHOD, before anything can try to use it.
+ *
+ * The app injects its own GoBalance SDK as the first script in <head>, and that
+ * SDK has no analytics call -- see systems/gbSdk.js. This adds `logEvent` to it
+ * and touches nothing else. A no-op outside the WebView.
+ */
+installGbSdk();
 
 function boot() {
   const app = document.getElementById('app');
@@ -469,6 +480,15 @@ function boot() {
 
   function dismissIntro() {
     hud.hideIntroTutorial();
+    /**
+     * A RUN BEGINS HERE, not at boot and not at restart(): both lead into the
+     * intro tutorial, which a player can sit on or back out of, and counting
+     * those would inflate every start the funnel reports. This is the moment
+     * they commit. Before the first tier is reported, so the stream reads
+     * forward.
+     */
+    analytics.runStarted();
+    reportTierStart();
     restartToRunning(gs);
   }
 
@@ -486,7 +506,35 @@ function boot() {
   // threshold. The world freezes (gs.current gates the whole of tick's update
   // block), the overlay announces what's next, and a countdown runs before the
   // next level is built.
+  /**
+   * The analytics view of where a run is -- two readers, so the mapping from
+   * this game's shape to the shared vocabulary lives in one place.
+   *
+   * A TIER IS A LEVEL, as a stage is in Rooftop Ninja and a surface in Nova.
+   * progressAt() already computes the fraction through the current tier's score
+   * band for the HUD bar, so progress_pct is that number and not new arithmetic.
+   *
+   * THE ID IS SYNTHESISED, not taken from TIER_NAMES. The names run out -- there
+   * are three thresholds and then a fixed step onward -- so a strong run climbs
+   * past them into tiers with no name at all. `tier_7` is a stable key for such a
+   * tier; a display name that repeats or blanks would collapse distinct tiers
+   * into one row in every report.
+   */
+  function reportTierStart() {
+    analytics.levelStarted(`tier_${levelIndex}`, levelIndex);
+  }
+
+  function reportTierFailed() {
+    const p = progressAt(score.total);
+    // frac is already 0..1 through the tier's band; the module wants a
+    // numerator and a denominator, so give it the fraction out of 100.
+    analytics.levelFailed(score.total, Math.round(p.frac * 100), 100);
+  }
+
   function beginLevelComplete(nextTier) {
+    // REPORTED HERE, where levelIndex is still the tier JUST FINISHED -- it
+    // only becomes the next one in startNextLevel(), after the countdown.
+    analytics.levelCleared(score.total);
     triggerLevelComplete(gs);
     playSfx('sfx_level_complete');
     // Experiment, direct request: silence the music bed across the whole
@@ -513,6 +561,9 @@ function boot() {
   function startNextLevel() {
     hud.hideLevelComplete();
     levelIndex = pendingLevelTier;
+    // After the assignment, so it names the tier about to be played rather
+    // than the one just left.
+    reportTierStart();
     resetLevelWorld(false);
     restartToRunning(gs);
     resumeMusic();
@@ -538,6 +589,9 @@ function boot() {
   }
 
   function endRun() {
+    // BEFORE the state changes: which tier ended them, and how far into it they
+    // got, are facts about the run that are still true here.
+    reportTierFailed();
     triggerGameOver(gs);
     playSfx('sfx_gameover');
     // The blink lives inside tick()'s running guard, so once the state flips
@@ -646,6 +700,12 @@ function boot() {
   // fall back to the raw native bridge so a game whose module failed to load
   // is still escapable (the inline #gb-back onclick has the same fallback).
   function leaveToLobby() {
+    /**
+     * THE ONE PLACE THE PLAYER DELIBERATELY LEAVES, so it is where the session
+     * closes. The heartbeat in systems/analytics.js covers every exit that never
+     * reaches this line -- an app killed from the switcher, a flat battery.
+     */
+    analytics.gameLeft();
     if (window.GoBalance && typeof window.GoBalance.back === 'function') {
       window.GoBalance.back();
       return;
