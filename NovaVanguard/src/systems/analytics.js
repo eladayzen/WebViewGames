@@ -49,6 +49,13 @@ const EV = {
   SETTINGS: 'settings_changed',
   /** They left the game for the app. */
   END: 'game_end',
+  /**
+   * Still playing, every 30 seconds, carrying the time played so far.
+   *
+   * The only event here that exists for a measurement rather than a moment --
+   * see the session block below for why an end event alone cannot be trusted.
+   */
+  HEARTBEAT: 'heartbeat',
 };
 
 /**
@@ -114,12 +121,48 @@ function now() {
     ? performance.now() : Date.now();
 }
 
-// --- session ----------------------------------------------------------------
-// A "session" is one visit to the GAME, not one run: it opens on the first run
-// and closes when the player leaves for the app. Runs inside it are counted so
-// game_end can say how much was actually played, which is the difference between
-// someone who bounced and someone who stayed.
-let sessionStart = 0;
+// --- the session, and how long it really lasted -----------------------------
+//
+// A "session" is one visit to the GAME, not one run.
+//
+// YOU CANNOT RELY ON BEING TOLD IT ENDED. Amit: "people can shut down the app
+// without closing the game." A player who kills the app, presses home, or runs
+// out of battery never reaches leaveToLobby(), so a design that only reports
+// duration at the exit loses those sessions entirely.
+//
+// That is worse than missing data, because the loss is BIASED: the sessions that
+// end abruptly skew long, so average play time would read low and look like a
+// retention problem that is not real.
+//
+// SO THE HEARTBEAT CARRIES THE ANSWER. Every 30 seconds a `heartbeat` event goes
+// out carrying the total time played so far, which makes the rule for reading it
+// simple and exit-proof:
+//
+//     time played = duration_seconds on the LAST event received
+//
+// No end event required. However the session dies, the answer is already
+// recorded, accurate to within one interval. `game_end` is still sent on a clean
+// exit, where it is exact and marks the session properly closed.
+//
+// IT COSTS NO GA4 CONFIGURATION. Registration is per PARAMETER, not per event,
+// and `duration_seconds` and `level_id` are already registered -- so a new event
+// reusing them needs nothing set up. Two events a minute against the bridge's
+// 60/minute limit is also nothing.
+//
+// TIME PLAYED IS ACTIVE TIME, NOT WALL CLOCK. The clock stops while the page is
+// hidden and resumes when it comes back. A player who backgrounds the app over
+// lunch and returns has not played for an hour, and a duration that said so
+// would poison every average it touches.
+const HEARTBEAT_MS = 30000;
+
+/** Whether a session is open at all. Distinct from `playedMs > 0`, since a
+ *  session that has just begun has legitimately played for zero. */
+let inSession = false;
+/** Active milliseconds banked from previous visible stretches. */
+let playedMs = 0;
+/** When the current visible stretch began, or 0 while hidden. */
+let resumedAt = 0;
+let beat = null;
 let runs = 0;
 /** Attempts per surface id, within this session. The question is "did they keep
  *  trying now", not a lifetime total. */
@@ -133,6 +176,52 @@ const attempts = Object.create(null);
  * facts a level_end needs are the facts that were true when it began.
  */
 let current = null;
+
+/** Active seconds played this session, counting the stretch in progress. */
+function playedSeconds() {
+  const live = resumedAt ? now() - resumedAt : 0;
+  return Math.max(0, Math.round((playedMs + live) / 1000));
+}
+
+/** One heartbeat. Carries the level so a long session can still be attributed
+ *  to where it was spent, and skipped entirely outside a session. */
+function sendBeat(force) {
+  if (!inSession) return;
+  // The interval keeps firing while the page is hidden -- throttled, but firing
+  // -- and every one of those would re-send the same frozen number. The hide
+  // handler sends one deliberately (force) and then there is nothing to say
+  // until the page comes back.
+  if (!resumedAt && !force) return;
+  const params = { duration_seconds: playedSeconds() };
+  if (current) params.level_id = current.id;
+  send(EV.HEARTBEAT, params);
+}
+
+/**
+ * Page visibility, installed once and never removed.
+ *
+ * ON HIDE the clock stops and a final heartbeat goes out immediately, because
+ * backgrounding is how most app shutdowns begin -- this is usually the last
+ * moment anything can be sent, and `visibilitychange` fires on Android where
+ * `pagehide` often does not.
+ *
+ * HIDING DOES NOT END THE SESSION. A player who takes a call and comes back is
+ * still in the same visit, and ending it here would either lose the rest or
+ * start a phantom second session.
+ */
+function watchVisibility() {
+  if (typeof document === 'undefined' || watchVisibility.done) return;
+  watchVisibility.done = true;
+  document.addEventListener('visibilitychange', () => {
+    if (!inSession) return;
+    if (document.visibilityState === 'hidden') {
+      if (resumedAt) { playedMs += now() - resumedAt; resumedAt = 0; }
+      sendBeat(true);
+    } else if (!resumedAt) {
+      resumedAt = now();
+    }
+  });
+}
 
 /** The parameters every level event carries. Nova sends no `place`, so there is
  *  room inside the bridge's nine-parameter budget without choosing. */
@@ -155,7 +244,14 @@ export const analytics = {
    * people retry.
    */
   runStarted() {
-    if (!sessionStart) sessionStart = now();
+    if (!inSession) {
+      inSession = true;
+      playedMs = 0;
+      resumedAt = now();
+      watchVisibility();
+      if (beat) clearInterval(beat);
+      beat = setInterval(sendBeat, HEARTBEAT_MS);
+    }
     runs += 1;
     current = null;
     send(EV.START, { mode: 'campaign' });
@@ -231,9 +327,12 @@ export const analytics = {
   /** The player has left the game for the app. Pairs with the launcher's
    *  open_game and carries the two numbers that event cannot know. */
   gameLeft() {
-    if (!sessionStart) return; // never played; the launcher already logged the open
-    send(EV.END, { duration_seconds: whole((now() - sessionStart) / 1000), runs });
-    sessionStart = 0;
+    if (!inSession) return; // never played; the launcher already logged the open
+    if (resumedAt) { playedMs += now() - resumedAt; resumedAt = 0; }
+    send(EV.END, { duration_seconds: playedSeconds(), runs });
+    if (beat) { clearInterval(beat); beat = null; }
+    inSession = false;
+    playedMs = 0;
     runs = 0;
     current = null;
   },

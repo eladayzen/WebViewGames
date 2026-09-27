@@ -131,6 +131,17 @@ async function boot() {
   // back to a direct nav:back if this module never loaded. That fallback is
   // deliberate: a game that fails to boot must still be escapable.
   const leaveToLobby = () => {
+    /**
+     * THE ONE PLACE THE PLAYER DELIBERATELY LEAVES, so it is where the session
+     * closes. Pairs with the launcher's open_game and carries the two things
+     * that event cannot know: how long they played and how many runs they took.
+     *
+     * Reported BEFORE handing control back, because after this the page is being
+     * torn down and there is no later. It is not the only safety net though --
+     * see the heartbeat in systems/analytics.js, which is what covers every exit
+     * that never reaches this line.
+     */
+    analytics.gameLeft();
     if (window.GoBalance && typeof window.GoBalance.back === 'function') {
       window.GoBalance.back();
       return;
