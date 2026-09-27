@@ -105,10 +105,12 @@ export async function createRenderer(canvas) {
   const style = (size, fill) => new TextStyle({
     fill, fontFamily: 'system-ui, sans-serif', fontSize: size, fontWeight: '700',
   });
-  const scoreText = new Text({ text: '', style: style(38, '#eaf2ff') });
-  scoreText.position.set(46, 74);
-  const statsText = new Text({ text: '', style: style(22, '#8fb4d9') });
-  statsText.position.set(46, 146);
+  const scoreText = new Text({ text: '', style: style(34, '#17223d') });
+  scoreText.position.set(60, 66);
+  // The dev readout sits BELOW the plaque rather than inside it -- it is not
+  // part of the game's furniture and should not look like it is.
+  const statsText = new Text({ text: '', style: style(20, '#5d7597') });
+  statsText.position.set(30, 166);
   const heartsG = new Graphics();
   // Above everything, for the scene-change flash.
   const hudFlash = new Graphics();
@@ -121,7 +123,8 @@ export async function createRenderer(canvas) {
   yayText.anchor.set(0.5);
   levelText.anchor.set(0.5);
   const xpG = new Graphics();
-  hud.addChild(scoreText, statsText, heartsG, xpG, levelG, yayText, levelText, hudFlash);
+  // xpG is the plaque and must sit UNDER the text it holds.
+  hud.addChild(xpG, scoreText, statsText, heartsG, levelG, yayText, levelText, hudFlash);
 
   // --- THE SCENE ----------------------------------------------------------
   //
@@ -606,19 +609,25 @@ export async function createRenderer(canvas) {
     const y = h.y + Math.sin(h.bob) * 5;
     const pulse = 1 + Math.sin(time * 5 + h.bob) * 0.10;
     g.circle(h.x, y, r * 1.5 * pulse).fill({ color: PALETTE.heart, alpha: 0.18 });
-    heartPath(h.x, y, r * pulse);
+    heartPath(g, h.x, y, r * pulse);
     g.fill({ color: PALETTE.heart });
-    heartPath(h.x, y, r * pulse);
+    heartPath(g, h.x, y, r * pulse);
     g.stroke({ width: 4, color: PALETTE.outline });
     g.circle(h.x - r * 0.34, y - r * 0.30, r * 0.18).fill({ color: 0xffffff, alpha: 0.7 });
   }
 
-  /** A heart outline: two lobes into a point. */
-  function heartPath(cx, cy, r) {
-    g.moveTo(cx, cy + r * 0.85);
-    g.bezierCurveTo(cx - r * 1.30, cy - r * 0.10, cx - r * 0.62, cy - r * 1.05, cx, cy - r * 0.32);
-    g.bezierCurveTo(cx + r * 0.62, cy - r * 1.05, cx + r * 1.30, cy - r * 0.10, cx, cy + r * 0.85);
-    g.closePath();
+  /** A heart outline: two lobes into a point.
+   *
+   *  TAKES ITS TARGET. It used to write into `g` unconditionally, which was fine
+   *  while only the world drew hearts -- then the HUD plaque called it and the
+   *  path went into the world layer while the HUD's `fill()` landed on whatever
+   *  path it had open. The plaque came out solid red. A drawing helper that
+   *  hard-codes its surface is a trap the second caller always falls into. */
+  function heartPath(target, cx, cy, r) {
+    target.moveTo(cx, cy + r * 0.85);
+    target.bezierCurveTo(cx - r * 1.30, cy - r * 0.10, cx - r * 0.62, cy - r * 1.05, cx, cy - r * 0.32);
+    target.bezierCurveTo(cx + r * 0.62, cy - r * 1.05, cx + r * 1.30, cy - r * 0.10, cx, cy + r * 0.85);
+    target.closePath();
   }
 
   function drawCoin(c) {
@@ -974,37 +983,55 @@ export async function createRenderer(canvas) {
     levelText.alpha = alpha;
   }
 
-  /** A thin XP bar under the score. Deliberately small and unlabelled: it is
-   *  there so the popup is not a surprise out of nowhere, not to be read. */
-  function drawXpBar(w) {
+  /**
+   * THE HUD AS ONE PLAQUE, in the same recipe as the end screens and the
+   * monsters: cream fill, thick dark outline, chunky shapes.
+   *
+   * Grouping the hearts, the score and the XP bar into a single object is most
+   * of the change. Three separate readouts floating on a starfield read as
+   * debug text laid over a game; one plaque reads as part of it -- and a child
+   * looks at one thing instead of hunting three.
+   */
+  function drawPlaque(w) {
+    const x = 26, y = 20, wid = 340, hgt = 132, r = 26;
+    xpG.clear();
+    xpG.roundRect(x, y, wid, hgt, r).fill({ color: 0xfff6e5 });
+    // The gloss every surface in this game carries, as a lift at the top.
+    xpG.roundRect(x + 8, y + 7, wid - 16, hgt * 0.34, r * 0.7)
+       .fill({ color: 0xffffff, alpha: 0.55 });
+    xpG.roundRect(x, y, wid, hgt, r).stroke({ width: 7, color: PALETTE.outline });
+
+    // HEARTS, as hearts. They were circles -- a red dot is a dot, and the shape
+    // is what says "life" to someone who cannot read the word.
+    for (let i = 0; i < PLAYER.hearts; i++) {
+      const on = i < w.player.hearts;
+      const hx = x + 34 + i * 44;
+      const hy = y + 36;
+      heartPath(xpG, hx, hy, 15);
+      xpG.fill({ color: on ? PALETTE.heart : 0xd8cdb6 });
+      heartPath(xpG, hx, hy, 15);
+      xpG.stroke({ width: 4.5, color: PALETTE.outline, alpha: on ? 1 : 0.55 });
+    }
+
+    // The XP bar, inset and outlined like everything else.
     const need = Math.round(XP.base * Math.pow(w.level, XP.curve));
     const frac = Math.max(0, Math.min(1, w.xp / need));
-    // y=112 sits between the score and the stats block. It was 156, which is
-    // inside the two-line stats readout -- the bar drew straight over it.
-    const x = 46, y = 112, wid = 260, h = 12;
-    xpG.clear();
-    xpG.roundRect(x, y, wid, h, h / 2).fill({ color: 0x1b2540, alpha: 0.9 });
+    const bx = x + 22, by = y + hgt - 34, bw = wid - 44, bh = 16;
+    xpG.roundRect(bx, by, bw, bh, bh / 2).fill({ color: 0xe0d3ba });
     if (frac > 0) {
-      xpG.roundRect(x, y, Math.max(h, wid * frac), h, h / 2).fill({ color: 0x74d7ff });
+      xpG.roundRect(bx, by, Math.max(bh, bw * frac), bh, bh / 2)
+         .fill({ color: 0x74d7ff });
     }
-    xpG.roundRect(x, y, wid, h, h / 2).stroke({ width: 2, color: 0x0b1020, alpha: 0.8 });
+    xpG.roundRect(bx, by, bw, bh, bh / 2).stroke({ width: 4, color: PALETTE.outline });
   }
 
   function drawHud(w) {
-    drawXpBar(w);
+    drawPlaque(w);
     drawLevelPopup(w);
-    scoreText.text = `LV ${w.level}   ${w.stats.score}   ★ ${w.stats.coins}`;
+    // Dark on cream now, and the level leads: it is the number the sky, the
+    // music and the ship all agree with.
+    scoreText.text = `LV ${w.level}    ${w.stats.score}    \u2605 ${w.stats.coins}`;
     heartsG.clear();
-    // HEARTS LEFT, CHROME RIGHT. They are the two things always on screen, and
-    // splitting them means neither has to move when the other grows -- a fourth
-    // heart or a fourth button changes nothing about the other side.
-    for (let i = 0; i < PLAYER.hearts; i++) {
-      const on = i < w.player.hearts;
-      const x = 46 + i * 52;
-      heartsG.circle(x, 44, 17)
-        .fill({ color: on ? PALETTE.heart : 0x2a3550, alpha: on ? 1 : 0.7 });
-      heartsG.circle(x, 44, 17).stroke({ width: 3, color: PALETTE.outline, alpha: on ? 0.9 : 0.5 });
-    }
     if (!w.stats.showStatsOff) {
       const worst = w.stats.worstReactionS < 90 ? w.stats.worstReactionS.toFixed(2) + 's' : '--';
       statsText.text =
@@ -1013,6 +1040,8 @@ export async function createRenderer(canvas) {
         `clearance x${MONSTERS.passClearanceMul.toFixed(2)}\n` +
         `passes ${w.stats.passes}   near ${w.stats.nearMisses}   contacts ${w.stats.contacts}   ` +
         `worst reaction ${worst}`;
+    } else {
+      statsText.text = '';
     }
   }
 
