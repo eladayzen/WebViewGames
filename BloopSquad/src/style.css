@@ -1,3 +1,5 @@
+/* The ON states go solid -- a toggled button is the one moment the corner
+   SHOULD draw the eye, and it is also the only time it is not in the way. */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
@@ -601,16 +603,28 @@ body.dev-invincible::after {
   width: 56px;
   height: 56px;
   border-radius: 18px;
-  border: 5px solid #131a2b;
-  background: #fff6e5;
-  color: #17223d;
-  font: 900 20px system-ui, sans-serif;
-  box-shadow: 0 5px 0 #131a2b;
-  transition: transform 70ms, box-shadow 70ms;
+  /* DARK AND TRANSLUCENT, not cream at lower alpha. A light fill faded over a
+     dark field goes muddy grey and still conceals what is behind it -- exactly
+     the failure the HUD plaque had. A dark tint disappears INTO the sky, and the
+     glyph carries its own contrast, so the corner reads either way. Side
+     arrivals enter in the top 42 % of the screen: this corner is not spare. */
+  border: 5px solid rgba(19, 26, 43, 0.75);
+  background: rgba(11, 16, 32, 0.38);
+  color: #fff6e5;
+  font: 900 22px system-ui, sans-serif;
+  /* The glyph's own outline: eight offsets rather than -webkit-text-stroke,
+     which paints over the fill and thins a glyph this small to nothing. */
+  text-shadow:
+     2px 0 0 #131a2b, -2px 0 0 #131a2b, 0 2px 0 #131a2b, 0 -2px 0 #131a2b,
+     1px 1px 0 #131a2b, -1px 1px 0 #131a2b, 1px -1px 0 #131a2b, -1px -1px 0 #131a2b;
+  box-shadow: 0 4px 0 rgba(19, 26, 43, 0.55);
+  transition: transform 70ms, box-shadow 70ms, background 70ms;
 }
 #chrome button:active,
 #settings-button:active,
-#dev-button:active { transform: translateY(4px); box-shadow: 0 1px 0 #131a2b; }
+#dev-button:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(19, 26, 43, 0.55); }
+/* ON states go solid: a toggled button is the one moment this corner SHOULD
+   draw the eye, and also the only time it is not in the way. */
 #settings-button.on { background: #74d7ff; }
 #dev-button.on { background: #2fe3b8; }
 #pause-button.on { background: #ffc93c; }
