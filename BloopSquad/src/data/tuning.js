@@ -797,7 +797,13 @@ export const SKY = {
 // presses. The gate itself is untouched and still works -- this only decides
 // whether it is in the way.
 export const DEV = {
-  alwaysVisible: true,
+  // BACK BEHIND THE GATE. It was true for board testing; the wrench is now
+  // hidden until the seven-second hold on the HUD plus the code, which is where
+  // it belongs before a child is anywhere near this.
+  //
+  // The gate itself never changed and has been working the whole time -- this
+  // flag only ever decided whether it was in the way.
+  alwaysVisible: false,
 };
 
 export const HUD = {
