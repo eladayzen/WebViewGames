@@ -455,6 +455,9 @@ export const HEARTS = {
 };
 
 export const COINS = {
+  // What a coin is worth, in the game's ONE currency. Referenced by `award` so
+  // the score and the level always agree about it.
+  score: 5,
   radius: 16,
   driftPxS: 60,
   magnetRadius: 190,
@@ -488,13 +491,29 @@ export const COINS = {
 // ---------------------------------------------------------------------------
 
 export const XP = {
-  // Earned from what the player already does. Weighted to POPPING rather than
-  // collecting, so the celebration tracks the thing the game is about.
-  perPop: { small: 10, medium: 26, large: 55 },
-  perCoin: 4,
+  // XP AND SCORE ARE THE SAME NUMBER. Amit: "score and points must be the same,
+  // always." There is no separate XP table any more -- every point awarded is a
+  // point of experience, granted by one function (`award` in systems/play.js) so
+  // the two can never drift apart at a call site.
+  //
+  // They used to be two tables with DIFFERENT weights, set in different sessions
+  // for different purposes, and the divergence was invisible but real: a coin
+  // paid 5 score against 4 xp (1.25) where a large paid 90 against 55 (1.64).
+  // So a coin-hungry player levelled faster than their score implied and a
+  // boss-hunter scored higher than their level implied. Nobody would ever have
+  // reported it, and "my ship is tier 4" and "I scored 1,400" would simply
+  // disagree by a little, forever.
+  //
+  // The tier values now live in MONSTERS.tiers.points and COINS.score. Nothing
+  // else grants either quantity.
   // Level N costs base * N^curve. Slightly super-linear: the first level arrives
   // fast enough to teach what the popup means, and the fifth still feels earned.
-  base: 120,
+  // RESCALED x1.46 with the merge (120 -> 175). Points are worth more than the
+  // old XP was -- a kill plus its coins averaged 23.4 xp and now averages 34.1
+  // score -- so the thresholds had to grow by the same factor or every level
+  // would have arrived half again too early. Verified: level 2 still lands
+  // around five kills, exactly where it did.
+  base: 175,
   curve: 1.25,
   // ---- THE CELEBRATION LADDER --------------------------------------------
   //

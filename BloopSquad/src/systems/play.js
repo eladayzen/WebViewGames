@@ -54,8 +54,7 @@ export function popMonster(w, m, rng) {
   // a range rather than one repeated noise.
   playPop(1 - Math.min(1, m.maxHp / 42));
   w.stats.popped++;
-  w.stats.score += m.points;
-  addXp(w, XP.perPop[m.tierName] || 10);
+  award(w, m.points);
   maybeDropHeart(w, m, rng);
   // AFTER the count is incremented: maybeRecruit tests `popped % everyNPops`,
   // and reading the pre-increment value recruits on the wrong pop -- off by one
@@ -308,14 +307,19 @@ export function xpForLevel(level) {
 }
 
 /**
- * Bank experience, and fire the celebration when it crosses.
+ * Award points. THE ONLY WAY EITHER SCORE OR XP CHANGES.
+ *
+ * They are one quantity -- see XP in tuning.js -- and this is what makes that
+ * true rather than merely intended: there is no path that adds to one without
+ * the other, so no future call site can desync them by forgetting.
  *
  * `while`, not `if`: one big pop plus a handful of coins can cross two
  * thresholds at once, and an `if` would swallow the second level silently --
  * the player would watch the bar fill and nothing happen.
  */
-export function addXp(w, amount) {
-  w.xp += amount;
+export function award(w, points) {
+  w.stats.score += points;
+  w.xp += points;
   let need = xpForLevel(w.level);
   while (w.xp >= need) {
     w.xp -= need;
@@ -472,8 +476,7 @@ export function updateCoinsAndPops(w, dt) {
     if (d < PLAYER.radius + COINS.radius) {
       c.alive = false;
       w.stats.coins++;
-      w.stats.score += 5;
-      addXp(w, XP.perCoin);
+      award(w, COINS.score);
       playCoin();
     }
     if (c.t <= 0) c.alive = false;

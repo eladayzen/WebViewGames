@@ -109,17 +109,17 @@ export function createDevPanel(doc, actions) {
 
   // --- XP. The ORGANIC path, and the one to reach for first ----------------
   //
-  // Granting experience runs the real code: addXp crosses the thresholds itself,
+  // Granting points runs the real code: award crosses the thresholds itself,
   // fires the celebration, steps the music layer, moves the sky and evolves the
   // pod -- and it crosses SEVERAL levels at once if the grant is big enough,
-  // which is the case the `while` loop in addXp exists for and the one a jump
+  // which is the case the `while` loop in award exists for and the one a jump
   // can never exercise.
   //
   // JUMP TO LEVEL below sets the number directly. That is the right tool for
   // "show me tier 7's ship" and the wrong one for "does levelling work", because
   // it skips the entire path that a player actually takes. Both are here because
   // they answer different questions.
-  section('GRANT XP');
+  section('GRANT POINTS');
   chips(['+100', '+500', '+2K', 'NEXT LV'], (i) => {
     if (i === 3) grantXp(xpToNext());
     else grantXp([100, 500, 2000][i]);
