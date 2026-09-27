@@ -27,6 +27,7 @@ import { updateFiring, updateToyPickups, equip, updateChain } from './systems/to
 import { createSettingsPanel } from './ui/settingsPanel.js';
 import { installDevUnlock } from './ui/devUnlock.js';
 import { createDevPanel } from './ui/devPanel.js';
+import { createEndings } from './ui/endings.js';
 import {
   initAudio, startMusic, stopMusic, setAudioPaused, playGameOver,
   getAudioPrefs, setSfxEnabled, setMusicEnabled, setMusicLevel,
@@ -113,6 +114,11 @@ async function boot() {
       worstReactionS: s.worstReactionS < 90 ? +s.worstReactionS.toFixed(2) : null,
       floorS: MONSTERS.reactionFloorS,
       score: s.score, popped: s.popped, coins: s.coins, toysUsed: s.toysUsed,
+      // The headline pair, and they are the SAME quantity now -- see `award`.
+      // `level` was missing here and the quit screen rendered "level undefined",
+      // which is what a stats line built from a report nobody re-checked looks
+      // like.
+      level: world.level,
       toys: world.toys.map((inst) => inst.kind.id),
       minutes: +(world.time / 60).toFixed(2),
       ramp: +(difficulty01(world.time) * 100).toFixed(0),
@@ -147,21 +153,17 @@ async function boot() {
   });
 
   function showGameOver() {
-    const el = document.getElementById('gameover-overlay');
-    if (el) el.classList.remove('hidden');
     playGameOver();
-    const s = document.getElementById('gameover-stats');
-    if (s) {
-      const r = report();
-      s.textContent = `${r.score} points · ${r.popped} popped · ${r.contacts} contacts`;
-    }
+    endings.showDeath();
     // eslint-disable-next-line no-console
     console.log('[bloop] run report', report());
   }
 
   function restart() {
-    const el = document.getElementById('gameover-overlay');
-    if (el) el.classList.add('hidden');
+    endings.hideDeath();
+    endings.hideQuitBoard();
+    endings.closeConfirm();
+    setPaused(false);
     resetWorld(world);
   }
 
@@ -183,6 +185,33 @@ async function boot() {
     pauseBtn?.classList.toggle('on', v);
     setAudioPaused(v);
   }
+  // Remembered across the confirm so that declining restores the state the
+  // player was actually in. Someone who paused, reached for the X, then changed
+  // their mind should still be paused -- blindly resuming drops them into a live
+  // game they had deliberately stopped.
+  let pausedBeforeConfirm = false;
+
+  function leaveToLobby() {
+    if (window.GoBalance?.back) return window.GoBalance.back();
+    if (window.Unity) window.Unity.call('nav:back');
+  }
+
+  const endings = createEndings(document, {
+    getScore: () => world.stats.score,
+    getStatsLine: () => {
+      const r = report();
+      return `${r.score} points · ${r.popped} popped · level ${r.level}`;
+    },
+    restart: () => restart(),
+    leave: () => leaveToLobby(),
+    // Restore the state the player was ACTUALLY in, not "unpaused". Someone who
+    // paused, reached for the X, then changed their mind should still be paused.
+    onStay: () => {
+      endings.closeConfirm();
+      setPaused(pausedBeforeConfirm);
+    },
+  });
+
   const pauseBtn = document.getElementById('pause-button');
   pauseBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -214,9 +243,24 @@ async function boot() {
 
   // The X is the only way out on the board. The inline fallback in index.html
   // covers the case where this module never loads.
+  /**
+   * The X is the only way out on a board, so it must ALWAYS work -- and it must
+   * not end a run on a single mis-tap.
+   *
+   * Confirm only when there is a run to lose. From a screen the player is
+   * already stopped on (the death screen, the quit board, an open confirm),
+   * asking "are you sure?" is noise, so those leave immediately.
+   *
+   * The confirm PAUSES, precisely because the playfield stays visible
+   * underneath: leaving it running means watching yourself die while deciding.
+   */
   window.__gbBack = () => {
-    if (window.GoBalance?.back) return window.GoBalance.back();
-    if (window.Unity) window.Unity.call('nav:back');
+    if (endings.isQuitOpen()) return leaveToLobby();
+    if (endings.isConfirmOpen()) return leaveToLobby();
+    if (world.state !== GameState.RUNNING) return leaveToLobby();
+    pausedBeforeConfirm = world.paused;
+    setPaused(true);
+    endings.openConfirm();
   };
 
   // --- DEV TOOLS, behind the hold-and-code -------------------------------
@@ -359,6 +403,15 @@ async function boot() {
     world.levelPopup.total = 12;
     world.levelPopup.t = 12 * 0.75;
   }
+
+  // ?screen=confirm|quit|dead opens an end-of-run screen directly. They are
+  // otherwise only reachable by dying or by pressing the X mid-run, neither of
+  // which a headless screenshot can do -- and a screen nobody has looked at is a
+  // screen that does not work.
+  const screen = q.get('screen');
+  if (screen === 'confirm') { setPaused(true); endings.openConfirm(); }
+  if (screen === 'quit') endings.showQuitBoard();
+  if (screen === 'dead') { world.state = GameState.FAILED; showGameOver(); }
 
   // ?art=1 puts one of every tier on screen at fixed positions, immediately.
   // The art cannot be reviewed from a headless screenshot otherwise: virtual

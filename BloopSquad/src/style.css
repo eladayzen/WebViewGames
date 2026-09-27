@@ -450,3 +450,70 @@ body.dev-invincible::after {
   flex: 0 0 auto;
   margin: 0;
 }
+
+/* ---------------------------------------------------------------------------
+   END-OF-RUN SCREENS -- structure and class names follow RooftopNinja, which is
+   the QA'd refinement of this same flow. The quit board and the confirm share a
+   card so the two endings look like one game.
+   --------------------------------------------------------------------------- */
+
+.modal-overlay,
+.board-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* The CONFIRM is a modal over the paused playfield: a light scrim only, because
+   the player has to see the run they are being asked to abandon. The quit BOARD
+   is a screen and may cover it -- that run is already over. */
+.modal-overlay { background: rgba(6, 10, 22, 0.55); }
+.board-screen  { background: rgba(6, 10, 22, 0.92); }
+.modal-overlay.hidden, .board-screen.hidden { display: none !important; }
+
+.board-card {
+  min-width: 300px;
+  max-width: 86vw;
+  padding: 26px 30px;
+  border-radius: 20px;
+  background: rgba(12, 18, 34, 0.98);
+  border: 2px solid rgba(116, 215, 255, 0.35);
+  color: #eaf2ff;
+  text-align: center;
+}
+.board-title { font: 800 30px system-ui, sans-serif; letter-spacing: 0.06em; }
+.board-sub   { font: 600 15px system-ui, sans-serif; color: #8fb4d9; margin-top: 8px; }
+.board-buttons { display: flex; gap: 12px; justify-content: center; margin-top: 20px; }
+.board-buttons button {
+  min-width: 140px; padding: 14px 18px; border: none; border-radius: 14px;
+  font: 700 15px system-ui, sans-serif; letter-spacing: 0.04em; cursor: pointer;
+  background: #74d7ff; color: #06121f;
+}
+.board-buttons button + button { background: rgba(40, 56, 92, 0.95); color: #eaf2ff; }
+
+/* The board itself, shared by the death screen and the quit screen. */
+#scoreboard, #quit-scoreboard { margin-top: 18px; text-align: left; }
+#scoreboard.hidden, #quit-scoreboard.hidden { display: none !important; }
+#scoreboard-title, #quit-scoreboard-title {
+  font: 700 12px system-ui, sans-serif; letter-spacing: 0.14em; color: #8fb4d9;
+  margin-bottom: 8px; text-align: center;
+}
+#scoreboard-rows, #quit-scoreboard-rows { list-style: none; margin: 0; padding: 0; }
+.board-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 4px; font: 600 15px system-ui, sans-serif;
+}
+.board-row.is-you { background: rgba(116, 215, 255, 0.14); border-radius: 8px; }
+.board-rank { width: 28px; text-align: right; color: #8fb4d9; font-weight: 700; }
+/* Identity is DERIVED from avatarIndex, never mirrored from the app's art --
+   the page cannot reach it and a copy goes stale the day the app redraws one. */
+.board-dot {
+  width: 26px; height: 26px; border-radius: 999px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  font: 800 13px system-ui, sans-serif; color: #10203a;
+}
+.board-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-score { font-weight: 800; }
+.board-sep { text-align: center; color: #4a5f80; padding: 2px 0; }

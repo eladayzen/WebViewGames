@@ -74,6 +74,42 @@
 
     <div id="stage"><canvas id="game"></canvas></div>
 
+    <!-- QUIT CONFIRM. A modal over the PAUSED playfield, not a screen: the
+         player has to see the run they are being asked to abandon, so this must
+         not paint over the field. Only ever shown mid-run -- asking "are you
+         sure?" over a screen the player already chose to be on is noise. -->
+    <div id="confirm-overlay" class="modal-overlay hidden">
+      <div class="board-card">
+        <div class="board-title">QUIT?</div>
+        <div class="board-sub">Your score still counts.</div>
+        <div class="board-buttons">
+          <button id="confirm-stay" type="button">KEEP PLAYING</button>
+          <button id="confirm-quit" type="button">QUIT</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- THE QUIT BOARD, shown after confirming. Its OWN ids (quit-again /
+         quit-leave), deliberately NOT #gameover-overlay / #restart-button:
+         the host synth-clicks #restart-button whenever an element with the id
+         #gameover-overlay is visible, so reusing them here would fire a restart
+         behind these buttons. No timer either -- the player chose to stop, and
+         a screen they pressed a button to reach should wait for them. -->
+    <div id="quit-overlay" class="board-screen hidden">
+      <div class="board-card">
+        <div id="quit-title" class="board-title">RUN ENDED</div>
+        <div id="quit-stats" class="board-sub"></div>
+        <div id="quit-scoreboard" class="hidden">
+          <div id="quit-scoreboard-title">BEST RUNS</div>
+          <ol id="quit-scoreboard-rows"></ol>
+        </div>
+        <div class="board-buttons">
+          <button id="quit-again" type="button">PLAY AGAIN</button>
+          <button id="quit-leave" type="button">QUIT</button>
+        </div>
+      </div>
+    </div>
+
     <!-- The host synth-clicks #restart-button whenever an element with the id
          #gameover-overlay is visible, so exactly one of each may exist and no
          other screen may reuse these ids. -->
@@ -81,6 +117,14 @@
       <div id="gameover-card">
         <h1>OOPS!</h1>
         <p id="gameover-stats"></p>
+        <!-- The family board. Hidden outside the app and when empty, and
+             deliberately ABOVE #restart-button: the host synth-clicks that
+             button while this overlay is visible, so the reading order has to
+             put the board before the thing that dismisses it. -->
+        <div id="scoreboard" class="hidden">
+          <div id="scoreboard-title">BEST RUNS</div>
+          <ol id="scoreboard-rows"></ol>
+        </div>
         <button id="restart-button" type="button">PLAY AGAIN</button>
       </div>
     </div>
