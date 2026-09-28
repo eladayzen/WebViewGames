@@ -200,13 +200,22 @@ async function boot() {
      *
      * Before the first level is reported, so the stream reads forward.
      */
-    analytics.runStarted();
-    reportLevelStart();
     endings.hideDeath();
     endings.hideQuitBoard();
     endings.closeConfirm();
     setPaused(false);
     resetWorld(world);
+    /**
+     * AFTER resetWorld(), and that ordering is the whole point.
+     *
+     * The first cut reported here BEFORE the reset, so level_start read the level
+     * of the run that had just ended -- a player who died on level 3 began their
+     * next run reported as "level 3", and the ladder then counted DOWN as the
+     * real level climbed from 1. Caught by reading the dashboard against a real
+     * session, not by reading the code.
+     */
+    analytics.runStarted();
+    reportLevelStart();
   }
 
   document.getElementById('restart-button')?.addEventListener('click', restart);
