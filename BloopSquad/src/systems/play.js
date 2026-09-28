@@ -2,6 +2,7 @@
 // the moment any of it grows a second opinion it should split.
 
 import { BULLETS, MONSTERS, COINS, HEARTS, PLAYER, SQUAD, TOYS, XP, DESIGN_W, DESIGN_H } from '../data/tuning.js';
+import { analytics } from './analytics.js';
 import {
   maybeDropToy, steerHomingBullets, updateBuddies, updateChainBombs,
   consumeShield, updatePunch,
@@ -323,7 +324,13 @@ export function award(w, points) {
   let need = xpForLevel(w.level);
   while (w.xp >= need) {
     w.xp -= need;
+    // ANALYTICS, either side of the increment: the level just finished is
+    // cleared, the new one begins. Reported from HERE rather than main.js
+    // because one award can cross SEVERAL levels when a big payout lands,
+    // and only this loop knows that.
+    analytics.levelCleared(w.stats.score);
     w.level++;
+    analytics.levelStarted(`level_${w.level}`, w.level);
     celebrate(w, w.level);
     playLevelUp(w.level);
     // The bed gains a voice at 3, 5, 7 and 10. Set here rather than polled, so

@@ -13,6 +13,8 @@
 // audio come from the shell once these two answers exist.
 
 import { createRenderer } from './render/renderer.js';
+import { installGbSdk } from './systems/gbSdk.js';
+import { analytics } from './systems/analytics.js';
 import { createLoop } from './core/loop.js';
 import { makeRng } from './core/rng.js';
 import { createWorld, resetWorld, GameState } from './core/state.js';
@@ -51,6 +53,17 @@ async function boot() {
   const rng = makeRng(0x1005);
   const world = createWorld();
   world.state = GameState.RUNNING;
+  /**
+   * THE FIRST RUN OF A SESSION STARTS HERE, not in restart().
+   *
+   * There is no title screen and no countdown: boot builds a world already
+   * RUNNING, which is the SDK contract -- the first playable state is reached
+   * on load with no key press. restart() only covers the SECOND run onward, so
+   * hooking it alone reported nothing at all for anyone who played once and
+   * left, which is most first sessions. Caught on the wire, not in review.
+   */
+  analytics.runStarted();
+  analytics.levelStarted(`level_${world.level}`, world.level);
 
   function update(dt) {
     if (world.paused || world.state !== GameState.RUNNING) return;
@@ -91,6 +104,9 @@ async function boot() {
     }
 
     if (!world.player.alive) {
+      // BEFORE the state changes: which level they died on, and how far into
+      // its XP bar they were, are facts still true here and gone a line later.
+      reportLevelFailed();
       world.state = GameState.FAILED;
       showGameOver();
     }
@@ -159,7 +175,33 @@ async function boot() {
     console.log('[bloop] run report', report());
   }
 
+  /**
+   * The analytics view of where a run is. Two readers, so the mapping from this
+   * game's shape to the shared vocabulary lives in one place.
+   *
+   * A LEVEL IS A LEVEL -- the easiest mapping of the five games, since this one
+   * already uses the word. Progress within one is progress along its XP bar,
+   * which the HUD already computes the same way.
+   */
+  function reportLevelStart() {
+    analytics.levelStarted(`level_${world.level}`, world.level);
+  }
+
+  function reportLevelFailed() {
+    const need = Math.max(1, xpForLevel(world.level));
+    analytics.levelFailed(world.stats.score, world.xp, need);
+  }
+
   function restart() {
+    /**
+     * A RUN BEGINS HERE. resetWorld() below puts the state back to RUNNING and
+     * the level back to one, so this is the only entry a fresh run has -- the
+     * restart button, and the boot path that calls it.
+     *
+     * Before the first level is reported, so the stream reads forward.
+     */
+    analytics.runStarted();
+    reportLevelStart();
     endings.hideDeath();
     endings.hideQuitBoard();
     endings.closeConfirm();
@@ -192,6 +234,12 @@ async function boot() {
   let pausedBeforeConfirm = false;
 
   function leaveToLobby() {
+    /**
+     * THE ONE PLACE THE PLAYER DELIBERATELY LEAVES, so it is where the session
+     * closes. The heartbeat in systems/analytics.js covers every exit that never
+     * reaches this line -- an app killed from the switcher, a flat battery.
+     */
+    analytics.gameLeft();
     if (window.GoBalance?.back) return window.GoBalance.back();
     if (window.Unity) window.Unity.call('nav:back');
   }
@@ -447,5 +495,14 @@ async function boot() {
     world.hearts.push({ alive: true, x: DESIGN_W * 0.09, y: DESIGN_H * 0.62, t: 999, bob: 0 });
   }
 }
+
+/**
+ * TEACH THE HOST'S SDK ONE MORE METHOD, before boot can use it.
+ *
+ * The app injects its own GoBalance SDK as the first script in <head>, and that
+ * SDK has no analytics call -- see systems/gbSdk.js. This adds `logEvent` and
+ * touches nothing else. A no-op outside the WebView.
+ */
+installGbSdk();
 
 boot();
