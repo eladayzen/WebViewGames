@@ -105,6 +105,8 @@ import {
 } from '../data/spawnConfig.js';
 import { PLAYER_RUN_FRAMES, RUN_FRAME_DURATION } from '../data/playerSprite.js';
 import { COIN_TYPES } from '../data/coinTypes.js';
+import { installPerfHud } from '../systems/perfHud.js';
+import { pixelRatioFor } from '../systems/pixelBudget.js';
 import {
   ParticlePool, spawnDustPuff, spawnEnemyPoof, spawnCoinSparkle,
   createSpeedStreaks, updateSpeedStreaks,
@@ -124,8 +126,23 @@ function boot() {
   const stage = document.getElementById('stage');
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // Opt-in only: ?budget=N, default unchanged from what ships. Whether a pixel
+  // budget helps HERE is unmeasured -- the identical change bought Skateboard
+  // Extreme 40ms and Nova 0.4ms, so it demonstrably does not generalise.
+  renderer.setPixelRatio(pixelRatioFor(window.innerWidth, window.innerHeight));
   app.appendChild(renderer.domElement);
+
+  const perf = installPerfHud({
+    canvas: renderer.domElement,
+    label: 'roborun',
+    probe: () => {
+      const r = renderer.info.render;
+      return [`${r.calls} calls  ${(r.triangles / 1000).toFixed(1)}k tris`];
+    },
+  });
+  // A handle for measuring what those draw calls ARE, from the console or a
+  // driver script. Diagnostic only, and it holds no state of its own.
+  window.__perfScene = () => scene;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(CAMERA_FOV, ASPECT_W / ASPECT_H, 0.1, 220);
@@ -984,6 +1001,7 @@ function boot() {
   const clock = new THREE.Clock();
   function tick() {
     requestAnimationFrame(tick);
+    perf.mark();
     const dt = Math.min(clock.getDelta(), 1 / 30);
 
     // Intro tutorial. Runs on dt like every other timed effect here, so
@@ -1457,6 +1475,7 @@ function boot() {
     updateCameraRig(cameraRig, player.laneX, player.elevationY, paused ? 0 : dt);
 
     renderer.render(scene, camera);
+    perf.frame();
   }
 
   fullReset();
