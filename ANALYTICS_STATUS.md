@@ -63,6 +63,48 @@ adds the one method the host lacks and touches nothing else.
 host injects at serve time. Check `WebGameController` before concluding anything
 about what a web game has available to it.
 
+## The games, and how each one maps
+
+Five games report now, all in the same vocabulary, so none of them needed a
+single new GA4 definition. The mapping is the only thing that differs, and in
+four of the five it turned out to be a read of something the game already
+tracked for its own HUD rather than new bookkeeping.
+
+| game | `game` value | a LEVEL is | `mode` | progress_pct is |
+|---|---|---|---|---|
+| Skateboard Extreme | `HillBombSunsetRidge` | a mission or a race | `missions` / `speedRace` | objectives met, or metres of the course |
+| Nova Vanguard | `NovaVanguard` | a surface | `campaign` | waves cleared on that surface |
+| Rooftop Ninja | `RooftopNinja` | a stage | `arcade` | fraction of the stage's score band |
+| RoboRun | `RoboRun` | a tier | `arcade` | `progressAt().frac`, the HUD's own bar |
+| Bloop Squad | `BloopSquad` | a level | `party` | position along the level's XP bar |
+
+### Engine and skin, for when someone asks
+
+Two of these share a codebase with a TMNT title. `game` already keeps them
+apart, because the bridge takes it from the StreamingAssets FOLDER and each
+product has its own -- so nothing blends today and no extra dimension is needed.
+
+What the table below adds is the ability to GROUP: to ask how an engine performs
+across both skins, or whether the licensed IP retains better than the original.
+Deliberately kept here rather than as a `skin_type` parameter, because a
+dimension that is usually a restatement of another one invites the wrong query
+-- someone filters on skin instead of game and quietly gets a subset.
+
+| product | engine | skin |
+|---|---|---|
+| `TmntSkateSlice` | skate-slice | TMNT |
+| `RooftopNinja` | skate-slice | original |
+| `HalfShellHustle` | hustle | TMNT |
+| `RoboRun` | hustle | original |
+
+ONE THING WOULD CHANGE THIS. If a reskin ever ships INTO AN EXISTING FOLDER --
+replacing an art set in place rather than getting its own product -- then `game`
+stops distinguishing them and two products blend into one row, retroactively and
+invisibly. Add the dimension BEFORE doing that, not after.
+
+A genuinely separate game is not that case: it gets its own folder and its own
+`game` value for free.
+
 ## What is blocking it
 
 `elad@particula-tech.com` — the account the automation Chrome is signed into —
