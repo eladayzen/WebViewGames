@@ -273,6 +273,23 @@
         </div>
       </div>
 
+      <!-- Board max-angle calibration wizard (ui/calibrationWizard.js,
+           systems/boardCalibration.js) -- reachable from the player settings
+           panel's CALIBRATE row, feature-detected against
+           window.GoBalance.getMaxAngle (hidden entirely outside the app or
+           on a build before the host added it). Reuses the SAME board art
+           the intro tutorial uses (.intro-board, gobalance_horizontal_board.png)
+           but its rotation is driven LIVE by the real tilt sample during the
+           wizard, not a canned demo sweep -- direct request: "you have that
+           asset already... even animation of it tilting sideways." Own
+           overlay/ids, never #gameover-overlay. -->
+      <div id="calibration-overlay" class="overlay hidden">
+        <div id="calibration-title" class="intro-step-title">STAND ON THE BOARD</div>
+        <div id="calibration-board" class="intro-board"></div>
+        <div id="calibration-sub" class="calibration-sub">Get comfortable, then lean all the way RIGHT.</div>
+        <button id="calibration-cancel">CANCEL</button>
+      </div>
+
       <!-- First-run onboarding, direct feedback: two auto-cycling explainer
            steps ("really explanatory", an actual moving diagram, not a
            screenshot with an arrow drawn on it) shown before the world

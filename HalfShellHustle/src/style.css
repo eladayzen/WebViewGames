@@ -1278,6 +1278,43 @@ html, body {
   transition: transform 0.4s ease;
 }
 
+/* --- Board max-angle calibration wizard (ui/calibrationWizard.js) ---
+   Reuses .intro-board's art/sizing above, but its rotation is written
+   directly from JS every poll (systems/boardCalibration.js's onTilt), not
+   toggled between 3 fixed states -- .intro-board's 0.4s eased transition
+   would make live sensor feedback read as laggy/rubbery, so this overrides
+   it to near-instant. */
+#calibration-board {
+  transition: transform 0.05s linear;
+}
+
+.calibration-sub {
+  font-size: 2.6vmin;
+  font-weight: 700;
+  letter-spacing: 0.15vmin;
+  color: #ffd98a;
+  text-align: center;
+  max-width: 70vmin;
+}
+
+#calibration-cancel {
+  margin-top: 6px;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  padding: 10px 26px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #eafcff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#calibration-cancel:active {
+  background: rgba(255, 255, 255, 0.28);
+}
+
 /* Step 1 -- perspective + rotateY, a real 3D lean (the board's left/right
    edge tilts toward/away from the viewer) instead of an in-plane rotateZ
    spin. Direct feedback: a flat rotate reads as STEERING (turning a wheel),

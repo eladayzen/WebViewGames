@@ -67,6 +67,7 @@ import {
 } from '../input/input.js';
 import * as hud from '../ui/hud.js';
 import { initSteeringPanel } from '../ui/steeringPanel.js';
+import { setCalibrationLifecycleHooks } from '../ui/calibrationWizard.js';
 import {
   initDevPanel, setNextThemeHandler, setAddScoreHandler, setShowVictoryHandler,
 } from '../ui/devPanel.js';
@@ -641,6 +642,16 @@ function boot() {
     playSfx('sfx_ui_tap');
     setPaused(!paused);
   });
+
+  // Board calibration wizard (ui/calibrationWizard.js, ui/steeringPanel.js's
+  // CALIBRATE row): pauses the sim while its overlay is up, restoring
+  // whatever pause state was in effect before it opened -- same "restore
+  // prior state, not blind unpause" reasoning as the quit-confirm flow below.
+  let pausedBeforeCalibration = false;
+  setCalibrationLifecycleHooks(
+    () => { pausedBeforeCalibration = paused; setPaused(true); },
+    () => { setPaused(pausedBeforeCalibration); },
+  );
 
   // Leave the game back to the app's games list. Prefer the SDK's back();
   // fall back to the raw native bridge so a game whose module failed to load

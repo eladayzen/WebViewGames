@@ -24,8 +24,10 @@ import {
   getSfxEnabled, setSfxEnabled, getMusicEnabled, setMusicEnabled, playSfx,
 } from '../systems/audio.js';
 import { state, load, applyAll, onSteeringStateChange } from '../systems/steeringSettings.js';
+import { maxAngleAvailable } from '../systems/boardCalibration.js';
 import { createRowPanel } from './panelRows.js';
 import { isDevPanelOpen } from './panelState.js';
+import { initCalibrationWizard } from './calibrationWizard.js';
 
 let panelEl = null;
 let rp = null;
@@ -55,6 +57,7 @@ export function initSteeringPanel() {
   if (!button || !panelEl) return;
 
   rp = createRowPanel(panelEl);
+  const calibration = initCalibrationWizard();
 
   button.addEventListener('click', () => {
     playSfx('sfx_ui_tap');
@@ -91,6 +94,21 @@ export function initSteeringPanel() {
     values: ['ON', 'OFF'],
     get: () => (getMusicEnabled() ? 'ON' : 'OFF'),
     set: (v) => setMusicEnabled(v === 'ON'),
+  });
+  // Direct report: "hard to step right... really weird" -- traced to the
+  // board's own max-tilt-angle setting, not this game's SENSITIVITY dial
+  // (see systems/boardCalibration.js). Feature-detected: hidden behind the
+  // same "NOT AVAILABLE" inline-message convention as every other action row
+  // here rather than omitted outright, so its absence is visibly a build/
+  // platform fact, not a silent gap.
+  rp.addAction({
+    label: 'CALIBRATE BOARD',
+    run: () => {
+      if (!maxAngleAvailable()) return 'NOT AVAILABLE';
+      setPanelOpen(false);
+      calibration.open();
+      return null;
+    },
   });
   rp.addAction({
     label: 'CLOSE',
