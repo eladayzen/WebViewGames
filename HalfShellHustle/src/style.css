@@ -312,9 +312,11 @@ html, body {
 }
 
 /* --- Board steering panel (src/ui/steeringPanel.js) ---
-   Sits under its gear button in the top-right chrome row. Deliberately does
-   NOT pause the game -- the whole point is feeling the difference while
-   actually riding the board, so it overlays a live run. Rows are built in JS. */
+   Sits under its gear button in the top-right chrome row. Pauses the game
+   while open (direct request, 2026-09-29: "settings button should pause the
+   game like pause as well" -- supersedes an earlier "deliberately does NOT
+   pause" design, back when SENSITIVITY tuning was meant to be felt live).
+   Rows are built in JS. */
 #steering-panel {
   position: absolute;
   top: 58px;
@@ -396,6 +398,16 @@ html, body {
   line-height: 1.35;
   opacity: 0.5;
   margin-top: 2px;
+}
+
+/* The "you just calibrated -- press again to change anyway" guard
+   (ui/panelRows.js's addExternalStepper, ui/steeringPanel.js's MAX TILT
+   ANGLE row). Full opacity + a warm color, not just the note's usual muted
+   grey -- this one is a deliberate speed bump, not a passive hint. */
+.sp-note-warn {
+  opacity: 1;
+  color: #ffb43c;
+  font-weight: 700;
 }
 
 .sp-wide {

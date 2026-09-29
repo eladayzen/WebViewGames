@@ -24,19 +24,65 @@ import {
   getSfxEnabled, setSfxEnabled, getMusicEnabled, setMusicEnabled, playSfx,
 } from '../systems/audio.js';
 import { state, load, applyAll, onSteeringStateChange } from '../systems/steeringSettings.js';
-import { maxAngleAvailable } from '../systems/boardCalibration.js';
+import {
+  maxAngleAvailable, getMaxAngle, setMaxAngle, msSinceLastCalibration,
+} from '../systems/boardCalibration.js';
 import { createRowPanel } from './panelRows.js';
 import { isDevPanelOpen } from './panelState.js';
 import { initCalibrationWizard } from './calibrationWizard.js';
 
 let panelEl = null;
 let rp = null;
+let onOpenHook = null;
+let onCloseHook = null;
+
+// MAX TILT ANGLE row state (direct request, 2026-09-29: "a place in the
+// menu that I can see and change manually... below the [CALIBRATE] button").
+// Mirrors the host's {value, min, max} locally -- see setPanelOpen's refetch
+// on every open, so this is never more than one open-panel away from the
+// real value (in particular, right after closing the calibration wizard).
+let maxAngleRow = null;
+let boardAngle = { value: 19, min: 5, max: 45 };
+let boardAngleLoaded = false;
+// Direct request: warn before letting a manual edit silently overwrite a
+// value just measured by the wizard. Armed by the FIRST press within
+// CONFIRM_WINDOW_MS of a calibration; a second press (any direction) within
+// CONFIRM_ARM_MS confirms it, anything else (or letting it expire) cancels.
+const CONFIRM_WINDOW_MS = 15000;
+const CONFIRM_ARM_MS = 4000;
+let pendingConfirm = false;
+let confirmTimer = null;
+
+// main.js supplies these -- direct request: "settings button should pause
+// the game like pause as well" (this panel used to deliberately NOT pause,
+// see this file's own header history; superseded). Same lifecycle-hook
+// pattern as ui/calibrationWizard.js: main.js owns pausing/restoring prior
+// pause state, this file only renders.
+export function setSteeringPanelLifecycleHooks(onOpen, onClose) {
+  onOpenHook = onOpen;
+  onCloseHook = onClose;
+}
 
 function setPanelOpen(open) {
+  const wasOpen = !panelEl.classList.contains('hidden');
+  if (open === wasOpen) return; // no real transition -- don't re-fire the hooks
   panelEl.classList.toggle('hidden', !open);
   if (open) {
     rp.setSelected(0);
     rp.refreshSelection();
+    // Re-fetch MAX TILT ANGLE every time the panel opens -- in particular,
+    // right after closing the calibration wizard, so the row shows the
+    // value that was just measured without needing anything more specific
+    // than "open Settings" to trigger a repaint.
+    if (maxAngleAvailable()) {
+      getMaxAngle().then((applied) => {
+        if (applied) { boardAngle = applied; boardAngleLoaded = true; }
+        if (maxAngleRow) maxAngleRow.refresh();
+      });
+    }
+    if (onOpenHook) onOpenHook();
+  } else if (onCloseHook) {
+    onCloseHook();
   }
 }
 
@@ -108,6 +154,48 @@ export function initSteeringPanel() {
       setPanelOpen(false);
       calibration.open();
       return null;
+    },
+  });
+  // Manual fallback/override for the value CALIBRATE BOARD measures --
+  // direct request. Guarded (see CONFIRM_WINDOW_MS above): a manual step
+  // shortly after a real calibration arms a "press again to change anyway"
+  // warning instead of applying immediately, since a wizard-measured value
+  // being silently overwritten by a stray tap defeats the whole point of
+  // running it.
+  maxAngleRow = rp.addExternalStepper({
+    label: 'MAX TILT ANGLE',
+    get: () => boardAngle.value,
+    fmt: (v) => (boardAngleLoaded ? `${v}°` : '...'),
+    note: 'how far you need to lean for full steering',
+    onStep: (dir) => {
+      if (!maxAngleAvailable()) {
+        maxAngleRow.setNote('NOT AVAILABLE', true);
+        window.setTimeout(() => maxAngleRow.setNote(maxAngleRow.defaultNote, false), 1200);
+        return;
+      }
+      const recentlyCalibrated = msSinceLastCalibration() < CONFIRM_WINDOW_MS;
+      if (recentlyCalibrated && !pendingConfirm) {
+        pendingConfirm = true;
+        maxAngleRow.setNote('You just calibrated -- press again to change anyway.', true);
+        clearTimeout(confirmTimer);
+        confirmTimer = window.setTimeout(() => {
+          pendingConfirm = false;
+          maxAngleRow.setNote(maxAngleRow.defaultNote, false);
+        }, CONFIRM_ARM_MS);
+        return;
+      }
+      if (pendingConfirm) {
+        clearTimeout(confirmTimer);
+        pendingConfirm = false;
+        maxAngleRow.setNote(maxAngleRow.defaultNote, false);
+      }
+      let next = boardAngle.value + dir;
+      if (next > boardAngle.max) next = boardAngle.min;
+      else if (next < boardAngle.min) next = boardAngle.max;
+      setMaxAngle(next).then((applied) => {
+        if (applied) { boardAngle = applied; boardAngleLoaded = true; }
+        maxAngleRow.refresh();
+      });
     },
   });
   rp.addAction({

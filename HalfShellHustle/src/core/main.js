@@ -5,6 +5,11 @@
 
 import * as THREE from 'three';
 import '../style.css';
+// MUST be the first game import: installs window.__gbSensor/window.GoBalance
+// stand-ins before anything else (systems/boardCalibration.js in particular)
+// checks for them. No-op the instant the real host is present -- see the
+// module's own header.
+import '../systems/devSensorMock.js';
 
 import { createStreet, updateStreet, disposeStreet } from '../street/street.js';
 import {
@@ -66,7 +71,7 @@ import {
   updateSteering, pollLaneStep, getLaneTarget, pollJumpPress,
 } from '../input/input.js';
 import * as hud from '../ui/hud.js';
-import { initSteeringPanel } from '../ui/steeringPanel.js';
+import { initSteeringPanel, setSteeringPanelLifecycleHooks } from '../ui/steeringPanel.js';
 import { setCalibrationLifecycleHooks } from '../ui/calibrationWizard.js';
 import {
   initDevPanel, setNextThemeHandler, setAddScoreHandler, setShowVictoryHandler,
@@ -651,6 +656,15 @@ function boot() {
   setCalibrationLifecycleHooks(
     () => { pausedBeforeCalibration = paused; setPaused(true); },
     () => { setPaused(pausedBeforeCalibration); },
+  );
+
+  // Player settings panel (ui/steeringPanel.js): direct request, 2026-09-29,
+  // "settings button should pause the game like pause as well." Same
+  // restore-prior-state pattern as everything else here.
+  let pausedBeforeSettings = false;
+  setSteeringPanelLifecycleHooks(
+    () => { pausedBeforeSettings = paused; setPaused(true); },
+    () => { setPaused(pausedBeforeSettings); },
   );
 
   // Leave the game back to the app's games list. Prefer the SDK's back();

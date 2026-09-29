@@ -90,6 +90,16 @@ const POLL_MS = 16; // ~60Hz, matching the host's own pump rate
 // Safety net only -- if a side's gate never opens (no real board, or a
 // player who can't or won't move that way), don't hang the wizard forever.
 const PER_SIDE_TIMEOUT_MS = 8000;
+// Plausibility bound on the FINAL computed value, checked right before it's
+// persisted -- the host's own 5..45 clamp is a range check, not a
+// plausibility one, and happily accepts both ends. Below 6, a resting hand
+// is full deflection; above 30, the wizard measured something that wasn't a
+// lean (the board picked up, a phone carried through the sample window).
+// Caught on real hardware by the Carve/bobo_play session, same class of bug
+// as span/2 vs min(): a measurement meant to fix "half my range is
+// unreachable" that can instead make it worse if left unchecked.
+const MIN_PLAUSIBLE_DEG = 6;
+const MAX_PLAUSIBLE_DEG = 30;
 
 /**
  * Live-samples one direction's lean. `sign` is +1 (right) or -1 (left).
@@ -98,15 +108,28 @@ const PER_SIDE_TIMEOUT_MS = 8000;
  * movement crosses MOVE_GATE_DEG, so the UI can switch from "keep leaning"
  * to "hold it".
  *
- * Resolves the extreme in DEGREES, SIGNED (positive for right, negative for
- * left) -- deliberately not an absolute value. The percentile itself is
- * taken at the 90th (right) / 10th (left) percentile of the signed samples,
- * NOT 90th for both: the raw reading is mostly-positive while leaning right
- * and mostly-negative while leaning left, so "discount the single overshoot
- * spike at the true extreme" means moving IN from the 100th percentile on
- * the right, but IN from the 0th percentile on the left -- i.e. the 90th and
- * 10th respectively, not the same percentile applied to a signed number both
- * times.
+ * Resolves one of:
+ *   - a NUMBER: the extreme in DEGREES, SIGNED (positive for right, negative
+ *     for left) -- deliberately not an absolute value. The percentile is
+ *     taken at the 90th (right) / 10th (left) percentile of the signed
+ *     samples, NOT 90th for both: the raw reading is mostly-positive while
+ *     leaning right and mostly-negative while leaning left, so "discount the
+ *     single overshoot spike at the true extreme" means moving IN from the
+ *     100th percentile on the right, but IN from the 0th percentile on the
+ *     left -- i.e. the 90th and 10th respectively, not the same percentile
+ *     applied to a signed number both times.
+ *   - `null` if `isCancelled` fired.
+ *   - `'timeout'` if the movement gate never opened -- a side the player
+ *     never attempted (walked away, board disconnected, didn't understand
+ *     the prompt) has NO reading, and must not be reported as one. Caught by
+ *     the Carve/bobo_play session: the old version pushed one sub-gate
+ *     sample and resolved it as a normal reading of ~0 degrees, which a
+ *     timed-out BOTH sides run turns into reach=0 -> computed=0 ->
+ *     setMaxAngle(0) -> the host clamps to its 5-degree floor and PERSISTS
+ *     it device-wide, with nothing on screen having said so. Distinct from
+ *     `null` so the caller can tell "the player stopped this" apart from
+ *     "this side never happened" even though both abort the wizard the same
+ *     way.
  */
 function sampleDirection(sign, { onTilt, onGateOpen, isCancelled } = {}) {
   const moveGateNorm = MOVE_GATE_DEG / WIDEN_DEG;
@@ -118,15 +141,16 @@ function sampleDirection(sign, { onTilt, onGateOpen, isCancelled } = {}) {
     let gateOpenedAt = 0;
     const startedAt = performance.now();
 
-    const finish = (cancelled) => {
+    const finish = (outcome) => {
       clearInterval(timer);
-      if (cancelled) { resolve(null); return; }
+      if (outcome === 'cancelled') { resolve(null); return; }
+      if (outcome === 'timeout') { resolve('timeout'); return; }
       const reading = samples.length ? percentile(samples, p) : 0;
       resolve(reading * WIDEN_DEG);
     };
 
     const timer = setInterval(() => {
-      if (isCancelled && isCancelled()) { finish(true); return; }
+      if (isCancelled && isCancelled()) { finish('cancelled'); return; }
 
       const sensor = window.__gbSensor;
       const x = sensor ? sensor.x : 0;
@@ -140,17 +164,17 @@ function sampleDirection(sign, { onTilt, onGateOpen, isCancelled } = {}) {
           gateOpenedAt = now;
           if (onGateOpen) onGateOpen();
         } else if (now - startedAt >= PER_SIDE_TIMEOUT_MS) {
-          // Never moved far enough -- fall back to whatever raw samples
-          // exist rather than hanging the wizard forever.
-          samples.push(x);
-          finish(false);
+          // Never moved far enough -- a genuine failure, not a sample. See
+          // this function's own doc comment above for why this must not
+          // resolve a number.
+          finish('timeout');
           return;
         }
       }
       if (gateOpen) {
         samples.push(x);
         if (now - gateOpenedAt >= SAMPLE_MS) {
-          finish(false);
+          finish('done');
         }
       }
     }, POLL_MS);
@@ -163,46 +187,50 @@ function sampleDirection(sign, { onTilt, onGateOpen, isCancelled } = {}) {
  * `onGateOpen(phase)` (fires once per side, the moment real movement passes
  * MOVE_GATE_DEG -- the UI's cue to switch from "keep leaning" to "hold it")
  * all optional. `isCancelled()`, checked every poll, ends the wizard early
- * without ever calling setMaxAngle -- a cancelled calibration must not
- * persist a bogus value computed from a half-finished sample.
+ * without ever calling setMaxAngle -- an aborted calibration must not
+ * persist a bogus value computed from a half-finished or never-attempted
+ * sample.
  *
- * Resolves `{ cancelled: true }`, or on completion
- * `{ rightDeg, leftDeg, reach, computed, applied }` where `applied` is the
- * host's clamped {value, default, min, max} reply (or null if the SDK
- * wrapper isn't available -- callers should check maxAngleAvailable() before
- * ever starting this).
+ * Resolves `{ cancelled: true, reason }` (reason is 'cancelled', 'timeout',
+ * or 'implausible' -- see below), or on completion `{ rightDeg, leftDeg,
+ * reach, computed, applied }` where `applied` is the host's clamped
+ * {value, default, min, max} reply (or null if the SDK wrapper isn't
+ * available -- callers should check maxAngleAvailable() before ever
+ * starting this).
  */
 export async function runCalibrationWizard({ onPhase, onTilt, onGateOpen, isCancelled } = {}) {
   const emitPhase = (phase) => { if (onPhase) onPhase(phase); };
   const emitTilt = (phase) => (x) => { if (onTilt) onTilt(x, phase); };
   const emitGateOpen = (phase) => () => { if (onGateOpen) onGateOpen(phase); };
 
-  // Captured BEFORE widening so a cancel can put the session override back
+  // Captured BEFORE widening so an abort can put the session override back
   // to whatever was actually in effect -- sensor.maxangle.session only
-  // auto-restores on GAME EXIT (per BOARD_SENSITIVITY.md), not on cancelling
-  // mid-run, so without this a cancelled wizard would silently leave the
+  // auto-restores on GAME EXIT (per BOARD_SENSITIVITY.md), not on aborting
+  // mid-run, so without this an aborted wizard would silently leave the
   // rest of the run stuck at the widened 45-degree ruler.
   const before = await getMaxAngle();
 
-  async function abort() {
+  async function abort(reason) {
     if (before) await setMaxAngleSession(before.value);
-    return { cancelled: true };
+    return { cancelled: true, reason };
   }
 
   await setMaxAngleSession(WIDEN_DEG);
-  if (isCancelled && isCancelled()) return abort();
+  if (isCancelled && isCancelled()) return abort('cancelled');
 
   emitPhase('right');
   const rightDeg = await sampleDirection(1, {
     onTilt: emitTilt('right'), onGateOpen: emitGateOpen('right'), isCancelled,
   });
-  if (rightDeg === null) return abort();
+  if (rightDeg === null) return abort('cancelled');
+  if (rightDeg === 'timeout') return abort('timeout');
 
   emitPhase('left');
   const leftDeg = await sampleDirection(-1, {
     onTilt: emitTilt('left'), onGateOpen: emitGateOpen('left'), isCancelled,
   });
-  if (leftDeg === null) return abort();
+  if (leftDeg === null) return abort('cancelled');
+  if (leftDeg === 'timeout') return abort('timeout');
 
   // Span/2, NOT min(|right|, |left|) -- a resting offset (the rider standing
   // slightly off-centre on an inflated cushion) cancels out of the span but
@@ -211,7 +239,26 @@ export async function runCalibrationWizard({ onPhase, onTilt, onGateOpen, isCanc
   const reach = (rightDeg - leftDeg) / 2;
   const computed = reach * LANDING_FRACTION;
 
+  // Plausibility bound, checked BEFORE persisting -- see MIN/MAX_PLAUSIBLE_DEG's
+  // own comment. This is what actually stops the timeout/near-zero case from
+  // reaching setMaxAngle even if some future change to the gate logic let a
+  // degenerate reading slip through -- belt and suspenders with the timeout
+  // fix above, not a substitute for it.
+  if (computed < MIN_PLAUSIBLE_DEG || computed > MAX_PLAUSIBLE_DEG) {
+    return abort('implausible');
+  }
+
   emitPhase('done');
   const applied = await setMaxAngle(computed);
+  lastCalibratedAt = Date.now();
   return { rightDeg, leftDeg, reach, computed, applied };
+}
+
+// When a successful calibration last completed, or 0 if none has yet this
+// session. Direct request: warn before letting a manual MAX TILT ANGLE edit
+// (ui/steeringPanel.js) silently overwrite a value the player JUST measured
+// -- that row checks this rather than each caller tracking it separately.
+let lastCalibratedAt = 0;
+export function msSinceLastCalibration() {
+  return lastCalibratedAt ? Date.now() - lastCalibratedAt : Infinity;
 }

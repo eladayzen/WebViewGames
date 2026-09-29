@@ -115,6 +115,14 @@ export function initCalibrationWizard() {
         : 'Could not save that -- try again from Settings.';
       setBoardTilt(0);
       await wait(2600);
+    } else if (result.reason === 'timeout' || result.reason === 'implausible') {
+      // A genuine failure, not the player choosing to back out -- say so
+      // rather than just vanishing (see systems/boardCalibration.js's own
+      // comment on why these must never silently persist a value).
+      titleEl.textContent = "COULDN'T MEASURE THAT";
+      subEl.textContent = "Didn't get a clear reading -- nothing was changed. Try again from Settings.";
+      setBoardTilt(0);
+      await wait(2600);
     }
 
     overlayEl.classList.add('hidden');

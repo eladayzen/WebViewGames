@@ -71,6 +71,62 @@ export function createRowPanel(panelEl) {
     return row;
   }
 
+  // A stepper for a value NOT backed by systems/steeringSettings.js's shared
+  // state/commitSteering -- e.g. board max-angle, which lives on the host
+  // and round-trips async (systems/boardCalibration.js's getMaxAngle/
+  // setMaxAngle). `onStep(dir)` owns EVERYTHING: reading the current value,
+  // wrapping/clamping, actually applying the change (sync or async), and
+  // calling the returned row's own `refresh()` once it knows the real
+  // (possibly host-clamped) result. `get()` is a plain synchronous readback
+  // for repainting the display at any other time (panel open, cross-row
+  // updates). The row also exposes `setNote(text, warn)` so a caller can
+  // rewrite its hint line live (e.g. a "you just calibrated" guard) without
+  // building a whole second row type.
+  function addExternalStepper({ label, get, onStep, fmt, note }) {
+    const el = document.createElement('div');
+    el.className = 'sp-row';
+
+    const name = document.createElement('span');
+    name.className = 'sp-label';
+    name.textContent = label;
+    const down = document.createElement('button');
+    down.type = 'button';
+    down.innerHTML = '&minus;';
+    const value = document.createElement('span');
+    value.className = 'sp-value';
+    const up = document.createElement('button');
+    up.type = 'button';
+    up.textContent = '+';
+
+    const row = {
+      el,
+      refresh: () => { value.textContent = fmt(get()); },
+      activate: () => onStep(1),
+    };
+    down.addEventListener('click', () => onStep(-1));
+    up.addEventListener('click', () => onStep(1));
+
+    el.append(name, down, value, up);
+    panelEl.appendChild(el);
+
+    let hintEl = null;
+    if (note) {
+      hintEl = document.createElement('div');
+      hintEl.className = 'sp-note';
+      hintEl.textContent = note;
+      panelEl.appendChild(hintEl);
+    }
+    row.setNote = (text, warn) => {
+      if (!hintEl) return;
+      hintEl.textContent = text;
+      hintEl.classList.toggle('sp-note-warn', !!warn);
+    };
+    row.defaultNote = note;
+
+    rows.push(row);
+    return row;
+  }
+
   function addChoice({ label, note, values, get, set }) {
     const el = document.createElement('div');
     el.className = 'sp-row';
@@ -181,6 +237,7 @@ export function createRowPanel(panelEl) {
   return {
     rows,
     addStepper,
+    addExternalStepper,
     addChoice,
     addAction,
     addChipRow,
