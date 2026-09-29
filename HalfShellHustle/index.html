@@ -285,7 +285,13 @@
            overlay/ids, never #gameover-overlay. -->
       <div id="calibration-overlay" class="overlay hidden">
         <div id="calibration-title" class="intro-step-title">STAND ON THE BOARD</div>
-        <div id="calibration-board" class="intro-board"></div>
+        <!-- The ring lives on the WRAP, not the board: the board itself is
+             being rotated live, and a ring that tilted with it would read as
+             part of the art rather than as state. -->
+        <div id="calibration-board-wrap">
+          <div id="calibration-board" class="intro-board"></div>
+        </div>
+        <div id="calibration-progress"><div id="calibration-progress-fill"></div></div>
         <div id="calibration-sub" class="calibration-sub">Get comfortable, then lean all the way RIGHT.</div>
         <button id="calibration-cancel">CANCEL</button>
       </div>

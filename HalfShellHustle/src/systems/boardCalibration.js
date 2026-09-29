@@ -101,7 +101,14 @@ const SAMPLE_MS = 1000;
 const POLL_MS = 16; // ~60Hz, matching the host's own pump rate
 // Safety net only -- if a side's gate never opens (no real board, or a
 // player who can't or won't move that way), don't hang the wizard forever.
-const PER_SIDE_TIMEOUT_MS = 8000;
+// 20s, matching bobo_play's Carve rather than the 8s this started at --
+// neither side had evidence, so the tie went to the failure that's worse in
+// front of a real player: a slow or timid first-timer being told "couldn't
+// measure that" reads as broken, where the long wait only bites the case
+// where there's no working board to measure with anyway (and Cancel is on
+// screen throughout). Checked only while the gate is CLOSED, so an actively
+// holding player can never trip it.
+const PER_SIDE_TIMEOUT_MS = 20000;
 // Plausibility bound on the FINAL computed value, checked right before it's
 // persisted -- the host's own 5..45 clamp is a range check, not a
 // plausibility one, and happily accepts both ends. Below 6, a resting hand
@@ -116,9 +123,21 @@ const MAX_PLAUSIBLE_DEG = 30;
 /**
  * Live-samples one direction's lean. `sign` is +1 (right) or -1 (left).
  * `onTilt(x)` fires every poll with the raw normalised reading (for driving
- * a live board-tilt visual); `onGateOpen()` fires once, the moment real
- * movement crosses MOVE_GATE_DEG, so the UI can switch from "keep leaning"
- * to "hold it".
+ * a live board-tilt visual); `onGateOpen()` fires the moment real movement
+ * crosses MOVE_GATE_DEG, so the UI can switch from "keep leaning" to "hold
+ * it"; `onGateClose()` fires if the player drifts back under the gate before
+ * the hold completes; `onHoldProgress(fraction)` fires every poll while the
+ * gate is open with the REAL elapsed fraction of the hold (0..1).
+ *
+ * DRIFTING BACK RESTARTS THE HOLD -- samples are discarded and the progress
+ * fraction drops to 0. Letting the clock run through an abandoned lean would
+ * mean "hold it for a second" could be satisfied by a second of not holding
+ * it. (Method and reasoning from the bobo_play Carve session.) The reverse
+ * never happens: once the hold completes the side RESOLVES, so a finished
+ * measurement can't be taken back by an ordinary wobble afterwards -- which
+ * matters because on an inflated cushion the player is wobbling constantly.
+ * At a 3-degree gate under a lean of any real size, normal wobble doesn't
+ * come near re-crossing it.
  *
  * Resolves one of:
  *   - a NUMBER: the extreme in DEGREES, SIGNED (positive for right, negative
@@ -143,7 +162,9 @@ const MAX_PLAUSIBLE_DEG = 30;
  *     "this side never happened" even though both abort the wizard the same
  *     way.
  */
-function sampleDirection(sign, { onTilt, onGateOpen, isCancelled } = {}) {
+function sampleDirection(sign, {
+  onTilt, onGateOpen, onGateClose, onHoldProgress, isCancelled,
+} = {}) {
   const moveGateNorm = MOVE_GATE_DEG / WIDEN_DEG;
   const p = sign > 0 ? 0.9 : 0.1;
 
@@ -169,25 +190,39 @@ function sampleDirection(sign, { onTilt, onGateOpen, isCancelled } = {}) {
       if (onTilt) onTilt(x);
 
       const now = performance.now();
+      const past = sign > 0 ? x > moveGateNorm : x < -moveGateNorm;
       if (!gateOpen) {
-        const past = sign > 0 ? x > moveGateNorm : x < -moveGateNorm;
         if (past) {
           gateOpen = true;
           gateOpenedAt = now;
+          samples.length = 0;
           if (onGateOpen) onGateOpen();
         } else if (now - startedAt >= PER_SIDE_TIMEOUT_MS) {
           // Never moved far enough -- a genuine failure, not a sample. See
           // this function's own doc comment above for why this must not
-          // resolve a number.
+          // resolve a number. Deliberately only reachable with the gate
+          // CLOSED: a player mid-hold is measuring, however long they took
+          // to get there.
           finish('timeout');
           return;
         }
+        return;
       }
-      if (gateOpen) {
-        samples.push(x);
-        if (now - gateOpenedAt >= SAMPLE_MS) {
-          finish('done');
-        }
+      if (!past) {
+        // Drifted back out before the hold completed -- discard and restart,
+        // rather than counting time the player wasn't actually leaning.
+        // onGateClose is the ONLY signal here: an onHoldProgress(0) alongside
+        // it would say "still counting, at zero", which is the opposite, and
+        // whichever ran last would win in the UI.
+        gateOpen = false;
+        samples.length = 0;
+        if (onGateClose) onGateClose();
+        return;
+      }
+      samples.push(x);
+      if (onHoldProgress) onHoldProgress(Math.min(1, (now - gateOpenedAt) / SAMPLE_MS));
+      if (now - gateOpenedAt >= SAMPLE_MS) {
+        finish('done');
       }
     }, POLL_MS);
   });
@@ -195,10 +230,11 @@ function sampleDirection(sign, { onTilt, onGateOpen, isCancelled } = {}) {
 
 /**
  * Runs the full wizard: widen -> sample right -> sample left -> compute ->
- * persist. `onPhase('right' | 'left' | 'done')`, `onTilt(x, phase)`, and
- * `onGateOpen(phase)` (fires once per side, the moment real movement passes
- * MOVE_GATE_DEG -- the UI's cue to switch from "keep leaning" to "hold it")
- * all optional. `isCancelled()`, checked every poll, ends the wizard early
+ * persist. `onPhase('right' | 'left' | 'done')`, `onTilt(x, phase)`,
+ * `onGateOpen(phase)` / `onGateClose(phase)` (real movement passing
+ * MOVE_GATE_DEG, and drifting back under it -- the UI's cue to switch
+ * between "keep leaning" and "hold it") and `onHoldProgress(fraction,
+ * phase)` are all optional. `isCancelled()`, checked every poll, ends early
  * without ever calling setMaxAngle -- an aborted calibration must not
  * persist a bogus value computed from a half-finished or never-attempted
  * sample.
@@ -210,10 +246,21 @@ function sampleDirection(sign, { onTilt, onGateOpen, isCancelled } = {}) {
  * available -- callers should check maxAngleAvailable() before ever
  * starting this).
  */
-export async function runCalibrationWizard({ onPhase, onTilt, onGateOpen, isCancelled } = {}) {
+export async function runCalibrationWizard({
+  onPhase, onTilt, onGateOpen, onGateClose, onHoldProgress, isCancelled,
+} = {}) {
   const emitPhase = (phase) => { if (onPhase) onPhase(phase); };
   const emitTilt = (phase) => (x) => { if (onTilt) onTilt(x, phase); };
   const emitGateOpen = (phase) => () => { if (onGateOpen) onGateOpen(phase); };
+  const emitGateClose = (phase) => () => { if (onGateClose) onGateClose(phase); };
+  const emitHoldProgress = (phase) => (f) => { if (onHoldProgress) onHoldProgress(f, phase); };
+  const hooks = (phase) => ({
+    onTilt: emitTilt(phase),
+    onGateOpen: emitGateOpen(phase),
+    onGateClose: emitGateClose(phase),
+    onHoldProgress: emitHoldProgress(phase),
+    isCancelled,
+  });
 
   // Captured BEFORE widening so an abort can put the session override back
   // to whatever was actually in effect -- sensor.maxangle.session only
@@ -231,16 +278,12 @@ export async function runCalibrationWizard({ onPhase, onTilt, onGateOpen, isCanc
   if (isCancelled && isCancelled()) return abort('cancelled');
 
   emitPhase('right');
-  const rightDeg = await sampleDirection(1, {
-    onTilt: emitTilt('right'), onGateOpen: emitGateOpen('right'), isCancelled,
-  });
+  const rightDeg = await sampleDirection(1, hooks('right'));
   if (rightDeg === null) return abort('cancelled');
   if (rightDeg === 'timeout') return abort('timeout');
 
   emitPhase('left');
-  const leftDeg = await sampleDirection(-1, {
-    onTilt: emitTilt('left'), onGateOpen: emitGateOpen('left'), isCancelled,
-  });
+  const leftDeg = await sampleDirection(-1, hooks('left'));
   if (leftDeg === null) return abort('cancelled');
   if (leftDeg === 'timeout') return abort('timeout');
 

@@ -648,23 +648,50 @@ function boot() {
     setPaused(!paused);
   });
 
-  // Board calibration wizard (ui/calibrationWizard.js, ui/steeringPanel.js's
-  // CALIBRATE row): pauses the sim while its overlay is up, restoring
-  // whatever pause state was in effect before it opened -- same "restore
-  // prior state, not blind unpause" reasoning as the quit-confirm flow below.
-  let pausedBeforeCalibration = false;
-  setCalibrationLifecycleHooks(
-    () => { pausedBeforeCalibration = paused; setPaused(true); },
-    () => { setPaused(pausedBeforeCalibration); },
-  );
+  // ONE owner for "some modal is up, so the sim is paused", rather than a
+  // save/restore pair per panel (settings panel: direct request, 2026-09-29,
+  // "settings button should pause the game like pause as well"; calibration
+  // wizard: same).
+  //
+  // WHY A SET AND NOT A PAIR EACH (device bug, found by Elad + gobalance-33):
+  // the CALIBRATE row hands straight over from one modal to the other in a
+  // single tap. With a pair each, the closing settings panel restores the
+  // state from before SETTINGS opened -- the game running -- while the wizard
+  // is already up, and the game was left live behind the wizard. That is
+  // worse than background noise: the wizard widens the tilt ruler to 45
+  // degrees for the duration of sampling, so a live game behind it is being
+  // steered at a scale nothing was tuned for, and the same lean that measures
+  // the player's reach also plays (and can lose) their run.
+  //
+  // Counting open modals means a handover never passes through zero, so there
+  // is no transient resume to race -- and the next modal anyone adds gets this
+  // for free instead of reintroducing the bug. Pausing still restores the
+  // state from before the FIRST modal opened, so a player who paused manually
+  // and then opened settings is still paused afterwards.
+  const openModals = new Set();
+  let pausedBeforeModals = false;
+  function modalOpened(name) {
+    if (openModals.size === 0) {
+      pausedBeforeModals = paused;
+      setPaused(true);
+    }
+    openModals.add(name);
+  }
+  function modalClosed(name) {
+    // Guarded so a double-close can't release a pause another modal still
+    // wants -- the release must happen exactly once, whichever way the player
+    // leaves (finished / cancelled / back).
+    if (!openModals.delete(name)) return;
+    if (openModals.size === 0) setPaused(pausedBeforeModals);
+  }
 
-  // Player settings panel (ui/steeringPanel.js): direct request, 2026-09-29,
-  // "settings button should pause the game like pause as well." Same
-  // restore-prior-state pattern as everything else here.
-  let pausedBeforeSettings = false;
+  setCalibrationLifecycleHooks(
+    () => modalOpened('calibration'),
+    () => modalClosed('calibration'),
+  );
   setSteeringPanelLifecycleHooks(
-    () => { pausedBeforeSettings = paused; setPaused(true); },
-    () => { setPaused(pausedBeforeSettings); },
+    () => modalOpened('settings'),
+    () => modalClosed('settings'),
   );
 
   // Leave the game back to the app's games list. Prefer the SDK's back();

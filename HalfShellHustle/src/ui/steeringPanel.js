@@ -158,8 +158,12 @@ export function initSteeringPanel() {
     label: 'CALIBRATE BOARD',
     run: () => {
       if (!maxAngleAvailable()) return 'NOT AVAILABLE';
-      setPanelOpen(false);
+      // OPEN BEFORE CLOSE, deliberately: both register with main.js's modal
+      // pause owner, and opening first means the count never drops to zero
+      // during the handover, so the sim is never briefly resumed underneath
+      // the wizard. open() registers synchronously before its first await.
       calibration.open();
+      setPanelOpen(false);
       return null;
     },
   });

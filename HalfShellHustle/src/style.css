@@ -1300,6 +1300,60 @@ html, body {
   transition: transform 0.05s linear;
 }
 
+/* Hold feedback, split across TWO places on purpose (design from the
+   bobo_play Carve session, adopted after direct feedback that their version
+   of this read better): the RING on the board answers "is it counting", the
+   BAR answers "how much longer". The player is leaning at the edge of their
+   balance while this is on screen, so the one thing they must not have to
+   hunt for -- am I doing it right -- sits on the thing they're already
+   looking at, and only the non-urgent detail is off to the side. */
+#calibration-board-wrap {
+  padding: 2vmin 3vmin;
+  border: 0.45vmin solid transparent;
+  border-radius: 3vmin;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+#calibration-board-wrap.counting {
+  border-color: #b98cff;
+  box-shadow: 0 0 2.4vmin rgba(185, 140, 255, 0.45);
+}
+
+#calibration-board-wrap.held {
+  border-color: #7dffa8;
+  box-shadow: 0 0 2.4vmin rgba(125, 255, 168, 0.5);
+}
+
+#calibration-progress {
+  width: 34vmin;
+  height: 0.9vmin;
+  margin-top: 1.6vmin;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  overflow: hidden;
+}
+
+#calibration-progress.visible {
+  opacity: 1;
+}
+
+/* Driven every poll (~60Hz) straight from the elapsed hold fraction, so the
+   transition is near-instant -- anything slower lags behind the player's own
+   movement and stops being a truthful readout of how long they've held. */
+#calibration-progress-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: 999px;
+  background: #b98cff;
+  transition: width 0.05s linear, background-color 0.12s ease;
+}
+
+#calibration-progress-fill.full {
+  background: #7dffa8;
+}
+
 .calibration-sub {
   font-size: 2.6vmin;
   font-weight: 700;
