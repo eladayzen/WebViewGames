@@ -25,7 +25,7 @@ import {
 } from '../systems/audio.js';
 import { state, load, applyAll, onSteeringStateChange } from '../systems/steeringSettings.js';
 import {
-  maxAngleAvailable, getMaxAngle, setMaxAngle, msSinceLastCalibration,
+  maxAngleAvailable, getMaxAngle, setMaxAngle, msSinceLastCalibration, FALLBACK_MAX_ANGLE,
 } from '../systems/boardCalibration.js';
 import { createRowPanel } from './panelRows.js';
 import { isDevPanelOpen } from './panelState.js';
@@ -38,12 +38,24 @@ let onCloseHook = null;
 
 // MAX TILT ANGLE row state (direct request, 2026-09-29: "a place in the
 // menu that I can see and change manually... below the [CALIBRATE] button").
-// Mirrors the host's {value, min, max} locally -- see setPanelOpen's refetch
-// on every open, so this is never more than one open-panel away from the
-// real value (in particular, right after closing the calibration wizard).
+// Mirrors the host's {value, min, max} locally. FALLBACK_MAX_ANGLE is ONLY
+// the placeholder shown before the real fetch below resolves -- refreshBoardAngle
+// runs once at boot (direct request: "when a new game starts, get from the
+// API what's the current value... if the user changed it in another game...
+// I don't want you to put it on default [again]") AND again every time the
+// panel opens, so a value another game set is picked up promptly rather
+// than the game silently assuming its own last-known number.
 let maxAngleRow = null;
-let boardAngle = { value: 19, min: 5, max: 45 };
+let boardAngle = { value: FALLBACK_MAX_ANGLE, min: 5, max: 45 };
 let boardAngleLoaded = false;
+
+function refreshBoardAngle() {
+  if (!maxAngleAvailable()) return;
+  getMaxAngle().then((applied) => {
+    if (applied) { boardAngle = applied; boardAngleLoaded = true; }
+    if (maxAngleRow) maxAngleRow.refresh();
+  });
+}
 // Direct request: warn before letting a manual edit silently overwrite a
 // value just measured by the wizard. Armed by the FIRST press within
 // CONFIRM_WINDOW_MS of a calibration; a second press (any direction) within
@@ -74,12 +86,7 @@ function setPanelOpen(open) {
     // right after closing the calibration wizard, so the row shows the
     // value that was just measured without needing anything more specific
     // than "open Settings" to trigger a repaint.
-    if (maxAngleAvailable()) {
-      getMaxAngle().then((applied) => {
-        if (applied) { boardAngle = applied; boardAngleLoaded = true; }
-        if (maxAngleRow) maxAngleRow.refresh();
-      });
-    }
+    refreshBoardAngle();
     if (onOpenHook) onOpenHook();
   } else if (onCloseHook) {
     onCloseHook();
@@ -208,6 +215,12 @@ export function initSteeringPanel() {
   rp.rows.forEach((r) => r.refresh());
   rp.refreshRelevance(state.mode);
   rp.refreshSelection();
+
+  // Fetch the REAL current board max-angle once at boot, not just on first
+  // panel-open -- direct request: a value another game changed (this is a
+  // device-wide setting) should show correctly the very first time the
+  // player ever opens Settings, not just from the second open onward.
+  refreshBoardAngle();
 
   // Repaint whenever the DEV panel changes shared steering state (e.g. MODE) --
   // SENSITIVITY's dimming depends on it even though MODE's own row lives there.

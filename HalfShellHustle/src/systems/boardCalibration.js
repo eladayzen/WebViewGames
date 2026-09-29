@@ -34,6 +34,18 @@ function sdk() {
   return typeof window !== 'undefined' && window.GoBalance ? window.GoBalance : null;
 }
 
+// A LOCAL FALLBACK ONLY -- shown for the brief moment before the real
+// device value has been fetched (or if that fetch fails), and used as the
+// browser test mock's starting point (systems/devSensorMock.js). NEVER
+// pushed to the host on its own; purely a placeholder, never a write.
+// 12, not the host's OWN PREF_BOBO_MAX_ANGLE_DEFAULT (19) -- direct
+// request, matching the lower default bobo_play's own host converged on
+// after real-board testing (see BOARD_SENSITIVITY.md's pipeline comparison
+// table). Changing the REAL device-side default is Unity/native code
+// (BoboardConstants.BOBO_MAX_ANGLE_DEFAULT) -- outside what this file, or
+// anything in this repo, can reach.
+export const FALLBACK_MAX_ANGLE = 12;
+
 export function maxAngleAvailable() {
   const gb = sdk();
   return !!(gb && typeof gb.getMaxAngle === 'function');

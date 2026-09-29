@@ -31,6 +31,8 @@
 // just a heads-up in case absolute-mode browser testing feels different
 // than it used to.
 
+import { FALLBACK_MAX_ANGLE } from './boardCalibration.js';
+
 if (typeof window !== 'undefined' && !window.GoBalance) {
   const keys = { left: false, right: false };
   window.addEventListener('keydown', (e) => {
@@ -59,8 +61,11 @@ if (typeof window !== 'undefined' && !window.GoBalance) {
   requestAnimationFrame(tick);
 
   // A real reply shape ({value, default, min, max}), mutated in place by
-  // set/session the same way the real host clamps to 5..45.
-  const state = { value: 19, default: 19, min: 5, max: 45 };
+  // set/session the same way the real host clamps to 5..45. Starts at
+  // FALLBACK_MAX_ANGLE (12), not the real host's own default (19) -- direct
+  // request, so local testing matches the lower default other platforms
+  // have converged on rather than this game's own historical placeholder.
+  const state = { value: FALLBACK_MAX_ANGLE, default: FALLBACK_MAX_ANGLE, min: 5, max: 45 };
   const clamp = (v) => Math.max(state.min, Math.min(state.max, Math.round(v)));
   const reply = () => Promise.resolve({ ...state });
   window.GoBalance = {
