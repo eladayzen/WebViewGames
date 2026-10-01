@@ -49,7 +49,13 @@ export const PLAYER = {
   startX: DESIGN_W * 0.5,
   startY: DESIGN_H * 0.72,
   radius: 42,
-  hearts: 3,
+  // FIVE, up from three (Amit: "the game is too hard on the controller").
+  // Hearts are the cheapest difficulty lever there is and the one that costs the
+  // design nothing: it does not slow the field, thin the crowd or weaken a
+  // monster, so everything tuned around those stays true. It only buys the
+  // player more goes at the same game -- which is exactly what a balance board
+  // asks for, where a mistake is often the body rather than the decision.
+  hearts: 5,
   // AFTER A HIT: long, generous, and visibly flashing. This is a game for
   // eight-year-olds; the punishment for being touched is losing the heart, not
   // losing the next three seconds as well.
@@ -439,11 +445,34 @@ export const SQUAD = {
 export const HEARTS = {
   // Per kill, and only from these tiers. Deliberately not from smalls: a heart
   // from chaff would make the hearts meaningless and the cap permanent.
-  dropFrom: { small: 0, medium: 0.10, large: 0.55 },
+  // SMALLS DROP HEARTS NOW, and that is the fix -- not another rate rise.
+  //
+  // Amit: "I don't really see heart pickups." Measured, and he was right: about
+  // ONE per run. But the rate was never the gate. Four things stand between a
+  // kill and a heart, and the ratchet mattered more than the roll:
+  //
+  //   1. the player must be BELOW the cap -- 53 s of an 84 s run
+  //   2. the kill had to be a medium or large -- 30 % of the field
+  //   3. the roll
+  //   4. an 18 s minimum gap
+  //
+  // Gate 2 was doing most of the suppressing: seven monsters in ten could not
+  // drop a heart at all, so a hurt player had to find one of the rare ones
+  // before the window closed. Letting smalls drop at a low rate roughly triples
+  // what a player sees without touching a weapon chance -- and it means the
+  // heart arrives from whatever happens to be in front of them, which is the
+  // only thing a child in trouble can act on.
+  //
+  // The gap comes down with it: at 18 s it was about to become the next binding
+  // constraint once the rate rose.
+  //
+  // Large stays near-certain. It is the longest commitment in the game and a
+  // guaranteed heart is part of what pays for it.
+  dropFrom: { small: 0.10, medium: 0.18, large: 0.80 },
   // No two hearts inside this window, so a lucky pair of large kills cannot
   // hand back a whole run's worth of mistakes at once.
-  minGapS: 18,
-  maxLive: 1,
+  minGapS: 10,
+  maxLive: 2,
   radius: 26,
   // Drifts DOWN toward the player rather than sitting where it dropped -- the
   // one pickup a player in trouble must not have to climb for, since climbing
@@ -861,7 +890,8 @@ export const TOYS = {
   // kills per minute rose at the same time as drops per kill. Halving the rate
   // while the kill count climbed did not halve what the player actually saw.
   // These are the two numbers that multiply, and only one of them was moving.
-  dropFrom: { small: 0.22, medium: 0.3, large: 0.6 },
+  // +10 % across the board (Amit). Expected drops per kill 0.26 -> 0.29.
+  dropFrom: { small: 0.242, medium: 0.33, large: 0.66 },
   // No two toys within this window, so a lucky streak cannot hand out three at
   // once and flatten the whole minute after it.
   // 6s -> 2.5s, and two pickups may be on the field at once. Both had to move
@@ -888,7 +918,15 @@ export const TOYS = {
   // once, and the rate he already approved is the rate that felt right.
   //
   // Multiplies the drop chance; indexed by level, last entry used from there on.
-  earlyBonus: [1.5, 1.35, 1.15, 1.0],
+  // THE TAIL NO LONGER FALLS TO 1.0 (Amit: "by the end of level 4 something
+  // feels dry when you get there"). It did, and that was the dryness: the bonus
+  // tapered out at exactly the level where the roster gets interesting -- punch
+  // at 4, chain at 5, shield at 6 -- so the player arrived at the best part of
+  // the game and the presents slowed down to meet them.
+  //
+  // It now settles at 1.15 rather than 1.0, which with the +10 % base puts
+  // level 4 onward about 27 % above where it was.
+  earlyBonus: [1.5, 1.35, 1.25, 1.2, 1.15],
 
   // The toy timer, drawn as a bar UNDER the pod. Under and not over: everything
   // the player is actually looking at -- the monsters, their own shots, where
