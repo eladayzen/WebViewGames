@@ -9,9 +9,16 @@
 // allocated per frame: meshes come from a pool keyed by prop type.
 
 import * as THREE from 'three';
-import { PROP_TYPES, PATTERNS } from '../data/propTypes.js';
-import { toWorld, surfaceUp, frameAt, makeFrame } from '../world/trough.js';
-import { THETA_MAX, TROUGH_RADIUS, RAMP_ARROW_COLOR } from '../data/constants.js';
+import { PROP_TYPES, PATTERNS, FACE_PATTERNS } from '../data/propTypes.js';
+import {
+  toWorld, surfaceUp, frameAt, makeFrame, radiusAt, dropLipsBetween,
+} from '../world/trough.js';
+import { RAMP_ARROW_COLOR, IDOL_OUTLINE, BOOST_MAX_LANE } from '../data/constants.js';
+// Patterns are authored as FRACTIONS of the ridable half-width, so the rim angle
+// they are handed has to be the live one -- a pattern laid out against the
+// half-pipe's 1.15 rad would put half its props past the edge of a shallower,
+// wider open face.
+import { TERRAIN } from '../data/terrain.js';
 
 const SPAWN_AHEAD = 340; // keep the field populated this far down the road
 const RECYCLE_BEHIND = 40;
@@ -19,9 +26,36 @@ const RECYCLE_BEHIND = 40;
 // Deterministic per-index shuffle so the descent varies but a given run is
 // reproducible. Math.random would also work, but this keeps the layout stable
 // if the same stretch is ever regenerated.
+/**
+ * Which content table this terrain plays. The street set was authored for the
+ * half-pipe; the face set is authored for a wide hill and must not also be
+ * scaled (see FACE_PATTERNS). Read per call rather than cached, for the same
+ * reason everything else here reads TERRAIN live -- a course change must not
+ * leave the previous hill's content table in place.
+ */
+function patternSet() {
+  return TERRAIN.patternSet === 'face' ? FACE_PATTERNS : PATTERNS;
+}
+
 function hash(n) {
   let x = Math.sin(n * 127.1) * 43758.5453;
   return x - Math.floor(x);
+}
+
+/**
+ * A seeded generator, so a run's layout is decided once and then replayed
+ * identically for the rest of that run -- patterns are emitted lazily as the
+ * road unrolls, and an unseeded Math.random() would make the course depend on
+ * WHEN a pattern happened to spawn rather than on the run itself.
+ */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 // --- geometry builders, one per visual family -------------------------------
@@ -163,6 +197,26 @@ function rampHeight(profile, h, f) {
 /** Fraction along a launch prop where the rider leaves it. */
 function apexFrac(profile) {
   return profile === 'hump' ? 0.5 : 1;
+}
+
+/**
+ * Is the rider inside a boost gate's ARCH, vertically?
+ *
+ * Derived from the gate's own geometry rather than a separately tuned reach.
+ * The two had drifted: an air gate hangs at 2.6 with a 2.9-tall arch, so it
+ * VISUALLY spans 2.6 to 5.5, while the old symmetric test accepted 0.9 to 4.3.
+ * A backflip peaks around 5.0-5.6, which put the rider squarely inside the arch
+ * on screen and outside the collider.
+ *
+ * One rule for both kinds: a gate is taken by passing through its arch, and
+ * whether that arch sits on the road or hangs over a landing is just where its
+ * base is. The margin is generous on purpose -- clipping the frame counts, the
+ * same way it does laterally.
+ */
+function withinGateArch(def, height) {
+  const base = def.boost.height || 0;
+  const margin = 0.55;
+  return height >= base - margin && height <= base + def.size.h + margin;
 }
 
 // The vert wall. Its rideable face is the concave curve from the base up to the
@@ -444,6 +498,190 @@ function buildBoostPad(def) {
   return g;
 }
 
+// A plank wall. Horizontal boards with a visible gap between them and two
+// uprights, because a solid slab reads as scenery at speed while boards read as
+// something built to stop you.
+/**
+ * OUTLINE a built prop, so its silhouette survives any ground it stands on.
+ *
+ * Amit on the idol: "the colour is like black and it's okay, but sometimes it's
+ * hard to see him. Maybe we need some kind of outline, or a way for it to be
+ * more clear on any kind of floor and wall."
+ *
+ * Lightening the body is the obvious answer and the wrong one. Every theme's
+ * ground is dark and low-saturation ON PURPOSE -- that is what keeps the red
+ * rider findable on a board-mounted screen -- so a dark object will keep
+ * disappearing whatever shade of dark it is, and a light one would compete with
+ * the rider for attention. What is missing is not brightness, it is an EDGE.
+ *
+ * INVERTED HULL: a copy of each mesh, slightly larger, drawn back-faces-only.
+ * The front faces of the real mesh cover its middle, so what is left showing is
+ * a rim of constant width all the way around the silhouette. It costs one extra
+ * draw per part, needs no lighting, no post-processing and no shader, and works
+ * against literally any background because it is a hard value break exactly
+ * where the object ends.
+ */
+function addOutline(group, colour, scale = 1.07) {
+  const mat = new THREE.MeshBasicMaterial({ color: colour, side: THREE.BackSide });
+  const shells = [];
+  group.traverse((o) => { if (o.isMesh) shells.push(o); });
+  for (const m of shells) {
+    const shell = new THREE.Mesh(m.geometry, mat);
+    shell.position.copy(m.position);
+    shell.quaternion.copy(m.quaternion);
+    shell.scale.copy(m.scale).multiplyScalar(scale);
+    // Behind the real mesh in draw order, so the rim never paints over the face
+    // it is outlining.
+    shell.renderOrder = -1;
+    group.add(shell);
+  }
+  return group;
+}
+
+/**
+ * THE IDOL -- a tapered stone totem with a lit amber core, planted on the hill.
+ *
+ * It was a plinth, a body, shoulders and a head: four stacked boxes, which from
+ * any distance read as a snowman rather than as treasure. Amit: "the idols look
+ * really bad... the design, the colours, everything -- try to make something
+ * different shape."
+ *
+ * A FOUR-SIDED TAPERED COLUMN instead, which is a silhouette nothing else on
+ * this hill has. Ramps are wedges, blockers are flat panels, crystals are small
+ * gems, rails are thin bars -- a tall obelisk narrowing to a point is instantly
+ * not any of them, and that is most of the job. The decision to go for one is
+ * made several seconds out, at a range where only the outline exists.
+ *
+ * THE GLOW IS A BAND, NOT A COATING. The amber sits in a slot near the top and
+ * in a gem crowning it, against a dark body -- so the eye catches a bright mark
+ * at a known height rather than a large softly-coloured object, which is what
+ * reads at distance. Colouring the whole thing amber would have made a big dull
+ * shape; the value break is what carries.
+ */
+function buildStatue(def) {
+  const { w, h, l } = def.size;
+  const g = new THREE.Group();
+  const stone = new THREE.MeshBasicMaterial({ color: def.colour });
+  const lit = new THREE.MeshBasicMaterial({ color: def.accent });
+
+  // Plinth: a wider foot, so it reads as planted rather than stuck in.
+  const base = new THREE.Mesh(new THREE.BoxGeometry(w, h * 0.07, l), stone);
+  base.position.y = h * 0.035;
+  g.add(base);
+
+  // The shaft, four-sided and tapering. radialSegments 4 gives flat faces that
+  // catch the unlit shading differently as it turns, which is the only
+  // animation an unlit material gets.
+  const shaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(w * 0.16, w * 0.42, h * 0.74, 4), stone);
+  shaft.position.y = h * 0.07 + h * 0.37;
+  shaft.rotation.y = Math.PI / 4;
+  g.add(shaft);
+
+  // The lit slot, set near the top where the eye lands first.
+  const core = new THREE.Mesh(
+    new THREE.CylinderGeometry(w * 0.24, w * 0.28, h * 0.1, 4), lit);
+  core.position.y = h * 0.66;
+  core.rotation.y = Math.PI / 4;
+  g.add(core);
+
+  // A crowning gem, the same amber. An octahedron rather than another box: at
+  // range this is the part that says "collect me", and it is the crystal's own
+  // shape scaled up, which is the link between the two.
+  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(w * 0.34, 0), lit);
+  gem.position.y = h * 0.94;
+  g.add(gem);
+
+  // The rim goes on last, so it wraps everything including the lit parts -- a
+  // bright core with a bright edge still reads, and the alternative is a gem
+  // that floats free of an outlined body.
+  return addOutline(g, IDOL_OUTLINE);
+}
+
+/**
+ * THE BLOCKER -- a lit barrier with a hard X across it.
+ *
+ * This replaces a set of low-poly rocks. Amit: "I think the rocks look bad. I
+ * prefer using the blockers that we've built before... you can have like a big
+ * X on them, something in the vibe of this neon-like style we've built." He is
+ * right about the rocks for a reason worth writing down: everything else on this
+ * hill is flat unlit colour and hard edges, and a jittered stone lump is the one
+ * object trying to be naturalistic. It read as an asset from a different game.
+ *
+ * SAME BONES AS woodWall -- two posts and a panel between them, because that
+ * silhouette already means "you do not go through this" here. What changes is
+ * the surface: a dark slab carrying a bright X, with a lit rail along the top.
+ *
+ * MAGENTA, and not a new hue. The palette assigns meaning by colour -- cyan
+ * paint, violet launcher, green grindable, gold pickup -- and magenta is already
+ * the BOUNDARY, the coping at the edge of the ridable world. A barrier planted
+ * mid-hill is exactly that: the edge of where you may go, in a place you did not
+ * expect one. Inventing a seventh hue for it would be teaching the player a new
+ * word for something the language already says.
+ *
+ * The X does the work at distance. By the time the panel resolves you have
+ * already had to choose a side, so what matters is the shape read at range, and
+ * two crossed bars is about the most unambiguous "not here" there is.
+ */
+function buildBlocker(def) {
+  const { w, h, l } = def.size;
+  const g = new THREE.Group();
+  const slab = new THREE.MeshBasicMaterial({ color: def.colour });
+  const lit = new THREE.MeshBasicMaterial({ color: def.accent });
+
+  // The dark face the X sits on. Kept well darker than the ground so the bright
+  // bars have something to break against rather than glowing off open hillside.
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(w, h * 0.82, l), slab);
+  panel.position.y = h * 0.41;
+  g.add(panel);
+
+  // Crossed bars, on BOTH faces -- the rider sees the front on approach and the
+  // back for as long as it is behind them, and a blank rear face reads as the
+  // barrier having switched off once passed.
+  const diag = Math.hypot(w, h * 0.82);
+  for (const side of [-1, 1]) {
+    for (const dir of [-1, 1]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(diag * 0.98, h * 0.13, 0.06), lit);
+      bar.position.set(0, h * 0.41, side * (l / 2 + 0.04));
+      bar.rotation.z = dir * Math.atan2(h * 0.82, w);
+      g.add(bar);
+    }
+  }
+
+  // Lit rail along the top, and lit post caps: the horizontal line is what
+  // reads first at a distance, before the X resolves.
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(w * 1.06, h * 0.11, l * 1.25), lit);
+  rail.position.y = h * 0.87;
+  g.add(rail);
+  for (const side of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.26, h, l * 1.3), slab);
+    post.position.set(side * (w / 2 + 0.13), h / 2, 0);
+    g.add(post);
+  }
+  return g;
+}
+
+function buildWall(def) {
+  const { w, h, l } = def.size;
+  const g = new THREE.Group();
+  const plank = new THREE.MeshBasicMaterial({ color: def.colour });
+  const post = new THREE.MeshBasicMaterial({ color: def.accent });
+
+  const boards = 3;
+  const boardH = h / (boards + (boards - 1) * 0.35);
+  for (let i = 0; i < boards; i++) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, boardH, l), plank);
+    b.position.y = boardH / 2 + i * boardH * 1.35;
+    g.add(b);
+  }
+  for (const side of [-1, 1]) {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.22, h, l * 1.3), post);
+    p.position.set(side * (w / 2 - 0.11), h / 2, 0);
+    g.add(p);
+  }
+  return g;
+}
+
 const BUILDERS = {
   kicker: buildKicker, bigKicker: buildKicker, bank: buildBank, barrel: buildBarrel,
   airGate: buildBoostPad,
@@ -451,6 +689,8 @@ const BUILDERS = {
   cone: buildCone, pothole: buildPothole, roadwork: buildRoadwork,
   lamp: buildLamp, hydrant: buildBlob,
   crystal: buildCrystal, highCrystal: buildCrystal, boostPad: buildBoostPad,
+  statue: buildStatue,
+  woodWall: buildWall, blocker: buildBlocker,
 };
 
 export function createProps(scene) {
@@ -461,7 +701,92 @@ export function createProps(scene) {
   const active = []; // { type, def, s, u, mesh, spent }
   // Which prop kinds may spawn. Hazards excluded by default; see add().
   let allowedKinds = new Set(['launch', 'grind', 'scenery', 'pickup']);
+  /** @type {Set<string>|null} prop TYPES to leave out, or null for none. */
+  let blockedTypes = null;
+  /**
+   * When true, `rare` placements emit on every showing of their pattern rather
+   * than on their authored cadence. For a mission built ENTIRELY around a rare
+   * thing -- five idols, say -- the authored "every now and then" is exactly
+   * wrong: it is the cadence for something you meet incidentally, not for the
+   * one thing you are out there to find.
+   */
+  let rareAlways = false;
+  /**
+   * Kinds exempt from density thinning -- the thing a mission is TEACHING.
+   *
+   * Filtering content out does not backfill what is left, so a mission showing
+   * only one kind gets whatever the patterns happen to hold of it, thinned by
+   * the course density on top. Amit on RAIL SCHOOL: "we need much more rails";
+   * on RAMP SCHOOL: "the last half of the course is a bit dull, sometimes I
+   * don't see a ramp in the horizon." Measured, that was a rail every 250m and
+   * a ramp every 78m across an 85-unit-wide hill.
+   *
+   * So the featured kind emits in full while everything else stays thinned.
+   * That is the shape a lesson wants anyway: the subject plentiful, the rest
+   * background.
+   */
+  let featured = null;
+  /**
+   * Per-mission lateral layout overrides: a multiplier, and a PUSH outward.
+   *
+   * The push is what a multiplier cannot do. Amit, on the ridge's first
+   * mission: "move them a little bit to the side so they won't all be so close
+   * to the center" -- and four of its nine ramps sit at exactly u = 0, where
+   * any multiplier leaves them exactly where they were. Adding a fixed angular
+   * offset moves them; multiplying spreads what is already spread. Both are
+   * wanted, so both are here.
+   *
+   * null means the terrain's own spread, which is every mission that has not
+   * asked for something else.
+   */
+  let spreadOverride = null;
+  let pushOut = 0;
   let nextPatternS = 60; // leave the opening stretch clear
+  // Separate frontier from the patterns'. Lip ramps are placed against the
+  // TERRAIN, which has its own spacing and knows nothing about how long a
+  // pattern happens to be -- driving both off one cursor would make whether a
+  // drop got a ramp depend on where a pattern boundary happened to fall.
+  let nextLipS = 60;
+  /**
+   * EXTRA BOOST PADS, every this many metres. 0 is off, which is every mode
+   * except the race -- see setBoostEvery.
+   */
+  let boostEvery = 0;
+  let nextBoostS = 60;
+  /** Extra pink barriers every this many metres. 0 is off. See setWallEvery. */
+  let wallEvery = 0;
+  let nextWallS = 60;
+  /**
+   * NOTHING IS PLACED BEYOND THIS. 0 means no limit, which is every endless
+   * course. See setEndS.
+   */
+  let endS = 0;
+  /** Emissions per pattern name this run -- drives the `rare` cadence. */
+  let emitsOf = Object.create(null);
+  /**
+   * Fraction of a pattern's content actually emitted, 0..1.
+   *
+   * A COURSE property rather than a terrain or pattern one, and that is the
+   * whole reason it exists: the free descent and the mission course ride the
+   * same hill with the same patterns, and want different amounts on it. Amit,
+   * on the full-density face: "that's a very packed layout... in missions I
+   * think we need less fully packed environments."
+   *
+   * Thinning here rather than authoring a second sparser table keeps ONE set of
+   * patterns as the source of truth for how the hill is laid out. The
+   * distribution across the width -- which took several passes to get right --
+   * is preserved automatically, because dropping items uniformly at random
+   * thins every band and every kind in the same proportion.
+   */
+  let density = 1;
+  // --- route variation ------------------------------------------------------
+  // Off unless the course asks for it (see data/courses.js). When off, every
+  // one of these is inert and the course is byte-for-byte the fixed layout the
+  // missions were measured on.
+  let vary = false;
+  let rng = mulberry32(1);
+  /** Indices left in the current shuffled bag -- see nextPattern(). */
+  let bag = [];
   let spinT = 0; // drives the pickup spin/bob
   let patternIndex = 0;
 
@@ -475,7 +800,21 @@ export function createProps(scene) {
 
   function acquire(type) {
     const pool = pools[type] || (pools[type] = []);
-    if (pool.length) return pool.pop();
+    if (pool.length) {
+      const reused = pool.pop();
+      // RESET THE MESH, not just the record. Collecting a pickup hides its mesh
+      // (`mesh.visible = false`) and marks the record spent; the record is
+      // rebuilt on the next spawn but the MESH is pooled and comes back exactly
+      // as it was left. So a replayed mission handed out invisible crystals that
+      // still scored -- collectable, and impossible to see.
+      //
+      // Anything a collision may mutate on a pooled mesh has to be undone here.
+      // Position and orientation are rewritten every frame by update(), so
+      // visibility is the only survivor today; the point of doing it in acquire()
+      // is that it stays the one place to add to.
+      reused.visible = true;
+      return reused;
+    }
     const mesh = BUILDERS[type](PROP_TYPES[type]);
     mesh.frustumCulled = false;
     return mesh;
@@ -489,6 +828,20 @@ export function createProps(scene) {
   function add(type, s, theta) {
     const def = PROP_TYPES[type];
     if (!def) return;
+    /**
+     * PAST THE FINISH LINE IS NOT PART OF THE COURSE. Amit: "there shouldn't be
+     * any objects after the finish line, I should hide them."
+     *
+     * Right, and it is not only tidiness. A ramp beyond the line invites a jump
+     * that cannot count, and a barrier there can knock the player over after
+     * they have already won -- both read as the game still asking something of
+     * you when it no longer is. Emptying the road past the line is what makes it
+     * a finish rather than an arbitrary marker on a hill that keeps going.
+     *
+     * Filtered at SPAWN rather than hidden at render, so nothing beyond the line
+     * exists to collide with either.
+     */
+    if (endS && s > endS) return;
     // KIND FILTER. Hazards (cones, potholes) are off by default -- Amit wants
     // the punishing encounters gone for now, but explicitly may want them back
     // for a future game mode. So they are filtered at SPAWN rather than deleted
@@ -496,23 +849,288 @@ export function createProps(scene) {
     // survives intact and a mode can switch it back on with one flag, instead
     // of someone having to re-author eight patterns from a git history.
     if (!allowedKinds.has(def.kind)) return;
+    // TYPE BLOCK-LIST, on top of the kind filter. A mission introducing
+    // crystals must not also have idols on screen, and both are kind 'pickup'
+    // -- so kind alone cannot express "crystals but not idols".
+    //
+    // A block-list rather than an allow-list, and that is not a detail: an
+    // allow-list is applied to EVERY prop, so naming the one type a mission is
+    // about would silently delete its ramps and its blockers too. Saying what
+    // to leave out only ever removes what it names.
+    if (blockedTypes && blockedTypes.has(type)) return;
     const mesh = acquire(type);
     group.add(mesh);
     active.push({ type, def, s, theta, mesh, spent: false });
   }
 
+  /**
+   * Which set-piece comes next.
+   *
+   * Fixed courses walk the list in order, which is what makes a mission the
+   * same mission every time. A varying course draws from a BAG -- a shuffled
+   * copy of the list, refilled when empty -- rather than picking at random each
+   * time, so every pattern still appears once per cycle and you never get the
+   * same one twice running. Pure random would happily deal 'breather' three
+   * times in a row and hide 'big air' for a whole race.
+   */
+  function nextPattern() {
+    const SET = patternSet();
+    if (!vary) return SET[patternIndex++ % SET.length];
+    if (!bag.length) {
+      // Indices into the ACTIVE set, not into PATTERNS. The face set is
+      // shorter, so a bag built from the street table would deal indices past
+      // its end and hand back undefined.
+      bag = SET.map((_, i) => i);
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [bag[i], bag[j]] = [bag[j], bag[i]];
+      }
+    }
+    return SET[bag.pop()];
+  }
+
+  /**
+   * A RAMP ON THE EDGE OF A DROP -- the two air systems stacked.
+   *
+   * The launcher throws the rider, and then the ground is not there when they
+   * come down, so the flight is the ramp's arc plus the whole depth of the
+   * drop. It is by a distance the biggest air the game can produce, and it
+   * costs nothing to build because both halves already exist: this only decides
+   * WHERE to put a kicker.
+   *
+   * OFF-CENTRE, ALTERNATING SIDES. A ramp spanning the lip would make the drop a
+   * jump and nothing else; pushed out to a third of the way across, the same
+   * lip is a jump on one side and a clean roll-in on the other, and which one
+   * you get is a line you chose several seconds earlier.
+   *
+   * NOT ON THE WIDE SHALLOW ONES. A drop long enough that the terrain will not
+   * launch you is a drop you are meant to flow over -- putting a kicker on it
+   * takes away the one shape in the cycle that is about carrying speed rather
+   * than leaving the ground.
+   */
+  function emitLipRamps(throughS) {
+    if (nextLipS >= throughS) return;
+    for (const lip of dropLipsBetween(nextLipS, throughS)) {
+      // Deterministic per drop index, so a given lip is the same every time it
+      // is regenerated and does not flicker as the frontier passes it.
+      if (hash(lip.index * 7.3 + 11) > TERRAIN.lipRamps) continue;
+      if (lip.drop.width > 0.24) continue; // the flow ones stay clean
+      const side = lip.index % 2 === 0 ? 1 : -1;
+      const u = side * TERRAIN.thetaMax * 0.34;
+      // A few metres BEFORE the edge, so the rider is leaving the ramp exactly
+      // as the ground goes. On the lip itself the takeoff happens after the
+      // hill has already started to fall and the ramp does half its job.
+      // The deepest lips get the VERT WALL. It is the only launcher whose own
+      // power reaches the flip bar, and stacking it on the biggest drop is the
+      // most air the game can produce -- which is precisely the moment that
+      // should be a backflip.
+      const type = lip.drop.depth >= 7 ? 'barrel'
+        : lip.drop.depth >= 4 ? 'bigKicker' : 'kicker';
+      add(type, lip.s - 7, u);
+    }
+    nextLipS = throughS;
+  }
+
+  /**
+   * A STEADY DRUMBEAT OF SPEED GATES, on top of whatever the patterns give.
+   *
+   * The race asked for "more speed boosters" and the patterns are the wrong
+   * place to get them: they are shared with the missions, so any change there
+   * lands on both. This is additive and course-owned, which keeps the two
+   * modes reading the same tables and still lets the race be about speed.
+   *
+   * ALTERNATING SIDES, and out at two thirds of the rim rather than near the
+   * middle. A pad you pass over without steering is not a decision, and a race
+   * decided by pads has to be a race about LINE -- so the fast route through
+   * them weaves, and taking every one costs you something to set up.
+   *
+   * Deterministic on the pad index, so a given stretch of hill has the same
+   * pads every time the frontier regenerates it and nothing flickers as it
+   * passes. `airGate` on every third, since the bigger boost is worth a
+   * different silhouette to aim at.
+   */
+  function emitBoosts(throughS) {
+    if (!boostEvery) return;
+    while (nextBoostS < throughS) {
+      const i = Math.round(nextBoostS / boostEvery);
+      const side = i % 2 === 0 ? 1 : -1;
+      // Jittered off the exact cadence so it does not read as a metronome.
+      const jitter = (hash(i * 5.1 + 3) - 0.5) * boostEvery * 0.35;
+      const at = nextBoostS + jitter;
+      let u = side * TERRAIN.thetaMax * 0.66;
+      /**
+       * A GATE AFTER A RAMP HAS TO SIT WHERE THE RAMP THROWS YOU.
+       *
+       * Amit: "if a yellow speed boost is after a big ramp but not aligned to
+       * it -- too much on the left -- I cannot pick it up, it's impossible to
+       * get to it."
+       *
+       * Exactly right, and it is measurable. Carve still works in the air (the
+       * pendulum only stops for a grind), so a flight buys roughly 0.9 rad of
+       * steering at the player's 0.61 rad/s. But the alternating cadence above
+       * put gates at 0.66 of the rim while the lip ramps sit at 0.34 of it --
+       * on the OPPOSITE side that is a 1.15 rad swing, more than the air
+       * allows. The gate was not hard to reach, it was unreachable.
+       *
+       * So a gate landing shortly after a ramp gives up its place in the
+       * cadence and takes the ramp's line instead, nudged a little to one side
+       * so it still has to be steered for. The rider comes off the lip pointing
+       * at it, which is the whole point of putting a gate after a ramp.
+       */
+      let from = null, fromD = 1e9;
+      for (const it of active) {
+        if (!it.def || it.def.kind !== 'launch') continue;
+        const d = at - it.s;
+        if (d > 4 && d < 55 && d < fromD) { fromD = d; from = it; }
+      }
+      if (from) {
+        // Half the air budget, so it is a steer rather than a gift, and always
+        // on the side the rider has more road to work with.
+        const nudge = (from.theta > 0 ? -1 : 1) * 0.22;
+        u = Math.max(-TERRAIN.thetaMax * 0.8,
+          Math.min(TERRAIN.thetaMax * 0.8, from.theta + nudge));
+      }
+      /**
+       * A YELLOW GATE ONLY WHERE SOMETHING CAN ACTUALLY THROW YOU THROUGH IT.
+       *
+       * Amit: "remove all of the yellow speedgates which are impossible to
+       * get -- I think it's 95% of them."
+       *
+       * This line used to read `i % 3 === 2 ? 'airGate' : 'boostPad'`: every
+       * third gate was hung in the air by COUNTER, with no test that anything
+       * could reach it. Two ways that failed, and both were common.
+       *
+       * With no ramp in range, `from` is null and the gate still spawned --
+       * floating 2.6 m over empty road with nothing to launch from. Nothing
+       * about the cadence knew or cared.
+       *
+       * And where there WAS a ramp it was usually the wrong one. The arch's
+       * pass band starts at 2.6 m, and measured peak lift is 1.56 m off a
+       * bank and 2.27 m off a bigKicker -- both below the floor, so the gate
+       * was unreachable however well it was aimed. Only the barrel clears it,
+       * at 4.33 m.
+       *
+       * Note the paragraph above this one: the LATERAL alignment problem was
+       * found and fixed carefully, and the height was never checked. Aiming a
+       * player at something they cannot get to is the same bug twice, once
+       * sideways and once upwards.
+       *
+       * Gated on the launcher's own power rather than its name, so a new
+       * launcher is judged by what it does. 1.7 sits between the bigKicker's
+       * 1.42 and the barrel's 1.9.
+       */
+      const canFly = from && from.def.launch && from.def.launch.power >= 1.7;
+      add(i % 3 === 2 && canFly ? 'airGate' : 'boostPad', at, u);
+      nextBoostS += boostEvery;
+    }
+  }
+
+  /**
+   * PINK BARRIERS, SCATTERED. Amit, on the race: "remove the wooden ones and
+   * put in more of the pink ones, scatter them around."
+   *
+   * SCATTERED IS THE WORD, so this deliberately does not alternate sides the
+   * way the speed gates do. The gates are a rhythm you learn to weave through;
+   * a barrier you can predict is not an obstacle, it is a slalom pole. So the
+   * lateral position is hashed across the middle two thirds of the road and
+   * the spacing is jittered hard -- sometimes two close together, sometimes a
+   * long clear stretch.
+   *
+   * They stay off the rims. A barrier hard against the wall is unavoidable if
+   * you happen to be riding high there, and the pink one is meant to cost you
+   * a beat and some speed, not to be a wall you cannot see a way around.
+   *
+   * Deterministic on the barrier index, so a stretch of hill has the same
+   * barriers every time the frontier regenerates it.
+   */
+  function emitWalls(throughS) {
+    if (!wallEvery) return;
+    while (nextWallS < throughS) {
+      const i = Math.round(nextWallS / wallEvery);
+      const jitter = (hash(i * 9.7 + 5) - 0.5) * wallEvery * 0.8;
+      // -0.66..0.66 of the rim: off the centreline, and off the walls.
+      const u = (hash(i * 3.3 + 17) * 2 - 1) * TERRAIN.thetaMax * 0.66;
+      add('blocker', nextWallS + jitter, u);
+      nextWallS += wallEvery;
+    }
+  }
+
   /** Emit the next authored pattern, plus roadside scenery for that stretch. */
   function emitPattern() {
-    const p = PATTERNS[patternIndex % PATTERNS.length];
-    patternIndex++;
+    const p = nextPattern();
     const start = nextPatternS;
-    for (const item of p.build(THETA_MAX)) {
-      add(item.type, start + item.ds, item.u);  // item.u is authored as an ANGLE now
+    // MIRRORED half the time. Free variety, and it means recognising a pattern
+    // still does not tell you which side of the road to be on -- the shape is
+    // familiar, the line through it is not.
+    const flip = vary && rng() < 0.5 ? -1 : 1;
+    const rim = TERRAIN.thetaMax;
+    if (emitsOf[p.name] === undefined) emitsOf[p.name] = 0;
+    let itemIndex = 0;
+    for (const item of p.build(rim)) {
+      // Deterministic per (pattern position, item), NOT random: a mission
+      // course is a fixed layout, and a star means nothing if the same mission
+      // thins differently on a replay. Keyed off the pattern's absolute start
+      // so the same stretch of hill always drops the same items.
+      const def0 = PROP_TYPES[item.type];
+      const isFeatured = featured && def0 && featured.has(def0.kind);
+      const keep = isFeatured || density >= 1
+        || hash(start * 0.37 + (itemIndex++) * 13.7) < density;
+      if (!keep) continue;
+      // RARE placements appear in one of every `rare` emissions OF THIS
+      // PATTERN. Per-pattern, not global: counted against the global emission
+      // index, a rare:3 inside a pattern that itself only comes up every fifth
+      // emission needs both cadences to coincide, which fires about one time in
+      // fifteen -- measured, that put two idols in an entire 1800m descent with
+      // a 53-second hole between them.
+      //
+      // Counted rather than rolled so the cadence is something a player can
+      // come to feel, instead of a coin that can hide an idol for a whole run
+      // or deal three in a row.
+      // `rarePhase` staggers patterns that share a cadence. Without it every
+      // rare:2 placement in the set fires on the same emissions and they arrive
+      // in clumps -- measured, six idols in a descent landed as three early,
+      // a 1000m gap, then three late.
+      if (!rareAlways && item.rare
+        && (emitsOf[p.name] % item.rare) !== (item.rarePhase || 0)) continue;
+      // SPREAD pushes an authored layout out toward the edges of a wider hill
+      // (see data/terrain.js). Clamped at the rim: on a wall terrain the rim is
+      // a solid barrier, and a prop scaled past it would be embedded in it.
+      // Clamping rather than dropping keeps the pattern's shape -- the outermost
+      // items pile onto the edge instead of vanishing, which is what "all the
+      // way across the field" should look like.
+      const mult = spreadOverride != null ? spreadOverride : TERRAIN.spread;
+      let u = item.u * mult;
+      if (pushOut > 0) {
+        // Sign of whatever it already had; for a dead-centre item there is no
+        // sign to keep, so one is chosen deterministically off its position --
+        // stable across replays, and alternating rather than all one way.
+        const sgn = Math.abs(u) > 1e-6 ? Math.sign(u)
+          : (hash(start * 1.7 + item.ds) < 0.5 ? -1 : 1);
+        u = sgn * (Math.abs(u) + pushOut);
+      }
+      u = Math.max(-rim, Math.min(rim, u));
+      // GATES HAVE A CEILING. Amit: "if they're touching the colour zone above,
+      // or even close to it, it's an area where it's really hard for the player
+      // to navigate and stay there because of the gravity."
+      //
+      // Lowering them at the source was not enough, because a mission's layout
+      // then pushes everything outward and puts them straight back up the wall
+      // -- measured at 0.79 of the rim on the missions whose cycled layout has
+      // the strongest push. This is a property of the OBJECT, not of any one
+      // level: a speed gate above roughly half way is one the pendulum will not
+      // let you sit in, whatever the layout wanted. Ramps and crystals are
+      // still free to go to the edges; they do not have to be held.
+      const def1 = PROP_TYPES[item.type];
+      if (def1 && def1.kind === 'boost') {
+        const ceiling = rim * BOOST_MAX_LANE;
+        u = Math.max(-ceiling, Math.min(ceiling, u));
+      }
+      add(item.type, start + item.ds, u * flip);  // item.u is an ANGLE
     }
 
     // Roadside dressing across the same stretch. Deterministic per index so the
     // world doesn't reshuffle, but varied enough not to read as a repeat.
-    const W = THETA_MAX;
+    const W = TERRAIN.thetaMax;
     for (let d = 0; d < p.length; d += 16) {
       const s = start + d;
       const r = hash(s);
@@ -525,12 +1143,18 @@ export function createProps(scene) {
       // Lamps stay for now: they line the lip like coping lights, which is at
       // least plausible, and they give the eye something to read speed against
       // until the real art lands.
+      // Lamps line the pipe's lip like coping lights. A terrain that ends in a
+      // rendered wall says where the edge is far better than a row of posts
+      // does, and two edge markers is one too many -- so on those hills the
+      // lamps are simply not emitted. Amit: "we can lose the headlights."
+      if (!TERRAIN.lipLamps) continue;
       for (const side of [-1, 1]) {
         const r2 = hash(s * 1.7 + side * 31);
         if (r2 < 0.5) add('lamp', s + r * 8, (W + 0.14) * side);
       }
     }
     nextPatternS += p.length;
+    emitsOf[p.name] = (emitsOf[p.name] || 0) + 1;
     return p.name;
   }
 
@@ -538,16 +1162,97 @@ export function createProps(scene) {
     group,
     active,
 
-    reset() {
+    /**
+     * @param {number} [startS] where this run begins on the hill.
+     *
+     * A varying course starts at a DIFFERENT DISTANCE each run, and that one
+     * number changes more than the props: the trough's funnels (760 m period),
+     * its roll wave and all the roadside dressing are functions of ABSOLUTE s,
+     * so a different start puts the pinches, the banking and the scenery
+     * somewhere else entirely. The same set-piece sits on different road.
+     */
+    /**
+     * @param {string[]|null} block prop TYPES to leave out, or null for none.
+     * @param {boolean} [always] emit `rare` placements every time.
+     */
+    /**
+     * @param {number|null} mult lateral multiplier, or null for the terrain's.
+     * @param {number} push fixed angular offset away from the centreline.
+     */
+    setLayout(mult, push = 0) {
+      spreadOverride = mult;
+      pushOut = push || 0;
+    },
+
+    setContent(block, always = false, feature = null) {
+      blockedTypes = block && block.length ? new Set(block) : null;
+      rareAlways = !!always;
+      featured = feature && feature.length ? new Set(feature) : null;
+    },
+
+    /** @param {number} d fraction of authored content to emit, 0..1 */
+    /**
+     * @param {number} m metres between extra speed gates, or 0 for none.
+     *
+     * A COURSE SETTING, not a terrain one: the same six hills are ridden by the
+     * missions with their authored pad count and by the race with this on top.
+     */
+    setBoostEvery(m) {
+      boostEvery = (typeof m === 'number' && m > 0) ? m : 0;
+    },
+
+    /**
+     * @param {number} m metres between extra pink barriers, or 0 for none.
+     * Course-scoped for the same reason as setBoostEvery.
+     */
+    /**
+     * @param {number} s the finish distance, or 0 for an endless course.
+     *
+     * Set per RUN rather than per course, because a varying course starts at a
+     * different distance each time -- the finish is startS + length, which the
+     * course itself cannot know.
+     */
+    setEndS(s) {
+      endS = (typeof s === 'number' && s > 0) ? s : 0;
+    },
+
+    setWallEvery(m) {
+      wallEvery = (typeof m === 'number' && m > 0) ? m : 0;
+    },
+
+    setDensity(d) {
+      density = (typeof d === 'number' && d > 0) ? Math.min(1, d) : 1;
+    },
+
+    reset(startS = 0) {
       while (active.length) release(active.pop());
-      nextPatternS = 60;
+      nextPatternS = startS + 60; // leave the opening stretch clear
+      nextLipS = startS + 60;
+      nextBoostS = startS + 60;
+      nextWallS = startS + 60;
+      emitsOf = Object.create(null);
       patternIndex = 0;
+      bag = [];
+    },
+
+    /**
+     * @param {boolean} on
+     * @param {number} seed
+     * Called once per run, before reset().
+     */
+    setVariation(on, seed) {
+      vary = !!on;
+      rng = mulberry32(Math.floor(seed * 0xffffffff) || 1);
+      bag = [];
     },
 
     /** Keep the field populated ahead and recycled behind. */
     update(riderS, dt = 0) {
       spinT += dt;
       while (nextPatternS < riderS + SPAWN_AHEAD) emitPattern();
+      emitLipRamps(riderS + SPAWN_AHEAD);
+      emitBoosts(riderS + SPAWN_AHEAD);
+      emitWalls(riderS + SPAWN_AHEAD);
       for (let i = active.length - 1; i >= 0; i--) {
         const it = active[i];
         if (it.s < riderS - RECYCLE_BEHIND) {
@@ -592,13 +1297,16 @@ export function createProps(scene) {
           // Spin about the SURFACE normal, composed onto the basis above --
           // writing mesh.rotation.y here instead would overwrite the whole
           // quaternion and stand the crystal world-upright on a rolled section.
-          _spin.setFromAxisAngle(_up, spinT * 1.8 + it.s * 0.7);
+          _spin.setFromAxisAngle(_up,
+            (it.def.pickup.grounded ? spinT * 0.5 : spinT * 1.8) + it.s * 0.7);
           it.mesh.quaternion.premultiply(_spin);
           // Float it off the surface, along that same normal. The height is the
           // one the probe tests against, so what you see is what you can reach.
-          it.mesh.position.addScaledVector(
-            _up, it.def.pickup.height + Math.sin(spinT * 2.2 + it.s) * 0.16,
-          );
+          // Grounded pickups neither float nor bob -- they are planted. The
+          // spin stays: it is the shared language that says "collectable", and
+          // a slowly turning monument reads fine where a bobbing one does not.
+          const bob = it.def.pickup.grounded ? 0 : Math.sin(spinT * 2.2 + it.s) * 0.16;
+          it.mesh.position.addScaledVector(_up, it.def.pickup.height + bob);
         }
       }
     },
@@ -625,25 +1333,31 @@ export function createProps(scene) {
     },
 
     probe(s, theta, airborne, sPrev, height = 0) {
-      // AIR GATES GET FIRST REFUSAL while airborne. probe() returns the first
-      // match in spawn order, so anything else occupying the same stretch of
-      // road -- a long rail under the landing, most obviously -- masked the gate
-      // entirely and it could never be collected. An airborne rider passing
-      // through a gate at the gate's own height is unambiguously taking the
-      // gate; whatever is on the ground beneath is not what they are touching.
-      if (airborne) {
-        for (const it of active) {
-          if (it.spent || it.def.kind !== 'boost') continue;
-          const gateH = it.def.boost.height || 0;
-          if (gateH <= 0) continue;
-          if (Math.abs(s - it.s) > it.def.boost.catchWidth) continue;
-          if (Math.abs(theta - it.theta) * TROUGH_RADIUS > it.def.boost.catchWidth) continue;
-          if (Math.abs(height - gateH) > (it.def.boost.reach || 1.5)) continue;
-          return it;
-        }
-      }
+      let collectablesFirst;
+      // COLLECTABLES GET FIRST REFUSAL.
+      //
+      // probe() returns the first match in SPAWN ORDER, which is arbitrary, so
+      // whichever prop happens to share a stretch of road wins. A long rail's
+      // window is +-7 m -- wide enough to sit under a crystal or a gate hanging
+      // twenty feet above it -- and being earlier in the array was enough to
+      // mask them completely. Measured: probing a high crystal's exact position
+      // returned "longRail". That is where "collecting the yellow pickup during
+      // a backflip sometimes does not work" actually came from; the height band
+      // was a second, smaller bug on top of it.
+      //
+      // A pickup or a gate is something you pass THROUGH; a rail or a ramp is
+      // something you land ON. When both are in range, the collectable is
+      // unambiguously what the rider touched.
+      //
+      // Deliberately a PRE-PASS over the same loop rather than a sort: the tests
+      // below are the definition of a hit, and a second copy of them here is
+      // exactly how the gate rule drifted out of step in the first place.
+      collectablesFirst = true;
+      for (let pass = 0; pass < 2; pass++, collectablesFirst = false) {
       for (const it of active) {
         if (it.spent || it.def.kind === 'scenery') continue;
+        const collectable = it.def.kind === 'pickup' || it.def.kind === 'boost';
+        if (collectable !== collectablesFirst) continue;
         const { l, w } = it.def.size;
         const halfL = (it.def.kind === 'grind' ? l : Math.max(l, 1.2)) / 2;
         if (it.def.kind === 'launch') {
@@ -662,6 +1376,12 @@ export function createProps(scene) {
           // speed or frame rate.
           const takeoff = it.s - halfL + 2 * halfL * apexFrac(it.def.launch.profile);
           if (!(sPrev < takeoff && s >= takeoff)) continue;
+        } else if (it.def.kind === 'wall') {
+          // A wall is a thin slab across the road -- half a metre deep -- so an
+          // overlap test on its own length is barely one frame wide at 30 u/s.
+          // Its catch width is used along s as well, for the same reason a
+          // pickup's is: an obstacle that can be stepped clean over is not one.
+          if (Math.abs(s - it.s) > it.def.wall.catchWidth) continue;
         } else if (it.def.kind === 'boost') {
           if (Math.abs(s - it.s) > it.def.boost.catchWidth) continue;
         } else if (it.def.kind === 'pickup') {
@@ -677,15 +1397,26 @@ export function createProps(scene) {
         } else if (s < it.s - halfL || s > it.s + halfL) {
           continue;
         }
-        const catchW = it.def.kind === 'grind' ? it.def.grind.catchWidth
+        const catchW = it.def.kind === 'wall' ? it.def.wall.catchWidth
+          : it.def.kind === 'grind' ? it.def.grind.catchWidth
           : it.def.kind === 'pickup' ? it.def.pickup.catchWidth
           : it.def.kind === 'boost' ? it.def.boost.catchWidth
           : w / 2 + 0.45;
         // Prop sizes stay authored in WORLD units; convert the angular gap to an
         // arc length so a prop is the same physical size wherever it sits on the
         // wall (and stays correct if the radius varies for funnels later).
-        const arcGap = Math.abs(theta - it.theta) * TROUGH_RADIUS;
-        if (arcGap > catchW) continue;
+        // THE TROUGH IS NOT A CONSTANT RADIUS. It funnels -- radiusAt() pinches
+        // to 0.46 of full at a throat -- so converting the angular gap with the
+        // nominal TROUGH_RADIUS overstated the real distance by up to 2.2x
+        // wherever the road narrows. The visible effect was that a prop had to
+        // be hit dead centre to register: you would ride through the frame of a
+        // boost gate and collect nothing. Worse, it came and went with the
+        // funnels, so it read as flaky rather than as wrong.
+        // catchScale keeps an authored collider the same SHARE of the road on a
+        // hill of a different radius -- see data/terrain.js. It is 1 on the
+        // half-pipe, so nothing this was ever tuned against moves.
+        const arcGap = Math.abs(theta - it.theta) * radiusAt(it.s);
+        if (arcGap > catchW * TERRAIN.catchScale) continue;
         // Airborne clears hazards and launchers, but you can still land INTO a
         // grind -- that's the good kind of accident -- and you can still collect
         // PICKUPS, which is the entire point of placing them off a ramp.
@@ -693,17 +1424,20 @@ export function createProps(scene) {
         // separates them: a gate hung over a ramp's landing can only be taken by
         // being airborne at the right moment, which is the whole point of it.
         if (it.def.kind === 'boost') {
-          const gateH = it.def.boost.height || 0;
-          if (gateH > 0) {
-            if (Math.abs(height - gateH) > (it.def.boost.reach || 1.5)) continue;
-          } else if (airborne) {
-            continue;
-          }
+          if (!withinGateArch(it.def, height)) continue;
+        } else if (it.def.kind === 'wall') {
+          // YOU CAN JUMP IT, and height is what decides -- not the airborne
+          // flag. Being airborne at all would clear a wall you had only just
+          // left the ground for, and a ramp deck that carries you over one
+          // would not count at all. Above its clear height you are over it;
+          // below, you hit it, arc or no arc.
+          if (height > it.def.wall.clearHeight) continue;
         } else if (airborne && it.def.kind !== 'grind' && it.def.kind !== 'pickup') continue;
         // A pickup floating three metres up is not collectable from the road.
         if (it.def.kind === 'pickup'
             && Math.abs(height - it.def.pickup.height) > it.def.pickup.reach) continue;
         return it;
+      }
       }
       return null;
     },
@@ -737,7 +1471,7 @@ export function createProps(scene) {
         const halfL = Math.max(l, 1.2) / 2;
         const base = it.s - halfL;
         if (s < base || s > it.s + halfL) continue;
-        const arcGap = Math.abs(theta - it.theta) * TROUGH_RADIUS;
+        const arcGap = Math.abs(theta - it.theta) * radiusAt(it.s);
         if (arcGap > w / 2 + 0.45) continue;
         // Overlapping ramps are not authored today, but taking the highest
         // keeps this correct if a pattern ever stacks them.

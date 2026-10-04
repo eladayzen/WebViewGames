@@ -50,7 +50,14 @@
         (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
       })();
     </script>
-    <title>TMNT: Skate &amp; Slice</title>
+    <!-- The title tag below uses Vite's native index.html env-token
+         replacement (see the per-theme .env files in the project root) --
+         picks exactly one string at build time, no leftover text from the
+         other theme in either build's shipped HTML. NOTE: Vite's token
+         replacement is a plain find-replace across the whole file, so
+         don't write the literal token text anywhere else in this file
+         (including comments) unless you want it substituted there too. -->
+    <title>%VITE_APP_TITLE%</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -63,37 +70,60 @@
            absolute (not fixed) -- positioned relative to #stage, the locked-aspect
            box, so it stays anchored to the visible game frame, not the raw viewport. -->
       <button id="gb-back"
-        onclick="if(window.Unity)window.Unity.call('nav:back');"
+        onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
         style="position:absolute;top:12px;right:12px;z-index:9999;width:38px;height:38px;border:none;
                border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
                font:600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
                -webkit-tap-highlight-color:transparent;">&times;</button>
 
-      <!-- Pause button -- placeholder glyph icon (real icon art later); sits left of
-           Back per the same convention. -->
-      <button id="pause-button"
+      <!-- Pause button -- sits left of Back per the same convention. Drawn as an
+           inline SVG (two bars) rather than the pause CHARACTER U+23F8: that
+           character defaults to color-emoji presentation, so on mobile WebViews
+           it fell back to the emoji font and rendered as a "yellow button"
+           (fine/monochrome only in the desktop/editor WebView). The SVG uses
+           fill:currentColor, so it inherits the button's white and renders
+           identically on every device -- no font/emoji fallback possible. -->
+      <button id="pause-button" title="Pause"
         style="position:absolute;top:12px;right:60px;z-index:9999;width:38px;height:38px;border:none;
-               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
-               font:600 16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
-               -webkit-tap-highlight-color:transparent;">&#9208;</button>
+               -webkit-tap-highlight-color:transparent;"><svg width="14" height="16" viewBox="0 0 14 16"
+          fill="currentColor" aria-hidden="true" focusable="false"><rect x="1.5" y="1" width="3.6"
+          height="14" rx="1.4"></rect><rect x="8.9" y="1" width="3.6" height="14" rx="1.4"></rect></svg></button>
 
-      <!-- Mute button -- sits left of Pause, same icon-button convention.
-           Placeholder glyph icon; starts unmuted (speaker-on). -->
-      <button id="mute-button"
+      <!-- Settings button -- sits left of Pause, same icon-button convention.
+           Gear glyph; opens #settings-panel (src/ui/settingsPanel.js) with
+           SENSITIVITY/MUSIC/SFX (2026-08-19, replaces the old single
+           mute-button -- see systems/audio.js). -->
+      <button id="settings-button" title="Settings"
         style="position:absolute;top:12px;right:108px;z-index:9999;width:38px;height:38px;border:none;
                border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
-               font:600 16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               font:600 17px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
                line-height:1;display:flex;align-items:center;justify-content:center;
-               -webkit-tap-highlight-color:transparent;">&#128266;</button>
+               -webkit-tap-highlight-color:transparent;">&#9881;</button>
+
+      <!-- Settings panel -- rows built in JS (src/ui/settingsPanel.js), same
+           touch+two-key (Enter=next row, Space=change) model as
+           HalfShellHustle's steering panel, since inside the real Unity
+           WebView there is no pointer at all in this game's analog
+           steering mode -- see that file's header for the full contract. -->
+      <div id="settings-panel" class="hidden"></div>
 
       <div id="hud">
         <div id="countdown-overlay" class="hidden">3</div>
 
         <div id="topLeft">
-          <div id="score">SCORE: 0</div>
-          <div id="combo" class="hidden">COMBO x1.0</div>
+          <div id="score">0</div>
+          <!-- Progression fill bar toward the next level's score threshold
+               (2026-08-03) -- hidden on the final stage (no next threshold). -->
+          <div id="score-bar"><div id="score-bar-fill"></div></div>
+          <!-- Streak indicator (2026-09-07): label + a timer bar that refills
+               on each catch and drains between catches (ui.js setStreak). -->
+          <div id="combo" class="hidden">
+            <span id="combo-label">STREAK</span>
+            <div id="combo-bar"><div id="combo-bar-fill"></div></div>
+          </div>
         </div>
 
         <div id="lives-tray"></div>
@@ -106,27 +136,156 @@
              dynamically per color in ui.js, hidden until each box is active. -->
         <div id="box-tray"></div>
 
-        <div id="stage-banner" class="hidden"></div>
-
         <div id="paused-badge" class="hidden">PAUSED</div>
 
-        <!-- Box-completion celebration (progression update) -- a quick
-             foreground pop: box icon + "<COLOR> BOX!" + the bonus points.
-             Populated + animation-restarted in ui.js on each completion. -->
-        <div id="box-complete-popup" class="hidden">
-          <img id="bcp-icon" class="bcp-icon" src="" alt="" />
-          <div class="bcp-text">
-            <div id="bcp-title" class="bcp-title">PIZZA BOX!</div>
-            <div id="bcp-bonus" class="bcp-bonus">+0</div>
-          </div>
-        </div>
+        <!-- Box-completion celebrations. Each: box icon + "<COLOR> BOX!" + the
+             bonus, then a BIG reveal of the booster you earned (+ "+1 LIFE" for
+             the red box). Up to 3 can show AT ONCE, side by side and centered as
+             a group, so two boxes finishing close together don't cut each other
+             off. The popup instances + layout are built/managed in ui.js. -->
+        <div id="box-complete-tray"></div>
       </div>
 
       <div id="gameover-overlay" class="overlay hidden">
         <div class="title">GAME OVER</div>
         <div id="final-score"></div>
         <div id="final-combo"></div>
+        <!-- Family-account leaderboard (GoBalance submitScore/getScoreboard,
+             see systems/scoreboard.js). Stays hidden outside the app and when
+             empty. Deliberately INSIDE #gameover-overlay and ABOVE
+             #restart-button: the SDK synth-clicks the restart button while
+             this overlay is visible, and the reading order should put the
+             board above the button (GOBALANCE_APP_INTEGRATION.md rule 4). -->
+        <div id="scoreboard" class="hidden">
+          <div id="scoreboard-title">BEST ON THIS ACCOUNT</div>
+          <ol id="scoreboard-rows"></ol>
+        </div>
         <button id="restart-button">RETRY</button>
+      </div>
+
+      <!-- First-run onboarding tutorial (shown every run: boot() and the
+           restart button both call beginIntro() -- see core/main.js). Own
+           ids throughout (intro-next-button/intro-start-button), distinct
+           from #restart-button, so the SDK's gameover-only synthetic click
+           can never target these. Step 1: what to catch/avoid (no board, no
+           character -- pure item recognition). Step 2: how to move (a
+           CONTINUOUS board+character sweep, not a lane-snap cycle -- this
+           game's input is analog/continuous lean, not an absolute lane
+           target; see data/introTutorial.js). -->
+      <div id="intro-tutorial-overlay" class="overlay hidden">
+        <div id="intro-step-items" class="intro-step">
+          <div class="intro-step-title">KNOW YOUR ITEMS</div>
+          <div class="intro-items-row">
+            <div class="intro-item-panel intro-item-good">
+              <div class="intro-item-badge intro-badge-good">&#10003;</div>
+              <div class="intro-item-icons">
+                <img id="intro-icon-pizza" class="intro-item-icon" alt="" />
+                <img id="intro-icon-shield" class="intro-item-icon" alt="" />
+                <img id="intro-icon-magnet" class="intro-item-icon" alt="" />
+                <img id="intro-icon-wave" class="intro-item-icon" alt="" />
+              </div>
+              <div class="intro-item-label">CATCH</div>
+            </div>
+            <div class="intro-item-panel intro-item-bad">
+              <div class="intro-item-badge intro-badge-bad">&#10007;</div>
+              <div class="intro-item-icons">
+                <img id="intro-icon-bomb" class="intro-item-icon" alt="" />
+              </div>
+              <div class="intro-item-label">AVOID</div>
+            </div>
+          </div>
+          <button id="intro-next-button">NEXT</button>
+        </div>
+        <div id="intro-step-steer" class="intro-step hidden">
+          <div class="intro-step-title">TILT LEFT &amp; RIGHT TO MOVE</div>
+          <!-- Fixed width+height box (not sized off either source frame) --
+               the two run-cycle frames (see core/heroAssets.*.js) are
+               genuinely different poses (arms/legs spread differently
+               mid-stride, verified via each PNG's own alpha content bbox --
+               not asset padding), so no single non-distorting size is
+               IDENTICAL for both. object-fit: contain letterboxes each
+               frame inside this one unchanging box (invisible, since the
+               PNGs are transparent) instead of the box itself changing
+               size -- locks HEIGHT (the axis that read as "small big small
+               big") to zero variance between frames; only a small
+               transparent-letterboxed width gap differs. -->
+          <img id="intro-steer-player" class="intro-sprite" alt="" />
+          <div id="intro-steer-board" class="intro-board"></div>
+          <button id="intro-start-button">START</button>
+        </div>
+      </div>
+
+      <!-- Stage-complete transition (freeze + curtain, ported from
+           HalfShellHustle's level-complete pattern -- see
+           WEB_MINIGAME_TECH_RETROSPECTIVE.md and data/stageTransition.js).
+           Curtain panels are SIBLINGS of #stage-complete-overlay, deliberately
+           NOT children of it: the overlay goes display:none the instant
+           hideStageComplete runs, and a CSS transition cannot play on an
+           element whose ancestor just went display:none -- nested, the
+           opening slide would silently never animate. Own explicit z-index
+           for the same reason (no longer inheriting .overlay's). -->
+      <div id="stage-curtain-left" class="stage-curtain"></div>
+      <div id="stage-curtain-right" class="stage-curtain"></div>
+
+      <div id="stage-complete-overlay" class="overlay hidden">
+        <div id="sc-headline">STAGE CLEAR!</div>
+        <div id="sc-next">NEXT: FIRE ESCAPE</div>
+        <div id="sc-countdown">4</div>
+      </div>
+
+      <!-- Quit confirm (GOBALANCE_APP_INTEGRATION.md "Quitting"). A MODAL over
+           the still-visible PAUSED game -- a light scrim, not a full screen --
+           so the player sees the run they're being asked to abandon. Raised by
+           #gb-back only mid-run; its own ids, never #gameover-overlay. -->
+      <div id="confirm-overlay" class="modal-overlay hidden">
+        <div class="board-card">
+          <div class="board-title">QUIT?</div>
+          <div class="board-sub">Your score will still be counted.</div>
+          <div class="board-buttons">
+            <button id="confirm-stay" type="button">KEEP PLAYING</button>
+            <button id="confirm-quit" type="button">QUIT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quit board -- shown AFTER confirming a mid-run quit. Its OWN screen
+           and button ids (quit-again / quit-leave), deliberately NOT
+           #gameover-overlay / #restart-button, so the host's Space/Enter
+           synth-restart can't fire behind it. No auto-restart timer: the
+           player chose to stop. The run is still submitted and shown on the
+           board (a run ended by choice still happened). -->
+      <div id="quit-overlay" class="board-screen hidden">
+        <div class="board-card">
+          <div id="quit-title" class="board-title">RUN ENDED</div>
+          <div id="quit-stats" class="board-sub"></div>
+          <div id="quit-scoreboard" class="hidden">
+            <div id="quit-scoreboard-title">BEST ON THIS ACCOUNT</div>
+            <ol id="quit-scoreboard-rows"></ol>
+          </div>
+          <div class="board-buttons">
+            <button id="quit-again" type="button">PLAY AGAIN</button>
+            <button id="quit-leave" type="button">QUIT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- CAMPAIGN COMPLETE victory beat -- shown when the final stage (Docks)
+           is cleared. Its OWN screen + button id (victory-continue), NEVER
+           #gameover-overlay/#restart-button, so the host's Space/Enter synth-
+           restart can't fire through it. NO timer and CONTINUE is the only way
+           off it: this is the screen the player earned, and a stray tap while
+           they read it must not take it away. CONTINUE leads to the shared end
+           board (the quit board, reused). See core/main.js completeCampaign /
+           continueFromVictory (mirrors NovaVanguard's victory flow). -->
+      <div id="victory-overlay" class="board-screen hidden">
+        <div class="board-card">
+          <div class="board-title">ALL ZONES CLEARED!</div>
+          <div id="victory-sub" class="board-sub">You cleared all 8 zones</div>
+          <div id="victory-stats" class="board-sub"></div>
+          <div class="board-buttons">
+            <button id="victory-continue" type="button">CONTINUE</button>
+          </div>
+        </div>
       </div>
     </div>
 

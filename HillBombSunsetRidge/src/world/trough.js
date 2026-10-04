@@ -25,11 +25,14 @@
 import * as THREE from 'three';
 import {
   SEG_LEN, SEGMENTS_AHEAD, SEGMENTS_BEHIND, GRADE,
-  TROUGH_RADIUS, THETA_MAX, TROUGH_ROLL_AMOUNT, TROUGH_ROLL_WAVELENGTH,
-  FUNNEL_SPACING, FUNNEL_WIDTH, FUNNEL_TIGHTNESS,
+  THETA_MAX,
   TROUGH_COLOR, TROUGH_FLOOR_COLOR, LIP_COLOR,
   GUIDE_STRIPES, GUIDE_COLOR,
 } from '../data/constants.js';
+// The cross-section is TERRAIN's now, not a constant -- see data/terrain.js.
+// Read through the object every call; caching a field off it is what would make
+// the mesh and the physics disagree about where the wall is.
+import { TERRAIN } from '../data/terrain.js';
 
 // Resolution across the U. The concept art reads as a smooth continuous
 // ribbon, so the cross-section needs enough segments not to facet visibly --
@@ -38,10 +41,198 @@ const CROSS_SEGMENTS = 30;
 
 // --- the spline -------------------------------------------------------------
 
+/**
+ * THE HILL'S SHAPE, as a repeating SEQUENCE of drops rather than one hump.
+ *
+ * The first version was a single periodic smoothstep: the same 12-unit
+ * roll-over every 540m, forever. It worked, and Amit's note on riding it was
+ * that it should be "more of them, smaller ones, different lines, different
+ * shapes." One repeated shape is terrain you learn once.
+ *
+ * So a terrain now carries a CYCLE -- a short list of drops, each with its own
+ * depth, length and profile, repeating as a group. Five entries at 230m spacing
+ * means a drop roughly every 8 seconds and the same one only every 40, which is
+ * long enough that the sequence reads as landscape rather than as wallpaper.
+ *
+ * SIZE IS NOT THE ONLY VARIABLE, and mostly not the interesting one. Launch
+ * curvature goes as depth/length^2, so a shallow 5-unit drop stretched over 69m
+ * is something you flow across without leaving the ground, while a 3.5-unit one
+ * compressed into 23m throws you clear. Two drops half a metre apart in depth
+ * can be a gentle roll and a hard lip. That is what makes a sequence worth
+ * reading ahead rather than reacting to.
+ *
+ * WHY THE GROUP'S TOTAL DEPTH IS FIXED. Elevation has to be O(1) at any s --
+ * it is read for every vertex of the surface mesh, every frame -- so it cannot
+ * be a sum over every drop since the top of the hill. Repeating a group whose
+ * depths are known lets the accumulated descent be one multiply plus a lookup
+ * into a prefix table. It also keeps the hill's average grade constant, so the
+ * run does not quietly get faster the further down it you are.
+ */
+
+/** Smoothstep and its first two derivatives -- flat lip, steep middle, flat out. */
+function ss(t) { return t * t * (3 - 2 * t); }
+function ssD(t) { return 6 * t * (1 - t); }
+function ssDD(t) { return 6 - 12 * t; }
+
+// A STAIR is two half-drops with a breather between them, and it exists because
+// it is the one shape that gives you a decision in the middle: land the first
+// step and ride the second, or carry enough speed off the first to clear both.
+// Bounds chosen so the two steps do not overlap and each still has a real lip.
+const ST_A = 0.42, ST_B = 0.58, ST_W = 0.42;
+
+/** Shape of a drop, 0 at the lip to 1 at the bottom. */
+function shape(profile, t) {
+  if (profile === 'stair') {
+    const a = Math.min(1, Math.max(0, t / ST_W));
+    const b = Math.min(1, Math.max(0, (t - ST_B) / ST_W));
+    return 0.5 * ss(a) + 0.5 * ss(b);
+  }
+  return ss(t);
+}
+function shapeD(profile, t) {
+  if (profile === 'stair') {
+    const a = t / ST_W, b = (t - ST_B) / ST_W;
+    let d = 0;
+    if (a > 0 && a < 1) d += 0.5 * ssD(a) / ST_W;
+    if (b > 0 && b < 1) d += 0.5 * ssD(b) / ST_W;
+    return d;
+  }
+  return ssD(t);
+}
+function shapeDD(profile, t) {
+  if (profile === 'stair') {
+    const a = t / ST_W, b = (t - ST_B) / ST_W;
+    let d = 0;
+    if (a > 0 && a < 1) d += 0.5 * ssDD(a) / (ST_W * ST_W);
+    if (b > 0 && b < 1) d += 0.5 * ssDD(b) / (ST_W * ST_W);
+    return d;
+  }
+  return ssDD(t);
+}
+
+/**
+ * Which drop we are in at s, and where within it.
+ * @returns {null|{drop:object, t:number, before:number, len:number}}
+ *   `t` is 0..1 across the drop (clamped), `before` the descent accumulated by
+ *   every drop above this one, `len` the drop's length in world units.
+ */
+function dropAt(s) {
+  const cycle = TERRAIN.dropCycle;
+  if (!cycle || cycle.length === 0) return null;
+  const sp = TERRAIN.dropSpacing;
+  const n = cycle.length;
+  const groupLen = n * sp;
+  const group = Math.floor(s / groupLen);
+  const inGroup = s - group * groupLen;
+  const i = Math.min(n - 1, Math.floor(inGroup / sp));
+  const drop = cycle[i];
+
+  let before = group * TERRAIN.dropCycleDepth;
+  for (let k = 0; k < i; k++) before += cycle[k].depth;
+
+  const len = drop.width * sp;
+  // Centred in its slot, so consecutive drops always have flat ground between
+  // them however wide they are -- two lips running together would read as one
+  // long slope and lose both.
+  const startInSlot = (sp - len) / 2;
+  const t = (inGroup - i * sp - startInSlot) / len;
+  return { drop, t, before, len };
+}
+
+/** How far the hill has fallen by distance s. Metres of descent, positive down. */
+export function elevAt(s) {
+  const d = dropAt(s);
+  if (!d) return GRADE * s;
+  const t = Math.min(1, Math.max(0, d.t));
+  return GRADE * s + d.before + d.drop.depth * shape(d.drop.profile, t);
+}
+
+/**
+ * Local steepness, d(elevation)/ds. The tangent the rider flies off at, and the
+ * thing that decides how hard the grade pulls them down it.
+ *
+ * Analytic rather than sampled: this is read every frame, and a finite
+ * difference across a smoothstep's corner would report a slope the surface
+ * never actually has.
+ */
+export function slopeAt(s) {
+  const d = dropAt(s);
+  if (!d || d.t <= 0 || d.t >= 1) return GRADE;
+  return GRADE + d.drop.depth * shapeD(d.drop.profile, d.t) / d.len;
+}
+
+/**
+ * How sharply the steepness is CHANGING, d^2(elevation)/ds^2.
+ *
+ * This is the launch test. Positive means the ground is tipping away from under
+ * you -- a crest -- and v^2 times this is the downward acceleration you would
+ * need to stay glued to it. Past what gravity can supply, you are already in
+ * the air, and that is the whole trigger: no volumes, no markers, no authoring
+ * per drop. Ride the same lip slowly and you simply roll down it.
+ */
+export function curvatureAt(s) {
+  const d = dropAt(s);
+  if (!d || d.t <= 0 || d.t >= 1) return 0;
+  return d.drop.depth * shapeDD(d.drop.profile, d.t) / (d.len * d.len);
+}
+
+/**
+ * Every drop LIP between two distances, for anything that wants to put
+ * something at the edge of one -- props.js hangs kickers off them.
+ *
+ * Returns the lip position plus the drop's own numbers, so a caller can decide
+ * differently for a gentle roll than for a hard edge without re-deriving the
+ * geometry it already computed here.
+ */
+export function dropLipsBetween(sFrom, sTo) {
+  const cycle = TERRAIN.dropCycle;
+  const out = [];
+  if (!cycle || cycle.length === 0) return out;
+  const sp = TERRAIN.dropSpacing;
+  const n = cycle.length;
+  const first = Math.floor(sFrom / sp);
+  const last = Math.ceil(sTo / sp);
+  for (let idx = first; idx <= last; idx++) {
+    const drop = cycle[((idx % n) + n) % n];
+    const len = drop.width * sp;
+    const lip = idx * sp + (sp - len) / 2;
+    if (lip >= sFrom && lip < sTo) out.push({ s: lip, index: idx, drop, len });
+  }
+  return out;
+}
+
 /** Centreline position at distance s. This is the trough FLOOR, not its axis. */
+/**
+ * Centreline position at distance s. This is the trough FLOOR, not its axis.
+ *
+ * THE ROUTE, and until now it was a constant. Two fixed sine waves, the same
+ * amplitude and the same period, on every hill in the game -- so the ridge and
+ * the open face followed an identical path down the mountain and differed only
+ * in what was standing on it. Amit: "everything feels the same... you have the
+ * same route and you add stuff. That's not a good experience -- every time I
+ * press go, it should be, hey, this is a new route."
+ *
+ * Two harmonics, because one is a corridor that snakes and three is noise you
+ * cannot read ahead. The long one sets where the hill generally goes; the short
+ * one is the turn you are actually in. A terrain picks both.
+ */
 export function centre(s, out = new THREE.Vector3()) {
-  const x = Math.sin(s * 0.0031) * 26 + Math.sin(s * 0.00097) * 44;
-  return out.set(x, -s * GRADE, -s);
+  const r = TERRAIN.route;
+  const x = Math.sin(s / r.waveA) * r.ampA + Math.sin(s / r.waveB) * r.ampB;
+  return out.set(x, -elevAt(s), -s);
+}
+
+/**
+ * How fast the centreline is moving SIDEWAYS, per unit travelled down the hill.
+ *
+ * Analytic derivative of centre()'s two harmonics. This is the number the rider
+ * has to cancel to hold a line in the world rather than a lane on the road --
+ * see the world-steer correction in core/main.js.
+ */
+export function routeSlopeAt(s) {
+  const r = TERRAIN.route;
+  return Math.cos(s / r.waveA) * (r.ampA / r.waveA)
+    + Math.cos(s / r.waveB) * (r.ampB / r.waveB);
 }
 
 /**
@@ -59,15 +250,15 @@ export function centre(s, out = new THREE.Vector3()) {
  * spline, so the join is exact by construction.
  */
 export function radiusAt(s) {
-  const phase = (s % FUNNEL_SPACING) / FUNNEL_SPACING;
+  const phase = (s % TERRAIN.funnelSpacing) / TERRAIN.funnelSpacing;
   // One smooth well per cycle: 0 at the edges, 1 at the throat.
-  const pinch = Math.max(0, Math.cos((phase - 0.5) * Math.PI * 2 / FUNNEL_WIDTH));
-  return TROUGH_RADIUS * (1 - (1 - FUNNEL_TIGHTNESS) * pinch * pinch);
+  const pinch = Math.max(0, Math.cos((phase - 0.5) * Math.PI * 2 / TERRAIN.funnelWidth));
+  return TERRAIN.radius * (1 - (1 - TERRAIN.funnelTightness) * pinch * pinch);
 }
 
 /** Roll of the cross-section frame about the tangent, in radians. */
 export function rollAt(s) {
-  return Math.sin(s / TROUGH_ROLL_WAVELENGTH) * TROUGH_ROLL_AMOUNT;
+  return Math.sin(s / TERRAIN.rollWavelength) * TERRAIN.rollAmount;
 }
 
 // Scratch pools kept strictly per-function. Sharing these is what caused the
@@ -108,18 +299,40 @@ export function makeFrame() {
     tangent: new THREE.Vector3(),
     right: new THREE.Vector3(),
     up: new THREE.Vector3(),
-    radius: TROUGH_RADIUS,
+    radius: TERRAIN.radius,
   };
 }
 
 const _twFrame = makeFrame();
 
-/** World position of the trough surface at (s, θ). */
+/**
+ * THE CROSS-SECTION, as one number.
+ *
+ * The surface has always been P = centre + right*R*sin(t) + up*R*(1-cos(t)) --
+ * a circle, so every hill in the game is a concave valley and can only differ
+ * in how wide and how deep. Amit: "they still feel relatively close to each
+ * other. Let's try one that is going downhill but flat, not bending to the
+ * sides, maybe even one that's bent the other way."
+ *
+ * Scaling ONLY the rise term turns that one formula into a family:
+ *
+ *     curve  1    the valley the game shipped with
+ *     curve  0    a flat plane -- downhill, no lateral bend at all
+ *     curve <0    a RIDGE, ground falling away on both sides
+ *     curve >1    a deeper bowl, walls climbing harder
+ *
+ * The lateral spread (right * R * sin) is untouched, so the hill stays the same
+ * WIDTH at every setting and only its profile changes -- which is what keeps
+ * prop placement, collision and the mission targets valid across all of them.
+ *
+ * A ridge is only rideable at all because nothing pulls the rider to the middle
+ * any more. Under the old pendulum they would have slid off it.
+ */
 export function toWorld(s, theta, out = new THREE.Vector3()) {
   const f = frameAt(s, _twFrame);
   centre(s, out);
   out.addScaledVector(f.right, f.radius * Math.sin(theta));
-  out.addScaledVector(f.up, f.radius * (1 - Math.cos(theta)));
+  out.addScaledVector(f.up, f.radius * (1 - Math.cos(theta)) * TERRAIN.curve);
   return out;
 }
 
@@ -133,14 +346,21 @@ const _suFrame = makeFrame();
  */
 export function surfaceUp(s, theta, out = new THREE.Vector3()) {
   const f = frameAt(s, _suFrame);
+  // Perpendicular to dP/dt, which is right*R*cos(t) + up*R*sin(t)*curve -- so
+  // the normal picks up the same factor. At curve 0 it is simply `up`, which is
+  // correct for a flat plane; at negative curve it leans the other way, which is
+  // what makes a ridge read as a ridge rather than as a valley drawn upside
+  // down. Deriving it rather than reusing the circle's normal is the difference
+  // between the rider standing ON the new surface and hovering at an angle to
+  // it.
   return out.copy(f.up).multiplyScalar(Math.cos(theta))
-    .addScaledVector(f.right, -Math.sin(theta))
+    .addScaledVector(f.right, -Math.sin(theta) * TERRAIN.curve)
     .normalize();
 }
 
 /** Height of the surface at θ above the trough floor -- drives speed exchange. */
 export function heightAt(s, theta) {
-  return radiusAt(s) * (1 - Math.cos(theta));
+  return radiusAt(s) * (1 - Math.cos(theta)) * TERRAIN.curve;
 }
 
 // --- the mesh ---------------------------------------------------------------
@@ -151,9 +371,18 @@ export function heightAt(s, theta) {
  * two-dimensional across the cross-section instead of a flat strip.
  */
 class TroughSurface {
-  constructor(thetaFrom, thetaTo, colour, radialInset = 0) {
-    this.thetaFrom = thetaFrom;
-    this.thetaTo = thetaTo;
+  /**
+   * @param {(w:number) => [number, number]} band  the theta range this strip
+   *   covers, as a function of the CURRENT rim angle. A function rather than two
+   *   numbers because the cross-section is per-course now: the lip band and the
+   *   guide stripes have to move when the face gets shallower, and a strip that
+   *   kept its construction-time angles would leave the lip painted out in
+   *   space past the edge of a wider, flatter hill.
+   */
+  constructor(band, colour, radialInset = 0) {
+    this.band = band;
+    this.thetaFrom = 0;
+    this.thetaTo = 0;
     this.inset = radialInset;
     this.rows = SEGMENTS_AHEAD + SEGMENTS_BEHIND;
     this.cols = CROSS_SEGMENTS;
@@ -195,6 +424,14 @@ class TroughSurface {
 
     this._frame = makeFrame();
     this._p = new THREE.Vector3();
+    this.applyTerrain();
+  }
+
+  /** Re-read the band from the live terrain. Cheap; no geometry is rebuilt. */
+  applyTerrain() {
+    const [from, to] = this.band(TERRAIN.thetaMax);
+    this.thetaFrom = from;
+    this.thetaTo = to;
   }
 
   update(riderS) {
@@ -218,9 +455,10 @@ class TroughSurface {
         const o = i * 3;
         const sinT = Math.sin(theta);
         const cosT = Math.cos(theta);
-        pos[o] = this._p.x + f.right.x * R * sinT + f.up.x * R * (1 - cosT);
-        pos[o + 1] = this._p.y + f.right.y * R * sinT + f.up.y * R * (1 - cosT);
-        pos[o + 2] = this._p.z + f.right.z * R * sinT + f.up.z * R * (1 - cosT);
+        const riseT = R * (1 - cosT) * TERRAIN.curve;
+        pos[o] = this._p.x + f.right.x * R * sinT + f.up.x * riseT;
+        pos[o + 1] = this._p.y + f.right.y * R * sinT + f.up.y * riseT;
+        pos[o + 2] = this._p.z + f.right.z * R * sinT + f.up.z * riseT;
         // UVs: v runs along the trough so a tiled texture repeats down its
         // length; u wraps across the cross-section.
         uv[i * 2] = t;
@@ -228,7 +466,11 @@ class TroughSurface {
 
         // Shading: darken up the walls, and darken one side more than the other
         // so the channel has a lit side and a shadow side like concept-02.
-        let shade = 1 - 0.42 * (1 - cosT) - 0.13 * sinT;
+        // Shading follows the PROFILE. On a valley the walls darken with depth;
+        // on a flat plane there is no depth to darken with, and on a ridge the
+        // sides fall away, so the same term with curve applied keeps the
+        // surface reading three-dimensional whichever way it bends.
+        let shade = 1 - 0.42 * (1 - cosT) * TERRAIN.curve - 0.13 * sinT;
         if (this.dashed) {
           // The floor centre line is dashed, which is what actually lets the eye
           // read speed. A solid stripe gives no motion cue at all.
@@ -245,33 +487,172 @@ class TroughSurface {
   }
 }
 
+/**
+ * THE EDGE BARRIER -- a wall standing on the lip, for terrains that end rather
+ * than curl over (see LIP_WALL in data/terrain.js).
+ *
+ * It is a separate class rather than another TroughSurface because it is not a
+ * band of the cross-section: every other strip in this file is generated by
+ * sweeping theta and reading the circle, and this one leaves the circle at the
+ * rim and goes straight up. Bolting an "extrude" flag onto TroughSurface would
+ * have put a branch in the one loop that runs for every vertex of every surface
+ * every frame, to serve a case that shares none of its maths.
+ *
+ * IT STANDS ALONG THE FRAME'S UP, not along the surface normal. At a 53deg rim
+ * the inward normal is tilted 53deg off vertical, so extruding along it would
+ * lean the barrier out over the track like an overhang -- correct as a
+ * continuation of the transition, and completely wrong as a thing that reads
+ * "you cannot go past here". Standing it up in the trough's own frame keeps it
+ * perpendicular to the ground the rider is on, through roll and all.
+ */
+/** Angular gap between where the rider stops and where the barrier stands. */
+const WALL_CLEARANCE = 0.035;
+
+class EdgeWall {
+  constructor(sign) {
+    this.sign = sign;
+    this.rows = SEGMENTS_AHEAD + SEGMENTS_BEHIND;
+    // Three rows up the face: base, mid, cap. Enough to carry a vertical
+    // gradient (dark at the foot, bright at the top) so the wall reads as a
+    // surface catching light rather than as a flat slab of colour.
+    this.cols = 2;
+
+    const vertCount = (this.rows + 1) * (this.cols + 1);
+    this.positions = new Float32Array(vertCount * 3);
+    this.uvs = new Float32Array(vertCount * 2);
+    this.colors = new Float32Array(vertCount * 3);
+    const idx = [];
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        const a = r * (this.cols + 1) + c;
+        const b = a + 1;
+        const d = a + (this.cols + 1);
+        const e = d + 1;
+        idx.push(a, d, b, b, d, e);
+      }
+    }
+    this.geometry = new THREE.BufferGeometry();
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    this.geometry.setAttribute('uv', new THREE.BufferAttribute(this.uvs, 2));
+    this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+    this.geometry.setIndex(idx);
+    this.material = new THREE.MeshBasicMaterial({
+      color: LIP_COLOR, side: THREE.DoubleSide, vertexColors: true,
+    });
+    this.mesh = new THREE.Mesh(this.geometry, this.material);
+    this.mesh.frustumCulled = false;
+    this.role = 'lip'; // themed with the coping it stands on
+
+    this._frame = makeFrame();
+    this._p = new THREE.Vector3();
+  }
+
+  update(riderS) {
+    // A terrain with no wall renders nothing at all, rather than a zero-height
+    // strip -- a degenerate surface still costs a draw call and still z-fights
+    // with the lip it is sitting exactly on top of.
+    const H = TERRAIN.wallHeight;
+    this.mesh.visible = H > 0;
+    if (!this.mesh.visible) return;
+
+    const pos = this.positions;
+    const uv = this.uvs;
+    const col = this.colors;
+    const s0 = Math.floor(riderS / SEG_LEN) * SEG_LEN - SEGMENTS_BEHIND * SEG_LEN;
+    // STANDS JUST OUTSIDE THE RIM, not on it. The rider can now reach thetaMax
+    // exactly -- that is the entire point of the wall mode -- and a barrier
+    // planted on that same angle would have the rider's body halfway through it
+    // every time they lean all the way over. The offset is angular so it holds
+    // through the funnel: 0.035 rad is about 1.6 units of clearance at the open
+    // face's radius, which clears the board and reads as the wall sitting on the
+    // lip band rather than floating off it.
+    const theta = this.sign * (TERRAIN.thetaMax + WALL_CLEARANCE);
+    const sinT = Math.sin(theta);
+    const cosT = Math.cos(theta);
+
+    for (let r = 0; r <= this.rows; r++) {
+      const s = s0 + r * SEG_LEN;
+      const f = frameAt(s, this._frame);
+      centre(s, this._p);
+      const R = f.radius;
+      // The foot of the wall: the rim point of the cross-section at this s.
+      const rise = R * (1 - cosT) * TERRAIN.curve;
+      const fx = this._p.x + f.right.x * R * sinT + f.up.x * rise;
+      const fy = this._p.y + f.right.y * R * sinT + f.up.y * rise;
+      const fz = this._p.z + f.right.z * R * sinT + f.up.z * rise;
+      for (let c = 0; c <= this.cols; c++) {
+        const t = c / this.cols;
+        const i = r * (this.cols + 1) + c;
+        const o = i * 3;
+        pos[o] = fx + f.up.x * H * t;
+        pos[o + 1] = fy + f.up.y * H * t;
+        pos[o + 2] = fz + f.up.z * H * t;
+        uv[i * 2] = t;
+        uv[i * 2 + 1] = s / 24;
+        // Dark at the foot, bright at the cap, plus a hard bright band at the
+        // very top. The band is the part that actually communicates: a line
+        // running the length of the hill at a constant height is readable from
+        // far up the course, where the wall's own face is nearly edge-on.
+        let shade = 0.34 + 0.5 * t * t;
+        if (c === this.cols) shade = 1.25;
+        col[o] = shade; col[o + 1] = shade; col[o + 2] = shade;
+      }
+    }
+    this.geometry.attributes.position.needsUpdate = true;
+    this.geometry.attributes.uv.needsUpdate = true;
+    this.geometry.attributes.color.needsUpdate = true;
+  }
+
+  /** Nothing cached -- the band is read fresh from TERRAIN every update(). */
+  applyTerrain() {}
+}
+
 export function createTrough(scene) {
   const group = new THREE.Group();
 
   // The ridable surface, plus a floor stripe so the fast line reads clearly, and
   // a lip band past THETA_MAX that marks where the wall stops being ridable.
-  const centreLine = new TroughSurface(-0.035, 0.035, TROUGH_FLOOR_COLOR, 0.06);
+  // The centre line is an absolute angular width, not a fraction of the rim: it
+  // is a painted stripe of a fixed physical size, and a wider hill should not
+  // come with a wider stripe down the middle of it.
+  const centreLine = new TroughSurface((w) => [-0.035 * (THETA_MAX / w), 0.035 * (THETA_MAX / w)],
+    TROUGH_FLOOR_COLOR, 0.06);
   centreLine.role = 'floorLine';
   centreLine.dashed = true;
 
   const surfaces = [
-    Object.assign(new TroughSurface(-THETA_MAX, THETA_MAX, TROUGH_COLOR), { role: 'trough' }),
+    Object.assign(new TroughSurface((w) => [-w, w], TROUGH_COLOR), { role: 'trough' }),
     centreLine,
     // The lip must be a VALUE break, not just a different hue -- at luminance 60
     // against a wall at 61 it was invisible, which is a large part of why the
     // trough was hard to read at all.
-    Object.assign(new TroughSurface(THETA_MAX, THETA_MAX + 0.20, LIP_COLOR), { role: 'lip' }),
-    Object.assign(new TroughSurface(-THETA_MAX - 0.20, -THETA_MAX, LIP_COLOR), { role: 'lip' }),
+    Object.assign(new TroughSurface((w) => [w, w + 0.20], LIP_COLOR), { role: 'lip' }),
+    Object.assign(new TroughSurface((w) => [-w - 0.20, -w], LIP_COLOR), { role: 'lip' }),
   ];
   // Guide stripes up both walls -- the only way to read curvature and speed off
   // an otherwise flat-coloured surface.
+  //
+  // Placed as FRACTIONS of the rim angle, derived from the authored angles
+  // rather than restated, so the half-pipe keeps the exact spacing Amit signed
+  // off ("it really helps read and understand where you are on the field") and a
+  // shallower face gets the same four stripes graded across whatever width it
+  // has -- instead of the outermost pair falling off the edge of the hill.
   for (const { theta, halfWidth } of GUIDE_STRIPES) {
+    const f = theta / THETA_MAX;
+    const hw = halfWidth / THETA_MAX;
     for (const sign of [-1, 1]) {
       surfaces.push(Object.assign(new TroughSurface(
-        sign * (theta - halfWidth), sign * (theta + halfWidth), GUIDE_COLOR, 0.05,
+        (w) => [sign * (f - hw) * w, sign * (f + hw) * w], GUIDE_COLOR, 0.05,
       ), { role: 'guide' }));
     }
   }
+  // The edge barriers, one per side. They join `surfaces` so they are updated,
+  // themed and terrain-refreshed by exactly the same three loops as everything
+  // else -- a wall that needed its own update call is a wall someone forgets to
+  // update. They render nothing on a terrain with wallHeight 0, which is every
+  // terrain but the open face.
+  surfaces.push(new EdgeWall(1), new EdgeWall(-1));
+
   surfaces.forEach((s) => group.add(s.mesh));
 
   scene.add(group);
@@ -280,6 +661,16 @@ export function createTrough(scene) {
     group,
     update(riderS) {
       surfaces.forEach((s) => s.update(riderS));
+    },
+
+    /**
+     * Re-read the cross-section after a terrain change. Called from startRun,
+     * once per run -- the geometry is regenerated from the spline every frame
+     * anyway, so this only has to move the band angles and the next update()
+     * draws the new hill.
+     */
+    applyTerrain() {
+      surfaces.forEach((s) => s.applyTerrain());
     },
     /**
      * Recolour the world for a theme. By ROLE, not by index -- the surfaces

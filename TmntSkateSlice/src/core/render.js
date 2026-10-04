@@ -9,6 +9,10 @@ import { ITEM_SIZE_FRAC, PLAYER_HEIGHT_FRAC, SHIELD_WARN_SEC } from '../data/con
 import { getShakeOffsetFrac } from '../systems/juice.js';
 import { getRunCycleSpriteKey, getSwingCycleSpriteKey, getHitCycleSpriteKey, getBlockCycleSpriteKey } from '../entities/player.js';
 import { BOX_COLOR_BY_ID } from '../data/boxColors.js';
+// Per-theme: which loaded-image key a falling pizza-item uses, keyed by its
+// collection box color. TMNT maps every color to 'pizza_slice' (unchanged);
+// original maps each to its distinct idol sprite. See collectibleAssets.*.js.
+import { FALLING_SPRITE_KEY_BY_BOX_COLOR } from '@collectible-assets';
 
 // Gentle idle "breathing" pulse (no-skateboard standing pose only, not the
 // run-cycle) -- vertical-only scale from 1x to 1.08x and back over a
@@ -90,10 +94,29 @@ function drawBackgroundFallback(ctx, w, h, stage) {
   ctx.fillRect(0, groundY, w, h * 0.015);
 }
 
+// Per-stage background zoom/pan (2026-08-06). A few backgrounds have real
+// floor obstructions -- a railing's perspective corner, a raised curb,
+// flanking pillar bases -- sitting in the outer edges of the play area.
+// Restricting player/item movement to dodge them was tried and explicitly
+// rejected (it should never feel like the world is narrower than it looks);
+// this instead scales the ART up and pans it, cropping the obstruction out
+// of view entirely while the player can still walk the full play area.
+// bgScale/bgOffsetXFrac/bgOffsetYFrac are optional per-stage (data/
+// stages.js) -- default 1/0/0 draws exactly as before (full non-uniform
+// stretch to the canvas, no crop). This is pure canvas draw-call math, NOT
+// the CSS aspect-ratio lock an earlier attempt got tangled up in (that one
+// broke the real Unity WebView because CSS vw/vh don't resolve reliably
+// there -- this never touches CSS/layout, only where/how big the image is
+// drawn inside the already-correctly-sized canvas).
 function drawBackground(ctx, w, h, images, stage) {
   const img = images[stage.bg];
   if (img) {
-    ctx.drawImage(img, 0, 0, w, h);
+    const scale = stage.bgScale ?? 1;
+    const drawW = w * scale;
+    const drawH = h * scale;
+    const x = (w - drawW) / 2 + (stage.bgOffsetXFrac ?? 0) * w;
+    const y = (h - drawH) / 2 + (stage.bgOffsetYFrac ?? 0) * h;
+    ctx.drawImage(img, x, y, drawW, drawH);
   } else {
     drawBackgroundFallback(ctx, w, h, stage);
   }
@@ -126,7 +149,7 @@ function drawPlayer(ctx, xFrac, w, h, images, player, isRunning, stage) {
   // countdown/gameover (updatePlayer only runs during gs.current==='running').
   // swing/hit are themselves short multi-frame sequences, keyed to elapsed
   // state time (see getSwingCycleSpriteKey/getHitCycleSpriteKey).
-  let spriteKey = 'mike_idle';
+  let spriteKey = 'hero_idle'; // theme-neutral key -- see core/assets.js's HERO_SPRITES
   if (player.state === 'swing') {
     spriteKey = getSwingCycleSpriteKey(player);
   } else if (player.state === 'hit') {
@@ -310,7 +333,12 @@ function drawItems(ctx, items, w, h, images) {
     const isVariant = bc && bc !== 'regular';
     const hex = isVariant ? BOX_COLOR_BY_ID[bc].hex : null;
     const pulse = isVariant ? 0.5 + 0.5 * Math.sin(now / 300 + (item.id || 0) * 1.7) : 0;
-    const img = images[item.type.sprite];
+    // Pizza items resolve their sprite per-theme by box color (idols in the
+    // original theme, pizza_slice in TMNT); everything else (bomb, pickups)
+    // keeps its own type.sprite.
+    const spriteKey =
+      item.type.id === 'pizza' && bc ? FALLING_SPRITE_KEY_BY_BOX_COLOR[bc] : item.type.sprite;
+    const img = images[spriteKey];
 
     // Box-variant highlight (every box EXCEPT 'regular'): a SOFT pulsing glow
     // (radial gradient, no hard ring) plus a colored CONTOUR that hugs the
@@ -410,6 +438,64 @@ function drawRings(ctx, juice, w, h) {
   }
 }
 
+// Retro floating "+N" score popups: bold stroked canvas text that pops in,
+// holds, then fades over the last ~40% of its life while drifting upward.
+function drawFloaters(ctx, juice, w, h) {
+  for (const f of juice.floaters) {
+    const t = Math.max(0, f.life / f.maxLife); // 1 -> 0
+    const alpha = Math.min(1, t / 0.4); // full until the last 40%, then fade out
+    const scale = 1 + 0.35 * Math.max(0, (t - 0.82) / 0.18); // quick pop-in overshoot
+    const fontPx = Math.round(h * 0.04 * scale);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `900 ${fontPx}px "Arial Narrow", Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = Math.max(2, fontPx * 0.14);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillStyle = f.color;
+    const x = px(f.xFrac, w);
+    const y = px(f.yFrac, h);
+    ctx.strokeText(f.text, x, y);
+    ctx.fillText(f.text, x, y);
+    ctx.restore();
+  }
+}
+
+// Collected shreds flying from the catch into their HUD chip: a small sprite
+// (fl.spriteKey -- a pizza slice for box catches, the bomb icon for a kill)
+// that follows a curved (quadratic-bezier) path toward the chip, shrinking +
+// fading as it lands, wrapped in a color glow so it clearly belongs to that
+// chip.
+function drawFlyers(ctx, juice, w, h, images) {
+  for (const fl of juice.flyers) {
+    const img = images[fl.spriteKey] || images['pizza_slice'];
+    const p = Math.min(1, fl.t / fl.ttl);
+    const e = 1 - (1 - p) * (1 - p); // easeOutQuad
+    const mt = 1 - e;
+    const x = mt * mt * fl.x0 + 2 * mt * e * fl.ctrlX + e * e * fl.x1; // quadratic bezier
+    const y = mt * mt * fl.y0 + 2 * mt * e * fl.ctrlY + e * e * fl.y1;
+    const size = h * ITEM_SIZE_FRAC * (0.72 - 0.42 * p); // shrink into the chip
+    const cx = px(x, w);
+    const cy = px(y, h);
+    ctx.save();
+    ctx.globalAlpha = 1 - 0.35 * p;
+    ctx.shadowColor = fl.color;
+    ctx.shadowBlur = size * 0.55;
+    if (img) {
+      const dw = size;
+      const dh = size * (img.height / img.width);
+      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+    } else {
+      ctx.fillStyle = fl.color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, size * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
 export function renderFrame(ctx, world) {
   // Same source as setupCanvas's resize() above -- window.innerWidth/
   // innerHeight, not canvas.clientWidth/clientHeight -- so the buffer size
@@ -429,6 +515,10 @@ export function renderFrame(ctx, world) {
   drawPlayer(ctx, player.xFrac, w, h, images, player, isRunning, stage);
   drawRings(ctx, juice, w, h);
   drawParticles(ctx, juice, w, h);
+  drawFloaters(ctx, juice, w, h);
+  // Collected shreds render LAST -- on top of everything (the character, items,
+  // all other VFX) so the "flew into the box" motion is never occluded.
+  drawFlyers(ctx, juice, w, h, images);
 
   ctx.restore();
 }

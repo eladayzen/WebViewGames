@@ -28,22 +28,84 @@
 // The line through them is not the straight line, so there is a route to ride.
 
 import { registerMode } from './mode.js';
+import { analytics } from '../systems/analytics.js';
 import { RACE_COURSE, getCourse } from '../data/courses.js';
+import { getRace, RACE_IDS, starsForPlace, RACE_UNLOCK_PLACE } from '../data/races.js';
 
-/** Safety cap, not the goal -- see the note above. */
+/**
+ * WHICH RACE THE LOBBY PICKED, set immediately before startRun.
+ *
+ * The same pattern the missions use, and for the same reason: a mode is chosen
+ * by id through a registry that cannot carry an argument, so the choice is
+ * parked here and read by courseFor/terrainFor as the run is built.
+ */
+let pendingId = RACE_IDS[0];
+
+export function setPendingRace(id) {
+  if (RACE_IDS.includes(id)) pendingId = id;
+}
+
+/** Safety cap, not the goal -- the race ends by arriving, not by a buzzer. */
 const RACE_TIMEOUT = 180;
 const FIELD_SIZE = 4;
 
+/**
+ * How long the player keeps riding after crossing the line, in seconds. Long
+ * enough to see the gate pass overhead and the road open out behind it; short
+ * enough that it reads as the end of a race rather than the game forgetting to
+ * stop. Amit: "give me another second or two to run after the finish line."
+ */
+const RUNOUT_SECONDS = 2;
+
+/**
+ * THE START LINE. Seconds per number, then a beat on GO.
+ *
+ * Amit: "I read about the mode and then immediately I start riding and the guys
+ * are ahead of me -- I want a 3-2-1-go and everyone goes together."
+ *
+ * The old start was not a start at all: the briefing closed and the ride simply
+ * resumed, with the field already strung out up the road. There was no moment
+ * where the race BEGAN, so the first thing a player felt was being behind.
+ *
+ * 0.85s a number rather than a full second -- three real seconds of staring at
+ * a frozen hill is longer than it sounds, and the count only has to build
+ * anticipation, not measure time.
+ */
+const COUNT_FROM = 3;
+const COUNT_STEP = 0.85;
+const GO_HOLD = 0.55;
+
 export default registerMode({
   id: 'speedRace',
+  // Just SPEED RACE. The suffix distinguished it from the open-face variant,
+  // which is parked and unreachable -- so it was labelling a choice the player
+  // does not have. Amit: "change the names in the main lobby to just missions
+  // and just speed race."
   name: 'SPEED RACE',
-  tagline: 'Four rivals. First to the line.',
+  // "The ridge." dropped for the same reason as the missions line: it named the
+  // hill both modes share, so it was two words spent on the thing that does not
+  // tell them apart. What is left was already the whole of it. Four is not
+  // decorative -- it is FIELD_SIZE, so if the field ever changes this line is
+  // wrong and should change with it.
+  tagline: 'Four rivals, first to the line.',
   course: RACE_COURSE,
+  /**
+   * THE HILL IS THE RACE. It used to be dealt at random from a shuffled bag,
+   * which made every race the same event on scenery the player had no
+   * relationship with -- and meant "I want another go at that one" was not
+   * something they could ask for. Now the lobby picks it.
+   */
+  terrainFor: () => getRace(pendingId).terrain,
+  /** Named on the results screen and the pre-race card. */
+  raceName: () => getRace(pendingId).name,
   // The score readout is hidden in this mode. Points still accrue underneath --
   // nothing special-cases the scoring system -- but showing a number that has no
   // bearing on whether you are winning is worse than showing nothing: it reads
   // as the thing you are being judged on.
   showsScore: false,
+  // Racing other riders is where a boost is something you SPEND, so its
+  // countdown gets the top of the screen rather than a corner.
+  showsBoostBar: true,
 
   create(ctx) {
     const course = getCourse(RACE_COURSE);
@@ -52,6 +114,12 @@ export default registerMode({
     let finished = false;
     let startS = 0;
     let finishS = 0;
+    /** Seconds of free coasting left after crossing the line. See update(). */
+    let runout = 0;
+    /** Seconds until the field is released. > 0 means the ride is held still. */
+    let countdown = COUNT_FROM * COUNT_STEP + GO_HOLD;
+    /** The face last painted, so each number is drawn once rather than per frame. */
+    let shown = null;
     /** Finish order, filled as each racer crosses. */
     const crossed = [];
 
@@ -88,15 +156,87 @@ export default registerMode({
       const me = rows.find((r) => r.you);
       const won = me.place === 1;
       const homeCount = crossed.length;
+      const race = getRace(pendingId);
+      const stars = starsForPlace(me.place);
       ctx.finishLine.hide();
+      /**
+       * THIRD OR BETTER CLEARS THE RACE and unlocks the next.
+       *
+       * Recorded BEFORE the results screen is built, so the lobby behind it
+       * already shows what this run just opened -- the same ordering the
+       * missions use, and for the same reason.
+       *
+       * A worse place records nothing at all rather than a zero-star clear.
+       * `cleared` is what gates the next race, so writing a record for fourth
+       * would unlock the ladder by losing.
+       */
+      if (stars > 0) ctx.progress.record(race.id, stars, Math.round(ctx.scoring.state.score));
+      /**
+       * ONE EVENT, SPLIT BY `result` -- see the vocabulary note in
+       * systems/analytics.js. These used to be race_finish and race_dnf, on the
+       * reasoning that a finish is about the FIELD and a DNF is about the TRACK
+       * and folding them together would put a meaningless place on one and a
+       * meaningless distance on the other. Both halves of that are still true;
+       * the answer is just that they are parameters rather than event names.
+       * `place` is 0 on a DNF and the distance arrives as `progress_pct`, which
+       * a missions-mode timeout reports in exactly the same field.
+       *
+       * What that buys is the question neither of the old names could answer:
+       * completion rate for a level, in one number, comparable between a race,
+       * a mission, and whatever the next game turns out to be.
+       *
+       * `race.id` rather than `race.name`, so a renamed track does not fork its
+       * own history -- the same reason the launcher keys on the scene name.
+       */
+      if (reason === 'timeout') {
+        analytics.raceDnf(race.id, me.s - startS, course.length,
+          ctx.scoring.state.score, RACE_TIMEOUT - left);
+      } else {
+        analytics.raceFinished(race.id, me.place, ctx.scoring.state.score,
+          RACE_TIMEOUT - left);
+      }
       ctx.endRun(won ? 'complete' : 'timeup', {
-        tone: won ? 'success' : 'fail',
+        tone: stars > 0 ? 'success' : 'fail',
         title: won ? 'WINNER' : `FINISHED ${ordinal(me.place)}`,
-        subtitle: 'SPEED RACE',
+        /**
+         * NO SUBTITLE. Amit, on this screen: "just lose the second title."
+         *
+         * It used to carry `race.name` on the reasoning that the track was
+         * "the thing worth saying on a screen that already has FINISHED 2ND at
+         * the top of it". The flaw in that is what the screen turned into: five
+         * standings rows below it name the field, the detail line names the
+         * distance, and the player picked this track by hand two screens ago.
+         * The track was the one line nobody needed, and on a 480-high board it
+         * was costing height that the standings actually use.
+         *
+         * Dropped from the CARD rather than from the markup, so the missions
+         * keep theirs -- there, the subtitle is "03 · CRYSTAL RUN", which names
+         * something the player did not choose off a labelled tile. Each mode
+         * owns its own result screen; #go-subtitle:empty hides the element.
+         */
+        /**
+         * NO DETAIL LINE ON A FINISH. Amit: "after the score there is more text
+         * -- not important, lose it."
+         *
+         * It used to read "2.6 km · 3 of 5 home", and neither half survives the
+         * question of who it was for. The distance is a property of the track,
+         * identical every run, so it says nothing about the one just ridden. The
+         * finisher count is already on screen underneath, spelled out as five
+         * standings rows with places against names -- so the line was a worse
+         * summary of the thing directly below it.
+         *
+         * The two cases that DO say something are kept. A time cap has no
+         * placement to show, so the distance short is the only account of what
+         * happened. And a finish outside the unlock bar has to explain itself,
+         * or fourth place reads as an unexplained refusal rather than as "one
+         * more place and it opens".
+         */
         detail: reason === 'timeout'
           ? `time cap  ·  ${Math.round(finishS - me.s)} m short of the line`
-          : `${(course.length / 1000).toFixed(1)} km  ·  ${homeCount} of ${FIELD_SIZE + 1} home`,
-        stars: me.place === 1 ? 3 : me.place === 2 ? 2 : me.place === 3 ? 1 : 0,
+          : stars > 0
+            ? ''
+            : `${ordinal(RACE_UNLOCK_PLACE)} or better unlocks the next race`,
+        stars,
         rows: rows.map((r) => ({
           label: r.name,
           // Finishers get their place; anyone still out gets how far short they
@@ -108,15 +248,74 @@ export default registerMode({
     }
 
     return {
+      /**
+       * HELD UNTIL THE COUNT REACHES GO. core/main.js gates the entire
+       * simulation on this -- rider, rivals and clock all stop together, so
+       * nobody gains a metre before the start.
+       */
+      holding() { return countdown > 0; },
+
+      /**
+       * Ticked from OUTSIDE that gate, which is the only place it can be: a
+       * countdown ticked inside the gate it controls would never reach zero.
+       */
+      holdUpdate(dt) {
+        countdown = Math.max(0, countdown - dt);
+        const left = countdown - GO_HOLD;
+        const face = left > 0 ? String(Math.ceil(left / COUNT_STEP)) : 'GO';
+        if (face !== shown) {
+          shown = face;
+          ctx.hud.countdown(face);
+          // A tick per number and a fuller sound on GO. The ticks are the gate
+          // clip pitched up and quietened, so the four beats read as one phrase
+          // rather than as unrelated noises.
+          if (face === 'GO') ctx.audio.play('objective', 1, 1);
+          else ctx.audio.play('boost', 1.35, 0.5);
+        }
+        if (countdown === 0) ctx.hud.countdown(null);
+      },
+
       start() {
+        /**
+         * RACES REPORT A START TOO, which they did not before -- only missions
+         * did, because the events were named after missions. Without it a race
+         * had an end and no beginning, so the one number anybody actually wants
+         * from a track (how many who start it finish it) was not computable, and
+         * retries on a track nobody could beat were invisible.
+         *
+         * Its ladder position rather than its id alone: the same `level_number`
+         * a mission sends, so "how far down the ladder do people get" is one
+         * question over both.
+         */
+        analytics.levelStarted(getRace(pendingId).id, RACE_IDS.indexOf(pendingId) + 1);
         startS = ctx.getState().s;
         finishS = startS + course.length;
         rivals.spawn(FIELD_SIZE, startS);
         ctx.finishLine.place(finishS);
+        // Empty the road past the line -- see props.setEndS.
+        ctx.props.setEndS(finishS);
         ctx.hud.banner('RACE');
       },
 
       stop() {
+        /**
+         * A RACE THE PLAYER WALKED OUT OF still has to report an end.
+         *
+         * `finished` is already true on every ordinary exit -- settle() sets it
+         * before endRun -- so reaching here with it false means they left mid-
+         * race, which is the one ending that used to vanish. Without this a
+         * track's starts and ends did not balance and every abandonment looked
+         * like a session that simply stopped.
+         *
+         * How far down the course they got, for the same reason missions report
+         * it: quitting at 90% of a track and quitting at 5% are opposite
+         * complaints about it.
+         */
+        if (!finished) {
+          analytics.levelQuit(getRace(pendingId).id,
+            Math.max(0, ctx.getState().s - startS), course.length,
+            ctx.scoring.state.score, RACE_TIMEOUT - left);
+        }
         rivals.despawn();
         ctx.finishLine.hide();
         finished = true;
@@ -135,13 +334,86 @@ export default registerMode({
         const meS = ctx.getState().s;
         if (meS >= finishS && !crossed.includes('YOU')) {
           crossed.push('YOU');
-          end('finish');
+          // A BEAT TO COAST THROUGH. Amit: "give me another second or two to run
+          // after the gate and finish line before it's sent to the hub."
+          //
+          // Ending on the frame the line is crossed cuts the picture at exactly
+          // the moment the player is looking at the thing they just achieved --
+          // the gate is still filling the screen when the results replace it.
+          // Crossing a line is a moment you ride THROUGH, so the run does, and
+          // the result screen arrives once it has actually happened.
+          //
+          // The place is already fixed at this point: `crossed` recorded the
+          // order, so nothing about the outcome can change during the runout,
+          // and a rival finishing during it still lands behind the player.
+          runout = RUNOUT_SECONDS;
+        }
+
+        if (runout > 0) {
+          runout -= dt;
+          if (runout <= 0) { end('finish'); return; }
+          // The clock stops during the runout: the race is over, and letting the
+          // timeout fire here would report a win as a time cap.
           return;
         }
 
         left -= dt;
         if (left <= 0) end('timeout');
       },
+
+      /**
+       * The pre-race card. Built from the same constants the race is actually
+       * run with -- the course's own length and the real field size -- so it
+       * cannot drift into describing a race that is not the one about to start.
+       *
+       * It exists because the race began with no explanation at all: four
+       * skaters set off and the player was left to infer both the goal and the
+       * mechanic from a leaderboard. Amit: "I don't understand what it should
+       * do." Three lines answer it -- where the finish is, who you are racing,
+       * and what the gates are for.
+       */
+      /**
+       * THE CARD SAYS WHAT TO DO, not what the race is made of.
+       *
+       * Amit: "the opening screen is not good, it needs to be very clear --
+       * collect speed boosters, avoid those walls, to win. And if you can show
+       * some iconic presentation."
+       *
+       * The old version listed FINISH 2.6 KM, RIVALS 4, BOOST GATES RIDE
+       * THROUGH: three facts about the race, none of which is an instruction.
+       * A player reading it still had to work out that the gates are how you
+       * win and the barriers are how you lose -- which is the entire strategy,
+       * and the one thing a pre-race card exists to hand over.
+       *
+       * So each row is now a VERB with the thing it acts on beside it, and each
+       * carries the prop's own icon, so what to chase and what to dodge are
+       * told apart before the run starts rather than during it.
+       */
+      /**
+       * TWO ROWS, TWO WORDS EACH. Amit: "very short and clear -- boosts, speed;
+       * barriers, slow. Minimum words."
+       *
+       * The distance row went because it was a FACT rather than an
+       * instruction, and it was the third thing competing for a glance that
+       * lasts a couple of seconds. The goal it carried moved into the subtitle,
+       * where one line can hold it.
+       *
+       * The icons are doing the work now, which is the whole reason they exist:
+       * a player who has seen the gate art does not need "ride the gates"
+       * spelled out beside a picture of one. Cutting the words is what lets the
+       * pictures be read.
+       */
+      briefing: () => ({
+        name: getRace(pendingId).name,
+        sub: 'First to the finish wins.',
+        rows: [
+          // The verb is on the barrier row only, because it is the one that
+          // needs one: a boost is obviously a thing to take, whereas a barrier
+          // has to say AVOID or the row reads as a second thing to collect.
+          { label: 'BOOSTS', text: 'GO FASTER', kind: 'boost' },
+          { label: 'AVOID BARRIERS', text: 'LOSE SPEED', kind: 'wall' },
+        ],
+      }),
 
       panel: () => {
         const rows = standings();
@@ -160,7 +432,19 @@ export default registerMode({
           objectives: rows.map((r) => ({
             label: r.name,
             text: r.finishedAt >= 0 ? ordinal(r.place) : ordinal(r.place),
-            done: r.you,
+            /**
+             * `you`, NOT `done`. Amit: "when you lead, your location looks grey
+             * and crossed with a line -- there is no reason for that."
+             *
+             * Quite right, and it was never a race decision. This panel is the
+             * missions panel, where a row going `done` means an objective is
+             * ticked off and the CSS strikes it through and fades it to 42%.
+             * Marking the player's row done to pick it out borrowed the one
+             * flag that means finished-with -- so the row you most need to read
+             * was the only dim one on screen, and it got dimmer the better you
+             * were doing.
+             */
+            you: r.you,
           })),
         };
       },

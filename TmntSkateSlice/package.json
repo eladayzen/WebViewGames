@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:tmnt": "vite build --mode tmnt",
+    "build:original": "vite build --mode original",
     "preview": "vite preview"
   },
   "devDependencies": {

@@ -12,31 +12,31 @@
 // no code changes needed either side of that swap.
 
 import { loadAudioBuffer } from '../systems/audio.js';
+// Two builds share this one codebase (2026-08-20): the TMNT game
+// (Michelangelo) and an original, non-TMNT reskin. '@hero-assets' is a
+// build-time alias (see vite.config.js) that resolves to a genuinely
+// separate file per theme -- core/heroAssets.tmnt.js or
+// heroAssets.original.js -- NOT a runtime if/ternary in a shared module;
+// see vite.config.js's comment for why that distinction is load-bearing
+// (a single-file-ternary version of this leaked both themes' art into both
+// builds). Every other system (player.js, render.js, ui.js) only ever
+// references the theme-neutral keys this exports (hero_idle, hero_run_1,
+// ...), never mike_* or the new hero's name directly, so swapping themes
+// needs zero changes anywhere else.
+import { HERO_SPRITES } from '@hero-assets';
+// Per-theme collectible canvas images (falling item art). Original theme adds
+// its 4 idol sprites here; TMNT's COLLECTIBLE_MANIFEST is empty (it reuses
+// pizza_slice below). Same build-time alias mechanism as '@hero-assets'.
+import { COLLECTIBLE_MANIFEST } from '@collectible-assets';
 
 const MANIFEST = {
-  mike_idle: new URL('../assets/mike_idle.png', import.meta.url).href,
-
-  // No-skateboard experiment (Visual DNA "mikey_skate" generation, board
-  // edited out): same crouched fighting stance/torso/nunchaku grip as
-  // mike_idle, barefoot, legs redrawn per frame for a fast run-cycle. See
-  // getRunCycleSpriteKey in entities/player.js. (A 3rd "tucked midpoint"
-  // frame was generated and dropped -- came back off-model.)
-  mike_run_1: new URL('../assets/mike_run_1.png', import.meta.url).href,
-  mike_run_3: new URL('../assets/mike_run_3.png', import.meta.url).href,
-
-  // Swing (attack) and hit (flinch) sequences, regenerated no-skateboard
-  // against the current mike_idle's proportions -- see getSwingCycleSpriteKey
-  // / getHitCycleSpriteKey in entities/player.js. Original skateboard-era
-  // single-frame versions archived at art/archive/hit-swing-skateboard-era/.
-  mike_swing_1: new URL('../assets/mike_swing_1.png', import.meta.url).href,
-  mike_swing_2: new URL('../assets/mike_swing_2.png', import.meta.url).href,
-  mike_swing_3: new URL('../assets/mike_swing_3.png', import.meta.url).href,
-  mike_hit_1: new URL('../assets/mike_hit_1.png', import.meta.url).href,
-  mike_hit_2: new URL('../assets/mike_hit_2.png', import.meta.url).href,
+  ...HERO_SPRITES,
+  ...COLLECTIBLE_MANIFEST,
 
   pizza_slice: new URL('../assets/pizza_slice.png', import.meta.url).href,
   ooze_canister: new URL('../assets/ooze_canister.png', import.meta.url).href,
   bomb: new URL('../assets/bomb.png', import.meta.url).href,
+  heart: new URL('../assets/heart.png', import.meta.url).href, // extra-life pickup (systems/heartDrop.js)
 
   // Special-ability pickups (progression update, 2026-07-30). ooze_canister
   // above is recolored green->cyan; these 3 are new icons.
@@ -47,6 +47,11 @@ const MANIFEST = {
   bg_rooftop: new URL('../assets/bg_rooftop.png', import.meta.url).href,
   bg_fire_escape: new URL('../assets/bg_fire_escape.png', import.meta.url).href,
   bg_alley: new URL('../assets/bg_alley.png', import.meta.url).href,
+  bg_subway: new URL('../assets/bg_subway.png', import.meta.url).href,
+  bg_sewer: new URL('../assets/bg_sewer.png', import.meta.url).href,
+  bg_neon_street: new URL('../assets/bg_neon_street.png', import.meta.url).href,
+  bg_warehouse: new URL('../assets/bg_warehouse.png', import.meta.url).href,
+  bg_docks: new URL('../assets/bg_docks.png', import.meta.url).href,
 };
 
 function loadOne(src) {

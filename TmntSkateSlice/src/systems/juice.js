@@ -3,12 +3,18 @@
 // mechanically deep"). Plain primitives, no particle-system library, per
 // the technical architecture note in §9.1.
 
+import { SCORE_POPUP_TTL_SEC } from '../data/constants.js';
+
 const GRAVITY_FRAC_PER_SEC2 = 1.6;
+const FLOATER_RISE_FRAC_PER_SEC = 0.11; // how fast a "+N" popup drifts upward
+const COLLECT_FLYER_TTL_SEC = 0.5; // catch -> box-chip flight time
 
 export function createJuice() {
   return {
     particles: [], // { xFrac, yFrac, vxFrac, vyFrac, life, maxLife, color, shape, sizeFrac, rotationRad, rotationSpeedRadPerSec, glow }
     rings: [], // { xFrac, yFrac, life, maxLife, maxRadiusFrac, color } -- bomb shockwave only
+    floaters: [], // { xFrac, yFrac, text, color, life, maxLife } -- retro "+N" score popups
+    flyers: [], // { x0, y0, x1, y1, t, ttl, color, onArrive } -- shred flying into a box chip
     shakeTimer: 0,
     shakeMaxTimer: 0,
     shakeMagnitudeFrac: 0,
@@ -18,9 +24,43 @@ export function createJuice() {
 export function resetJuice(juice) {
   juice.particles = [];
   juice.rings = [];
+  juice.floaters = [];
+  juice.flyers = [];
   juice.shakeTimer = 0;
   juice.shakeMaxTimer = 0;
   juice.shakeMagnitudeFrac = 0;
+}
+
+// A collected "shred" that flies from the catch point (x0,y0) into its box's
+// HUD chip (x1,y1) and, on arrival, calls onArrive() (which pulses the chip) --
+// so the player SEES the item register into that HUD chip (a box, or the
+// bomb-kill set for a bomb destroyed without hurting the player). Colored to
+// match; `spriteKey` picks the flying sprite (defaults to the pizza slice).
+//
+// Follows a quadratic-bezier CURVE (control point ctrlX/ctrlY) so a catch near
+// the middle of the frame -- a short, near-vertical drop to the center chip --
+// still arcs interestingly instead of dropping straight down: the sideways bow
+// grows as the horizontal travel shrinks (a far-to-the-side catch already flies
+// diagonally, so it gets little added bow), plus a small upward lift.
+export function spawnCollectFlyer(juice, x0, y0, x1, y1, color, onArrive, spriteKey = 'pizza_slice') {
+  const horizShort = 1 - Math.min(1, Math.abs(x1 - x0) / 0.3); // 1 = straight down, 0 = far side
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const ctrlX = (x0 + x1) / 2 + side * 0.26 * horizShort; // sideways bow
+  const ctrlY = (y0 + y1) / 2 - (0.05 + 0.13 * horizShort); // upward bow
+  juice.flyers.push({ x0, y0, x1, y1, ctrlX, ctrlY, t: 0, ttl: COLLECT_FLYER_TTL_SEC, color, onArrive, spriteKey });
+}
+
+// Retro floating score popup ("+10", "+25", ...) at a world position -- rises
+// and fades over SCORE_POPUP_TTL_SEC (drawn as canvas text in render.js).
+export function spawnScorePopup(juice, xFrac, yFrac, text, color = '#ffe066') {
+  juice.floaters.push({
+    xFrac,
+    yFrac,
+    text,
+    color,
+    life: SCORE_POPUP_TTL_SEC,
+    maxLife: SCORE_POPUP_TTL_SEC,
+  });
 }
 
 // Shared radial-burst-plus-gravity emitter -- pizza/ooze/bomb effects are
@@ -146,6 +186,29 @@ export function spawnBoxComplete(juice, xFrac, yFrac, hex) {
   });
 }
 
+// Stage-complete celebration (2026-08-04, freeze+curtain transition ported
+// from HalfShellHustle) -- fires once from beginStageComplete, screen-center.
+// Bigger/showier than the per-catch bursts above on purpose: the world is
+// fully frozen for this (no ongoing gameplay to stay cheap alongside), and
+// it's a rarer, bigger milestone than a single box completion. Glow:true is
+// safe here for the same reason -- this never fires mid-catch-streak.
+export function spawnStageCompleteBurst(juice, xFrac, yFrac) {
+  emitBurst(juice, xFrac, yFrac, {
+    count: 30,
+    colors: ['#8CFFA0', '#4CE05A', '#FFE066', '#ffffff'],
+    speedMin: 0.3,
+    speedMax: 0.65,
+    life: 0.7,
+    shape: 'spark',
+    sizeMin: 0.012,
+    sizeMax: 0.022,
+    upBias: 0.18,
+    glow: true,
+  });
+  juice.rings.push({ xFrac, yFrac, life: 0.5, maxLife: 0.5, maxRadiusFrac: 0.45, color: '#8CFFA0' });
+  juice.rings.push({ xFrac, yFrac, life: 0.4, maxLife: 0.4, maxRadiusFrac: 0.28, color: '#FFE066' });
+}
+
 // Shield block (special abilities, 2026-07-30) -- fires when a shielded
 // player absorbs a bomb. Bright green spark burst + a ring, no shadowBlur.
 // Reads as a satisfying deflect, not a hit.
@@ -225,6 +288,22 @@ export function updateJuice(juice, dt) {
   for (let i = juice.rings.length - 1; i >= 0; i--) {
     juice.rings[i].life -= dt;
     if (juice.rings[i].life <= 0) juice.rings.splice(i, 1);
+  }
+
+  for (let i = juice.floaters.length - 1; i >= 0; i--) {
+    const f = juice.floaters[i];
+    f.yFrac -= FLOATER_RISE_FRAC_PER_SEC * dt; // drift upward
+    f.life -= dt;
+    if (f.life <= 0) juice.floaters.splice(i, 1);
+  }
+
+  for (let i = juice.flyers.length - 1; i >= 0; i--) {
+    const fl = juice.flyers[i];
+    fl.t += dt;
+    if (fl.t >= fl.ttl) {
+      juice.flyers.splice(i, 1);
+      if (fl.onArrive) fl.onArrive(); // pulse the chip the instant it lands
+    }
   }
 
   if (juice.shakeTimer > 0) juice.shakeTimer = Math.max(0, juice.shakeTimer - dt);

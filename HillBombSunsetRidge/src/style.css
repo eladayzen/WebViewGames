@@ -15,6 +15,16 @@ html, body {
   overflow: hidden;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-tap-highlight-color: transparent;
+  /* TURN OFF WEBVIEW FONT BOOSTING.
+     Android's WebView inflates the text size of blocks it decides are
+     text-heavy, which is invisible on desktop Chrome and very much not on a
+     device. It did not matter while the HUD was sized in fixed pixels; it
+     matters enormously now that the whole left panel derives every dimension --
+     its width, its padding, its offsets -- from a single font-size in `em`. One
+     boosted font-size scales the entire panel, which is exactly the shape of
+     "the left panel is not there" on device and fine in a browser. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 #stage {
@@ -30,7 +40,7 @@ html, body {
 /* --- chrome buttons (BUILD_NOTES.md convention: top-right, icon-only) --- */
 #gb-back, #pause-button, #settings-button {
   position: absolute;
-  top: 12px;
+  top: var(--ui-edge-y);
   width: 38px;
   height: 38px;
   border: none;
@@ -47,9 +57,32 @@ html, body {
 }
 /* Back outermost, then pause, then the gear -- same order and spacing as
    HalfShellHustle so the two games are muscle-memory compatible. */
-#gb-back { right: 12px; }
-#pause-button { right: 60px; font-size: 16px; }
-#settings-button { right: 108px; font-size: 17px; }
+/* Spaced off the same edge variable, so the row moves as one. */
+#gb-back { right: var(--ui-edge-r); }
+#pause-button { right: calc(var(--ui-edge-r) + 48px); font-size: 16px; }
+#settings-button { right: calc(var(--ui-edge-r) + 96px); font-size: 17px; }
+
+/**
+ * THE PAUSE ICON IS DRAWN, NOT TYPED -- see index.html and core/main.js.
+ *
+ * The button used to hold the character U+23F8 (&#9208;). Its Unicode default
+ * presentation is EMOJI, so a mobile WebView falls back to the colour emoji
+ * font and renders a yellow pill instead of a glyph tinted by `color` above.
+ * It looks correct on desktop and in the editor, where the text font has it.
+ *
+ * Sized in `em` rather than px so it still keys off #pause-button's font-size,
+ * which is the knob that sized the glyph. `currentColor` keeps it following the
+ * button's own colour, so nothing else about these three buttons has to change.
+ *
+ * The back ✕ (&times;) and the gear (&#9881;) are fine as characters: both
+ * default to TEXT presentation, so no emoji font gets involved.
+ */
+.chrome-icon {
+  display: block;
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}
 
 /* --- settings panel (ui/settingsPanel.js) --- */
 #settings-panel {
@@ -110,6 +143,124 @@ html, body {
 }
 .sp-row button:active { background: rgba(255, 255, 255, 0.3); }
 
+/* THE VOLUME AND SENSITIVITY SLIDERS.
+   The handle stays deliberately oversized, because this panel is used on a
+   phone-sized WebView as often as on a desktop.
+
+   ON THE LABEL'S OWN LINE, NOT BELOW IT. Amit: "the volume does not need to be
+   a separated line from the headline. It can be shorter, and in the same level
+   of the SFX volume text."
+
+   `flex: 1 1 100%` was what put it on a line of its own -- a 100% basis in a
+   wrapping row always breaks. The track was the full width of the panel to give
+   a thumb the largest possible target, which was the right instinct on the
+   wrong axis: it bought precision nobody needs on a control that moves in tens,
+   and spent a whole line per slider to do it. Four sliders, four lines.
+
+   96px fixed, so all of them are the same length whatever their labels do --
+   `flex: 1` would have made SENSITIVITY's track longer than SFX VOLUME's purely
+   because its label is shorter, and a row of controls that reads as four
+   different lengths looks like four different ranges. The label keeps flex: 1
+   and pushes each track to the same right-hand edge. */
+.sp-slider {
+  flex: 0 0 96px;
+  /* min-width:auto is the flex default and it floors an item at its CONTENT
+     size -- a range input's intrinsic width is ~129px, so the 96px basis above
+     was being quietly ignored and every track came out 129px. Measured, not
+     guessed at. */
+  min-width: 0;
+  order: 3;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  /* Vertically centred on the label rather than sitting under it: the row is
+     align-items:center and the old top margin was nudging it off that. */
+  margin: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  outline: none;
+  cursor: pointer;
+}
+.sp-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffe9d6;
+  border: none;
+  cursor: pointer;
+}
+.sp-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: #ffe9d6;
+  cursor: pointer;
+}
+/* A dimmed row's slider should look inert as well as read inert. */
+.sp-dim .sp-slider { opacity: 0.35; }
+
+/* THE STANCE BUTTON -- a picture of the real balance board. See addStance(). */
+.sp-row button.sp-stance {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 78px;
+  height: auto;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+/* Sized by WIDTH only so the aspect is the artwork's own. The box is square so
+   the rotated state occupies the same space as the flat one -- otherwise the
+   whole panel reflows every time the stance is flipped. */
+.sp-stance { justify-content: center; }
+.sp-board {
+  display: block;
+  width: 62px;
+  height: auto;
+  transition: transform 160ms ease;
+}
+/* SKATE is the board turned a quarter under the rider. The artwork's own
+   footprints and arrows rotate with it, which is the entire explanation.
+   SWITCH is the same turn the other way, for the rider whose other foot leads
+   -- so the two skate stances are visibly mirror images rather than two words
+   that have to be read and compared. */
+.sp-board-skate { transform: rotate(90deg); }
+.sp-board-switch { transform: rotate(-90deg); }
+.sp-stance-name {
+  font: 800 9px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.8px;
+  opacity: 0.85;
+}
+
+/* THE OBJECTIVE ICON on the briefing card.
+   Amit: "put the icons near the numbers, maybe make them a bit bigger."
+
+   BESIDE THE COUNT, not out at the left margin. The icon and the number are one
+   statement -- EIGHT of THESE -- and the row's job is to be read as that single
+   thing. Parked on the far side of the card they were two separate facts with a
+   label between them, and the eye had to travel to join them up. */
+.brief-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  /* After the label, before the count. `order` rather than reordering the DOM
+     so the markup still reads label-then-value for anything reading it aloud. */
+  order: 2;
+  margin: 0;
+}
+/* Half again bigger. It is next to a large number now and has to hold its own
+   against it; at 30px it read as a bullet point. */
+.brief-icon svg { display: block; width: 46px; height: 36px; }
+#brief-list li > span { flex: 1; order: 1; }
+#brief-list li > b { order: 3; }
+
+/* A row built but not shown -- the dev-options entry before it is unlocked. */
+.sp-row.sp-hidden { display: none; }
+
 .sp-note {
   flex-basis: 100%;
   font-size: 8.5px;
@@ -167,7 +318,32 @@ html, body {
 #paused-badge.hidden { display: none; }
 
 /* --- HUD --- */
-#hud { position: absolute; inset: 0; pointer-events: none; z-index: 500; }
+/**
+ * THE HUD'S DISTANCE FROM THE EDGE, in one place.
+ *
+ * Amit: "the UI needs padding from the upper and lower -- sometimes it touches
+ * the edges of the screen. Make it smaller and with a bit of padding."
+ *
+ * Every corner element was setting its own inset, so "move the UI in" meant
+ * editing five rules and hoping none were missed -- which is how one of them
+ * ends up flush against the frame while the others look fine.
+ *
+ * SAFE AREA IS FOLDED IN. `env(safe-area-inset-*)` is 0 on a normal screen and
+ * non-zero on a notched or rounded one, and a tablet in a BoBo case is exactly
+ * where a readout in the corner gets clipped by hardware. max() takes whichever
+ * is larger, so the padding is a floor rather than a fixed offset.
+ */
+:root {
+  --ui-edge-y: max(26px, env(safe-area-inset-top, 0px));
+  --ui-edge-b: max(26px, env(safe-area-inset-bottom, 0px));
+  --ui-edge-x: max(20px, env(safe-area-inset-left, 0px));
+  --ui-edge-r: max(20px, env(safe-area-inset-right, 0px));
+}
+
+/* The HUD as a whole reads slightly smaller now. It is glanced at over a moving
+   road, so it wants to be legible rather than large -- and shrinking it is half
+   of what stops it reaching the edges in the first place. */
+#hud { position: absolute; inset: 0; pointer-events: none; z-index: 500; font-size: 0.92em; }
 
 /* ONE SCALE KNOB FOR THE WHOLE LEFT BLOCK.
    Everything below is sized in `em` off this one font-size, so the entire
@@ -181,8 +357,9 @@ html, body {
    stamp on a small phone or a billboard on a desktop browser. */
 #topLeft {
   position: absolute;
-  top: 1.1em;
-  left: 1.3em;
+  top: var(--ui-edge-y);
+  left: var(--ui-edge-x);
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
   color: #fff3e4;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
@@ -217,9 +394,10 @@ html, body {
    player is actually trying to do. */
 #bottomRight {
   position: absolute;
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
-  right: 1.4em;
-  bottom: 1.2em;
+  right: var(--ui-edge-r);
+  bottom: var(--ui-edge-b);
   text-align: right;
   color: #fff3e4;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
@@ -233,7 +411,7 @@ html, body {
 
 #hint {
   position: absolute;
-  bottom: 14px;
+  bottom: var(--ui-edge-b);
   left: 50%;
   transform: translateX(-50%);
   background: var(--deep);
@@ -467,7 +645,23 @@ html, body {
   color: var(--paper);
   /* Same viewport-relative scale as the HUD -- this screen is read on the same
      ~788px-wide phone, and sizing it in fixed px made it a wall of text there. */
-  font-size: clamp(9px, 1.34vw, 13px);
+  /**
+   * DOWN 5%. Amit: "closing screen also a bit too high -- just lose the second
+   * title and reduce in 5%."
+   *
+   * Same width-not-height mistake as #brief-card, and the race is the worst
+   * case of it because this screen grew: three stars, a verdict, a subtitle, a
+   * detail line, FIVE standings rows, then the score and the button. Measured
+   * at 87% of the height on a 960x540 and an 854x480 board.
+   *
+   * The 5% is the smaller half of the fix -- losing the race's subtitle is the
+   * bigger one, and that came out of the card in modes/speedRace.js rather than
+   * out of here, so the missions keep a line that still earns its place. A
+   * gentler cut than the briefing's 20% because this screen has to stay
+   * readable at a glance from a board a metre away.
+   */
+  font-size: 11px; /* fallback if clamp() is unsupported */
+  font-size: clamp(8.55px, 1.273vw, 12.35px);
 }
 
 /* SUCCESS IS ORANGE, FAILURE IS RED. The verdict used to be the same colour
@@ -502,9 +696,14 @@ html, body {
   opacity: 0;
   animation: starIn 0.5s cubic-bezier(.2,1.7,.4,1) forwards;
 }
+/* Paper white, following the mission list -- see .msel-star.earned for why the
+   rating left gold. It has to move in the same commit: this is the screen a
+   player reads the rating ON and the list is where they read it back, and the
+   same three stars meaning gold in one place and white in the other would land
+   as two different awards rather than one. */
 #go-stars .star.earned {
-  color: #ffd166;
-  text-shadow: 0 0 0.35em rgba(255, 209, 102, 0.65);
+  color: var(--paper);
+  text-shadow: 0 0 0.35em rgba(246, 239, 228, 0.6);
 }
 @keyframes starIn {
   0% { transform: scale(0.6) rotate(-25deg); opacity: 0; }
@@ -549,7 +748,13 @@ html, body {
 #go-recap li.missed { background: rgba(255, 255, 255, 0.05); color: rgba(255, 243, 228, 0.6); }
 #go-recap li.missed b { color: var(--verdict, var(--hot)); }
 #go-recap li b { font-variant-numeric: tabular-nums; }
-#go-recap li.done b::after { content: ' \2713'; }
+/* NO TICK ADDED HERE. Amit: "every completed objective has two ticks, it should
+   be one." It was: counterText() in modes/missions.js already returns U+2713 as
+   the row's text when an objective is done, and this rule appended a second one
+   after it. The text is the better place to own it -- the live panel reads the
+   same function, so one tick is now one tick in both -- and dropping the rule
+   also takes the meaningless "1ST ✓" off the race standings, where `done` marks
+   the player's own row rather than anything completed. */
 
 .go-score-label {
   font: 700 0.85em system-ui, sans-serif;
@@ -573,6 +778,9 @@ html, body {
   font: 600 0.95em/1.7 system-ui, sans-serif;
   opacity: 0.55;
 }
+/* An empty line still costs its margin and a line-box of height, which on a
+   480-high board is height the standings want. Same rule as #go-subtitle. */
+#final-breakdown:empty { display: none; }
 #restart-button {
   margin-top: 1.7em;
   padding: 1em 3em;
@@ -634,21 +842,25 @@ html, body {
 #objectives {
   margin-top: 1.15em;
   width: 14.6em;
+  /* Belt and braces: whatever the font-size resolves to, the panel cannot grow
+     wider than the screen or off the bottom of it. */
+  max-width: 42vw;
+  max-height: 60vh;
+  overflow: hidden;
   padding: 0.72em 0.82em 0.62em;
   border-radius: 0.75em;
-  background: rgba(24, 18, 30, 0.44);
+  background: rgba(24, 18, 30, 0.72);
   border: 1px solid rgba(255, 233, 214, 0.16);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  /* NO backdrop-filter. It looked good in Chrome and is a known way to get a
+     blank or black box out of an Android System WebView, which is what the SDK
+     ships on -- a blurred panel is not worth a HUD that sometimes does not draw.
+     The background alpha is raised to compensate for the lost separation. */
 }
 #objectives.hidden { display: none; }
-/* The panel slides in when a mission starts, so the list is something that
-   ARRIVES rather than something that was always there. */
-#objectives.intro { animation: panelIn 0.42s cubic-bezier(.2,1.2,.35,1); }
-@keyframes panelIn {
-  0% { opacity: 0; transform: translateX(-18px); }
-  100% { opacity: 1; transform: translateX(0); }
-}
+/* NO ENTRANCE ANIMATION. It began at opacity 0 and animated up, which is fine
+   until the animation does not run -- then the panel is present, laid out, and
+   invisible, with nothing to say why. Nothing that has to appear should start
+   from a state where failure looks like absence. */
 
 #obj-title {
   font: 900 1.02em/1 system-ui, sans-serif;
@@ -656,12 +868,6 @@ html, body {
   text-transform: uppercase;
   color: var(--hot);
   margin-bottom: 0.55em;
-}
-#obj-title.intro { animation: titleIn 0.5s cubic-bezier(.2,1.5,.35,1); }
-@keyframes titleIn {
-  0% { opacity: 0; transform: scale(0.82); }
-  55% { opacity: 1; transform: scale(1.08); }
-  100% { transform: scale(1); }
 }
 
 #obj-clock {
@@ -711,8 +917,44 @@ html, body {
   opacity: 0.9;
   transition: opacity 0.3s;
 }
+/* The objective's icon, beside its count -- see objectives.js. Smaller than the
+   briefing card's: this is glanced at mid-ride over a moving road, where a large
+   graphic competes with the thing it is telling you to look for. */
+.obj-icon { flex: none; display: inline-flex; align-items: center; margin-left: auto; }
+.obj-icon svg { display: block; width: 26px; height: 21px; }
+/* The label takes the slack so the icon and count stay paired on the right. */
+#obj-list li .obj-label { flex: 1; }
+
+/* A row's note wraps to its own line under it. Dimmer than the row, because it
+   is an aside rather than another objective. */
+#obj-list li.has-note { flex-wrap: wrap; }
+.obj-note {
+  flex-basis: 100%;
+  margin-top: 2px;
+  font-size: 0.72em;
+  letter-spacing: 0.12em;
+  opacity: 0.62;
+}
+
 #obj-list li.done { opacity: 0.42; }
 #obj-list li.done .obj-label { text-decoration: line-through; }
+/* YOUR row in the race standings -- the opposite treatment to `done`, which is
+   what it used to borrow. Brighter than the rest and carrying a small marker in
+   the margin, so the eye finds it without reading four names. No background
+   plate: this list sits over a moving road, and a filled row at this size reads
+   as a button. */
+#obj-list li.you { opacity: 1; }
+#obj-list li.you .obj-label { color: #fff3e4; }
+#obj-list li.you .obj-count { color: #fff3e4; }
+#obj-list li.you::before {
+  content: '';
+  position: absolute;
+  left: -0.55em; top: 50%;
+  width: 3px; height: 0.92em;
+  margin-top: -0.46em;
+  border-radius: 2px;
+  background: #7ef0a8;
+}
 .obj-count {
   font: 800 1.12em/1 system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
@@ -752,6 +994,7 @@ html, body {
 .msel-inner {
   width: min(34em, 92vw);
   color: var(--paper);
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
 }
 .msel-head {
@@ -768,6 +1011,9 @@ html, body {
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
+/* The star total is gone -- see missionSelect.js. An empty element would still
+   hold a line-box open in the header flex row. */
+#msel-total:empty { display: none; }
 
 #mission-list {
   display: flex; flex-direction: column; gap: 0.6em;
@@ -849,7 +1095,33 @@ html, body {
 /* Unearned stars stay VISIBLE. The gap between two and three is the only
    reason to replay a mission you have already cleared. */
 .msel-star { color: rgba(255, 243, 228, 0.18); }
-.msel-star.earned { color: #ffd166; text-shadow: 0 0 0.3em rgba(255, 209, 102, 0.5); }
+/**
+ * EARNED STARS ARE PAPER WHITE, NOT GOLD.
+ *
+ * Amit: "we need to change the colour of the crystals, they look too much like
+ * the star points." He was looking at a row where an amber crystal (0xffb43c)
+ * sits a few pixels from three #ffd166 stars, and he is right that the two read
+ * as one thing.
+ *
+ * THE CRYSTAL IS THE WRONG END TO FIX IT FROM. Its amber is not decoration --
+ * it is the same hue as the score readout when it bumps, the objective counter
+ * when it kicks, and the air gate: gold means POINTS on this hill, and it means
+ * it in the world where a player learns it at speed. Recolouring the most
+ * collected object in the game to resolve an adjacency on a menu would trade a
+ * UI problem for a much more expensive one, and the palette has no free bright
+ * hue to move it into anyway -- cyan is the boost pad, green the rails, violet
+ * the launchers, magenta the coping, and every theme's road markings cycle
+ * through those same six.
+ *
+ * So the star moves instead, and moving it says something true: a rating is not
+ * a currency. Points are gold and the run pays them out; stars are the mark of
+ * how well it went, and paper white is the one bright value nothing on the road
+ * uses. Gold keeps its single meaning and the two stop competing.
+ */
+.msel-star.earned {
+  color: var(--paper);
+  text-shadow: 0 0 0.3em rgba(246, 239, 228, 0.55);
+}
 .msel-lock { font-size: 1.3em; opacity: 0.7; }
 
 #msel-next {
@@ -880,6 +1152,7 @@ html, body {
 #confirm-overlay { background: rgba(12, 8, 16, 0.72); z-index: 9600; }
 .confirm-box {
   width: min(26em, 84vw);
+  font-size: 11px; /* fallback if clamp() is unsupported */
   font-size: clamp(9px, 1.34vw, 13px);
   padding: 1.6em 1.6em 1.4em;
   border-radius: 1em;
@@ -907,3 +1180,596 @@ html, body {
 #confirm-no { background: var(--hot); color: #23150c; }
 #confirm-yes { background: rgba(255, 255, 255, 0.1); color: var(--paper); }
 #confirm-no:hover, #confirm-yes:hover { filter: brightness(1.12); }
+
+/* --- boost timer ----------------------------------------------------------
+   Only present while a boost is running, and it drains left-to-right so the
+   thing being counted (time left) is the thing that shrinks. Cyan to match the
+   gates -- a boost's colour should be the same wherever it appears. */
+#boost-meter { margin-bottom: 0.45em; text-align: right; }
+#boost-meter.hidden { display: none; }
+#boost-label {
+  font: 900 0.85em/1 system-ui, sans-serif;
+  letter-spacing: 0.22em;
+  color: #4bd6ff;
+  margin-bottom: 0.28em;
+  animation: boostPulse 0.55s ease-in-out infinite;
+}
+#boost-bar {
+  width: 7.5em; height: 0.4em;
+  margin-left: auto;
+  border-radius: 0.2em;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+#boost-fill {
+  height: 100%; width: 100%;
+  border-radius: 0.2em;
+  background: linear-gradient(90deg, #4bd6ff, #d6f6ff);
+  transform-origin: right center;
+}
+@keyframes boostPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+/* The speed readout goes cyan while boosting, so the number and the timer read
+   as one event rather than two unrelated widgets. */
+#bottomRight.boosting #speed-readout { color: #9fe9ff; }
+
+/* --- big boost timer (top centre, versus modes) ---------------------------
+   Deliberately the loudest thing on the HUD while it runs, and completely
+   absent when it does not: a boost is short and the whole question is "how much
+   is left", so it earns the centre of the screen for those few seconds. */
+#boost-top {
+  position: absolute;
+  top: var(--ui-edge-y); left: 50%;
+  transform: translateX(-50%);
+  width: min(26em, 46vw);
+  font-size: 11px; /* fallback if clamp() is unsupported */
+  font-size: clamp(9px, 1.34vw, 13px);
+  color: #d6f6ff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+#boost-top.hidden { display: none; }
+#bt-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 0.3em;
+}
+#bt-label {
+  font: 900 1.25em/1 system-ui, sans-serif;
+  letter-spacing: 0.3em;
+  color: #4bd6ff;
+}
+#bt-time {
+  font: 900 1.35em/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+#bt-track {
+  height: 0.72em;
+  border-radius: 0.4em;
+  background: rgba(10, 20, 30, 0.55);
+  border: 1.5px solid rgba(107, 224, 255, 0.45);
+  overflow: hidden;
+}
+#bt-fill {
+  height: 100%; width: 100%;
+  border-radius: 0.4em;
+  background: linear-gradient(90deg, #4bd6ff, #d6f6ff);
+  box-shadow: 0 0 0.9em rgba(75, 214, 255, 0.8);
+}
+/* The last second is the one that matters -- it goes amber and pulses so the
+   end of the boost is something you feel coming rather than notice afterwards. */
+#boost-top.ending #bt-fill { background: linear-gradient(90deg, #ffb43c, #ffe89a); }
+#boost-top.ending #bt-label, #boost-top.ending #bt-time { color: #ffd166; }
+#boost-top.ending { animation: btEnding 0.32s ease-in-out infinite; }
+@keyframes btEnding { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+/* --- mission briefing -----------------------------------------------------
+   Big, centred, and then it FLIES INTO the HUD panel rather than cutting to it.
+   The flight is the whole point: it says "this thing you just read is that
+   thing in the corner", which a fade cannot. */
+/* FULLY OPAQUE, not a scrim. Amit: "I want the whole starting screen to have a
+   fully full opacity black background so we won't see the player -- something
+   in the environment at that state of generation doesn't look good."
+   
+   He is right, and it is not only cosmetic. The briefing is shown BEFORE the
+   run starts, which is exactly when the world is being built: the prop field is
+   spawning its first few hundred metres, the trough is rebuilding its whole
+   surface window, and the rider is being placed. Showing that through a 72%
+   scrim advertises the one moment the game looks least finished. Opaque turns
+   the same moment into a deliberate title card. */
+#briefing { background: #07050c; z-index: 9400; }
+#brief-card {
+  /* BIGGER AND CLEARER, per the same note. The card was sized to sit lightly
+     over a visible game; with nothing behind it there is no reason to be
+     modest, and this is the only screen that explains what the player is about
+     to be asked to do. Roughly 40% up on both the width and the type scale. */
+  width: min(38em, 92vw);
+  /**
+   * DOWN 20% FROM THAT. Amit: "vs mode opening screen's ui is too big and
+   * fills the entire screen, even cuts off -- reduce 20%."
+   *
+   * THE OLD NUMBERS WERE NOT WRONG, THEY WERE MEASURED ON THE WRONG AXIS. Both
+   * stops were sized "against a ~788px-wide phone" -- against WIDTH, on a
+   * portrait screen where height was free. The board is landscape, so the
+   * binding constraint is the short axis, and 1.9vw grows the card as the
+   * screen gets WIDER while the room it has to fit in does not:
+   *
+   *     1920x1080   453px tall   42% of the height    fine
+   *     1280x720    453px tall   63%                  fine
+   *     1024x600    453px tall   76%                  nearly fills
+   *      960x540    438px tall   81%                  nearly fills
+   *      854x480    398px tall   83%                  nearly fills
+   *
+   * Every stop is 80% of what it was, which shrinks the whole card and not just
+   * its type: the width is in em and so is every padding and row inside it, so
+   * one number carries all of it.
+   *
+   * APPLIED TO BOTH MODES, not only the race Amit was playing. It is one card
+   * with one root size, and the mission version of it is the TALLER of the two
+   * -- it carries a number, a subtitle and up to three objective rows against
+   * the race's two -- so scoping the fix to the race would have left the same
+   * defect in place on the worse screen.
+   */
+  font-size: 12px; /* fallback if clamp() is unsupported */
+  font-size: clamp(10.4px, 1.52vw, 15.2px);
+  padding: 1.7em 1.8em 1.5em;
+  border-radius: 1em;
+  /* No panel fill against an opaque backdrop -- a slightly-lighter box on black
+     is just an edge to notice. The border stays as the frame. */
+  background: rgba(26, 19, 34, 0.55);
+  border: 2px solid rgba(255, 122, 61, 0.55);
+  color: var(--paper);
+}
+
+#brief-num {
+  font: 900 1.15em/1 system-ui, sans-serif;
+  letter-spacing: 0.35em;
+  color: var(--hot);
+  opacity: 0.85;
+}
+#brief-name {
+  font: 900 3.0em/1.05 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  margin-top: 0.12em;
+}
+#brief-sub {
+  font: 500 1.15em/1.4 system-ui, sans-serif;
+  /* Was 0.6, which is fine over a bright game and muddy on black. */
+  opacity: 0.78;
+  margin-top: 0.4em;
+}
+#brief-list { list-style: none; margin: 1.2em 0 0; padding: 0; }
+#brief-list li {
+  /* The gap is what pairs the icon with the count: a small one between them and
+     the label pushed away by flex:1, so the two right-hand elements read as a
+     group rather than as three evenly spaced items. */
+  display: flex; justify-content: space-between; align-items: center; gap: 0.55em;
+  padding: 0.75em 1em;
+  border-radius: 0.55em;
+  /* Lifted from 0.07: the objective rows ARE the explanation of the mission,
+     and they were the faintest thing on the card. */
+  background: rgba(255, 255, 255, 0.12);
+  font: 800 1.35em/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* Rows arrive one after another, so the list reads as a list of things to do
+     rather than as a block of text that appeared. */
+  animation: briefRow 0.4s ease-out backwards;
+}
+#brief-list li + li { margin-top: 0.45em; }
+#brief-list li b { font-variant-numeric: tabular-nums; color: var(--hot); }
+@keyframes briefRow {
+  0% { opacity: 0; transform: translateX(-1.2em); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+/* The countdown, and the bar under it. No instruction text: this ships on a
+   balance board, and prompting for a key the player does not have is worse than
+   saying nothing. A number counting down says "it starts shortly" by itself. */
+#brief-go {
+  position: relative;
+  margin-top: 1.2em;
+  padding-bottom: 0.55em;
+  text-align: center;
+  font: 900 1.9em/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--hot);
+}
+#brief-go::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 0.16em;
+  border-radius: 0.1em;
+  background: var(--hot);
+  opacity: 0.75;
+  transform: scaleX(var(--brief-left, 1));
+  transform-origin: center;
+}
+
+
+
+/* ---- THE RACE LOBBY -------------------------------------------------------
+   Six tracks as a 3x2 grid. Every tile is built from the hill it leads to --
+   its real matte painting behind, its real lip colour as the accent -- so the
+   screen is a preview rather than a decoration. See ui/raceSelect.js. */
+
+.rs-inner {
+  width: min(760px, 94vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  /* Breathing room, and enough on the right that the scrollbar -- when six
+     tiles outgrow a short viewport -- does not sit on top of a tile's edge. */
+  padding: 4px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rs-head h2 {
+  margin: 0;
+  font: 900 22px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 3px;
+  color: #ffe9d6;
+}
+#race-back {
+  width: 34px; height: 34px;
+  border: none; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffe9d6; font-size: 15px; cursor: pointer;
+}
+
+/* THREE ACROSS, wrapping to two rows. Collapses to two columns on a narrow
+   WebView rather than shrinking the tiles below readable. */
+#race-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+@media (max-width: 620px) {
+  #race-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.rs-tile {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 10px;
+  border: none;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  background: var(--rs-deep, #1a1030);
+  color: #ffe9d6;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* The accent is the hill's own lip colour -- the loudest value break on the
+     road, and the thing a player remembers a level by. */
+  outline: 2px solid transparent;
+  transition: outline-color 120ms ease, transform 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The matte, and a scrim so the text on top of it stays readable whatever the
+   painting is doing behind. Two layers rather than dimming the image itself:
+   the sky should still look like its own sky. */
+.rs-art {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(to top,
+      rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.45) 45%, rgba(0, 0, 0, 0.1) 100%),
+    var(--rs-image, none);
+  background-size: auto, cover;
+  /* Sampled from the horizon band rather than the middle: that is where the
+     painting has its colour, and the top of every one of them is dark cloud. */
+  background-position: center, center 62%;
+}
+
+.rs-num {
+  position: absolute;
+  top: 8px; left: 10px;
+  font: 900 12px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 1.5px;
+  color: var(--rs-accent, #ff3ea5);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+.rs-body { position: relative; display: block; }
+.rs-body b {
+  display: block;
+  font: 900 15px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 1.2px;
+  line-height: 1.15;
+}
+.rs-body small {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.3;
+  opacity: 0.72;
+}
+
+/* A bar in the hill's own colour along the bottom edge -- the cheapest possible
+   "this is that place" signal, and the one that survives being glanced at. */
+.rs-tile::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 4px;
+  background: var(--rs-accent, #ff3ea5);
+}
+
+.rs-stars { position: relative; margin-top: 5px; letter-spacing: 2px; font-size: 11px; }
+.rs-star { color: rgba(255, 233, 214, 0.28); }
+.rs-star.earned { color: var(--rs-accent, #ffd166); }
+
+.rs-lock { position: relative; margin-top: 5px; font-size: 13px; opacity: 0.75; }
+
+.rs-tile.locked { cursor: default; }
+/* Locked tiles keep their art -- seeing the places you have not earned is the
+   reason a grid beats a list here -- but drop back so the playable ones lead. */
+.rs-tile.locked .rs-art { filter: saturate(0.35) brightness(0.5); }
+.rs-tile.locked .rs-body b { opacity: 0.75; }
+.rs-tile.locked::after { opacity: 0.3; }
+
+.rs-tile.rs-sel { outline-color: var(--rs-accent, #ff3ea5); }
+.rs-tile:not(.locked):active { transform: scale(0.985); }
+
+
+/* ---- OBJECTIVE CLEAR ------------------------------------------------------
+   The moment a mission is about. Amit: "the message should be bigger with
+   stronger feedback." The old version reused the 30px trick banner -- the same
+   voice the game uses for BIG AIR several times a run -- so the one thing that
+   changes what a run IS announced itself like a kicker.
+
+   Three layers, because loudness on screen is not one property: a colour wash
+   over the whole frame (something happened), a large centred title (what), and
+   a subline (what to do now, since the run deliberately does not end). */
+#objective-clear {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 40;
+}
+#objective-clear.hidden { display: none; }
+
+/* The wash. Fast in, slow out -- a flash that lingers reads as a bug, one that
+   leaves too fast is not seen at all on a board-mounted screen. */
+.oc-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 45%,
+    rgba(79, 240, 255, 0.30) 0%, rgba(79, 240, 255, 0.10) 40%, rgba(79, 240, 255, 0) 70%);
+  animation: oc-flash 1.5s ease-out forwards;
+}
+@keyframes oc-flash {
+  0%   { opacity: 0; }
+  8%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.oc-text {
+  position: relative;
+  text-align: center;
+  animation: oc-pop 2.0s cubic-bezier(0.15, 1.5, 0.35, 1) forwards;
+}
+.oc-text b {
+  display: block;
+  /* Scales with the viewport rather than a fixed size -- this has to be
+     unmissable on a phone-sized WebView and on a TV, and 30px was neither. */
+  font: 900 clamp(34px, 8vw, 76px)/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.06em;
+  color: #ffffff;
+  text-shadow:
+    0 0 18px rgba(79, 240, 255, 0.9),
+    0 0 46px rgba(79, 240, 255, 0.5),
+    0 4px 18px rgba(0, 0, 0, 0.75);
+}
+.oc-text small {
+  display: block;
+  margin-top: 10px;
+  font: 800 clamp(11px, 2.1vw, 17px)/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.22em;
+  color: #4ff0ff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+  opacity: 0.9;
+}
+
+/* Overshoot on the way in so it lands with weight, then hold, then lift away --
+   the hold is most of the duration, because a message that is already leaving
+   by the time you have read it may as well not have been shown. */
+@keyframes oc-pop {
+  0%   { opacity: 0; transform: scale(0.55); }
+  14%  { opacity: 1; transform: scale(1.06); }
+  22%  { transform: scale(1); }
+  72%  { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: scale(1.02) translateY(-26px); }
+}
+
+
+/* THE HUD ELEMENTS THAT ACCEPT A PRESS. #hud is pointer-events:none so taps
+   fall through to the game, which also means a dev-unlock hold can never land
+   on anything inside it -- see ui/devUnlock.js.
+
+   #objectives is the hold target now (Amit: "the whole UI panel on the left --
+   title, timer, black background, the whole thing"), so it has to opt back in
+   or the press is not delivered at all. Found by holding it for eight seconds
+   in a headless run and getting no keypad.
+
+   The readout keeps the rule it already had rather than losing it: it costs
+   nothing, and a game driven by a board and a keyboard loses nothing to either
+   element swallowing a tap. */
+#speed-readout,
+#objectives { pointer-events: auto; }
+
+/* ---- DEV UNLOCK -----------------------------------------------------------
+   Styling for ui/devUnlock.js, which is a TEMPLATE FILE copied verbatim across
+   GoBalance web games so the gesture is identical everywhere. The markup it
+   builds is fixed, so these selectors are part of that contract -- brought over
+   with it rather than reinvented, for the same reason: someone who knows the
+   unlock in one game should meet the same thing here. */
+.devhold { opacity: 0.72; }
+
+#devcode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+}
+
+#devcode-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(111, 232, 255, 0.35);
+}
+
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+#devcode-dots {
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 8px;
+  color: #6fe8ff;
+}
+
+#devcode-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(30, 40, 70, 0.9);
+  color: #eafcff;
+  font: 600 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  gap: 8px;
+}
+
+.devcode-key {
+  height: 62px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+
+/* A wrong code, shown for a moment before the row clears. Amber rather than red:
+   this is a mistyped code, not an alarm.
+
+   REQUIRED BY THE NEW PAD, not decoration. The unlock no longer judges digits as
+   they are typed -- see ui/devUnlock.js -- so a wrong code now looks exactly
+   like a right one until the fourth dot lands. This is the only thing that says
+   it was refused; without it a failed attempt is a silent clear. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
+}
+
+
+/* ---- THE RACE START LINE ---------------------------------------------------
+   Amit: "I read about the mode and then immediately I start riding and the guys
+   are ahead of me. I want a 3-2-1-go and everyone goes together."
+
+   Deliberately the same visual language as OBJECTIVE CLEAR -- large, centred,
+   glowing -- because they are the two moments the game stops to tell you
+   something. Different colour so they are not confusable: the start is amber,
+   the objective is cyan. */
+#race-countdown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 45;
+}
+#race-countdown.hidden { display: none; }
+#race-countdown b {
+  font: 900 clamp(64px, 17vw, 190px)/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: #ffffff;
+  text-shadow:
+    0 0 26px rgba(255, 209, 102, 0.95),
+    0 0 70px rgba(255, 122, 61, 0.55),
+    0 6px 22px rgba(0, 0, 0, 0.8);
+  /* Restarted per number by re-adding the class -- each digit gets its own
+     punch-in rather than one animation spanning the whole countdown. */
+  animation: rc-pop 0.9s cubic-bezier(0.15, 1.6, 0.35, 1);
+}
+#race-countdown.go b {
+  color: #ffd166;
+  animation: rc-go 0.7s cubic-bezier(0.15, 1.6, 0.35, 1);
+}
+@keyframes rc-pop {
+  0%   { opacity: 0; transform: scale(1.5); }
+  18%  { opacity: 1; transform: scale(1); }
+  75%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.9); }
+}
+@keyframes rc-go {
+  0%   { opacity: 0; transform: scale(0.5); }
+  20%  { opacity: 1; transform: scale(1.18); }
+  40%  { transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+
+/* WHAT A MISSION ASKS FOR, on the second line of its row -- see
+   ui/missionSelect.js. This is where the mood tagline used to sit, and it
+   inherits the position rather than the styling: the tagline was prose and
+   dimmed to 0.6 so it stayed out of the way, and these are the numbers you
+   pick a mission ON, so they come back up to full strength. */
+.msel-reqs {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 0.3em;
+}
+/* Icon and number are ONE unit and must never be split by the wrap -- a gem
+   ending a line with its 25 starting the next is a different sentence. The
+   column gap is wide (10px) and the icon-to-digit gap tight (3px) so each
+   pair groups by proximity without needing a separator between them. */
+.msel-req {
+  display: inline-flex; align-items: center; gap: 3px;
+  font: 800 0.95em/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+/* Score carries its own unit instead of an icon (a star would collide with the
+   rating stars ending the row) so it is sized to match the pairs and tinted
+   back a little -- it is the one criterion with no picture to anchor it, and
+   at full weight the longest string on the line became the loudest. */
+.msel-req-score {
+  font: 800 0.95em/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+.msel-icon { display: inline-flex; }
+.msel-icon svg { display: block; width: 22px; height: 18px; }
+/* A locked row says nothing about what it asks for -- it gets the "clear the
+   one before it" line instead, so there is no criteria strip to hide. */
+.msel-row.locked .msel-reqs { display: none; }

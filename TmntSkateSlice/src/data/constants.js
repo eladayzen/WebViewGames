@@ -70,19 +70,96 @@ export const ITEM_MAX_X_FRAC = PLAY_AREA_RIGHT_FRAC - 0.02;
 export const MAX_SPAWN_X_JUMP_FRAC = 0.4;
 
 // --- Scoring (§8) ---
-export const PIZZA_SCORE = 10;
+// Per-pizza-catch score now lives on each variant in data/itemTypes.js
+// (flat, tiered by box color) -- PIZZA_SCORE was the old flat base value
+// the combo multiplier below used to scale; removed since nothing reads it
+// anymore.
 export const OOZE_SCORE = 0; // buff-only reward, per §8/§12's "don't double-dip" guidance and the open question there
-export const COMBO_STEP = 3; // every N consecutive pizza hits bumps the multiplier
+// Streak (hot-catch) system (re-enabled + reworked 2026-09-07). A single,
+// CAPPED multiplier applied to each catch's own points -- never compounded
+// onto already-scored points, so it's "more points per item" and NOT
+// "multipliers over multipliers". The streak is kept alive by a timer that
+// REFILLS to STREAK_WINDOW_SEC on every catch and drains between catches; when
+// it empties the streak resets to x1 (a missed slice no longer breaks it -- the
+// clock does -- but a bomb hit still does). Every COMBO_STEP consecutive
+// catches bumps the multiplier by COMBO_MULTIPLIER_STEP, capped at
+// COMBO_MULTIPLIER_MAX.
+export const COMBO_STEP = 3; // every N consecutive catches bumps the multiplier
 export const COMBO_MULTIPLIER_STEP = 0.5;
-export const COMBO_MULTIPLIER_MAX = 3.0;
+export const COMBO_MULTIPLIER_MAX = 1.5; // hard cap -- streak tops out at x1.5, never more (2026-09-08)
+export const STREAK_WINDOW_SEC = 3.0; // catch within this to keep the streak alive
+
+// Goodie-rush bonus waves (2026-09-07). Each time the run's cumulative score
+// first crosses one of these (ascending; each fires once per run), the game
+// drops into a short celebratory window: no bombs at all, a downpour of good
+// items at BONUS_WAVE_SPAWN_INTERVAL_SEC, for BONUS_WAVE_DURATION_SEC. Bombs
+// already on screen are cleared so it's a true breather (systems/bonusWave.js +
+// core/main.js). Placed one inside each of levels 1, 3, and 5:
+//   300  -> level 1 (Rooftop, 0-500)
+//   3000 -> level 3 (Alley, 2000-4000)
+//   7700 -> level 5 (Sewer, 6500-9000)
+// If a stage advance threshold (data/stages.js) changes, revisit these so each
+// still lands inside its intended level.
+export const BONUS_WAVE_TRIGGER_SCORES = [300, 3000, 7700];
+export const BONUS_WAVE_DURATION_SEC = 6;
+export const BONUS_WAVE_SPAWN_INTERVAL_SEC = 0.34;
+
+// Floating "+N" retro score popups: how long each rises and fades (2026-08-02).
+export const SCORE_POPUP_TTL_SEC = 1.75;
+
+// Box/bomb-kill completion: how long the "twin" chip flight (tray chip ->
+// celebration popup) takes, in ms. Shared between ui.js (drives the flight
+// itself and when the popup visually reveals) and core/main.js (delays the
+// completion's game-state effects -- score bonus, booster/life grant,
+// particle burst, sfx -- to that same moment, 2026-08-04 feedback) so the
+// celebration reads as CAUSED by the chip landing, not simultaneous with a
+// chip still visibly catching up.
+export const BOX_COMPLETE_FLY_MS = 760;
+
+// Early-game easing (2026-09-09): the first EARLY_GAME_EASE_SEC of a run are a
+// touch gentler so the opening is less punishing -- bomb spawn chance is scaled
+// by EARLY_GAME_BOMB_CHANCE_FACTOR, and the bomb-presence floor only maintains
+// EARLY_GAME_BOMB_FLOOR_MIN_COUNT bomb on screen (vs the usual 2) so that
+// reduction is actually felt rather than refilled by the floor. Keyed to run
+// time (difficulty.elapsedSec), not per stage.
+export const EARLY_GAME_EASE_SEC = 30;
+export const EARLY_GAME_BOMB_CHANCE_FACTOR = 0.7;
+export const EARLY_GAME_BOMB_FLOOR_MIN_COUNT = 1;
 
 // --- Lives (§5.4, §8) ---
-export const STARTING_LIVES = 3;
-// Lives can grow past the starting 3 (the red box's completion reward grants an
-// extra heart, 2026-08-02) up to this cap. The HUD shows one heart slot per
-// point of current capacity.
+// Start at the cap (2026-09-09, was 3) -- a more forgiving opening. Since this
+// equals MAX_LIVES, the tray starts full and dropped hearts only ever refill a
+// lost one (gainLife caps at MAX_LIVES).
+export const STARTING_LIVES = 5;
+// Heart cap. Now equal to STARTING_LIVES (both 5, 2026-09-09), so the tray
+// starts full; the red box's extra-heart reward and dropped hearts refill lost
+// hearts rather than growing capacity. The HUD shows one slot per point of
+// current capacity.
 export const MAX_LIVES = 5;
 export const HIT_INVULNERABILITY_SEC = 1.2;
 
+// Extra-life heart drop (2026-09-03, systems/heartDrop.js). From STAGE 2 on,
+// one catchable heart drops per stage at a random time in this window after the
+// stage begins -- "about once a level". Stage 1 never drops one. Window is a
+// touch shorter than a typical stage so it reliably lands; if a stage is
+// cleared before it fires that stage simply skips it (fine -- "about once").
+export const HEART_DROP_MIN_DELAY_SEC = 6;
+export const HEART_DROP_MAX_DELAY_SEC = 22;
+
 // --- Countdown ---
 export const COUNTDOWN_SEC = 3;
+
+// --- HUD scale (2026-08-16) ---
+// The box-tray HUD is fixed-px DOM sizing (unlike the canvas world, which
+// is fraction-of-height and already resolution-independent) -- it reads
+// right on a phone but shrinks toward nothing, proportionally, on a much
+// taller device. Scales it up via window.innerHeight (see ui.js's
+// setHudScale). Reference ~380px covers real phone landscape heights
+// (Galaxy S24 360px, Pixel 8 412px) with zero/near-zero scale-up; MAX is
+// capped well below the raw device-height ratio (phone ~380px vs. the
+// biggest current Android tablet, a 14.6" Galaxy Tab Ultra, ~924px --
+// almost 2.5x) since scaling that literally would look oversized, not
+// just "readable." Both numbers are first-pass/directional, same as every
+// other tunable here -- worth eyeballing on a real tablet once built.
+export const HUD_SCALE_REFERENCE_HEIGHT_PX = 380;
+export const HUD_SCALE_MAX = 1.45;

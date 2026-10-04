@@ -36,6 +36,9 @@ export default registerMode({
   // scoring model here is sound and is the obvious basis for a future
   // "best run" mode -- it is reachable by ?gamemode=rivals.
   hidden: true,
+  // Racing other riders is where a boost is something you SPEND, so its
+  // countdown gets the top of the screen rather than a corner.
+  showsBoostBar: true,
   course: DEFAULT_COURSE,
 
   create(ctx) {

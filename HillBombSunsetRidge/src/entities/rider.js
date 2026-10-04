@@ -31,10 +31,8 @@
 //         └ visual (sprite plane | static mesh | rigged mesh)
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import riderSpriteUrl from '../assets/rider_sprite.png?url';
-import riderModelUrl from '../assets/rider.glb?url';
 import riggedUrl from '../assets/rig/rider_rigged.fbx?url';
 import clipIdleUrl from '../assets/rig/clip_idle.fbx?url';
 import clipPushUrl from '../assets/rig/clip_push.fbx?url';
@@ -56,6 +54,7 @@ import {
   SPIN_LEAN,
   GRAB_CROUCH_HIP, GRAB_CROUCH_KNEE,
   GRAB_SKY_ARM, GRAB_REACH_ARM, GRAB_REACH_ELBOW,
+  HOVER_FOLD_HIP, HOVER_FOLD_KNEE, HOVER_ARM_SPREAD, HOVER_ELBOW_OPEN, HOVER_LEAN,
 } from '../data/constants.js';
 
 const RIDER_HEIGHT = 1.85;
@@ -353,11 +352,6 @@ export function createRider(scene, camera) {
   }
 
   // --- mode B: static 3D model ---------------------------------------------
-  const modelHolder = new THREE.Group();
-  modelHolder.visible = false;
-  tilt.add(modelHolder);
-  let modelLoaded = false;
-  const staticOriginalMats = new Map();
 
   // --- mode C: rigged + animated -------------------------------------------
   const rigHolder = new THREE.Group();
@@ -443,23 +437,20 @@ export function createRider(scene, camera) {
   }
 
   const ready = Promise.all([
-    // mode B
-    new Promise((resolve) => {
-      new GLTFLoader().load(riderModelUrl, (gltf) => {
-        const obj = gltf.scene;
-        fitToRider(obj, true, 'static');
-        obj.traverse((n) => {
-          if (n.isMesh) {
-            n.frustumCulled = false;
-            staticOriginalMats.set(n, n.material);
-          }
-        });
-        modelHolder.add(obj);
-        modelLoaded = true;
-        applyMode();
-        resolve();
-      }, undefined, () => resolve());
-    }),
+    /**
+     * MODE B IS GONE, and with it rider.glb -- 2.7 MB, a quarter of the whole
+     * bundle.
+     *
+     * It was the raw unrigged mesh, kept alongside the rigged one so the render
+     * lab could show them side by side while we decided which to ship. That
+     * decision was made -- the game ships MODE C -- and both were still being
+     * downloaded and parsed on every single launch, because the loads fire at
+     * init rather than per mode. So every player was paying 2.7 MB for a
+     * comparison nobody was making any more.
+     *
+     * The mesh has not been deleted from the repo, only from the build: it is
+     * one import away if the rig ever needs re-judging against it.
+     */
 
     // mode C
     new Promise((resolve) => {
@@ -614,7 +605,6 @@ export function createRider(scene, camera) {
 
   function applyMode() {
     spriteMesh.visible = mode === 'sprite';
-    modelHolder.visible = mode === 'model' && modelLoaded;
     rigHolder.visible = mode === 'rigged' && rigLoaded;
     applyLighting();
   }
@@ -624,24 +614,6 @@ export function createRider(scene, camera) {
     // same textures. The build doc claims unlit is correct for illustrated
     // surfaces (§9.1); for a PBR character that's genuinely untested, and this
     // toggle is how it gets checked rather than assumed.
-    if (modelLoaded) {
-      modelHolder.traverse((n) => {
-        if (!n.isMesh) return;
-        const orig = staticOriginalMats.get(n);
-        if (!orig) return;
-        if (lit) {
-          n.material = orig;
-        } else {
-          if (!n.userData.unlitMat) {
-            n.userData.unlitMat = new THREE.MeshBasicMaterial({
-              map: orig.map || null,
-              color: orig.color ? orig.color.clone() : 0xffffff,
-            });
-          }
-          n.material = n.userData.unlitMat;
-        }
-      });
-    }
     if (rigLoaded) {
       rigMeshes.forEach((n, i) => {
         n.material = lit ? rigLitMats[i] : rigUnlitMats[i];
@@ -650,6 +622,8 @@ export function createRider(scene, camera) {
   }
 
   return {
+    /** The push clip's live blend weight, so a check can prove it stays at 0. */
+    get pushWeightDebug() { return pushWeight; },
     root,
     ready,
 
@@ -686,7 +660,6 @@ export function createRider(scene, camera) {
       applyLighting();
     },
 
-    get modelAvailable() { return modelLoaded; },
     get rigAvailable() { return rigLoaded; },
     get clipNames() { return Object.keys(actions); },
     get debugPushWeight() { return pushWeight; }, // verifying the mid-air push-cancel fix
@@ -835,7 +808,21 @@ export function createRider(scene, camera) {
         // during a pose, so a push overlapping an absorb dragged the deck off
         // its resting height (measured up to 0.067 of drift on exactly those
         // landings, versus ~0.002 on the clean ones).
-        if (s.airActive || pushLockT > 0 || landPose > 0.001) {
+        /**
+         * `s.held` -- the ride is stopped on a start line and has not begun.
+         *
+         * The rider animates OUTSIDE the simulation gate, because the camera
+         * still has to see a character while a menu or a countdown is up. That
+         * is right for the idle pose and wrong for this one: during 3-2-1 the
+         * kid was kick-pushing on the spot, which is the one thing that says
+         * "already riding" while everything else says "not yet".
+         *
+         * Grouped with the airborne case rather than given its own branch,
+         * because the requirement is identical -- do not show the push, and do
+         * not merely fade it -- and a second branch doing the same thing is a
+         * second place for it to drift.
+         */
+        if (s.held || s.airActive || pushLockT > 0 || landPose > 0.001) {
           // NEVER show the push (leg-kick) animation mid-air -- you can't
           // kick-push off a road that isn't under your foot. This used to be
           // gated only against STARTING a new push (`!s.airActive && !pushing`
@@ -903,16 +890,25 @@ export function createRider(scene, camera) {
           // Fold in and back out across the air: 0 at launch, peak at apex,
           // 0 by landing -- so the legs are fully extended again for touchdown,
           // and it hands straight over to the landing absorb with no jump.
+          // TWO ENVELOPES, taken at their max. The sin peaks at the apex and
+          // returns to zero by airT = 1, which is right for a jump that ENDS
+          // there. It no longer always does: the flight is ballistic now, and
+          // over a drop airT pins at 1 while the rider keeps falling, so on its
+          // own this unwinds the pose to fully extended for the whole hang.
+          // airHold does not unwind -- it holds until touchdown.
           const fold = Math.sin(Math.min(1, s.airT) * Math.PI);
+          const hold = s.airHold || 0;
           const hopping = s.airTrick === 'hop';
           const grabbing = s.airTrick === 'grab';
           // max() rather than sum, for the same reason the hop uses it: these
           // all drive the same two joints in the same direction, and adding
           // them would double the fold.
-          const hip = fold * Math.max(AIR_TUCK_HIP,
-            hopping ? HOP_HIP_FOLD : 0, grabbing ? GRAB_CROUCH_HIP : 0);
-          const knee = fold * Math.max(AIR_TUCK_KNEE,
-            hopping ? HOP_KNEE_FOLD : 0, grabbing ? GRAB_CROUCH_KNEE : 0);
+          const hip = Math.max(fold * Math.max(AIR_TUCK_HIP,
+            hopping ? HOP_HIP_FOLD : 0, grabbing ? GRAB_CROUCH_HIP : 0),
+            hold * HOVER_FOLD_HIP);
+          const knee = Math.max(fold * Math.max(AIR_TUCK_KNEE,
+            hopping ? HOP_KNEE_FOLD : 0, grabbing ? GRAB_CROUCH_KNEE : 0),
+            hold * HOVER_FOLD_KNEE);
           // Signs are opposed between the two joints: the thigh swings the knee
           // UP toward the chest, the shin folds the heel BACK under the thigh.
           upLegL.rotation.x -= hip;
@@ -924,6 +920,43 @@ export function createRider(scene, camera) {
           // they now go UP rather than down, and routing them through the same
           // abduction path as the balance lift is what keeps every arm pose
           // one-sided and free of the hand-into-hip clipping.
+        }
+
+        // --- HOVER SPREAD ----------------------------------------------------
+        // Arms out to the sides, on the same MEASURED lateral axis the
+        // boardslide uses (rotation.x on the upper arms, negative spreads both
+        // -- see the boardslide block below for how that was probed). Borrowed
+        // rather than re-derived, so the two poses cannot disagree about which
+        // way "out" is.
+        //
+        // A different axis from the jump's hands-high abduction, deliberately.
+        // That is what makes the hover read as its own pose instead of as more
+        // of the pose that is already playing, which is exactly what went wrong
+        // the first time.
+        if ((s.airHold || 0) > 0.001 && armL) {
+          const spread = s.airHold * HOVER_ARM_SPREAD;
+          const elbow = s.airHold * HOVER_ELBOW_OPEN;
+          armL.rotation.x -= spread;
+          armR.rotation.x -= spread;
+          if (foreL) foreL.rotation.x -= elbow;
+          if (foreR) foreR.rotation.x -= elbow;
+        }
+
+        // --- HOVER lean ------------------------------------------------------
+        // A little of the torso trailing the board while the ground falls away.
+        // Negative on this chain leans him BACK -- the same measured direction
+        // the brake pose uses, borrowed rather than re-derived so the two agree
+        // about which way back is.
+        //
+        // Small on purpose. The wide arms and the held tuck do the work of
+        // reading as airborne; this only has to stop the body looking bolted
+        // upright while the hill drops out from under it. Past about 0.2 it
+        // starts reading as a lean-back trick of its own.
+        if ((s.airHold || 0) > 0.001) {
+          const lean = s.airHold * HOVER_LEAN;
+          if (spine) spine.rotation.x -= lean * 0.5;
+          if (spine1) spine1.rotation.x -= lean * 0.32;
+          if (spine2) spine2.rotation.x -= lean * 0.18;
         }
 
         // --- TUCK / BRAKE pose (procedural, layered ON TOP of the clips) -----
@@ -1078,6 +1111,11 @@ export function createRider(scene, camera) {
           // Same envelope as the leg tuck -- 0 at launch, peak at the apex, 0
           // by touchdown -- so it hands over to the landing absorb with no step.
           if (s.airActive) {
+            // The hover does NOT go through here. This path is abduction --
+            // hands high -- and it already spends 0.98 at the apex against a
+            // 2.0 cap that balance lift is also drawing on. A hover routed
+            // through it was never the larger of the two and showed nothing.
+            // It spreads the arms LATERALLY instead; see the HOVER SPREAD block.
             const airFold = Math.sin(Math.min(1, s.airT) * Math.PI);
             const a = airFold * AIR_ARM_LIFT;
             liftL += a; liftR += a;

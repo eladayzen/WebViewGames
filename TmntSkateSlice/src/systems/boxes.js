@@ -26,17 +26,22 @@ export function resetBoxes(boxes) {
 }
 
 // Register one catch of the given color. Starts the box (and its timer) on
-// the first catch, otherwise increments. On completion, resets the box back
-// to inactive/0 internally and returns { id, bonusScore, hex, label } so the
-// caller can fire the completion-frame side effects (score, particles, SFX,
-// and swap in the matching per-color box icon in the popup); returns null on
-// a non-completing catch.
+// the first catch; every catch AFTER that tops the timer back up by
+// cfg.timerBonusSec instead (capped at cfg.timerSec, 2026-08-04 -- actively
+// feeding an already-active box keeps its clock topped up rather than only
+// ever draining). On completion, resets the box back to inactive/0
+// internally and returns { id, bonusScore, hex, label } so the caller can
+// fire the completion-frame side effects (score, particles, SFX, and swap in
+// the matching per-color box icon in the popup); returns null on a
+// non-completing catch.
 export function registerBoxCatch(boxes, colorId) {
   const cfg = BOX_COLOR_BY_ID[colorId];
   const b = boxes[colorId];
   if (!b.active) {
     b.active = true;
     b.timerRemaining = cfg.timerSec;
+  } else {
+    b.timerRemaining = Math.min(cfg.timerSec, b.timerRemaining + cfg.timerBonusSec);
   }
   b.progress += 1;
   if (b.progress >= cfg.requiredCount) {

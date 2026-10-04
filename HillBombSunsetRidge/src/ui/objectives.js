@@ -13,6 +13,8 @@
 // the frame a value actually changed -- never on a condition that stays true,
 // which would restart the animation every frame and freeze it on frame one.
 
+import { iconFor } from './propIcons.js';
+
 export function createObjectives() {
   const root = document.getElementById('objectives');
   const titleEl = document.getElementById('obj-title');
@@ -27,6 +29,31 @@ export function createObjectives() {
   let prev = [];
   let prevSecond = -1;
   let prevMeterText = null;
+  let reported = false;
+
+  /**
+   * Report the panel's real geometry once per run, through the SDK bridge.
+   *
+   * There is no console on the board, so a HUD that does not appear there and
+   * does appear in a browser is otherwise pure guesswork -- this turns the next
+   * device run into data: whether the element is being shown at all, where it
+   * actually is, how big it resolved to, and what font-size it inherited. Silent
+   * in a browser, since window.Unity only exists inside the WebView.
+   */
+  function reportOnce() {
+    if (reported || !window.Unity) return;
+    reported = true;
+    try {
+      const r = root.getBoundingClientRect();
+      const cs = getComputedStyle(root);
+      window.Unity.call(
+        `HUD objectives: ${Math.round(r.left)},${Math.round(r.top)} `
+        + `${Math.round(r.width)}x${Math.round(r.height)} `
+        + `font=${cs.fontSize} vis=${cs.visibility} op=${cs.opacity} `
+        + `disp=${cs.display} vp=${window.innerWidth}x${window.innerHeight}`,
+      );
+    } catch (e) { /* a diagnostic must never be the thing that breaks */ }
+  }
 
   function retrigger(node, cls) {
     if (!node) return;
@@ -39,13 +66,40 @@ export function createObjectives() {
     listEl.innerHTML = '';
     rows = objectives.map((o) => {
       const li = document.createElement('li');
-      li.innerHTML = `<span class="obj-label">${o.label}</span><b class="obj-count"></b>`;
+      /**
+       * THE SAME ICON AS THE BRIEFING CARD. Amit: "maybe add them in the left
+       * counter UI panel as well."
+       *
+       * Which closes the loop the card opens. The card teaches "this shape is
+       * what you are after"; the panel is what the player glances at for the
+       * rest of the run, and it was still describing that thing in words only.
+       * Using the same drawing in both places means the lesson survives the
+       * three seconds after the card closes -- and a glance at the corner
+       * becomes a shape-match rather than a read.
+       *
+       * Beside the COUNT, for the same reason as the card: the icon and the
+       * number are one statement, and a glance should not have to join them up
+       * across the width of the panel.
+       */
+      const icon = o.kind ? iconFor(o.kind, o.type) : '';
+      // A row may carry a NOTE -- one line under it, for something the label
+      // cannot say. Only the banked-mission row uses it today: "you already
+      // have this, X to finish", which a player has no other way to learn.
+      if (o.note) li.classList.add('has-note');
+      // THE PLAYER'S OWN ROW, in a list that is otherwise all other people --
+      // the race standings. Set once here rather than in the update loop
+      // because which row is yours cannot change during a run, and because
+      // `done` is the only other row state and it means the opposite thing.
+      if (o.you) li.classList.add('you');
+      li.innerHTML = `<span class="obj-label">${o.label}</span>`
+        + `${icon ? `<i class="obj-icon">${icon}</i>` : ''}`
+        + `<b class="obj-count"></b>`
+        + (o.note ? `<small class="obj-note">${o.note}</small>` : '');
       listEl.appendChild(li);
       return li;
     });
     prev = objectives.map(() => ({ text: null, done: false }));
-    retrigger(titleEl, 'intro');
-    retrigger(root, 'intro');
+    // No entrance animation -- see the CSS. The panel is simply there.
   }
 
   return {
@@ -58,6 +112,12 @@ export function createObjectives() {
         return;
       }
       root.classList.remove('hidden');
+      // Defensive: the briefing hides this panel while it measures its position
+      // for the fly-in. If that hand-off is ever missed -- an interrupted run, a
+      // transitionend the WebView never fires -- the panel would stay invisible
+      // for the whole run with nothing to say why. Clearing it every frame means
+      // the worst case is one bad frame instead of a HUD that never appears.
+      reportOnce();
       titleEl.textContent = panel.title;
 
       const sig = panel.title + '|' + panel.objectives.map((o) => o.label).join('|');
@@ -71,7 +131,17 @@ export function createObjectives() {
       for (let i = 0; i < rows.length; i++) {
         const o = panel.objectives[i];
         const was = prev[i];
-        const count = rows[i].lastElementChild;
+        /**
+         * BY CLASS, not by position. This was `lastElementChild`, which was
+         * true right up until a row gained an optional note after the count --
+         * and then the update quietly wrote the score into the note instead.
+         * Nothing threw; the note simply read "250".
+         *
+         * A positional lookup is a rule about markup that the markup does not
+         * know it is obeying, so the next person to add an element breaks it
+         * from a different file.
+         */
+        const count = rows[i].querySelector('.obj-count');
 
         if (o.done && !was.done) {
           // Completion gets the loudest treatment in the panel: the whole row

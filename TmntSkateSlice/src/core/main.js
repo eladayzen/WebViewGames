@@ -5,9 +5,14 @@
 
 import { loadAssets, loadAudioAssets } from './assets.js';
 import { setupCanvas, renderFrame } from './render.js';
-import { createGameState, updateCountdown, triggerGameOver, restartToCountdown, togglePause } from './gameState.js';
-import { getSteerAxis } from '../input/input.js';
-import { createAudio, playSfx, startMusic, pauseMusic, resumeMusic, toggleMuted } from '../systems/audio.js';
+import { createGameState, updateCountdown, triggerGameOver, triggerCleared, restartToCountdown, triggerIntro, triggerStageComplete, resumeRunning } from './gameState.js';
+import { INTRO_STEP1_AUTO_ADVANCE_SEC, INTRO_STEP2_AUTO_ADVANCE_SEC, INTRO_RUN_FRAME_DURATION_SEC } from '../data/introTutorial.js';
+import { STAGE_COMPLETE_COUNTDOWN_SEC, STAGE_CURTAIN_CLOSE_DELAY_SEC, STAGE_CURTAIN_TRANSITION_SEC } from '../data/stageTransition.js';
+import { getSteerAxis, applySensitivityToHost } from '../input/input.js';
+import { createAudio, playSfx, startMusic, pauseMusic, resumeMusic } from '../systems/audio.js';
+import { initSettingsPanel } from '../ui/settingsPanel.js';
+import { createDevPanel } from '../ui/devPanel.js';
+import { installDevUnlock } from '../ui/devUnlock.js';
 import {
   createPlayer,
   resetPlayer,
@@ -23,12 +28,22 @@ import {
   isMagnetBuffed,
   getHitHalfWidthFrac,
   isInvulnerable,
+  RUN_CYCLE_KEYS,
 } from '../entities/player.js';
-import { updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
+import { createFallingItem, updateFallingItem, applyMagnetPull, hasReachedStrikeBand, isWithinPlayerBand, isOffScreen } from '../entities/fallingItem.js';
+import { ITEM_TYPES } from '../data/itemTypes.js';
+import { createHeartDrop, resetHeartDrop, armHeartDropForStage, updateHeartDrop } from '../systems/heartDrop.js';
 import { createSpawner, resetSpawner, updateSpawner } from '../systems/spawner.js';
+import { createBombPresence, resetBombPresence, updateBombPresence } from '../systems/bombPresence.js';
 import { createBoxes, resetBoxes, registerBoxCatch, updateBoxes } from '../systems/boxes.js';
-import { rollBoxReward } from '../data/boxColors.js';
-import { createDifficulty, resetDifficulty, updateDifficulty, getStage } from '../systems/difficulty.js';
+import { createBombKills, resetBombKills, registerBombKill, updateBombKills } from '../systems/bombKills.js';
+import { rollBoxReward, BOX_COLOR_BY_ID } from '../data/boxColors.js';
+// Per-theme falling-item sprite key by box color, so the fly-to-chip "twin"
+// matches the caught art (an idol in the original theme, pizza_slice in TMNT).
+import { FALLING_SPRITE_KEY_BY_BOX_COLOR, bonusWaveTitle } from '@collectible-assets';
+import { BOMB_KILL_SET } from '../data/bombKills.js';
+import { createDifficulty, resetDifficulty, updateDifficulty, isFinalStageCleared, commitStageAdvance, getStage, getScoreBand } from '../systems/difficulty.js';
+import { STAGES } from '../data/stages.js';
 import {
   createScoring,
   resetScoring,
@@ -36,12 +51,19 @@ import {
   registerOozeHit,
   registerComboBreak,
   registerBoxComplete,
+  registerBombKillScore,
+  updateStreak,
   getComboMultiplier,
+  getStreakTimerFrac,
 } from '../systems/scoring.js';
+import { createBonusWave, resetBonusWave, startBonusWave, shouldStartBonusWave, updateBonusWave } from '../systems/bonusWave.js';
 import { createLives, resetLives, loseLife, gainLife, isDead } from '../systems/lives.js';
-import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, triggerScreenShake } from '../systems/juice.js';
+import { installGbSdk } from '../systems/gbSdk.js';
+import { analytics } from '../systems/analytics.js';
+import { submitRun, fetchBoard, resultSections } from '../systems/scoreboard.js';
+import { createJuice, resetJuice, updateJuice, spawnPizzaBreak, spawnOozeSplash, spawnBombExplosion, spawnBoxComplete, spawnShieldBlock, spawnWaveClear, spawnPickupSparkle, spawnScorePopup, spawnCollectFlyer, spawnStageCompleteBurst, triggerScreenShake } from '../systems/juice.js';
 import { createUI } from '../ui/ui.js';
-import { PLAYER_HEIGHT_FRAC } from '../data/constants.js';
+import { PLAYER_HEIGHT_FRAC, ITEM_MIN_X_FRAC, ITEM_MAX_X_FRAC, BOX_COMPLETE_FLY_MS, HUD_SCALE_REFERENCE_HEIGHT_PX, HUD_SCALE_MAX, BONUS_WAVE_TRIGGER_SCORES, BONUS_WAVE_SPAWN_INTERVAL_SEC, EARLY_GAME_EASE_SEC, EARLY_GAME_BOMB_CHANCE_FACTOR, EARLY_GAME_BOMB_FLOOR_MIN_COUNT } from '../data/constants.js';
 
 // Clamp so a tab-resume/frame-hitch never simulates a huge leap. Raised
 // 1/20 -> 1/10 (2026-07-30): the old 1/20 meant any frame slower than 20fps
@@ -56,6 +78,16 @@ const MAX_DT = 1 / 10;
 // 2026-07-30) -- reads clearly as "this clears every bomb on screen".
 const WAVE_DETONATE_STAGGER_SEC = 0.07;
 
+/**
+ * TEACH THE HOST'S SDK ONE MORE METHOD, before anything can try to use it.
+ *
+ * The app injects its own GoBalance SDK as the first script in <head>, and that
+ * SDK has no analytics call -- see systems/gbSdk.js for the whole story. This
+ * adds `logEvent` to it and touches nothing else. A no-op outside the WebView,
+ * so the dev URL is unaffected.
+ */
+installGbSdk();
+
 async function boot() {
   const canvas = document.getElementById('renderCanvas');
   const ctx = setupCanvas(canvas);
@@ -65,54 +97,438 @@ async function boot() {
   const gs = createGameState();
   const player = createPlayer();
   const spawner = createSpawner();
+  const bombPresence = createBombPresence();
+  const heartDrop = createHeartDrop();
+  const bonusWave = createBonusWave();
   const difficulty = createDifficulty();
   const scoring = createScoring();
   const lives = createLives();
   const juice = createJuice();
   const boxes = createBoxes();
+  const bombKills = createBombKills();
   const audio = createAudio();
   let items = [];
   let lastCountdownTick = null; // last whole-second value shown, for tick SFX
 
-  // Background music defaults OFF for now (per request 2026-07-30) -- SFX
-  // still play. Flip MUSIC_ON to re-enable the ambient bed (it loops
-  // continuously across countdown/running/restart; pause is the only thing
-  // that stops it -- see the pause-button handler below).
-  const MUSIC_ON = false;
-  if (MUSIC_ON) startMusic(audio, sfx.music_bed);
+  // Dev-tools flag object (ui/devPanel.js writes it, the bomb-hit path reads
+  // it). The panel is mounted only behind the long-press-plus-code unlock
+  // (ui/devUnlock.js) or ?dev=1, so this stays false in every real run.
+  const debug = { invincible: false };
+
+  // First-run onboarding tutorial state (core/gameState.js's 'intro' state,
+  // data/introTutorial.js's timing knobs) -- all dt-driven from frame()'s
+  // 'intro' branch below, same reasoning as every other timed effect here:
+  // pausing genuinely holds it rather than letting it expire behind the
+  // pause screen.
+  let introStep = 1; // 1 = item recognition, 2 = movement
+  let introElapsed = 0; // time in the CURRENT step, for the auto-advance timeout
+  let introRunFrameIndex = 0;
+  let introRunFrameElapsed = 0;
+  // Loop phase for the JS-driven tutorial board-tilt + character sweep (was a
+  // CSS @keyframes animation; those freeze on the occluded WebView -- ui.js).
+  let introSweepElapsed = 0;
+
+  // Quit-confirm flow: remember whether the game was already paused when the X
+  // raised the confirm, so KEEP PLAYING restores that state rather than
+  // blindly unpausing someone who had deliberately paused (GOBALANCE_APP_-
+  // INTEGRATION.md "Quitting").
+  let pausedBeforeConfirm = false;
+
+  // Last stage index the heart drop was armed for -- re-arms once per new stage
+  // (systems/heartDrop.js drops one catchable heart per stage from level 2 on).
+  let lastHeartStageIndex = -1;
+
+  // Stage-complete transition state (freeze + curtain, ported from
+  // HalfShellHustle's level-complete pattern -- data/stageTransition.js's
+  // timing knobs) -- all dt-driven from frame()'s 'stagecomplete' branch,
+  // same reasoning as intro above: pausing genuinely holds it.
+  let stageCompleteElapsed = 0;
+  let stageCurtainsClosed = false;
+  let stageSwapped = false;
+  // Seconds since the current countdown number appeared, for its JS-driven
+  // tick pop (was a CSS class-toggle animation -- ui.js setStageTickAnim).
+  let stageTickElapsed = 0;
+
+  // Background music is back on by default (2026-08-19, was off since
+  // 2026-07-30's "annoying" feedback -- replaced with a new track + real
+  // SFX/MUSIC toggles, see the settings panel below). Safe to call
+  // unconditionally: startMusic itself checks the persisted musicEnabled
+  // preference and no-ops if it's off, while still remembering the buffer
+  // for the settings panel to restart later. Loops continuously across
+  // countdown/running/restart; pause is the only thing that stops it.
+  startMusic(audio, sfx.music_bed);
 
   function fullReset() {
     resetPlayer(player);
     resetSpawner(spawner);
+    resetBombPresence(bombPresence);
+    resetHeartDrop(heartDrop);
+    resetBonusWave(bonusWave);
+    lastHeartStageIndex = -1; // updateRunning re-arms for the current stage next frame
     resetDifficulty(difficulty);
     resetScoring(scoring);
     resetLives(lives);
     resetJuice(juice);
     resetBoxes(boxes);
+    resetBombKills(bombKills);
     items = [];
     ui.hideGameOver();
+
+    // Push the HUD fresh RIGHT NOW (2026-08-05 fix) -- these setters are
+    // otherwise only ever called from inside updateRunning, which doesn't
+    // run again until 'running' resumes (after the intro tutorial +
+    // countdown finish). Without this, the score/lives/buffs/boxes HUD kept
+    // showing the PREVIOUS run's leftover numbers the whole time the player
+    // was sitting through the new run's intro/countdown -- a real bug
+    // carried since the start, not just a this-session one. (setCombo is
+    // no longer called -- the combo multiplier HUD chip is disabled, see
+    // systems/scoring.js.)
+    const scoreBand = getScoreBand(difficulty);
+    ui.setScore(scoring.score, scoreBand.prevThreshold, scoreBand.nextThreshold);
+    ui.setLives(lives.remaining, lives.capacity);
+    ui.setBuffs(player);
+    ui.setBoxes(boxes);
+    ui.setBombKills(bombKills);
+    ui.setStreak(scoring.comboCount, getComboMultiplier(scoring), getStreakTimerFrac(scoring));
   }
+
+  // Submit the finished run to the family-account board, then fetch + render
+  // it into the game-over overlay. Fire-and-forget: never awaited, never
+  // blocks the death screen, and a no-op outside the app (scoreboard.js
+  // feature-detects). SUBMIT BEFORE FETCH so the run just played is in the
+  // board. Called ONCE from the death site (not the per-frame gameover
+  // branch, which would resubmit every frame). `justScored` is held locally
+  // so the row can be found + highlighted (entries carry no run id).
+  function submitAndShowBoard(justScored) {
+    submitRun(justScored).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, justScored);
+        ui.showScoreboard(board, near.length ? [top, near] : [top]);
+      })
+    );
+  }
+
+  // One route for pause, so the audio suspend/resume can never drift out of
+  // step with gs.paused or the HUD (GOBALANCE_APP_INTEGRATION.md). Used by the
+  // pause button AND the quit-confirm flow.
+  function setPaused(value) {
+    gs.paused = value;
+    ui.setPaused(value);
+    if (value) pauseMusic();
+    else resumeMusic();
+  }
+
+  // Leave the game back to the app's games list. Prefer the SDK's back(); fall
+  // back to the raw native bridge so a game whose module failed to load is
+  // still escapable (the inline #gb-back onclick has the same fallback).
+  function leaveToLobby() {
+    /**
+     * THE ONE PLACE THE PLAYER DELIBERATELY LEAVES, so it is where the session
+     * closes. The heartbeat in systems/analytics.js covers every exit that never
+     * reaches this line -- an app killed from the switcher, a flat battery.
+     */
+    analytics.gameLeft();
+    if (window.GoBalance && typeof window.GoBalance.back === 'function') {
+      window.GoBalance.back();
+      return;
+    }
+    if (window.Unity) window.Unity.call('nav:back');
+  }
+
+  // The X (#gb-back) hook. Only interrupts a LIVE run with a confirm; from any
+  // screen where the player is already stopped (intro/countdown/stage-complete/
+  // game-over, or the quit board itself) it just leaves. Ignores repeat taps
+  // while the confirm is already up so pausedBeforeConfirm isn't clobbered.
+  window.__gbBack = () => {
+    if (ui.isQuitOpen()) return leaveToLobby();
+    if (ui.isConfirmOpen()) return;
+    if (gs.current !== 'running') return leaveToLobby();
+    pausedBeforeConfirm = gs.paused;
+    setPaused(true);
+    ui.showConfirm();
+  };
+
+  // Confirmed a mid-run quit: end the run, submit it (a run ended by choice
+  // still happened), and show the quit board with the family leaderboard. The
+  // board is shown immediately with just the result line; the leaderboard
+  // fills in when the async fetch resolves. No auto-restart timer.
+  function endRunAndShowQuit() {
+    ui.hideConfirm();
+    setPaused(true);
+    const runScore = scoring.score;
+    const statsText = `SCORE ${Math.floor(runScore).toLocaleString()} · BEST COMBO x${scoring.bestCombo}`;
+    ui.showQuit(statsText, null, []);
+    submitRun(runScore).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, runScore);
+        ui.showQuit(statsText, board, near.length ? [top, near] : [top]);
+      })
+    );
+  }
+
+  // Cleared the final stage = campaign finished (mirrors NovaVanguard's
+  // completeCampaign). A victory beat of its own -- state 'cleared', its own
+  // overlay, CONTINUE-only, no timer, no #restart-button -- so finishing does
+  // not feel identical to dying. The score is submitted + board shown when the
+  // player taps CONTINUE (continueFromVictory), the same as the quit path.
+  function completeCampaign() {
+    if (gs.current !== 'running') return;
+    triggerCleared(gs);
+    const statsText = `SCORE ${Math.floor(scoring.score).toLocaleString()} · BEST COMBO x${scoring.bestCombo}`;
+    ui.showVictory(statsText);
+    spawnStageCompleteBurst(juice, 0.5, 0.4); // reuse the celebratory burst
+    playSfx(audio, sfx.sfx_stage_advance);
+  }
+
+  // CONTINUE off the victory screen -> the end board. Reuses the quit board
+  // (leaderboard, play again, leave, no timer) with a "CAMPAIGN COMPLETE"
+  // headline; submits the run first so it lands on the board.
+  function continueFromVictory() {
+    if (gs.current !== 'cleared') return;
+    ui.hideVictory();
+    const runScore = scoring.score;
+    const statsText = `SCORE ${Math.floor(runScore).toLocaleString()} · BEST COMBO x${scoring.bestCombo}`;
+    ui.showQuit(statsText, null, [], 'CAMPAIGN COMPLETE');
+    submitRun(runScore).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, runScore);
+        ui.showQuit(statsText, board, near.length ? [top, near] : [top], 'CAMPAIGN COMPLETE');
+      })
+    );
+  }
+
+  // PLAY AGAIN from the quit board, and the shared path for the game-over
+  // RETRY button: dismiss the quit board, rebuild the world, run the intro,
+  // and clear any pause.
+  function restartGame() {
+    ui.hideQuit();
+    ui.hideVictory();
+    fullReset();
+    beginIntro();
+    setPaused(false);
+  }
+
+  // Shown every run (boot() below and the restart button both call this),
+  // not just the first one ever -- direct-feedback pattern ported from
+  // HalfShellHustle (see WEB_MINIGAME_TECH_RETROSPECTIVE.md). Always called
+  // right after fullReset() has the world already built and frozen.
+  function beginIntro() {
+    triggerIntro(gs);
+    introStep = 1;
+    introElapsed = 0;
+    introRunFrameIndex = 0;
+    introRunFrameElapsed = 0;
+    introSweepElapsed = 0;
+    ui.showIntroTutorial();
+  }
+
+  function advanceIntroStep() {
+    introStep = 2;
+    introElapsed = 0;
+    ui.setIntroStep(2);
+  }
+
+  function dismissIntro() {
+    ui.hideIntroTutorial();
+    /**
+     * A RUN BEGINS HERE. Not at boot and not at restartGame(): both of those
+     * lead into the intro tutorial, which the player may sit on or back out of,
+     * and counting those as runs would inflate every start the funnel reports.
+     * This is the moment they commit.
+     *
+     * Before the first stage is reported, so the stream reads forward.
+     */
+    analytics.runStarted();
+    reportStageStart();
+    restartToCountdown(gs);
+  }
+
+  document.getElementById('intro-next-button').addEventListener('click', () => {
+    if (gs.current === 'intro' && introStep === 1) {
+      playSfx(audio, sfx.sfx_ui_tap);
+      advanceIntroStep();
+    }
+  });
+  document.getElementById('intro-start-button').addEventListener('click', () => {
+    if (gs.current === 'intro' && introStep === 2) {
+      playSfx(audio, sfx.sfx_ui_tap);
+      dismissIntro();
+    }
+  });
+  // GOBALANCE_SDK.md: Space/Enter keydown/keyup are ALWAYS forwarded
+  // (unlike the synthetic #restart-button click, which is gated on
+  // #gameover-overlay) -- a real on-device speed-up over the 8s auto-
+  // advance fallback below, not just a dev convenience.
+  window.addEventListener('keydown', (e) => {
+    if (gs.current !== 'intro' || (e.code !== 'Space' && e.code !== 'Enter')) return;
+    playSfx(audio, sfx.sfx_ui_tap);
+    if (introStep === 1) advanceIntroStep();
+    else dismissIntro();
+  });
 
   document.getElementById('restart-button').addEventListener('click', () => {
     playSfx(audio, sfx.sfx_ui_tap);
-    fullReset();
-    restartToCountdown(gs);
-    ui.setPaused(false);
+    restartGame();
   });
 
   document.getElementById('pause-button').addEventListener('click', () => {
     playSfx(audio, sfx.sfx_ui_tap);
-    togglePause(gs);
-    ui.setPaused(gs.paused);
-    if (gs.paused) pauseMusic();
-    else resumeMusic();
+    setPaused(!gs.paused);
   });
 
-  document.getElementById('mute-button').addEventListener('click', () => {
-    const isMuted = toggleMuted(audio);
-    ui.setMuted(isMuted);
-    playSfx(audio, sfx.sfx_ui_tap); // no-ops silently when now muted, per playSfx's own muted check
+  // Quit-flow buttons (GOBALANCE_APP_INTEGRATION.md "Quitting"). stopPropagation
+  // so a tap on a card button never falls through to a backdrop handler.
+  document.getElementById('confirm-stay').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx(audio, sfx.sfx_ui_tap);
+    ui.hideConfirm();
+    setPaused(pausedBeforeConfirm); // restore prior state, not blind unpause
   });
+  document.getElementById('confirm-quit').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx(audio, sfx.sfx_ui_tap);
+    endRunAndShowQuit();
+  });
+  document.getElementById('quit-again').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx(audio, sfx.sfx_ui_tap);
+    restartGame();
+  });
+  document.getElementById('quit-leave').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx(audio, sfx.sfx_ui_tap);
+    leaveToLobby();
+  });
+  // CONTINUE off the victory screen -> the end board. The ONLY way off that
+  // screen (no timer, no key), so a stray touch can't skip the earned beat.
+  document.getElementById('victory-continue').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx(audio, sfx.sfx_ui_tap);
+    continueFromVictory();
+  });
+
+  // Settings panel (gear button, 2026-08-19) -- SENSITIVITY/MUSIC/SFX,
+  // replaces the old single mute-button. See ui/settingsPanel.js's header
+  // for why it's driven by touch AND Enter/Space (no pointer is forwarded
+  // inside the real Unity WebView in this game's analog steering mode).
+  initSettingsPanel(() => playSfx(audio, sfx.sfx_ui_tap));
+
+  // Push the persisted board sensitivity to the host on boot -- it doesn't
+  // remember the choice across launches (GOBALANCE_APP_INTEGRATION.md). No-op
+  // outside the app.
+  applySensitivityToHost();
+
+  // ------------------------------------------------------------------------
+  // Dev tools (ui/devPanel.js + ui/devUnlock.js) -- stage jump, score push,
+  // force-win, invincibility. Mounted only behind the unlock gesture or
+  // ?dev=1, so nothing below is reachable in a real run. The actions are
+  // defined here so they can drive the same state/functions the game does.
+  // ------------------------------------------------------------------------
+
+  // Push the HUD to its current values right now -- the setters are otherwise
+  // only called from inside updateRunning, so a dev tweak made while paused or
+  // between states wouldn't show until the next running frame.
+  function pushHud() {
+    const band = getScoreBand(difficulty);
+    ui.setScore(scoring.score, band.prevThreshold, band.nextThreshold);
+    ui.setLives(lives.remaining, lives.capacity);
+    ui.setBuffs(player);
+    ui.setBoxes(boxes);
+    ui.setBombKills(bombKills);
+    ui.setStreak(scoring.comboCount, getComboMultiplier(scoring), getStreakTimerFrac(scoring));
+  }
+
+  // Get straight into a live run from whatever screen we're on, dismissing any
+  // overlay first, so a dev action taken from the intro/countdown/board takes
+  // effect immediately instead of behind a frozen screen.
+  function devEnterRunning() {
+    ui.hideIntroTutorial();
+    ui.hideGameOver();
+    ui.hideVictory();
+    ui.hideQuit();
+    ui.hideConfirm();
+    resumeRunning(gs);
+    setPaused(false);
+  }
+
+  function devJumpToStage(i) {
+    const idx = Math.max(0, Math.min(STAGES.length - 1, i));
+    difficulty.stageIndex = idx;
+    // Align the run score to this stage's floor so the progress bar reads
+    // correctly and it doesn't instantly re-advance out of the stage jumped to.
+    scoring.score = idx > 0 ? STAGES[idx - 1].advanceScore : 0;
+    items = [];
+    lastHeartStageIndex = -1; // re-arm the heart drop for the new stage
+    devEnterRunning();
+    pushHud();
+  }
+
+  function devAddScore(amount) {
+    scoring.score += amount;
+    pushHud();
+  }
+
+  // Jump to the last stage and arm its clear threshold -- the next running
+  // frame's isFinalStageCleared check fires the victory beat (completeCampaign).
+  function devWinNow() {
+    difficulty.stageIndex = STAGES.length - 1;
+    scoring.score = Math.max(scoring.score, STAGES[STAGES.length - 1].advanceScore);
+    devEnterRunning();
+    pushHud();
+  }
+
+  function devAddLife() {
+    gainLife(lives);
+    pushHud();
+  }
+
+  function devFullLives() {
+    while (gainLife(lives)) { /* grow to MAX_LIVES */ }
+    pushHud();
+  }
+
+  function devSpawnHeart() {
+    const stage = getStage(difficulty);
+    const x = ITEM_MIN_X_FRAC + Math.random() * (ITEM_MAX_X_FRAC - ITEM_MIN_X_FRAC);
+    items.push(createFallingItem(ITEM_TYPES.HEART, x, stage.fallSpeedFrac));
+  }
+
+  const devPanel = createDevPanel(document, {
+    stages: STAGES,
+    jumpToStage: devJumpToStage,
+    addScore: devAddScore,
+    winNow: devWinNow,
+    addLife: devAddLife,
+    fullLives: devFullLives,
+    spawnHeart: devSpawnHeart,
+    restart: restartGame,
+    debug,
+  });
+
+  // NOT MOUNTED until unlocked: hold the SCORE readout for seven seconds, then
+  // enter the code (ui/devUnlock.js) -- the gesture makes it undiscoverable,
+  // the code makes it deliberate. `?dev=1` skips the hold for a desktop session.
+  let devMounted = false;
+  const mountDev = () => {
+    if (devMounted) return;
+    devMounted = true;
+    document.body.appendChild(devPanel.button);
+    document.body.appendChild(devPanel.panel);
+    devPanel.toggle();
+  };
+  // Anchor the hold to a big INVISIBLE hit rect (#dev-hit) covering the whole
+  // top-left HUD cluster -- score, progress bar, lives hearts, buff tray. The
+  // HUD itself (#hud) is pointer-events:none, and its text is a tiny, variable-
+  // width target that proved impossible to press-and-hold reliably. This
+  // transparent rect gives the 7-second hold a large, stable area without
+  // changing anything on screen. Appended to <body> (NOT into #hud, so it
+  // actually receives pointer events) and kept clear of the top-right chrome
+  // buttons (back/pause/settings), which stay tappable.
+  const devHit = document.createElement('div');
+  devHit.id = 'dev-hit';
+  document.body.appendChild(devHit);
+  installDevUnlock(document, devHit, mountDev);
+  if (/[?&]dev=1\b/.test(window.location.search || '')) mountDev();
 
   // Apply a booster effect (shield / magnet / wave "blow up"), from either a
   // caught falling pickup OR a box-completion reward (2026-08-02). xFrac/yFrac
@@ -138,34 +554,85 @@ async function boot() {
     }
   }
 
+  // A bomb destroyed by a player action WITHOUT costing a life (shield block,
+  // blow-up, later ooze projectiles) -- 2026-08-02. Awards points + a "+N"
+  // popup and fills the bomb-kill set; completing the set fires the same
+  // celebration as a box (bomb icon + "BOMB SQUAD!" + 2 boosters) and grants
+  // them. Call this from every such destruction site; NEVER when a bomb hurt
+  // the player.
+  function killBomb(item) {
+    registerBombKillScore(scoring, BOMB_KILL_SET.killScore);
+    spawnScorePopup(juice, item.xFrac, item.yFrac, `+${BOMB_KILL_SET.killScore}`, BOMB_KILL_SET.hex);
+    // Same "it registered" treatment as a caught slice: the bomb flies
+    // (curved) into the bomb-kill chip, which bloops on arrival (2026-08-03).
+    const chipPos = ui.getChipCenterFrac(BOMB_KILL_SET.id);
+    spawnCollectFlyer(juice, item.xFrac, item.yFrac, chipPos.xFrac, chipPos.yFrac, BOMB_KILL_SET.hex, () => ui.pulseChip(BOMB_KILL_SET.id), 'bomb');
+    const done = registerBombKill(bombKills);
+    if (done) {
+      // Stalled until the flying twin chip actually lands on the popup
+      // (2026-08-04 feedback) -- see BOX_COMPLETE_FLY_MS/showBoxComplete.
+      // This timer is independent of ui.js's own reveal timer so these
+      // effects always fire exactly once, even if the popup's pool slot
+      // later gets recycled by a further completion.
+      ui.showBoxComplete(done.label, done.bonusScore, done.hex, done.id, { effects: done.effects, grantLife: false });
+      setTimeout(() => {
+        registerBoxComplete(scoring, done.bonusScore);
+        for (const effect of done.effects) grantBooster(effect, item.xFrac, item.yFrac);
+        spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
+        playSfx(audio, sfx.sfx_box_complete);
+      }, BOX_COMPLETE_FLY_MS);
+    }
+  }
+
   // Called every frame an unresolved item overlaps Michelangelo's full
   // head-to-feet hit band (§6) -- this is the "catch" path, and can fire
   // anywhere along his body, not just when an item reaches his feet.
   function handleItemOverlap(item) {
     if (item.type.kind === 'good') {
       item.resolved = true;
-      const prevMultiplier = getComboMultiplier(scoring);
-      const newMultiplier = registerPizzaHit(scoring);
+      // Flat, tiered per-catch score (2026-08-06) -- see data/itemTypes.js.
+      // The combo multiplier is disabled for now (hidden from the HUD, no
+      // longer applied here); registerPizzaHit still tracks the streak
+      // count underneath for a later re-enable.
+      // Streak-boosted award: registerPizzaHit applies the (capped, single)
+      // streak multiplier to this catch's base points and returns what was
+      // actually scored, so the popup shows the boosted number.
+      const gained = registerPizzaHit(scoring, item.type.score);
       triggerSwing(player);
       spawnPizzaBreak(juice, item.xFrac, item.yFrac);
-      // Small splash on EVERY pizza hit (plain or box-variant); the rising
-      // combo chime layers on top only when the multiplier ticks up.
+      // Retro "+N" popup at the slice, showing exactly what the catch was worth.
+      spawnScorePopup(juice, item.xFrac, item.yFrac, `+${gained}`, '#ffe066');
       playSfx(audio, sfx.sfx_pizza_splash);
-      if (newMultiplier > prevMultiplier) playSfx(audio, sfx.sfx_combo_up);
       // Box-colored slice: feed its collection box. registerBoxCatch resets
       // the box and returns its bonus/hex on the completing catch, else null.
       if (item.type.boxColor) {
-        const done = registerBoxCatch(boxes, item.type.boxColor);
+        const boxColor = item.type.boxColor;
+        // Fly a shred from the catch into that box's HUD chip; on landing it
+        // "bloops" the chip, so the player sees the slice register into that
+        // colored box (feedback 2026-08-03).
+        const chipPos = ui.getChipCenterFrac(boxColor);
+        const boxHex = (BOX_COLOR_BY_ID[boxColor] || {}).hex || '#ffffff';
+        spawnCollectFlyer(juice, item.xFrac, item.yFrac, chipPos.xFrac, chipPos.yFrac, boxHex, () => ui.pulseChip(boxColor), FALLING_SPRITE_KEY_BY_BOX_COLOR[boxColor]);
+        const done = registerBoxCatch(boxes, boxColor);
         if (done) {
-          registerBoxComplete(scoring, done.bonusScore);
-          spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
-          playSfx(audio, sfx.sfx_box_complete);
-          ui.showBoxComplete(done.label, done.bonusScore, done.hex, done.id);
-          // Auto-reward (2026-08-02): each box grants a booster; the top (red)
-          // box also grants an extra life. Odds per box in data/boxColors.js.
+          // Auto-reward (2026-08-02): each box grants N distinct boosters
+          // (regular 1, blue 2, purple 3); the top (red) box grants an extra
+          // life only. Counts per box in data/boxColors.js. Rolled BEFORE the
+          // popup so it can show what you earned, big.
           const reward = rollBoxReward(done.id);
-          if (reward.effect) grantBooster(reward.effect, item.xFrac, item.yFrac);
-          if (reward.grantLife) gainLife(lives);
+          ui.showBoxComplete(done.label, done.bonusScore, done.hex, done.id, reward);
+          // Stalled until the flying twin chip actually lands on the popup
+          // (2026-08-04 feedback) -- see BOX_COMPLETE_FLY_MS/showBoxComplete.
+          // This timer is independent of ui.js's own reveal timer so these
+          // effects always fire exactly once, even if the popup's pool slot
+          // later gets recycled by a further completion.
+          setTimeout(() => {
+            for (const effect of reward.effects) grantBooster(effect, item.xFrac, item.yFrac);
+            if (reward.grantLife) gainLife(lives);
+            registerBoxComplete(scoring, done.bonusScore);
+            spawnBoxComplete(juice, item.xFrac, item.yFrac, done.hex);
+            playSfx(audio, sfx.sfx_box_complete);
+          }, BOX_COMPLETE_FLY_MS);
         }
       }
       // Ooze buff active: an extra cyan sparkle on every catch, so the buff
@@ -191,15 +658,27 @@ async function boot() {
         // in grantBooster (shared with box-completion rewards).
         grantBooster(effect, item.xFrac, item.yFrac);
       }
+    } else if (item.type.kind === 'life') {
+      // Extra-life heart (systems/heartDrop.js): grants a life (capped at
+      // MAX_LIVES by gainLife). Its own celebratory cue, distinct from a pizza
+      // catch -- a red sparkle + a "+1 LIFE" popup so the reward reads clearly.
+      item.resolved = true;
+      triggerSwing(player);
+      gainLife(lives);
+      spawnPickupSparkle(juice, item.xFrac, item.yFrac, '#ff4d6d');
+      spawnScorePopup(juice, item.xFrac, item.yFrac, '+1 LIFE', '#ff6b8a');
+      playSfx(audio, sfx.sfx_ooze_catch); // shared "pickup caught" cue
     } else {
       // bomb
       if (isShielded(player)) {
         // Shielded: block it -- no life lost, no combo break, no game over.
+        // Counts as a bomb kill (destroyed by a player action, unharmed).
         item.resolved = true;
         triggerBlock(player);
         spawnShieldBlock(juice, item.xFrac, item.yFrac);
         playSfx(audio, sfx.sfx_shield_block);
-      } else if (!isInvulnerable(player)) {
+        killBomb(item);
+      } else if (!debug.invincible && !isInvulnerable(player)) {
         item.resolved = true;
         loseLife(lives);
         triggerHit(player);
@@ -208,8 +687,12 @@ async function boot() {
         triggerScreenShake(juice, 0.26, 0.018);
         playSfx(audio, sfx.sfx_bomb_hit);
         if (isDead(lives)) {
+          // BEFORE the state changes: how far into the stage's score band they
+          // got is a fact about the run that is still true here.
+          reportStageFailed();
           triggerGameOver(gs);
           playSfx(audio, sfx.sfx_game_over);
+          submitAndShowBoard(scoring.score);
         }
       }
       // overlap while invulnerable (and not shielded): bomb just continues (§5.4)
@@ -219,11 +702,65 @@ async function boot() {
   // Called once, the frame an item's top edge passes Michelangelo's feet
   // line without ever having been caught above -- the "missed" path (§8).
   function handleItemMissed(item) {
-    if (item.type.kind === 'good') {
-      registerComboBreak(scoring); // missed pizza (§8) -- no sound (removed the
-      // "disappointment" miss cue per feedback 2026-07-30); combo still breaks.
-    }
-    // missed ooze/bomb: no penalty, no combo effect (§5.4, §6)
+    // A missed good item no longer breaks the streak (2026-09-07): the streak
+    // is timer-based now (scoring.js), so letting one slice fall is fine as long
+    // as you catch the next one before the clock runs out. A bomb hit still
+    // hard-breaks it (registerComboBreak, in handleItemOverlap). No miss cue
+    // either (removed 2026-07-30).
+    // missed good/ooze/bomb: no penalty here (§5.4, §6)
+  }
+
+  // Entered when updateDifficulty detects the next stage's threshold crossed
+  // (freeze + curtain transition, ported from HalfShellHustle's level-
+  // complete pattern -- see WEB_MINIGAME_TECH_RETROSPECTIVE.md). The world
+  // freezes (gs.current gates the whole of updateRunning), the curtain
+  // closes over the scene, the stage actually advances hidden behind it
+  // (commitStageAdvance, in frame()'s 'stagecomplete' branch below), then
+  // the curtain opens back onto the new stage already in motion. Reads the
+  // NEXT stage's name before anything advances -- difficulty.stageIndex
+  // itself doesn't move until commitStageAdvance runs, later.
+  /**
+   * The analytics view of where a run is -- two small readers, so the mapping
+   * from this game's shape to the shared vocabulary lives in one place rather
+   * than at each report site.
+   *
+   * A STAGE IS A LEVEL, as a surface is in Nova and a mission is in Skateboard
+   * Extreme. Progress through one is progress through its SCORE BAND: stages
+   * advance on cumulative score, so the fraction of the band covered is the
+   * honest answer to "how far into this stage did they get".
+   *
+   * Every stage has a finite advanceScore, including the last (20,000) -- the
+   * "Infinity on the final stage" in difficulty.js's comment is stale, so the
+   * denominator is always real and no special case is needed.
+   */
+  function reportStageStart() {
+    const st = getStage(difficulty);
+    analytics.levelStarted(st.id, difficulty.stageIndex + 1);
+  }
+
+  function reportStageFailed() {
+    const band = getScoreBand(difficulty);
+    const span = band.nextThreshold - band.prevThreshold;
+    analytics.levelFailed(scoring.score, scoring.score - band.prevThreshold, span);
+  }
+
+  function beginStageComplete() {
+    // REPORTED HERE, not after commitStageAdvance: difficulty.stageIndex still
+    // points at the stage just cleared, which is the one the event is about.
+    // A few hundred milliseconds later it points at the next one.
+    analytics.levelCleared(scoring.score);
+    triggerStageComplete(gs);
+    stageCompleteElapsed = 0;
+    stageCurtainsClosed = false;
+    stageSwapped = false;
+    // difficulty.stageIndex hasn't advanced yet (commitStageAdvance runs later,
+    // behind the curtain), so it's still the level just cleared -- +1 for the
+    // 1-based number shown in the headline.
+    const clearedLevel = difficulty.stageIndex + 1;
+    const nextStage = STAGES[difficulty.stageIndex + 1];
+    ui.showStageComplete(nextStage.name, clearedLevel);
+    spawnStageCompleteBurst(juice, 0.5, 0.4);
+    playSfx(audio, sfx.sfx_stage_advance);
   }
 
   function updateRunning(dt) {
@@ -233,12 +770,86 @@ async function boot() {
     const advanced = updateDifficulty(difficulty, dt, scoring.score);
     const stage = getStage(difficulty);
     if (advanced) {
-      ui.showStageBanner(stage.bannerLabel);
+      // Freeze starts THIS frame -- return immediately so no spawn/item/
+      // collision logic below sneaks in one more tick after gs.current has
+      // already flipped to 'stagecomplete' (a genuine freeze, not a
+      // one-frame-late one).
+      beginStageComplete();
+      return stage;
+    }
+
+    // Cleared the final stage = campaign finished. Same immediate-freeze return
+    // as a stage advance, but this ends the run with the victory beat instead
+    // of transitioning to another stage.
+    if (isFinalStageCleared(difficulty, scoring.score)) {
+      completeCampaign();
+      return stage;
+    }
+
+    // Goodie-rush bonus waves (systems/bonusWave.js): each time the score
+    // crosses one of the level-1/3/5 thresholds (once each per run), drop into
+    // a short no-bombs downpour of good items. Clear any bombs already falling
+    // so it's a true breather, kick the spawner so goodies rain immediately,
+    // and announce it with a themed popup + celebratory burst.
+    if (shouldStartBonusWave(bonusWave, scoring.score, BONUS_WAVE_TRIGGER_SCORES)) {
+      startBonusWave(bonusWave);
+      for (const it of items) {
+        if (!it.resolved && it.type.kind === 'hazard') {
+          it.resolved = true;
+          spawnPickupSparkle(juice, it.xFrac, it.yFrac, '#ffd24a');
+        }
+      }
+      spawner.timer = 0; // spawn a goodie this frame instead of finishing the old interval
+      resetBombPresence(bombPresence); // no "too long without a bomb" pressure during the rush
+      spawnScorePopup(juice, 0.5, 0.4, bonusWaveTitle(), '#ffd24a');
+      spawnStageCompleteBurst(juice, 0.5, 0.4);
       playSfx(audio, sfx.sfx_stage_advance);
     }
 
-    const spawned = updateSpawner(spawner, dt, stage, boxes);
+    // Early-game easing (2026-09-09): the first EARLY_GAME_EASE_SEC of a run
+    // are a touch gentler. Keyed to run time (difficulty.elapsedSec), so it
+    // spans the opening regardless of stage.
+    const earlyGame = difficulty.elapsedSec < EARLY_GAME_EASE_SEC;
+
+    // Bomb presence floor (2026-08-05, raised to a count of 2): if the
+    // number of bombs currently on screen has stayed below the floor too
+    // long, force the NEXT spawn to be a bomb, at the play-area edge FAR
+    // from the player -- directly answers "I can camp an edge and stay
+    // safe." See systems/bombPresence.js. SUSPENDED during the bonus wave --
+    // the whole point is no bombs (the &&-short-circuit also freezes the
+    // presence timer, so no bomb is forced the instant the rush ends). During
+    // early game the floor is relaxed to 1 bomb (vs 2) so fewer are forced.
+    const bombCount = items.reduce((n, it) => n + (!it.resolved && it.type.kind === 'hazard' ? 1 : 0), 0);
+    const floorMinCount = earlyGame ? EARLY_GAME_BOMB_FLOOR_MIN_COUNT : undefined; // undefined -> default 2
+    const forceBomb = !bonusWave.active && updateBombPresence(bombPresence, dt, bombCount, floorMinCount);
+    const forcedBombXFrac = forceBomb ? (player.xFrac < 0.5 ? ITEM_MAX_X_FRAC : ITEM_MIN_X_FRAC) : null;
+
+    // Spawn-mix override. During the rush: no bombs, no power-ups, faster
+    // spawns -- a wall of good items. During early game (and not the rush):
+    // just a scaled-down bomb chance. fallSpeedFrac / groundYFrac stay the
+    // stage's own (spread through) so only the mix/cadence change, not where
+    // things land.
+    let spawnStage = stage;
+    if (bonusWave.active) {
+      spawnStage = { ...stage, bombChance: 0, powerUpChance: 0, spawnIntervalSec: BONUS_WAVE_SPAWN_INTERVAL_SEC };
+    } else if (earlyGame) {
+      spawnStage = { ...stage, bombChance: stage.bombChance * EARLY_GAME_BOMB_CHANCE_FACTOR };
+    }
+    const spawned = updateSpawner(spawner, dt, spawnStage, boxes, forcedBombXFrac);
     if (spawned) items.push(spawned);
+
+    // Extra-life heart drop (systems/heartDrop.js): re-arm on each new stage,
+    // then drop ONE catchable heart per stage from level 2 on. Pushed directly
+    // (not through the weighted spawner) so it never displaces a bomb-floor
+    // spawn; lands at a random reachable x at the stage's own fall speed.
+    if (difficulty.stageIndex !== lastHeartStageIndex) {
+      lastHeartStageIndex = difficulty.stageIndex;
+      armHeartDropForStage(heartDrop, difficulty.stageIndex);
+    }
+    if (updateHeartDrop(heartDrop, dt)) {
+      const heartX = ITEM_MIN_X_FRAC + Math.random() * (ITEM_MAX_X_FRAC - ITEM_MIN_X_FRAC);
+      items.push(createFallingItem(ITEM_TYPES.HEART, heartX, stage.fallSpeedFrac));
+    }
 
     // groundYFrac is per-stage (each background's floor line differs);
     // PLAYER_HEIGHT_FRAC stays global -- Michelangelo is always the same
@@ -255,6 +866,7 @@ async function boot() {
           item.resolved = true;
           spawnBombExplosion(juice, item.xFrac, item.yFrac);
           playSfx(audio, sfx.sfx_bomb_hit, 0.3);
+          killBomb(item); // blow-up destroyed it -- counts as a bomb kill
         }
         continue;
       }
@@ -262,7 +874,7 @@ async function boot() {
       // Magnet buff: pull good items horizontally toward the player (only
       // kind:'good', never bombs/pickups). Separate pass so updateFallingItem
       // keeps its "straight down" invariant; applyMagnetPull self-clamps x.
-      if (isMagnetBuffed(player) && item.type.kind === 'good') {
+      if (isMagnetBuffed(player) && (item.type.kind === 'good' || item.type.kind === 'life')) {
         applyMagnetPull(item, player.xFrac, dt);
       }
 
@@ -282,16 +894,28 @@ async function boot() {
     }
 
     updateJuice(juice, dt);
+    // Drain the streak clock (scoring.js): after the catch loop, so a catch
+    // this frame has already refilled it. Lets the streak lapse to x1 when the
+    // player goes too long between catches.
+    updateStreak(scoring, dt);
+    // Tick the bonus-wave countdown; when it ends, reset the bomb-presence
+    // floor so bombs ease back in rather than one being forced immediately.
+    if (updateBonusWave(bonusWave, dt)) resetBombPresence(bombPresence);
     // AFTER the catch loop (see systems/boxes.js): a catch that completes a
     // box this frame is already handled above, so this only expires boxes
     // that got no completing catch -- completion always wins the tie.
     updateBoxes(boxes, dt);
+    // Same ordering rule, same reason (2026-08-04): a kill that completes
+    // the bomb-kill set this frame is already handled inside killBomb above.
+    updateBombKills(bombKills, dt);
 
-    ui.setScore(scoring.score);
-    ui.setCombo(scoring.comboCount, getComboMultiplier(scoring));
+    const scoreBand = getScoreBand(difficulty);
+    ui.setScore(scoring.score, scoreBand.prevThreshold, scoreBand.nextThreshold);
     ui.setLives(lives.remaining, lives.capacity);
     ui.setBuffs(player);
     ui.setBoxes(boxes);
+    ui.setBombKills(bombKills);
+    ui.setStreak(scoring.comboCount, getComboMultiplier(scoring), getStreakTimerFrac(scoring));
 
     return stage;
   }
@@ -306,13 +930,49 @@ async function boot() {
       const dt = Math.min(MAX_DT, (frame.lastTime ? (now - frame.lastTime) / 1000 : 1 / 60));
       frame.lastTime = now;
 
+      // HUD scale (2026-08-16): unconditional, every frame, same reasoning
+      // as render.js's per-frame window.innerWidth/innerHeight read --
+      // Unity doesn't reliably fire a `resize` DOM event inside the real
+      // WebView. Runs regardless of gs.paused/gs.current so the HUD reads
+      // correctly even on the intro/countdown/gameover screens.
+      const hudScale = Math.min(
+        HUD_SCALE_MAX,
+        Math.max(1, window.innerHeight / HUD_SCALE_REFERENCE_HEIGHT_PX)
+      );
+      ui.setHudScale(hudScale);
+
       let stage = getStage(difficulty);
 
       // Pause freezes the whole simulation in place -- gs.current is left
       // untouched, so resuming drops back into exactly countdown/running/
       // gameover, whichever it was paused from (§ HUD conventions).
       if (!gs.paused) {
-        if (gs.current === 'countdown') {
+        if (gs.current === 'intro') {
+          ui.setCountdown(0);
+          introElapsed += dt;
+          if (introStep === 2) {
+            // Board-tilt + character sweep, driven per-frame (was CSS
+            // @keyframes -- freezes on the occluded WebView, ui.js). 3.6s loop.
+            introSweepElapsed += dt;
+            ui.setIntroSweep((introSweepElapsed % 3.6) / 3.6);
+            // Run-cycle frame swap, keyed to the real in-game cadence.
+            introRunFrameElapsed += dt;
+            if (introRunFrameElapsed >= INTRO_RUN_FRAME_DURATION_SEC) {
+              introRunFrameElapsed -= INTRO_RUN_FRAME_DURATION_SEC;
+              introRunFrameIndex = (introRunFrameIndex + 1) % RUN_CYCLE_KEYS.length;
+              ui.setIntroRunFrame(introRunFrameIndex);
+            }
+          }
+          // GOBALANCE_SDK.md's "first playable state reachable with no key"
+          // contract -- each step auto-advances on its own after this many
+          // seconds of no interaction (a click/Space/Enter above is a
+          // speed-up over this, never a requirement). Per-step timeout.
+          if (introStep === 1) {
+            if (introElapsed >= INTRO_STEP1_AUTO_ADVANCE_SEC) advanceIntroStep();
+          } else if (introElapsed >= INTRO_STEP2_AUTO_ADVANCE_SEC) {
+            dismissIntro();
+          }
+        } else if (gs.current === 'countdown') {
           updateCountdown(gs, dt);
           ui.setCountdown(gs.countdownRemaining);
           const tick = Math.ceil(gs.countdownRemaining);
@@ -323,9 +983,71 @@ async function boot() {
         } else if (gs.current === 'running') {
           ui.setCountdown(0);
           stage = updateRunning(dt);
+        } else if (gs.current === 'stagecomplete') {
+          ui.setCountdown(0);
+          stageCompleteElapsed += dt;
+          // Headline bounce + countdown tick pop, driven per-frame (were CSS
+          // animations -- freeze on the occluded WebView, ui.js). The tick
+          // timer resets the frame the number changes so each gets its beat.
+          ui.setStageHeadlineAnim(stageCompleteElapsed);
+          // ceil, floored at 1: reads "1" for the whole final second rather
+          // than flashing a 0 nobody is meant to see.
+          const tickChanged = ui.setStageCountdown(
+            Math.max(1, Math.ceil(STAGE_COMPLETE_COUNTDOWN_SEC - stageCompleteElapsed))
+          );
+          stageTickElapsed = tickChanged ? 0 : stageTickElapsed + dt;
+          ui.setStageTickAnim(stageTickElapsed);
+          // Let the celebration burst play out/decay while the world is
+          // frozen (same "keep ticking VFX" fix already applied to gameover
+          // -- otherwise it'd freeze mid-burst instead of settling).
+          updateJuice(juice, dt);
+
+          // Starts the curtain CLOSE partway through the countdown -- the
+          // headline/burst beat gets a clear moment to itself first. Only
+          // STARTS the CSS transition; see the swap check below for why the
+          // actual stage advance waits for it to finish.
+          if (!stageCurtainsClosed && stageCompleteElapsed >= STAGE_CURTAIN_CLOSE_DELAY_SEC) {
+            ui.closeStageCurtains();
+            stageCurtainsClosed = true;
+          }
+
+          // THE STAGE ADVANCE, once the curtains have actually FINISHED
+          // closing (CLOSE_DELAY + TRANSITION), not the instant they start
+          // to -- each stage's groundYFrac differs, so swapping while the
+          // curtains are still open (or mid-slide) would visibly teleport
+          // the player/ground line. A closed curtain is what actually hides
+          // that jump.
+          if (!stageSwapped && stageCurtainsClosed
+              && stageCompleteElapsed >= STAGE_CURTAIN_CLOSE_DELAY_SEC + STAGE_CURTAIN_TRANSITION_SEC) {
+            stageSwapped = true;
+            commitStageAdvance(difficulty);
+            // The new stage has begun. After the commit, so it names the stage
+            // the player is about to see rather than the one they just left.
+            reportStageStart();
+            stage = getStage(difficulty); // hidden behind the still-closed curtain until it reopens
+          }
+
+          if (stageCompleteElapsed >= STAGE_COMPLETE_COUNTDOWN_SEC) {
+            ui.hideStageComplete();
+            resumeRunning(gs);
+            // Curtains are the LAST thing to move -- reveals the new stage
+            // already in motion rather than popping straight to it.
+            ui.openStageCurtains();
+          }
         } else if (gs.current === 'gameover') {
           ui.setCountdown(0);
           ui.showGameOver(scoring.score, scoring.bestCombo);
+          // Keep ticking VFX so the death screen-shake DECAYS to 0 and the
+          // explosion particles settle, instead of freezing with shakeTimer > 0
+          // -- which left renderFrame's getShakeOffsetFrac jittering the scene
+          // forever behind the game-over overlay (fix 2026-08-02).
+          updateJuice(juice, dt);
+        } else if (gs.current === 'cleared') {
+          // Campaign finished: sim frozen, victory overlay already up (shown
+          // once by completeCampaign). Keep ticking VFX so the celebration
+          // burst plays out/settles rather than freezing mid-burst.
+          ui.setCountdown(0);
+          updateJuice(juice, dt);
         }
       }
 
@@ -334,11 +1056,25 @@ async function boot() {
 
       requestAnimationFrame(frame);
     } catch (err) {
-      console.error('TmntSkateSlice frame() error:', err);
+      // Theme-neutral on purpose (2026-08-20) -- this string ships in the
+      // JS bundle for BOTH builds (see core/heroAssets.*.js's header for
+      // the broader "original build ships nothing TMNT-adjacent" rule);
+      // a project name here would be a needless leak into the non-TMNT
+      // build's shipped code for zero benefit (it's an error log, not
+      // user-facing copy).
+      console.error('frame() error:', err);
       throw err;
     }
   }
 
+  // fullReset() before the FIRST intro too (not just on restart) -- it pushes
+  // the HUD to its starting values immediately. Without it the lives tray keeps
+  // its default-built state (all MAX_LIVES hearts full) through the intro and
+  // countdown, so the player sees 5 hearts pre-game that snap to 3 the instant
+  // the game runs. The systems are freshly created here, so the reset itself is
+  // a no-op; the HUD push is the point (2026-09-03).
+  fullReset();
+  beginIntro();
   requestAnimationFrame(frame);
 }
 

@@ -5,23 +5,76 @@
 
 // --- speed model (build doc §5.1) ---
 // accel = GRADE_ACCEL - DRAG*v^2 - CARVE_SCRUB*|carve|*v
-export const GRADE_ACCEL = 9.0; // gravity down the grade, world units/s^2
-// Aero drag. Terminal speed = sqrt(GRADE_ACCEL/DRAG) ~= 31 u/s (~80 km/h),
-// deliberately in the same ballpark as the reference build's 56 km/h opening
-// district. An earlier 0.0016 gave ~75 u/s (~195 km/h), which was an unreadable
-// blur -- the rider has to be legible for this harness to be worth anything.
-export const DRAG = 0.0095;
+// THE RANGE IS COMPRESSED FROM BOTH ENDS, which is two requests that sound
+// opposed and are not. The START had to come up (13.2, +20%) so the opening
+// seconds are not a crawl; the unassisted TOP had to come down a long way so a
+// boost gate actually means something. Raising the grade did the first and
+// undid the second -- cruise measured 38.7 u/s, and a booster on top of that is
+// barely a change of pace.
+//
+// So the grade now sets a fairly low ceiling and the rolling bonus supplies the
+// rest, which also gives the top speed to the rider who earns it:
+//
+//     base terminal      sqrt(12.5/0.0175)  = 26.7 u/s   (~69 km/h)
+//     with full roll     sqrt(15.25/0.0175) = 29.5 u/s   (~77 km/h)
+//     on a boost pad                          up to 44    (~114 km/h)
+//
+// Trimmed ~8% off the unassisted top (was 32.0) while leaving DRAG alone, so
+// the ~1 s ramp to terminal is unchanged -- the ceiling moved, not the feel of
+// getting there.
+//
+// A gate is now worth roughly half again your best unassisted speed, which is
+// the gap that makes one worth steering for.
+export const GRADE_ACCEL = 12.5; // gravity down the grade, world units/s^2
+// Aero drag, and it is the knob that decides HOW FAST you reach terminal, not
+// just where terminal is. Approach to terminal has a time constant of roughly
+// 1/(2*DRAG*v_terminal), so raising drag and raising the grade to match keeps
+// the same top speed and gets there sooner. Nearly doubled (0.0095 -> 0.0175)
+// against a matching grade rise: the ride settles in about 1.0 s instead of
+// 2.2 s, which is what "get to the maximum speed twice as fast" asks for.
+//
+// Raising the GRADE alone would have done the opposite -- a higher ceiling
+// reached no quicker, and a longer wait before the run feels like anything.
+export const DRAG = 0.0175;
 // Residual tyre scrub only. On the flat road this was THE brake (0.85), but in
 // the trough the cost of turning is paid physically -- carving climbs the wall,
 // and the climb takes the speed. Keeping both double-counted it: a 3.3-unit
 // climb cost 20 u/s when the energy exchange only justified 0.7. The geometry
 // is the brake now.
-export const CARVE_SCRUB = 0.10;
+// Cut from 0.10. Turning was costing far too much: measured, three seconds of
+// carving covered 62.6 m against 107.3 m in a straight line -- a 42% loss, which
+// made steering something you paid dearly for rather than the main thing the
+// board does. At 0.022 a full carve costs roughly a tenth of that, enough to
+// feel the line matter and not enough to punish using the controller. SLOWING
+// DOWN IS THE BRAKE'S JOB now, not the steering's.
+export const CARVE_SCRUB = 0.022;
 // --- TUCK AND BRAKE (the fore/aft axis) -------------------------------------
 // Lean forward to tuck and gain speed, lean back to drag the tail and slow.
 // Both are CONTINUOUS: the input scales the effect and the effect is eased in,
 // so speed builds and bleeds smoothly rather than switching between two states.
-export const TUCK_BONUS = 5.2; // extra accel at full tuck, world units/s^2
+// OFF. Holding forward for speed made the optimal line "lean forward and never
+// stop", which flattened every other decision -- and in the race it meant a
+// player who simply held one input beat a field that could not. The tuck POSE
+// stays; it just does not pay any more. The speed it used to provide has gone
+// into the base grade and into ROLL_GAIN below, where it is earned by riding
+// cleanly rather than by holding a button.
+export const TUCK_BONUS = 0.0; // extra accel at full tuck, world units/s^2
+
+// --- rolling momentum --------------------------------------------------------
+//
+// A slow, continuous gain for staying off the brake. Amit: "as long as you don't
+// brake it too much you're always gaining speed a little bit."
+//
+// It is a bonus to TERMINAL speed rather than a push, so it cannot run away --
+// drag still bounds it, the ceiling just moves. It builds over about half a
+// minute of clean riding and the brake takes it back fast, which is what makes
+// braking a real decision instead of a free way to slow down.
+// Doubled too, so the EARNED half of the top speed arrives on the same
+// timescale as the rest of it -- a ceiling that takes forty seconds to reach is
+// not a ceiling the player ever meets in a ninety-second race.
+export const ROLL_GAIN = 0.16;      // extra terminal per second of clean riding
+export const ROLL_MAX = 2.75;       // ceiling on that bonus, world units/s
+export const ROLL_BRAKE_LOSS = 2.2; // bonus lost per second of full braking
 // How fast the tuck engages and releases. Deliberately unhurried -- a tuck that
 // snaps on reads as a button, and Amit asked for speed that arrives naturally.
 // Halved the time to reach full tuck (3.2 -> 6.4 is twice the rate). The build
@@ -44,7 +97,16 @@ export const GROUND_CTRL_RELEASE = 26.0;
 // hard when you are flying and cannot yank a slow rider to a dead stop.
 export const BRAKE_DRAG = 1.35; // fraction of speed shed per second at full brake
 export const BRAKE_SMOOTH = 5.0;
-export const BRAKE_MIN_SPEED = 4.0; // never drag below this -- a stall is not a brake
+// Raised from 4.0. A rider dragged down to walking pace has nothing to steer
+// with -- the pendulum needs speed to carve at all -- so the brake bottomed out
+// in a state the controller could not get out of. 12 is slow enough to read as
+// braking hard and fast enough to still ride.
+export const BRAKE_MIN_SPEED = 10.0; // never drag below this -- a stall is not a brake
+
+// The floor for everything ELSE that costs speed (carving, scrub, wall climbs).
+// Separate from the brake's floor on purpose: the brake is a deliberate act and
+// may take you lower than merely riding badly ever should.
+export const MIN_SPEED = 12.0;
 // Tail sparks, quieter than a grind's: this is friction on a surface, not steel
 // on steel.
 export const BRAKE_SPARK_RATE = 95;
@@ -61,7 +123,7 @@ export const TAIL_LOAD_DECAY = 2.6; // and how fast it bleeds away once released
 // setting up for -- a fifth more air is plainly visible -- just no longer enough
 // to turn a wedge into a vert wall.
 export const TAIL_LOAD_BOOST = 0.22;
-export const START_SPEED = 11;
+export const START_SPEED = 13.2; // +20%, matching the raised grade
 
 // --- lateral motion (build doc §5.1) ---
 export const LATERAL_SPEED = 13.0; // world units/s of sideways travel at full carve
@@ -99,7 +161,39 @@ export const THETA_MAX = 1.15;
 //              - THETA_DAMP*thetaVel
 // Neutral input therefore settles you in the trough floor -- which preserves the
 // existing design where the RESTFUL posture is the fast one.
-export const THETA_GRAVITY = 34.0;
+/**
+ * 16, DOWN FROM 34 -- past the point where the wall resists, deliberately.
+ *
+ * Tried at 26 first (the last value where running out of road is still
+ * something you feel) and then taken further on purpose, to find out what the
+ * ride is like when the cross-section stops arguing with the player at all.
+ *
+ * Amit wanted the pull to the centre much weaker, and asked what the minimum
+ * was. There is no minimum in the code; the floor is where the trough stops
+ * behaving like a trough, and computed against the carve torque that is three
+ * thresholds:
+ *
+ *     ~26   half a lean already reaches the rim -- the wall stops pushing back
+ *     ~16   a THIRD of a lean does; the cross-section is decoration
+ *     ~10   over 2s to drift back from the rim, longer than most corners, so
+ *           neutral no longer returns you to the floor in time to matter
+ *
+ * At 16, a THIRD of a lean reaches the rim. The trough no longer holds the
+ * rider anywhere -- they go where they are pointed and stay there, and neutral
+ * returns them to the floor slowly enough that on a short straight it may not
+ * happen before the next thing does.
+ *
+ * WHAT TO WATCH FOR, since this is past the point the arithmetic recommends:
+ * the wall stops being a limit to work against, the speed exchange from
+ * climbing and dropping back in weakens with it, and "let go and settle in the
+ * trough" -- the design's central inversion, where the restful posture is the
+ * fast one -- becomes something the player has to wait for rather than feel.
+ * 26 is the value that keeps an edge; 34 was the original.
+ *
+ * All six hills move together and stay matched, because each carries
+ * carveScale = 28/R -- the width compensation is independent of this.
+ */
+export const THETA_GRAVITY = 16.0;
 // Full carve must be able to drive you near the lip against gravity:
 // equilibrium is sin(theta) = TORQUE*R/GRAVITY, so 1.7 reaches theta ~ 1.0 of
 // the 1.15 available.
@@ -118,6 +212,21 @@ export const THETA_DAMP = 0.9; // livelier, so pumping is possible
 export const HEIGHT_EXCHANGE = 18.0;
 
 // --- input (build doc §4) ---
+// --- the brake needs a bigger commitment than the steering ------------------
+//
+// On the real board a rider's body weight drifts onto the brake axis without
+// them meaning it -- you shift your weight to stay balanced, not to brake, and
+// the board cannot tell the difference. Steering wants to be sensitive; braking
+// wants to be deliberate. So the brake gets its own, much larger deadzone, and
+// has to be HELD before it counts at all.
+//
+// The hold is the half that matters on the board. A weight shift is transient
+// and a decision is sustained, so time separates them where magnitude alone
+// cannot -- and unlike a deadzone, it works in digital mode too, where the game
+// never sees the tilt angle at all and only gets a key.
+export const BRAKE_DEADZONE = 0.42; // vs DEADZONE for steering, far larger
+export const BRAKE_HOLD_MS = 200;   // sustained before any braking registers
+
 export const DEADZONE = 0.08; // "board sitting level" must be comfortably reachable
 export const POP_PRESS = 0.30; // deliberately MORE forgiving than the SDK's 0.35
 export const POP_RELEASE = 0.16; // ...and 0.20, because back-lean is the hard axis
@@ -310,6 +419,91 @@ export const AIR_DURATION_SPIN = 0.62;
 export const BOOST_RAMP = 4.5;
 
 export const AIR_TIME_K = 0.392;
+/**
+ * GRAVITY FOR A FLIGHT, in units/s^2. DERIVED, not chosen.
+ *
+ * Air used to be a scripted arc -- sin(t*PI) * height over an authored duration
+ * -- which meant the rider was following a shape rather than a trajectory. On
+ * flat ground you cannot tell the difference. Over a drop you absolutely can,
+ * and Amit could: "it feels like you are calculating the trick to the previous
+ * floor, to the regular floor... you do like a fake floor which is not there
+ * anymore and then I keep on dropping." That is precisely what it did -- the arc
+ * completed against the launch tangent, and only then did a second, separate
+ * fall phase take over. Two glued phases with a visible seam.
+ *
+ * Real ballistics has no seam, but it must not silently retune every jump in the
+ * game either. A projectile launched to apex h takes 2*sqrt(2h/G); the old arc
+ * took AIR_TIME_K*sqrt(h). Setting those equal for ALL h gives G = 8/K^2, so
+ * this value is whatever keeps every existing flight time identical. Verified
+ * across the full height range: the two agree to four decimal places, which is
+ * why the half-pipe does not move.
+ */
+export const AIR_G = 8 / (AIR_TIME_K * AIR_TIME_K);
+
+// --- THE HOVER --------------------------------------------------------------
+// What the rider does when they are in the air and NOT doing a trick.
+//
+// Amit, on the terrain drops: "if I don't do some trick, it would be cool if I
+// could just have a feeling of a hover a little bit, like on the snowboard.
+// Like wow, I'm in the air for a second, I'm dropping so fast."
+//
+// The existing air pose could not give him that, and the reason is structural.
+// Every airborne pose in rider.js is driven by sin(min(1, airT) * PI) -- an
+// envelope that peaks at the apex and returns to ZERO by airT = 1. That was
+// exactly right when airT WAS the flight. Now the flight is ballistic and airT
+// only clocks the trick, so on a long drop it hits 1 and pins there while the
+// rider keeps falling -- and the pose unwinds to fully extended and neutral for
+// the whole hang. The rider was doing nothing, precisely when the hover was
+// meant to read.
+//
+// So this is a second envelope that does NOT unwind: it ramps in while airborne
+// and holds until touchdown. Gated on there being no trick, because a backflip
+// already has something to say and layering a spread pose under a rotation
+// reads as two animations fighting.
+/**
+ * How far off the ground counts as a FULL hover, in world units.
+ *
+ * The pose is scaled by height, not merely by being airborne, and that turned
+ * out to matter: driven by time alone it reached full on a 0.24s pop that
+ * lifted the rider 0.1 units -- arms spread wide for a hop nobody can see. The
+ * hover has to be proportionate to the air, or it reads as the rider
+ * overreacting to a bump.
+ *
+ * 1.5 units puts the big drop (1.9 measured) at full and leaves the small pops
+ * showing a tenth of it, which is about the difference between the two as
+ * ridden.
+ */
+export const HOVER_FULL_LIFT = 1.5;
+export const HOVER_IN_RATE = 1 / 0.15;  // ~0.15s to reach full
+export const HOVER_OUT_RATE = 1 / 0.08; // snaps off at touchdown
+// Sustained leg tuck. Lower than the apex fold of a jump on purpose -- this is
+// a rider holding a stance, not compressing for a landing.
+export const HOVER_FOLD_HIP = 0.34;
+export const HOVER_FOLD_KNEE = 0.30;
+// ARMS OUT, on the LATERAL axis -- not more of the existing hands-high lift.
+//
+// The first attempt routed the hover through AIR_ARM_LIFT's abduction path at
+// 0.62, and Amit's read was blunt: "didn't feel the change of arms out." He was
+// right, and it was invisible by construction -- that path already lifts 0.98
+// at the apex and the two were combined with max(), so the hover value was
+// simply never the larger of the two. It contributed nothing for the whole
+// flight.
+//
+// Raising it past 0.98 is not the answer either. The abduction sum is capped at
+// ARM_LIFT_MAX 2.0 because beyond roughly 2.1 the arm swings over vertical and
+// the hand comes back in toward the body, and balance lift already spends up to
+// 0.68 of that budget. There is no room, and "up" was never what was wanted.
+//
+// So the hover borrows the BOARDSLIDE's spread instead: rotation.x on the upper
+// arms, the lateral axis, measured rather than assumed (see the boardslide
+// block in rider.js). It is a different axis from the jump's hands-high, which
+// is exactly why it reads as a distinct pose rather than as more of the same.
+export const HOVER_ARM_SPREAD = 0.95;
+export const HOVER_ELBOW_OPEN = 0.55;
+// A touch of backward lean, which is what selling "dropping fast" actually
+// needs -- the body trails the board slightly as the ground falls away.
+export const HOVER_LEAN = 0.16;
+
 export const AIR_DURATION_MIN = 0.42;
 export const AIR_DURATION_MAX = 1.20;
 // BACKFLIP: a SNAPPY up-and-down, "like half a second of a jump" (Amit,
@@ -403,12 +597,24 @@ export const AIR_TUCK_KNEE = 0.55;
 export const AIR_ARM_LIFT = 0.98;  // at the apex of a jump
 export const LAND_ARM_LIFT = 1.50; // still high through the absorb
 
-// How crosswise is too crosswise to grind. The rider's lateral speed is
-// |thetaVel| * R (angular rate around the trough, times local radius); compare
-// it to forward speed and the ratio is the tangent of the approach angle.
-// 0.30 ~= 17 degrees: drifting gently onto a rail still grinds, deliberately
-// carving across one flips over it instead.
-export const GRIND_MAX_CROSS_RATIO = 0.30;
+// --- catching a rail ---------------------------------------------------------
+//
+// There is no longer an angle at which a rail refuses you: touching one always
+// grinds it. What used to be a yes/no gate is now a question of HOW LONG the
+// rider takes to settle onto the line, which is the thing the gate was really
+// protecting -- snapping a hard crossing straight onto the rail is what read as
+// the obstacle grabbing you, not the fact of grinding it.
+//
+// GRIND_EASE_REF is the crossing ratio treated as "fully crosswise" when scaling
+// that settle. 0.65 because that is what a deliberate aiming carve actually
+// measures at contact -- the old gate rejected anything past 0.30, which is why
+// aiming at a rail disqualified you from riding it.
+export const GRIND_EASE_REF = 0.65;
+// How fast the rider comes onto the rail's line, in exponential rate. The first
+// is for an approach already aligned -- effectively instant -- and the second
+// for the hardest cut, which takes about a fifth of a second to come round.
+export const GRIND_SNAP_RATE = 22.0;
+export const GRIND_EASE_RATE = 5.5;
 
 // --- BOARDSLIDE POSE -------------------------------------------------------
 // The grind used to be pure physics: the rider held his ordinary ride pose and
@@ -690,6 +896,49 @@ export const SHOULDER_COLOR = 0x4a3f8c;
 export const TERRAIN_COLOR = 0x3b2f72;
 export const RAIL_COLOR = 0x5cff9e;
 
+/**
+ * The idol's silhouette rim. Warm near-white, so it belongs to the amber the
+ * totem is inlaid with rather than introducing a seventh hue, and bright enough
+ * to break against every theme's ground -- all of which are dark by design.
+ */
+export const IDOL_OUTLINE = 0xfff3d0;
+
+/**
+ * How far up the wall a speed gate may ever sit, as a fraction of the rim.
+ *
+ * Gates are the one prop the rider has to LINE UP WITH and hold a line into,
+ * and above about half way the pendulum is pulling them back down the whole
+ * time they are trying to. Everything else on the hill is either hit in passing
+ * or ridden along, and can live at the edges quite happily.
+ *
+ * Enforced at placement rather than in the authoring, so no per-mission layout
+ * can push a gate past it however wide that layout spreads everything else.
+ */
+export const BOOST_MAX_LANE = 0.52;
+
+/**
+ * ONE BRIGHT BLUE SKY, on every theme, for now.
+ *
+ * Amit: "let's do simple bright blue skies for all for now." The per-theme
+ * skies went in the same pass that replaced the matte painting, and having five
+ * palettes of sky AND eight hill shapes changing at once makes it impossible to
+ * tell which of them is doing what. A single known sky is the control.
+ *
+ * A real daylight ramp -- deep azure overhead to a pale, almost white horizon --
+ * because that is what sells distance: the horizon washing out is the cue the
+ * eye actually reads as far away, and a flat blue does not have it.
+ *
+ * FOG MATCHES THE HORIZON, which is the part that cannot be skipped. Fog fades
+ * distant ground toward its own colour, so a dark fog under a bright sky ends
+ * the world in a dark band hanging in mid-air. Fading into the horizon colour
+ * is what makes the ground actually go away.
+ *
+ * Per-theme skies are one line away in applyTheme when this stops being useful:
+ * the themes still carry their own skyTop/skyBottom untouched.
+ */
+export const SKY_BLUE_TOP = 0x2f7fd0;
+export const SKY_BLUE_BOTTOM = 0xcfeaf8;
+
 // --- funnels: the trough pinching to a throat and flaring open again ---
 // The set-piece from concept-01, and the cheapest possible proof that connected
 // structure is GEOMETRY, not painting: it is radiusAt(s) returning a smaller
@@ -764,6 +1013,21 @@ export const SPEEDLINE_COLOR = 0x9fe9ff; // pale cyan -- finally glows against a
 // A bright fresnel edge on the character so his silhouette separates from the
 // background regardless of palette. Cool white with a cyan bias, so it reads as
 // the scene's own neon bouncing off him rather than as an arbitrary outline.
+// --- camera shake -------------------------------------------------------------
+//
+// SHAKE IS RESERVED FOR SPEED YOU DID NOT GET ON YOUR OWN. It used to ramp off
+// raw speed, so simply riding well at the natural top shook the screen
+// constantly -- which spends the effect on the ordinary case and leaves nothing
+// for the extraordinary one.
+//
+// The threshold is the natural ceiling, DERIVED rather than typed: anything at
+// or under what the hill alone can give you is calm by construction, and only a
+// boost puts you above it. Deriving it means retuning the grade or the rolling
+// bonus cannot silently leave the shake firing at cruise again.
+export const NATURAL_TOP_SPEED = Math.sqrt((GRADE_ACCEL + ROLL_MAX) / DRAG);
+export const SHAKE_SPAN = 12.0; // u/s above the natural top for full shake
+export const SHAKE_MAX = 0.38;
+
 export const RIM_COLOR = 0xa8ecff;
 export const RIM_STRENGTH = 0.55;
 export const RIM_POWER = 2.2; // higher = tighter edge, less wash over the body

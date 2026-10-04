@@ -19,8 +19,9 @@
 // go to the progress store, and this mode just runs whatever it was handed.
 
 import { registerMode } from './mode.js';
+import { analytics } from '../systems/analytics.js';
 import { RIDE_EVENTS as EV } from '../core/events.js';
-import { MISSIONS } from '../data/missions.js';
+import { MISSIONS , getMission } from '../data/missions.js';
 import { DEFAULT_COURSE } from '../data/courses.js';
 
 // How each objective kind reads the event stream: which event feeds it, whether
@@ -32,31 +33,69 @@ import { DEFAULT_COURSE } from '../data/courses.js';
 // to two lines to do it. The label is what you are after; the counter is how far
 // you have got. The full phrasing survives where it is actually useful -- the
 // popup when a line completes, which has the room and no counter next to it.
+/**
+ * TWO LABELS PER OBJECTIVE, and they are not the same job.
+ *
+ * `label` is for the HUD panel during a run -- a glance at the corner, where
+ * "CRYSTALS 12/16" is exactly right and a verb is noise you re-read every time.
+ *
+ * `action` is for the briefing card, which is the one screen whose entire
+ * purpose is explaining what you are about to be asked to do. Amit: "instead of
+ * writing crystals -- collect crystals. The creative explanation needs to be
+ * much more simple and clear." A bare noun is a category; a verb is an
+ * instruction, and the card should give an instruction.
+ */
 const KIND_SPECS = {
   pickup: {
     event: EV.PICKUP,
     match: (o, p) => !o.type || p.type === o.type,
     label: (o) => `${(o.type || 'pickup').toUpperCase()}S`,
+    action: (o) => `COLLECT ${(o.type || 'pickup').toUpperCase()}S`,
   },
   trick: {
     event: EV.TRICK,
     match: (o, p) => p.type === o.trick,
     label: (o) => `${String(o.trick).toUpperCase()}${o.count > 1 ? 'S' : ''}`,
+    action: (o) => `LAND ${String(o.trick).toUpperCase()}${o.count > 1 ? 'S' : ''}`,
   },
   anyTrick: {
     event: EV.TRICK,
     match: () => true,
     label: () => 'TRICKS',
+    action: () => 'LAND TRICKS',
   },
   launch: {
     event: EV.LAUNCH,
-    match: () => true,
+    /**
+     * RAMPS ONLY -- not everything that puts the rider in the air.
+     *
+     * A terrain drop fires the same LAUNCH event as a kicker, which was
+     * deliberate (the ride reports leaving the ground, and what threw you is a
+     * detail) and is wrong for an objective. Amit, on RAMP SCHOOL: "it says hit
+     * ramps, but you actually collect also drops. A drop in the road -- I don't
+     * have to do nothing, I didn't want to navigate there, and I still get the
+     * point."
+     *
+     * An objective is a thing you go and do. A drop happens to you whether you
+     * steer or not, so counting it pays the player for the hill's behaviour
+     * rather than their own. Requiring a named launcher also excludes the bare
+     * ollie, for the same reason: HIT RAMPS should mean ramps.
+     */
+    match: (o, p) => !!p.launcher && p.launcher !== 'DROP',
     label: () => 'RAMPS',
+    action: () => 'HIT RAMPS',
+  },
+  boost: {
+    event: EV.BOOST,
+    match: () => true,
+    label: () => 'BOOSTS',
+    action: () => 'RIDE SPEED GATES',
   },
   grind: {
     event: EV.GRIND,
     match: () => true,
     label: () => 'RAILS',
+    action: () => 'RIDE RAILS',
   },
   air: {
     event: EV.LAND,
@@ -69,6 +108,7 @@ const KIND_SPECS = {
     // way to tell which landings were supposed to count.
     match: (o, p) => !!p.huge,
     label: () => 'HUGE AIRS',
+    action: () => 'LAND HUGE AIRS',
   },
   score: {
     // Score is a level, not a tally of events, so it is polled in update()
@@ -76,6 +116,7 @@ const KIND_SPECS = {
     // and the completion check do not need to know the difference.
     poll: (ctx) => ctx.scoring.state.score,
     label: () => 'SCORE',
+    action: () => 'SCORE POINTS',
     // Its own counter format: "12043/20000" does not fit the panel's width and
     // is unreadable at a glance anyway. Thousands are the unit that matters.
     fmt: (o) => `${Math.floor(o.have / 1000)}k/${Math.round(o.count / 1000)}k`,
@@ -91,11 +132,25 @@ export function setPendingMission(id) {
   pendingId = id;
 }
 
-export default registerMode({
+const MISSION_MODE = {
   id: 'missions',
   name: 'MISSIONS',
   tagline: 'Beat the clock. Tick the list.',
   course: DEFAULT_COURSE,
+  /**
+   * THE MISSION picks the hill, not the mode. Missions now span two terrains
+   * in one progression, so a single course on the mode def cannot answer for
+   * all of them -- startRun asks this first and falls back to `course` above.
+   */
+  courseFor: () => (pendingId && getMission(pendingId).course) || DEFAULT_COURSE,
+  /**
+   * What may appear on the ground for this mission. Null lets the course
+   * decide, which is every ridge mission -- only the face's ladder introduces
+   * its vocabulary one piece at a time.
+   */
+  contentFor: () => (pendingId && getMission(pendingId).content) || null,
+  /** The specific mountain this mission is set on, or null for the course's. */
+  terrainFor: () => (pendingId && getMission(pendingId).terrain) || null,
 
   create(ctx) {
     const mission = MISSIONS.find((m) => m.id === pendingId) || MISSIONS[0];
@@ -109,7 +164,38 @@ export default registerMode({
     }));
 
     let left = mission.seconds;
+    /** The run is over and a result has been reported. Nothing counts after. */
     let finished = false;
+    /**
+     * THE OBJECTIVE IS BANKED, and the run carries on.
+     *
+     * Completing used to END the run and pay 25 a second for whatever was left
+     * on the clock. On an ENDLESS course -- which every ridge mission is, there
+     * is no finish line -- that made being good at the mission cost you points:
+     *
+     *     riding a second   ~150-250 points, and up to ~390 if you miss nothing
+     *     banking a second   25 points
+     *
+     * So clearing a 90s mission at the 45s mark paid about 1,100 and gave up
+     * about 9,000 of riding. Stars come from SCORE, so the faster you cleared
+     * the objective the fewer stars you got for it -- which is half of why
+     * three stars felt unreachable even once the thresholds were fixed (see
+     * CEILING in data/missions.js for the other half).
+     *
+     * So the objective is now a GATE and the score is the GRADE, and they stop
+     * fighting: clearing it locks the mission in, and the rest of the clock is
+     * spent raising the grade. Amit: "not ending the run the moment you reached
+     * the desired score, and not ending until the end of the time."
+     *
+     * Once this is set the mission CANNOT be lost. Time running out is a
+     * success from here, a barrier cannot take it back, and the only thing the
+     * remaining seconds can do is add. That is the whole reason it is a
+     * separate flag from `finished` rather than an early return.
+     */
+    let cleared = false;
+    /** Seconds still on the clock when the objectives were met -- see
+     *  checkComplete(). 0 means it was never cleared. */
+    let clearedWithLeft = 0;
     /** @type {Function[]} */
     const unsubs = [];
 
@@ -136,24 +222,75 @@ export default registerMode({
       return score >= three ? 3 : score >= two ? 2 : 1;
     }
 
+    /**
+     * All objectives met: bank it and keep riding. See `cleared`.
+     *
+     * NO TIME BONUS. It existed to pay for finishing early, which is exactly
+     * the behaviour being removed -- keeping it would pay the player for
+     * something that can no longer happen, at a fifteenth of what the same
+     * seconds are now worth ridden.
+     */
     function checkComplete() {
-      if (finished || objectives.some((o) => !o.done)) return;
+      if (finished || cleared || objectives.some((o) => !o.done)) return;
+      cleared = true;
+      /**
+       * THE CLOCK AT THE MOMENT IT WAS WON, kept for the analytics event.
+       *
+       * Not readable at settle(), which is where the clear is reported: a
+       * cleared mission still rides out its full timer -- the objective decides
+       * WHICH ending, the clock decides WHEN -- so `left` there is always 0 and
+       * a "headroom" reported from it would be a column of zeroes in every
+       * report. Caught by reading the first measured event rather than by
+       * reasoning about it.
+       *
+       * Here it is the real number: how much time was still on the clock when
+       * the ask was met, which is what says whether a mission is generous or
+       * mean.
+       */
+      clearedWithLeft = left;
+      // Say so at the moment it happens, LOUDLY. Without this the only signal
+      // was the last objective's counter ticking over, which is a very small
+      // thing to carry "the mission is yours, now go and earn the stars".
+      ctx.hud.objectiveClear();
+      ctx.audio.play('objective');
+    }
+
+    /** Bank the result and show the screen. The one exit for a cleared run. */
+    function settle() {
       finished = true;
-      // Bank the remaining seconds: it rewards route planning over grinding out
-      // the clock, which is the behaviour a hard cap is meant to encourage.
-      const bonus = Math.round(left * 25);
-      ctx.scoring.award(bonus, 'TIME BONUS');
-      // Read the score AFTER the bonus lands, so banking time can be what
-      // carries a run over a star threshold.
-      const earned = starsFor(ctx.scoring.state.score);
+      const score = ctx.scoring.state.score;
+      const earned = starsFor(score);
       // Recorded BEFORE the results screen is built, so the mission list behind
       // it already reflects this run -- including whatever it just unlocked.
-      ctx.progress.record(mission.id, earned, ctx.scoring.state.score);
+      ctx.progress.record(mission.id, earned, score);
+      // `clearedWithLeft`, NOT `left` -- see checkComplete(). A cleared mission
+      // rides out its whole timer, so `left` here is always 0; the headroom
+      // that means something is what was on the clock when the ask was met. A
+      // mission met with a second to spare and one met in half the time are
+      // different tuning problems, and this is the parameter that tells them
+      // apart.
+      // Reported as time SPENT rather than the headroom itself: `mission.seconds`
+      // is the budget and lives here, so converting at the call site means the
+      // report never needs to know what any particular mission's clock was.
+      analytics.levelCleared(mission.id, earned, score, mission.seconds - clearedWithLeft);
       ctx.endRun('complete', {
         tone: 'success',
         title: 'MISSION COMPLETE',
         subtitle: `${String(mission.number).padStart(2, '0')} \u00b7 ${mission.name}`,
-        detail: `${Math.ceil(left)}s to spare`,
+        /**
+         * NO DETAIL LINE. Amit: "you write Score: X and then a line below X
+         * points -- no need for the last."
+         *
+         * Right, and it was mine: the line used to read "12s to spare", which
+         * stopped meaning anything once every run went to the clock, so I
+         * replaced it with the score -- directly underneath the big SCORE
+         * readout that already says exactly that. Two of the same number, one
+         * above the other.
+         *
+         * Omitting it falls through to the default breakdown in main.js --
+         * distance ridden and top speed -- which is the thing that line is for:
+         * something the numbers above it do not already say.
+         */
         stars: earned,
         rows: recap(),
       });
@@ -161,6 +298,8 @@ export default registerMode({
 
     function credit(o, amount) {
       if (o.done || finished) return;
+      // Note this is NOT gated on `cleared` -- by definition every objective is
+      // already done by then, so there is nothing left for it to credit.
       o.have = Math.min(o.count, o.have + amount);
       if (o.have >= o.count) {
         o.done = true;
@@ -170,14 +309,21 @@ export default registerMode({
         // and the paired award(250, null) printed it as literally "null".
         // The popup gets the full phrasing -- it has the room, and unlike the
         // panel row there is no counter beside it to supply the number.
-        ctx.scoring.award(250, `${o.count} ${o.spec.label(o)}`);
+        ctx.scoring.award(250, `${o.count} ${o.spec.label(o)}`, false);
         checkComplete();
       }
     }
 
     return {
       start() {
-        ctx.hud.banner(mission.name);
+        // No banner: the briefing card names the mission far more clearly, and
+        // firing both put the name on screen twice at once.
+
+        // The retry counter lives in the analytics module, so this one call
+        // carries the attempt number too -- which is what says a ladder step is
+        // holding someone up.
+        analytics.levelStarted(mission.id, mission.number);
+
         for (const o of objectives) {
           if (!o.spec || !o.spec.event) continue;
           unsubs.push(ctx.events.on(o.spec.event, (p) => {
@@ -187,6 +333,49 @@ export default registerMode({
       },
 
       stop() {
+        /**
+         * LEAVING A CLEARED MISSION STILL CLEARS IT.
+         *
+         * Amit: "if I exit the run after I already qualified, it counts -- I
+         * unlock the next mission."
+         *
+         * Right, and it follows from what `cleared` already means: the moment
+         * the objectives are met the mission is BANKED and cannot be lost, so
+         * the clock afterwards is a victory lap for score. Throwing the result
+         * away because the player chose to stop riding it would contradict the
+         * banner we just showed them, and would quietly punish the reasonable
+         * decision to leave when there is nothing left to do.
+         *
+         * The score is whatever they had when they left, so the STARS may be
+         * lower than riding it out -- that is the honest trade and the reason
+         * to keep going, rather than a penalty for stopping.
+         *
+         * Recorded here rather than in the quit handler because stop() is the
+         * one path every ending goes through: the X, the confirm, switching
+         * modes, or the run being replaced. A quit-only hook would miss the
+         * others.
+         */
+        /**
+         * CAPTURED BEFORE ANYTHING BELOW SETS IT. stop() runs on EVERY ending,
+         * including after settle() and after the clock ran out -- so `finished`
+         * is what separates "the player walked out of this run" from "the run
+         * ended on its own and is now being torn down". Without this, every
+         * completed mission would also report a quit.
+         */
+        const quitting = !finished;
+        if (cleared && !finished) {
+          const score = ctx.scoring.state.score;
+          ctx.progress.record(mission.id, starsFor(score), score);
+        }
+        // HOW FAR THEY GOT, not just that they went. Leaving a mission already
+        // banked is the sanctioned behaviour above and reports as 100%; leaving
+        // one that was not is a signal about the mission, and the fraction of the
+        // ask they had met is the size of that signal.
+        if (quitting) {
+          const done = objectives.filter((o) => o.done).length;
+          analytics.levelQuit(mission.id, done, objectives.length,
+            ctx.scoring.state.score, mission.seconds - left);
+        }
         // Every subscription, unconditionally. A mission that outlived its run
         // would keep counting into the next one.
         for (const off of unsubs) off();
@@ -209,8 +398,18 @@ export default registerMode({
         left -= dt;
         if (left <= 0) {
           left = 0;
+          // A CLEARED RUN ENDS IN SUCCESS, not in "time up". The clock running
+          // out is now the ordinary way every mission finishes -- it is the
+          // objective, not the timer, that decides which screen this is.
+          if (cleared) { settle(); return; }
           finished = true;
           const done = objectives.filter((o) => o.done).length;
+          // Both counts, not just the failure: "3 of 4" and "0 of 4" are a
+          // mission that is slightly too hard and one that is mis-tuned, and
+          // the difference is the whole reason to report this at all.
+          // The whole clock, because this branch is only reached by it expiring.
+          analytics.levelFailed(mission.id, done, objectives.length,
+            ctx.scoring.state.score, mission.seconds);
           ctx.endRun('timeup', {
             tone: 'fail',
             // The verdict, not just the cause. "TIME UP" alone reads as a
@@ -225,16 +424,119 @@ export default registerMode({
         }
       },
 
+      /**
+       * What the pre-run briefing shows. Built from the SAME objectives the
+       * panel will show, so the card the player reads and the panel they glance
+       * at are the same list -- which is exactly what the flight into the HUD
+       * is claiming.
+       */
+      briefing: () => ({
+        number: mission.number,
+        name: mission.name,
+        // NO FLAVOUR LINE. Amit: "we have the headline, then we have some
+        // sentence that people spend time to look at and it's really confusing
+        // and not that funny." It sat between the title and the objectives --
+        // the two things that actually say what to do -- and cost a read to
+        // discover it said nothing.
+        //
+        // THE MISSION LIST HAS SINCE REACHED THE SAME VERDICT. This used to
+        // note that mission.brief still labelled the row there, "where
+        // browsing is the point"; it does not any more. Amit, on the list:
+        // "lose the second tagline, actually show the needed criteria." The
+        // row now spends that line on icons and counts instead, so the flavour
+        // text survives in the data and is rendered nowhere -- browsing turned
+        // out to want the numbers too.
+        rows: objectives.map((o) => ({
+          label: o.spec && o.spec.action ? o.spec.action(o)
+            : o.spec ? o.spec.label(o) : o.kind,
+          text: o.spec && o.spec.fmt ? `${o.count.toLocaleString()}` : `${o.count}`,
+          // What this objective is ABOUT, so the card can show the thing rather
+          // than only name it. Passed as kind+type rather than as a rendered
+          // icon: a mode should not know what the briefing looks like.
+          kind: o.kind,
+          type: o.type,
+        })),
+      }),
+
       panel: () => ({
         title: mission.name,
         seconds: left,
         limit: mission.seconds,
-        objectives: objectives.map((o) => ({
-          label: o.spec ? o.spec.label(o) : o.kind,
-          text: counterText(o),
-          done: o.done,
-        })),
+        /**
+         * ONCE IT IS CLEARED, THE PANEL SHOWS THE NEXT STAR.
+         *
+         * The rest of the clock is only worth riding if there is something to
+         * ride it FOR. A panel still showing four ticked-off objectives says
+         * "you are done" while the game keeps going, which is the aimless
+         * version of this change and the thing that would make it feel like
+         * padding. The score bar is the goal for the back half of the run.
+         *
+         * At three stars there is no next tier, so it shows the score itself --
+         * still a number going up, which is the point.
+         */
+        objectives: cleared
+          ? [(() => {
+            const score = ctx.scoring.state.score;
+            const [two, three] = mission.stars || [Infinity, Infinity];
+            const next = score < two ? two : score < three ? three : 0;
+            const stars = score >= three ? '\u2605\u2605\u2605' : score >= two ? '\u2605\u2605' : '\u2605';
+            return next
+              ? { label: `${stars} \u2192 ${Math.round(next).toLocaleString()}`,
+                  text: Math.round(score).toLocaleString(), done: false, kind: 'score',
+                  // Says the quiet part: the mission is already yours, and the
+                  // clock left is only worth riding for the next star. Without
+                  // it a player who wants to stop has no way to know they can.
+                  note: 'BANKED \u2014 \u2715 TO FINISH' }
+              : { label: stars, text: Math.round(score).toLocaleString(), done: true, kind: 'score',
+                  note: 'BANKED \u2014 \u2715 TO FINISH' };
+          })()]
+          : objectives.map((o) => ({
+            label: o.spec ? o.spec.label(o) : o.kind,
+            text: counterText(o),
+            done: o.done,
+            // Same pair the briefing card carries, so the icon a player just
+            // learned on the card is the one counting down in the corner.
+            kind: o.kind,
+            type: o.type,
+          })),
       }),
     };
   },
+};
+
+/**
+ * ONE MODE BODY, TWO FRONT DOORS. The ridge's missions and the open face's are
+ * the same game -- same objectives, same clock, same scoring -- played on
+ * different hills, and the hill is chosen per mission by courseFor(). So the
+ * definition is shared and only the registration differs.
+ *
+ * The face's half registers in its own module (modes/faceMissions.js) purely so
+ * main.js's import order can group the lobby: the two ORIGINAL modes first,
+ * then the open-face ones. Registration order is lobby order.
+ */
+export { MISSION_MODE };
+
+export default registerMode({
+  ...MISSION_MODE,
+  id: 'missions',
+  // Just MISSIONS -- see the same change in speedRace.js. The open-face ladder
+  // it was being told apart from is no longer reachable.
+  name: 'MISSIONS',
+  /**
+   * WHAT YOU GET, NOT WHERE IT HAPPENS. Amit: "no need to say The ridge --
+   * something like 'unlock achievements and new missions'."
+   *
+   * Both lobby lines used to open by naming the hill, which told a player
+   * choosing between two modes the one thing that does not distinguish them:
+   * they are the SAME hill. "Twenty runs against the clock" then spent the rest
+   * of the line on a number that is already stale -- the ladder is forty now --
+   * and on the clock, which both modes have.
+   *
+   * The reason to pick this one is that it is the mode that GROWS: stars,
+   * unlocks, a list that opens as you clear it. That is the promise, and it is
+   * the half the old line never made.
+   */
+  tagline: 'Unlock achievements and new missions.',
 });
+
+

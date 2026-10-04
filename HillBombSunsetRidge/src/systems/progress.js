@@ -17,31 +17,36 @@
 // be handed over at launch, in bulk, by the host -- would be inventing a problem
 // to solve. When the host arrives, `hydrate()` takes its payload.
 
-const STORAGE_KEY = 'hillbomb.progress.v1';
+/**
+ * THE STORE IS INJECTED NOW -- see systems/gbProfile.js.
+ *
+ * This file used to read and write localStorage directly, which is one bucket
+ * PER DEVICE. On a BoBo that is shared by a family, that means a sibling
+ * inherits your unlocked missions and your stars. The host already keeps saves
+ * per profile; all this file has to do is stop deciding where they go.
+ *
+ * Kept as a parameter rather than an import so the store can be swapped in a
+ * test and so this file has no opinion about GoBalance at all.
+ */
 
-export function createProgress(missionIds) {
+/**
+ * @param {string[]|string[][]} tracks one ladder, or several.
+ *
+ * TWO LADDERS, ONE RECORD STORE. The ridge and the open face are separate
+ * progressions -- the face's first mission is open from the start rather than
+ * gated behind twenty ridge missions -- but stars, scores and the storage key
+ * stay shared, because they are per-MISSION facts and nothing about them cares
+ * which list a mission appears in. Only the unlock RULE is per-track.
+ */
+export function createProgress(tracks, store) {
+  const chains = Array.isArray(tracks[0]) ? tracks : [tracks];
+  const missionIds = chains.flat();
   /** @type {Record<string, {stars:number, score:number}>} */
   let records = {};
 
-  function load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) records = JSON.parse(raw) || {};
-    } catch (e) {
-      // A corrupt or unavailable store must not stop the game booting -- worst
-      // case the player starts from the first mission again. Private-browsing
-      // modes throw on localStorage access entirely.
-      records = {};
-    }
-  }
-
   function save() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-    } catch (e) { /* nothing to do; progress is a nicety, not the game */ }
+    if (store) store.save(records);
   }
-
-  load();
 
   const api = {
     /** Stars earned on a mission, 0 if never cleared. */
@@ -65,17 +70,28 @@ export function createProgress(missionIds) {
      * -- there is one source of truth, and unlocking is derived from it.
      */
     isUnlocked(id) {
-      const i = missionIds.indexOf(id);
-      if (i <= 0) return i === 0;
-      return api.cleared(missionIds[i - 1]);
+      // Position within its OWN chain, not within the flattened list: the first
+      // mission of every track is open, and each one after it opens when the
+      // one before it in THAT track has been cleared.
+      for (const chain of chains) {
+        const i = chain.indexOf(id);
+        if (i < 0) continue;
+        if (i === 0) return true;
+        return api.cleared(chain[i - 1]);
+      }
+      return false;
     },
 
-    /** The first unlocked mission that has not been cleared, else the last. */
-    nextMissionId() {
-      for (const id of missionIds) {
+    /**
+     * The first unlocked mission in a track that has not been cleared, else its
+     * last. Defaults to the first track, which is the ridge.
+     */
+    nextMissionId(trackIndex = 0) {
+      for (const id of (chains[trackIndex] || missionIds)) {
         if (api.isUnlocked(id) && !api.cleared(id)) return id;
       }
-      return missionIds[missionIds.length - 1];
+      const chain = chains[trackIndex] || missionIds;
+      return chain[chain.length - 1];
     },
 
     /**
@@ -96,6 +112,22 @@ export function createProgress(missionIds) {
       return missionIds.reduce((n, id) => n + api.stars(id), 0);
     },
 
+    /**
+     * Fill from the store. Awaited at boot BEFORE anything renders -- a mission
+     * list drawn first and corrected a moment later shows the player a locked
+     * ladder that then pops open, which reads as a bug even though the end
+     * state is right.
+     */
+    async ready() {
+      if (!store) return;
+      records = await store.load();
+    },
+
+    /** Write now rather than on the debounce -- for a run ending. */
+    flush() {
+      if (store) store.flush();
+    },
+
     /** Replace everything at once -- the shape a host handover would take. */
     hydrate(data) {
       records = data && typeof data === 'object' ? data : {};
@@ -105,6 +137,35 @@ export function createProgress(missionIds) {
     /** What a host would be handed to persist. */
     serialise() {
       return JSON.parse(JSON.stringify(records));
+    },
+
+    /**
+     * DEV ONLY -- open every mission and race at once. Reached from the dev
+     * options, which are themselves behind a seven-second hold and a code (see
+     * ui/devUnlock.js).
+     *
+     * ONE STAR, NOT THREE, and that is the point rather than modesty. `record`
+     * only ever improves, so three-starring everything here would overwrite real
+     * results with fakes that can never be undone by playing -- and a tester
+     * checking whether mission 34's three-star bar is reachable would find it
+     * already claimed. One star clears the gate (`cleared` is `stars > 0`) and
+     * leaves every star target still to be earned, which is exactly what a
+     * tester jumping to a late mission needs.
+     *
+     * Scores are left alone for the same reason: a fake best would break the
+     * star thresholds the next real run is measured against.
+     *
+     * @returns {number} how many were newly opened, so the caller can say so.
+     */
+    unlockAll() {
+      let opened = 0;
+      for (const id of missionIds) {
+        if (api.cleared(id)) continue;
+        records[id] = { stars: 1, score: (records[id] && records[id].score) || 0 };
+        opened += 1;
+      }
+      save();
+      return opened;
     },
 
     reset() {

@@ -22,9 +22,30 @@ export const PROP_TYPES = {
     kind: 'launch',
     // A wedge: low at the near edge, rising toward the rider's direction.
     size: { w: 4.2, h: 0.95, l: 3.4 },
-    colour: 0x6c3fd8,
-    accent: 0x4223a2,
-    launch: { power: 1.0, points: 120, profile: 'wedge' },
+    // Lifted too, luminance 84 -> 128, for the same reason as the bank: it is
+    // the other small launcher and sat just as dark. Kept violet so the two are
+    // still told apart at a glance -- brightness was the problem, not hue.
+    colour: 0x9b6bff,
+    accent: 0x6b3fd0,
+    /**
+     * RAMP PAYOUTS ARE FLATTENED: 200 / 250 / 300 / 420 across the four, where
+     * they used to run 120 / 150 / 260 / 420 -- a 3.5x spread down to 2.1x.
+     *
+     * Amit: "with the ramps I think we can flatten it a bit -- 200 to 420 --
+     * because it's really hard to control what trick will happen here."
+     *
+     * Which is the right reason. The rider does not choose their trick and
+     * largely does not choose their ramp: the hill puts a kicker or a barrel in
+     * front of them and the line they were already on decides which. Paying 3.5
+     * times more for one than the other grades a coin toss. The spread is kept
+     * rather than removed because a barrel IS a bigger commitment to line up,
+     * but it is now a bonus for reaching the big one rather than the difference
+     * between a good run and a bad one.
+     *
+     * Interpolated on the ramp's own power so the table stays derivable:
+     * power 1.0 -> 200, 1.9 -> 420, everything else on that line.
+     */
+    launch: { power: 1.0, points: 200, profile: 'wedge' },
     label: 'KICKER',
   },
   bigKicker: {
@@ -32,7 +53,7 @@ export const PROP_TYPES = {
     size: { w: 5.6, h: 1.6, l: 5.0 },
     colour: 0x8a4fe8,
     accent: 0x5427b6,
-    launch: { power: 1.42, points: 260, profile: 'wedge' },
+    launch: { power: 1.42, points: 300, profile: 'wedge' },
     label: 'BIG AIR',
   },
   // THE ONLY LAUNCHER THAT CAN PRODUCE A BACKFLIP, and only when hit at speed.
@@ -54,9 +75,24 @@ export const PROP_TYPES = {
     // Wide, shallow quarter-pipe style bank -- a gentler launch, and forgiving
     // because it's wide enough that you don't have to aim.
     size: { w: 9.0, h: 1.2, l: 6.0 },
-    colour: 0x35538f,
-    accent: 0x27406f,
-    launch: { power: 1.2, points: 150, profile: 'hump' },
+    /**
+     * BRIGHTENED, from 0x35538f. Amit: "the small blue ramps are hard to see, we
+     * need them in a brighter colour."
+     *
+     * Measured, and it was not close: the bank sat at luminance 81 while the
+     * ground it lies on runs 27-45 depending on theme. That is the LOWEST
+     * contrast of the four launchers, on the one shaped worst for being seen --
+     * it is the widest and by far the flattest, so it presents almost no
+     * silhouette against the road and had only its colour to do the work.
+     *
+     * 166 now, about four times the brightness of the darkest ground, which puts
+     * it above even the barrel. Azure rather than a lighter navy so it separates
+     * by HUE as well as by value from every trough colour in the set, all of
+     * which are dark and desaturated by design.
+     */
+    colour: 0x4bb8ff,
+    accent: 0x2f86c4,
+    launch: { power: 1.2, points: 250, profile: 'hump' },
     label: 'BANK',
   },
 
@@ -83,6 +119,9 @@ export const PROP_TYPES = {
     grind: { pointsPerSecond: 320, catchWidth: 1.5 },
     label: 'LONG RAIL',
   },
+  // NOT CURRENTLY EMITTED -- no pattern places one; see 'rail plaza'. Kept
+  // whole because a replacement wide grindable is coming and this is the shape
+  // of the slot it drops into, not because anything still uses it.
   ledge: {
     kind: 'grind',
     size: { w: 1.5, h: 0.62, l: 14 },
@@ -90,6 +129,110 @@ export const PROP_TYPES = {
     accent: 0x1a7a48,
     grind: { pointsPerSecond: 220, catchWidth: 1.9 },
     label: 'LEDGE',
+  },
+
+  // --- real obstacles ------------------------------------------------------
+  //
+  // A WALL IS NOT A HAZARD. The old hazard kind (cones, potholes) nudges the
+  // wobble meter and scrubs a little speed -- a tap on the wrist. This is the
+  // other thing entirely: hit it and the run stops. Its own kind because that
+  // difference has to be visible to a course: a mode can have walls without
+  // cones, and today only the race has either.
+  //
+  // Built to be AVOIDED, which is the whole design. It is narrow enough to go
+  // round, tall enough to read from a distance, and made of planks in a warm
+  // timber that nothing else on the course uses -- the palette is otherwise
+  // violet launchers, green rails, cyan and gold gates, amber crystals, and a
+  // red rider. A thing that ends your run should not have to be identified.
+  woodWall: {
+    kind: 'wall',
+    size: { w: 3.6, h: 1.15, l: 0.5 },
+    colour: 0x9c6b3f,
+    accent: 0x6b4526,
+    wall: {
+      catchWidth: 1.9,   // half-width of the collider, in world units
+      clearHeight: 1.3,  // an arc above this sails over it
+      stopSpeed: 6.0,    // what you are left with after hitting it
+      downSeconds: 1.1,  // how long the rider is out of control
+      // Less shove than the face's blocker: this one is a run-ender, and being
+      // flung sideways on top of losing the race reads as piling on.
+      deflect: 0.14,
+      slowSeconds: 2.0,
+      slowFactor: 0.3,
+    },
+    label: 'WALL',
+  },
+
+  /**
+   * THE BLOCKER -- what makes the middle of the hill cost something.
+   *
+   * Amit, riding the open face: "I can just stay in the middle and go through
+   * the ride." He was right, and measurably so: 17% of every placement sat at
+   * exactly theta 0, which the spread multiplier cannot move (0 x 1.75 is still
+   * 0), so the centreline was a route that collected crystals and hit ramps and
+   * was never once punished for it. Spreading the REWARDS outward does not fix
+   * that on its own -- it makes the middle boring, and boring is not a cost.
+   * Something has to be in the way.
+   *
+   * It was a low-poly rock first, and looked wrong: every other object here is
+   * flat unlit colour and hard edges, and a naturalistic stone read as an import
+   * from another game. Same bones as woodWall now, restyled -- see buildBlocker.
+   *
+   * GENTLER THAN woodWall on purpose. That one drops you to 6 u/s for 1.1s,
+   * which is a run-ending mistake -- correct as one authored hazard in a race,
+   * far too harsh when these are the standard furniture of every pattern.
+   * Clipping one should cost you a line and some speed, not the descent.
+   */
+  blocker: {
+    kind: 'wall',
+    size: { w: 3.4, h: 1.6, l: 0.4 },
+    colour: 0x241a3d, // near-black indigo, so the lit parts carry it
+    accent: 0xff3ea5, // the boundary magenta, same hue as the coping
+    wall: {
+      catchWidth: 2.0,
+      clearHeight: 1.9,  // a real drop's air clears it; an ollie does not
+      stopSpeed: 12.0,   // knocked down to a crawl, not stopped dead
+      downSeconds: 0.55,
+      /**
+       * How long the hill refuses to give the speed back, and by how much.
+       *
+       * Amit: "he's pushing too much and he's not slowing down. He should feel
+       * like -- oh, I got pushed a little bit, and now I'm slow."
+       *
+       * The second half is not fixed by a deeper stopSpeed, which is the
+       * obvious move and does almost nothing: the grade accelerates hardest at
+       * low speed, so recovery to 25 u/s takes 2.3s from 15 and 3.0s from 8.
+       * Measured -- the depth of the hit barely changes how long it is felt.
+       *
+       * What does is holding the grade off for a moment afterwards. At 0.35 the
+       * pull barely beats drag, so the rider crawls out of it rather than being
+       * fired back up to cruise, and the whole event lasts about three and a
+       * half seconds instead of two.
+       */
+      slowSeconds: 1.6,
+      slowFactor: 0.35,
+      /**
+       * Sideways shove on impact, in rad/s of lateral velocity.
+       *
+       * Amit: "I'm running into a barricade -- if you hit it on the side it
+       * looks okay, but if you hit it in the middle you just go through it.
+       * Try to see if we can push him to the side as well as slowing him."
+       *
+       * He is describing the tell that it is not solid. The crash zeroed
+       * thetaVel, so the rider stopped dead ON the barrier's line and then
+       * carried straight down it -- through the thing that just hit them.
+       * Deflecting says the barrier has a shape and a side, which is the
+       * difference between an obstacle and a trigger volume.
+       *
+       * 0.26 rad/s against the controller's 1.69 damping settles about 0.15
+       * rad out, roughly 7 units at this radius. The barrier is 4 wide, so that
+       * is clear of it and no further -- a nudge off your line, not a throw
+       * across the hill. It was 0.55 first, which moved the rider 13 units:
+       * unmistakably past the barrier and unmistakably too much.
+       */
+      deflect: 0.26,
+    },
+    label: 'BLOCKED',
   },
 
   // --- hazards -----------------------------------------------------------
@@ -150,6 +293,78 @@ export const PROP_TYPES = {
     label: 'CRYSTAL',
   },
 
+  /**
+   * A STONE IDOL -- the rare one.
+   *
+   * Amit, on what missions should ask for: "the mission needs to introduce new
+   * content every time... I need to collect some statues or big stuff. But it's
+   * not every second that you can get one, it's every now and then."
+   *
+   * That second sentence is the whole design and it is the part a normal pickup
+   * cannot express. A crystal is texture -- there are twenty of them in every
+   * pattern and collecting one is a rhythm, not a decision. This is the
+   * opposite: roughly one every three or four patterns, worth fifteen crystals,
+   * and always placed somewhere that costs you something to reach. Seeing one is
+   * meant to change your line for the next four seconds.
+   *
+   * A SEPARATE pickup `type`, not just a bigger crystal, so a mission can count
+   * idols without counting crystals -- which is what makes "collect 3 idols" a
+   * different objective from "collect 30 crystals" rather than a scaled one.
+   */
+  statue: {
+    kind: 'pickup',
+    /**
+     * A TOTEM STANDING ON THE GROUND, not a thing hovering over it.
+     *
+     * Amit: "the idols look really bad... they're floating way up in the air,
+     * looks like I might be missing them from going under them, though I'm not.
+     * Maybe they need to be taller and reach the floor."
+     *
+     * Both halves of that are real. It floated 2.2 units up because every
+     * pickup does -- a crystal is a gem you reach for and hovering says so --
+     * but a four-metre figure hanging in mid-air says nothing except that it
+     * has come loose. Worse, hovering invents a gap under it, and a gap the
+     * player can see is a gap they will try to ride through; being collected
+     * anyway then reads as the collider being wrong rather than generous.
+     *
+     * So it is grounded and much taller: 7 units, planted, unmissable from a
+     * long way up the hill -- which is what a thing worth changing your line
+     * for has to be.
+     *
+     * COLOUR. It was pale cyan, which is the hue this game spends on PAINT --
+     * the guide stripes and the centreline. The one object you are meant to
+     * cross the hill for was dressed as a road marking. It is dark stone with
+     * amber inlay now, and the amber is the crystal's own hue: same currency,
+     * much bigger. The dark body is what makes the glow read at distance.
+     */
+    size: { w: 2.4, h: 7.0, l: 2.4 },
+    colour: 0x2e2338, // dark stone, so the inlay carries
+    accent: 0xffb43c, // the crystal's amber -- same currency, larger denomination
+    pickup: {
+      /**
+       * 300, down from 1,800. Amit: "the idol -- lower it, like, a lot. 300 is
+       * enough."
+       *
+       * At 1,800 one idol was worth fifteen crystals or a nine-chain barrel
+       * landing. On IDOL HUNT that is the mission and it was fine; on every
+       * other hill an idol was worth more than the rest of the course put
+       * together, so a run's score was decided by whether one happened to be
+       * on the line. 300 keeps it clearly the best single pickup -- two and a
+       * half crystals -- without it being the only thing that counts.
+       */
+      type: 'idol', points: 300, catchWidth: 4.2,
+      // Grounded: what you see standing on the hill is what you ride into.
+      height: 0,
+      // Generous vertically because it is seven units tall -- clipping its
+      // shoulder should count, and so should sailing over it off a drop.
+      reach: 5.0,
+      // No bob. A crystal bobbing reads as a floating gem; a planted monument
+      // bobbing reads as a bug.
+      grounded: true,
+    },
+    label: 'IDOL',
+  },
+
   // --- speed boost -------------------------------------------------------
   // Its OWN kind, not another pickup. Kinds are how a course decides what may
   // spawn, so giving the boost its own means the race can have boosts without
@@ -181,7 +396,11 @@ export const PROP_TYPES = {
     // from the CURRENT speed, so back-to-back pads compounded without bound --
     // 38 -> 51 -> 64 -> 77 -- and a bot that simply held forward covered 8.4 km
     // in ninety seconds and beat the field by nearly five kilometres.
-    boost: { speed: 20, seconds: 2.8, points: 60, catchWidth: 2.4, ceiling: 58, height: 0 },
+    // catchWidth is the gate's own half-width plus a little: the posts sit at
+    // +-w/2, so anything that touches the FRAME counts. Tying it to the size
+    // rather than typing a number keeps the collider and the thing you can see
+    // from drifting apart.
+    boost: { speed: 16, seconds: 2.8, points: 60, catchWidth: 2.4, ceiling: 44, height: 0 },
     label: 'BOOST',
   },
 
@@ -195,8 +414,11 @@ export const PROP_TYPES = {
     colour: 0xffd166,
     accent: 0xffffff,
     boost: {
-      speed: 22, seconds: 3.0, points: 120, catchWidth: 2.6, ceiling: 58,
-      height: 2.6, reach: 1.7,
+      // `height` is where the arch's BASE hangs; its top is height + size.h,
+      // and that whole span is what counts as passing through it (see
+      // withinGateArch). There is no separate reach to drift out of step.
+      speed: 18, seconds: 3.0, points: 120, catchWidth: 2.6, ceiling: 48,
+      height: 2.6,
     },
     label: 'AIR GATE',
   },
@@ -209,7 +431,13 @@ export const PROP_TYPES = {
     size: { w: 1.15, h: 1.25, l: 1.15 },
     colour: 0xffb43c,
     accent: 0xffe89a,
-    pickup: { type: 'crystal', points: 260, catchWidth: 3.6, height: 3.1, reach: 2.0 },
+    // The reach has to cover the arcs that actually reach it. These are placed
+    // over ramp landings to be taken IN THE AIR, and a backflip now peaks around
+    // 5.0-5.6 -- against height 3.1 the old reach of 2.0 topped out at 5.1, so
+    // taking one at the apex of a flip failed by a couple of tenths. That is the
+    // same mismatch the boost gates had: a collider tuned before the air heights
+    // moved, and intermittent because it depends where in the arc you cross.
+    pickup: { type: 'crystal', points: 260, catchWidth: 3.6, height: 3.1, reach: 2.7 },
     label: 'HIGH CRYSTAL',
   },
 };
@@ -232,6 +460,37 @@ export const PATTERNS = [
     length: 70,
     build: (W) => [
       { type: 'rail', ds: 0, u: -W * 0.35 },
+      { type: 'blocker', ds: 44, u: -W * 0.08 },
+      /**
+       * NOT BEHIND THE BLOCKER ANY MORE, and no longer on the centreline.
+       *
+       * Amit: "the idols are mostly in the centre, always after some kind of
+       * barrier, or either far in the sides. It's very annoying when I'm coming
+       * to get the idols and then I'm blocked by a barrier."
+       *
+       * This placement was the worst case and it was deliberate -- the note
+       * here used to read "directly behind the blocker at ds 44: go around it,
+       * then come back", which sounds like a nice bit of routing and does not
+       * survive contact with the speed. The gap was TWELVE METRES at u -0.07
+       * against a blocker at -0.08: a lateral gap of 0.01W, so the same line
+       * exactly. At ~29 m/s twelve metres is four tenths of a second, which is
+       * not time to go around anything and come back -- it is only time to hit
+       * the blocker with the reward already in view. The idea needed 40 m and
+       * had 12.
+       *
+       * 0.36W to the OTHER side instead -- in the band the one idol nobody
+       * complained about already sits in (see 'the ladder' in FACE_PATTERNS).
+       * It still costs a carve to reach, which is the whole design of an idol --
+       * it is just a carve that a barrier is not standing in.
+       *
+       * SHALLOWEST OF THE THREE, at 0.36W, and that is a sequence decision
+       * rather than a local one -- see the note on the gauntlet idol for the
+       * cycle these three form. It is also why this one is on the RIGHT: the
+       * left of this pattern at this ds is a kicker at -0.35W, and an idol
+       * parked on a launcher's line gets collected in the air by anyone taking
+       * the ramp, which is a gift rather than a reward.
+       */
+      { type: 'statue', ds: 56, u: W * 0.36, rare: 2 },
       { type: 'rail', ds: 26, u: W * 0.35 },
       { type: 'cone', ds: 14, u: 0 },
       // Strung ALONG the rail line, drifting from one rail to the next, so the
@@ -242,7 +501,6 @@ export const PATTERNS = [
       { type: 'crystal', ds: 21, u: W * 0.1 },
       { type: 'crystal', ds: 40, u: W * 0.3 },
       { type: 'kicker', ds: 50, u: -W * 0.35 },
-      { type: 'boostPad', ds: 20, u: W * 0.20 },
     ],
   },
   {
@@ -250,11 +508,22 @@ export const PATTERNS = [
     length: 85,
     build: (W) => [
       { type: 'kicker', ds: 0, u: -W * 0.25 },
+      { type: 'blocker', ds: 38, u: W * 0.12 },
       { type: 'kicker', ds: 26, u: W * 0.25 },
       { type: 'bigKicker', ds: 56, u: 0 },
-      { type: 'boostPad', ds: 14, u: -W * 0.19 },
-      // Just past the big kicker's lip, where the arc actually is.
-      { type: 'airGate', ds: 64, u: 0 },
+      { type: 'boostPad', ds: 14, u: -W * 0.34 },
+      { type: 'woodWall', ds: 40, u: W * 0.26 },
+      /**
+       * A GROUND GATE, NOT AN AIR ONE. This was an airGate "just past the big
+       * kicker's lip, where the arc actually is" -- and the arc is not there.
+       * Measured lift off a bigKicker peaks at 2.27 m; the arch's pass band
+       * starts at 2.6 m. It was never reachable, at any timing or any line.
+       *
+       * The vert wall is the only launcher that clears the band (4.33 m), and
+       * it has its own gate in 'big air' below. Here the reward for taking the
+       * kicker is the landing and the pad waiting on it.
+       */
+      { type: 'boostPad', ds: 64, u: W * 0.30 },
       // Far enough past the kicker to get the speed back before committing.
       { type: 'barrel', ds: 78, u: -W * 0.2 },
       { type: 'cone', ds: 40, u: -W * 0.6 },
@@ -276,19 +545,45 @@ export const PATTERNS = [
         out.push({ type: 'crystal', ds: i * 10 + 5, u: (i % 2 ? -1 : 1) * W * 0.3 });
       }
       out.push({ type: 'pothole', ds: 34, u: 0 });
-      out.push({ type: 'boostPad', ds: 22, u: W * 0.20 });
-      out.push({ type: 'boostPad', ds: 45, u: -W * 0.21 });
+      out.push({ type: 'boostPad', ds: 45, u: -W * 0.42 });
       return out;
     },
   },
   {
-    name: 'ledge plaza',
+    name: 'rail plaza',
     length: 90,
     build: (W) => [
-      { type: 'ledge', ds: 0, u: -W * 0.5 },
-      { type: 'ledge', ds: 0, u: W * 0.5 },
+      // WAS TWO LEDGES. Amit: "there are two types of glide right now... lose
+      // the wider one for now, I'll replace it with another one." The wide
+      // 1.5-unit block and the thin 0.16 bar read as two grindables that behave
+      // the same, and the block is the one that looks like street furniture on
+      // a mountain face. Its TYPE stays defined and unused -- there is a
+      // replacement coming, and re-adding it should be one word here.
+      { type: 'rail', ds: 0, u: -W * 0.5 },
+      { type: 'rail', ds: 0, u: W * 0.5 },
       { type: 'bank', ds: 40, u: 0 },
-      { type: 'boostPad', ds: 74, u: W * 0.20 },
+      { type: 'blocker', ds: 66, u: W * 0.14 },
+      /**
+       * ACROSS THE ROAD FROM THE BLOCKER, not twelve metres behind it. Same
+       * defect and same fix as 'rail run' above -- it sat at 0.22W against a
+       * blocker at 0.14W, a lateral gap of 0.08W, which is the same lane.
+       *
+       * Put on the LEFT specifically, because this pattern already has a boost
+       * gate at 0.44W right beside where the idol would otherwise go: an idol
+       * four metres past a gate on the same line is not a choice, it is a
+       * pickup you collect by accident on your way through something else.
+       * Opposite, it becomes the decision idols are for -- the gate or the
+       * idol, one carve each way.
+       *
+       * Clear of the woodWall at -0.28W too: 0.30W of lateral gap and 32 m of
+       * warning, against that wall's 1.9-unit collider.
+       *
+       * DEEPEST TO THE LEFT, at 0.58W, because this is the idol the next one
+       * has to be crossed from -- see the gauntlet note.
+       */
+      { type: 'statue', ds: 78, u: -W * 0.58, rare: 3, rarePhase: 1 },
+      { type: 'boostPad', ds: 74, u: W * 0.44 },
+      { type: 'woodWall', ds: 46, u: -W * 0.28 },
       { type: 'hydrant', ds: 20, u: -W * 0.78 },
       { type: 'hydrant', ds: 60, u: W * 0.78 },
       { type: 'roadwork', ds: 68, u: -W * 0.2 },
@@ -303,7 +598,59 @@ export const PATTERNS = [
       { type: 'roadwork', ds: 0, u: -W * 0.55 },
       { type: 'roadwork', ds: 30, u: W * 0.5 },
       { type: 'longRail', ds: 20, u: W * 0.1 },
-      { type: 'boostPad', ds: 48, u: -W * 0.22 },
+      { type: 'blocker', ds: 52, u: -W * 0.06 },
+      /**
+       * IN FROM THE RIM AND ACROSS THE ROAD: 0.88W left -> 0.58W RIGHT. The
+       * distance is the other half of what Amit first said ("or either far in
+       * the sides") -- 0.88W is up against the coping where the trough's own
+       * curve pulls you back down, so holding a line out there is a fight
+       * rather than a carve. The SIDE is the answer to what he said next.
+       *
+       * THE THREE IDOLS ARE A CYCLE, AND THIS IS THE BEAT THAT MAKES IT COST.
+       *
+       * Amit: "the level you fixed is better but it's too easy now, because you
+       * place idols one after the other in the same lane -- try to challenge it
+       * a bit more."
+       *
+       * Measured, and he was describing something exact. The hill repeats one
+       * three-idol figure, and the gaps between them are wildly uneven:
+       *
+       *     rail run   ->  rail plaza    257 m
+       *     rail plaza ->  gauntlet       86 m   <-- the tight one
+       *     gauntlet   ->  rail run      232 m
+       *
+       * Both left-hand idols had landed within 0.04W of each other across that
+       * 86 m gap, so the tightest beat in the cycle was the one that asked for
+       * nothing: carve out once, hold the line for three seconds, collect two.
+       * The two long gaps got the crossings, where there is so much road that a
+       * crossing is free.
+       *
+       * SO THE CROSSING IS SPENT ON THE SHORT GAP INSTEAD. Three idols cannot
+       * alternate sides around a cycle -- an odd loop cannot be two-coloured --
+       * so exactly one adjacency has to repeat a side, and the only question is
+       * which. It should be the 257 m one, not the 86 m one.
+       *
+       * FEASIBLE, NOT MERELY HARDER, and that was measured too: a full carve
+       * sweeps 0.0257 rad per metre, so the 1.3 rad from -0.58W to here needs
+       * about 50 m of the 86 m available. It has to be committed to immediately
+       * -- there is no coasting first -- which is the demand, and there is still
+       * a third of the gap in hand.
+       *
+       * The blocker at -0.06W is not in the way of that crossing either, though
+       * it is close enough to matter: it sits 22 m before this idol, and a
+       * player who starts carving at the previous one passes the centreline
+       * around 25 m in, well ahead of it. Cross late and it is in the way --
+       * which is a timing question with an answer, not a wall.
+       *
+       * THE SACRIFICE CHANGES HANDS RATHER THAN DISAPPEARING. This used to be
+       * "opposite the longRail -- taking it means giving up the grind". From
+       * the right it is opposite the BOOST PAD at -0.38W instead, and a pad is
+       * worth 35-55 m of progress, so the either-or is if anything sharper than
+       * the rail's.
+       */
+      { type: 'statue', ds: 74, u: W * 0.58, rare: 3 },
+      { type: 'boostPad', ds: 48, u: -W * 0.38 },
+      { type: 'woodWall', ds: 12, u: W * 0.30 },
       { type: 'pothole', ds: 62, u: -W * 0.45 },
       { type: 'cone', ds: 70, u: -W * 0.2 },
       { type: 'cone', ds: 74, u: W * 0.05 },
@@ -321,9 +668,25 @@ export const PATTERNS = [
       { type: 'bank', ds: 0, u: W * 0.4 },
       { type: 'barrel', ds: 44, u: 0 },
       { type: 'longRail', ds: 66, u: 0 },
-      { type: 'boostPad', ds: 24, u: W * 0.19 },
-      // Off the vert wall, which is the biggest arc on the course.
-      { type: 'airGate', ds: 56, u: 0 },
+      { type: 'boostPad', ds: 24, u: W * 0.40 },
+      { type: 'woodWall', ds: 76, u: -W * 0.24 },
+      /**
+       * NO AIR GATE HERE ANY MORE, though this was the one placement that
+       * genuinely worked -- the vert wall is the only launcher that clears the
+       * arch, at a measured 4.33 m against its 2.6 m floor.
+       *
+       * It goes because a PATTERN cannot guarantee its own launcher. Course
+       * density thins pattern content (the race now runs at 0.7), and thinning
+       * is per item: the barrel above can be dropped while this survives,
+       * leaving a gate hanging over a road with nothing to jump off. Measured
+       * after the density change -- 2 of 19 yellow gates on the race courses
+       * had no launcher within 60 m, and this pattern is where they came from.
+       *
+       * Every air gate in the game is now emitted by the injector in
+       * entities/props.js, which checks the launcher it is pairing with before
+       * choosing the type. One place that can make the guarantee, rather than
+       * two places where only one can.
+       */
       // Over the big kicker's landing: only reachable with real height.
       { type: 'highCrystal', ds: 54, u: 0 },
       { type: 'highCrystal', ds: 60, u: 0 },
@@ -334,6 +697,211 @@ export const PATTERNS = [
     // Deliberate empty stretch. Density everywhere is exhausting and leaves the
     // player no room to just feel the speed, which is the point of the game.
     length: 55,
-    build: (W) => [{ type: 'boostPad', ds: 28, u: W * 0.18 }],
+    build: (W) => [{ type: 'boostPad', ds: 28, u: -W * 0.36 }],
   },
 ];
+
+/**
+ * FACE PATTERNS -- content authored FOR a wide hill, spread across ALL of it.
+ *
+ * THE RULE, in Amit's words: "I generally want the stuff scattered along the
+ * road. I would have to move left and right to avoid stuff everywhere, and I
+ * could meet stuff to do everywhere -- on the outer lines, in the middle, and
+ * in the middle of the middle."
+ *
+ * That is a correction to what these patterns were, and worth recording. The
+ * first version answered "I can just stay in the middle and go through the
+ * ride" by making the middle pay nothing and putting a wall of blockers down
+ * it, with every reward pushed to the rims. Measured, that produced three
+ * segregated zones -- 10 of 12 barriers inside 20% of centre, 14 of 17 ramps in
+ * the single band at 60-80%, and mid-field nearly empty of everything. It did
+ * stop you riding the centreline, but for the wrong reason: not because the
+ * hill was full and you had to work through it, but because two thirds of the
+ * hill were bare.
+ *
+ * SO WEAVING COMES FROM ALTERNATION, NOT FROM EMPTINESS. Every band carries
+ * every kind of thing -- barriers, ramps, rails and pickups at the centreline,
+ * at mid-field and out at the rim alike -- and consecutive items along the
+ * course alternate SIDES. Hold any fixed line and the hill is busy but you
+ * catch only a fraction of it; move with the content and you get all of it.
+ * That is a better answer than a bare corridor, because the reason to leave the
+ * middle is now that something better is elsewhere, rather than that the middle
+ * is a punishment.
+ *
+ * Authored against the true rim, so `spread` must be 1 on any terrain using
+ * this set -- scaling a table that already reaches 0.95 would only clamp it.
+ */
+export const FACE_PATTERNS = [
+  {
+    // A full sweep rim to rim, with something to do at every depth on the way
+    // across rather than only at the two ends.
+    name: 'the crossing',
+    length: 120,
+    build: (W) => [
+      { type: 'crystal', ds: 6, u: -W * 0.88 },
+      { type: 'boostPad', ds: 36, u: -W * 0.66 },
+      { type: 'kicker', ds: 14, u: -W * 0.52 },
+      { type: 'blocker', ds: 20, u: -W * 0.14 },
+      { type: 'crystal', ds: 26, u: W * 0.34 },
+      { type: 'rail', ds: 32, u: W * 0.70 },
+      { type: 'rail', ds: 78, u: -W * 0.50 },
+      { type: 'blocker', ds: 44, u: W * 0.92 },
+      { type: 'crystal', ds: 50, u: W * 0.10 },
+      { type: 'bigKicker', ds: 58, u: -W * 0.38 },
+      { type: 'blocker', ds: 66, u: -W * 0.76 },
+      { type: 'crystal', ds: 74, u: -W * 0.22 },
+      { type: 'kicker', ds: 84, u: W * 0.16 },
+      { type: 'crystal', ds: 92, u: W * 0.60 },
+      { type: 'blocker', ds: 100, u: W * 0.30 },
+      /**
+       * OFF THE CENTRELINE, 0.08W -> -0.45W. This row is where the pendulum is
+       * visible: it was moved to DEAD CENTRE because "the idols are always on
+       * the sides, it's boring" -- true, and the fix overshot to the other
+       * extreme, which is what produced "I'm coming to get the idols and then
+       * I'm blocked by a barrier".
+       *
+       * LEFT, and the sign is the whole reason this number was picked twice.
+       * 0.44W on the right cleared everything on the way IN and then dropped
+       * the player onto a blocker at 0.30W twenty-two metres LATER -- the same
+       * complaint one beat further on, which only showed up once the approach
+       * check was run in both directions. -0.45W is the lane with the widest
+       * margin either way: 0.31W of clearance from the barriers before it and
+       * 0.75W from the one after.
+       *
+       * Both notes are right and neither end of the road is the answer. The
+       * middle band, around 0.4-0.55W, is: far enough out that reaching it
+       * costs a carve and it is not collected by riding straight, close enough
+       * in that no barrier lane and no coping is in the way. Every idol in the
+       * game now sits there, which is where the only one nobody complained
+       * about already was ('the ladder', below).
+       *
+       * (Open-face content, currently unreachable -- fixed with the rest so the
+       * shape is right whenever the face comes back, not left as a trap.)
+       */
+      { type: 'statue', ds: 78, u: -W * 0.45, rare: 2 },
+    ],
+  },
+  {
+    // Gates at three different depths, so which gap you take is decided at the
+    // rim, at mid-field and on the centreline in turn.
+    name: 'three gates',
+    length: 110,
+    build: (W) => [
+      { type: 'blocker', ds: 12, u: -W * 0.86 },
+      { type: 'boostPad', ds: 44, u: W * 0.32 },
+      { type: 'crystal', ds: 18, u: -W * 0.44 },
+      { type: 'rail', ds: 24, u: W * 0.06 },
+      { type: 'longRail', ds: 68, u: -W * 0.72 },
+      { type: 'blocker', ds: 36, u: W * 0.48 },
+      { type: 'crystal', ds: 42, u: W * 0.88 },
+      { type: 'kicker', ds: 50, u: W * 0.26 },
+      { type: 'blocker', ds: 58, u: -W * 0.10 },
+      { type: 'crystal', ds: 64, u: -W * 0.62 },
+      { type: 'barrel', ds: 74, u: -W * 0.90 },
+      { type: 'blocker', ds: 84, u: -W * 0.34 },
+      { type: 'crystal', ds: 92, u: W * 0.20 },
+      { type: 'rail', ds: 100, u: W * 0.66 },
+    ],
+  },
+  {
+    // A ladder worked outward and back, so the run passes through every band
+    // twice instead of hugging one edge.
+    name: 'the ladder',
+    length: 130,
+    build: (W) => [
+      { type: 'crystal', ds: 8, u: W * 0.12 },
+      { type: 'boostPad', ds: 64, u: W * 0.22 },
+      { type: 'blocker', ds: 16, u: -W * 0.30 },
+      { type: 'longRail', ds: 24, u: W * 0.44 },
+      { type: 'crystal', ds: 34, u: W * 0.78 },
+      { type: 'blocker', ds: 44, u: W * 0.20 },
+      { type: 'kicker', ds: 52, u: -W * 0.24 },
+      { type: 'crystal', ds: 60, u: -W * 0.68 },
+      { type: 'blocker', ds: 70, u: -W * 0.94 },
+      { type: 'rail', ds: 80, u: -W * 0.40 },
+      { type: 'rail', ds: 112, u: W * 0.62 },
+      { type: 'crystal', ds: 88, u: W * 0.04 },
+      { type: 'bigKicker', ds: 98, u: W * 0.50 },
+      { type: 'blocker', ds: 108, u: W * 0.84 },
+      { type: 'crystal', ds: 118, u: W * 0.32 },
+      // Mid-field, the band that had none at all.
+      { type: 'statue', ds: 126, u: W * 0.46, rare: 3, rarePhase: 1 },
+    ],
+  },
+  {
+    // Alternating turns at varying depth -- some gates near the centreline,
+    // some out wide, so the weave is never the same amplitude twice.
+    name: 'slalom',
+    length: 140,
+    build: (W) => {
+      const at = [-0.18, 0.54, -0.86, 0.22, -0.50];
+      const out = [];
+      at.forEach((u, i) => {
+        out.push({ type: 'blocker', ds: 18 + i * 26, u: u * W });
+        out.push({ type: 'crystal', ds: 30 + i * 26, u: -u * 0.72 * W });
+      });
+      out.push({ type: 'kicker', ds: 40, u: W * 0.80 });
+      out.push({ type: 'boostPad', ds: 96, u: -W * 0.70 });
+      out.push({ type: 'rail', ds: 74, u: -W * 0.08 });
+      out.push({ type: 'rail', ds: 24, u: W * 0.44 });
+      out.push({ type: 'longRail', ds: 118, u: W * 0.16 });
+      out.push({ type: 'bigKicker', ds: 108, u: -W * 0.62 });
+      out.push({ type: 'kicker', ds: 132, u: W * 0.36 });
+      return out;
+    },
+  },
+  {
+    // Looser, and the breather in the set -- but busy at every depth rather
+    // than clear down the middle.
+    name: 'open ground',
+    length: 120,
+    build: (W) => [
+      { type: 'kicker', ds: 10, u: W * 0.02 },
+      { type: 'boostPad', ds: 30, u: W * 0.44 },
+      { type: 'crystal', ds: 20, u: -W * 0.56 },
+      { type: 'blocker', ds: 28, u: -W * 0.88 },
+      { type: 'crystal', ds: 36, u: -W * 0.16 },
+      { type: 'rail', ds: 46, u: W * 0.58 },
+      { type: 'rail', ds: 88, u: -W * 0.64 },
+      { type: 'blocker', ds: 56, u: W * 0.14 },
+      { type: 'crystal', ds: 64, u: W * 0.86 },
+      { type: 'bigKicker', ds: 74, u: W * 0.40 },
+      { type: 'blocker', ds: 84, u: -W * 0.46 },
+      { type: 'crystal', ds: 94, u: -W * 0.80 },
+      { type: 'longRail', ds: 104, u: -W * 0.12 },
+      { type: 'crystal', ds: 114, u: W * 0.24 },
+      // A THIRD idol in the cycle. Two was "every now and then" and nothing
+      // more: under the rareAlways override a mission built entirely around
+      // finding them still only met about three a minute, which does not
+      // support asking for five. Three placements puts it near five a minute
+      // with the override on, and still under two a minute at the authored
+      // cadence -- so the incidental case does not become a parade.
+      /**
+       * THE LAST RIM IDOL COMES IN TOO, 0.88W -> 0.46W, and it was the worst
+       * of the six: a blocker sat at -0.88W thirty metres ahead of it, the SAME
+       * LANE to two decimal places, so the only way to the idol was through the
+       * barrier. Exactly the shape Amit described.
+       *
+       * This row used to argue "one stays at the rim -- a long way out is still
+       * a good place for one, it just cannot be the ONLY place". The variety
+       * point stands; the rim is just not where it should be spent, because the
+       * rim is a fight with the coping whether or not something is parked in
+       * front of it. Variety in an idol comes from what you give up to reach
+       * it -- a grind, a gate, a line -- and this pattern has a blocker at
+       * 0.14W to carve around, which is a better cost than gravity.
+       *
+       * Right side, so it is clear of both the blocker behind it at -0.88W and
+       * the one after it at -0.46W. Reaching it no longer means riding through
+       * anything, and leaving it no longer drops you onto a barrier.
+       *
+       * 0.58W RATHER THAN 0.46W -- the same-lane lesson from the ridge applied
+       * here. 'the ladder' above also sits at 0.46W, so two idols in this set
+       * were asking for the identical carve. A depth change is the least this
+       * can do about it; it cannot become a crossing, because the left of this
+       * pattern is where all three of its blockers live.
+       */
+      { type: 'statue', ds: 58, u: W * 0.58, rare: 3 },
+    ],
+  },
+];
+

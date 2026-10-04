@@ -1,3 +1,4 @@
+import boardUrl from '../assets/ui_board.png?url';
 // Live settings panel (gear button, top-right chrome row).
 //
 // Same UI as HalfShellHustle's steering panel -- deliberately, so the two games
@@ -22,9 +23,11 @@
 
 import {
   STEER_MODES, STEER_REGULAR, setSteerMode, recentreBoard,
+  STANCE_MODES, STANCE_SQUARE, STANCE_SKATE, STANCE_SKATE_SWITCH, setStance,
 } from '../input/input.js';
 import { CONTROL_PRESETS, CONTROLS, setControlPreset } from '../data/controlPresets.js';
 import { CARVE_SMOOTH, CARVE_CURVE } from '../data/constants.js';
+import { analytics } from '../systems/analytics.js';
 
 const STORAGE_KEY = 'hillbomb:settings';
 
@@ -41,17 +44,82 @@ export const FEEL = {
 };
 
 const state = {
+  // SKATE by default -- the board is shaped like a skateboard, so standing
+  // across it is what the hardware invites. See input/input.js.
+  /**
+   * REGULAR (square) BY DEFAULT, not skate. Amit: "the stance default will be
+   * regular -- left and right. If people want to change to skate, it's their
+   * choice."
+   *
+   * Square is the right default for two separate reasons. It steers on LEFT and
+   * RIGHT, which is what anyone picking up the game assumes, whereas skate puts
+   * carve on up/down and reads as broken until you know. And it is the safer
+   * one to ship: skate only works if the Unity scene has forwardVerticalAxis
+   * ticked, so a mis-configured scene left the game unsteerable -- square asks
+   * nothing of the host.
+   */
+  stance: STANCE_SQUARE,
   mode: STEER_REGULAR,
   preset: CONTROLS.key,
   carveSmooth: CARVE_SMOOTH,
   carveCurve: CARVE_CURVE,
   sensitivity: DEFAULT_SENSITIVITY,
+  /**
+   * SOUND, on two switches that are genuinely independent -- Amit: "sfx and
+   * music, controlled separately, with enable/disable options for both
+   * separately."
+   *
+   * Two booleans rather than one master and a sub-setting, because the pair are
+   * not a hierarchy: wanting the effects without the music is the common case
+   * (someone playing with their own music on), and wanting music without the
+   * effects is a real preference too. Either combination has to be reachable
+   * without the other switch getting in the way.
+   *
+   * Both default ON. A game that ships silent reads as broken, and the switches
+   * are one screen away for anyone who wants the quiet.
+   */
+  sfx: true,
+  music: true,
+  /** 0..100 each, independent of the on/off switches. */
+  sfxVolume: 80,
+  musicVolume: 70,
 };
 
 let panelEl = null;
-let rows = [];
+/**
+ * TWO PANELS, ONE WIDGET SET.
+ *
+ * Amit: "we're removing MODE, FEEL, CURVE, RECENTRE, RENDER LAB from the
+ * settings -- everything we remove goes to the dev options, that's a different
+ * tab... later on we will make it disappear and come up only if someone knows
+ * the combination."
+ *
+ * The split is by AUDIENCE, not by importance. A player setting answers "how do
+ * I want to play"; a dev setting answers "how is this build wired to the host",
+ * and every one of the moved rows is the second kind -- steer mode and
+ * sensitivity are half host-side, the carve numbers only bite on analog input,
+ * and RECENTRE and RENDER LAB are instruments rather than preferences. Showing
+ * them to a player is not just clutter: it invites them to break their own
+ * controls in ways they cannot diagnose.
+ *
+ * `rows` points at whichever list is being built or shown, so addChoice and its
+ * siblings need no knowledge of which panel they are on.
+ */
+const playerRows = [];
+const devRows = [];
+let rows = playerRows;
+/** Which list is on screen -- swapped by the DEV OPTIONS / BACK rows. */
+let showingDev = false;
 let selected = 0;
 let onOpenLab = null;
+/** Opens every mission and race. Dev options only -- see the row that calls it. */
+let onUnlockAll = null;
+/** The sound system, so the two audio rows can drive it. Optional. */
+let audio = null;
+/** Told whenever the panel opens or closes -- see initSettingsPanel's hooks. */
+let onPanelToggle = null;
+/** The DEV OPTIONS row, hidden until the unlock fires. See unlockDevOptions. */
+let devRow = null;
 
 // localStorage can throw outright in a restricted WebView (private mode,
 // storage disabled). A tuning nicety must never take the game down with it, so
@@ -62,8 +130,19 @@ function load() {
     if (!raw) return;
     const saved = JSON.parse(raw);
     if (STEER_MODES.includes(saved.mode)) state.mode = saved.mode;
+    if (STANCE_MODES.includes(saved.stance)) state.stance = saved.stance;
     if (CONTROL_PRESETS[saved.preset]) state.preset = saved.preset;
     for (const k of ['carveSmooth', 'carveCurve', 'sensitivity']) {
+      if (typeof saved[k] === 'number' && Number.isFinite(saved[k])) state[k] = saved[k];
+    }
+    // Read separately from the numbers above, and only when actually boolean --
+    // an older stored blob has neither key, and `undefined` must leave the
+    // default alone rather than turning the sound off for everyone who has
+    // played before.
+    for (const k of ['sfx', 'music']) {
+      if (typeof saved[k] === 'boolean') state[k] = saved[k];
+    }
+    for (const k of ['sfxVolume', 'musicVolume']) {
       if (typeof saved[k] === 'number' && Number.isFinite(saved[k])) state[k] = saved[k];
     }
   } catch {
@@ -89,38 +168,69 @@ function pushSensitivity() {
 
 function applyAll() {
   setSteerMode(state.mode);
+  setStance(state.stance);
   setControlPreset(state.preset);
   FEEL.carveSmooth = state.carveSmooth;
   FEEL.carveCurve = state.carveCurve;
   pushSensitivity();
+  // At BOOT as well as on change -- a stored preference that is never re-applied
+  // is not a preference, and the audio system starts with both on.
+  if (audio) {
+    audio.setSfx(state.sfx);
+    audio.setMusic(state.music);
+    audio.setSfxVolume(state.sfxVolume / 100);
+    audio.setMusicVolume(state.musicVolume / 100);
+  }
 }
 
-function makeRow(label, note) {
+/**
+ * @param {boolean} [withValue] false for a row whose control IS its readout.
+ *
+ * A slider does not get one. Amit, on the volumes: "we don't need the number."
+ * He is right that it was saying the same thing twice -- a handle three
+ * quarters along a track already reads as 75, and the digit beside it was the
+ * less precise of the two because it only moved in tens.
+ */
+function makeRow(label, note, withValue = true) {
   const el = document.createElement('div');
   el.className = 'sp-row';
   const name = document.createElement('span');
   name.className = 'sp-label';
   name.textContent = label;
   el.appendChild(name);
-  const value = document.createElement('button');
-  el.appendChild(value);
+  const value = withValue ? document.createElement('button') : null;
+  if (value) el.appendChild(value);
   if (note) {
     const n = document.createElement('small');
     n.className = 'sp-note';
     n.textContent = note;
     el.appendChild(n);
   }
-  panelEl.appendChild(el);
+  // NOT attached here -- showRows() places whichever list is on screen, so a
+  // row built for the dev panel does not appear on the player's.
+
   return { el, value };
 }
 
 /** A cycling choice: activating steps to the next value and wraps. */
-function addChoice({ label, values, get, set, note, relevance }) {
+/**
+ * @param {{fmt?: (v:any) => string}} opts `fmt` renames a value for display.
+ *
+ * The stored value and the shown one are not always the same word: the stance
+ * is 'square' internally, because that is what the geometry is, and REGULAR to
+ * a player, because that is what the stance is called. Formatting at the row
+ * keeps the rename out of the input system, which would otherwise have to carry
+ * a display name it never uses.
+ */
+function addChoice({ label, values, get, set, note, relevance, fmt }) {
   const { el, value } = makeRow(label, note);
   const row = {
     el,
     relevance,
-    refresh() { value.textContent = String(get()).toUpperCase(); },
+    refresh() {
+      const v = get();
+      value.textContent = fmt ? fmt(v) : String(v).toUpperCase();
+    },
     activate() {
       const i = values.indexOf(get());
       set(values[(i + 1) % values.length]);
@@ -140,6 +250,154 @@ function addChoice({ label, values, get, set, note, relevance }) {
  * "decrease", because Enter and Space are the only two keys available and Enter
  * is already spent on moving the selection.
  */
+/**
+ * A DRAGGABLE SLIDER that is also key-operable.
+ *
+ * Amit: "the volume controllers need to be sliders for both."
+ *
+ * The awkward part is that this panel has two completely different input
+ * surfaces. With a pointer, a slider is obvious and a stepper is tedious --
+ * eight taps to cross a range. On the GoBalance board there is no pointer at
+ * all and the host forwards only Enter and Space, so a slider is undraggable
+ * and the only possible gesture is "act on the selected row".
+ *
+ * So it is BOTH: a real range input for a thumb, and activate() still steps and
+ * wraps for the two-key path. Neither surface is a degraded version of the
+ * other, and the value they move is the same one.
+ */
+function addSlider({ label, key, min, max, step, note, relevance }) {
+  /**
+   * NO READOUT, AND THE TRACK SITS ON THE LABEL'S OWN LINE.
+   *
+   * Amit: "the volume does not need to be a separated line from the headline.
+   * It can be shorter, and in the same level of the SFX volume text, and we
+   * don't need the number."
+   *
+   * The readout used to be kept "so the row still has something to select and
+   * press on the board" -- which turned out not to be true. The board never
+   * pressed that button: it forwards Enter and Space, and the key handler calls
+   * activate() on the SELECTED ROW, so the button was only ever a second
+   * pointer affordance beside a control a pointer can already drag. Removing it
+   * costs the board nothing.
+   *
+   * `fmt` went with it -- with nothing to print, a formatter is dead weight.
+   * addStepper keeps its own, which is where the numeric rows still live.
+   */
+  const { el } = makeRow(label, note, false);
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.className = 'sp-slider';
+  input.min = String(min);
+  input.max = String(max);
+  input.step = String(step);
+  const row = {
+    el,
+    relevance,
+    refresh() {
+      input.value = String(state[key]);
+    },
+    activate() {
+      // Wraps rather than clamping: with only one key there is no way back down
+      // a slider that has hit its top.
+      let v = state[key] + step;
+      if (v > max + 1e-9) v = min;
+      state[key] = Math.round(v * 1000) / 1000;
+      applyAll();
+      save();
+      row.refresh();
+      refreshRelevance();
+    },
+  };
+  input.addEventListener('input', () => {
+    state[key] = Number(input.value);
+    applyAll();
+  });
+  // Saved on release rather than on every pixel of the drag -- localStorage
+  // writes during a drag are pure waste, and in a restricted WebView each one
+  // is a chance to throw.
+  input.addEventListener('change', save);
+  el.appendChild(input);
+  rows.push(row);
+  return row;
+}
+
+/**
+ * THE STANCE ROW IS A PICTURE OF THE ACTUAL BOARD, not a word and not a
+ * skateboard.
+ *
+ * Amit: "the stance needs some kind of shape, icon for it... just showing the
+ * actual frame of the board like we were using in the other tutorials, with an
+ * arrow explaining, and it would be a button that flips." Then, on a first pass
+ * that drew a generic skateboard: "I meant the board, the BALANCE board -- we
+ * have that asset in the TMNT tutorials."
+ *
+ * Which is the whole point. The player is standing on a GoBalance board, not a
+ * skateboard, and a picture that shows them something else is worse than a word
+ * -- it is a confident wrong answer. This is the same overhead artwork
+ * HalfShellHustle teaches its controls with, so a player who has met one of our
+ * games already recognises it.
+ *
+ * ROTATION IS THE WHOLE INTERACTION, and it works because the asset already
+ * carries its own arrows. Turning the image a quarter turn turns the footprints
+ * with it -- the rider now stands ACROSS the board, which is exactly what skate
+ * stance is -- and the left/right arrows become up/down, which is exactly which
+ * way they now lean. One transform says both halves of it, and neither is drawn
+ * twice or able to disagree with the other.
+ */
+function addStance() {
+  const { el, value } = makeRow('STANCE', 'tap to flip \u2014 the arrows are the way you lean');
+  value.classList.add('sp-stance');
+  const img = document.createElement('img');
+  img.src = boardUrl;
+  img.alt = '';
+  img.className = 'sp-board';
+  const name = document.createElement('span');
+  name.className = 'sp-stance-name';
+  value.appendChild(img);
+  value.appendChild(name);
+  /**
+   * THREE POSITIONS, CYCLED -- it was a two-way flip.
+   *
+   * The added one is SKATE facing the other way, for a rider whose other foot
+   * leads. Still one tap and still one control, because the interaction that
+   * made the flip work is the picture: the board turns a quarter under the
+   * rider, and the artwork's own footprints and arrows turn with it. A third
+   * position is that same turn in the other direction, so the image keeps
+   * explaining itself and nothing has to be written down.
+   *
+   * SWITCH rather than GOOFY, which is the term for it. REGULAR is already
+   * taken here by the square stance, so labelling its mirror GOOFY would read
+   * as the regular/goofy pair every skater knows and quietly say that SKATE is
+   * a third unrelated thing. SWITCH says "the same stance, the other way
+   * round", which is exactly what it is.
+   */
+  const ORDER = [STANCE_SQUARE, STANCE_SKATE, STANCE_SKATE_SWITCH];
+  const LABEL = {
+    [STANCE_SQUARE]: 'REGULAR',
+    [STANCE_SKATE]: 'SKATE',
+    [STANCE_SKATE_SWITCH]: 'SKATE SWITCH',
+  };
+  const row = {
+    el,
+    refresh() {
+      img.classList.toggle('sp-board-skate', state.stance === STANCE_SKATE);
+      img.classList.toggle('sp-board-switch', state.stance === STANCE_SKATE_SWITCH);
+      name.textContent = LABEL[state.stance] || LABEL[STANCE_SQUARE];
+    },
+    activate() {
+      const at = ORDER.indexOf(state.stance);
+      state.stance = ORDER[(at + 1) % ORDER.length];
+      applyAll();
+      save();
+      row.refresh();
+      refreshRelevance();
+    },
+  };
+  value.addEventListener('click', row.activate);
+  rows.push(row);
+  return row;
+}
+
 function addStepper({ label, key, min, max, step, fmt, note, relevance }) {
   const { el, value } = makeRow(label, note);
   const row = {
@@ -191,6 +449,28 @@ function refreshRelevance() {
   });
 }
 
+/**
+ * Show one of the two lists. The rows themselves are built once at boot and
+ * simply re-parented, so state, selection handlers and relevance rules survive
+ * a switch -- rebuilding them each time would drop whatever the player was
+ * part-way through adjusting.
+ */
+function showRows(list) {
+  rows = list;
+  showingDev = list === devRows;
+  const holder = panelEl && panelEl.querySelector('.sp-rows');
+  if (!holder) return;
+  holder.innerHTML = '';
+  // A row hidden by class stays hidden across a panel swap -- appending it does
+  // not clear the class, but saying so here stops the next person adding a
+  // display:block that quietly re-reveals the dev row.
+  for (const r of list) holder.appendChild(r.el);
+  selected = 0;
+  list.forEach((r) => r.refresh());
+  refreshRelevance();
+  refreshSelection();
+}
+
 function refreshSelection() {
   rows.forEach((r, i) => r.el.classList.toggle('sp-sel', i === selected));
   // Keep the highlighted row visible when the panel has to scroll. On-device
@@ -200,12 +480,54 @@ function refreshSelection() {
   if (cur && cur.el.scrollIntoView) cur.el.scrollIntoView({ block: 'nearest' });
 }
 
+export function closeSettingsPanel() {
+  setPanelOpen(false);
+}
+
+/**
+ * Sensitivity as it was when the panel opened, for the report on the way out.
+ *
+ * ON EXIT, NOT ON EVERY STEP -- and that rule is the app's own, quoted in its
+ * event catalogue for this very event: "when user exited the settings screen
+ * and the sensitivity value is different than it was when he entered (we dont
+ * want to send hundreds of events so we need to check at the exit)". A stepper
+ * that wraps 0-100 in fives would otherwise fire twenty times on one long
+ * press. Reusing their event name and their rule means a sensitivity story
+ * reads the same whether it happened in the app or in here.
+ */
+let sensitivityOnOpen = null;
+
 function setPanelOpen(open) {
   panelEl.classList.toggle('hidden', !open);
   if (open) {
+    sensitivityOnOpen = state.sensitivity;
     selected = 0;
     refreshSelection();
+  } else {
+    // Rounded on both sides before comparing: the reported value is the int the
+    // player sees, so a change that does not move that int is not a change they
+    // made and should not be an event.
+    if (sensitivityOnOpen != null
+        && Math.round(sensitivityOnOpen) !== Math.round(state.sensitivity)) {
+      analytics.settingChanged('sensitivity', state.sensitivity);
+    }
+    sensitivityOnOpen = null;
+    // Always reopen on the player's page. Landing back in DEV OPTIONS because
+    // that is where you were last time is a small trap, and it is the one panel
+    // a player is not meant to be in.
+    if (showingDev) showRows(playerRows);
   }
+  if (onPanelToggle) onPanelToggle(open);
+}
+
+/**
+ * Reveal the DEV OPTIONS row for this session. Called by the unlock gesture.
+ *
+ * Deliberately has no matching lock(): the only way back is a reload, which is
+ * what stops a panel opened once from staying open on a shared device.
+ */
+export function unlockDevOptions() {
+  if (devRow) devRow.el.classList.remove('sp-hidden');
 }
 
 export function isPanelOpen() {
@@ -217,11 +539,22 @@ export function isPanelOpen() {
  */
 export function initSettingsPanel(hooks = {}) {
   onOpenLab = hooks.openLab || null;
+  audio = hooks.audio || null;
+  onPanelToggle = hooks.onToggle || null;
+  // Passed in rather than imported: the progress store is created in main.js
+  // against a profile, so importing one here would be a second, different store.
+  onUnlockAll = hooks.unlockAll || null;
   load();
 
   const button = document.getElementById('settings-button');
   panelEl = document.getElementById('settings-panel');
   if (!button || !panelEl) return;
+  // The holder the two row lists are swapped in and out of. Created here rather
+  // than in the markup because it is an implementation detail of the swap --
+  // nothing outside this file should be able to put anything in it.
+  const holder = document.createElement('div');
+  holder.className = 'sp-rows';
+  panelEl.appendChild(holder);
   applyAll();
 
   button.addEventListener('click', () => setPanelOpen(panelEl.classList.contains('hidden')));
@@ -231,8 +564,142 @@ export function initSettingsPanel(hooks = {}) {
   // remembered.
   const keyHint = document.createElement('div');
   keyHint.className = 'sp-keyhint';
-  keyHint.textContent = 'ENTER = next row   SPACE = change';
-  panelEl.appendChild(keyHint);
+  // Key hint removed -- no keyboard on the board. The handlers stay.
+  keyHint.textContent = '';
+  // Not appended: with no text in it, it was an empty row of padding at the
+  // bottom of the panel. Kept as an element so re-adding a hint is one line.
+  void keyHint;
+
+  // ---- THE PLAYER'S PANEL ---------------------------------------------------
+  // How do I want to play. Nothing here can misconfigure the controls.
+  rows = playerRows;
+
+  /**
+   * SENSITIVITY LEADS THE PANEL, AND IT IS A STEPPER WITH ITS NUMBER SHOWING.
+   *
+   * Amit: "the sensitivity should be first. It should work like the sensitivity
+   * in the rest of the project -- you can see how the other agents do it,
+   * they've got like jumping digits. You should see the value like in the other
+   * games. And the sound and music come afterwards."
+   *
+   * TWO CORRECTIONS TO ME, both worth naming. I had made this a slider and
+   * dropped its readout, on the reasoning that a slider matched the volumes
+   * directly above it and that a handle three quarters along a track already
+   * reads as 75. Both parts were wrong here:
+   *
+   *   - it is not a volume. A volume is judged by EAR while you drag it, so the
+   *     number is decoration. Sensitivity is judged by how the board feels a
+   *     run later, which makes the number the only thing you can actually carry
+   *     between attempts -- "it was 55, I'll try 45". A slider with no readout
+   *     leaves the player nothing to remember.
+   *   - the rest of the project already answered this. HalfShellHustle's
+   *     steeringPanel uses addStepper with fmt Math.round, and the app's own
+   *     settings screen logs `settings_changed_sensitivity` as "the rounded int
+   *     number that the user SEES". Same control, same 0-100 in fives, same
+   *     visible digits. Matching it is worth more than matching the two rows
+   *     underneath it.
+   *
+   * FIRST, because it is the only row here that changes how the board plays.
+   * Amit left the order against STANCE open ("before or after"); above reads
+   * better than below, since the stance row is a tall picture and burying the
+   * one control anybody came to change under it is how it got missed the first
+   * time. Sound follows both.
+   *
+   * It steps and WRAPS at the top rather than clamping -- the board forwards
+   * only Enter and Space, so with one key there is no way back down a control
+   * that has stopped at its maximum.
+   *
+   * The relevance gate stays honest rather than being dropped: sensitivity only
+   * means anything in REGULAR mode, which is the default and what the board
+   * ships on, so in practice it is live -- but if someone switches to analog in
+   * dev, this dims instead of lying.
+   */
+  addStepper({
+    label: 'SENSITIVITY',
+    key: 'sensitivity',
+    min: 0,
+    max: 100,
+    step: 5,
+    fmt: (v) => `${Math.round(v)}`,
+    relevance: () => state.mode === STEER_REGULAR,
+  });
+  addStance();
+  // The two sound switches. ON/OFF as a two-value choice rather than a new
+  // widget type: the row model already cycles values on activate, and cycling
+  // is the only interaction the board can drive.
+  /**
+   * NO EXPLANATORY NOTES ON THE SOUND ROWS. Amit: "after the SFX there is no
+   * need for additional text... the same thing goes for music of course."
+   *
+   * SFX carried "ramps, rails, pickups, crashes" and MUSIC "independent of
+   * SFX". Both were written to justify having two switches, which is an
+   * argument the panel does not need to make to the player -- the two switches
+   * are visibly there and the words SFX and MUSIC are not ambiguous. A note
+   * earns its line when a row does something a player cannot guess; these did
+   * not, and each one cost a whole line, since .sp-note wraps at 100% basis.
+   */
+  addChoice({
+    label: 'SFX',
+    values: ['on', 'off'],
+    get: () => (state.sfx ? 'on' : 'off'),
+    set: (v) => { state.sfx = v === 'on'; },
+  });
+  addSlider({
+    label: 'SFX VOLUME',
+    key: 'sfxVolume',
+    min: 0,
+    max: 100,
+    step: 10,
+    // Dimmed rather than hidden when the switch is off: a volume that vanishes
+    // makes the player wonder where it went, whereas a greyed one explains
+    // itself and shows what it will be when they switch back on.
+    relevance: () => state.sfx,
+  });
+  addChoice({
+    label: 'MUSIC',
+    values: ['on', 'off'],
+    get: () => (state.music ? 'on' : 'off'),
+    set: (v) => { state.music = v === 'on'; },
+  });
+  addSlider({
+    label: 'MUSIC VOLUME',
+    key: 'musicVolume',
+    min: 0,
+    max: 100,
+    step: 10,
+    relevance: () => state.music,
+  });
+  /**
+   * HIDDEN UNTIL UNLOCKED. Amit: "hide the dev options button."
+   *
+   * The row is built either way and simply not shown, which matters because the
+   * dev panel has to keep working -- it is needed on real hardware, in the
+   * shipped build, in front of a player who has just reported something. A
+   * build flag can only be one or the other, and PROD is exactly the build
+   * worth debugging.
+   *
+   * Reachable by holding the speed readout for seven seconds and entering the
+   * code -- see ui/devUnlock.js, and main.js for where it is installed. The
+   * unlock is NOT persisted: a reload re-locks it, so a device left with the
+   * panel open does not stay open.
+   */
+  devRow = addAction({
+    label: 'DEV OPTIONS',
+    run: () => { showRows(devRows); return null; },
+    note: 'host wiring, control tuning, render lab',
+  });
+  devRow.el.classList.add('sp-hidden');
+  addAction({
+    label: 'CLOSE',
+    // Reachable by key as well as touch -- with the gear unclickable on-device,
+    // this is the only way back out of the menu there.
+    run: () => { setPanelOpen(false); return null; },
+  });
+
+  // ---- THE DEV PANEL --------------------------------------------------------
+  // How is this build wired to the host, and what do the controls actually do.
+  // Everything moved out of the panel above, unchanged in behaviour.
+  rows = devRows;
 
   addChoice({
     label: 'MODE',
@@ -241,7 +708,7 @@ export function initSettingsPanel(hooks = {}) {
     set: (v) => { state.mode = v; },
     // Says the quiet part out loud: the mode is only HALF a game-side choice.
     // Analog reads the sensor, which the host only leaves uncontested when the
-    // scene's forwardSteeringKeys is off.
+    // scene's forwardSteeringKeys is off. Exactly why it is not a player row.
     note: 'analog needs forwardSteeringKeys = OFF on the scene',
   });
   addChoice({
@@ -272,19 +739,39 @@ export function initSettingsPanel(hooks = {}) {
     note: 'analog only -- softens small leans near centre',
     relevance: () => state.mode !== STEER_REGULAR,
   });
-  addStepper({
-    label: 'SENSITIVITY',
-    key: 'sensitivity',
-    min: 0,
-    max: 100,
-    step: 5,
-    fmt: (v) => `${Math.round(v)}`,
-    note: 'regular mode only -- tunes the HOST thresholds',
-    relevance: () => state.mode === STEER_REGULAR,
-  });
+  // SENSITIVITY IS NOT HERE ANY MORE -- it moved to the player's panel, where
+  // Amit asked for it. Not duplicated: two rows bound to the same state key
+  // would both work and then disagree on screen, since each only refreshes
+  // itself. The dev panel keeps the rows a player genuinely should not touch --
+  // steer mode, the carve numbers, recentre, render lab.
+  /**
+   * OPEN THE WHOLE LADDER, for whoever has to look at the far end of it.
+   *
+   * Forty missions and six races gated one behind the next means checking a
+   * late mission costs an hour of clearing the ones before it -- so the levels
+   * that get looked at least are the ones furthest from a first play, which is
+   * exactly backwards. This is the same argument as Nova Vanguard's one-key jump
+   * to its boss fight, and it is here for the same reason.
+   *
+   * ONE STAR EACH, so nothing a real run could earn is taken away -- see
+   * progress.unlockAll(). Says how many it opened rather than just "DONE",
+   * because on a save that is already complete the honest answer is "none", and
+   * a row that always claims success cannot be told from one that silently
+   * failed.
+   */
+  if (onUnlockAll) {
+    addAction({
+      label: 'UNLOCK ALL',
+      run: () => {
+        const n = onUnlockAll();
+        return n > 0 ? `OPENED ${n} \u2713` : 'ALREADY OPEN';
+      },
+      note: 'every mission and race, one star each',
+    });
+  }
   addAction({
     label: 'RECENTRE BOARD',
-    run: () => (recentreBoard() ? 'CENTRED ✓' : 'NO SENSOR (BROWSER)'),
+    run: () => (recentreBoard() ? 'CENTRED \u2713' : 'NO SENSOR (BROWSER)'),
     note: 'analog only -- captures the current lean as zero',
   });
   if (onOpenLab) {
@@ -295,15 +782,11 @@ export function initSettingsPanel(hooks = {}) {
     });
   }
   addAction({
-    label: 'CLOSE',
-    // Reachable by key as well as touch -- with the gear unclickable on-device,
-    // this is the only way back out of the menu there.
-    run: () => { setPanelOpen(false); return null; },
+    label: 'BACK',
+    run: () => { showRows(playerRows); return null; },
   });
 
-  rows.forEach((r) => r.refresh());
-  refreshRelevance();
-  refreshSelection();
+  showRows(playerRows);
 
   // ENTER moves the selection, SPACE acts on it. These are the only two keys
   // the Unity host forwards (see this file's header), so they have to carry the

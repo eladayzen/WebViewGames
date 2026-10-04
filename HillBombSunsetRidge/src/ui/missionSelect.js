@@ -19,10 +19,56 @@
 // Everything here is read from the progress store (systems/progress.js), which
 // is the seam that becomes account data later. This file never reads storage.
 
+import { iconFor } from './propIcons.js';
+
 /** Missions revealed per block -- see the horizon note above. */
 const BLOCK = 10;
 
-export function createMissionSelect(missions, progress, onPick) {
+/**
+ * WHICH LADDER THE PANEL IS CURRENTLY SHOWING.
+ *
+ * There are two instances of this component -- the ridge's and the face's --
+ * and they share ONE #mission-select element, one #mission-list and one
+ * #msel-next button, because only one is ever on screen. What they do not
+ * share is their event listeners: each instance wires its own click handler
+ * onto that single NEXT button and its own keydown handler onto the window at
+ * construction time, and the only guard either of them had was "is the panel
+ * hidden" -- a question about the SHARED element, which both answer the same
+ * way.
+ *
+ * So pressing NEXT (or Space, or Enter) on the ridge list ran BOTH handlers.
+ * The ridge started its mission and then the face started one over the top of
+ * it, last write winning. Amit: "I found myself somehow, after I completed a
+ * run, in the forbidden open valley mission lobby."
+ *
+ * The open face is meant to be unreachable -- there is no lobby button for it
+ * any more -- but unreachable was only ever enforced at the menu. Its list
+ * object still existed, still listened, and Space is one of the only two keys
+ * the GoBalance board forwards, so on the board it was not an edge case.
+ *
+ * This is the ownership the shared element never had: whoever opened it last
+ * owns it, and every other instance ignores input until it does not.
+ */
+let showing = null;
+
+/**
+ * @param {number} [track=0] which progression ladder this list is showing.
+ *
+ * There are two now -- the ridge and the open face -- and every call to
+ * nextMissionId has to name one. Without it the face's list asked for "the next
+ * mission" and was handed a RIDGE id, which is not in its array: the lookup
+ * returned undefined and reading .number off it threw, leaving the list hidden
+ * and the button dead.
+ */
+/**
+ * @param {string} [noun='mission'] what a row IS, for the locked-row text.
+ *
+ * The race ladder reuses this list, and told the player to "clear the mission
+ * before it" on a screen with no missions on it. One word, but it is the only
+ * sentence a locked row gets, and being wrong about what the game calls its own
+ * content is exactly the kind of thing that reads as unfinished.
+ */
+export function createMissionSelect(missions, progress, onPick, track = 0, noun = 'mission') {
   const el = document.getElementById('mission-select');
   const listEl = document.getElementById('mission-list');
   const totalEl = document.getElementById('msel-total');
@@ -46,7 +92,7 @@ export function createMissionSelect(missions, progress, onPick) {
 
   function render() {
     listEl.innerHTML = '';
-    const nextId = progress.nextMissionId();
+    const nextId = progress.nextMissionId(track);
     const shown = missions.slice(0, horizon());
 
     for (const m of shown) {
@@ -65,12 +111,77 @@ export function createMissionSelect(missions, progress, onPick) {
       // The number leads every row. Once the list scrolls, "the one I am on" is
       // otherwise only expressible as a position on screen -- a number makes it
       // something the player can hold on to and say out loud.
-      const num = `<div class="msel-num">${String(m.number).padStart(2, '0')}</div>`;
+      // Numbered within its own ladder. m.number is the position in the global
+      // table, which reads as 21-28 on a list of eight.
+      const num = `<div class="msel-num">${String(missions.indexOf(m) + 1).padStart(2, '0')}</div>`;
+      /**
+       * WHAT THE MISSION ASKS FOR, as icons WITH THEIR NUMBERS.
+       *
+       * The list is where a player chooses what to play, and every row read
+       * the same: a name, a mood line, three stars. Nothing said whether the
+       * next one was ramps or a crystal sweep -- which is the only question
+       * anyone actually has when picking. Icons fixed the "about what"; they
+       * did not fix "how much", and how much is the half that decides whether
+       * you have five minutes for it.
+       *
+       * Amit: "lose the second tagline. I leave the headline and actually show
+       * the needed criteria. For example, four gates and six ramps. Actually
+       * show that. Like a digit next to every icon."
+       *
+       * SO THE CRITERIA TAKE THE TAGLINE'S PLACE -- second line, under the
+       * name, where the mood line was. Not appended to the right of the row:
+       * THE WHOLE FACE carries five objectives, and five icon-and-number pairs
+       * on one line with a name and three stars does not fit a phone. Putting
+       * them where the prose was costs nothing, because losing the prose is
+       * what bought the room.
+       *
+       * SUMMED BY KIND, not deduped. Nothing in the ladder currently asks for
+       * one kind twice, but "25" and "25" rendered as two gems saying 25 would
+       * be a lie about the total, and summing is the answer that stays true if
+       * a mission ever does split one.
+       */
+      const reqs = [];
+      for (const o of m.objectives || []) {
+        const key = o.kind === 'pickup' ? (o.type || 'crystal') : o.kind;
+        const hit = reqs.find((r) => r.key === key);
+        if (hit) hit.count += o.count || 0;
+        else reqs.push({ key, count: o.count || 0 });
+      }
+      const criteria = reqs
+        .map((r) => {
+          /**
+           * SCORE IS A NUMBER WITH A WORD, NOT AN ICON WITH A DIGIT.
+           *
+           * Its icon is a star, and this row ends in three stars that mean the
+           * rating -- so FAST LANE rendered a star immediately left of its
+           * rating stars, saying two unrelated things in the same shape. That
+           * is why score was skipped here entirely when the icons went in.
+           *
+           * Skipping it stops working the moment the tagline goes: four
+           * missions in the ladder ask for SCORE AND NOTHING ELSE (FAST LANE,
+           * HIGH ROLLER, DEEP END, BIG NUMBERS), and those rows would now be a
+           * name over an empty line -- the one shape on the list that tells
+           * you nothing at all.
+           *
+           * "18,000 PTS" collides with neither: a grouped number and a word
+           * cannot be misread as a rating, which was the whole objection, and
+           * it needs no star to say what it is.
+           */
+          if (r.key === 'score') {
+            return `<span class="msel-req-score">${r.count.toLocaleString('en-US')} PTS</span>`;
+          }
+          const svg = iconFor(r.key === 'crystal' || r.key === 'idol' ? 'pickup' : r.key, r.key);
+          if (!svg) return '';
+          return `<span class="msel-req"><i class="msel-icon">${svg}</i>${r.count}</span>`;
+        })
+        .filter(Boolean)
+        .join('');
+
       row.innerHTML = unlocked
         ? `${num}
            <div class="msel-text">
              <b>${m.name}</b>
-             <small>${m.brief}</small>
+             <div class="msel-reqs">${criteria}</div>
            </div>
            <div class="msel-stars">${stars(progress.stars(m.id))}</div>`
         // A locked row names itself but not its brief: knowing there is a
@@ -78,7 +189,7 @@ export function createMissionSelect(missions, progress, onPick) {
         : `${num}
            <div class="msel-text">
              <b>${m.name}</b>
-             <small>Clear the mission before it</small>
+             <small>Clear the ${noun} before it</small>
            </div>
            <div class="msel-lock">&#128274;</div>`;
 
@@ -95,37 +206,60 @@ export function createMissionSelect(missions, progress, onPick) {
       listEl.appendChild(more);
     }
 
-    const total = progress.totalStars;
-    totalEl.innerHTML = `<span class="msel-star earned">&#9733;</span> ${total} / ${missions.length * 3}`;
+    /**
+     * NO RUNNING STAR TOTAL. Amit: "in the missions lobby there is an x/120
+     * stars counter -- remove it."
+     *
+     * It was a completion meter for a ladder nobody is meant to complete. Forty
+     * missions at three stars each is 120, so the number a player sees early is
+     * something like 7/120 -- which reads as how far behind they are rather than
+     * how far they have come, and gets worse the longer they play. Every row in
+     * the list already shows its own stars, which is the same information
+     * attached to the thing you can actually do something about.
+     *
+     * Emptied rather than deleted from the markup: #msel-total:empty collapses,
+     * so the header simply closes up.
+     */
+    totalEl.textContent = '';
     const nextM = missions.find((m) => m.id === nextId);
     nextBtn.textContent = progress.cleared(nextId)
-      ? `PLAY ${String(nextM.number).padStart(2, '0')} AGAIN`
-      : `MISSION ${String(nextM.number).padStart(2, '0')}`;
+      ? `PLAY ${String(missions.indexOf(nextM) + 1).padStart(2, '0')} AGAIN`
+      : `MISSION ${String(missions.indexOf(nextM) + 1).padStart(2, '0')}`;
   }
 
   function choose(id) {
     el.classList.add('hidden');
+    showing = null;
     onPick(id);
   }
 
-  nextBtn.addEventListener('click', () => choose(progress.nextMissionId()));
+  /** True only when the shared panel is open AND showing THIS ladder. */
+  function mine() {
+    return showing === api && !el.classList.contains('hidden');
+  }
+
+  nextBtn.addEventListener('click', () => {
+    if (!mine()) return;
+    choose(progress.nextMissionId(track));
+  });
 
   // Space/Enter takes the default action. On the board these are the only keys
   // the host forwards, so without this the screen would be a dead end there --
   // the same reason the game-over overlay listens for them.
   window.addEventListener('keydown', (e) => {
-    if (el.classList.contains('hidden')) return;
+    if (!mine()) return;
     if (e.code === 'Space' || e.code === 'Enter') {
       e.preventDefault();
-      choose(progress.nextMissionId());
+      choose(progress.nextMissionId(track));
     }
   });
 
-  return {
-    isOpen: () => !el.classList.contains('hidden'),
+  const api = {
+    isOpen: () => mine(),
     /** Re-reads progress every time, so a result is reflected the moment it lands. */
     open() {
       render();
+      showing = api;
       el.classList.remove('hidden');
       // Bring the mission you are actually on into view. The list scrolls, but
       // the GoBalance WebView forwards no pointer at all -- there is nothing to
@@ -136,6 +270,11 @@ export function createMissionSelect(missions, progress, onPick) {
       const next = listEl.querySelector('.msel-row.next');
       if (next) next.scrollIntoView({ block: 'center' });
     },
-    close() { el.classList.add('hidden'); },
+    close() {
+      el.classList.add('hidden');
+      if (showing === api) showing = null;
+    },
   };
+
+  return api;
 }

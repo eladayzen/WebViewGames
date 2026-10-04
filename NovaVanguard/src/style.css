@@ -1,0 +1,1615 @@
+/* Nova Vanguard HUD (§7.1). DOM/CSS overlay on top of the canvas -- not drawn
+   into the render layer, so text stays crisp and updates stay cheap.
+
+   Everything is sized in `vmin`-relative or percentage units, never fixed px,
+   because the SDK's WebView is a small viewport and a px-sized control that
+   looks right in a dev window dominates the screen there. That is a lesson
+   already paid for in this repo (see WEB_MINIGAME_TECH_RETROSPECTIVE.md's
+   note 4 on the intro-overlay work).
+
+   Every element sits in the MARGINS. The centre of the frame stays clear
+   (§5.1) -- no persistent readout above y = 0.34 in the middle 60%. */
+
+:root {
+  --cyan: #6fe8ff;
+  --cyan-dim: #1d5f74;
+  --hot: #ff8a3c;
+  --magenta: #ee40c4;
+  --ink: #05060a;
+  --panel: rgba(8, 12, 22, 0.82);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #eafcff;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The letterboxed 16:9 frame. Sized by JS from the renderer's own box, so the
+   HUD and the playfield agree on where the frame edges are. */
+#stage {
+  position: absolute;
+  overflow: hidden;
+}
+
+#app canvas {
+  display: block;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Left margin: the shield gauge (§7.1). Vertical, 6 segments, cyan, with a
+   shield glyph at its foot -- per concept-01.
+   The outer 6% of the frame is HUD margin, so it sits inside that band.
+--------------------------------------------------------------------------- */
+
+#shield-wrap {
+  position: absolute;
+  left: 1.1%;
+  top: 26%;
+  height: 46%;
+  width: 3.6%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6vmin;
+  z-index: 20;
+}
+
+#shield-gauge {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.55vmin;
+  padding: 0.5vmin;
+  border: 0.28vmin solid var(--cyan);
+  border-radius: 1.4vmin;
+  background: rgba(4, 18, 26, 0.55);
+  box-shadow: 0 0 1.6vmin rgba(111, 232, 255, 0.35);
+}
+
+.shield-seg {
+  flex: 1;
+  border-radius: 0.5vmin;
+  background: linear-gradient(90deg, #37c8e6, #9df4ff);
+  box-shadow: 0 0 0.9vmin rgba(111, 232, 255, 0.75);
+  transition: opacity 0.14s linear, background 0.14s linear;
+}
+
+.shield-seg.off {
+  background: #102a33;
+  box-shadow: none;
+  opacity: 0.5;
+}
+
+/* Nearly-out reads hot from the centre of the screen, so the player does not
+   have to look at the gauge to know (§7.3). */
+.shield-seg.low {
+  background: linear-gradient(90deg, #ff6a2a, #ffc48a);
+  box-shadow: 0 0 1.2vmin rgba(255, 122, 42, 0.9);
+}
+
+#shield-glyph {
+  font-size: 2.1vmin;
+  color: var(--cyan);
+  filter: drop-shadow(0 0 0.6vmin rgba(111, 232, 255, 0.8));
+}
+
+/* ---------------------------------------------------------------------------
+   Top-left: the framing-mode switch.
+
+   THE ELEMENT IS NO LONGER IN index.html -- Mode S is decided, so the on-screen
+   A/B control was removed (playtest round 3). These rules are kept
+   deliberately, not overlooked: the decision note requires Mode A's code path
+   to stay available for comparison, and `M` and ?mode= still swap modes, so
+   putting the switch back is a few lines of HTML and no CSS work. Delete this
+   block only if Mode A itself is ever dropped, which the decision note says it
+   is not.
+--------------------------------------------------------------------------- */
+
+#mode-switch {
+  position: absolute;
+  left: 1.1%;
+  top: 2.2%;
+  z-index: 9998;
+}
+
+.mode-label {
+  font-size: 1.25vmin;
+  letter-spacing: 0.28em;
+  color: #7f93a8;
+  margin-bottom: 0.5vmin;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 0.5vmin;
+}
+
+.mode-buttons button {
+  font: 600 1.5vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  padding: 0.9vmin 1.3vmin;
+  border-radius: 0.8vmin;
+  border: 0.22vmin solid #2b4457;
+  background: rgba(10, 18, 30, 0.8);
+  color: #7f93a8;
+  cursor: pointer;
+}
+
+.mode-buttons button.on {
+  border-color: var(--cyan);
+  color: #eafcff;
+  background: rgba(20, 70, 92, 0.9);
+  box-shadow: 0 0 1.4vmin rgba(111, 232, 255, 0.5);
+}
+
+/* ---------------------------------------------------------------------------
+   Banner: full-width band centred in the gutter at y ~= 0.42 (§7.1), so it
+   never sits over the formation band or the player band.
+--------------------------------------------------------------------------- */
+
+#banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 42%;
+  transform: translateY(-50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 30;
+}
+
+/* WHILE A BOSS HULL IS ON SCREEN, the band steps down out of the hull.
+   BANNER_Y_BOSS in /data/tuning.js carries the full reasoning and the two
+   clearances the number is picked from; the short version is that §7.1's 0.42
+   and §6.4's hull extent are both authored and they overlap, so the one line
+   telling the player what to do was being printed on armour. /ui/hud.js adds
+   this class for exactly as long as w.boss.active. */
+#banner.on-boss {
+  top: 57.5%;
+}
+
+/* Slightly smaller type in the boss position: the band there has the hull's
+   mast above it and the player's own reachable ceiling below it, and losing a
+   few percent of cap height buys clearance at both edges without costing
+   legibility at arm's length. */
+#banner.on-boss #banner-text {
+  font-size: 2.8vmin;
+  padding: 0.85vmin 3.4vmin;
+}
+
+#banner-text {
+  display: inline-block;
+  padding: 1vmin 4vmin;
+  font: 700 3.2vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.42em;
+  color: #eafcff;
+  background: linear-gradient(
+    90deg,
+    rgba(8, 20, 34, 0) 0%,
+    rgba(8, 30, 48, 0.86) 18%,
+    rgba(8, 30, 48, 0.86) 82%,
+    rgba(8, 20, 34, 0) 100%
+  );
+  text-shadow: 0 0 2vmin rgba(111, 232, 255, 0.8);
+}
+
+/* ---------------------------------------------------------------------------
+   #boss-hp -- the HULL BOSS's HP bar, riding directly above the hull.
+
+   Position and width are written per frame by /ui/hud.js from the boss's live
+   design-space geometry; everything here is appearance only. The stage is the
+   letterboxed 16:9 frame and the Pixi canvas fills exactly the same box, so a
+   percentage here and a design-space coordinate there mean the same place --
+   which is what lets a DOM bar sit convincingly on a rendered object.
+
+   Deliberately NOT styled like the top-edge chrome: it has a solid backing
+   plate and a heavy border so it reads as a thing attached to the boss rather
+   than as a screen rule. That distinction is the entire fix.
+--------------------------------------------------------------------------- */
+
+#boss-hp {
+  position: absolute;
+  pointer-events: none;
+  z-index: 32;
+  text-align: center;
+}
+
+#boss-hp-name {
+  font: 800 1.9vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.34em;
+  color: #ffe6f7;
+  text-shadow: 0 0 1.6vmin rgba(255, 79, 191, 0.9), 0 0.2vmin 0.3vmin #000;
+  margin-bottom: 0.5vmin;
+}
+
+#boss-hp-row {
+  display: flex;
+  align-items: center;
+  gap: 1vmin;
+}
+
+#boss-hp-track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 2.2vmin;
+  border: 0.28vmin solid rgba(255, 150, 215, 0.85);
+  border-radius: 0.4vmin;
+  /* Opaque, not translucent: it sits over the hull art, and a see-through bar
+     over a busy metallic surface is exactly the kind of low-contrast readout
+     §7.3 says the playfield must not need decoding. */
+  background: #1a0512;
+  box-shadow: 0 0 1.6vmin rgba(0, 0, 0, 0.85), inset 0 0 0.8vmin rgba(0, 0, 0, 0.9);
+  overflow: hidden;
+}
+
+#boss-hp-fill,
+#boss-hp-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  transform-origin: left center;
+}
+
+#boss-hp-fill {
+  background: linear-gradient(90deg, #ff7a2a, #ff4fbf);
+  box-shadow: 0 0 1.4vmin rgba(255, 79, 191, 0.75);
+}
+
+/* The chip is the slice lost in the last instant, drawn UNDER the fill and
+   slightly wider, so it shows as a bright leading edge. It is the only reason a
+   single bolt against a 240-point pool is visible at all. */
+#boss-hp-chip {
+  background: #fff4fb;
+  box-shadow: 0 0 1.2vmin rgba(255, 255, 255, 0.9);
+}
+
+/* The number. Tabular figures so the digits do not jitter as it counts down --
+   at 9.5 hits/second a proportional font makes the whole readout wobble. */
+#boss-hp-value {
+  flex: 0 0 auto;
+  min-width: 7ch;
+  text-align: right;
+  font: 800 1.9vmin/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  color: #ffe6f7;
+  text-shadow: 0 0 1.2vmin rgba(255, 79, 191, 0.85), 0 0.2vmin 0.3vmin #000;
+}
+
+/* ---------------------------------------------------------------------------
+   Boss bar (§6.4, §7.1) -- full width along the very top edge, plus small
+   individual pod pips. POD BOSSES ONLY (two and three); boss one uses #boss-hp.
+
+   Sized to sit ENTIRELY inside the top HUD strip (y 0.000-0.050), which §5.1
+   reserves for the boss bar and forbids to every entity. 5% of 1080 is 54px,
+   so the whole stack (name + track + pips) is budgeted against that rather
+   than being allowed to grow into the entry telegraph band beneath it.
+--------------------------------------------------------------------------- */
+
+#boss-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 5%;
+  padding: 0.5% 6% 0;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 34;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35vmin;
+}
+
+/* Carries the whole state line now ("CINDERJAW · PODS 3/4 · CORE SEALED"), so
+   the tracking is tightened from 0.34em -- at the old spacing the string ran
+   past the 6% HUD margins §5.1 reserves. */
+#boss-bar-name {
+  font: 700 1.5vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.16em;
+  color: #ffd0ee;
+  text-shadow: 0 0 1.4vmin rgba(255, 90, 200, 0.75);
+}
+
+#boss-bar-track {
+  width: 100%;
+  height: 1.1vmin;
+  border: 0.2vmin solid rgba(255, 120, 205, 0.65);
+  border-radius: 0.6vmin;
+  background: rgba(30, 6, 22, 0.78);
+  overflow: hidden;
+}
+
+#boss-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ff7a2a, #ff4fbf);
+  box-shadow: 0 0 1.6vmin rgba(255, 79, 191, 0.7);
+  transform-origin: left center;
+}
+
+/* The core's own gauge greys out while it is sealed, so "not yet" is a state of
+   the readout rather than something the player has to infer from it not moving. */
+#boss-bar.core-sealed #boss-bar-fill {
+  background: #6b4a5e;
+  box-shadow: none;
+}
+
+/* ONE GAUGE PER POD, POSITIONED OVER THE POD IT BELONGS TO.
+
+   The old version was a flex row of five identical pips in the middle of the
+   top strip: nothing tied pip 3 to the pod at hull-x 0.452, and each pip was
+   binary, so six bolts into a pod showed no progress and then the pip blinked
+   out. /ui/hud.js sets `left` from each pod's own dx, and each gauge has its own
+   fill -- so the readout is a map of the boss, and every bolt moves something. */
+#boss-pips {
+  position: relative;
+  width: 100%;
+  height: 0.9vmin;
+}
+
+.boss-pod-gauge {
+  position: absolute;
+  top: 0;
+  /* Centred on the authored left%, so the gauge straddles its pod's x. */
+  transform: translateX(-50%);
+  width: 5.2vmin;
+  height: 0.9vmin;
+  border: 0.16vmin solid rgba(255, 150, 215, 0.7);
+  border-radius: 0.25vmin;
+  background: rgba(30, 6, 22, 0.85);
+  overflow: hidden;
+}
+
+.boss-pod-fill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: #ff4fbf;
+  box-shadow: 0 0 0.9vmin rgba(255, 79, 191, 0.8);
+}
+
+/* A destroyed pod's gauge stays on the readout as an empty socket rather than
+   disappearing -- the player needs to see what they have already done (§6.4). */
+.boss-pod-gauge.dead {
+  border-color: rgba(120, 90, 110, 0.6);
+  background: #241820;
+}
+
+/* The pod currently in the firing rotation, matched to the pulse on the pod
+   sprite itself so the bar and the playfield agree about who is shooting. */
+.boss-pod-gauge.firing {
+  border-color: #ffd0ee;
+  box-shadow: 0 0 1vmin rgba(255, 208, 238, 0.75);
+}
+
+/* A SHUT LAUNCH BAY (§6.4, BOSS.bay). Alive, at full HP, and immune for as
+   long as the doors are closed -- so its gauge goes cold and its fill goes
+   grey. It must not look like a healthy target, because for these few seconds
+   it is not one, and a bright bar over an immune bay is the readout telling the
+   same lie the playfield is careful not to. It also must not look DEAD, or the
+   player would stop watching for it to open. Grey-and-present is the only
+   correct third state. */
+.boss-pod-gauge.shut {
+  border-color: rgba(150, 150, 170, 0.55);
+  box-shadow: none;
+}
+
+.boss-pod-gauge.shut .boss-pod-fill {
+  background: #6b6b7a;
+  box-shadow: none;
+}
+
+/* ---------------------------------------------------------------------------
+   WARNING band (§6.4) -- 2.0 s before the boss arrives.
+--------------------------------------------------------------------------- */
+
+#boss-warning {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 42%;
+  transform: translateY(-50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 33;
+  padding: 1.6vmin 0;
+  background: linear-gradient(
+    90deg,
+    rgba(120, 8, 8, 0) 0%,
+    rgba(150, 10, 18, 0.88) 20%,
+    rgba(150, 10, 18, 0.88) 80%,
+    rgba(120, 8, 8, 0) 100%
+  );
+  border-top: 0.25vmin solid rgba(255, 90, 90, 0.9);
+  border-bottom: 0.25vmin solid rgba(255, 90, 90, 0.9);
+  animation: boss-warn 0.62s steps(1, end) infinite;
+}
+
+#boss-warning span {
+  font: 800 3.4vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.5em;
+  color: #ffe2e2;
+  text-shadow: 0 0 2.2vmin rgba(255, 70, 70, 0.95);
+}
+
+@keyframes boss-warn {
+  0% { opacity: 1; }
+  50% { opacity: 0.42; }
+}
+
+/* ---------------------------------------------------------------------------
+   Validator report (§9.4) -- loud, on-screen, because there is no console
+   inside the WebView.
+--------------------------------------------------------------------------- */
+
+#constraint-warning {
+  position: absolute;
+  left: 50%;
+  bottom: 1.5%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 0.7vmin 1.6vmin;
+  border-radius: 0.7vmin;
+  font: 600 1.35vmin/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+  background: rgba(70, 60, 10, 0.9);
+  border: 0.2vmin solid #d8b93c;
+  color: #ffe9a8;
+}
+
+#constraint-warning.is-error {
+  background: rgba(80, 12, 12, 0.92);
+  border-color: #ff5a5a;
+  color: #ffd6d6;
+}
+
+/* ---------------------------------------------------------------------------
+   POC-7 instrumentation panel. Right margin, two columns, both modes always
+   visible -- POC-8 is a comparison (§10).
+--------------------------------------------------------------------------- */
+
+#instr-panel {
+  position: absolute;
+  right: 0.8%;
+  top: 2.2%;
+  width: 30%;
+  max-width: 34vmin;
+  z-index: 9997;
+  background: var(--panel);
+  border: 0.2vmin solid #21374a;
+  border-radius: 1vmin;
+  padding: 1vmin 1.2vmin;
+  font: 500 1.28vmin/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #b9cddd;
+  pointer-events: none;
+}
+
+#instr-title {
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--cyan);
+  margin-bottom: 0.7vmin;
+  font-size: 1.3vmin;
+}
+
+#instr-panel table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#instr-panel th,
+#instr-panel td {
+  text-align: right;
+  padding: 0.18vmin 0.3vmin;
+  white-space: nowrap;
+}
+
+#instr-panel tr > th:first-child {
+  text-align: left;
+  font-weight: 500;
+  color: #7f93a8;
+}
+
+#instr-panel tr:first-child th {
+  color: #55708a;
+  font-size: 1.15vmin;
+  letter-spacing: 0.1em;
+  border-bottom: 0.15vmin solid #21374a;
+}
+
+#instr-panel tr:first-child th.active {
+  color: var(--cyan);
+}
+
+/* The drift-chasing detector -- the metric Mode S most has to pass. */
+#instr-panel tr.key-metric th,
+#instr-panel tr.key-metric td {
+  color: var(--hot);
+  font-weight: 700;
+}
+
+#instr-live {
+  margin-top: 0.7vmin;
+  padding-top: 0.6vmin;
+  border-top: 0.15vmin solid #21374a;
+  color: #8fb4cc;
+  font-size: 1.18vmin;
+  word-break: break-word;
+  white-space: normal;
+}
+
+#instr-hint {
+  margin-top: 0.5vmin;
+  color: #55708a;
+  font-size: 1.1vmin;
+  white-space: normal;
+}
+
+/* ---------------------------------------------------------------------------
+   Sector surface transition -- the screen-covered swap (§5.4, POC-8 decision
+   note §3). A placeholder covering beat; §7.2's tally / console / briefing are
+   MVP item 9 and are not here.
+
+   Below the game-over overlay's z-index on purpose: if the player dies on the
+   same frame a transition starts, the SDK's overlay contract still wins the
+   screen.
+--------------------------------------------------------------------------- */
+
+/* Above the instrumentation panel and the framing switch -- a cover with the
+   mode switch punched through it reads as a bug rather than as a transition --
+   but below the SDK's own chrome (back / pause at 9999) and below the
+   game-over overlay at 10000, whose DOM contract must always win the screen. */
+#sector-transition {
+  position: absolute;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Two shutters closing over the frame. Positioned just outside their own edge
+   and translated in by JS, so at rest they cover nothing. */
+.shutter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 52%; /* >50% so the two overlap slightly and never leave a hairline */
+  background: linear-gradient(180deg, #070c14 0%, #0b131f 78%, #101a28 100%);
+  will-change: transform;
+}
+
+#shutter-top {
+  top: -52%;
+  border-bottom: 0.25vmin solid rgba(111, 232, 255, 0.5);
+  box-shadow: 0 0.4vmin 2.4vmin rgba(0, 0, 0, 0.8);
+}
+
+#shutter-bottom {
+  bottom: -52%;
+  border-top: 0.25vmin solid rgba(111, 232, 255, 0.5);
+  box-shadow: 0 -0.4vmin 2.4vmin rgba(0, 0, 0, 0.8);
+}
+
+#sector-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  will-change: opacity;
+}
+
+#sector-kicker {
+  font: 600 1.4vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.5em;
+  color: #6d8598;
+  margin-bottom: 1.4vmin;
+}
+
+/* Readable at arm's length, by someone standing on a balance board. */
+#sector-name {
+  font: 700 4.4vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.34em;
+  color: #eafcff;
+  text-shadow: 0 0 3vmin rgba(111, 232, 255, 0.55);
+}
+
+/* A short rule under the name, tinted to the destination surface's accent, so
+   the beat previews where you are going instead of just hiding where you were.
+   Width is animated, so the hold reads as progress rather than as a freeze. */
+#sector-rule {
+  height: 0.3vmin;
+  margin: 1.8vmin auto 0;
+  width: 0;
+  background: currentColor;
+  box-shadow: 0 0 1.6vmin currentColor;
+}
+
+/* ---------------------------------------------------------------------------
+   Game-over overlay -- the SDK's DOM contract (§7.4). The ids and the
+   `hidden` class name are fixed by GOBALANCE_SDK.md; the styling is ours.
+--------------------------------------------------------------------------- */
+
+/* THE BOARD SCREEN -- one design, shown twice.
+ *
+ * The run opens and closes on the same screen: the same background, the same
+ * card, the same table of names. That is the point of it. Before the run it
+ * says who you are trying to beat; after it, whether you did. Two screens that
+ * merely happened to show the same table would read as two features.
+ *
+ * A real background rather than a translucent overlay, so it is a place rather
+ * than a pause -- the playfield behind it is not part of what the player is
+ * looking at in either case. */
+.board-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(31, 58, 96, 0.92) 0%, rgba(5, 8, 18, 0.97) 62%),
+    #04060e;
+}
+
+.board-screen.hidden { display: none; }
+
+/* SIZED FOR A PLAYER STANDING ON A BOARD, roughly 1.5-2 m from the screen, not
+   for someone at a desk (Amit, on the start screen: "the first UI you see is
+   very small... we can increase it a lot").
+
+   THEN CUT 20% AFTER A TABLET (Amit again: "the opening screens were too big --
+   much too big"). The cause was the unit, not the numbers. vmin is a percentage
+   of the SHORT edge, and on a 4:3 tablet the short edge is a far larger
+   fraction of the width than it is on 16:9 -- so a card tuned on a widescreen
+   display rendered about a third bigger on the tablet without a single value
+   changing.
+
+   Every size below is therefore `min(Xvmin, Yvw)` with Y ~= X * 9/16. On 16:9
+   the two terms are equal and the vmin term governs, exactly as before; on
+   anything squarer the vw term binds first and holds the card to the same
+   share of the WIDTH. The screen shape stops being able to resize the UI.
+
+   The three board screens -- start, result, quit -- deliberately share this
+   card, so growing it grows all three. That is the point: they are meant to
+   read as one screen showing the same table at different moments, and a start
+   screen that was legible while the result screen was not would read as two
+   different features. */
+/* THE BUTTONS MUST NEVER LEAVE THE SCREEN (Amit, on mobile: "run ended screen
+   -- the lower buttons are cut out of screen, below screen").
+   The card grew a leaderboard, and on a short landscape phone the title, the
+   stats, ten rows and the buttons do not fit a 390px-high viewport. The card
+   was sized by its content and simply overflowed the bottom edge, taking PLAY
+   AGAIN and QUIT with it.
+   So the card is a column that never exceeds the viewport, and the part that
+   yields is the LIST -- see the rows rule below. Title, score and buttons are
+   fixed furniture; the board is the only thing that can afford to be cut off,
+   and it is also the only thing a player can still read by scrolling. */
+.board-card {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  max-height: 88%;
+  min-width: 62%;
+  max-width: 82%;
+  padding: min(3.7vmin, 2.1vw) min(4.3vmin, 2.4vw);
+  border-radius: 1.6vmin;
+  background: rgba(9, 14, 28, 0.72);
+  border: 0.18vmin solid rgba(111, 232, 255, 0.22);
+  box-shadow: 0 1.4vmin 5vmin rgba(0, 0, 0, 0.55);
+}
+
+#start-card h1,
+#gameover-card h1 {
+  margin: 0 0 1.6vmin;
+  font-size: min(5.3vmin, 3vw);
+  letter-spacing: 0.5vmin;
+  color: #eafcff;
+  text-shadow: 0 0 2vmin rgba(111, 232, 255, 0.55);
+}
+
+#start-sub {
+  margin: 0 0 2.4vmin;
+  font-size: min(2.4vmin, 1.35vw);
+  letter-spacing: 0.12vmin;
+  color: rgba(207, 233, 245, 0.72);
+}
+
+/* The countdown is the one thing on the start screen that changes, so it is the
+   one thing sized to be read from a standing position on a board. */
+/* The line that changes, so it is the one sized to be read from a standing
+   position on a board rather than from a chair. */
+#start-countdown {
+  margin: 3vmin 0 0;
+  font: 700 min(3.5vmin, 2vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.22vmin;
+  color: #6fe8ff;
+  text-shadow: 0 0 1.6vmin rgba(111, 232, 255, 0.6);
+}
+
+#gameover-card {
+  text-align: center;
+  padding: 4vmin 6vmin;
+  border: 0.25vmin solid var(--cyan);
+  border-radius: 1.6vmin;
+  background: rgba(6, 14, 26, 0.94);
+  box-shadow: 0 0 5vmin rgba(111, 232, 255, 0.28);
+}
+
+#gameover-card h1 {
+  margin: 0 0 1vmin;
+  font-size: 4.6vmin;
+  letter-spacing: 0.3em;
+  color: #ff8a3c;
+  text-shadow: 0 0 2.4vmin rgba(255, 138, 60, 0.7);
+}
+
+#gameover-stats {
+  margin: 0 0 2.8vmin;
+  font-size: min(1.9vmin, 1.1vw);
+  color: #9fc0d4;
+  letter-spacing: 0.1em;
+}
+
+/* Sized in vmin, not px -- see the header note. */
+#restart-button {
+  font: 700 2vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.24em;
+  padding: 1.4vmin 4vmin;
+  border-radius: 1vmin;
+  border: 0.22vmin solid var(--cyan);
+  background: rgba(20, 70, 92, 0.9);
+  color: #eafcff;
+  cursor: pointer;
+}
+
+/* "Not yet" -- the first seconds of the result screen, where the score is being
+   read and nothing may take the screen away. Visibly disabled rather than
+   silently inert: a control that looks pressable and does nothing reads as a
+   broken game. */
+#restart-button.not-yet {
+  opacity: 0.4;
+  cursor: default;
+  border-color: rgba(111, 232, 255, 0.3);
+}
+
+#restart-button:hover {
+  background: rgba(30, 100, 128, 0.95);
+}
+
+/* ---------------------------------------------------------------------------
+   The temporary weapon's remaining time (§5.6, WEAPONS.scatter)
+
+   Left margin, under the shield gauge, in the "how strong am I" group §7.1
+   puts there. CYAN, like every other player-owned readout and like the weapon's
+   own rounds -- §5.4 colour-codes ownership and the HUD has no business
+   disagreeing with the playfield about whose thing this is.
+
+   The bar drains right-to-left via a transform rather than a width, so it never
+   forces layout: this updates every frame for eleven seconds at a time.
+--------------------------------------------------------------------------- */
+/* THE TEMPORARY-WEAPON CLOCK (playtest round 11).
+ *
+ * Amit: "feedback on weapon UI was that it's more than not clear, like I didn't
+ * see it at first. Like the time of how long do I have the weapon for."
+ *
+ * It was 3.6% of the frame width, in the far LEFT margin, at 73.5% height --
+ * i.e. as far from where the player's eyes are as the frame allows. The whole
+ * temporary-weapon system was therefore invisible until it ended, which is most
+ * of why losing a weapon felt like something the game did TO the player.
+ *
+ * It now sits bottom-centre, directly under the ship. §5.1's HUD-exclusion rule
+ * protects the centre-TOP (CENTRE_CLEAR_ABOVE_Y = 0.34) because that is where
+ * formations and bosses live; the bottom margin below the player band is free,
+ * and it is the one place the player is already looking.
+ */
+#weapon-timer {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 2.2%;
+  width: 26%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7vmin;
+  z-index: 20;
+  pointer-events: none;
+}
+
+#weapon-name {
+  font: 800 1.9vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.34vmin;
+  color: #eafcff;
+  text-shadow: 0 0 1.4vmin rgba(111, 232, 255, 0.95);
+  white-space: nowrap;
+}
+
+#weapon-track {
+  width: 100%;
+  height: 1.9vmin;
+  border: 0.28vmin solid var(--cyan, #6fe8ff);
+  border-radius: 1vmin;
+  background: rgba(4, 18, 26, 0.62);
+  overflow: hidden;
+  box-shadow: 0 0 1.8vmin rgba(111, 232, 255, 0.45);
+}
+
+#weapon-fill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #37c8e6, #d8fbff);
+  box-shadow: 0 0 0.9vmin rgba(111, 232, 255, 0.8);
+}
+
+/* The last two seconds pulse, so "it is about to go" is readable without
+   reading anything. */
+#weapon-timer.expiring #weapon-fill {
+  animation: weapon-expiring 0.42s ease-in-out infinite alternate;
+}
+
+@keyframes weapon-expiring {
+  from { opacity: 1; }
+  to { opacity: 0.35; }
+}
+
+/* The whole readout flashes in its last seconds, not just the fill -- at the
+   old size a fill-only pulse was invisible, which defeated the point of having
+   a warning at all. */
+#weapon-timer.expiring #weapon-name {
+  animation: weapon-expiring 0.42s ease-in-out infinite alternate;
+}
+
+#weapon-timer.expiring #weapon-track {
+  border-color: #fff2b0;
+  box-shadow: 0 0 2.4vmin rgba(255, 226, 120, 0.75);
+}
+
+/* ---------------------------------------------------------------------------
+   Dev panel (ui/devPanel.js)
+   ---------------------------------------------------------------------------
+   Fourth button in the top-right chrome row, continuing the 48px spacing of
+   back / pause / mute. Deliberately styled like the rest of the chrome rather
+   than as a debug overlay: it is a tool Amit uses while judging the game, so
+   it should not fight the art while it is open.
+--------------------------------------------------------------------------- */
+
+#dev-button {
+  position: absolute;
+  top: 12px;
+  /* FOURTH SLOT, following the gear inboard. It only exists once the unlock
+     gesture has been performed, so it is the one button in the row a player
+     never sees -- but when it appears it has to appear in the row, not floating
+     a slot away from it. */
+  right: 186px;
+  z-index: 9999;
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: #eafcff;
+  font: 600 19px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-button.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+}
+
+#dev-panel {
+  position: absolute;
+  top: 68px;
+  right: 12px;
+  z-index: 9999;
+  width: 232px;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+  background: rgba(10, 12, 26, 0.93);
+  border: 1px solid rgba(111, 232, 255, 0.28);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  color: #eafcff;
+  font: 500 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-panel.hidden { display: none; }
+
+.dev-section {
+  margin: 10px 0 5px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: rgba(111, 232, 255, 0.72);
+}
+
+.dev-section:first-child { margin-top: 2px; }
+
+.dev-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.dev-toggle { justify-content: space-between; }
+
+.dev-chip {
+  flex: 1;
+  min-width: 34px;
+  padding: 6px 4px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(30, 40, 70, 0.8);
+  color: #eafcff;
+  font: 600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.dev-toggle .dev-chip { flex: 0 0 52px; }
+
+.dev-chip:hover { background: rgba(45, 60, 100, 0.9); }
+
+.dev-chip.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+  border-color: rgba(55, 200, 230, 0.9);
+}
+
+.dev-note {
+  margin: 2px 0 4px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(234, 252, 255, 0.55);
+}
+
+/* Invincibility has to be impossible to forget about -- a persistent tint on
+   the frame, so "why am I not dying" is answered before it is asked. */
+body.dev-invincible::after {
+  content: 'INVINCIBLE';
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9998;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 96, 96, 0.85);
+  color: #180404;
+  font: 700 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 0.12em;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   The account scoreboard, on the game-over card (systems/scoreboard.js).
+   ---------------------------------------------------------------------------
+   Sized and coloured as part of the card rather than as a panel of its own:
+   this is the last line of a result the player is already reading, not a
+   separate screen. It is also ABOVE the restart button in the DOM and must stay
+   there -- the host synth-clicks #restart-button on Space/Enter while the
+   overlay is up, and the button has to remain the obvious end of the card.
+--------------------------------------------------------------------------- */
+
+#scoreboard,
+#start-scoreboard,
+#quit-scoreboard {
+  margin: 2.2vmin 0 0.6vmin;
+  width: 100%;
+  text-align: left;
+}
+
+#scoreboard.hidden,
+#start-scoreboard.hidden,
+#quit-scoreboard.hidden { display: none; }
+
+#scoreboard-title,
+#start-scoreboard-title,
+#quit-scoreboard-title {
+  font: 700 min(1.85vmin, 1.05vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.3vmin;
+  color: rgba(111, 232, 255, 0.75);
+  margin-bottom: 1.5vmin;
+  text-align: center;
+}
+
+#scoreboard-rows,
+#start-scoreboard-rows,
+#quit-scoreboard-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8vmin;
+  /* The one part of the card allowed to lose height. `min-height: 0` is the
+     load-bearing half: without it a flex child refuses to shrink below its
+     content and the overflow reappears at the bottom of the card, which is
+     exactly the bug this is fixing. */
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The scoreboard block is what actually shrinks; the rows scroll inside it. */
+#scoreboard,
+#start-scoreboard,
+#quit-scoreboard {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The row is the thing that actually gets READ, so it takes the largest jump.
+   A name and a score at 1.5vmin is about 16px on a 1080-high display -- fine on
+   a laptop, unreadable from where this game is played. */
+.sb-row {
+  display: grid;
+  grid-template-columns: 4.4vmin 4.8vmin 1fr auto;
+  align-items: baseline;
+  gap: 1.4vmin;
+  padding: 1.1vmin 1.6vmin;
+  border-radius: 1vmin;
+  background: rgba(20, 34, 54, 0.55);
+  font: 600 min(2.2vmin, 1.25vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  color: #cfe9f5;
+}
+
+/* The player's own row. Brighter and outlined rather than merely tinted --
+   "where am I" is the only question this board has to answer at a glance, and
+   it is being read by someone who has just died and is about to press
+   restart. */
+.sb-row.sb-you {
+  background: rgba(55, 200, 230, 0.20);
+  outline: 0.22vmin solid rgba(111, 232, 255, 0.8);
+  color: #eafcff;
+}
+
+.sb-rank { color: rgba(207, 233, 245, 0.55); text-align: right; }
+/* LEFT, explicitly. The card is `text-align: center` for its heading, and a
+   grid cell inherits that -- so the name floated in the middle of its column
+   while the rank and score sat at the edges, which read as a broken table. */
+.sb-name {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-score { font-variant-numeric: tabular-nums; letter-spacing: 0.06vmin; }
+
+/* ---------------------------------------------------------------------------
+   The sound menu, off the speaker button.
+   ---------------------------------------------------------------------------
+   A PLAYER-FACING control, not a debug panel: two rows, words rather than
+   numbers, and the state spelled out as On/Off instead of encoded in a colour
+   that has to be learned. Sized for a thumb, since the same markup is what a
+   touch device gets.
+--------------------------------------------------------------------------- */
+
+/* The sound rows live in the gear panel now (see ui/settingsPanel.js); the
+   floating #sound-menu they used to sit in is gone, along with the speaker
+   button that opened it. Only the row styling survives, and it is shared with
+   whatever else the panel grows. */
+#settings-panel .sound-row { width: 100%; margin-top: 8px; }
+.settings-section-later { margin-top: 20px; }
+
+.sound-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(111, 232, 255, 0.22);
+  border-radius: 9px;
+  background: rgba(30, 40, 70, 0.75);
+  color: #cfe9f5;
+  font: 600 14px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.sound-row:hover { background: rgba(45, 60, 100, 0.9); }
+
+/* On is the lit state, so "is my music on" is answerable at a glance without
+   reading the word. The word is still there for anyone who needs it. */
+.sound-row.on {
+  background: rgba(55, 200, 230, 0.20);
+  border-color: rgba(111, 232, 255, 0.75);
+  color: #eafcff;
+}
+
+.sound-state {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+}
+
+#sound-note {
+  padding: 6px 4px 2px;
+  text-align: center;
+  font: 500 11.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  line-height: 1.35;
+  color: rgba(255, 214, 138, 0.95);
+}
+
+#sound-note.hidden { display: none; }
+
+
+/* --- avatars and the two-section board (playtest round 13) ---------------- */
+
+/* The initial on a colour stable for that profile. No image: the app's avatar
+   art cannot be reached from the page, and mirroring it per game was rejected
+   as a maintenance cost (see /data/avatars.js). */
+.sb-avatar {
+  width: min(3.5vmin, 2vw);
+  height: min(3.5vmin, 2vw);
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(111, 232, 255, 0.18);
+}
+
+/* Dark text on the light wheel colours, which is legible on every one of them
+   and needs no per-colour contrast decision. */
+.sb-avatar {
+  font: 700 min(1.7vmin, 0.95vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  color: #06121c;
+}
+
+/* A player's OTHER runs: marked, but quietly. Only the run just played gets
+   the strong highlight (.sb-you) -- lighting up every row a player owns would
+   stop the screen answering "which one was this run". */
+.sb-row.sb-mine {
+  background: rgba(55, 200, 230, 0.10);
+}
+
+/* The break between the leaders and the window around your run. Without it,
+   rows #5 and #34 sitting flush read as consecutive places. */
+.sb-gap {
+  text-align: center;
+  letter-spacing: 0.6vmin;
+  color: rgba(207, 233, 245, 0.35);
+  font-size: 1.2vmin;
+  padding: 0.2vmin 0;
+}
+
+/* --- the confirm prompt and the quit screen ------------------------------- */
+
+/* The confirm modal. Sits OVER the paused playfield rather than replacing it:
+   just enough scrim to lift the card off the action and make the text legible
+   over whatever happens to be behind it, and no more. The player must be able
+   to see the run they are deciding about. */
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.42);
+}
+
+.modal-overlay.hidden { display: none; }
+
+#confirm-card {
+  min-width: 34%;
+  max-width: 46%;
+}
+
+#confirm-sub {
+  margin: 0 0 0.6vmin;
+  font-size: 1.5vmin;
+  color: rgba(207, 233, 245, 0.75);
+}
+
+.board-buttons {
+  display: flex;
+  gap: 1.2vmin;
+  justify-content: center;
+  margin-top: 2.4vmin;
+}
+
+.board-buttons button {
+  flex: 1 1 0;
+  max-width: 22vmin;
+  padding: 1.5vmin 2vmin;
+  border-radius: 1vmin;
+  border: 0.22vmin solid rgba(111, 232, 255, 0.55);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 1.7vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.18vmin;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.board-buttons button:hover {
+  background: rgba(45, 60, 100, 0.95);
+}
+
+/* The continuing action is the lit one on both screens. Leaving is always
+   available and never the thing the eye lands on first. */
+#confirm-stay,
+#quit-again {
+  background: rgba(55, 200, 230, 0.22);
+  border-color: rgba(111, 232, 255, 0.9);
+}
+
+#quit-stats {
+  margin: 0 0 0.4vmin;
+  font-size: 1.6vmin;
+  color: rgba(207, 233, 245, 0.85);
+}
+
+
+/* ---------------------------------------------------------------------------
+   Player settings (gear) and the dev-tools unlock.
+   ---------------------------------------------------------------------------
+   TEMPLATE. The same two controls, in the same places, should appear in every
+   GoBalance web game: a gear the player is meant to press, and a wrench that
+   only exists once unlocked.
+--------------------------------------------------------------------------- */
+
+#settings-button {
+  position: absolute;
+  top: 12px;
+  /* Matched to the X and pause beside it: a dark circle on a dark screen is
+     technically visible and practically missable, which is how the X on the
+     board screens went unnoticed even once it was on top. */
+  border: 0.2vmin solid rgba(150, 215, 240, 0.55);
+  box-shadow: 0 0 1.4vmin rgba(0, 0, 0, 0.5);
+  /* THIRD IN THE ROW, hard against pause. The row runs on a 58px pitch from the
+     right edge -- 12 (quit), 70 (pause), 128, 186 -- and the speaker that used
+     to hold the third slot is gone, so the gear moves into it rather than
+     leaving a hole the eye reads as a missing button. */
+  right: 128px;
+  z-index: 9999;
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: #eafcff;
+  font: 600 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Paused, shown on the button itself. Deliberately NOT a glyph swap -- see the
+   note in index.html about the pause icon and the colour-emoji font. */
+#pause-button.on {
+  background: rgba(55, 200, 230, 0.85) !important;
+  color: #04121a !important;
+  border-color: rgba(234, 252, 255, 0.9) !important;
+}
+
+#settings-button.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+}
+
+#settings-panel {
+  position: absolute;
+  top: 68px;
+  /* Hangs under the gear. Stage-relative like the button it belongs to. */
+  right: 72px;
+  z-index: 9999;
+  width: 230px;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: rgba(10, 12, 26, 0.94);
+  border: 1px solid rgba(111, 232, 255, 0.30);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  color: #cfe9f5;
+}
+
+#settings-panel.hidden { display: none; }
+
+.settings-section {
+  font: 700 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 0.14em;
+  color: rgba(111, 232, 255, 0.75);
+}
+
+.settings-note {
+  margin: 4px 0 10px;
+  font: 500 11.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: rgba(207, 233, 245, 0.6);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Big steppers rather than a slider: this is set standing on a board, often by
+   a parent, and a coarse control you can hit beats a precise one you cannot. */
+.settings-step {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.35);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.settings-value {
+  flex: 1;
+  text-align: center;
+  font: 700 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #eafcff;
+}
+
+/* The gauge being held, so a seven-second press gives some sign it is doing
+   something -- without hinting at it to anyone not already holding. */
+.devhold { opacity: 0.72; }
+
+#devcode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+}
+
+#devcode-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(111, 232, 255, 0.35);
+}
+
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+#devcode-dots {
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 8px;
+  color: #6fe8ff;
+}
+
+#devcode-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(30, 40, 70, 0.9);
+  color: #eafcff;
+  font: 600 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  gap: 8px;
+}
+
+.devcode-key {
+  height: 62px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 90ms linear;
+}
+
+/* Every key answers a press the same way. A key that looked inert while another
+   lit up was what gave the code away one digit at a time. */
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+
+/* A wrong code, shown for a moment before the row clears. Amber rather than red:
+   this is a mistyped code, not an alarm. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
+}
+
+/* CAMPAIGN COMPLETE -- the beat between the last boss and the board. Same card
+   as the other screens so the game does not suddenly change visual language at
+   its best moment; the difference is the accent and the absence of a board. */
+/* THE ONE SCREEN THAT DOES NOT HIDE THE GAME. Every other board screen paints a
+   near-opaque ground, because the playfield behind it is over and looking at it
+   is a distraction. Here the opposite is true: the fireworks ARE the reward, and
+   an opaque backdrop hid them completely -- the first build of this screen fired
+   them faithfully into a sky nobody could see. */
+#victory-overlay {
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(31, 58, 96, 0.42) 0%, rgba(5, 8, 18, 0.55) 62%),
+    rgba(4, 6, 14, 0.42);
+}
+
+#victory-overlay .board-card {
+  text-align: center;
+  border-color: rgba(255, 214, 122, 0.55);
+  box-shadow: 0 0 6vmin rgba(255, 198, 88, 0.22);
+}
+
+#victory-overlay h1 {
+  color: #ffd67a;
+  letter-spacing: 0.12em;
+}
+
+/* THE RANK IS THE HEADLINE. It is the first thing on the card and the largest
+   thing on it -- larger than "CAMPAIGN COMPLETE", because the title is the same
+   every time and the rank is the part that belongs to this run. */
+#victory-rank {
+  font: 800 min(7.4vmin, 4.2vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.3vmin;
+  color: #ffd67a;
+  text-shadow: 0 0 2.6vmin rgba(255, 198, 88, 0.65);
+  margin-bottom: 0.4vmin;
+  animation: victory-rank-in 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes victory-rank-in {
+  from { opacity: 0; transform: scale(0.72); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+#victory-best {
+  align-self: center;
+  margin: 0.8vmin 0 0.4vmin;
+  padding: 0.5vmin 1.6vmin;
+  border-radius: 999px;
+  background: rgba(255, 214, 122, 0.16);
+  border: 0.18vmin solid rgba(255, 214, 122, 0.7);
+  color: #ffe9b8;
+  font: 700 min(1.7vmin, 1vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.24em;
+  animation: victory-rank-in 420ms ease-out both;
+}
+
+/* The counting number. Tabular figures so the digits do not jitter sideways
+   while it climbs -- the count should read as a total rising, not as text
+   being retyped. */
+#victory-score {
+  font: 800 min(5.6vmin, 3.2vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: #eafcff;
+  margin: 1.4vmin 0 0.6vmin;
+}
+
+#victory-awards {
+  list-style: none;
+  margin: 1.2vmin 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7vmin;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.victory-award {
+  display: flex;
+  justify-content: space-between;
+  gap: 2vmin;
+  padding: 0.8vmin 1.6vmin;
+  border-radius: 1vmin;
+  background: rgba(20, 34, 54, 0.55);
+  font: 600 min(2.1vmin, 1.2vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  color: #cfe9f5;
+  /* Each award slides in from the left as it lands, so the list reads as
+     arriving rather than as having always been there. */
+  animation: award-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes award-in {
+  from { opacity: 0; transform: translateX(-1.4vmin); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.award-value {
+  color: #ffd67a;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The card is a flex column now, so a button left to itself stretches the full
+   width and stops reading as a button. */
+#victory-continue {
+  align-self: center;
+  margin-top: 2vmin;
+  padding: 1.3vmin 5vmin;
+}
+
+/* CONTINUE stays out of the way until the run has finished being read back. */
+#victory-continue.not-yet {
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* Respect a reduced-motion preference: the sequence still happens, it just
+   stops sliding and scaling. */
+@media (prefers-reduced-motion: reduce) {
+  #victory-rank, #victory-best, .victory-award { animation: none; }
+}
+
+#victory-sub {
+  color: rgba(255, 235, 190, 0.82);
+  letter-spacing: 0.22em;
+  font-size: 1.7vmin;
+  margin: 0.6vmin 0 1.8vmin;
+}
+
+#victory-stats {
+  font-size: 2vmin;
+  margin-bottom: 2.4vmin;
+}
+
+/* Matches the restart button on the result screen: this is the same action in
+   the same place in the flow, and a player should not have to learn a second
+   shape for "go on". Gold rather than cyan only because this screen is the
+   one moment the game is congratulating them. */
+#victory-continue {
+  font: 700 2vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.24em;
+  padding: 1.4vmin 4.5vmin;
+  border-radius: 1vmin;
+  border: 0.22vmin solid rgba(255, 214, 122, 0.75);
+  background: rgba(92, 66, 20, 0.9);
+  color: #fff6e2;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#victory-continue:hover {
+  background: rgba(126, 92, 30, 0.95);
+}
+
+#victory-continue:active {
+  transform: translateY(0.2vmin);
+}
+

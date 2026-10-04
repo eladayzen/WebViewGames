@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Web games — analytics</title>
+<style>
+  :root {
+    --bg: #14121a; --panel: #1e1b26; --line: #2f2a3a;
+    --ink: #f3efe8; --dim: #9b93a8; --hot: #ff8a3d;
+    --ok: #7ef0a8; --warn: #ffcf4d; --cool: #6fe8ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    padding: 18px 22px; border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; background: var(--bg); z-index: 2;
+  }
+  h1 { margin: 0; font-size: 16px; letter-spacing: .14em; text-transform: uppercase; }
+  .muted { color: var(--dim); font-size: 12px; }
+  button {
+    background: var(--hot); color: #23150c; border: 0; border-radius: 999px;
+    padding: 7px 18px; font: 700 12px ui-monospace, monospace; cursor: pointer;
+    letter-spacing: .08em;
+  }
+  button.ghost { background: transparent; color: var(--dim); border: 1px solid var(--line); }
+  button.ghost.on { color: var(--ok); border-color: var(--ok); }
+  main { padding: 22px; display: grid; gap: 22px; }
+  .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .card h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--cool); }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+  .row span:last-child { color: var(--ink); font-weight: 700; }
+  .row span:first-child { color: var(--dim); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; color: var(--dim); font-weight: 400; padding: 6px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 61px; background: var(--bg); }
+  td { padding: 5px 10px; border-bottom: 1px solid rgba(47,42,58,.5); vertical-align: top; }
+  tr:hover td { background: rgba(255,255,255,.03); }
+  .ev { font-weight: 700; }
+  .ev-level_end { color: var(--hot); }
+  .ev-level_start { color: var(--cool); }
+  .ev-start_game, .ev-game_end { color: var(--ok); }
+  .ev-heartbeat { color: var(--dim); }
+  .params { color: var(--dim); }
+  .params b { color: var(--ink); font-weight: 400; }
+  .empty { color: var(--dim); padding: 40px; text-align: center; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); font-size: 11px; color: var(--dim); }
+  .clear { color: var(--ok); } .fail { color: var(--hot); } .quit { color: var(--warn); }
+
+  /* ---- charts ------------------------------------------------------------
+     Surface #1a1a19, which is the surface the palette was validated against.
+     Marks are thin, data-ends are rounded and the baseline end is square, and a
+     2px surface gap does the separating between touching segments. */
+  .viz { background: #1a1a19; }
+  .charts { display: grid; gap: 22px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px 18px; }
+  .chart h3 { margin: 0 0 2px; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--cool); }
+  .chart .sub { margin: 0 0 14px; font-size: 11.5px; color: var(--dim); }
+  .none { color: var(--dim); font-size: 12px; padding: 18px 0; }
+
+  .legend { display: flex; gap: 16px; margin: 0 0 12px; font-size: 11.5px; color: var(--dim); flex-wrap: wrap; }
+  .key { display: inline-flex; align-items: center; gap: 6px; }
+  .key i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  /* horizontal stacked bars -- 24px cap, air in the rest of the band */
+  .bars { display: grid; gap: 7px; }
+  .bar-row { display: grid; grid-template-columns: 132px 1fr 28px; align-items: center; gap: 10px; }
+  .bar-label { font-size: 11.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { display: flex; height: 18px; gap: 2px; }
+  .seg {
+    height: 100%; display: flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 700; color: #0b0b0b;
+    border-radius: 0 4px 4px 0;   /* rounded data-end, square at the baseline */
+  }
+  .seg:first-child { border-radius: 4px 0 0 4px; }
+  .seg:only-child { border-radius: 4px; }
+  .bar-track .seg + .seg { border-radius: 0 4px 4px 0; }
+  .seg.clear { background: #0ca30c; }
+  .seg.fail  { background: #d03b3b; }
+  .bar-label .mode { color: #6b6a63; }
+  .bar-total { font-size: 11px; color: var(--dim); text-align: right; }
+
+  /* stacked columns */
+  .cols { display: flex; align-items: flex-end; gap: 18px; height: 190px; padding-top: 6px; }
+  .col-slot { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 0 0 62px; height: 100%; justify-content: flex-end; }
+  .col-rail { width: 24px; height: 100%; display: flex; align-items: flex-end; }
+  .col-stack { width: 100%; display: flex; flex-direction: column-reverse; gap: 2px; border-radius: 4px 4px 0 0; overflow: visible; }
+  .col-seg:first-child { border-radius: 0 0 0 0; }
+  .col-seg:last-child { border-radius: 4px 4px 0 0; }
+  .col-seg { width: 100%; min-height: 3px; }
+  .col-value { font-size: 12px; font-weight: 700; }
+  .col-label { font-size: 11px; color: var(--dim); }
+
+  .tabs { display: flex; gap: 8px; }
+  .tab { background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; font: 700 11px ui-monospace, monospace; letter-spacing: .08em; cursor: pointer; }
+  .tab.on { color: var(--ink); border-color: var(--hot); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Web games · analytics</h1>
+  <span class="muted" id="meta">loading…</span>
+  <span class="tabs">
+    <button class="tab on" data-view="viz">CHARTS</button>
+    <button class="tab" data-view="raw">EVENTS</button>
+  </span>
+  <span style="flex:1"></span>
+  <button class="ghost" id="auto">AUTO-REFRESH OFF</button>
+  <button id="refresh">REFRESH</button>
+</header>
+<main>
+  <section class="cards" id="cards"></section>
+  <section id="view-viz">
+    <div class="charts" id="charts"></div>
+  </section>
+  <section id="view-raw" hidden>
+    <table>
+      <thead><tr><th style="width:130px">time</th><th style="width:150px">game</th><th style="width:120px">event</th><th>parameters</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty" hidden>No web-game events yet. Play something and hit refresh.</div>
+  </section>
+</main>
+<script type="module">
+import { dropOff, playByDay, legend, gameColours, STATUS } from "/charts.js";
+const $ = (id) => document.getElementById(id);
+let timer = null;
+
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const shortGame = (g) => (g || '—').replace(/([a-z])([A-Z])/g, '$1 $2');
+
+/**
+ * One card per game: the answers to the questions actually asked of this data --
+ * how many runs, how far people got, how long they played.
+ *
+ * TIME PLAYED IS THE LARGEST duration_seconds SEEN, not a sum. Every heartbeat
+ * carries the running total for its session, so summing them would count the
+ * same minutes over and over. The largest is the answer for the longest session;
+ * per-session totals are added up separately.
+ */
+function summarise(events) {
+  const byGame = new Map();
+  for (const e of events) {
+    const g = e.params.game || 'unknown';
+    if (!byGame.has(g)) byGame.set(g, { runs: 0, levels: 0, cleared: 0, failed: 0, best: 0, deepest: 0, played: 0 });
+    const s = byGame.get(g);
+    if (e.event === 'web_start_game') s.runs++;
+    if (e.event === 'web_level_start') {
+      s.levels++;
+      s.deepest = Math.max(s.deepest, Number(e.params.level_number) || 0);
+    }
+    if (e.event === 'web_level_end') {
+      if (e.params.result === 'clear') s.cleared++; else s.failed++;
+      s.best = Math.max(s.best, Number(e.params.score) || 0);
+    }
+    // heartbeat and game_end both carry the session's running total
+    const d = Number(e.params.duration_seconds);
+    if ((e.event === 'web_heartbeat' || e.event === 'web_game_end') && Number.isFinite(d)) {
+      s.played = Math.max(s.played, d);
+    }
+  }
+  return byGame;
+}
+
+const mmss = (s) => `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, '0')}s`;
+
+function draw(data) {
+  const { events, fetchedAt, uid } = data;
+  $('meta').textContent = `${events.length} events · ${uid.slice(0, 10)}… · refreshed ${fmtTime(fetchedAt)}`;
+
+  const cards = summarise(events);
+  $('cards').innerHTML = [...cards.entries()].map(([game, s]) => `
+    <div class="card">
+      <h2>${shortGame(game)}</h2>
+      <div class="row"><span>runs started</span><span>${s.runs}</span></div>
+      <div class="row"><span>levels entered</span><span>${s.levels}</span></div>
+      <div class="row"><span>cleared / failed</span><span><span class="clear">${s.cleared}</span> / <span class="fail">${s.failed}</span></span></div>
+      <div class="row"><span>deepest level</span><span>${s.deepest || '—'}</span></div>
+      <div class="row"><span>best score</span><span>${s.best ? s.best.toLocaleString() : '—'}</span></div>
+      <div class="row"><span>longest session</span><span>${s.played ? mmss(s.played) : '—'}</span></div>
+    </div>`).join('') || '';
+
+  // ---- charts -------------------------------------------------------------
+  const games = [...cards.keys()];
+  const colours = gameColours(games);
+  $('charts').innerHTML = [
+    `<div class="chart">
+       <h3>Play time by day</h3>
+       <p class="sub">Longest session per game per day. Heartbeats carry a running total, so this is a maximum, never a sum.</p>
+       ${legend(games.map((g) => [shortGame(g), colours.get(g)]))}
+       ${playByDay(events, colours)}
+     </div>`,
+    ...games.map((g) => `<div class="chart">
+       <h3>${shortGame(g)} — where runs end</h3>
+       <p class="sub">Levels in ladder order, not sorted by size — the ladder is the axis.</p>
+       ${legend([['cleared', STATUS.good], ['failed', STATUS.critical]])}
+       ${dropOff(events, g)}
+     </div>`),
+  ].join('');
+
+  $('empty').hidden = events.length > 0;
+  $('rows').innerHTML = events.map((e) => {
+    const name = e.event.replace(/^web_/, '');
+    const p = Object.entries(e.params)
+      .filter(([k]) => k !== 'game')
+      .map(([k, v]) => {
+        const cls = k === 'result' ? ` class="${v}"` : '';
+        return `${k}=<b${cls}>${v}</b>`;
+      }).join('  ');
+    return `<tr>
+      <td class="muted">${fmtTime(e.at)}</td>
+      <td><span class="pill">${shortGame(e.params.game)}</span></td>
+      <td class="ev ev-${name}">${name}</td>
+      <td class="params">${p}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function load() {
+  $('meta').textContent = 'loading…';
+  try {
+    const r = await fetch('/api/events');
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    draw(d);
+  } catch (e) {
+    $('meta').textContent = 'error: ' + e.message;
+  }
+}
+
+$('refresh').addEventListener('click', load);
+$('auto').addEventListener('click', () => {
+  const on = !timer;
+  clearInterval(timer); timer = null;
+  if (on) timer = setInterval(load, 5000);
+  $('auto').classList.toggle('on', on);
+  $('auto').textContent = on ? 'AUTO-REFRESH ON' : 'AUTO-REFRESH OFF';
+});
+
+document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === b));
+  $('view-viz').hidden = b.dataset.view !== 'viz';
+  $('view-raw').hidden = b.dataset.view !== 'raw';
+}));
+load();
+</script>
+</body>
+</html>

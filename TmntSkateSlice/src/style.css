@@ -75,6 +75,9 @@ html, body {
   text-align: left;
 }
 
+/* Score reads "<score>/<next level threshold>" (no "SCORE:" label) --
+   e.g. "115/500". Bare score with no bar on the final stage (no next
+   threshold to progress toward). */
 #score {
   font-weight: 900;
   font-size: 26px;
@@ -83,25 +86,208 @@ html, body {
   -webkit-text-stroke: 2px #2a1a00;
   paint-order: stroke fill;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  font-variant-numeric: tabular-nums;
 }
 
-#combo {
+/* Progression fill bar toward the next level's score threshold. */
+#score-bar {
   margin-top: 4px;
-  font-weight: 800;
-  font-size: 19px;
-  color: #ffde50;
-  -webkit-text-stroke: 1.5px #402800;
-  paint-order: stroke fill;
+  width: 148px;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+#score-bar.hidden {
+  display: none;
+}
+
+#score-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #ffa93c, #ffde50);
+  border-radius: 3px;
+  transition: width 0.25s ease-out;
+}
+
+/* Combo -- shrunk (feedback 2026-08-03, was 19px) since it's a secondary
+   readout next to the score/progression bar. */
+/* Streak indicator (2026-09-07): the label + a draining timer bar, on ONE line
+   under the score/progress bar (2026-09-10 -- was stacked, which pushed the bar
+   down into the hearts row). Single-line keeps it short enough to clear the
+   lives tray below. */
+#combo {
+  margin-top: 5px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
 }
 
 #combo.hidden {
   display: none;
 }
 
-/* --- Top-left lives (offset below the score/combo block above it) --- */
+#combo-label {
+  font-weight: 800;
+  font-size: 12px;
+  color: #ffde50;
+  -webkit-text-stroke: 1px #402800;
+  paint-order: stroke fill;
+  letter-spacing: 0.5px;
+}
+
+/* Timer bar -- same footprint/look as the score progression bar, but its fill
+   drains (no CSS transition; the width is driven per-frame from ui.js so it
+   moves smoothly and doesn't lag the real clock). */
+#combo-bar {
+  width: 96px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+#combo-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ffb43c, #ffde50);
+  border-radius: 2px;
+}
+
+/* --- Settings panel (2026-08-19, src/ui/settingsPanel.js) -- ported from
+   HalfShellHustle's steering panel: a small floating dropdown below the
+   top-right icon row, not a full-screen overlay. .sp-sel is the two-key
+   menu's current-row highlight -- the only feedback for what Space is
+   about to change inside the real WebView, where there's no pointer to
+   click with (see settingsPanel.js's header for the full contract). --- */
+#settings-panel {
+  position: absolute;
+  top: 58px;
+  right: 12px;
+  z-index: 9999;
+  width: 220px;
+  background: rgba(20, 20, 40, 0.9);
+  color: #eafcff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#settings-panel.hidden {
+  display: none;
+}
+
+.sp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sp-row:first-child {
+  margin-top: 0;
+}
+
+.sp-label {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  opacity: 0.8;
+}
+
+.sp-row button {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #eafcff;
+  font: 700 15px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sp-row button:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Fixed width + tabular figures so stepping SENSITIVITY never reflows the row. */
+.sp-value {
+  min-width: 2.6em;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* MUSIC/SFX are a single wide toggle button rather than a -/+ pair, since
+   they cycle a named ON/OFF pair rather than a number. */
+.sp-mode {
+  width: auto !important;
+  min-width: 84px;
+  padding: 0 12px;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.sp-wide {
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px 0;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #eafcff;
+  font: 800 11px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sp-wide:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Key legend at the top of the panel -- the two-key scheme isn't
+   discoverable otherwise, and inside Unity it's the only way to drive
+   this at all. */
+.sp-keyhint {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  opacity: 0.55;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.sp-sel {
+  position: relative;
+  background: rgba(120, 200, 255, 0.18);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(150, 220, 255, 0.55);
+}
+
+.sp-row.sp-sel {
+  margin-left: -5px;
+  margin-right: -5px;
+  padding: 2px 5px;
+}
+
+/* --- Top-left lives (offset below the score/bar/combo block above it) --- */
 #lives-tray {
   position: absolute;
-  top: 66px;
+  top: 78px; /* nudged down for the added score-bar row (2026-08-03) */
   left: 14px;
   display: flex;
   gap: 6px;
@@ -129,10 +315,12 @@ html, body {
    color-coded via the --buff-color custom property set in ui.js. --- */
 #buff-tray {
   position: absolute;
-  top: 102px;
+  top: 114px; /* nudged down to match lives-tray's shift (2026-08-03) */
   left: 14px;
   display: flex;
-  gap: 8px;
+  flex-direction: column; /* stacked vertically (was a row) -- there's room below the hearts */
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .buff-chip {
@@ -171,20 +359,34 @@ html, body {
   transform-origin: left;
 }
 
-/* --- Pizza-box collection chips (redesign 2026-07-30) -- a LARGE vertical
-   stack on the left. Outer shape is a rounded-SQUARE low-opacity black panel
-   whose perimeter STROKE is the depleting timer. Inside: a faded pizza-box
-   copy (70% opacity) with a full-opacity copy revealed RADIALLY (conic mask)
-   as slices are caught, plus the "N/8" count. Color-coded via --box-color
-   set in ui.js. (Fixed px like the rest of the HUD -- WebView-size scaling is
-   a separate, deferred concern.) --- */
+/* --- Pizza-box collection chips (relocated + shrunk 2026-08-02) -- a COMPACT
+   horizontal row centered along the BOTTOM, below the character: on the left
+   they covered him and a 3rd/4th chip ran off-screen. Halved in size (96->48).
+   Outer shape is a rounded-SQUARE low-opacity black panel whose perimeter
+   STROKE mirrors the box's PROGRESS fraction (boxes only; the bomb-kill chip
+   has none). Inside: a faded pizza-box copy (70% opacity) with a full-opacity
+   copy revealed RADIALLY (conic mask) as slices are caught, plus the "N/8"
+   count. Color-coded via --box-color set in ui.js. Time is a SEPARATE
+   indicator now -- see .box-timer below -- not shared with this ring
+   (2026-08-04, feedback: sharing them read as ambiguous). --- */
 #box-tray {
   position: absolute;
-  top: 150px;
-  left: 14px;
+  bottom: 8px;
+  left: 0;
+  right: 0;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 6px; /* -20% (2026-08-09, was 8px), matches the chips shrinking below */
+  /* Scale up on tall viewports -- big Android tablets -- so the tray
+     doesn't read as tiny relative to the screen (2026-08-16 feedback).
+     --hud-scale is set every frame in core/main.js from window.innerHeight
+     (see ui.js's setHudScale); falls back to 1 (unscaled, today's exact
+     phone sizing) if unset. bottom-center origin keeps it anchored to the
+     tray's own bottom edge while it grows, instead of drifting off-screen. */
+  transform: scale(var(--hud-scale, 1));
+  transform-origin: bottom center;
 }
 
 .box-chip {
@@ -197,26 +399,79 @@ html, body {
   display: none;
 }
 
+/* "Bloop" pop when a collected shred lands in the chip (see ui.pulseChip) --
+   restarted per catch in ui.js so rapid catches replay it. */
+.box-chip.bloop {
+  animation: box-bloop 0.34s ease-out;
+}
+
+@keyframes box-bloop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.32); }
+  100% { transform: scale(1); }
+}
+
+/* Thin countdown bar + stopwatch icon ABOVE each box chip (2026-08-04) --
+   the ring inside .box-graphic used to double as the timer, but that read
+   as unclear ("what is this circle even showing?"); it's now repurposed to
+   mirror the pizza art's own progress fill (see ui.js's setBoxes), so time
+   gets its own small, differently-shaped, unambiguous indicator instead. */
+.box-timer {
+  display: flex;
+  align-items: center;
+  gap: 0; /* touches the icon (feedback 2026-08-04, was 3px) */
+  width: 46px; /* -20% (2026-08-09, was 58px), matches .box-graphic's new width so it reads as "belonging" to the chip below it */
+  margin-bottom: 0; /* flush against .box-graphic (2026-08-09 feedback: "touching", was 3px) */
+}
+
+.box-timer-icon {
+  font-size: 16px; /* -20% (2026-08-09, was 20px) */
+  line-height: 1;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
+}
+
+.box-timer-track {
+  flex: 1;
+  height: 6px; /* -20% (2026-08-09, was 8px) */
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.box-timer-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--box-color, #fff);
+  transition: width 0.25s linear; /* smooths the ~2x/sec JS update, same technique as .ring-arc's stroke-dashoffset transition */
+}
+
 .box-graphic {
   position: relative;
-  width: 96px;
-  height: 96px;
+  width: 46px; /* -20% (2026-08-09, was 58px) -- the whole box-chip UI was crowding the character's feet on mobile */
+  height: 46px;
+  /* Outer glow so the chip pops off the busy floor (2026-08-03). border-radius
+     matches the rounded panel so the halo hugs its shape; the dark drop adds
+     separation. Colored per --box-color. */
+  border-radius: 13px;
+  box-shadow: 0 0 8px 1px var(--box-color, #fff), 0 2px 4px rgba(0, 0, 0, 0.55);
 }
 
 /* The rounded-square SVG: bg (black panel) + faint outline, and the
-   depleting timer arc, sit behind the box images. */
+   progress-mirroring arc, sit behind the box images. */
 .box-ring {
   position: absolute;
   inset: 0;
-  width: 96px;
-  height: 96px;
+  width: 46px; /* -20% (2026-08-09, was 58px), matches .box-graphic */
+  height: 46px;
   overflow: visible;
 }
 
 .ring-bg {
-  fill: rgba(0, 0, 0, 0.5);
-  stroke: rgba(255, 255, 255, 0.14);
-  stroke-width: 3;
+  fill: rgba(0, 0, 0, 0.85);
+  stroke: rgba(255, 255, 255, 0.32);
+  stroke-width: 3.5;
 }
 
 .ring-arc {
@@ -231,18 +486,18 @@ html, body {
 .box-ghost,
 .box-fill {
   position: absolute;
-  top: 10px;
+  top: 5px; /* -20% (2026-08-09, was 6px) */
   left: 50%;
   transform: translateX(-50%);
-  width: 64px;
-  height: 64px;
+  width: 32px; /* -20% (2026-08-09, was 40px) */
+  height: 32px;
   object-fit: contain;
   pointer-events: none;
 }
 
 .box-ghost {
-  opacity: 0.7; /* faded "empty" box (per feedback -- was 0.25) */
-  filter: grayscale(0.5);
+  opacity: 0.85; /* "empty" box -- kept a touch faded so the radial fill still reads */
+  filter: grayscale(0.3);
 }
 
 .box-fill {
@@ -258,48 +513,76 @@ html, body {
 .box-count {
   position: absolute;
   left: 50%;
-  bottom: 8px;
+  bottom: 2px; /* -20% (2026-08-09, was 3px) */
   transform: translateX(-50%);
   font-weight: 900;
-  font-size: 16px;
+  font-size: 10px; /* -20% (2026-08-09, was 13px) */
   color: #fff;
-  letter-spacing: 0.5px;
-  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.7);
+  letter-spacing: 0.3px;
+  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.8);
   paint-order: stroke fill;
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Box-completion celebration popup (progression update) -- a quick
-   foreground pop when a box completes: box icon (bounces) + "<COLOR> BOX!"
-   (box color) + "+<bonus>" (gold), scales in, holds, floats up and fades.
-   Animation is restarted per completion in ui.js (remove class -> reflow ->
-   re-add). pointer-events:none so it never eats input. --- */
-#box-complete-popup {
+/* Transient "shoot" clone (ui.js's shootChipToPopup, 2026-08-04) -- bridges
+   a just-completed chip in the bottom tray to the celebration popup that's
+   replacing it: flies from the chip's screen position to the popup's icon,
+   scaling up slightly, and vanishes right as it arrives. position:fixed (not
+   inside any tray/overlay) since it travels across the whole screen; a high
+   z-index keeps it visible over the popup tray (30) as it approaches. Not a
+   persistent element -- created and removed per completion, not pooled (this
+   fires rarely, unlike the hot-path canvas particles). */
+.chip-shoot-fly {
+  position: fixed;
+  z-index: 45;
+  pointer-events: none;
+  object-fit: contain;
+  opacity: 1;
+  filter: drop-shadow(0 0 10px var(--shoot-color, #fff));
+}
+
+/* --- Box-completion celebrations (progression update) -- a quick foreground
+   pop when a box completes: box icon (bounces) + "<COLOR> BOX!" (box color) +
+   "+<bonus>" (gold) + the earned booster, scales in, holds, floats up, fades.
+   Up to 3 show AT ONCE so near-simultaneous completions don't cut each other
+   off (2026-08-02): the tray is a horizontal row centered on screen, and each
+   popup's left-to-right slot (`order`) is set in ui.js -- newest on the left
+   with two, newest in the center with three. Animation restarted per
+   completion in ui.js. pointer-events:none so it never eats input. --- */
+#box-complete-tray {
   position: absolute;
-  top: 34%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(1);
+  top: 54px; /* anchored near the TOP with padding (was centered ~22%), 2026-08-03 */
+  left: 0;
+  right: 0;
   z-index: 30;
   pointer-events: none;
   display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.box-complete-popup {
+  position: relative;
+  display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 5px;
 }
 
 /* Celebratory shockwave ring behind the popup -- expands + fades once on each
-   completion (bigger/"looks better" pass 2026-08-02). z-index:-1 keeps it
-   behind the icon/text within the popup's own stacking context. */
-#box-complete-popup::before {
+   completion. z-index:-1 keeps it behind the icon/text within the popup's own
+   stacking context. */
+.box-complete-popup::before {
   content: '';
   position: absolute;
-  top: 64px;
+  top: 32px;
   left: 50%;
-  width: 190px;
-  height: 190px;
-  margin: -95px 0 0 -95px;
+  width: 93px;
+  height: 93px;
+  margin: -47px 0 0 -47px;
   border-radius: 50%;
-  border: 6px solid var(--bcp-color, #fff);
+  border: 4px solid var(--bcp-color, #fff);
   opacity: 0;
   z-index: -1;
 }
@@ -315,14 +598,14 @@ html, body {
 }
 
 /* Soft persistent color halo behind the icon, fades in/out over the hold. */
-#box-complete-popup::after {
+.box-complete-popup::after {
   content: '';
   position: absolute;
-  top: 64px;
+  top: 32px;
   left: 50%;
-  width: 280px;
-  height: 280px;
-  margin: -140px 0 0 -140px;
+  width: 137px;
+  height: 137px;
+  margin: -69px 0 0 -69px;
   border-radius: 50%;
   background: radial-gradient(circle, var(--bcp-color, #fff) 0%, transparent 62%);
   opacity: 0;
@@ -340,8 +623,17 @@ html, body {
   100% { opacity: 0; }
 }
 
-#box-complete-popup.hidden {
+.box-complete-popup.hidden {
   display: none;
+}
+
+/* Reserved-but-not-revealed state (2026-08-04): the popup is already laid
+   out in the tray (so its icon has a real screen rect for the flying twin
+   chip to target) but stays invisible until that chip actually lands --
+   see showBoxComplete/shootChipToPopup in ui.js. Distinct from .hidden,
+   which removes it from layout entirely. */
+.bcp-pending {
+  opacity: 0;
 }
 
 /* Total 2.9s (was 1.4s) -- the +1.5s is spent in the HOLD (12%->83%), NOT by
@@ -351,19 +643,21 @@ html, body {
   animation: bcp-pop 2.9s ease-out forwards;
 }
 
+/* No -50%/-50% centering anymore -- the tray (flexbox) positions each popup;
+   this just scales in and floats up in place (translateY, % of own height). */
 @keyframes bcp-pop {
-  0%   { transform: translate(-50%, -50%) scale(0.3);  opacity: 0; }
-  12%  { transform: translate(-50%, -50%) scale(1.18); opacity: 1; } /* ~0.35s pop-in overshoot */
-  19%  { transform: translate(-50%, -50%) scale(1);    opacity: 1; } /* ~0.55s settle */
-  83%  { transform: translate(-50%, -55%) scale(1);    opacity: 1; } /* ~2.4s -- long hold */
-  100% { transform: translate(-50%, -95%) scale(0.95); opacity: 0; } /* 2.9s float up + fade */
+  0%   { transform: translateY(0)    scale(0.3);  opacity: 0; }
+  12%  { transform: translateY(0)    scale(1.18); opacity: 1; } /* ~0.35s pop-in overshoot */
+  19%  { transform: translateY(0)    scale(1);    opacity: 1; } /* ~0.55s settle */
+  83%  { transform: translateY(-6%)  scale(1);    opacity: 1; } /* ~2.4s -- long hold */
+  100% { transform: translateY(-40%) scale(0.95); opacity: 0; } /* 2.9s float up + fade */
 }
 
 .bcp-icon {
-  width: 112px;
-  height: 112px;
+  width: 55px;
+  height: 55px;
   object-fit: contain;
-  filter: drop-shadow(0 0 16px var(--bcp-color, #fff)) drop-shadow(0 5px 9px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 0 8px var(--bcp-color, #fff)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
 }
 
 .bcp-animate .bcp-icon {
@@ -381,28 +675,106 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .bcp-title {
   font-weight: 900;
-  font-size: 46px;
-  letter-spacing: 1.5px;
+  font-size: 22px;
+  letter-spacing: 0.5px;
   color: var(--bcp-color, #fff);
-  -webkit-text-stroke: 4px #2a1a00;
+  -webkit-text-stroke: 2.5px #2a1a00;
   paint-order: stroke fill;
-  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.4), 0 0 22px var(--bcp-color, #fff);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4), 0 0 11px var(--bcp-color, #fff);
   white-space: nowrap;
 }
 
 .bcp-bonus {
   font-weight: 900;
-  font-size: 56px;
+  font-size: 27px;
   color: #ffe066;
-  -webkit-text-stroke: 4px #4a2a00;
+  -webkit-text-stroke: 2.5px #4a2a00;
   paint-order: stroke fill;
-  text-shadow: 0 0 18px rgba(255, 210, 80, 0.9);
+  text-shadow: 0 0 9px rgba(255, 210, 80, 0.9);
   font-variant-numeric: tabular-nums;
+}
+
+/* --- Earned-booster reveal (2026-08-02) -- the payoff shown below the bonus:
+   a row of 1-3 large booster icons + names, each in its booster's color,
+   revealed with a short delayed pop so it reads as "...and you got THIS!".
+   Kept prominent (icons bigger than the title text) since the boosters are the
+   important reward. Red shows only the "+1 LIFE" line. --- */
+.bcp-reward {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 3px;
+}
+
+.bcp-reward.hidden {
+  display: none;
+}
+
+.bcp-reward-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.bcp-reward-item.hidden {
+  display: none;
+}
+
+.bcp-reward-icon {
+  width: 37px;
+  height: 37px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px var(--bcp-reward-color, #fff)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
+.bcp-reward-label {
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  color: var(--bcp-reward-color, #fff);
+  -webkit-text-stroke: 2px #2a1a00;
+  paint-order: stroke fill;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4), 0 0 14px var(--bcp-reward-color, #fff);
+  white-space: nowrap;
+}
+
+.bcp-life {
+  margin-top: 2px;
+  font-weight: 900;
+  font-size: 17px;
+  letter-spacing: 0.5px;
+  color: #ff5a6e;
+  -webkit-text-stroke: 2px #3a0a12;
+  paint-order: stroke fill;
+  text-shadow: 0 0 16px rgba(255, 90, 110, 0.9);
+  white-space: nowrap;
+}
+
+.bcp-life.hidden {
+  display: none;
+}
+
+/* Delayed pop so the reward appears just after the box/bonus land. `both`
+   keeps it invisible during the delay and settled at the end. */
+.bcp-animate .bcp-reward {
+  animation: bcp-reward-in 0.5s ease-out 0.4s both;
+}
+
+.bcp-animate .bcp-life {
+  animation: bcp-reward-in 0.5s ease-out 0.62s both;
+}
+
+@keyframes bcp-reward-in {
+  0%   { opacity: 0; transform: scale(0.5); }
+  60%  { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
 }
 
 /* --- Paused badge --- */
@@ -423,30 +795,107 @@ html, body {
   display: none;
 }
 
-/* --- Stage banner --- */
-#stage-banner {
+/* --- Stage-complete transition (freeze + curtain, ported from
+   HalfShellHustle's level-complete pattern, 2026-08-04) -- replaces the old
+   instant-pop #stage-banner above. See data/stageTransition.js for the
+   timing knobs this CSS's transition duration must stay in sync with. --- */
+.stage-curtain {
   position: absolute;
-  top: 30%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(0.9);
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  z-index: 20; /* own explicit value, not inherited -- see index.html's comment */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transition: transform 0.6s cubic-bezier(0.6, 0, 0.35, 1); /* MUST match STAGE_CURTAIN_TRANSITION_SEC */
+}
+
+/* Curtain art + crop-anchor are THEME-VARYING (TMNT keeps its red pizza drape;
+   the original theme uses a blue/gold ninja curtain split down the middle).
+   The art is referenced from the per-theme collectibleAssets.*.js modules, NOT
+   from a hardcoded url() here -- ui.js sets these vars at init, so the
+   non-selected theme's curtain art never enters this build (same guarantee as
+   the sprite aliases). background-position is a var too: the original's split
+   halves pin toward the seam to reunite the centered motif; TMNT stays
+   center. */
+#stage-curtain-left {
+  left: 0;
+  background-image: var(--stage-curtain-left-img);
+  background-position: var(--stage-curtain-left-pos, center);
+  transform: translateX(-100%);
+}
+
+#stage-curtain-right {
+  right: 0;
+  background-image: var(--stage-curtain-right-img);
+  background-position: var(--stage-curtain-right-pos, center);
+  transform: translateX(100%);
+}
+
+/* Compound #id.class selectors, not a bare .stage-curtain-closed rule -- a
+   plain class selector (specificity 0,1,0) loses to #stage-curtain-left/
+   right's own ID selector (1,0,0) above, so the "closed" transform would
+   silently never win and the panels would never move. */
+#stage-curtain-left.stage-curtain-closed,
+#stage-curtain-right.stage-curtain-closed {
+  transform: translateX(0);
+}
+
+#stage-complete-overlay {
+  background: radial-gradient(ellipse at 50% 42%, rgba(255, 180, 60, 0.35), rgba(20, 10, 5, 0.88) 72%);
+}
+
+/* Own position:relative, same defense-in-depth reasoning as HalfShellHustle's
+   equivalent -- not load-bearing against the curtain siblings specifically,
+   but correct in case anything else ever lands inside this overlay. */
+#sc-headline, #sc-next, #sc-countdown {
+  position: relative;
+}
+
+/* This game's own established positive-feedback green (matches the shield
+   buff / "CATCH" panel in the intro tutorial), not a fresh color -- stays
+   consistent with the palette already in use rather than importing
+   HalfShellHustle's own green. */
+#sc-headline {
   font-weight: 900;
-  font-size: 40px;
-  letter-spacing: 2px;
-  color: #ffffff;
-  -webkit-text-stroke: 2.5px #2a1a00;
+  font-size: 48px;
+  letter-spacing: 1.5px;
+  color: #8cffa0;
+  -webkit-text-stroke: 4px #123a08;
   paint-order: stroke fill;
-  opacity: 0;
-  transition: opacity 0.25s, transform 0.25s;
+  text-shadow: 0 0 22px rgba(140, 255, 160, 0.75);
 }
 
-#stage-banner.visible {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
+/* The headline's bouncy elastic-overshoot pop is driven per-frame from JS
+   (ui.js setStageHeadlineAnim, core/main.js's stagecomplete branch), not a CSS
+   @keyframes -- CSS animations freeze on the occluded WebView (compositor
+   suspended) while the pumped JS rAF loop keeps running. */
+
+#sc-next {
+  margin-top: 10px;
+  font-weight: 900;
+  font-size: 26px;
+  letter-spacing: 1px;
+  color: #fff6c8;
+  -webkit-text-stroke: 3px #2a1400;
+  paint-order: stroke fill;
 }
 
-#stage-banner.hidden {
-  opacity: 0;
+/* Each whole-second number gets its own tick-pop beat, driven per-frame from
+   JS (ui.js setStageTickAnim) rather than a class-toggled CSS animation that
+   freezes on the occluded WebView. */
+#sc-countdown {
+  margin-top: 14px;
+  font-weight: 900;
+  font-size: 64px;
+  line-height: 1;
+  color: #ffffff;
+  -webkit-text-stroke: 5px #2a1400;
+  paint-order: stroke fill;
+  font-variant-numeric: tabular-nums;
 }
+
 
 /* --- Game-over overlay --- */
 .overlay {
@@ -504,4 +953,613 @@ html, body {
 #restart-button:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Family-account leaderboard on the game-over overlay (2026-09-01).
+   Adapted from NovaVanguard's .sb-* rules; NO avatar column here, so the row
+   grid is rank | name | score (3 cols, not 4). Hidden outside the app. --- */
+#scoreboard,
+#quit-scoreboard {
+  width: min(92%, 340px);
+  max-height: 34vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#scoreboard.hidden,
+#quit-scoreboard.hidden {
+  display: none;
+}
+
+#scoreboard-title,
+#quit-scoreboard-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #9fb0d8;
+  text-align: center;
+}
+
+#scoreboard-rows,
+#quit-scoreboard-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-row {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+  color: #e8ecff;
+}
+
+/* The run just played -- brightest highlight. */
+.sb-row.sb-you {
+  background: rgba(90, 209, 255, 0.22);
+  outline: 1.5px solid rgba(90, 209, 255, 0.8);
+}
+
+/* The player's other rows on the board -- softer highlight. */
+.sb-row.sb-mine {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.sb-rank {
+  text-align: right;
+  color: #8fa0c8;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.sb-score {
+  font-weight: 800;
+  color: #ffe066;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-gap {
+  text-align: center;
+  color: #6070a0;
+  letter-spacing: 2px;
+  font-size: 12px;
+  padding: 1px 0;
+}
+
+/* --- Quit flow: confirm modal + quit board (2026-09-01) ------------------
+   .modal-overlay is a light scrim OVER the still-visible paused game (the
+   player must see the run they're abandoning). .board-screen is a full,
+   opaque screen (the quit board), like the game-over overlay. --- */
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 5, 15, 0.55);
+  pointer-events: auto;
+}
+
+.board-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 5, 15, 0.9);
+  pointer-events: auto;
+}
+
+.modal-overlay.hidden,
+.board-screen.hidden {
+  display: none;
+}
+
+.board-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 26px 24px;
+  width: min(92%, 380px);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(30, 22, 46, 0.98), rgba(18, 12, 28, 0.98));
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.board-title {
+  font-weight: 900;
+  font-size: 30px;
+  letter-spacing: 1px;
+  color: #ffde50;
+  -webkit-text-stroke: 1.5px #2a1a00;
+  paint-order: stroke fill;
+}
+
+.board-sub {
+  font-size: 15px;
+  font-weight: 600;
+  color: #cfd8ff;
+  text-align: center;
+}
+
+.board-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.board-buttons button {
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Primary (continue / play again) -- gold, matching #restart-button. */
+#confirm-stay,
+#quit-again,
+#victory-continue {
+  background: linear-gradient(180deg, #ffde50, #ffa93c);
+  color: #2a1a00;
+  box-shadow: 0 4px 0 #a86800, 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+#confirm-stay:active,
+#quit-again:active,
+#victory-continue:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Secondary (quit / leave) -- muted, so it doesn't compete with the primary. */
+#confirm-quit,
+#quit-leave {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e8ecff;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+}
+
+#confirm-quit:active,
+#quit-leave:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* --- First-run onboarding tutorial (2026-08-04), ported from
+   HalfShellHustle's onboarding-tutorial pattern (see
+   WEB_MINIGAME_TECH_RETROSPECTIVE.md) -- same #id.class-compound-selector
+   discipline that doc's lesson #1 calls out (a bare .class loses a
+   specificity fight to any #id rule that also sets the same property), same
+   fixed-px sizing as the rest of this game's HUD (not vmin -- this game
+   never adopted vmin scaling, so introducing it here would be the
+   inconsistency, not avoiding it). --- */
+#intro-next-button,
+#intro-start-button {
+  margin-top: 6px;
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 1px;
+  padding: 14px 36px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffde50, #ffa93c);
+  color: #2a1a00;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #a86800, 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+
+#intro-next-button:active,
+#intro-start-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #a86800, 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.intro-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.intro-step.hidden {
+  display: none;
+}
+
+.intro-step-title {
+  font-weight: 900;
+  font-size: 26px;
+  letter-spacing: 1px;
+  color: #eafcff;
+  -webkit-text-stroke: 2px #0a2a30;
+  paint-order: stroke fill;
+  text-align: center;
+}
+
+/* --- Step 1: item recognition (redesigned 2026-08-04, replaces a
+   board/character diagram) -- no animation gimmick, just a clear two-panel
+   split: everything catchable (pizza + the 3 pickups) under a green
+   checkmark, the one hazard (bombs) under a red X. --- */
+.intro-items-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 22px;
+}
+
+.intro-item-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 3px solid;
+}
+
+.intro-item-good {
+  background: rgba(76, 224, 90, 0.16);
+  border-color: #4ce05a;
+}
+
+.intro-item-bad {
+  background: rgba(255, 74, 74, 0.16);
+  border-color: #ff4a4a;
+}
+
+.intro-item-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 24px;
+  color: #fff;
+}
+
+.intro-badge-good {
+  background: #4ce05a;
+  box-shadow: 0 0 14px rgba(76, 224, 90, 0.8);
+}
+
+.intro-badge-bad {
+  background: #ff4a4a;
+  box-shadow: 0 0 14px rgba(255, 74, 74, 0.8);
+}
+
+.intro-item-icons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.intro-item-icon {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  /* Quick entrance pop so the panel isn't totally static (matches this
+     game's existing icon-reveal language -- e.g. .bcp-reward-item), but
+     deliberately a ONE-SHOT settle, not a loop -- no board/character
+     diagram here per direct feedback. */
+  animation: intro-icon-pop 0.4s ease-out backwards;
+}
+
+.intro-item-icon:nth-child(1) { animation-delay: 0s; }
+.intro-item-icon:nth-child(2) { animation-delay: 0.06s; }
+.intro-item-icon:nth-child(3) { animation-delay: 0.12s; }
+.intro-item-icon:nth-child(4) { animation-delay: 0.18s; }
+
+@keyframes intro-icon-pop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  70%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.intro-item-label {
+  font-weight: 900;
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+
+.intro-item-good .intro-item-label {
+  color: #8cffa0;
+}
+
+.intro-item-bad .intro-item-label {
+  color: #ff9a9a;
+}
+
+/* --- Step 2: how to move -- a CONTINUOUS board+character sweep, not
+   HalfShellHustle's 3-state lane-snap cycle (this game's input is analog/
+   continuous lean, not an absolute lane target -- see data/introTutorial.js's
+   header note). Both elements share ONE keyframe percentage timeline (0%
+   full-left -> 50% full-right -> 100% full-left, a seamless loop since the
+   start/end states match) and the SAME animation-duration/timing-function,
+   started in the same synchronous call (ui.js's showIntroTutorial), so they
+   can never drift out of phase with each other. -84deg magnitude (steeper
+   than HalfShellHustle's 29deg) + a tight 380px perspective: this board art
+   is the same wide, mostly-flat oval that reads as nearly nothing at a
+   "natural" angle (the reference doc's lesson #2) -- verify by screenshot if
+   retuning either number. */
+.intro-board {
+  width: 140px;
+  aspect-ratio: 358 / 266;
+  background-image: url('./assets/gobalance_horizontal_board.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+/* #intro-steer-board's tilt is driven per-frame from JS (ui.js setIntroSweep,
+   core/main.js's intro branch), not a CSS @keyframes -- the occluded WebView's
+   compositor is suspended, so CSS animations freeze there while the JS rAF
+   loop keeps being pumped (WebGameController.cs's "occluded editor overlay"). */
+
+/* Fixed-height ANCHOR wrapper (not the <img> itself) -- the two run-cycle
+   frames (see core/heroAssets.*.js) share the same source canvas height but
+   differ in width (pose-dependent limb spread), so a width-based <img> (the
+   sizing that reads best -- character stays a consistent visual SIZE across
+   both frames, unlike fixing height, which visibly resized him frame to
+   frame) still has a slightly different computed height per frame. Wrapping
+   it in a fixed-height box and anchoring the image to its BOTTOM edge (same
+   technique render.js's drawPlayer already uses for real gameplay -- draw
+   upward from a fixed ground line) keeps the whole popup column from
+   reflowing regardless, without resizing the character (fix 2026-08-04). */
+/* Fixed box on BOTH axes (2026-08-04, replaces the width-only/height-only/
+   bottom-anchor attempts) -- see the index.html comment above this element.
+   96x112 was tuned against the TMNT theme's own run-cycle frame aspect
+   ratios (near-zero letterbox on one frame, a few px each side on the
+   other); object-fit: contain makes this robust to ANY theme's frame
+   aspect ratios, just with more/less letterbox padding -- verified this
+   still holds for the original theme's differently-proportioned frames
+   (2026-08-20), no CSS changes needed. Net: height is IDENTICAL across both
+   frames regardless of theme, only the width letterbox gap differs.
+   object-fit does the letterboxing -- no absolute positioning/wrapper
+   needed, the <img>'s own box never changes size at all, so neither the
+   character NOR the popup layout around it can visibly pulse. */
+.intro-sprite {
+  width: 96px;
+  height: 112px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.4));
+}
+
+/* #intro-steer-player's left/right sweep is driven per-frame from JS too
+   (ui.js setIntroSweep) -- same compositor-suspended reason as the board. */
+
+/* ===========================================================================
+   DEV TOOLS (ui/devPanel.js + ui/devUnlock.js). Mounted only behind the
+   unlock gesture or ?dev=1, so none of this is visible in a normal run. Ported
+   from NovaVanguard's dev panel; the button sits bottom-left so it never
+   collides with the top chrome row (back/pause/settings) or the score HUD.
+   =========================================================================== */
+
+/* Invisible long-press target for the dev unlock (main.js). Covers the whole
+   top-left HUD cluster (score / bar / hearts / buffs) so the 7-second hold is
+   easy to land -- the visible HUD is pointer-events:none and far too small to
+   press reliably. Transparent, above the canvas + HUD, but well clear of the
+   top-right chrome buttons so those keep working. Full-screen game overlays
+   (intro / countdown / game-over / victory) sit above it, so it's only live
+   during actual play, which is exactly when you want it. */
+#dev-hit {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 60%;
+  max-width: 340px;
+  height: 156px;
+  z-index: 60;
+  background: transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-button {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 9999;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: #eafcff;
+  font: 600 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-button.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+}
+
+#dev-panel {
+  position: absolute;
+  bottom: 64px;
+  left: 12px;
+  z-index: 9999;
+  width: 224px;
+  max-height: 76vh;
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
+  background: rgba(10, 12, 26, 0.93);
+  border: 1px solid rgba(111, 232, 255, 0.28);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  color: #eafcff;
+  font: 500 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#dev-panel.hidden { display: none; }
+
+.dev-section {
+  margin: 10px 0 5px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: rgba(111, 232, 255, 0.72);
+}
+
+.dev-section:first-child { margin-top: 2px; }
+
+.dev-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.dev-toggle { justify-content: space-between; }
+
+.dev-chip {
+  flex: 1;
+  min-width: 34px;
+  padding: 6px 4px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(30, 40, 70, 0.8);
+  color: #eafcff;
+  font: 600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+.dev-toggle .dev-chip { flex: 0 0 52px; }
+
+.dev-chip:hover { background: rgba(45, 60, 100, 0.9); }
+
+.dev-chip.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+  border-color: rgba(55, 200, 230, 0.9);
+}
+
+.dev-note {
+  margin: 2px 0 4px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(234, 252, 255, 0.55);
+}
+
+/* Invincibility has to be impossible to forget about -- a persistent tint on
+   the frame, so "why am I not dying" is answered before it is asked. */
+body.dev-invincible::after {
+  content: 'INVINCIBLE';
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9998;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 96, 96, 0.85);
+  color: #180404;
+  font: 700 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 0.12em;
+  pointer-events: none;
+}
+
+/* The unlock: the held element dims slightly while the seven-second timer runs
+   (ui/devUnlock.js adds .devhold), then a keypad overlay. */
+.devhold { opacity: 0.72; }
+
+#devcode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+}
+
+#devcode-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(111, 232, 255, 0.35);
+}
+
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+#devcode-dots {
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 8px;
+  color: #6fe8ff;
+}
+
+#devcode-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(30, 40, 70, 0.9);
+  color: #eafcff;
+  font: 600 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  gap: 8px;
+}
+
+.devcode-key {
+  height: 62px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 90ms linear;
+}
+
+/* Every key answers a press the same way. A key that looked inert while another
+   lit up was what gave the code away one digit at a time. */
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+
+/* A wrong code, shown for a moment before the row clears. Amber rather than
+   red: this is a mistyped code, not an alarm. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
 }

@@ -16,40 +16,51 @@
 
 import * as THREE from 'three';
 import {
-  GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED,
+  GRADE, GRADE_ACCEL, DRAG, CARVE_SCRUB, TUCK_BONUS, TUCK_SMOOTH, START_SPEED, FUNNEL_SPACING,
+  ROLL_GAIN, ROLL_MAX, ROLL_BRAKE_LOSS, MIN_SPEED,
+  NATURAL_TOP_SPEED, SHAKE_SPAN, SHAKE_MAX,
   BRAKE_DRAG, BRAKE_SMOOTH, BRAKE_MIN_SPEED, BRAKE_SPARK_RATE, GROUND_CTRL_RELEASE, GROUND_CTRL_LETGO,
   TAIL_LOAD_RATE, TAIL_LOAD_DECAY, TAIL_LOAD_BOOST,
   SPEED_REF, CARVE_CURVE, CARVE_SMOOTH,
-  THETA_MAX, THETA_GRAVITY, THETA_CARVE_TORQUE, THETA_DAMP, HEIGHT_EXCHANGE,
-  TROUGH_RADIUS,
   AIR_DURATION, AIR_HEIGHT, SPIN_MIN_HEIGHT,
   AIR_HEIGHT_BASE, AIR_SPEED_FLOOR, AIR_SPEED_GAIN, BACKFLIP_MIN_HEIGHT,
   AIR_HEIGHT_MAX, AIR_TIME_K, AIR_DURATION_MIN, AIR_DURATION_MAX, SPIN_720_HEIGHT,
+  AIR_G, HOVER_IN_RATE, HOVER_OUT_RATE, HOVER_FULL_LIFT,
   BOOST_RAMP,
   GRAB_MIN_HEIGHT, GRAB_ENABLED,
-  AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_MAX_CROSS_RATIO, GRIND_SPARK_RATE,
+  AIR_DURATION_HOP, AIR_HEIGHT_HOP, GRIND_SPARK_RATE,
+  GRIND_EASE_REF, GRIND_SNAP_RATE, GRIND_EASE_RATE,
   GRIND_EXIT_FALL_G,
   LAND_SETTLE_DURATION, LAND_SETTLE_PEAK, LAND_K_FLOOR, LAND_K_GAIN,
   LAND_DURATION_FLOOR, LAND_DURATION_GAIN,
   LAND_AMOUNT_BACKFLIP, LAND_AMOUNT_SPIN, LAND_AMOUNT_GRIND,
   LAND_AMOUNT_HOP, LAND_AMOUNT_PLAIN,
   SKY_TOP, SKY_BOTTOM, FOG_COLOR, FOG_NEAR, FOG_FAR, FOV_BASE,
+  SKY_BLUE_TOP, SKY_BLUE_BOTTOM,
 } from '../data/constants.js';
-import { initInput, readInput, forcePop } from '../input/input.js';
-import { createTrough, toWorld, surfaceUp, heightAt, frameAt, makeFrame, radiusAt } from '../world/trough.js';
+import { initInput, readInput, forcePop, setStance, getStance } from '../input/input.js';
+import {
+  createTrough, toWorld, surfaceUp, heightAt, frameAt, makeFrame, radiusAt,
+  elevAt, slopeAt, curvatureAt, dropLipsBetween, routeSlopeAt,
+} from '../world/trough.js';
 import { createRider } from '../entities/rider.js';
 import { createCameraRig } from '../camera/cameraRig.js';
 import { createLobby } from '../ui/lobby.js';
-import { initSettingsPanel, isPanelOpen, FEEL } from '../ui/settingsPanel.js';
-import { createSky } from '../world/sky.js';
+import {
+  initSettingsPanel, isPanelOpen, closeSettingsPanel, unlockDevOptions, FEEL,
+} from '../ui/settingsPanel.js';
+import { installDevUnlock } from '../ui/devUnlock.js';
+import { createSky, SKIES } from '../world/sky.js';
 import { createProps } from '../entities/props.js';
 import { createRivals } from '../entities/rivals.js';
 import { createFinishLine } from '../entities/finishLine.js';
 import { createSparks } from '../entities/sparks.js';
 import { createSpeedLines } from '../entities/speedLines.js';
 import { createScoring } from '../systems/scoring.js';
+import { createAudio } from '../systems/audio.js';
 import { createHud } from '../ui/hud.js';
 import { CONTROLS, setControlPreset } from '../data/controlPresets.js';
+import { TERRAIN, setTerrain, DEFAULT_TERRAIN, LIP_CUSHION, LIP_WALL } from '../data/terrain.js';
 import { createEvents, RIDE_EVENTS as EV } from './events.js';
 import { createModeHost, getMode } from '../modes/mode.js';
 // Importing a mode module is what REGISTERS it -- and the registry is what the
@@ -59,19 +70,28 @@ import { createModeHost, getMode } from '../modes/mode.js';
 import '../modes/freeride.js';
 import { setPendingMission } from '../modes/missions.js';
 import '../modes/rivals.js';
-import '../modes/speedRace.js';
+import { setPendingRace } from '../modes/speedRace.js';
+// ORDER IS LOBBY ORDER. The two ORIGINAL modes register first, then the open
+// face's -- so the front door reads as two games rather than an interleaving.
 import { MISSIONS } from '../data/missions.js';
 import { createProgress } from '../systems/progress.js';
+import { createProfileStore } from '../systems/gbProfile.js';
+import { installGbSdk } from '../systems/gbSdk.js';
+import { analytics } from '../systems/analytics.js';
 import { createModeSelect } from '../ui/modeSelect.js';
 import { createMissionSelect } from '../ui/missionSelect.js';
+import { RACE_IDS } from '../data/races.js';
+import { createRaceSelect } from '../ui/raceSelect.js';
 import { createObjectives } from '../ui/objectives.js';
+import { createBriefing } from '../ui/briefing.js';
 import { getCourse, DEFAULT_COURSE } from '../data/courses.js';
 import { pickRandomTheme, getTheme, DEFAULT_THEME } from '../data/themes.js';
+import { pixelRatioFor } from '../systems/pixelBudget.js';
 
 // --- renderer / scene -------------------------------------------------------
 const app = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(pixelRatioFor(window.innerWidth, window.innerHeight));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 app.appendChild(renderer.domElement);
@@ -121,6 +141,8 @@ const props = createProps(scene);
 const sparks = createSparks(scene);
 const speedLines = createSpeedLines(scene);
 const scoring = createScoring();
+const audio = createAudio();
+
 const hud = createHud();
 const rider = createRider(scene, camera);
 const rig = createCameraRig(camera);
@@ -130,11 +152,131 @@ const finishLine = createFinishLine(scene);
 // The controller reports what happened; game modes listen. Nothing downstream
 // of this line may reach back into the simulation -- see core/events.js.
 const events = createEvents();
+
+/**
+ * SOUND IS DRIVEN OFF THE EVENT BUS, not off the code that causes the sound.
+ *
+ * Every one of these already existed for the HUD and the objectives, so audio
+ * costs nothing to add and -- more importantly -- cannot drift out of step with
+ * what the game says happened. A ramp that stops emitting LAUNCH loses its
+ * popup, its objective credit and its sound together, which is a bug you notice
+ * rather than three separate ones you might not.
+ *
+ * The grind is the exception and is wired at its own start/stop sites below: it
+ * has a DURATION, and GRIND only fires when the rail is finished.
+ */
+events.on(EV.LAUNCH, (p) => {
+  audio.play('launch');
+  /**
+   * THE PAYOUT FIRES AT TAKEOFF, not on landing. Amit: "the sound for points
+   * for jumps -- try to start it sooner, as the jump starts."
+   *
+   * Which is right, and it is honest here in a way it would not be in most
+   * games. There is deliberately NO landing skill-check on this hill (see the
+   * landing note in the ride loop): the skill is choosing where and when to
+   * launch, and everything after the wheels leave the ground is already
+   * decided. So the points are known AT TAKEOFF -- announcing them then is
+   * reporting a settled fact, not promising one.
+   *
+   * It also puts the sound where the feeling is. The reward landing a second
+   * later arrived after the interesting part was over; at takeoff it plays
+   * INTO the silence of the air, which is the moment the jump actually is.
+   */
+  if (p && p.points > 0) audio.payout(p.huge, scoring.state.chain);
+});
+// Just the slap now -- the reward moved to the takeoff, above. The landing is a
+// physical event and reports itself; what it was WORTH was already announced.
+events.on(EV.LAND, () => audio.play('land'));
+events.on(EV.BOOST, () => audio.play('boost'));
+/**
+ * A RAIL PAYS TOO, and pays MORE than most ramps -- a long rail is worth 309
+ * against a kicker's 200 -- so leaving it silent said the opposite of what the
+ * scoring does. Fires at the exit, which is when the points are actually
+ * awarded and when the rider is back in control to appreciate it.
+ */
+events.on(EV.GRIND, (p) => {
+  if (p && p.points > 0) audio.payout(false, scoring.state.chain);
+});
+events.on(EV.HAZARD, () => audio.play('crash'));
+/**
+ * Pitched off the CHAIN so a run of crystals rises instead of repeating. The
+ * same clip thirty times is the fastest way to make a pickup annoying; a
+ * semitone per link turns the repetition into the thing being rewarded. Capped
+ * so it never reaches chipmunk.
+ */
+/**
+ * THE PAYOUT SOUND GROWS WITH THE CHAIN, in level as well as pitch.
+ *
+ * Amit: "the sfx for a single ramp jump is too strong feedback." Right -- a
+ * lone kicker is 200 points, the smallest thing that pays anything at all, and
+ * it was announcing itself at the same volume as a nine-chain vert wall. A
+ * reward that is always loud stops being a reward and becomes a noise the game
+ * makes when you jump.
+ *
+ * So the chain drives BOTH the pitch and the level, and the ordinary case is
+ * deliberately quiet -- an unchained jump is now a small note under the landing
+ * slap rather than over it. Reaching full volume takes a chain of five, which
+ * means the sound getting louder IS the run going well.
+ *
+ * A HUGE AIR keeps a higher floor. A vert wall is a big commitment on its own
+ * and should sound like one even unchained, so it starts at 70% rather than the
+ * ordinary 40%.
+ */
+events.on(EV.PICKUP, () => audio.play('pickup',
+  Math.min(1.6, 1 + (scoring.state.chain - 1) * 0.06)));
 const objectivesUi = createObjectives();
+const briefing = createBriefing();
 // Stars and unlocks. Local today, account data in the shipped product -- the
 // whole point of it being a module is that swapping the backing store touches
 // only that file (see systems/progress.js).
-const progress = createProgress(MISSIONS.map((m) => m.id));
+// TWO LADDERS. The ridge's original twenty and the open face's eight are
+// separate progressions with separate front doors -- the face's first mission is
+// open from the start rather than sitting behind twenty ridge missions. Stars
+// and scores stay in one store; only the unlock rule is per-track.
+const RIDGE_MISSIONS = MISSIONS.filter((m) => !m.course);
+/**
+ * OPEN THE BRIDGE BEFORE ANYTHING READS PROGRESS.
+ *
+ * createProfileStore() below asks `window.GoBalance` for the player's save, and
+ * until now that object never existed -- so every profile on a shared board was
+ * reading the same device-wide localStorage bucket. systems/gbSdk.js is the
+ * missing half of the host's protocol; installing it here, one line above the
+ * store that needs it, is what makes the save per PROFILE.
+ *
+ * A no-op outside the WebView, deliberately: at a dev URL there is no host to
+ * talk to and the existing localStorage path is the right one.
+ */
+installGbSdk();
+const progress = createProgress([
+  RIDGE_MISSIONS.map((m) => m.id),
+  // THE RACE LADDER, track 1. A second progression through the same store:
+  // races earn stars and unlock the next one exactly as missions do, so the
+  // lobby, the records and the storage all work unchanged. Only the RULE for
+  // earning a clear differs, and that lives in the race mode.
+  //
+  // WAS TRACK 2, behind the open face's ladder. That ladder is gone, so this
+  // moved down one -- and the race lobby's `track` default moved with it, in
+  // ui/raceSelect.js. They are a pair: nextMissionId() takes the index, so a
+  // lobby asking for a track that no longer exists falls back to the flattened
+  // list of every mission and quietly picks the wrong "next".
+  RACE_IDS,
+], createProfileStore());
+
+/**
+ * PROGRESS IS ASYNCHRONOUS NOW, so the ladder is not known at boot.
+ *
+ * The mode lobby is visible in the markup before any script runs, which means a
+ * player can reach MISSIONS before a profile's save has come back. Opening the
+ * list then would show a fresh ladder and correct itself a moment later -- a
+ * locked ladder that pops open reads as a bug even though the end state is
+ * right, and worse, an eager player could start mission 1 of a ladder they had
+ * already finished.
+ *
+ * So the two list-opening buttons await this, and nothing else does. The hill
+ * keeps rendering behind the menu throughout: blocking the RENDER on a network
+ * read would trade a small correctness problem for a black screen.
+ */
+const progressReady = progress.ready();
 
 // The mode is handed a read-only view of the ride and a way to END it, and
 // nothing else. Everything it wants to know arrives through `events`.
@@ -142,12 +284,21 @@ const modes = createModeHost({
   events,
   scoring,
   hud,
+  // Sound, so a mode can mark its own moments. The ride's own audio is driven
+  // off the event bus; this is for things only the mode knows about -- clearing
+  // an objective is not a ride event, it is a rule being satisfied.
+  audio,
   getState: () => ({ s: state.s, speed: state.speed, airborne: state.airActive }),
   progress,
   // The AI field. Handed to the mode rather than owned by it, so its lifetime
   // is the run's and nothing survives into free ride.
   rivals,
   finishLine,
+  // The prop field, so a FINITE course can say where its road stops -- see
+  // props.setEndS. Deliberately not a general handle on spawning: a mode that
+  // started placing its own props would put content outside the course's
+  // allowedKinds and outside every measurement built on it.
+  props,
   endRun: (reason, card) => showGameOver(reason, card),
 });
 
@@ -155,8 +306,26 @@ const modes = createModeHost({
 const state = {
   s: 0, // distance down the trough
   sPrev: 0, // last frame's s -- the ramp-lip crossing test needs the interval
-  theta: 0, // angle around the cross-section; 0 = the floor, +-THETA_MAX = the lip
+  theta: 0, // angle around the cross-section; 0 = the floor, +-TERRAIN.thetaMax = the lip
   thetaVel: 0,
+  // Ballistic flight. airY is the rider's actual world height while airborne
+  // and airVel its rate of change -- the whole of the air, with no arc, no
+  // authored flight time and no reference to the ground they took off from.
+  airY: 0, airVel: 0, airFresh: false,
+  // False from the moment a drop throws the rider until the ground stops
+  // curving away -- so one lip cannot launch them twice. See the launch test.
+  dropArmed: true,
+  // Seconds left of the post-barrier recovery drag, and how hard it bites.
+  wallSlowT: 0, wallSlowFactor: 1,
+  // How much of the no-trick HOVER pose is showing, 0..1. Eased rather than
+  // boolean so a brief ollie barely registers it and a long drop reaches it in
+  // full -- the pose scales with how much of a hang there actually was, with no
+  // threshold to tune and nothing to snap.
+  airHold: 0,
+  // Pinned against the edge barrier this frame, on a terrain that has one.
+  // Read by the sparks so scraping the wall is something you can SEE costing
+  // you, rather than a number quietly draining in the corner.
+  onWall: false,
   height: 0, // R*(1-cos theta) -- how far up the wall, drives speed exchange
   speed: START_SPEED,
   carve: 0,
@@ -191,6 +360,11 @@ const state = {
   spinTurns: 1, // whole revolutions this spin does -- see SPIN_720_HEIGHT
   boostT: 0, // seconds left on a boost pad's burst
   boostFloor: 0, // speed held for that burst -- see the boost pickup
+  roll: 0, // rolling-momentum bonus to terminal speed -- see ROLL_GAIN
+  boostDuration: 1, // the boost's full length, for the HUD timer
+  // Seconds left face-down after hitting a wall. While this is above zero the
+  // rider has no control at all -- see the wall branch in the prop interaction.
+  tripT: 0,
   airFrom: null, // the ramp this air launched from, excluded from ramp collision
   // Height of the launch ramp deck the rider is standing on right now.
   rampLift: 0,
@@ -204,6 +378,7 @@ const state = {
   // this flags that the rider is still settling off a rail, and the absorb
   // fires when grindLift has actually decayed back to the surface.
   grindLanding: false,
+  grindEase: 0, // how crosswise the catch was, decaying -- see GRIND_EASE_REF
 };
 
 // What separates a HUGE AIR from an ordinary one, in launch points. Defined
@@ -213,6 +388,8 @@ const state = {
 const HUGE_AIR_POINTS = 250;
 
 let swingScale = 1;
+// Where this run begins on the hill -- 0 for fixed courses. See startRun().
+let runStartS = 0;
 let running = false;
 let paused = false;
 /**
@@ -222,12 +399,70 @@ let paused = false;
  * being broken rather than as a pause. Every entry to and exit from a run now
  * goes through here.
  */
+/**
+ * THE CHROME BELONGS TO A RUN, not to the app.
+ *
+ * Amit: "the settings and the pause menu will appear only after the run
+ * actually starts, not while doing the UI."
+ *
+ * Both buttons only mean anything mid-ride -- there is nothing to pause on a
+ * menu, and the settings panel opening over the mission list puts two competing
+ * lists on screen at once, each with its own idea of what Enter and Space do.
+ * On the board that is worse than untidy: those two keys are the whole input
+ * vocabulary, so an overlay nobody meant to open can swallow every press.
+ *
+ * Hidden rather than disabled, so there is nothing to aim at in the first place.
+ */
+function setChromeVisible(on) {
+  for (const id of ['pause-button', 'settings-button']) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', !on);
+  }
+  // A run ending with the panel still up would leave it orphaned over the
+  // results screen, with its own key handling live.
+  if (!on) closeSettingsPanel();
+}
+
+/**
+ * Audio follows the game's paused state AND the settings panel, since both are
+ * "the player is not riding right now". Called from setPaused and from the
+ * panel's open/close, so there is one rule rather than two that can disagree.
+ */
+function syncAudioPause() {
+  audio.setPaused(paused || isPanelOpen());
+}
+
+/**
+ * THE TWO STATES OF THE PAUSE BUTTON, DRAWN RATHER THAN TYPED.
+ *
+ * This line used to be `paused ? '&#9654;' : '&#9208;'`. U+23F8's Unicode
+ * default presentation is EMOJI, so a mobile WebView reaches for the colour
+ * emoji font and the button renders as a yellow pill -- correct on desktop and
+ * in the editor, wrong on the device.
+ *
+ * THE HTML ALONE IS NOT ENOUGH, which is the trap: this handler rewrites the
+ * button's innerHTML on every toggle, so fixing only index.html gives you a
+ * correct icon that turns into a yellow pill the first time anyone pauses.
+ *
+ * PAUSE_ICON IS BYTE-IDENTICAL to the markup in index.html, deliberately.
+ * Un-pausing then puts the button back to exactly the state the page shipped
+ * with, so there is no version of this button that only appears after a
+ * toggle -- which is the shape of bug that hides from a first look.
+ */
+const PAUSE_ICON = '<svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="4" width="3.5" height="16" rx="1.2"/><rect x="13.5" y="4" width="3.5" height="16" rx="1.2"/></svg>';
+// The play triangle is drawn for the same reason rather than because U+25B6 was
+// definitely at fault: it is the other half of a pair, and leaving one as a
+// character means the button's two states could still disagree on a font we
+// have not tested. Same box and the same currentColor fill.
+const PLAY_ICON = '<svg class="chrome-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4.6 L19.2 12 L8 19.4 Z"/></svg>';
+
 function setPaused(next) {
   paused = next;
   const pauseButton = document.getElementById('pause-button');
   const pausedBadge = document.getElementById('paused-badge');
-  if (pauseButton) pauseButton.innerHTML = paused ? '&#9654;' : '&#9208;';
+  if (pauseButton) pauseButton.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
   if (pausedBadge) pausedBadge.classList.toggle('hidden', !paused);
+  syncAudioPause();
 }
 {
   const pauseButton = document.getElementById('pause-button');
@@ -315,10 +550,14 @@ function beginLanding(amount) {
 }
 
 function reset() {
-  state.s = 0;
+  state.s = runStartS;
   state.sPrev = 0;
   state.theta = 0;
   state.thetaVel = 0;
+  state.onWall = false;
+  state.airHold = 0;
+  state.dropArmed = true;
+  state.wallSlowT = 0;
   state.height = 0;
   state.speed = START_SPEED;
   state.carve = 0;
@@ -343,18 +582,40 @@ function reset() {
   state.spinTurns = 1;
   state.boostT = 0;
   state.boostFloor = 0;
+  state.roll = 0;
+  state.boostDuration = 1;
+  state.tripT = 0;
   state.airFrom = null;
   state.rampLift = 0;
   state.landT = 0;
   state.landAmount = 0;
   state.landDuration = LAND_SETTLE_DURATION;
   state.grindLanding = false;
+  state.grindEase = 0;
   autoTrickTimer = 0;
   rig.reset();
-  props.reset();
+  props.reset(runStartS);
   scoring.reset();
   hud.reset(); // the score readout counts UP, so a new run must start it at zero
-  props.update(0);
+  // The RUN'S start, not 0. A varying course begins hundreds of metres down the
+  // hill, and seeding the spawner at 0 populated nothing at all -- the world was
+  // empty until the game loop's first update happened to cover for it.
+  props.update(runStartS);
+  /**
+   * BUILD THE ROAD AT THE RUN'S START, not just the props.
+   *
+   * The trough is only rebuilt inside the simulation gate, and the one build at
+   * boot is for s = 0. That was invisible while a run began the moment the
+   * briefing closed -- the first frame of riding rebuilt it. With a countdown
+   * holding everything still, the player now spends three seconds looking at
+   * the road, and on a varying course that road was the wrong stretch of hill
+   * until they moved. Amit: "I need the level to be there while 3-2-1, and not
+   * appear the moment I start moving."
+   *
+   * Cheap, and it belongs here anyway: the same reasoning as the props line
+   * above, which was added for exactly this and stopped one line short.
+   */
+  trough.update(runStartS);
 }
 
 /**
@@ -375,7 +636,83 @@ function reset() {
  * backflip do a backflip". The random/conditional layer he mentioned wanting
  * later goes exactly here, gated behind the same `canFlip` check.
  */
-function beginAir(power, points, forcedTrick, launchLabel) {
+const _groundProbe = new THREE.Vector3();
+
+/** World Y of the actual riding surface under (s, theta), right now. */
+function groundYAt(s, theta) {
+  return toWorld(s, theta, _groundProbe).y;
+}
+
+/**
+ * How far above the ground the rider actually is, in world units.
+ *
+ * One subtraction now, where it used to be an arc plus a separately-tracked
+ * "the ground fell away" term. The rider HAS a world height while airborne
+ * (state.airY) and the ground HAS one, so the gap between them is the only
+ * definition needed -- and every height test in the game reads the same number
+ * the renderer draws.
+ */
+function airLift() {
+  if (!state.airActive) return 0;
+  return Math.max(0, state.airY - groundYAt(state.s, state.theta));
+}
+
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.pop=true] whether the launch imparts UPWARD velocity.
+ *   False for terrain drops: the ground curving away is not a ramp, and it must
+ *   not shove the rider skyward. All the air comes from the hill leaving.
+ */
+/**
+ * The highest the rider will actually get above the GROUND on this launch, in
+ * world units -- the ramp's arc and the hill's shape taken together.
+ *
+ * WHY THE TRICK LADDER NEEDS THIS. Amit: "if I'm going into a really serious
+ * drop, or even more important a ramp and then a drop, that's classical for a
+ * backflip. And I don't see those any more." He is describing the biggest air
+ * the game can produce -- a launcher planted on the lip of a drop, so the ramp
+ * throws you and then the hill is not there when you come down -- and it was
+ * being called a spin, because the ladder read the RAMP alone. A bigKicker tops
+ * out at 3.82 earned height against a 4.4 flip bar, so no combination of ramp
+ * and terrain could ever reach it.
+ *
+ * The flight never needed this: it is ballistic and finds the ground itself. It
+ * is the DECISION that was blind, picking a trick at takeoff from half the
+ * information about the jump it was picking for.
+ *
+ * TWO WRONG VERSIONS CAME FIRST, and both are instructive. Measuring the raw
+ * ground fall below the launch line credited a 3.5-unit drop with 3.4 units of
+ * air and flipped the smallest kicker in the game. Subtracting the rider's fall
+ * but ignoring the ramp's upward velocity did the reverse -- over the 14m to the
+ * bottom of that drop a free-falling rider descends 6 units, so a 3.5-unit drop
+ * scored zero assist. Neither is the question being asked. The question is how
+ * far above the hill the rider actually gets, which needs both halves of the
+ * trajectory: vUp*t - 0.5*g*t^2 for the arc, plus however far the ground has
+ * fallen away underneath it.
+ *
+ * Returns popHeight unchanged on any terrain without drops, so the half-pipe's
+ * ladder is bit-for-bit what it was.
+ */
+function peakAirAbove(s, v, vUp, popHeight) {
+  if (!TERRAIN.dropCycle || TERRAIN.dropCycle.length === 0) return popHeight;
+  const elev0 = elevAt(s);
+  const slope0 = slopeAt(s);
+  // A generous flight's worth of hill -- longer than any real flight, since
+  // overestimating only finds a drop the rider never reaches, and drops are far
+  // enough apart that a second one is never inside the window.
+  const span = Math.max(24, v * 1.5);
+  let best = popHeight;
+  for (let d = 1; d <= span; d += 1) {
+    const t = d / v;
+    const arc = vUp * t - 0.5 * AIR_G * t * t;         // height above the launch line
+    const fell = elevAt(s + d) - (elev0 + slope0 * d); // how far the hill dropped from it
+    const air = arc + fell;
+    if (air > best) best = air;
+  }
+  return best;
+}
+
+function beginAir(power, points, forcedTrick, launchLabel, opts = {}) {
   // How much air this launch earned. Speed never contributes zero -- a crawling
   // rider still gets some pop, just never enough to reach the flip threshold.
   const speedFactor = AIR_SPEED_FLOOR
@@ -383,7 +720,18 @@ function beginAir(power, points, forcedTrick, launchLabel) {
   // A loaded tail pops higher. This is what makes the brake a setup move rather
   // than only a way to slow down: compress into the lip and the jump is bigger.
   const loadBoost = 1 + state.tailLoad * TAIL_LOAD_BOOST;
-  const earnedHeight = AIR_HEIGHT_BASE * power * power * speedFactor * loadBoost;
+  const popHeight = AIR_HEIGHT_BASE * power * power * speedFactor * loadBoost;
+  // THE JUMP IS THE RAMP PLUS THE HILL. A launch taken at the lip of a drop is
+  // genuinely a bigger jump than the same launch on flat ground, and the ladder
+  // has to see the whole of it or the best setup in the game reads as a small
+  // one. Zero everywhere without drops, so the half-pipe's ladder is untouched.
+  //
+  // Left out of the flight itself on purpose -- that is ballistic and finds the
+  // ground on its own. This only informs the CHOICE of trick, and the score.
+  const earnedHeight = opts.pop === false
+    ? popHeight
+    : peakAirAbove(state.s, state.speed,
+        Math.sqrt(2 * AIR_G * Math.min(popHeight, AIR_HEIGHT_MAX)), popHeight);
 
   // THE TRAJECTORY DECIDES THE TRICK, and nothing else does.
   //
@@ -438,6 +786,43 @@ function beginAir(power, points, forcedTrick, launchLabel) {
 
   state.airActive = true;
   state.airT = 0;
+  // THE TRAJECTORY THE RIDER LEFT ON. Once airborne they follow the line they
+  // were already travelling, and the ground does whatever the ground does --
+  // which on a hill with drops in it means the ground can fall away underneath.
+  // Recorded at launch because it must NOT be re-read from the surface later:
+  // reading the current surface every frame is precisely the bug that welds the
+  // rider to the road and makes a drop produce no air at all.
+  //
+  // On a constant grade the tangent IS the surface, so this changes nothing on
+  // the half-pipe -- see the identity check in the elevation regression.
+  // --- the launch, as a VELOCITY rather than a shape -------------------
+  //
+  // The rider is already falling at the rate the hill descends: the surface
+  // drops by slopeAt per unit travelled, and s advances at `speed`, so their
+  // current vertical rate is -speed*slope. A ramp ADDS to that; it does not
+  // replace it, which is why a jump taken on steep ground carries the descent
+  // into the flight instead of pausing it.
+  const descending = state.speed * slopeAt(state.s);
+  // NO POP ON A DROP. A lip you fly off because the ground curved away gives no
+  // upward impulse at all -- there is nothing to push against. The hang comes
+  // entirely from continuing on your line while the hill drops out from under
+  // you, which is the difference between "the terrain threw me" (wrong, and
+  // what the scripted arc did) and "the terrain left" (right).
+  // popHeight, NOT earnedHeight: the terrain's contribution is something the
+  // hill does by falling away, and adding it here would throw the rider upward
+  // for air the ground is about to give them anyway -- counting it twice, and
+  // reintroducing exactly the shove that pop:false exists to prevent.
+  const pop = opts.pop === false ? 0 : Math.sqrt(2 * AIR_G * Math.min(popHeight, AIR_HEIGHT_MAX));
+  state.airVel = pop - descending;
+  state.airY = groundYAt(state.s, state.theta);
+  // LAUNCHED THIS FRAME, so the flight must not integrate yet. s has already
+  // advanced by the time a launch is decided, so integrating here would drop
+  // airY by a full dt while the ground is still sampled at the s it was set
+  // from -- the rider is instantly "below" a surface that has not moved yet,
+  // and touchdown fires on frame one. Fatal for a pop:false drop, where airY
+  // starts exactly ON the ground with airVel already negative: measured, every
+  // drop launch ended on the frame it began and no drop gave any air at all.
+  state.airFresh = true;
   // Spent, not retained -- otherwise one well-timed compression would boost
   // every launch for the rest of the run.
   state.tailLoad = 0;
@@ -453,6 +838,12 @@ function beginAir(power, points, forcedTrick, launchLabel) {
   // backflip was authored at 0.55s but measured 665-841ms in play for exactly
   // that reason. Tricks should feel the same every time you see them.
   if (trick === 'hop') {
+    // PARKED. Nothing calls this any more -- its only caller was the grind
+    // approach-angle gate, which is gone (see the grind branch below). Kept
+    // whole rather than deleted: the pose, height and landing weight behind it
+    // are tuned, and it is the obvious basis for a deliberate hop on an input
+    // if one is ever wanted. Reachable by passing 'hop' to beginAir().
+    //
     // The hop-over is a fixed, deliberate save move: it has to clear a
     // 0.52-0.62 rail by a believable margin regardless of how fast you hit it.
     // The only launch whose height is NOT earned, and so the only one whose air
@@ -472,7 +863,12 @@ function beginAir(power, points, forcedTrick, launchLabel) {
   // Reported AFTER height and duration are settled, so a listener sees the
   // finished jump rather than a half-decided one.
   events.emit(EV.LAUNCH, {
+    // `points` and `huge` ride along so a listener can react to the SIZE of a
+    // launch at the moment it happens. Both are already decided here -- the
+    // ramp's value is read at takeoff -- so this is reporting a known fact
+    // rather than predicting one.
     launcher: launchLabel, power, height: state.airHeight, trick,
+    points, huge: points >= HUGE_AIR_POINTS,
   });
   if (trick === 'hop') events.emit(EV.HOP, { label: launchLabel });
 }
@@ -487,8 +883,10 @@ const lobby = createLobby(
     swingScale = config.swing === 'full' ? 1 : config.swing === 'half' ? 0.45 : 0;
     autoTrick = config.autotrick === 'on';
     setControlPreset(config.controls);
+    // The existing quality tiers stay exactly as they were; only the top tier
+    // learns the budget, because that is the one that was unbounded on a tablet.
     renderer.setPixelRatio(
-      config.texres === '1024' ? Math.min(window.devicePixelRatio, 2)
+      config.texres === '1024' ? pixelRatioFor(window.innerWidth, window.innerHeight)
         : config.texres === '512' ? 1 : 0.6,
     );
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -502,17 +900,51 @@ const lobby = createLobby(
 // --- the front door ---------------------------------------------------------
 // Only choice here is the mode. A mode with levels goes on to pick one; a mode
 // without them starts immediately.
-const modeSelect = createModeSelect((id) => {
-  if (id === 'missions') missionSelect.open();
+const modeSelect = createModeSelect(async (id) => {
+  // A mode with LEVELS opens its list; everything else drops straight in.
+  // Speed race joined that group when it got a ladder of its own -- picking a
+  // track is part of a race, not something to be dealt at random.
+  //
+  // The lists wait for the profile's save; a mode with no ladder does not need
+  // it and should not be delayed by it.
+  if (id === 'missions') { await progressReady; missionSelect.open(); }
+  else if (id === 'speedRace') { await progressReady; raceSelect.open(); }
   else startRun(id);
 });
 
+/**
+ * Whichever level-picking screen is currently up, or null.
+ *
+ * THE RACE LOBBY BELONGS IN HERE. It was missing, and this function is what
+ * __gbBack uses to decide what "up a level" means -- so with the race grid open
+ * the hardware back button skipped straight past it to "mid-run, ask to quit"
+ * or out of the game entirely. Any screen that sits above a run has to be
+ * listed, or the one button the board guarantees does the wrong thing on it.
+ */
+function openSelect() {
+  if (missionSelect.isOpen()) return missionSelect;
+  if (raceSelect.isOpen()) return raceSelect;
+  return null;
+}
+
 // --- mission select ---------------------------------------------------------
 // Shown after choosing MISSIONS, and again after every result.
-const missionSelect = createMissionSelect(MISSIONS, progress, (missionId) => {
+const missionSelect = createMissionSelect(RIDGE_MISSIONS, progress, (missionId) => {
   setPendingMission(missionId);
   startRun('missions');
 });
+
+
+/**
+ * THE RACE LOBBY. The same component the missions use, on the race ladder --
+ * races have an id, a name, a brief and a star record, which is everything that
+ * list needs. Building a second list widget for six rows would have been two
+ * places for the two-key navigation to drift apart.
+ */
+const raceSelect = createRaceSelect(progress, (raceId) => {
+  setPendingRace(raceId);
+  startRun('speedRace');
+}, 2, () => modeSelect.open());
 
 // --- theme ------------------------------------------------------------------
 //
@@ -525,11 +957,26 @@ let activeTheme = getTheme(DEFAULT_THEME);
 
 function applyTheme(theme) {
   activeTheme = theme;
-  scene.fog.color.setHex(theme.fog);
+  // ONE SKY FOR NOW -- see SKY_BLUE_TOP. The theme still owns the ground, the
+  // markings and the rider's rim; it just no longer owns the sky, so that eight
+  // hill shapes can be judged against a constant.
+  //
+  // FOG COMES FROM THE PAINTING. Fog fades distant ground toward its own
+  // colour, so it is the join between the playfield and whatever is behind it
+  // -- and every matte is a different somewhere. A level with no matte still
+  // falls back to the horizon colour, which is the same reasoning it always
+  // was: a dark fog under a bright sky ends the world in a dark band floating
+  // in mid-air instead of a horizon. See SKIES for how each value is measured.
+  const matte = TERRAIN.sky ? SKIES[TERRAIN.sky] : null;
+  scene.fog.color.setHex(matte && matte.fog ? matte.fog : SKY_BLUE_BOTTOM);
   // The background is a baked canvas gradient, so it has to be redrawn rather
   // than recoloured.
-  scene.background = makeSkyGradient(theme.skyTop, theme.skyBottom);
-  sky.setTint(theme.skyTint);
+  scene.background = makeSkyGradient(SKY_BLUE_TOP, SKY_BLUE_BOTTOM);
+  sky.setGradient(SKY_BLUE_TOP, SKY_BLUE_BOTTOM);
+  // A LEVEL'S OWN SKYLINE. A terrain naming a matte gets its painting; one that
+  // does not keeps the gradient, which is the honest fallback for a level whose
+  // art has not been made yet.
+  sky.setPanorama(TERRAIN.sky ? SKIES[TERRAIN.sky] : null);
   trough.setTheme(theme);
   speedLines.setTheme(theme);
   rider.setTheme(theme);
@@ -537,12 +984,85 @@ function applyTheme(theme) {
 
 /** @param {string} id a registered mode id */
 function startRun(id) {
+  /**
+   * CLOSE THE OUTGOING RUN FIRST -- before anything below resets the world.
+   *
+   * modes.start() stops the old mode itself, so this looks redundant, and for
+   * the GAME it is: stop() is idempotent, both modes latch on `finished`. What
+   * it is not redundant for is what the old mode reports on its way out. Left
+   * to modes.start(), stop() ran after reset(), so a race abandoned by starting
+   * something else read its own distance and score as zero -- and its level_end
+   * landed after the incoming run's start_game, which reads as one run ending
+   * inside another to anything walking the stream forward.
+   *
+   * Both were measured on the wire, not reasoned about. Reached whenever one
+   * run follows another without a trip to the lobby: the restart button, and a
+   * mode switch straight from the results screen.
+   */
+  modes.stop();
   const def = getMode(id);
   // The course decides what may spawn -- hazards are absent from every course
   // today, which is how "no cones by default" is expressed as data rather than
   // as a hard-coded filter inside the spawner.
-  const course = getCourse(def.course || DEFAULT_COURSE);
-  props.setAllowedKinds(course.allowedKinds);
+  // A mode may defer the choice to whatever it is about to run -- missions do,
+  // because one progression now spans two hills.
+  const course = getCourse(
+    (def.courseFor && def.courseFor()) || def.course || DEFAULT_COURSE);
+  // THE SHAPE OF THE HILL, before anything is placed on it. Terrain has to land
+  // first: prop placement is expressed in angles out to the rim, and the trough
+  // mesh, the pendulum and the collision arithmetic all read the cross-section
+  // live -- so a course that changed the ground after spawning would scatter its
+  // props against the previous hill's width.
+  // THE MISSION MAY NAME ITS OWN HILL. A course says which world you are in;
+  // within a world each level is free to be a different mountain, which is the
+  // whole point of the face's variants. Falls back to the course's.
+  const wantTerrain = (def.terrainFor && def.terrainFor()) || course.terrain;
+  setTerrain(wantTerrain || DEFAULT_TERRAIN);
+  trough.applyTerrain();
+  // CONTENT IS THE MISSION'S TO DECIDE, falling back to the course.
+  //
+  // Amit, on the face's ladder: "first mission should be only ramps, and you
+  // should not have glides at all on the screen -- and of course blockers. Then
+  // the next mission should be glides, then pickups. But in the first two we
+  // shouldn't have pickups at all." That is a statement about what SPAWNS, not
+  // about what is counted: a mission teaching ramps with rails lying around is
+  // not teaching ramps.
+  const content = (def.contentFor && def.contentFor()) || null;
+  // `content.kinds` OR the course's -- a mission may carry content that says
+  // nothing about kinds. The layout cycle gives every ridge mission a
+  // {spread, push}, and reading kinds straight off that passed undefined into
+  // a Set, which spawned an EMPTY WORLD on missions 6-20. It showed up as one
+  // null in a measurement table and was written off as a probe artefact.
+  props.setAllowedKinds((content && content.kinds) || course.allowedKinds);
+  // A COURSE CAN BLOCK TYPES TOO. It was a mission-only setting, which left the
+  // race as the last place the wooden barricade still appeared -- every ridge
+  // mission already names it in `without`, so nothing else was showing it.
+  // A mission's own list wins outright when it has one.
+  props.setContent(
+    (content && content.without) || course.without || null,
+    content ? !!content.rareAlways : false,
+    content ? (content.feature || null) : null);
+  // How much of the authored layout this course actually wants on the ground.
+  // A mission may override the course's density -- "exactly the same as the
+  // original" has to include how much of the layout is actually emitted.
+  props.setDensity(content && content.density != null ? content.density : course.density);
+  // Extra speed gates on top of the authored patterns -- the race's, and only
+  // the race's. See props.setBoostEvery.
+  props.setBoostEvery(course.boostEvery || 0);
+  // Extra pink barriers, same idea and the same course-only scope.
+  props.setWallEvery(course.wallEvery || 0);
+  // Lateral layout is the mission's too -- see setLayout.
+  props.setLayout(content && content.spread != null ? content.spread : null,
+    content ? (content.push || 0) : 0);
+  // ROUTE VARIATION. One seed decides the whole run's layout, and the biggest
+  // thing it moves is where on the hill you START: the trough's funnels and
+  // roll are functions of absolute distance, so a different starting distance
+  // is a different road, not just different props on the same road. Multiplied
+  // by the funnel period so consecutive runs land in genuinely different
+  // stretches rather than a few metres apart.
+  const seed = course.variation ? Math.random() : 0;
+  runStartS = course.variation ? Math.floor(seed * 5 * FUNNEL_SPACING) : 0;
+  props.setVariation(!!course.variation, seed);
   // The speed-based fail state is opt-in per mode, and no mode wants it today.
   // Kept whole rather than deleted so a survival mode can switch it back on
   // with one flag -- see systems/scoring.js for why it is a mode question.
@@ -550,14 +1070,49 @@ function startRun(id) {
   hud.setWobbleVisible(!!def.wobble);
   // Modes opt OUT of the score readout; everything shows it by default.
   hud.setScoreVisible(def.showsScore !== false);
+  // The big top-centre boost timer: opt-in, for the modes raced against rivals.
+  hud.setBoostBarVisible(!!def.showsBoostBar);
   // A FRESH LOOK EVERY RUN. The point is that the hill does not feel like the
   // same hill twice; picking here rather than per-mode means free ride, missions
   // and the race all get it for free.
-  applyTheme(pickRandomTheme());
+  // A LEVEL'S OWN COLOUR, when it has one. Random per run was right while every
+  // hill was the same shape -- it was the only thing making two runs look
+  // different at all. Now that the hills genuinely differ, a fixed palette per
+  // level is worth more: it is how you recognise where you are before you have
+  // read a word of the HUD.
+  applyTheme(TERRAIN.theme ? getTheme(TERRAIN.theme) : pickRandomTheme());
   running = true;
+  // The game track starts HERE, not at boot: the lobby is silent by design.
+  audio.setInRun(true);
+  setChromeVisible(true);
   setPaused(false);
   reset();
+  /**
+   * REPORTED HERE, which is the run beginning rather than the first metre.
+   *
+   * The briefing (and the race's countdown) still gate the hill below, so a
+   * player who reads the card and backs out is counted as having started. That
+   * is the honest place for it: the funnel this feeds is "opened the game ->
+   * actually started something -> finished it", and the app's launcher owns the
+   * first of those (see GOBALANCE_ANALYTICS_REQUEST.md). Putting it after the
+   * card would quietly merge "did not start" with "started and bailed", which
+   * are different problems.
+   *
+   * BEFORE modes.start(), not after: the mode's own start() reports
+   * level_start, and a stream where the level begins before the run does reads
+   * backwards to anyone building a funnel out of it. It also sets the `mode`
+   * that every level event is stamped with, so the order is load-bearing now
+   * and not just tidy. Verified in that order.
+   *
+   * No-op until the host gains logEvent -- see systems/analytics.js.
+   */
+  analytics.runStarted(id);
   modes.start(id);
+  // BRIEF FIRST, RIDE SECOND. The loop is gated on the briefing below, so the
+  // hill genuinely does not move until the card has landed -- a freeze frame
+  // rather than a card floating over a run already in progress.
+  const brief = modes.briefing();
+  if (brief) briefing.show(brief);
 }
 
 // Automation and quick iteration: ?gamemode=missions drops straight into a run.
@@ -646,7 +1201,18 @@ function showGameOver(reason = 'wipeout', card = null) {
   goInnerEl.classList.toggle('compact', !!rows);
 
   finalScoreEl.textContent = Math.round(sc.score).toLocaleString();
-  finalBreakdownEl.textContent = card && card.detail
+  /**
+   * A MODE CAN ASK FOR NO LINE AT ALL, which an empty string now means.
+   *
+   * This used to test `card.detail` for truthiness, so '' fell through to the
+   * ride summary below -- there was no way to express "nothing here", only a
+   * choice between two sentences. The race wants neither: its standings rows
+   * say more than any summary of them could. See modes/speedRace.js.
+   *
+   * A mode that provides no `detail` key at all still gets the default, which
+   * is what the free ride and the missions rely on.
+   */
+  finalBreakdownEl.textContent = card && card.detail !== undefined
     ? card.detail
     : `${km} km ridden  \u00b7  top ${Math.round(sc.topSpeed * 2.6)} km/h`;
 
@@ -683,11 +1249,23 @@ function leaveRun() {
   // Read the mode BEFORE tearing it down. The host happens to keep its `def`
   // after stop() so `modes.id` would still answer, but relying on that makes
   // this correct by accident.
-  const wasMissions = modes.id === 'missions';
+  // Which list to return to -- the one whose button was pressed, not "missions"
+  // by name. Getting this wrong strands the player on the wrong ladder.
+  // Which screen sits above this run. The race has a lobby of its own now, so
+  // it belongs in this group rather than dropping back to the mode list.
+  const wasMissions = modes.id === 'missions' || modes.id === 'speedRace';
+  const returnSelect = modes.id === 'speedRace' ? raceSelect : missionSelect;
+  briefing.cancel();
   modes.stop();
   running = false;
+  audio.setInRun(false);
+  // Write now rather than on the debounce. A player who clears a mission and
+  // immediately quits out of the app would otherwise lose the star they just
+  // earned to a timer that never fired.
+  progress.flush();
+  setChromeVisible(false);
   setPaused(false);
-  if (wasMissions) missionSelect.open();
+  if (wasMissions) returnSelect.open();
   else modeSelect.open();
 }
 
@@ -713,13 +1291,19 @@ document.getElementById('confirm-yes').addEventListener('click', () => {
  * The back button. Its meaning is positional, which is why it cannot stay an
  * inline onclick in the markup: only the game knows which screen is above.
  */
-document.getElementById('gb-back').addEventListener('click', () => {
+window.__gbBack = () => {
   if (isConfirmOpen()) {                       // already asking -- treat as "no"
     confirmEl.classList.add('hidden');
-  } else if (missionSelect.isOpen()) {         // mission list -> mode lobby
-    missionSelect.close();
+  } else if (openSelect()) {                   // either mission list -> lobby
+    openSelect().close();
     modeSelect.open();
   } else if (modeSelect.isOpen()) {            // top of OUR stack -> leave the game
+    // THE ONE PLACE THE PLAYER ACTUALLY LEAVES. Reported here rather than from
+    // leaveRun(), which fires between runs and would call every trip back to
+    // the lobby the end of a session. Pairs with the launcher's open_game and
+    // carries the two things that event cannot know: how long they stayed and
+    // how much they played.
+    analytics.gameLeft();
     if (window.Unity) window.Unity.call('nav:back');
   } else if (gameOver) {                       // results -> up a level
     restart();
@@ -728,7 +1312,7 @@ document.getElementById('gb-back').addEventListener('click', () => {
   } else if (window.Unity) {
     window.Unity.call('nav:back');
   }
-});
+};
 
 restartButton.addEventListener('click', restart);
 // Space/Enter restart too: they're the only keys the host forwards, and the
@@ -751,7 +1335,57 @@ window.addEventListener('keydown', (e) => {
 // onChange fires once during its own construction and writes the control
 // preset, so a panel built earlier would have its stored preference silently
 // overwritten on every boot.
-initSettingsPanel({ openLab: () => lobby.open() });
+initSettingsPanel({
+  openLab: () => lobby.open(),
+  audio,
+  // The panel counts as paused: it is over the game and the player is not
+  // riding. See syncAudioPause.
+  onToggle: () => syncAudioPause(),
+  /**
+   * DEV OPTIONS ▸ UNLOCK ALL. Opens every mission and race at one star each --
+   * see systems/progress.js for why one and not three.
+   *
+   * REDRAWS THE LOBBY BEHIND THE PANEL, which is the part that is easy to miss.
+   * Both selects re-read progress in open(), so closing and reopening one shows
+   * the change -- but the settings panel is reachable FROM an open lobby, which
+   * is exactly where someone would use this. Without the redraw the rows stay
+   * locked on screen while the save says otherwise, and the honest conclusion
+   * from that is that the button does not work.
+   */
+  unlockAll: () => {
+    const opened = progress.unlockAll();
+    const open = openSelect();
+    if (open) open.open();
+    return opened;
+  },
+});
+// Hidden until a run starts. The first screen is a menu, so the chrome has
+// nothing to act on yet -- see setChromeVisible.
+setChromeVisible(false);
+
+/**
+ * THE DEV UNLOCK: hold the objectives panel for seven seconds, then the code.
+ *
+ * THE WHOLE PANEL, not the speed readout. Amit: "the 7-second trigger should be
+ * on the whole UI panel on the left -- title, timer, black background, the whole
+ * thing."
+ *
+ * The readout was a 90px number in the opposite corner, which is a hard thing to
+ * find and hold with a thumb on a board -- and it is the one HUD element that
+ * changes every frame, so a finger resting on it hides the number it is sitting
+ * on. The objectives panel is the largest fixed target on screen and nothing
+ * about it moves, so a press lands anywhere in it. `.devhold` dims whatever is
+ * held, which on a panel this size is unmistakable feedback that the hold has
+ * started -- on the readout it was easy to miss.
+ *
+ * Still not discoverable by accident: seven seconds is a long time to rest a
+ * thumb on a HUD, there is nothing interactive in the panel to invite a tap, and
+ * the code is what makes getting in deliberate rather than lucky.
+ *
+ * Guarded inside installDevUnlock: a missing element must not take the boot
+ * down over a debugging convenience.
+ */
+installDevUnlock(document, document.getElementById('objectives'), unlockDevOptions);
 
 // --- HUD --------------------------------------------------------------------
 let fpsAccum = 0;
@@ -766,9 +1400,37 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, clock.getDelta());
 
-  if (running && !paused && !gameOver && !lobby.isOpen() && !modeSelect.isOpen() && !missionSelect.isOpen()
-      && !isConfirmOpen() && !isPanelOpen()) {
-    const { carve, tuck, brake, pop } = readInput();
+  /**
+   * THE START LINE. A mode may hold the ride still -- see modes.holding() --
+   * and the countdown ticks out here, outside the gate it controls, because a
+   * countdown inside its own gate never reaches zero.
+   *
+   * IT WAITS FOR THE BRIEFING. Without that check the count ran BEHIND the
+   * card: 3.1 seconds of countdown against a 4.2 second briefing meant 3, 2 and
+   * 1 all happened while the player was still reading, and the card lifted on
+   * GO -- or on nothing at all. Amit spotted it from the outside: "could it be
+   * that some of it is happening while the UI is presented?"
+   *
+   * The same reasoning as the sim gate itself, which has always waited for the
+   * briefing: nothing that the player is meant to react to should happen while
+   * something is covering it.
+   */
+  if (running && !paused && !gameOver && !briefing.isOpen() && modes.holding()) {
+    modes.holdUpdate(dt);
+  }
+
+  if (running && !paused && !gameOver && !modes.holding()
+      && !lobby.isOpen() && !modeSelect.isOpen() && !openSelect()
+      && !isConfirmOpen() && !briefing.isOpen() && !isPanelOpen()) {
+    let { carve, tuck, brake, pop } = readInput();
+    // NO CONTROL WHILE DOWN. Steering out of a crash before the rider has got
+    // up would make the wall a speed penalty rather than a crash -- the cost is
+    // the seconds, not the speed. Input is dropped rather than the loop being
+    // frozen, so the world keeps moving past you and the rivals keep going.
+    if (state.tripT > 0) {
+      state.tripT = Math.max(0, state.tripT - dt);
+      carve = 0; tuck = 0; brake = 0; pop = false;
+    }
 
     // SOFT tilt response (see constants.js). Two stages:
     //   1. shape it   -- |carve|^CARVE_CURVE, sign kept. Flattens the region
@@ -845,12 +1507,42 @@ function frame() {
       state.tailLoad = Math.max(0, state.tailLoad - TAIL_LOAD_DECAY * dt);
     }
 
+    // ROLLING MOMENTUM. Ride clean and the ceiling creeps up; brake and it drops
+    // away several times faster. Applied as a bonus to the GRADE rather than as
+    // a push, so drag still bounds the result -- it moves terminal speed, it
+    // cannot run away.
+    if (state.braking > 0.01) {
+      state.roll = Math.max(0, state.roll - ROLL_BRAKE_LOSS * state.braking * dt);
+    } else if (!state.airActive) {
+      state.roll = Math.min(ROLL_MAX, state.roll + ROLL_GAIN * dt);
+    }
+
+    // STEEPER GROUND PULLS HARDER. The hill has a shape now (world/trough.js),
+    // so the pull down it cannot be one number any more. Deliberately NOT
+    // proportional: GRADE_ACCEL and DRAG are tuned values in tuned units rather
+    // than a real gravity, and scaling the pull by the full 7.7x of a drop's
+    // steepness puts terminal at 74 u/s on a hill balanced for 27. The gain is
+    // the fraction of that we actually take -- see dropAccelGain.
+    const steepness = slopeAt(state.s) / GRADE;
+    let gradePull = GRADE_ACCEL * (1 + TERRAIN.dropAccelGain * (steepness - 1));
+    // RECOVERY DRAG after a barrier. Applied to the GRADE rather than as extra
+    // drag so it cannot stall the rider outright -- it only slows how fast the
+    // hill hands the speed back.
+    if (state.wallSlowT > 0) {
+      state.wallSlowT = Math.max(0, state.wallSlowT - dt);
+      gradePull *= state.wallSlowFactor;
+    }
+
     const accel =
-      GRADE_ACCEL
+      gradePull
       + TUCK_BONUS * state.tucking
+      + state.roll
       - DRAG * state.speed * state.speed
       - CONTROLS.carveScrub * absCarve * state.speed;
-    state.speed = Math.max(2, state.speed + accel * dt);
+    // MIN_SPEED, not 2. Being dragged to walking pace by carving left the rider
+    // with nothing to steer with -- the pendulum needs speed to carve at all --
+    // so a bad line put you in a state the controller could not recover from.
+    state.speed = Math.max(MIN_SPEED, state.speed + accel * dt);
     // Brake drag is PROPORTIONAL to speed, so it bites hard when you're flying
     // and can't yank a slow rider to a standstill; the floor stops it stalling
     // him entirely, since a dead stop is a fail state, not a brake.
@@ -877,21 +1569,81 @@ function frame() {
       // the wall stiffens as you approach the rim -- a transition steepening
       // toward vert, which is what a real half-pipe does -- so running out of
       // wall feels like the wall pushing back rather than hitting a barrier.
-      const over = Math.abs(state.theta) - THETA_MAX * 0.82;
-      const lipPush = over > 0
+      const rim = TERRAIN.thetaMax; // per-course now -- see data/terrain.js
+      // THE CUSHION IS PER-TERRAIN. On the pipe the wall stiffens toward the rim
+      // so running out of road pushes back; on the open face there is no
+      // push-back at all and the whole width rides the same, with a hard
+      // barrier at the edge instead. See LIP_CUSHION / LIP_WALL.
+      const over = Math.abs(state.theta) - rim * 0.82;
+      const lipPush = (TERRAIN.lipMode === LIP_CUSHION && over > 0)
         ? -Math.sign(state.theta) * over * over * 46
         : 0;
       const thetaAcc =
-        state.carve * CONTROLS.carveTorque
-        - (THETA_GRAVITY / R) * Math.sin(state.theta)
-        - CONTROLS.damp * state.thetaVel
+        state.carve * CONTROLS.carveTorque * TERRAIN.carveScale
+        - (TERRAIN.thetaGravity / R) * Math.sin(state.theta)
+        - CONTROLS.damp * TERRAIN.dampScale * state.thetaVel
         + lipPush;
       state.thetaVel += thetaAcc * dt;
       state.theta += state.thetaVel * dt;
-      // Absolute backstop, well past where the cushion has already taken over.
-      const hardLimit = THETA_MAX * 1.04;
-      if (state.theta > hardLimit) { state.theta = hardLimit; state.thetaVel = Math.min(0, state.thetaVel); }
-      if (state.theta < -hardLimit) { state.theta = -hardLimit; state.thetaVel = Math.max(0, state.thetaVel); }
+
+      // --- WORLD STEER: the lane stops carrying the rider ------------------
+      //
+      // Amit: "why should the player and the controller care about the lane?
+      // The lane is for building the world. In the snowboard game the lane was
+      // not affecting the player at all."
+      //
+      // Position is stored as (s, theta) -- an angle off a centreline that
+      // BENDS -- so holding theta means being swept sideways with the road.
+      // Measured hands-off, that is 38.8 units of lateral travel in nine
+      // seconds on Switchback, with the rider's lane never changing and the
+      // camera tracking the road to within 1.4 degrees. Nothing was steering
+      // them; the road was carrying them.
+      //
+      // The road's lateral rate is speed * d(centre.x)/ds. The rider's own
+      // offset from the centreline is R*sin(theta), which changes at R*cos(theta)
+      // per radian -- so cancelling one with the other is a division. Neutral
+      // input then means a straight line in the WORLD, and following a bend
+      // becomes something the player does rather than something done to them.
+      //
+      // A SCALE, not a switch: 0 is the old behaviour exactly, so the half-pipe
+      // and everything tuned on it are untouched, and a route that turns out to
+      // demand too much steering can be dialled back rather than re-authored.
+      if (TERRAIN.worldSteer > 0) {
+        const R2 = radiusAt(state.s);
+        // cos(theta) goes to zero at the rim of a deep hill, and the correction
+        // divides by it -- so it is floored. Past that angle the surface is too
+        // steep for a lateral cancellation to mean much anyway.
+        const lean = Math.max(0.35, Math.cos(state.theta));
+        const correction = -(state.speed * routeSlopeAt(state.s)) / (R2 * lean);
+        state.theta += correction * TERRAIN.worldSteer * dt;
+      }
+
+      // Where the world ends. In CUSHION mode this is a backstop well past the
+      // point the soft push has already taken over, and reaching it is a bug
+      // you never see. In WALL mode it is the wall itself -- the rider arrives
+      // here often and on purpose, so it has to behave like a surface rather
+      // than like a clamp: stop the outward motion, do NOT bounce, and charge
+      // for leaning on it.
+      const wall = TERRAIN.lipMode === LIP_WALL;
+      const hardLimit = wall ? rim : rim * 1.04;
+      if (Math.abs(state.theta) >= hardLimit) {
+        const dir = Math.sign(state.theta);
+        state.theta = dir * hardLimit;
+        // Kill only the OUTWARD half of the velocity. Zeroing it outright would
+        // make the wall sticky -- you would have to build speed from a dead stop
+        // to peel off it -- and reflecting it would bounce you back across the
+        // hill you were deliberately holding a line on.
+        if (dir > 0) state.thetaVel = Math.min(0, state.thetaVel);
+        else state.thetaVel = Math.max(0, state.thetaVel);
+        // Scraping costs. This is the only thing left standing between "no
+        // speed cost anywhere on the face" and "hold full lean and park".
+        if (wall && TERRAIN.wallScrub > 0) {
+          state.speed = Math.max(MIN_SPEED, state.speed - TERRAIN.wallScrub * dt);
+          state.onWall = true;
+        }
+      } else {
+        state.onWall = false;
+      }
     }
 
     // --- height <-> speed exchange -------------------------------------
@@ -902,7 +1654,12 @@ function frame() {
     const newHeight = heightAt(state.s, state.theta);
     const dh = newHeight - state.height;
     state.height = newHeight;
-    const v2 = Math.max(4, state.speed * state.speed - 2 * CONTROLS.heightExchange * dh);
+    // heightScale is what decides whether a WIDE hill is actually usable. On the
+    // open face the whole point is that you can be anywhere across it; at the
+    // pipe's full exchange rate the centreline would still be the only fast
+    // line and the extra width would just be scenery you cannot afford to use.
+    const v2 = Math.max(4, state.speed * state.speed
+      - 2 * CONTROLS.heightExchange * TERRAIN.heightScale * dh);
     state.speed = Math.sqrt(v2);
 
     // --- air / landing ---------------------------------------------------
@@ -918,9 +1675,109 @@ function frame() {
     if (pop && !state.airActive && !state.grind) {
       beginAir(0.72, 40); // a bare ollie: much smaller than a ramp launch
     }
+
+    // --- the ground giving way -------------------------------------------
+    // A launch with nothing to launch off. Where the hill tips away (see
+    // curvatureAt), staying on the surface would need a downward acceleration
+    // of v^2 * curvature; past what the grade can supply, the rider is already
+    // airborne and the only question is whether the game noticed.
+    //
+    // SPEED IS THE WHOLE TEST, because curvature is fixed by the terrain and v
+    // is the only other term. Arrive at the lip fast and it throws you; crawl
+    // over the same ground and you follow it down. That is a drop behaving like
+    // a drop rather than like a trigger volume someone painted on a hill.
+    if (!state.airActive && !state.grind && state.tripT <= 0) {
+      const need = state.speed * state.speed * curvatureAt(state.s);
+      // ONE LAUNCH PER LIP. Without the latch, landing while still inside the
+      // convex half of a drop re-satisfies the test on the very next frame and
+      // throws the rider again -- Amit: "I still get the point, sometimes more
+      // than one for a drop." It happens at lower speeds, where the flight is
+      // short enough to touch down before the ground stops curving away.
+      //
+      // Re-armed below, once the hill is no longer outrunning gravity, which is
+      // the same condition that fires it. So a drop launches exactly once and
+      // the next one is free to.
+      if (need <= TERRAIN.launchG) state.dropArmed = true;
+      if (need > TERRAIN.launchG && state.dropArmed) {
+        state.dropArmed = false;
+        // Scaled by how far past the threshold you were, so the same lip pays
+        // out more the harder you hit it -- and capped, because the curvature
+        // spikes at the very start of the lip and an uncapped ratio would make
+        // a marginally faster approach a wildly bigger jump.
+        const over = Math.min(2.2, need / TERRAIN.launchG);
+        // NO TRICK OFF A DROP. Amit: "I think we should either stop with the
+        // spins and tricks when we drop, or just when it's like a really big
+        // drop. Let's start for now by just switching them off completely."
+        //
+        // A spin needs something to spin ABOUT, and a drop gives the rider no
+        // impulse at all -- the ground simply leaves. Rotating out of that reads
+        // as the animation deciding something the physics never did, which is a
+        // close relative of the fake floor this whole pass removed.
+        //
+        // `null` rather than `undefined`: undefined means "consult the height
+        // ladder", null means "no trick, final". Restoring tricks for big drops
+        // later is this one argument -- pass undefined and the ladder decides
+        // again, or gate it on the drop's depth.
+        //
+        // pop:false -- see beginAir. The rider is not thrown; the hill leaves.
+        beginAir(0.55 * over, 0, null, 'DROP', { pop: false });
+      }
+    }
     if (state.airActive) {
-      state.airT += dt / state.airDuration; // power is already baked in by beginAir
-      if (state.airT >= 1) {
+      // ONE PARABOLA, no phases. Integrate the rider's actual vertical velocity
+      // and compare against the actual ground beneath them. There is no arc, no
+      // authored duration governing the flight, and above all no launch tangent
+      // standing in for a floor that is no longer there -- the flight ends when
+      // and only when the rider meets the hill.
+      // Captured BEFORE it is cleared. Clearing the flag inside the branch and
+      // then testing !state.airFresh for touchdown a few lines further down
+      // means that test sees the flag already down on the very frame it was
+      // raised -- so the rider lands on the launch frame, with airY still
+      // exactly equal to the ground. Every drop flight lasted zero seconds.
+      const justLaunched = state.airFresh;
+      if (justLaunched) {
+        // Skip exactly one frame, so the next step advances the rider and the
+        // ground beneath them across the same interval.
+        state.airFresh = false;
+      } else {
+        // EXACT for constant acceleration: y += v0*dt - 0.5*g*dt^2, and only
+        // then v -= g*dt. The obvious order (advance v, then move by it) is
+        // semi-implicit Euler, which applies the END-of-step velocity across the
+        // whole step and so overstates the fall by 0.5*g*dt^2.
+        //
+        // Normally invisible; here it was decisive. At a drop lip the rider
+        // clears the ground by roughly 0.001 units per step -- that margin IS
+        // the amount by which the hill outruns gravity -- while the integration
+        // error is about 0.007. The rider sank through the surface on the first
+        // step every time, so every drop flight lasted exactly zero seconds,
+        // which looked for all the world like the launch condition being wrong.
+        state.airY += (state.airVel - 0.5 * AIR_G * dt) * dt;
+        state.airVel -= AIR_G * dt;
+      }
+
+      // The trick clock is SEPARATE from the flight now, and has to be: rotation
+      // is locked 1:1 to airT, and a backflip is authored at 0.55s because that
+      // is how long a backflip should look. Letting a long hang stretch it would
+      // slow the flip down; letting it loop would start a second one. So it runs
+      // at its own pace, finishes, and the rider holds the landing pose for
+      // however much longer the ground takes to arrive.
+      state.airT = Math.min(1, state.airT + dt / state.airDuration);
+
+      // HANG TIME OVER A DROP. The scripted arc says the flight is over; the
+      // ground says otherwise. Where the hill has fallen away beneath the
+      // trajectory the rider left on, the arc finishing only means the trick
+      // is done -- they are still in the air, and they stay there until they
+      // actually meet the surface.
+      //
+      // Held at exactly 1 rather than allowed to run on, because airT drives
+      // the rotation animation 1:1: letting it pass 1 would start a second
+      // backflip on the way down.
+      // TOUCHDOWN IS MEETING THE GROUND. Not "the arc finished", which is what
+      // it used to be and what made the flight a shape rather than a fall.
+      const ground = groundYAt(state.s, state.theta);
+      const touchdown = !justLaunched && state.airVel <= 0 && state.airY <= ground;
+      if (touchdown) {
+        state.airY = ground;
         state.airActive = false;
         state.airT = 0;
         rig.onLand();
@@ -974,9 +1831,22 @@ function frame() {
     if (state.grind) {
       const g = state.grind;
       const half = g.def.size.l / 2;
-      // Locked to the rail's line while on it -- that's what a grind IS.
-      state.theta += (g.theta - state.theta) * Math.min(1, dt * 12);
-      state.thetaVel = 0;
+      // Locked to the rail's line while on it -- that's what a grind IS. But
+      // HOW FAST it locks depends on how hard the rider was cutting across when
+      // they caught it: already aligned and it is effectively instant, a hard
+      // cut takes about a fifth of a second to come round. That difference is
+      // the whole of what the old approach-angle gate was defending, and it
+      // belongs here -- in how the rider settles -- rather than in a rule about
+      // whether they are allowed to grind at all.
+      const ease = state.grindEase || 0;
+      const rate = GRIND_SNAP_RATE + (GRIND_EASE_RATE - GRIND_SNAP_RATE) * ease;
+      state.theta += (g.theta - state.theta) * Math.min(1, dt * rate);
+      // Bled out rather than zeroed. Killing the lateral velocity on the entry
+      // frame is precisely the "magnetic grab" -- the rider stops dead sideways
+      // in the same frame they touch the rail. Decaying it lets the crossing
+      // momentum carry through and die off, which reads as catching the rail.
+      state.thetaVel -= state.thetaVel * Math.min(1, dt * rate);
+      state.grindEase = Math.max(0, ease - dt * 4);
       state.grindTime += dt;
       state.grindPoints += g.def.grind.pointsPerSecond * dt;
       if (state.s > g.s + half) {
@@ -1048,8 +1918,10 @@ function frame() {
       // middle, so for a moment after leaving one the rider is still over its
       // back half and would collide with the ramp they had just left.
       const surfaceH = props.rampHeightAt(state.s, state.theta, state.airFrom);
-      const arcLift = state.airActive
-        ? Math.sin(state.airT * Math.PI) * state.airHeight : 0;
+      // airLift(), not the bare arc: over a drop the rider is also held up by
+      // the ground having fallen away, and a ramp they are clearing easily must
+      // not read as struck. See airLift().
+      const arcLift = airLift();
 
       if (state.airActive && !state.grind && surfaceH > arcLift + 0.05) {
         // Struck the face. Plant on it and let the ordinary ride-up take over --
@@ -1093,17 +1965,33 @@ function frame() {
       }
     }
     props.update(state.s, dt);
-    if (!state.grind) {
+    {
+      // PROBING RUNS DURING A GRIND TOO, for collectables only.
+      //
+      // This whole block used to be skipped while on a rail, which is why a
+      // crystal sitting ON a rail could never be taken -- the one place a pickup
+      // is most obviously meant to be collected, since the rail carries you
+      // straight through it. Nothing was wrong with the pickup or its collider;
+      // the game simply was not looking.
+      //
+      // Only collectables are honoured while grinding. A launcher, another rail
+      // or a hazard is suppressed: the rider is locked to this rail's line and
+      // cannot meaningfully meet any of them, and re-entering a grind while
+      // already grinding is exactly the loop the original guard existed to
+      // prevent. This keeps that protection and drops the collateral.
       // How high off the surface the rider actually is. The same three offsets
       // the render pass adds below -- air arc, ramp deck, rail top -- because a
       // pickup floating overhead has to be judged against where the rider IS,
       // not where their (s, theta) is. NOTE state.height is the TROUGH WALL's
       // height at this position, a different quantity entirely; using it here
       // was the first version of this line and it is always 0 at the bottom.
-      const lift = (state.airActive ? Math.sin(state.airT * Math.PI) * state.airHeight : 0)
+      const lift = airLift()
         + state.rampLift
         + state.grindLift * state.grindLiftHeight;
-      const hit = props.probe(state.s, state.theta, state.airActive, state.sPrev, lift);
+      const found = props.probe(state.s, state.theta, state.airActive, state.sPrev, lift);
+      const collectable = found
+        && (found.def.kind === 'pickup' || found.def.kind === 'boost');
+      const hit = (state.grind && !collectable) ? null : found;
       if (hit) {
         if (hit.def.kind === 'launch') {
           // Ramps and banks auto-launch on contact -- no button, no tap. This
@@ -1133,40 +2021,36 @@ function frame() {
           // jump flips it would be constant. Let the flip finish; the rail is
           // still there to be caught on a later pass.
         } else if (hit.def.kind === 'grind') {
-          // APPROACH ANGLE GATE. Gliding a rail/ledge only makes sense if you
-          // arrive roughly along it; snapping into a grind while cutting hard
-          // across it reads as the obstacle magnetically grabbing you. So:
-          // measure the crossing angle and, if it's too steep, flip sideways
-          // OVER the obstacle instead of grinding it.
+          // TOUCHING A RAIL ALWAYS GRINDS IT. There used to be an approach-angle
+          // gate here: arrive too crosswise and the rider hopped OVER the rail
+          // instead, on the reasoning that snapping into a grind mid-cut reads
+          // as the obstacle magnetically grabbing you.
           //
-          // lateral speed = |thetaVel| * local radius (angular rate around the
-          // trough converted to world units); over forward speed that ratio is
-          // tan(approach angle).
-          const lateralSpeed = Math.abs(state.thetaVel) * radiusAt(state.s);
-          const crossRatio = lateralSpeed / Math.max(1, state.speed);
-          if (crossRatio > GRIND_MAX_CROSS_RATIO) {
-            beginAir(1.0, 90, 'hop', hit.def.label);
-            // DELIBERATELY NOT `spent`. Hopping a rail must not consume it:
-            // `spent` is permanent and drops the prop from probe() entirely, so
-            // a rail you skipped over crosswise lost its collider for good and
-            // could never be grinded on a later approach -- and rails are 14-28
-            // units long while a hop only covers ~10-17, so landing back on the
-            // same one is routine, not a corner case.
-            //
-            // The debounce that flag was standing in for is already handled,
-            // and more precisely: the mid-trick branch above refuses grind
-            // entry for as long as a trick is rotating, and airActive/airTrick
-            // are cleared in the SAME frame on landing, so there is no gap
-            // where a hop could re-trigger itself. Once he's down, a crosswise
-            // approach hops again and an aligned one grinds -- which is the
-            // whole point of the angle gate.
-            hud.banner('HOP OVER');
-          } else {
+          // The reasoning was sound and the rule was unusable, because it
+          // punished the only way to reach a rail. Measured with a bot steering
+          // at rails deliberately: the approach ratio at contact runs 0.60-0.65
+          // against a 0.30 limit, and 2 of every 6 attempts were rejected. The
+          // input required to GET to a rail is the input that disqualified you
+          // from riding it. No threshold fixes that -- anything loose enough to
+          // let you aim is loose enough to let everything through.
+          //
+          // So contact attaches, always, and the grab-feel the gate was guarding
+          // against is handled where it belongs: in HOW the rider settles onto
+          // the line (see grindEase below) rather than in whether they may.
+          {
             state.grind = hit;
             state.grindPoints = 0;
             state.grindTime = 0;
             state.airActive = false;
             state.airT = 0;
+            // How hard the rider was cutting across at the moment of contact.
+            // Kept, not discarded, because the SETTLE is what sells the catch:
+            // a gentle drift should lock on immediately, a hard cut should take
+            // a beat to come round. Zeroing thetaVel on this frame -- which is
+            // what used to happen -- is the actual "magnetic grab".
+            state.grindEase = Math.min(1,
+              (Math.abs(state.thetaVel) * radiusAt(state.s)) / Math.max(1, state.speed)
+              / GRIND_EASE_REF);
             // The rail's own mesh sits at y=h in buildRail (props.js) -- that's
             // how high its bar actually is off the trough surface. Without this,
             // the rider stood at plain surface height while the rail bar
@@ -1189,10 +2073,16 @@ function frame() {
           // the recycle pass stay in charge of its lifetime -- `spent` already
           // means "no longer interactive" everywhere else in this file.
           events.emit(EV.PICKUP, { type: hit.def.pickup.type, points: hit.def.pickup.points });
-          scoring.award(hit.def.pickup.points, hit.def.label);
+          // Pickups sit OUTSIDE the multiplier entirely -- see scoring.award().
+          scoring.award(hit.def.pickup.points, hit.def.label, false);
           hit.mesh.visible = false;
           hit.spent = true;
         } else if (hit.def.kind === 'boost') {
+          events.emit(EV.BOOST, {
+            label: hit.def.label,
+            speed: hit.def.boost.speed,
+            seconds: hit.def.boost.seconds,
+          });
           // A real speed change, not a score bonus dressed up as one: the whole
           // point is that it moves you up the road. Added to the CURRENT speed
           // rather than setting a target, so hitting one while already fast is
@@ -1205,9 +2095,63 @@ function frame() {
           state.boostFloor = Math.min(
             hit.def.boost.ceiling, state.speed + hit.def.boost.speed);
           state.boostT = hit.def.boost.seconds;
-          scoring.award(hit.def.boost.points, hit.def.label);
+          // Remembered so the HUD timer has something to divide by -- gates do
+          // not all last the same time, and a bar drawn against a constant
+          // would be wrong for the air gates.
+          state.boostDuration = hit.def.boost.seconds;
+          scoring.award(hit.def.boost.points, hit.def.label, false);
           events.emit(EV.PICKUP, { type: 'boost', points: hit.def.boost.points });
           hit.mesh.visible = false;
+          hit.spent = true;
+        } else if (hit.def.kind === 'wall') {
+          // A REAL CRASH. Not a wobble and not a speed scrub -- the run stops.
+          // Speed goes to almost nothing, the rider is out of control for a
+          // beat, and everything they had going is gone: the boost, the rolling
+          // momentum they had built, and any grind they were on.
+          //
+          // In a race this is the most expensive thing on the course, and it
+          // should be: the field does not stop, so every metre they take while
+          // you are down is a metre you have to win back.
+          state.speed = hit.def.wall.stopSpeed;
+          state.tripT = hit.def.wall.downSeconds;
+          // The hill holds the speed back for a beat -- see slowSeconds. Longer
+          // than the loss of control on purpose: you get the steering back
+          // first and spend the rest of it climbing out of the hole, which is
+          // what "and now I'm slow" actually feels like.
+          state.wallSlowT = hit.def.wall.slowSeconds || 0;
+          state.wallSlowFactor = hit.def.wall.slowFactor || 1;
+          state.roll = 0;          // the momentum bonus, earned and now lost
+          state.boostT = 0;
+          state.grind = null;      // knocked off a rail if you were on one
+          state.airActive = false;
+          state.airT = 0;
+          state.airTrick = null;
+          // SHOVED CLEAR, not stopped on its line. Zeroing thetaVel left the
+          // rider travelling straight down the barrier they had just hit, which
+          // is what made a centre-on impact look like passing through it.
+          //
+          // Which way: away from the barrier's own line if the rider is off it
+          // at all, otherwise continue whichever way they were already drifting,
+          // and failing both -- a dead-centre hit with no lateral motion, which
+          // is exactly the case that read worst -- toward the middle of the
+          // hill, where there is the most room to be pushed into.
+          {
+            const off = state.theta - hit.theta;
+            const dir = Math.abs(off) > 1e-3 ? Math.sign(off)
+              : Math.abs(state.thetaVel) > 1e-3 ? Math.sign(state.thetaVel)
+                : -Math.sign(state.theta) || 1;
+            state.thetaVel = dir * (hit.def.wall.deflect || 0);
+          }
+          // The heaviest absorb the rider has, held for the whole time they are
+          // down -- it is the closest thing to a fall this rig can do without
+          // new animation, and it reads as being folded up by the impact.
+          beginLanding(LAND_AMOUNT_BACKFLIP);
+          state.landDuration = hit.def.wall.downSeconds;
+          state.landT = hit.def.wall.downSeconds;
+          rig.onLand();
+          scoring.hit(0, hit.def.label);
+          events.emit(EV.HAZARD, { label: hit.def.label, wobble: 0 });
+          hud.banner('CRASH');
           hit.spent = true;
         } else if (hit.def.kind === 'hazard') {
           events.emit(EV.HAZARD, { label: hit.def.label, wobble: hit.def.hazard.wobble });
@@ -1235,6 +2179,27 @@ function frame() {
     rivals.update(dt, state.s, props);
     modes.update(dt);
 
+    // THE HOVER, eased. Engaged only when airborne with nothing else to do:
+    // a trick already occupies the rider, and layering a held stance under a
+    // rotation reads as two animations disagreeing.
+    {
+      // Scaled by the air actually earned. airLift() is the real gap between
+      // the rider and the hill, so a pop that clears the ground by a tenth of a
+      // unit shows a tenth of the pose, and only a genuine drop spreads him
+      // out fully.
+      // Scaled by the air actually earned. airLift() is the real gap between
+      // the rider and the hill, so a pop that clears the ground by a tenth of a
+      // unit shows a tenth of the pose, and only a genuine drop spreads him
+      // out fully.
+      const want = (state.airActive && !state.airTrick)
+        ? Math.min(1, airLift() / HOVER_FULL_LIFT)
+        : 0;
+      const rate = want > state.airHold ? HOVER_IN_RATE : HOVER_OUT_RATE;
+      const step = rate * dt;
+      state.airHold += Math.max(-step, Math.min(step, want - state.airHold));
+      state.airHold = Math.max(0, Math.min(1, state.airHold));
+    }
+
     trough.update(state.s);
   }
 
@@ -1244,8 +2209,12 @@ function frame() {
     // Air is along the SURFACE NORMAL now, not world-up -- so a launch off a
     // rolled section throws you away from the wall you left, which is what
     // makes a corkscrew readable rather than arbitrary.
-    surfaceUp(state.s, state.theta, _up);
-    _pos.addScaledVector(_up, Math.sin(state.airT * Math.PI) * state.airHeight);
+    // THE RIDER'S HEIGHT IS SIMPLY WHERE THEY ARE. state.airY is integrated
+    // from real velocity under real gravity, so there is nothing to add on top
+    // of the surface and nothing to correct for -- the surface is just what they
+    // will eventually hit. Set outright rather than offset: an offset would once
+    // again be measuring the flight against the ground it left.
+    _pos.y = state.airY;
   }
   if (state.rampLift > 0.001) {
     // Stand the rider on the ramp deck. Added along the SURFACE NORMAL like
@@ -1277,9 +2246,13 @@ function frame() {
     tucking: state.tucking,
     braking: state.braking,
     tailLoad: state.tailLoad,
+    // Stopped on a start line: the rider must idle rather than kick-push. See
+    // the push branch in rider.js.
+    held: modes.holding(),
     airActive: state.airActive,
     airT: state.airT,
     airTrick: state.airTrick,
+    airHold: state.airHold,
     landPose: landPose(),
     landCurl: landCurl(),
     landEnv: landEnv(),
@@ -1309,12 +2282,34 @@ function frame() {
   // Camera shake ramps with the wobble meter, so the fail state is FELT coming
   // for a couple of seconds rather than sprung (build doc §5.3's warning ramp).
   // With wobble ON, shake is a DANGER read: it ramps as the meter approaches
-  // the kill. With it off there is no danger to telegraph, so a much gentler
-  // tremble comes off raw overspeed instead -- speed should still feel like
-  // something, it just no longer means you are about to die.
+  // the kill. With it off it marks speed you did not get on your own -- zero at
+  // or below the natural ceiling, so riding well at the top is calm, and only a
+  // boost shakes the frame. It was measured off SPEED_REF before, which sat
+  // BELOW the natural top and so shook the screen at ordinary cruise.
   view.shake = scoring.wobbleEnabled
     ? Math.max(0, (scoring.state.wobble - 55) / 45)
-    : Math.min(0.35, Math.max(0, (state.speed / SPEED_REF - 1.0) / 0.4));
+    : Math.min(SHAKE_MAX, Math.max(0, (state.speed - NATURAL_TOP_SPEED) / SHAKE_SPAN));
+
+  /**
+   * THE RIDE'S SOUND, every frame. One call, and the audio system decides which
+   * continuous layer that implies -- rolling, grinding, or the silence of being
+   * in the air.
+   *
+   * Driven from the same state the renderer reads rather than from the events
+   * that cause the transitions, deliberately: `airborne` and `grind` are the
+   * truth about where the rider is, whereas LAUNCH and LAND are moments. A bed
+   * driven by moments drifts out of sync the first time one is missed -- a drop
+   * that launches without a ramp, a rail exit that is interrupted -- and the
+   * wheels end up rolling through the air. This cannot.
+   */
+  audio.setRide({
+    airborne: state.airActive,
+    grinding: !!state.grind,
+    speed: state.speed,
+    // Silent between runs: the wheels must not keep rolling over the results
+    // screen, which breaks the illusion exactly as badly as the gaps did.
+    active: running && !gameOver,
+  });
 
   rider.update(view, dt);
 
@@ -1375,9 +2370,26 @@ function frame() {
     fpsFrames = 0;
     fpsTimer = 0;
   }
-  objectivesUi.update(modes.panel());
+  // The panel stays hidden while the briefing is up, or the card would fly to a
+  // destination that is already sitting there in plain sight -- which is the one
+  // thing that would make the flight pointless. briefing.fly() reveals it for
+  // long enough to measure and hands it back.
+  /**
+   * NOTHING TO REPORT ON THE START LINE.
+   *
+   * The panel is hidden while a mode is holding, for the same reason it is
+   * hidden behind the briefing: it would be reporting on a race that has not
+   * happened. With everyone level at gaps of 0 the standings sort is arbitrary,
+   * so it read "5TH PLACE" before the player had moved a metre -- which is a
+   * discouraging thing to say to someone who is, in fact, exactly level.
+   */
+  objectivesUi.update(briefing.isOpen() || modes.holding() ? null : modes.panel());
+  hud.boost(state.boostT > 0 ? state.boostT / state.boostDuration : 0, state.boostT);
   hud.update(dt, {
-    speed: state.speed,
+    // Zero on the start line. The rider carries a speed while held -- the value
+    // is real, they are simply not moving with it -- and a readout saying
+    // 34 km/h over a stationary skater is the HUD contradicting the picture.
+    speed: modes.holding() ? 0 : state.speed,
     score: scoring.state.score,
     wobble: scoring.state.wobble,
     chain: scoring.state.chain,
@@ -1388,15 +2400,58 @@ function frame() {
 // Debug handle for the render lab. Lets a console (or an automated check) read
 // live state and poke at bones without adding UI -- e.g. verifying that skeletal
 // animation is genuinely advancing rather than the mesh being frozen.
-window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals, finishLine, trough, sky, applyTheme };
+window.__lab = { scene, camera, rider, state, THREE, sparks, props, renderer, radiusAt, speedLines, events, modes, startRun, scoring, progress, missionSelect, rivals, finishLine, trough, sky, applyTheme,
+  // The sound system, so a headless check can confirm the context actually
+  // started and that the two switches move independently.
+  audio,
+  // The ladder itself, so star thresholds can be checked against what a hill
+  // actually pays without re-deriving them outside the game.
+  RIDGE_MISSIONS,
+  // The race ladder and its picker, so a headless check can open the lobby and
+  // choose a track without clicking through two menus.
+  raceSelect, setPendingRace,
+  // Live cross-section, plus the setter -- so a terrain can be swapped mid-run
+  // from the console and measured, rather than only via a mode's course.
+  TERRAIN, setTerrain: (k) => { setTerrain(k); trough.applyTerrain(); },
+  // Terrain probes, for reading the hill's shape from the console.
+  elevAt, slopeAt, curvatureAt,
+  /**
+   * Jump to just before the next drop. Drops are 540m apart and a run is 1800m,
+   * so looking at one otherwise means riding 20 seconds to reach it and another
+   * 20 to see it again -- which is most of the cost of iterating on it.
+   * `__lab.toDrop()` for the next one, `__lab.toDrop(2)` to skip ahead.
+   */
+  toDrop(n = 1) {
+    if (!TERRAIN.dropCycle || TERRAIN.dropCycle.length === 0) return 'this terrain has no drops';
+    // Ask the terrain where its lips actually are rather than re-deriving them.
+    // The first version computed the lip from a single dropWidth, which stopped
+    // existing when drops became a varied cycle -- so it quietly produced NaN
+    // and teleported the rider out of the world.
+    const lips = dropLipsBetween(state.s + 20, state.s + 20 + TERRAIN.dropSpacing * TERRAIN.dropCycle.length * 2);
+    const lip = lips[Math.max(0, Math.min(lips.length - 1, n - 1))];
+    if (!lip) return 'no lip found ahead';
+    const target = lip.s - 60; // ride the approach rather than start on the edge
+    state.s = target;
+    state.sPrev = target;
+    props.reset(target);
+    return `${lip.drop.profile} drop, depth ${lip.drop.depth} over ${lip.len.toFixed(0)}m -- lip in 60m`;
+  },
+  /** Every drop lip in a stretch, for measuring. */
+  dropLips: (from, to) => dropLipsBetween(from, to),
+  // The LIVE input instance. A dynamic import() of the module gives a second
+  // copy whose initInput() never ran, so its key set stays empty and every
+  // reading is zero -- which looks exactly like a broken mapping.
+  input: { readInput, setStance, getStance },
+  // THE LIVE mission setter. A dynamic import() of modes/missions.js under
+  // Vite's HMR hands back a SECOND module instance whose pendingId is its own,
+  // so setting it there leaves the running game's pendingId null and every
+  // mission falls back to the default course -- which reads exactly like the
+  // face missions loading the ridge. Same trap as the input module earlier.
+  setPendingMission };
 
 // Road needs one build before the first frame so nothing pops in.
 trough.update(0);
 rider.ready.then(() => {
-  if (!rider.modelAvailable) {
-    document.querySelector('[data-mode="model"] small').textContent =
-      'FAILED TO LOAD — check src/assets/rider.glb';
-  }
   const rigNote = document.querySelector('[data-mode="rigged"] small');
   if (rigNote) {
     rigNote.textContent = rider.rigAvailable
@@ -1409,5 +2464,9 @@ frame();
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  // Recompute the ratio, not just the size: a budget derived from the OLD
+  // viewport is the wrong ratio for the new one, and rotating a tablet changes
+  // the viewport by a lot. setSize alone would keep the stale ratio.
+  renderer.setPixelRatio(pixelRatioFor(window.innerWidth, window.innerHeight));
   renderer.setSize(window.innerWidth, window.innerHeight);
 });

@@ -19,11 +19,13 @@ export function createHud() {
   };
 
   let bannerTimer = 0;
+  let objectiveTimer = 0;
   let lastFps = 0;
   let lastSpeed = 0;
   let shownScore = 0; // what the readout currently reads, for the count-up
   let lastChain = 1;
   let lastTarget = 0; // last frame's score, for edge-detecting an award
+  let bigBoostBar = false;
 
   /**
    * Restart a CSS animation that may already be running. Toggling the class
@@ -64,6 +66,44 @@ export function createHud() {
     },
 
     /**
+     * The boost timer. Hidden entirely when no boost is running -- an empty bar
+     * sitting there permanently would read as a mechanic that is broken rather
+     * than one that is not currently active.
+     * @param {number} frac 0..1 of the boost remaining, or 0 for none.
+     */
+    boost(frac, secondsLeft = 0) {
+      const meter = document.getElementById('boost-meter');
+      const fill = document.getElementById('boost-fill');
+      const right = document.getElementById('bottomRight');
+      const on = frac > 0;
+      if (meter) meter.classList.toggle('hidden', !on);
+      if (right) right.classList.toggle('boosting', on);
+      if (fill && on) fill.style.width = `${Math.min(1, frac) * 100}%`;
+
+      // The big one, top centre. Only present in modes that asked for it, and
+      // only while a boost is actually running.
+      const top = document.getElementById('boost-top');
+      if (!top || !bigBoostBar) {
+        if (top) top.classList.add('hidden');
+        return;
+      }
+      top.classList.toggle('hidden', !on);
+      if (!on) return;
+      document.getElementById('bt-fill').style.width = `${Math.min(1, frac) * 100}%`;
+      document.getElementById('bt-time').textContent = `${secondsLeft.toFixed(1)}s`;
+      // Under a second is where "it is about to end" stops being information
+      // and starts being urgency.
+      top.classList.toggle('ending', secondsLeft <= 1.0);
+    },
+
+    /** Modes opt in to the big top-centre timer -- see showsBoostBar. */
+    setBoostBarVisible(on) {
+      bigBoostBar = on;
+      const top = document.getElementById('boost-top');
+      if (top && !on) top.classList.add('hidden');
+    },
+
+    /**
      * Show or hide the score and its chain multiplier. A mode that is not
      * decided by points should not display a running total of them.
      */
@@ -81,6 +121,51 @@ export function createHud() {
       if (el.wobbleBar) el.wobbleBar.classList.toggle('hidden', !on);
       const label = document.getElementById('wobble-label');
       if (label) label.classList.toggle('hidden', !on);
+    },
+
+    /**
+     * THE OBJECTIVE-CLEAR MOMENT -- its own call, not banner().
+     *
+     * banner() is the trick label: 30px, 1.1 seconds, fired several times a run
+     * for BIG AIR and RAIL. Announcing the completion of the mission in that
+     * same voice made the biggest event in a run indistinguishable from its
+     * smallest. Amit: "the message should be bigger with stronger feedback."
+     *
+     * Restarted cleanly by removing and re-adding the element, so the CSS
+     * animations replay if it is ever fired twice in one run.
+     */
+    /**
+     * @param {string|null} face '3', '2', '1', 'GO' -- or null to clear it.
+     *
+     * Each number re-triggers the animation by removing and re-adding the
+     * element's class, so every digit gets its own punch-in. One animation
+     * spanning the whole countdown would read as a single slow fade rather than
+     * as a count.
+     */
+    countdown(face) {
+      const el2 = document.getElementById('race-countdown');
+      if (!el2) return;
+      if (!face) { el2.classList.add('hidden'); return; }
+      const b = el2.querySelector('b');
+      el2.classList.add('hidden');
+      void el2.offsetWidth;
+      b.textContent = face;
+      el2.classList.toggle('go', face === 'GO');
+      el2.classList.remove('hidden');
+    },
+
+    objectiveClear() {
+      const oc = document.getElementById('objective-clear');
+      if (!oc) return;
+      oc.classList.add('hidden');
+      // Force a reflow between the two class changes, or the browser coalesces
+      // them and the animation never restarts.
+      void oc.offsetWidth;
+      oc.classList.remove('hidden');
+      clearTimeout(objectiveTimer);
+      // Matches the longer of the two animations, so the element is only hidden
+      // once it has finished leaving.
+      objectiveTimer = setTimeout(() => oc.classList.add('hidden'), 2000);
     },
 
     banner(text) {
