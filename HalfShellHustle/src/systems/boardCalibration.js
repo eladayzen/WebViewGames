@@ -98,6 +98,28 @@ const LANDING_FRACTION = 0.92;
 // tapped/waited through without measuring anything.
 const MOVE_GATE_DEG = 3;
 const SAMPLE_MS = 1000;
+// --- Plateau detection: WHEN to start measuring --------------------------
+// Found on real hardware: the same player measured differently run to run,
+// and the variable was how FAST they leaned. The movement gate above says
+// "you have started", not "you have arrived", so the sample window used to
+// open at 3 degrees and cover the whole travel out to the limit. Lean
+// quickly and most of that second sits at the extreme (high reading); lean
+// slowly and most of it is mid-travel (low reading). Same reach, different
+// number, purely from speed.
+//
+// So the hold does not begin until the lean STOPS GROWING: the reading has
+// to go PLATEAU_MS without improving on its own best by more than
+// PLATEAU_EPS_DEG. That is speed-independent by construction -- a slow
+// leaner simply spends longer in the settling phase -- and it also measures
+// the thing actually wanted, a reach the player can hold, rather than
+// whatever they happened to be passing through when the clock started.
+const PLATEAU_MS = 450;
+const PLATEAU_EPS_DEG = 1;
+// Never let the new gate become a way to FAIL. A player who genuinely can't
+// hold still (an inflated cushion is never static) would otherwise settle
+// late or never, so after this long past the movement gate the hold starts
+// regardless and the percentile does its usual job.
+const MAX_SETTLE_MS = 6000;
 const POLL_MS = 16; // ~60Hz, matching the host's own pump rate
 // Safety net only -- if a side's gate never opens (no real board, or a
 // player who can't or won't move that way), don't hang the wizard forever.
@@ -163,15 +185,24 @@ const MAX_PLAUSIBLE_DEG = 30;
  *     way.
  */
 function sampleDirection(sign, {
-  onTilt, onGateOpen, onGateClose, onHoldProgress, isCancelled,
+  onTilt, onGateOpen, onGateClose, onHoldStart, onHoldProgress, isCancelled,
 } = {}) {
   const moveGateNorm = MOVE_GATE_DEG / WIDEN_DEG;
+  const plateauEps = PLATEAU_EPS_DEG / WIDEN_DEG;
   const p = sign > 0 ? 0.9 : 0.1;
+  // "Further out this way" in signed terms -- right leans positive, left
+  // negative, so every comparison below is written once against `sign`
+  // rather than branching on direction at each use.
+  const beyond = (a, b) => (sign > 0 ? a > b : a < b);
 
   return new Promise((resolve) => {
     const samples = [];
     let gateOpen = false;
     let gateOpenedAt = 0;
+    let holding = false;
+    let holdStartedAt = 0;
+    let peak = 0;
+    let lastImprovedAt = 0;
     const startedAt = performance.now();
 
     const finish = (outcome) => {
@@ -195,6 +226,9 @@ function sampleDirection(sign, {
         if (past) {
           gateOpen = true;
           gateOpenedAt = now;
+          holding = false;
+          peak = x;
+          lastImprovedAt = now;
           samples.length = 0;
           if (onGateOpen) onGateOpen();
         } else if (now - startedAt >= PER_SIDE_TIMEOUT_MS) {
@@ -215,13 +249,56 @@ function sampleDirection(sign, {
         // it would say "still counting, at zero", which is the opposite, and
         // whichever ran last would win in the UI.
         gateOpen = false;
+        holding = false;
         samples.length = 0;
         if (onGateClose) onGateClose();
         return;
       }
+
+      if (!holding) {
+        // Still travelling outward. Each genuine improvement on the best
+        // reading so far restarts the plateau clock, so the hold can only
+        // begin once the lean has stopped growing.
+        // `peak` is the reading at the last RESET, not a running maximum, so
+        // the epsilon measures improvement ACCUMULATED since then. Ratcheting
+        // peak up on every tiny gain (as this first did) silently defeats the
+        // whole mechanism: a slow continuous lean never gains a full degree
+        // within one 16ms poll, so no single comparison ever fires, the clock
+        // never resets, and the hold starts mid-travel -- exactly the
+        // speed-dependence this exists to remove. Measured before the fix: a
+        // 2.8s lean read 16.1 degrees against 18.2 for the same reach leaned
+        // quickly.
+        if (beyond(x, peak + sign * plateauEps)) {
+          peak = x;
+          lastImprovedAt = now;
+        }
+        const settled = now - lastImprovedAt >= PLATEAU_MS;
+        if (settled || now - gateOpenedAt >= MAX_SETTLE_MS) {
+          holding = true;
+          holdStartedAt = now;
+          samples.length = 0;
+          if (onHoldStart) onHoldStart();
+        }
+        return;
+      }
+
+      // Went meaningfully FURTHER after appearing to settle -- a player who
+      // paused on the way out and then pushed on. Their pause is not their
+      // limit, so the hold reverts to travelling and starts again from the
+      // new position. Without this, a hesitation longer than PLATEAU_MS is
+      // measured as the reach.
+      if (beyond(x, peak + sign * plateauEps)) {
+        holding = false;
+        peak = x;
+        lastImprovedAt = now;
+        samples.length = 0;
+        if (onGateOpen) onGateOpen();
+        return;
+      }
+
       samples.push(x);
-      if (onHoldProgress) onHoldProgress(Math.min(1, (now - gateOpenedAt) / SAMPLE_MS));
-      if (now - gateOpenedAt >= SAMPLE_MS) {
+      if (onHoldProgress) onHoldProgress(Math.min(1, (now - holdStartedAt) / SAMPLE_MS));
+      if (now - holdStartedAt >= SAMPLE_MS) {
         finish('done');
       }
     }, POLL_MS);
@@ -232,9 +309,10 @@ function sampleDirection(sign, {
  * Runs the full wizard: widen -> sample right -> sample left -> compute ->
  * persist. `onPhase('right' | 'left' | 'done')`, `onTilt(x, phase)`,
  * `onGateOpen(phase)` / `onGateClose(phase)` (real movement passing
- * MOVE_GATE_DEG, and drifting back under it -- the UI's cue to switch
- * between "keep leaning" and "hold it") and `onHoldProgress(fraction,
- * phase)` are all optional. `isCancelled()`, checked every poll, ends early
+ * MOVE_GATE_DEG, and drifting back under it), `onHoldStart(phase)` (the
+ * lean stopped growing, so measurement begins NOW -- the cue to switch from
+ * "keep going" to "hold it") and `onHoldProgress(fraction, phase)` are all
+ * optional. `isCancelled()`, checked every poll, ends early
  * without ever calling setMaxAngle -- an aborted calibration must not
  * persist a bogus value computed from a half-finished or never-attempted
  * sample.
@@ -247,18 +325,15 @@ function sampleDirection(sign, {
  * starting this).
  */
 export async function runCalibrationWizard({
-  onPhase, onTilt, onGateOpen, onGateClose, onHoldProgress, isCancelled,
+  onPhase, onTilt, onGateOpen, onGateClose, onHoldStart, onHoldProgress, isCancelled,
 } = {}) {
   const emitPhase = (phase) => { if (onPhase) onPhase(phase); };
-  const emitTilt = (phase) => (x) => { if (onTilt) onTilt(x, phase); };
-  const emitGateOpen = (phase) => () => { if (onGateOpen) onGateOpen(phase); };
-  const emitGateClose = (phase) => () => { if (onGateClose) onGateClose(phase); };
-  const emitHoldProgress = (phase) => (f) => { if (onHoldProgress) onHoldProgress(f, phase); };
   const hooks = (phase) => ({
-    onTilt: emitTilt(phase),
-    onGateOpen: emitGateOpen(phase),
-    onGateClose: emitGateClose(phase),
-    onHoldProgress: emitHoldProgress(phase),
+    onTilt: (x) => { if (onTilt) onTilt(x, phase); },
+    onGateOpen: () => { if (onGateOpen) onGateOpen(phase); },
+    onGateClose: () => { if (onGateClose) onGateClose(phase); },
+    onHoldStart: () => { if (onHoldStart) onHoldStart(phase); },
+    onHoldProgress: (f) => { if (onHoldProgress) onHoldProgress(f, phase); },
     isCancelled,
   });
 

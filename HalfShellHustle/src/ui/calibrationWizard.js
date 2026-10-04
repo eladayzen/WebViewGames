@@ -22,6 +22,10 @@ const overlayEl = document.getElementById('calibration-overlay');
 const titleEl = document.getElementById('calibration-title');
 const boardEl = document.getElementById('calibration-board');
 const boardWrapEl = document.getElementById('calibration-board-wrap');
+const footEls = {
+  right: document.querySelector('.cal-foot-right'),
+  left: document.querySelector('.cal-foot-left'),
+};
 const progressEl = document.getElementById('calibration-progress');
 const progressFillEl = document.getElementById('calibration-progress-fill');
 const subEl = document.getElementById('calibration-sub');
@@ -54,6 +58,13 @@ export function setCalibrationLifecycleHooks(onOpen, onClose) {
   onCloseHook = onClose;
 }
 
+// Lights the footprint for the side being asked for -- 'right', 'left', or
+// null for neither (settle and result, where no side is being asked for).
+function setActiveFoot(side) {
+  footEls.right.classList.toggle('active', side === 'right');
+  footEls.left.classList.toggle('active', side === 'left');
+}
+
 function setBoardTilt(x) {
   const deg = Math.max(-1, Math.min(1, x || 0)) * VISUAL_MAX_DEG;
   boardEl.style.transform = `perspective(380px) rotateY(${deg.toFixed(1)}deg)`;
@@ -68,6 +79,15 @@ function setBoardTilt(x) {
 const HELD_FLASH_MS = 450;
 let heldUntil = 0;
 let clearTimer = null;
+
+// The travelling-outward state: the player is moving but nothing is being
+// measured yet. Visually distinct from the hold on purpose -- it's the
+// difference between "I can see you" and "I'm recording", and conflating
+// them is what let a fast lean and a slow lean produce different numbers
+// without the player ever being told which part counted.
+function setReaching(on) {
+  boardWrapEl.classList.toggle('reaching', on);
+}
 
 function paintHold(counting, f) {
   boardWrapEl.classList.toggle('counting', counting && f < 1);
@@ -133,6 +153,8 @@ export function initCalibrationWizard() {
     subEl.textContent = 'Get comfortable, then lean all the way RIGHT.';
     setBoardTilt(0);
     setHoldState(false, 0);
+    setReaching(false);
+    setActiveFoot(null);
     await wait(SETTLE_MS);
 
     let result = { cancelled: true };
@@ -148,9 +170,24 @@ export function initCalibrationWizard() {
           // Each side starts its own hold from nothing -- never carry the
           // previous side's completed (green, full) bar into the next prompt.
           setHoldState(false, 0);
+          setReaching(false);
+          setActiveFoot(PHASE_COPY[phase] ? phase : null);
         },
         onGateOpen: () => {
-          subEl.textContent = 'Hold it there...';
+          // Moving, but NOT measuring yet -- see boardCalibration.js's
+          // plateau constants. Saying "hold it" here (as this used to) told
+          // the player the measurement had started while they were still
+          // travelling, which is both untrue and the thing that made a slow
+          // lean read lower than a fast one.
+          subEl.textContent = 'Keep going -- all the way to your limit.';
+          setReaching(true);
+          // Also fires if the player pushes further after seeming to settle,
+          // so the bar must drop back rather than keep its partial fill.
+          setHoldState(false, 0);
+        },
+        onHoldStart: () => {
+          subEl.textContent = 'Got it -- hold it there...';
+          setReaching(false);
           setHoldState(true, 0);
         },
         onGateClose: (phase) => {
@@ -159,6 +196,7 @@ export function initCalibrationWizard() {
           // "hold it there" up over a bar that just emptied itself.
           const copy = PHASE_COPY[phase];
           if (copy) subEl.textContent = copy.sub;
+          setReaching(false);
           setHoldState(false, 0);
         },
         onHoldProgress: (f) => setHoldState(true, f),
@@ -167,6 +205,8 @@ export function initCalibrationWizard() {
     }
 
     setHoldState(false, 0);
+    setReaching(false);
+    setActiveFoot(null);
     if (!result.cancelled) {
       titleEl.textContent = "THAT'S YOUR RANGE";
       subEl.textContent = result.applied

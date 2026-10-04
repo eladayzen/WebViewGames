@@ -1298,7 +1298,39 @@ html, body {
    it to near-instant. */
 #calibration-board {
   transition: transform 0.05s linear;
+  position: relative; /* anchors the .cal-foot highlight layers below */
 }
+
+/* Foot highlight: the same board artwork, clipped to one footprint and
+   brightened, laid over the board. Using the image rather than a drawn glow
+   means the highlight is exactly the foot the art already draws -- no second
+   asset to keep in step, and no halo sitting slightly off the shape. The
+   ellipses are hand-fitted to the two footprints in
+   gobalance_horizontal_board.png; if that art is ever replaced they need
+   refitting, which is the one cost of this approach. */
+.cal-foot {
+  position: absolute;
+  inset: 0;
+  background-image: url('./assets/gobalance_horizontal_board.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  /* Deliberately heavy-handed: the player is standing on a board, looking at
+     a screen a couple of metres away, and deciding which foot to push. A
+     tasteful highlight loses that argument -- two shadows (tight for the
+     edge, wide for the halo) so it reads as lit rather than merely bluer. */
+  filter: brightness(3.2) saturate(1.8)
+          drop-shadow(0 0 0.5vmin rgba(180, 255, 245, 1))
+          drop-shadow(0 0 2.2vmin rgba(125, 255, 232, 0.85));
+  pointer-events: none;
+}
+
+.cal-foot-left { clip-path: ellipse(14% 40% at 20% 48%); }
+.cal-foot-right { clip-path: ellipse(14% 40% at 80% 48%); }
+
+.cal-foot.active { opacity: 1; }
 
 /* Hold feedback, split across TWO places on purpose (design from the
    bobo_play Carve session, adopted after direct feedback that their version
@@ -1312,6 +1344,20 @@ html, body {
   border: 0.45vmin solid transparent;
   border-radius: 3vmin;
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* Travelling outward -- seen, but not yet being measured. Amber rather than
+   the measuring purple, and pulsing, so "still going" and "now recording"
+   can't be mistaken for each other at a glance from board distance. */
+#calibration-board-wrap.reaching {
+  border-color: #ffd98a;
+  box-shadow: 0 0 2.4vmin rgba(255, 217, 138, 0.4);
+  animation: cal-reach-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes cal-reach-pulse {
+  0%, 100% { box-shadow: 0 0 1.4vmin rgba(255, 217, 138, 0.3); }
+  50% { box-shadow: 0 0 3vmin rgba(255, 217, 138, 0.6); }
 }
 
 #calibration-board-wrap.counting {
