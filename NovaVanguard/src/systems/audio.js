@@ -74,7 +74,11 @@ const MANIFEST = {
   bossWarning: 'assets/audio/sfx-boss-warning.mp3',
   bossDeath: 'assets/audio/sfx-boss-death.mp3',
   sector: 'assets/audio/sfx-sector.mp3',
-  musicBed: 'assets/audio/music-bed.mp3',
+  // AAC, not mp3, and streamed rather than decoded (see initAudio/startMusic).
+  // 3.3 MB -> 1.6 MB at 96 kbps, which for a bed under gameplay is about
+  // mp3-128 quality. The sfx stay mp3: they are 14-32 KB each, so re-encoding
+  // them would save nothing and cost a format change for no reason.
+  musicBed: 'assets/audio/music-bed.m4a',
 };
 
 /** Which fire clip a weapon uses. A weapon with no row here falls back to the
@@ -175,6 +179,9 @@ function effectiveMasterGain() {
 loadPrefs();
 
 let musicSource = null;
+/** The <audio> element behind the streamed bed. Held because stopMusic has to
+ *  pause the ELEMENT -- a MediaElementSource has no stop() of its own. */
+let musicEl = null;
 let loaded = false;
 
 function getContext() {
@@ -273,7 +280,20 @@ async function loadBuffer(src) {
  */
 
 export function initAudio() {
-  const ids = Object.keys(MANIFEST);
+  // THE MUSIC BED IS NOT DECODED, and that exclusion is the whole point.
+  //
+  // Every clip here used to be decoded into an AudioBuffer up front. That is
+  // right for the sfx -- they are 15-48 KB each, they fire in rapid repeats, and
+  // a decoded buffer is what makes an overlapping replay free. It is wrong for
+  // the music bed: one 3.3 MB mp3 expands to tens of megabytes of raw samples
+  // that then sit resident for the entire session, on a device that measurably
+  // does not have the headroom. The bed is played once, looped, and never
+  // overlapped -- none of the reasons to decode apply to it.
+  //
+  // So it streams instead (see startMusic). Nothing else about the mix changes:
+  // it still goes through musicBus, so volume, the music/sfx split and mute all
+  // behave exactly as before.
+  const ids = Object.keys(MANIFEST).filter((id) => id !== 'musicTrack' && id !== AUDIO.musicTrack);
   return Promise.all(
     ids.map((id) =>
       loadBuffer(MANIFEST[id]).then((buf) => {
@@ -345,31 +365,61 @@ export function sfxFire(weaponId) {
 }
 
 export function startMusic() {
-  const buf = buffers[AUDIO.musicTrack];
-  if (!buf) return;
   const c = getContext();
   if (!c) return;
   stopMusic();
   try {
-    const source = c.createBufferSource();
-    source.buffer = buf;
-    source.loop = true;
+    // STREAMED, not decoded. An <audio> element hands WebAudio a node without
+    // ever materialising the whole track as samples, so the resident cost is a
+    // small rolling buffer rather than the entire bed.
+    //
+    // The element is created fresh each time rather than reused, to match how
+    // stopMusic tears down -- and because a reused element that was paused
+    // mid-decode has bitten this file before (see the header).
+    const el = new Audio(MANIFEST[AUDIO.musicTrack]);
+    el.loop = true;
+    el.crossOrigin = 'anonymous';
+    // Tells the browser it may fetch ahead. It is a hint, not a guarantee, and
+    // nothing below waits on it.
+    el.preload = 'auto';
+
+    const source = c.createMediaElementSource(el);
     source.connect(musicBus);
-    source.start(0);
+
+    // play() rejects when autoplay policy has not yet been satisfied. That is
+    // not an error worth surfacing: the caller retries on first interaction
+    // (see the resume path), which is the only moment it could succeed anyway.
+    const p = el.play();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+
     musicSource = source;
+    musicEl = el;
   } catch (err) {
     musicSource = null;
+    musicEl = null;
   }
 }
 
 export function stopMusic() {
-  if (!musicSource) return;
+  if (!musicSource && !musicEl) return;
   try {
-    musicSource.stop();
+    // A MediaElementSource has no stop() -- the ELEMENT is what plays, so the
+    // element is what has to be stopped. Calling stop() on it would throw, and
+    // the old catch would have swallowed that silently while the music kept
+    // playing. Pausing and dropping the src also releases the fetch.
+    if (musicEl) {
+      musicEl.pause();
+      musicEl.removeAttribute('src');
+      musicEl.load();
+    }
+    if (musicSource && typeof musicSource.disconnect === 'function') {
+      musicSource.disconnect();
+    }
   } catch (err) {
-    /* already stopped -- fine */
+    /* already torn down -- fine */
   }
   musicSource = null;
+  musicEl = null;
 }
 
 /** Apply the per-channel switches to the live buses. */
