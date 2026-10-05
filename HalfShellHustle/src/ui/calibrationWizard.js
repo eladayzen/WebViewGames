@@ -29,6 +29,7 @@ const footEls = {
 const progressEl = document.getElementById('calibration-progress');
 const progressFillEl = document.getElementById('calibration-progress-fill');
 const subEl = document.getElementById('calibration-sub');
+const valueEl = document.getElementById('calibration-value');
 const cancelBtn = document.getElementById('calibration-cancel');
 
 // Opening beat before any sampling starts -- time to actually get on the
@@ -41,15 +42,28 @@ const SETTLE_MS = 1200;
 // would spin the board edge-on and read as broken, not tilted.
 const VISUAL_MAX_DEG = 32;
 
+// Copy is deliberately TERSE -- direct request: "short texts that are
+// bigger." Longer guidance was tried and reads as a wall at board distance;
+// the ring/bar/foot visuals carry the detail the words used to.
 const PHASE_COPY = {
-  right: { title: 'LEAN RIGHT', sub: 'Go as far as you comfortably can, then hold it.' },
-  left: { title: 'LEAN LEFT', sub: 'Go as far as you comfortably can, then hold it.' },
+  right: { title: 'LEAN RIGHT', sub: 'All the way, then hold.' },
+  left: { title: 'LEAN LEFT', sub: 'All the way, then hold.' },
 };
 
 let cancelled = false;
 let isOpen = false;
 let onOpenHook = null;
 let onCloseHook = null;
+
+// 'cancel' while measuring, 'ok' on a result screen. One physical button --
+// the same spot on screen stops the wizard or confirms the result, and the
+// label says which. okResolver is the pending waitForOk() promise.
+let buttonMode = 'cancel';
+let okResolver = null;
+
+export function isCalibrationWizardOpen() {
+  return isOpen;
+}
 
 // main.js supplies these -- pause/restore-prior-pause-state is core/main.js's
 // closure, not this file's; same ownership split as every other panel here.
@@ -120,6 +134,40 @@ function setHoldState(counting, fraction) {
   paintHold(counting, f);
 }
 
+// Switches the overlay between its two layouts. Measuring: board + bar,
+// CANCEL. Result: the number HUGE, no board, OK -- direct request: "the new
+// angle needs to be presented bigger with more time to read, and perhaps an
+// ok button." The result has NO timer: it stays until OK, so "more time to
+// read" is however long the player wants.
+function showResult({ title, value, warn, sub }) {
+  titleEl.textContent = title;
+  subEl.textContent = sub;
+  boardWrapEl.classList.add('hidden');
+  progressEl.classList.add('hidden');
+  if (value != null) {
+    valueEl.textContent = value;
+    valueEl.classList.toggle('warn', !!warn);
+    valueEl.classList.remove('hidden');
+  } else {
+    valueEl.classList.add('hidden');
+  }
+  buttonMode = 'ok';
+  cancelBtn.textContent = 'OK';
+}
+
+function resetLayout() {
+  boardWrapEl.classList.remove('hidden');
+  progressEl.classList.remove('hidden');
+  valueEl.classList.add('hidden');
+  valueEl.classList.remove('warn');
+  buttonMode = 'cancel';
+  cancelBtn.textContent = 'CANCEL';
+}
+
+function waitForOk() {
+  return new Promise((resolve) => { okResolver = resolve; });
+}
+
 // Interruptible sleep -- a cancel during the settle beat must stop it
 // immediately rather than waiting out the full 1.2s before noticing.
 function wait(ms) {
@@ -138,8 +186,34 @@ export function initCalibrationWizard() {
 
   cancelBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    cancelled = true;
+    if (buttonMode === 'ok') {
+      if (okResolver) { const r = okResolver; okResolver = null; r(); }
+    } else {
+      cancelled = true;
+    }
   });
+
+  // Enter/Space while the wizard is up belong to the wizard: they press OK on
+  // a result screen and are otherwise swallowed. Without this they fall
+  // through to the settings panel's own window listener, which would open the
+  // panel UNDERNEATH the wizard. Registration order matters for the swallow:
+  // the host dispatches synthetic keys directly ON window, where listeners
+  // run in registration order, and this file is initialised by
+  // initSteeringPanel BEFORE the panel registers its own listener -- so
+  // stopImmediatePropagation here reliably runs first. The panel also checks
+  // isCalibrationWizardOpen() itself, so neither ordering nor the swallow is
+  // load-bearing alone.
+  window.addEventListener('keydown', (e) => {
+    if (!isOpen) return;
+    if (e.code !== 'Enter' && e.code !== 'Space') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (buttonMode === 'ok' && okResolver) {
+      const r = okResolver;
+      okResolver = null;
+      r();
+    }
+  }, true);
 
   async function open() {
     if (!maxAngleAvailable()) return false;
@@ -150,7 +224,8 @@ export function initCalibrationWizard() {
     if (onOpenHook) onOpenHook();
 
     titleEl.textContent = 'STAND ON THE BOARD';
-    subEl.textContent = 'Get comfortable, then lean all the way RIGHT.';
+    subEl.textContent = 'Get comfortable.';
+    resetLayout();
     setBoardTilt(0);
     setHoldState(false, 0);
     setReaching(false);
@@ -207,25 +282,55 @@ export function initCalibrationWizard() {
     setHoldState(false, 0);
     setReaching(false);
     setActiveFoot(null);
+    setBoardTilt(0);
+
+    // Every outcome except the player's own cancel gets a RESULT SCREEN that
+    // waits for OK -- never a timer, and never a silent close. A failure must
+    // be presented as clearly as a success (direct request), and the two
+    // failure causes read differently because they ARE different: no clear
+    // reading vs a reading that was clear and refused.
     if (!result.cancelled) {
-      titleEl.textContent = "THAT'S YOUR RANGE";
-      subEl.textContent = result.applied
-        ? `Set to ${result.applied.value}° -- full steering arrives just before your limit, so you never have to hold the very edge.`
-        : 'Could not save that -- try again from Settings.';
-      setBoardTilt(0);
-      await wait(2600);
-    } else if (result.reason === 'timeout' || result.reason === 'implausible') {
-      // A genuine failure, not the player choosing to back out -- say so
-      // rather than just vanishing (see systems/boardCalibration.js's own
-      // comment on why these must never silently persist a value).
-      titleEl.textContent = "COULDN'T MEASURE THAT";
-      subEl.textContent = "Didn't get a clear reading -- nothing was changed. Try again from Settings.";
-      setBoardTilt(0);
-      await wait(2600);
+      if (result.applied) {
+        showResult({
+          title: 'ALL SET',
+          value: `${result.applied.value}°`,
+          sub: 'Lean this far for full steering.',
+        });
+      } else {
+        // The measurement was fine; the host rejected or never answered the
+        // save. Rare (a host older than the maxangle API), but it must not
+        // masquerade as success.
+        showResult({
+          title: "COULDN'T SAVE",
+          sub: 'Nothing was changed. Try again from Settings.',
+        });
+      }
+      await waitForOk();
+    } else if (result.reason === 'implausible') {
+      // Measured cleanly, refused on plausibility -- show the number that was
+      // refused and the range it had to be in (direct request: if it was out
+      // of range, say so). 6-30 is the MEASUREMENT gate from
+      // BOARD_SENSITIVITY.md -- what the wizard will believe it measured --
+      // not the host's wider 5-45 manual range.
+      showResult({
+        title: 'OUT OF RANGE',
+        value: `${Math.round(result.computed)}°`,
+        warn: true,
+        sub: 'A measurement must land between 6° and 30°. Nothing was changed.',
+      });
+      await waitForOk();
+    } else if (result.reason === 'timeout') {
+      showResult({
+        title: 'NO CLEAR READING',
+        sub: 'Nothing was changed. Try again from Settings.',
+      });
+      await waitForOk();
     }
+    // Player-initiated cancel: close without ceremony -- they know.
 
     overlayEl.classList.add('hidden');
     setBoardTilt(0);
+    okResolver = null;
     isOpen = false;
     if (onCloseHook) onCloseHook();
     return true;

@@ -375,7 +375,12 @@ export async function runCalibrationWizard({
   // degenerate reading slip through -- belt and suspenders with the timeout
   // fix above, not a substitute for it.
   if (computed < MIN_PLAUSIBLE_DEG || computed > MAX_PLAUSIBLE_DEG) {
-    return abort('implausible');
+    // The refused value rides along so the UI can SAY what was measured and
+    // why it was refused, instead of a generic "couldn't measure" -- an
+    // out-of-range reading is a clear reading, and telling the player the
+    // number is what lets them recognise "the board fell over" vs "I barely
+    // moved" without guessing.
+    return { ...(await abort('implausible')), computed };
   }
 
   emitPhase('done');

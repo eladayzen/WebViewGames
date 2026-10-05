@@ -289,7 +289,12 @@
              board (direct request): the two lines read as one block, and the
              illustration follows what it's illustrating rather than splitting
              the sentence in half. -->
-        <div id="calibration-sub" class="calibration-sub">Get comfortable, then lean all the way RIGHT.</div>
+        <div id="calibration-sub" class="calibration-sub">Get comfortable.</div>
+        <!-- Result number: the measured angle, shown HUGE on the result screen
+             (direct request: "the new angle needs to be presented bigger with
+             more time to read"). Hidden during measurement; also carries the
+             measured-but-refused value on the out-of-range screen. -->
+        <div id="calibration-value" class="hidden"></div>
         <!-- The ring lives on the WRAP, not the board: the board itself is
              being rotated live, and a ring that tilted with it would read as
              part of the art rather than as state.

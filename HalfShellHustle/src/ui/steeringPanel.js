@@ -29,7 +29,7 @@ import {
 } from '../systems/boardCalibration.js';
 import { createRowPanel } from './panelRows.js';
 import { isDevPanelOpen } from './panelState.js';
-import { initCalibrationWizard } from './calibrationWizard.js';
+import { initCalibrationWizard, isCalibrationWizardOpen } from './calibrationWizard.js';
 
 let panelEl = null;
 let rp = null;
@@ -242,6 +242,11 @@ export function initSteeringPanel() {
     // The dev panel has already claimed the keyboard -- never fight it for
     // the same keypress (see ui/panelState.js).
     if (isDevPanelOpen()) return;
+    // Same for the calibration wizard: its own capture listener swallows
+    // Enter/Space first (OK button), but this guard makes the panel safe even
+    // if that ordering ever changes -- without it, Enter during the wizard
+    // would open the settings panel UNDERNEATH the wizard overlay.
+    if (isCalibrationWizardOpen()) return;
     // Both keys mean RESTART on the game-over screen (core/main.js listens for
     // them, and the host separately synth-clicks #restart-button there). Never
     // shadow that.

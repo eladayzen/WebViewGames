@@ -1400,21 +1400,53 @@ html, body {
   background: #7dffa8;
 }
 
+/* Direct request: "short texts that are bigger." The copy went terse (see
+   calibrationWizard.js's PHASE_COPY) and the size went up to carry at board
+   distance -- a player mid-lean reads this from a couple of metres away. */
 .calibration-sub {
-  font-size: 2.6vmin;
-  font-weight: 700;
+  font-size: 3.6vmin;
+  font-weight: 800;
   letter-spacing: 0.15vmin;
   color: #ffd98a;
   text-align: center;
-  max-width: 70vmin;
+  max-width: 76vmin;
+}
+
+/* The wizard's own title, over .intro-step-title's 5vmin -- same reasoning. */
+#calibration-title {
+  font-size: 6.5vmin;
+}
+
+/* The measured angle on the result screen -- the one thing the whole wizard
+   exists to produce, so it IS the result screen: huge, glowing, and on screen
+   until the player presses OK (no timer). Amber + .warn when it's the value
+   that was measured but REFUSED, so success-green never lies. */
+#calibration-value {
+  font-size: 15vmin;
+  font-weight: 900;
+  line-height: 1.1;
+  color: #7dffa8;
+  text-shadow: 0 0 3vmin rgba(125, 255, 168, 0.55);
+  letter-spacing: 0.4vmin;
+}
+
+#calibration-value.warn {
+  color: #ffd98a;
+  text-shadow: 0 0 3vmin rgba(255, 217, 138, 0.5);
+}
+
+#calibration-value.hidden,
+#calibration-board-wrap.hidden,
+#calibration-progress.hidden {
+  display: none;
 }
 
 #calibration-cancel {
-  margin-top: 6px;
+  margin-top: 1vmin;
   font-weight: 800;
-  font-size: 14px;
-  letter-spacing: 0.5px;
-  padding: 10px 26px;
+  font-size: 2.6vmin;
+  letter-spacing: 0.2vmin;
+  padding: 1.6vmin 6vmin;
   border: none;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.14);
