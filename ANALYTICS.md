@@ -234,3 +234,98 @@ can be wired.
 - **Verifying a shipped bundle:** grep for strings that survive minification
   (event names, DOM ids), not numeric constants — minifiers rewrite `20000` as
   `2e4`.
+
+---
+
+## 8. Adding this to a new game (including one in another repo)
+
+The system is two files and a handful of call sites. Nothing is specific to any
+game except the `level_id` mapping, which is the one real decision.
+
+### Step 1 — copy two files
+
+    src/systems/gbSdk.js       the bridge. Copy VERBATIM, do not adapt.
+    src/systems/analytics.js   the vocabulary. Copy, then change only the
+                               per-game mapping described in step 4.
+
+`gbSdk.js` is identical in all five games on purpose. If a sixth copy diverges,
+the thing that breaks is silent.
+
+### Step 2 — install the bridge at boot
+
+    import { installGbSdk } from './systems/gbSdk.js';
+    import { analytics } from './systems/analytics.js';
+
+    installGbSdk();        // before anything that might report
+
+**Importing is not enough — it must be CALLED.** Two games shipped with the
+import present and the call missing, and reported nothing at all. Nothing errors;
+the events simply never leave.
+
+### Step 3 — wire the call sites
+
+The API, in the order a run uses it:
+
+| call | when |
+|---|---|
+| `analytics.runStarted(mode)` | a run begins. `mode` is the shape of play (`arcade`, `campaign`, `missions`…) |
+| `analytics.levelStarted(id, number)` | a level begins — **also on retry**, the attempt counter is internal |
+| `analytics.levelCleared(id, stars, score, durationSeconds)` | the ask was met |
+| `analytics.levelFailed(id, done, total, score, durationSeconds)` | the game ended it |
+| `analytics.levelQuit(id, done, total, score, durationSeconds)` | the **player** ended it |
+| `analytics.raceFinished(id, place, score, durationSeconds)` | race-shaped: finished, with a placing |
+| `analytics.raceDnf(id, metresCovered, courseLength, score, durationSeconds)` | race-shaped: clock beat them to the line |
+| `analytics.settingChanged(setting, value)` | a setting changed |
+| `analytics.gameLeft()` | leaving the game for the app |
+
+The heartbeat needs no wiring — `runStarted` starts it, `gameLeft` stops it.
+
+A game with no levels still calls `levelStarted`/`level*` once per run: the run
+**is** the level. A game with no races never touches the two race calls.
+
+### Step 4 — decide the `level_id` mapping
+
+**This is the only real design work, and it is worth five minutes.** `level_id`
+is what every drop-off report groups by, so it has to mean "the part of the game
+they were in" in a way that stays stable across builds.
+
+How the existing five chose:
+
+| game | shape | mapping |
+|---|---|---|
+| Skateboard Extreme | authored levels | the mission/race id |
+| Nova Vanguard | authored surfaces | the surface name |
+| Bloop Squad | XP-bar progression | `level_1`, `level_2`, … |
+| RoboRun | continuous difficulty | `tier_1`, `tier_2`, … bucketed from progress |
+| Rooftop Ninja | endless | `rooftop`, … a stage derived from score band |
+
+Rules that matter:
+
+- **Stable strings, not indices into a list that may be reordered.**
+- **Bucket a continuous axis** — an endless runner should not emit a distinct
+  `level_id` per metre. RoboRun buckets difficulty into tiers; Ninja buckets
+  score into stages.
+- **Pick a bucket count you can read.** Three to eight is useful; forty is a
+  table nobody looks at, one is a report that says nothing.
+
+### Step 5 — verify before trusting it
+
+Run section 5's checklist. The two that catch real mistakes:
+
+1. **Play past the first level**, then confirm a second `level_start` with a
+   *different* `level_id`. A mapping that never advances looks identical to a
+   correct one if you only watch the first 30 seconds.
+2. **Force-quit mid-run** and confirm the last heartbeat holds the right time.
+
+### If the game is in a different repo
+
+Nothing above depends on this repo. The two files have no imports beyond each
+other, and the bridge talks to whatever `window.GoBalance` the host injects.
+
+What does **not** travel, and must be set up on the host side instead:
+
+- the local dashboard (`tools/analytics-dashboard/`) — reads Firestore, usable
+  from anywhere, just point it at the same project
+- GA4 custom dimensions — registered per Firebase project, not per game. A new
+  game sending the same vocabulary needs no new registration; a new **parameter**
+  does, and is not retroactive.
