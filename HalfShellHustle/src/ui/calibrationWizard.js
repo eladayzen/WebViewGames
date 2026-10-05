@@ -309,14 +309,17 @@ export function initCalibrationWizard() {
     } else if (result.reason === 'implausible') {
       // Measured cleanly, refused on plausibility -- show the number that was
       // refused and the range it had to be in (direct request: if it was out
-      // of range, say so). 6-30 is the MEASUREMENT gate from
-      // BOARD_SENSITIVITY.md -- what the wizard will believe it measured --
-      // not the host's wider 5-45 manual range.
+      // of range, say so). WORDED AS THIS WIZARD'S OWN RULE on purpose: 6-30
+      // is the MEASUREMENT gate from BOARD_SENSITIVITY.md -- what the wizard
+      // will believe it measured -- while the platform itself accepts 5-45
+      // (the manual MAX TILT ANGLE row offers that full range). "Calibration
+      // only accepts" keeps the two numbers from contradicting each other:
+      // a property of this flow, not of the board. (Raised by gobalance-33.)
       showResult({
         title: 'OUT OF RANGE',
         value: `${Math.round(result.computed)}°`,
         warn: true,
-        sub: 'A measurement must land between 6° and 30°. Nothing was changed.',
+        sub: 'Calibration only accepts 6° to 30°. Nothing was changed.',
       });
       await waitForOk();
     } else if (result.reason === 'timeout') {
