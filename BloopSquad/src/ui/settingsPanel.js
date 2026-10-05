@@ -48,6 +48,9 @@ const GEAR = '&#9881;';
  *          that wants to know; the host call is made here regardless.
  *   @param {{label:string, get:()=>boolean, set:(on:boolean)=>void}[]} [opts.toggles]
  *          on/off switches, rendered under their own heading.
+ *   @param {(open:boolean)=>void} [opts.onOpenChange] called ONLY when the panel
+ *          actually opens or closes, never on a repeat. A game that pauses while
+ *          this is open uses it to resume when it closes.
  *
  * ON `toggles`, SINCE THIS FILE IS COPIED BETWEEN GAMES: it is deliberately
  * GENERIC rather than an `onMusic`/`onSfx` pair, because a per-game parameter
@@ -155,9 +158,19 @@ export function createSettingsPanel(doc, opts = {}) {
     }
   }
 
+  // FIRES ONLY ON A REAL CHANGE. The document handler below calls setOpen(false)
+  // on every click anywhere, so a callback invoked unconditionally would run on
+  // each one -- and since the game uses this to resume, that would silently
+  // un-pause a player who had deliberately pressed pause and then tapped the
+  // field. Tracking the state and only reporting transitions is what makes the
+  // callback safe to act on.
+  let isOpen = false;
   function setOpen(open) {
+    const changed = open !== isOpen;
+    isOpen = open;
     panel.classList.toggle('hidden', !open);
     btn.classList.toggle('on', open);
+    if (changed && opts.onOpenChange) opts.onOpenChange(open);
   }
   btn.addEventListener('click', (e) => {
     e.stopPropagation();

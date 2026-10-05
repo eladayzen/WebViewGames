@@ -838,7 +838,15 @@ export const DEV = {
 export const HUD = {
   // The POC prints what the session needs to remember, because a number written
   // down beats a memory of how it felt.
-  showStats: true,
+  // OFF by default now -- it is a developer readout and a child should not see
+  // it. The dev panel's "Show stats" row still turns it on mid-run.
+  //
+  // THIS FLAG WAS DEAD UNTIL NOW, which is worth recording: the renderer tests
+  // `w.stats.showStatsOff` and nothing ever initialised it from here, so the
+  // value in this file had no effect whatsoever and the readout was always on.
+  // state.js now seeds the world from it, so setting it false actually does
+  // something.
+  showStats: false,
 };
 
 // ---------------------------------------------------------------------------

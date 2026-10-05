@@ -659,3 +659,33 @@ body.dev-invincible::after {
   box-shadow: 0 6px 0 rgba(19, 26, 43, 0.55);
   font-weight: 900;
 }
+
+/* ---------------------------------------------------------------------------
+   SETTINGS PANEL SPACING. It was mashed: the SOUND heading sat directly against
+   the sensitivity stepper with no gap at all, so the two groups read as one
+   list of unrelated controls. These are two different settings and the panel
+   should say so before anything is read.
+   --------------------------------------------------------------------------- */
+
+#settings-panel {
+  padding: 24px 26px 26px;
+  min-width: 268px;
+}
+/* Each group after the first gets real air AND a hairline, so the grouping
+   survives even when the panel grows a third section later. */
+.settings-section {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+.settings-section ~ .settings-section {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 3px solid rgba(19, 26, 43, 0.18);
+}
+.settings-note { margin: 4px 0 16px; }
+.settings-row { margin-bottom: 0; gap: 14px; }
+/* The stepper row needs clearance below it -- it is the tallest control here and
+   the next heading was landing on its shadow. */
+.settings-section + .settings-row { margin-top: 4px; margin-bottom: 6px; }
+.settings-toggle-row { margin-top: 14px; gap: 20px; }
+.settings-toggle-row:first-of-type { margin-top: 10px; }

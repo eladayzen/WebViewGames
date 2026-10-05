@@ -280,7 +280,16 @@ async function boot() {
   // right lean for an adult is not the right lean for a child. The host applies
   // it to the sensor reading itself -- the game must never also scale the
   // value, or the two compound and the number stops meaning what it says.
+  let pausedBeforeSettings = false;
   const settings = createSettingsPanel(document, {
+    onOpenChange: (open) => {
+      if (open) {
+        pausedBeforeSettings = world.paused;
+        setPaused(true);
+      } else {
+        setPaused(pausedBeforeSettings);
+      }
+    },
     toggles: [
       { label: 'Music', get: () => getAudioPrefs().music,
         set: (on) => { setMusicEnabled(on); if (on) startMusic(); else stopMusic(); } },
@@ -294,9 +303,13 @@ async function boot() {
   // new option on the template: settingsPanel.js is copied verbatim between
   // games, and a per-game parameter added here is exactly how those copies
   // start to drift apart.
-  settings.button.addEventListener('click', () => {
-    if (!settings.panel.classList.contains('hidden')) setPaused(true);
-  });
+  // Opening the settings pauses; CLOSING it resumes. Nobody should be adjusting
+  // their lean while monsters are still arriving, and nobody should have to find
+  // the pause button again to get going after changing a setting.
+  //
+  // It restores the PREVIOUS pause state rather than simply unpausing, the same
+  // rule the quit confirm follows: a player who paused, then opened settings,
+  // then closed them again is still paused on purpose.
 
   // The X is the only way out on the board. The inline fallback in index.html
   // covers the case where this module never loads.
@@ -460,6 +473,12 @@ async function boot() {
     world.levelPopup.total = 12;
     world.levelPopup.t = 12 * 0.75;
   }
+
+  // ?settings=1 opens the settings panel. Same reason as ?screen= -- it is only
+  // otherwise reachable by clicking the gear, which a headless screenshot cannot
+  // do, and a panel nobody has looked at is a panel nobody has checked the
+  // spacing of.
+  if (q.get('settings')) settings.button.click();
 
   // ?screen=confirm|quit|dead opens an end-of-run screen directly. They are
   // otherwise only reachable by dying or by pressing the X mid-run, neither of

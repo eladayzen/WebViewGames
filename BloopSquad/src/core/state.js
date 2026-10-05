@@ -2,7 +2,7 @@
 // POC ever needed them; at 26 monsters and 220 bullets, plain objects with an
 // `alive` flag are honest and readable.
 
-import { PLAYER, MONSTERS, DESIGN_W, DESIGN_H } from '../data/tuning.js';
+import { PLAYER, MONSTERS, HUD, DESIGN_W, DESIGN_H } from '../data/tuning.js';
 
 export const GameState = { BOOT: 'boot', RUNNING: 'running', FAILED: 'failed' };
 
@@ -76,6 +76,9 @@ export function createWorld() {
       worstReactionS: 99, // shortest time any monster gave from entering to reaching the pod's row
       passes: 0,          // monsters that crossed the pod's row at all
       toysUsed: 0,
+      // Seeded from HUD.showStats so that flag actually governs the readout.
+      // The dev panel flips this directly at runtime.
+      showStatsOff: !HUD.showStats,
     },
   };
 }
