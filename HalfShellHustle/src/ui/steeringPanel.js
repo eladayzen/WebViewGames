@@ -117,14 +117,12 @@ export function initSteeringPanel() {
     setPanelOpen(panelEl.classList.contains('hidden'));
   });
 
-  // The key scheme is not discoverable, and inside Unity it's the only way to
-  // drive this at all -- so it's stated on the panel rather than left to be
-  // remembered.
-  const keyHint = document.createElement('div');
-  keyHint.className = 'sp-keyhint';
-  keyHint.textContent = 'ENTER = next row   SPACE = change';
-  panelEl.appendChild(keyHint);
-
+  // No ENTER/SPACE key-hint line and no note under SENSITIVITY -- direct
+  // request, 2026-10-05: this ships in the mobile app where there is no
+  // keyboard, so the hint described controls the player doesn't have, and
+  // "stepped mode only -- tunes the HOST thresholds" is dev vocabulary. The
+  // key scheme itself still works (it's how the Editor is driven); it is
+  // just no longer advertised to players.
   rp.addStepper({
     label: 'SENSITIVITY',
     key: 'sensitivity',
@@ -133,7 +131,6 @@ export function initSteeringPanel() {
     max: 100,
     step: 5,
     fmt: (v) => `${Math.round(v)}`,
-    note: 'stepped mode only -- tunes the HOST thresholds',
     state,
   });
   rp.addChoice({
