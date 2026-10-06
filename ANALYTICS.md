@@ -264,7 +264,15 @@ the events simply never leave.
 
 ### Step 3 — wire the call sites
 
-The API, in the order a run uses it:
+The API, in the order a run uses it.
+
+**Not every game has all of it.** Skateboard Extreme implements and uses the full
+surface, because it is the only one with races and with quittable objectives. The
+other four implement only the common subset — `runStarted`, `levelStarted`,
+`levelCleared`, `levelFailed`, `settingChanged`, `gameLeft`. Copy the file from
+Skateboard Extreme if your game has races or a quit path; from any of the others
+if it does not. The wire shapes are identical either way, so reports work across
+both.
 
 | call | when |
 |---|---|
