@@ -166,9 +166,35 @@ as data loss.
 | Hosted dashboard | planned, not built — `DASHBOARD_PLAN.md` | blocked on "who can see it" |
 | `perfHud.js` into Nova/Ninja/Skateboard | not done | — |
 | Bloop never perf-measured | not done | — |
+| **Boot test for silent analytics death** | harness exists, not adopted — see below | — |
 | `~/firebase-gobalance/firestore.rules` | **expired allow-all, never deploy it** | — |
 
 ---
+
+### The boot test worth adopting
+
+The analytics bridge fails **silently** — `installGbSdk` imported but never
+called, or `gbSdk` failing to extend the host's injected `window.GoBalance`.
+Nothing errors, the game looks fine, no event ever leaves. **This has shipped
+twice.**
+
+The carve session (bobo_play) turned both failure modes into assertions, and the
+harness is portable:
+
+    /Users/eladayzen/UnityProjects/bobo_play/web_games/carve/gbqa.mjs
+
+Two blocks to lift: the `evaluateOnNewDocument` boot mock (a `window.Unity.call`
+collector, plus `window.GoBalance` injected FIRST with methods but **no**
+`logEvent` — the real player's shape), and the `analytics.log` wire assertions.
+
+Per game you change three things: the selectors that start a run, the expected
+`level_id` regex, and the exit path. **Drive the game's own back ladder, not
+`host.exit` directly** — calling the host straight skips the `game_end` call site
+and fails against correct code.
+
+Known limit: their mock stubs only `back`/`getMaxAngle`/`setMaxAngle`/
+`setMaxAngleSession`. A game calling `save`/`load`/`submitScore` at boot needs
+the stub set extended or those paths no-op in ways the real SDK would not.
 
 ## 7. Who else is working here
 
