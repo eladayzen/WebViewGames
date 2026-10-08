@@ -98,6 +98,37 @@ async function bankAndRender(score, { wrap, title, rows }) {
   if (wrap) wrap.classList.remove('hidden');
 }
 
+/**
+ * Render fake rows, for layout checking only.
+ *
+ * The board is the ONE element that never appears outside the app -- there is no
+ * SDK at a dev URL, so `scoreboardAvailable()` is false and the section stays
+ * hidden. That means every screenshot of these screens so far has been of the
+ * SHORT version, and the tall one -- the only one that can overflow a phone --
+ * had never been looked at. Hence a hook.
+ */
+export function fakeBoard(doc, n = 8) {
+  const rows = Array.from({ length: n }, (_, i) => ({
+    rank: i + 1,
+    name: ['Noa', 'Amit', 'Yuval', 'Daniel', 'Maya', 'Eitan', 'Tamar', 'Omer'][i % 8],
+    score: 4200 - i * 430,
+    profileId: 'p' + i,
+    avatarIndex: i,
+    isYou: i === 3,
+  }));
+  for (const [wrapId, titleId, rowsId] of [
+    ['scoreboard', 'scoreboard-title', 'scoreboard-rows'],
+    ['quit-scoreboard', 'quit-scoreboard-title', 'quit-scoreboard-rows'],
+  ]) {
+    const wrap = doc.getElementById(wrapId);
+    const rowsEl = doc.getElementById(rowsId);
+    if (!wrap || !rowsEl) continue;
+    doc.getElementById(titleId).textContent = 'BEST RUNS';
+    renderRows(rowsEl, { top: rows.slice(0, 5), window: rows.slice(5) }, null);
+    wrap.classList.remove('hidden');
+  }
+}
+
 export function createEndings(doc, { getScore, getStatsLine, restart, leave, onStay }) {
   const els = (id) => doc.getElementById(id);
 

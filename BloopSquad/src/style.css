@@ -689,3 +689,120 @@ body.dev-invincible::after {
 .settings-section + .settings-row { margin-top: 4px; margin-bottom: 6px; }
 .settings-toggle-row { margin-top: 14px; gap: 20px; }
 .settings-toggle-row:first-of-type { margin-top: 10px; }
+
+/* ---------------------------------------------------------------------------
+   RESPONSIVE SIZING — everything above this point was written in fixed pixels.
+   
+   That is invisible at a desk window and broken on a phone, which is exactly
+   what happened: the settings panel ran off the bottom of a 667x375 screen and
+   the PAUSED badge off the right edge. It is also a trap this repo has already
+   documented once (see WEB_MINIGAME_TECH_RETROSPECTIVE.md, the HalfShellHustle
+   intro overlay) — fixed px inside a scaled overlay breaks at small viewports
+   SPECIFICALLY, so a desk check can never catch it.
+   
+   Everything here is clamp(floor, vmin-scaled, ceiling). vmin rather than vw
+   because these games run landscape on a phone and portrait on nothing: the
+   short edge is what actually runs out, and vw would keep growing a card the
+   screen has no height for.
+   
+   The ceilings are the values the large-screen layout already used, so nothing
+   changes on a desk or a tablet — this only takes effect as the screen shrinks.
+   --------------------------------------------------------------------------- */
+
+/* --- end-of-run screens ------------------------------------------------- */
+.board-card {
+  min-width: clamp(220px, 44.44vmin, 320px);
+  max-width: 92vw;
+  /* A board with real rows is the tall case, and outside the app the rows are
+     hidden so it never shows up in local testing. Cap and scroll. */
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: clamp(14px, 4.17vmin, 30px) clamp(16px, 4.72vmin, 34px) clamp(13px, 3.61vmin, 26px);
+  border-radius: clamp(16px, 4.72vmin, 34px);
+  border-width: clamp(3px, 0.97vmin, 7px);
+}
+.board-title, #gameover-card h1 { font-size: clamp(20px, 5.28vmin, 38px); }
+.board-sub, #gameover-stats { font-size: clamp(11px, 2.22vmin, 16px); margin-top: clamp(5px, 1.39vmin, 10px); }
+.board-buttons { gap: clamp(7px, 1.94vmin, 14px); margin-top: clamp(11px, 3.06vmin, 22px); }
+.board-buttons button,
+#restart-button {
+  min-width: clamp(96px, 22.22vmin, 160px);
+  padding: clamp(9px, 2.22vmin, 16px) clamp(10px, 3.06vmin, 22px) clamp(10px, 2.5vmin, 18px);
+  font-size: clamp(12px, 2.5vmin, 18px);
+  border-width: clamp(2px, 0.69vmin, 5px);
+  border-radius: clamp(10px, 2.78vmin, 20px);
+  box-shadow: 0 clamp(3px, 0.83vmin, 6px) 0 #131a2b;
+}
+#scoreboard, #quit-scoreboard { margin-top: clamp(9px, 2.78vmin, 20px); }
+#scoreboard-title, #quit-scoreboard-title { font-size: clamp(9px, 1.81vmin, 13px); }
+.board-row {
+  font-size: clamp(11px, 2.22vmin, 16px);
+  padding: clamp(4px, 0.97vmin, 7px) clamp(5px, 1.39vmin, 10px);
+  gap: clamp(6px, 1.39vmin, 10px);
+  border-radius: clamp(8px, 1.94vmin, 14px);
+}
+.board-dot { width: clamp(18px, 3.89vmin, 28px); height: clamp(18px, 3.89vmin, 28px); font-size: clamp(9px, 1.81vmin, 13px); }
+.board-rank { width: clamp(18px, 3.61vmin, 26px); }
+
+/* --- settings panel ------------------------------------------------------ */
+#settings-panel {
+  min-width: clamp(190px, 37.22vmin, 268px);
+  max-width: 92vw;
+  /* It ran off the bottom of a phone. Cap to the viewport and scroll. */
+  max-height: 82vh;
+  overflow-y: auto;
+  padding: clamp(13px, 3.33vmin, 24px) clamp(14px, 3.61vmin, 26px) clamp(14px, 3.61vmin, 26px);
+  border-radius: clamp(14px, 3.61vmin, 26px);
+  border-width: clamp(3px, 0.83vmin, 6px);
+}
+.settings-section { font-size: clamp(10px, 1.94vmin, 14px); }
+.settings-section ~ .settings-section { margin-top: clamp(13px, 3.61vmin, 26px); padding-top: clamp(10px, 2.78vmin, 20px); }
+.settings-note { font-size: clamp(9px, 1.67vmin, 12px); margin: clamp(2px, 0.56vmin, 4px) 0 clamp(8px, 2.22vmin, 16px); }
+.settings-value { font-size: clamp(14px, 3.06vmin, 22px); min-width: clamp(38px, 8.61vmin, 62px); }
+.settings-step { width: clamp(32px, 6.11vmin, 44px); height: clamp(32px, 6.11vmin, 44px); font-size: clamp(14px, 3.06vmin, 22px); border-width: clamp(2px, 0.56vmin, 4px); }
+.settings-toggle { min-width: clamp(52px, 10.28vmin, 74px); height: clamp(32px, 6.11vmin, 44px); font-size: clamp(10px, 1.94vmin, 14px); border-width: clamp(2px, 0.56vmin, 4px); }
+.settings-toggle-label { font-size: clamp(11px, 2.08vmin, 15px); }
+.settings-toggle-row { margin-top: clamp(7px, 1.94vmin, 14px); gap: clamp(10px, 2.78vmin, 20px); }
+
+/* --- chrome and badges --------------------------------------------------- */
+#chrome { top: clamp(7px, 1.94vmin, 14px); right: clamp(7px, 1.94vmin, 14px); gap: clamp(5px, 1.39vmin, 10px); }
+#chrome button,
+#settings-button,
+#dev-button {
+  width: clamp(36px, 7.78vmin, 56px);
+  height: clamp(36px, 7.78vmin, 56px);
+  font-size: clamp(14px, 3.06vmin, 22px);
+  border-radius: clamp(11px, 2.5vmin, 18px);
+  border-width: clamp(2px, 0.69vmin, 5px);
+}
+/* The badge was the worst offender -- it ran clean off the right edge. */
+#paused-badge {
+  font-size: clamp(15px, 4.17vmin, 30px);
+  padding: clamp(8px, 2.5vmin, 18px) clamp(18px, 6.11vmin, 44px);
+  border-radius: clamp(10px, 2.78vmin, 20px);
+  border-width: clamp(3px, 0.83vmin, 6px);
+  max-width: 86vw;
+}
+#dev-panel { max-height: 78vh; overflow-y: auto; max-width: 92vw; }
+
+/* ---------------------------------------------------------------------------
+   THE BUTTONS MUST NEVER SCROLL OUT OF VIEW.
+   
+   Capping the whole card and letting it scroll looked right until the board was
+   filled with real rows: the card filled a 667x375 screen and PLAY AGAIN / QUIT
+   went below the fold. A player on a phone would have to scroll to find them,
+   and a player ON A BOARD cannot scroll at all — there is no input for it. That
+   is a dead end, which is worse than the overflow it replaced.
+   
+   So the CARD no longer scrolls. Only the row list does, and it is capped to a
+   height that always leaves the title, the score line and the buttons on screen.
+   --------------------------------------------------------------------------- */
+.board-card { max-height: none; overflow: visible; }
+#scoreboard-rows,
+#quit-scoreboard-rows {
+  /* Roughly five rows on a phone, more as the screen grows. The player's own run
+     is inside the visible window by construction: resultSections puts the top
+     five first and only appends a window when the run is outside them. */
+  max-height: clamp(96px, 34vh, 260px);
+  overflow-y: auto;
+}

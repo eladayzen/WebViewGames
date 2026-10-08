@@ -29,7 +29,7 @@ import { updateFiring, updateToyPickups, equip, updateChain } from './systems/to
 import { createSettingsPanel } from './ui/settingsPanel.js';
 import { installDevUnlock } from './ui/devUnlock.js';
 import { createDevPanel } from './ui/devPanel.js';
-import { createEndings } from './ui/endings.js';
+import { createEndings, fakeBoard } from './ui/endings.js';
 import {
   initAudio, startMusic, stopMusic, setAudioPaused, playGameOver,
   getAudioPrefs, setSfxEnabled, setMusicEnabled, setMusicLevel,
@@ -487,6 +487,11 @@ async function boot() {
   const screen = q.get('screen');
   if (screen === 'confirm') { setPaused(true); endings.openConfirm(); }
   if (screen === 'quit') endings.showQuitBoard();
+  // ?rows=8 fills the board with fake entries. The real board only exists inside
+  // the app, so this is the only way to see the TALL version of these screens --
+  // which is the one that can overflow a phone.
+  const rows = parseInt(q.get('rows') || '0', 10);
+  if (rows > 0) setTimeout(() => fakeBoard(document, rows), 0);
   if (screen === 'dead') { world.state = GameState.FAILED; showGameOver(); }
 
   // ?art=1 puts one of every tier on screen at fixed positions, immediately.
