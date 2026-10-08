@@ -23,6 +23,34 @@ So:
   an analytics branch but is *Skateboard Extreme's*; merging it for RoboRun would have **deleted**
   RoboRun's analytics while appearing to add analytics. Assemble per game folder instead.
 
+## Nothing ships that cannot be rebuilt from `origin/all-games`
+
+**The rule:**
+
+> Nothing reaches `StreamingAssets` that is not reproducible from `origin/all-games`.
+
+**Every time you ship a game:**
+
+    1. branch from origin/all-games
+    2. commit
+    3. pull, then push to all-games
+    4. rebuild from that pushed state
+    5. confirm the bundle hash matches what you are about to ship
+    6. only then copy into StreamingAssets
+
+**Step 5 is the enforcement, not a formality.** If the rebuilt hash does not match
+what you are shipping, your source is not pushed, and you are about to put a build
+on the device that nobody else can reproduce. It is a two-second check that turns
+a likely mistake into an impossible one.
+
+This exists because it has gone wrong twice. RoboRun shipped from a branch stale
+for RoboRun and silently lost its analytics and a measured 44 -> 55 fps fix, live
+for five days. Bloop shipped a bundle (`index-DkEc4hk2.js`) that could not be
+rebuilt from any pushed source at all — the work existed only in one worktree.
+
+Both were invisible: the build succeeds, the bundle looks fine, the game runs.
+The hash check is the only thing that catches either one before players do.
+
 ## Source folder names are not the shipped folder names
 
 `HalfShellHustle/` ships into `StreamingAssets/RoboRun/`. Check where a game actually lands
