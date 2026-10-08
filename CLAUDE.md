@@ -40,8 +40,26 @@ So:
 
 **Step 5 is the enforcement, not a formality.** If the rebuilt hash does not match
 what you are shipping, your source is not pushed, and you are about to put a build
-on the device that nobody else can reproduce. It is a two-second check that turns
-a likely mistake into an impossible one.
+on the device that nobody else can reproduce.
+
+**Three things that make step 5 actually work, each learned by it failing:**
+
+1. **Rebuild from a CLEAN checkout of the pushed state — not from your own
+   worktree.** A dirty worktree reproduces its own hash perfectly, so checking
+   against yourself always passes. That is exactly how `index-DkEc4hk2.js`
+   reached a device from source on no branch.
+
+2. **Byte-diff the whole `dist/`, not just the hashed assets.** Vite content-hashes
+   the JS and CSS; it does **not** hash `index.html` or `manifest.txt`. A change
+   living only in `index.html` ships with an identical bundle hash and looks
+   unchanged to a grep — this has already caused one drop to be misread as
+   missing its change. The full diff also catches a stale `manifest.txt`, the one
+   file whose absence fails *only* on a device.
+
+3. **Pin the hash check to that game's entry chunk.** Asset hashes are
+   content-addressed, so a *differing* hash can also mean somebody else's game
+   changed something shared. Matching proves your source; differing needs looking
+   at before it means anything.
 
 This exists because it has gone wrong twice. RoboRun shipped from a branch stale
 for RoboRun and silently lost its analytics and a measured 44 -> 55 fps fix, live
