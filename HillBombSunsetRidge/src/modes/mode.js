@@ -117,6 +117,11 @@ export function createModeHost(ctx) {
       return active && active.panel ? active.panel() : null;
     },
 
+    /** End a cleared run now instead of at the clock -- see missions.js. */
+    wrapUp() {
+      if (active && active.wrapUp) active.wrapUp();
+    },
+
     /** What to show before the run starts, or null for no briefing. */
     briefing() {
       return active && active.briefing ? active.briefing() : null;

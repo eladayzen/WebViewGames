@@ -75,6 +75,14 @@ result.
   number; on a `clear` it is always 100.
 - **`duration_seconds`** on `level_end` — time **spent**, not time left.
 - **`stars`** — 0 on anything that is not a clear.
+- **`ended_by`** — optional, on a `clear` only, and only from games that send it
+  (Skateboard Extreme's missions today). Says HOW a cleared level ended, for a
+  game where meeting the ask does not end the run by itself: `clock` rode it
+  out, `next` pressed NEXT MISSION, `back` pressed ✕ after clearing. Leaving a
+  level already won is still a `clear` — the stars are real — so this field,
+  not `result`, is what says the player left early, and `quit` keeps meaning
+  "gave up". Needs registering as a GA4 custom dimension; GA4 reports it only
+  from registration on.
 
 ---
 
@@ -278,7 +286,7 @@ both.
 |---|---|
 | `analytics.runStarted(mode)` | a run begins. `mode` is the shape of play (`arcade`, `campaign`, `missions`…) |
 | `analytics.levelStarted(id, number)` | a level begins — **also on retry**, the attempt counter is internal |
-| `analytics.levelCleared(id, stars, score, durationSeconds)` | the ask was met |
+| `analytics.levelCleared(id, stars, score, durationSeconds, endedBy?)` | the ask was met (`endedBy` → `ended_by`, see above) |
 | `analytics.levelFailed(id, done, total, score, durationSeconds)` | the game ended it |
 | `analytics.levelQuit(id, done, total, score, durationSeconds)` | the **player** ended it |
 | `analytics.raceFinished(id, place, score, durationSeconds)` | race-shaped: finished, with a placing |

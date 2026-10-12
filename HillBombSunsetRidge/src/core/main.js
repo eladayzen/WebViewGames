@@ -83,6 +83,7 @@ import { createMissionSelect } from '../ui/missionSelect.js';
 import { RACE_IDS } from '../data/races.js';
 import { createRaceSelect } from '../ui/raceSelect.js';
 import { createObjectives } from '../ui/objectives.js';
+import { createWrapUp } from '../ui/wrapUp.js';
 import { createBriefing } from '../ui/briefing.js';
 import { getCourse, DEFAULT_COURSE } from '../data/courses.js';
 import { pickRandomTheme, getTheme, DEFAULT_THEME } from '../data/themes.js';
@@ -225,6 +226,12 @@ events.on(EV.HAZARD, () => audio.play('crash'));
 events.on(EV.PICKUP, () => audio.play('pickup',
   Math.min(1.6, 1 + (scoring.state.chain - 1) * 0.06)));
 const objectivesUi = createObjectives();
+// NEXT MISSION on a cleared run (BAL-580). Ignored while paused -- the settings
+// panel counts, see setPaused -- or once the results are up: the run is not
+// moving, and ending it from under an overlay leaves that overlay on top.
+const wrapUpUi = createWrapUp(() => {
+  if (!paused && !isPanelOpen() && !gameOver) modes.wrapUp();
+});
 const briefing = createBriefing();
 // Stars and unlocks. Local today, account data in the shipped product -- the
 // whole point of it being a module is that swapping the backing store touches
@@ -2383,7 +2390,9 @@ function frame() {
    * so it read "5TH PLACE" before the player had moved a metre -- which is a
    * discouraging thing to say to someone who is, in fact, exactly level.
    */
-  objectivesUi.update(briefing.isOpen() || modes.holding() ? null : modes.panel());
+  const panel = briefing.isOpen() || modes.holding() ? null : modes.panel();
+  objectivesUi.update(panel);
+  wrapUpUi.update(!gameOver && panel && panel.wrapUp);
   hud.boost(state.boostT > 0 ? state.boostT / state.boostDuration : 0, state.boostT);
   hud.update(dt, {
     // Zero on the start line. The rider carries a speed while held -- the value

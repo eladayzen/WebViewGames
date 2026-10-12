@@ -857,6 +857,62 @@ html, body {
      The background alpha is raised to compensate for the lost separation. */
 }
 #objectives.hidden { display: none; }
+
+/* --- wrap-up panel (BAL-580) ---------------------------------------------
+   Under the mission panel once every objective is met and time remains: end the
+   run now, or ignore it and keep riding for score. Same width and plate as
+   #objectives so the column reads as one stack, with a clear GAP between them --
+   #objectives is the 7-second dev-unlock hold target, and a slightly-off press on
+   this button must not land there instead. Never pauses, never needs dismissing.
+   The entrance pulses from a VISIBLE state (see the note above): if the
+   animation does not run, the panel is simply there. */
+#wrap-up {
+  margin-top: 0.9em;
+  width: 14.6em;
+  max-width: 42vw;
+  padding: 0.62em 0.82em 0.58em;
+  border-radius: 0.75em;
+  background: rgba(24, 18, 30, 0.72);
+  border: 1px solid rgba(126, 240, 168, 0.45);
+  text-align: center;
+  pointer-events: auto;
+}
+#wrap-up.hidden { display: none; }
+#wrap-up.enter { animation: wrapUpIn 0.9s cubic-bezier(.2,1.4,.4,1); }
+@keyframes wrapUpIn {
+  0%   { transform: scale(1.12); border-color: #7ef0a8; box-shadow: 0 0 0 0.3em rgba(126, 240, 168, 0.55); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(126, 240, 168, 0); }
+}
+#wrap-up { transform-origin: left top; }
+#wrap-up-title {
+  font: 900 0.82em/1 system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  color: #7ef0a8;
+  margin-bottom: 0.5em;
+}
+#wrap-up-button {
+  display: block;
+  width: 100%;
+  padding: 0.55em 0.4em;
+  border: 0;
+  border-radius: 0.5em;
+  background: #7ef0a8;
+  color: #14301f;
+  font: 900 1.08em/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  text-shadow: none;
+}
+#wrap-up-button:active { transform: scale(0.97); }
+/* The trade, in one line. Without it NEXT MISSION looks strictly better than
+   riding on, and a player who always taps it scores lower with no way to know
+   why. */
+#wrap-up-note {
+  margin-top: 0.5em;
+  font: 700 0.72em/1.2 system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  opacity: 0.72;
+}
 /* NO ENTRANCE ANIMATION. It began at opacity 0 and animated up, which is fine
    until the animation does not run -- then the panel is present, laid out, and
    invisible, with nothing to say why. Nothing that has to appear should start

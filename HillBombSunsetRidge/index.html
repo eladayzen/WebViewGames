@@ -124,6 +124,15 @@
             <div id="obj-time">0:00</div>
             <ul id="obj-list"></ul>
           </div>
+
+          <!-- WRAP UP A CLEARED MISSION (BAL-580). A SIBLING of #objectives, never
+               a child: that panel is the 7-second dev-unlock hold target, and a
+               press on this button must not start it. Shown by ui/wrapUp.js. -->
+          <div id="wrap-up" class="hidden">
+            <div id="wrap-up-title">ALL OBJECTIVES DONE</div>
+            <button id="wrap-up-button" type="button">NEXT MISSION</button>
+            <div id="wrap-up-note">or keep riding &mdash; you're still scoring</div>
+          </div>
         </div>
 
         <div id="bottomRight">

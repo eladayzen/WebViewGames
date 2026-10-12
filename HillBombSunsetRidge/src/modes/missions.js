@@ -255,8 +255,11 @@ const MISSION_MODE = {
       ctx.audio.play('objective');
     }
 
-    /** Bank the result and show the screen. The one exit for a cleared run. */
-    function settle() {
+    /**
+     * Bank the result and show the screen. The one exit for a cleared run.
+     * `endedBy` is what ended it -- 'clock' or 'next' -- see analytics.levelCleared.
+     */
+    function settle(endedBy) {
       finished = true;
       const score = ctx.scoring.state.score;
       const earned = starsFor(score);
@@ -272,7 +275,7 @@ const MISSION_MODE = {
       // Reported as time SPENT rather than the headroom itself: `mission.seconds`
       // is the budget and lives here, so converting at the call site means the
       // report never needs to know what any particular mission's clock was.
-      analytics.levelCleared(mission.id, earned, score, mission.seconds - clearedWithLeft);
+      analytics.levelCleared(mission.id, earned, score, mission.seconds - clearedWithLeft, endedBy);
       ctx.endRun('complete', {
         tone: 'success',
         title: 'MISSION COMPLETE',
@@ -363,15 +366,26 @@ const MISSION_MODE = {
          * completed mission would also report a quit.
          */
         const quitting = !finished;
+        /**
+         * AND IT REPORTS AS A CLEAR, not a quit. Elad, 2026-10-11 (BAL-580):
+         * leaving a banked mission is "finished, then left", and logging it as
+         * `quit` put won missions -- with stars 0 -- into the very number that
+         * says a level is boring. `ended_by: 'back'` is what says they left
+         * early; the duration is the same time-to-meet settle() reports, so it
+         * compares with every other clear. No results card: X is still "back".
+         */
         if (cleared && !finished) {
           const score = ctx.scoring.state.score;
-          ctx.progress.record(mission.id, starsFor(score), score);
+          const earned = starsFor(score);
+          ctx.progress.record(mission.id, earned, score);
+          analytics.levelCleared(mission.id, earned, score,
+            mission.seconds - clearedWithLeft, 'back');
         }
-        // HOW FAR THEY GOT, not just that they went. Leaving a mission already
-        // banked is the sanctioned behaviour above and reports as 100%; leaving
-        // one that was not is a signal about the mission, and the fraction of the
-        // ask they had met is the size of that signal.
-        if (quitting) {
+        // HOW FAR THEY GOT, not just that they went. A mission already banked
+        // reported above as a clear; leaving one that was not is a signal about
+        // the mission, and the fraction of the ask they had met is the size of
+        // that signal.
+        if (quitting && !cleared) {
           const done = objectives.filter((o) => o.done).length;
           analytics.levelQuit(mission.id, done, objectives.length,
             ctx.scoring.state.score, mission.seconds - left);
@@ -401,7 +415,7 @@ const MISSION_MODE = {
           // A CLEARED RUN ENDS IN SUCCESS, not in "time up". The clock running
           // out is now the ordinary way every mission finishes -- it is the
           // objective, not the timer, that decides which screen this is.
-          if (cleared) { settle(); return; }
+          if (cleared) { settle('clock'); return; }
           finished = true;
           const done = objectives.filter((o) => o.done).length;
           // Both counts, not just the failure: "3 of 4" and "0 of 4" are a
@@ -458,10 +472,28 @@ const MISSION_MODE = {
         })),
       }),
 
+      /**
+       * WRAP UP NOW -- the "NEXT MISSION" button under the panel (BAL-580).
+       *
+       * The same ending the clock would have reached, just sooner: settle() is
+       * the one exit for a cleared run, so this calls it rather than building a
+       * second one beside it. Riding on stays the default; this is only for
+       * the player who has nothing left to chase and would rather move on.
+       *
+       * Guarded on the same condition the panel uses to show the button, so a
+       * press that lands a frame late -- after the clock already settled it --
+       * does nothing instead of ending the run twice.
+       */
+      wrapUp() {
+        if (cleared && !finished && left > 0) settle('next');
+      },
+
       panel: () => ({
         title: mission.name,
         seconds: left,
         limit: mission.seconds,
+        /** Show the wrap-up button: every objective met, time still on the clock. */
+        wrapUp: cleared && !finished && left > 0,
         /**
          * ONCE IT IS CLEARED, THE PANEL SHOWS THE NEXT STAR.
          *
@@ -484,11 +516,12 @@ const MISSION_MODE = {
               ? { label: `${stars} \u2192 ${Math.round(next).toLocaleString()}`,
                   text: Math.round(score).toLocaleString(), done: false, kind: 'score',
                   // Says the quiet part: the mission is already yours, and the
-                  // clock left is only worth riding for the next star. Without
-                  // it a player who wants to stop has no way to know they can.
-                  note: 'BANKED \u2014 \u2715 TO FINISH' }
+                  // clock left is only worth riding for the next star. It used
+                  // to add "X TO FINISH" -- the only way to stop then. The
+                  // NEXT MISSION button under the panel does that job now.
+                  note: 'BANKED' }
               : { label: stars, text: Math.round(score).toLocaleString(), done: true, kind: 'score',
-                  note: 'BANKED \u2014 \u2715 TO FINISH' };
+                  note: 'BANKED' };
           })()]
           : objectives.map((o) => ({
             label: o.spec ? o.spec.label(o) : o.kind,

@@ -290,8 +290,16 @@ export const analytics = {
    * parameter and it only means anything next to a budget the report would have
    * to know; time taken is the same information in a form that compares across
    * levels of different lengths -- and across games that have no clock at all.
+   *
+   * `endedBy` is optional: HOW a cleared level ended, for a game where a clear
+   * does not end the run by itself (Skateboard Extreme's missions ride on to the
+   * clock). 'clock' rode it out, 'next' pressed NEXT MISSION, 'back' pressed X.
+   * Leaving after the clear is still a CLEAR -- the stars are real and
+   * the mission is banked -- so it is this field that says they left early,
+   * not `result`, which keeps `quit` meaning "gave up". Omitted when not given,
+   * so a game that does not pass it sends exactly what it sent before.
    */
-  levelCleared(id, stars, score, durationSeconds) {
+  levelCleared(id, stars, score, durationSeconds, endedBy) {
     send(EV.LEVEL_END, {
       ...levelBase(id),
       result: RESULT.CLEAR,
@@ -299,6 +307,7 @@ export const analytics = {
       stars: whole(stars),
       progress_pct: 100,
       duration_seconds: whole(durationSeconds),
+      ...(endedBy ? { ended_by: endedBy } : {}),
     });
   },
 
