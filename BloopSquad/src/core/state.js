@@ -152,3 +152,43 @@ export function nearestPod(w, x, y) {
   }
   return { pod: best || w.players[0], d: bestD };
 }
+
+/**
+ * Grow or shrink the pod array to `n` seats, keeping the pods that already
+ * exist exactly as they are.
+ *
+ * THE HOST IS SLOWER THAN BOOT. The bridge publishes its first roster a frame
+ * or two after the page loads, so a run starts as one player and becomes two
+ * when the app says so. Rebuilding the array wholesale would teleport player
+ * one back to the centre mid-run, so existing pods are left untouched and only
+ * the difference is added.
+ */
+export function resizePods(w, n) {
+  const count = Math.max(1, Math.min(4, n | 0));
+  if (count === w.players.length) return false;
+  if (count < w.players.length) {
+    w.players.length = count;
+    return true;
+  }
+  const before = w.players.length;
+  const fresh = makePods(count);
+  for (let i = before; i < count; i++) {
+    const pod = fresh[i];
+    // Placed relative to the pod that is already flying, not to the centre --
+    // a seat arriving mid-run must not land on top of player one, and player
+    // one may be anywhere by then.
+    const anchor = w.players[0];
+    const side = (i % 2 === 1) ? 1 : -1;
+    pod.x = Math.max(PLAYER.clampMarginX,
+            Math.min(DESIGN_W - PLAYER.clampMarginX,
+                     anchor.x + side * PLAYER.coopSpreadPx * Math.ceil(i / 2)));
+    pod.y = anchor.y;
+    w.players.push(pod);
+  }
+  // THE HEART POOL GROWS WITH THE TABLE. A run that started as one player and
+  // became two would otherwise keep five hearts for two children. Only the
+  // DIFFERENCE in the maximum is granted, so hearts already lost stay lost.
+  const gain = coop(COOP.hearts, count) - coop(COOP.hearts, before);
+  if (gain > 0) w.lives = Math.min(coop(COOP.hearts, count), w.lives + gain);
+  return true;
+}

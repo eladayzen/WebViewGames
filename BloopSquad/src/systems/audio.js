@@ -137,6 +137,21 @@ function note({ freq, dur = 0.12, type = 'square', gain = 0.18, bend = 1, delay 
   const c = ensureCtx();
   if (!c || !bus) return;
   if (c.state === 'suspended') return;   // pre-gesture; dropping is correct
+
+  // A NON-FINITE VALUE HERE TAKES THE WHOLE GAME DOWN, not just the sound.
+  // Web Audio throws "The provided value is non-finite" from setValueAtTime,
+  // and because every sound is played from inside the frame callback, that
+  // throw kills requestAnimationFrame and the game freezes mid-run.
+  //
+  // It has happened: playLevelUp(level) was called with no argument, so
+  // (undefined - 1) * 1.5 made the frequency NaN, and the game froze in Unity
+  // the moment the first ultimate lit. One missing argument, a dead game.
+  //
+  // Guarding at the boundary rather than at the call site ends the CATEGORY:
+  // a bad number now costs a missing note, which nobody notices, instead of a
+  // run. Silence is always the right failure for audio.
+  if (!Number.isFinite(freq) || !Number.isFinite(dur) ||
+      !Number.isFinite(gain) || !Number.isFinite(delay)) return;
   const t0 = c.currentTime + delay;
   const osc = c.createOscillator();
   const g = c.createGain();
@@ -158,6 +173,10 @@ function noise({ dur = 0.18, gain = 0.16, hp = 400, delay = 0, bus = null }) {
   const c = ensureCtx();
   const out = bus || sfxBus;
   if (!c || !out || c.state === 'suspended') return;
+  // Same boundary guard as note(): a NaN here throws inside the frame callback
+  // and freezes the game. See the long note there.
+  if (!Number.isFinite(dur) || !Number.isFinite(gain) ||
+      !Number.isFinite(hp) || !Number.isFinite(delay) || dur <= 0) return;
   const t0 = c.currentTime + delay;
   const frames = Math.floor(c.sampleRate * dur);
   const buf = c.createBuffer(1, frames, c.sampleRate);

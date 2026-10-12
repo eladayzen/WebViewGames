@@ -83,6 +83,25 @@ export function playerCount() {
   return wantPlayers;
 }
 
+/**
+ * How many seats the HOST says are live, right now.
+ *
+ * WHY THIS IS A POLL AND NOT A BOOT-TIME READ. `window.__gbPlayers` is written
+ * by the bridge once per frame, which first happens AFTER the page has loaded.
+ * Reading it during boot finds `undefined` every time, so a two-board session
+ * sized itself to one seat and co-op could not happen in the app at all --
+ * while `?players=2` in a browser worked perfectly and hid it.
+ *
+ * Returns 0 when the host has not spoken yet, so the caller can keep waiting
+ * rather than concluding "one player".
+ */
+export function liveSeatCount() {
+  if (typeof window === 'undefined') return 0;
+  const arr = window.__gbPlayers;
+  if (Array.isArray(arr) && arr.length) return arr.length;
+  return 0;
+}
+
 /** Has a real board ever driven this slot? */
 export function slotLive(slot = 0) {
   return !!slots.get(slot)?.live;

@@ -17,8 +17,8 @@ import { installGbSdk } from './systems/gbSdk.js';
 import { analytics } from './systems/analytics.js';
 import { createLoop } from './core/loop.js';
 import { makeRng } from './core/rng.js';
-import { createWorld, resetWorld, GameState } from './core/state.js';
-import { initInput, readInput, setPlayerCount, slotDropped } from './input/input.js';
+import { createWorld, resetWorld, resizePods, GameState } from './core/state.js';
+import { initInput, readInput, setPlayerCount, slotDropped, liveSeatCount } from './input/input.js';
 import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js';
 import {
   updatePod, updateTether, updateBeamCharge, updateBullets, updateCollisions, updateCoinsAndPops,
@@ -64,8 +64,8 @@ async function boot() {
   // seat per connected player -- and `?players=` is the desk override, so two
   // people can play on one keyboard with no hardware at all.
   const seatQuery = new URLSearchParams(location.search).get('players');
-  const liveSeats = Array.isArray(window.__gbPlayers) ? window.__gbPlayers.length : 0;
-  const seats = setPlayerCount(Math.max(1, seatQuery ? parseInt(seatQuery, 10) || 1 : liveSeats || 1));
+  const forcedSeats = seatQuery ? Math.max(1, parseInt(seatQuery, 10) || 1) : 0;
+  const seats = setPlayerCount(forcedSeats || liveSeatCount() || 1);
 
   const world = createWorld(seats);
   world.state = GameState.RUNNING;
@@ -88,13 +88,32 @@ async function boot() {
     // ONE READ PER POD. Each seat has its own board (or its own key set), and
     // a seat whose board has frozen is marked so the pod stops instead of
     // holding that lean into a wall for the rest of the run.
+    // THE HOST IS SLOWER THAN BOOT. `window.__gbPlayers` is written by the
+    // bridge once per frame, the first of which lands AFTER the page loads --
+    // so reading it during boot finds nothing and a two-board session sized
+    // itself to one seat. Co-op was therefore impossible in the app, while
+    // `?players=2` in a browser worked perfectly and hid it completely.
+    //
+    // Polled every frame instead, which also covers a board joining or leaving
+    // mid-run. `?players=` still wins, so the desk override is unaffected.
+    if (!forcedSeats) {
+      const live = liveSeatCount();
+      if (live && live !== world.players.length) {
+        setPlayerCount(live);
+        resizePods(world, live);
+      }
+    }
+
     for (const pod of world.players) {
       pod.dropped = slotDropped(pod.slot);
       updatePod(world, pod, readInput(dt, pod.slot), dt);
     }
     updateFiring(world, dt);
     // After the pods have moved: the beam is between where they ARE.
-    if (updateBeamCharge(world, dt)) playLevelUp();   // the ultimate lighting up
+    // The level the run is on, because playLevelUp pitches the fanfare by it.
+    // Calling it bare made the frequency NaN and froze the game -- see note()
+    // in systems/audio.js.
+    if (updateBeamCharge(world, dt)) playLevelUp(world.level);
     updateTether(world, dt, rng);
     // After the pod has moved: the anchor's new position is what drives the
     // swing, so simulating before the move would lag the rope by a frame.
