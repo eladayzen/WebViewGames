@@ -22,6 +22,7 @@
 
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { MeshoptSimplifier } from 'meshoptimizer/meshopt_simplifier.module.js';
 import { toWorld, surfaceUp, frameAt, makeFrame, radiusAt } from '../world/trough.js';
 import { TERRAIN } from '../data/terrain.js';
 import { SPEED_REF, NATURAL_TOP_SPEED } from '../data/constants.js';
@@ -105,6 +106,56 @@ const RIVAL_TURN_MAX = 0.52;
  */
 const RIVAL_TURN_ACCEL = 2.2;
 
+/**
+ * THE RIVALS RIDE A LIGHTER BODY THAN THE PLAYER (BAL-567).
+ *
+ * Four full copies of the player's rig were the single most expensive thing in
+ * SPEED RACE: 31k triangles each, 125k on top of a 105k-triangle world, every
+ * one skinned every frame. On the old iPad the race sat at 13.5 fps after the
+ * pixel budget had already been spent, and the budget could not reach it --
+ * measured on SwiftShader, the four bodies cost ~35 ms a frame at 1.6 Mpx and
+ * barely less at a quarter of the pixels. It is triangle work, not fill.
+ *
+ * A rival is a jersey on the road ahead -- almost never closer than the player
+ * and usually much smaller on screen -- so it gets a decimated copy. The
+ * simplifier only writes a NEW INDEX BUFFER over the same vertices, which is
+ * what makes this safe on a skinned mesh: positions, UVs, skin indices and
+ * weights are all shared with the original, so the skeleton, the clip and the
+ * tint work exactly as they did.
+ *
+ * Built once per source geometry and shared by every rival.
+ */
+const RIVAL_LOD_RATIO = 0.2;
+const RIVAL_LOD_ERROR = 0.02;
+const lodCache = new WeakMap();
+
+function rivalLod(geometry) {
+  if (lodCache.has(geometry)) return lodCache.get(geometry);
+  let lod = geometry;
+  // The wasm compiles asynchronously at import, long before a race can start.
+  // If it somehow has not, or the mesh is not indexed, the rival keeps the full
+  // body -- slower, never wrong.
+  if (MeshoptSimplifier.supported && geometry.index && simplifierReady) {
+    const src = geometry.index.array;
+    const indices = src instanceof Uint32Array ? src : new Uint32Array(src);
+    const pos = geometry.attributes.position;
+    const positions = pos.array instanceof Float32Array && pos.itemSize === 3 && !pos.isInterleavedBufferAttribute
+      ? pos.array : Float32Array.from({ length: pos.count * 3 }, (_, i) => pos.getComponent(Math.floor(i / 3), i % 3));
+    const target = Math.floor((indices.length * RIVAL_LOD_RATIO) / 3) * 3;
+    const [out] = MeshoptSimplifier.simplify(indices, positions, 3, target, RIVAL_LOD_ERROR);
+    lod = new THREE.BufferGeometry();
+    for (const name of Object.keys(geometry.attributes)) lod.setAttribute(name, geometry.attributes[name]);
+    lod.setIndex(new THREE.BufferAttribute(out, 1));
+    lod.boundingSphere = geometry.boundingSphere;
+    lod.boundingBox = geometry.boundingBox;
+  }
+  lodCache.set(geometry, lod);
+  return lod;
+}
+
+let simplifierReady = false;
+MeshoptSimplifier.ready.then(() => { simplifierReady = true; }, () => {});
+
 export function createRivals(scene, rider) {
   const group = new THREE.Group();
   scene.add(group);
@@ -151,6 +202,7 @@ export function createRivals(scene, rider) {
     const body = cloneSkinned(prefab.object);
     body.traverse((n) => {
       if (!n.isMesh) return;
+      if (n.isSkinnedMesh) n.geometry = rivalLod(n.geometry);
       n.frustumCulled = false;
       // Clone the material so tinting one rival does not tint them all --
       // the source material is shared with the player.

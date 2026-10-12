@@ -13,6 +13,7 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
+    "meshoptimizer": "0.25.0",
     "three": "^0.170.0"
   }
 }

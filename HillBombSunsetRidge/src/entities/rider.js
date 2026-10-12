@@ -32,6 +32,7 @@
 
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import riderSpriteUrl from '../assets/rider_sprite.png?url';
 import riggedUrl from '../assets/rig/rider_rigged.fbx?url';
 import clipIdleUrl from '../assets/rig/clip_idle.fbx?url';
@@ -458,6 +459,20 @@ export function createRider(scene, camera) {
         const { base, normal, mr } = loadRigTextures();
         obj.traverse((n) => {
           if (!n.isMesh) return;
+          // WELD THE MESH, because the FBX arrives UN-INDEXED: 31k triangles
+          // carried as 94k vertices, three per triangle and none shared. Every
+          // one of those is skinned on the GPU every frame, and SPEED RACE puts
+          // five of this rig on screen -- 470k skinned vertices a frame, which
+          // is what held the old iPad at 13.5 fps after the pixel budget had
+          // already done all it could (BAL-567). Welded it is 28k: the same
+          // triangles, the same look, 3.4x less vertex work for the player and
+          // every rival, since the rivals clone this geometry rather than copy it.
+          //
+          // Measured on SwiftShader at 1.6 Mpx, the closest stand-in here for a
+          // weak GPU: the four rival bodies cost ~35 ms a frame and did not
+          // shrink at a quarter of the pixels -- vertex work, not fill, and not
+          // the animation (stopping the rivals' mixers saved nothing).
+          n.geometry = mergeVertices(n.geometry);
           n.frustumCulled = false;
           rigMeshes.push(n);
           const lit = new THREE.MeshStandardMaterial({
