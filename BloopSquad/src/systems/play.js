@@ -62,6 +62,9 @@ export function popMonster(w, m, rng) {
   playPop(1 - Math.min(1, m.maxHp / 42));
   w.stats.popped++;
   award(w, m.points);
+  // Feed the ultimate. Only in co-op (the beam needs two pods to exist between)
+  // and only while it is NOT running, so a good stretch cannot chain it.
+  if (w.players.length > 1 && w.beamActiveT <= 0) w.beamCharge += m.points;
   maybeDropHeart(w, m, rng);
   // AFTER the count is incremented: maybeRecruit tests `popped % everyNPops`,
   // and reading the pre-increment value recruits on the wrong pop -- off by one
@@ -574,30 +577,43 @@ export function tether(w) {
   if (alive.length < 2) return null;
   const [a, b] = alive;
   const len = Math.hypot(b.x - a.x, b.y - a.y);
-  const kind = TOYS.kinds.tether;
-  // Either child's pickup arms the beam: it is one object between the two of
-  // them and cannot sensibly belong to one.
-  const inst = w.toys.find((t) => t.kind.id === 'tether');
-  let armed = false;
-  if (inst) {
-    // Hysteresis, held on the instance so it survives between frames.
-    if (inst.beamOn === undefined) inst.beamOn = false;
-    if (inst.beamOn) inst.beamOn = len <= kind.offBeyondPx;
-    else inst.beamOn = len <= kind.onWithinPx;
-    armed = inst.beamOn;
-  }
-  // `hasToy` and `armed` are DIFFERENT QUESTIONS and the drawing needs both:
-  // no toy at all means no line, while a toy held too far apart means a line
-  // that is visibly waiting. Collapsing the two hid the whole instruction.
-  return { a, b, len, hasToy: !!inst, armed, dps: armed ? kind.dps : 0, inst };
+  const B = COOP.beam;
+
+  // Live only while the ultimate is running. It is started by filling the
+  // charge bar (updateBeamCharge) and nothing else.
+  const live = w.beamActiveT > 0;
+
+  // Range is a SWITCH with hysteresis, so hovering on the edge cannot strobe.
+  if (w.beamInRange === undefined) w.beamInRange = false;
+  w.beamInRange = w.beamInRange ? len <= B.rangeOffPx : len <= B.rangeOnPx;
+  const armed = live && w.beamInRange;
+
+  // ...and strength is a SLOPE inside it. 1 when touching, falling toward the
+  // edge of range, eased so most of the band stays worth using.
+  const t = Math.max(0, Math.min(1,
+    (B.rangeOnPx - len) / (B.rangeOnPx - B.closeLenPx)));
+  const heat = Math.pow(t, B.heatEase);
+
+  return {
+    a, b, len, armed, heat,
+    // `live` and `armed` answer DIFFERENT questions and the drawing needs both.
+    // Recharging means no damage at any distance, so there is nothing to show
+    // and nothing a player can do about it -- drawn as absence. Live but out of
+    // range is the opposite: the weapon is ready and the only thing missing is
+    // that the two of them are too far apart, which is an instruction.
+    live,
+    charge: Math.min(1, w.beamCharge / beamChargeNeeded(w)),
+    dps: armed ? B.dpsEdge + (B.dpsClose - B.dpsEdge) * heat : 0,
+    reach: B.halfWidthEdgePx + (B.halfWidthClosePx - B.halfWidthEdgePx) * heat,
+  };
 }
 
 /** Burn whatever is lying across it. */
 export function updateTether(w, dt, rng) {
   const beam = tether(w);
-  // No toy, or too far apart: the line is decoration this frame.
+  // Charging, or too far apart: the line is decoration this frame.
   if (!beam || !beam.armed) return;
-  const reach = TOYS.kinds.tether.halfWidthPx;
+  const reach = beam.reach;
   for (const m of w.monsters) {
     if (!m.alive) continue;
     if (pointToSegment(m.x, m.y, beam.a.x, beam.a.y, beam.b.x, beam.b.y) > m.r + reach) continue;
@@ -607,4 +623,26 @@ export function updateTether(w, dt, rng) {
     registerHit(m, beam.dps * dt);
     if (m.hp <= 0) popMonster(w, m, rng);
   }
+}
+
+/** What the NEXT ultimate costs. Grows 1.2x per use, so the first is a gift. */
+export function beamChargeNeeded(w) {
+  return COOP.beam.chargeFirst * Math.pow(COOP.beam.chargeGrowth, w.beamUses || 0);
+}
+
+/** Run the ultimate's clock, and light it when the bar fills. */
+export function updateBeamCharge(w, dt) {
+  if (w.players.length < 2) return false;
+  if (w.beamActiveT > 0) {
+    w.beamActiveT = Math.max(0, w.beamActiveT - dt);
+    return false;
+  }
+  if (w.beamCharge < beamChargeNeeded(w)) return false;
+  // FULL. Spend the whole bar rather than the threshold, so overflow from a
+  // big kill is not banked toward the next one -- otherwise two ultimates can
+  // arrive back to back and the second one is unearned.
+  w.beamCharge = 0;
+  w.beamUses++;
+  w.beamActiveT = COOP.beam.activeS;
+  return true;   // newly lit, for the sound and the flash
 }

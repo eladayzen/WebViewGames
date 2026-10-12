@@ -61,6 +61,13 @@ export function createWorld(seats = 1) {
     // only the last one, which would have deleted the pickups entirely.
     lives: coop(COOP.hearts, count),
 
+    // THE ULTIMATE. `beamCharge` fills with the points of everything popped;
+    // at COOP.beam.chargePoints it empties and `beamActiveT` starts running.
+    beamCharge: 0,
+    beamActiveT: 0,
+    // How many ultimates this run has spent; each costs 1.2x the last.
+    beamUses: 0,
+
     // The rescued squad, and the pod's recent path they follow along. The
     // history is sampled every frame and read at a delay per member, which is
     // what makes them trace the player's exact route rather than chase it --

@@ -17,7 +17,7 @@
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, SKY, POD, XP, COOP, coop, difficulty01 } from '../data/tuning.js';
 import { punchExtension, activeToy, podOf } from '../systems/toys.js';
-import { tether } from '../systems/play.js';
+import { tether, beamChargeNeeded } from '../systems/play.js';
 
 const PALETTE = {
   bg: 0x0b1020,
@@ -1024,7 +1024,9 @@ export async function createRenderer(canvas) {
     // player most needs to see early. The OUTLINE stays near-solid: it is what
     // holds the shape together once the fill stops doing it, and without it a
     // half-transparent card reads as a smudge rather than as an object.
-    const x = 24, y = 18, wid = 352, hgt = 150, r = 28;
+    // Taller in co-op: the plaque has to hold the ultimate's bar as well, and
+    // a bar drawn past the bottom edge reads as a rendering fault.
+    const x = 24, y = 18, wid = 352, hgt = w.players.length > 1 ? 172 : 150, r = 28;
     xpG.clear();
     // A HINT, not a card. At 0.52 the cream turned into a flat grey slab that
     // still hid whatever was behind it; at 0.16 it groups the readouts without
@@ -1037,25 +1039,56 @@ export async function createRenderer(canvas) {
     // HEARTS, big. They are the only thing on this plaque a player checks mid
     // fight -- the score is read afterwards and the XP bar is ambient -- so they
     // get the size, and the rest of the plaque is laid out around them.
-    for (let i = 0; i < coop(COOP.hearts, w.players.length); i++) {
+    // THE ROW FITS THE PLAQUE, however many hearts there are. Co-op raised the
+    // pool from five to eight and the fixed 62px spacing put the last one
+    // outside the card -- which reads as a drawing fault, not as a heart.
+    const hn = coop(COOP.hearts, w.players.length);
+    const hStep = Math.min(62, (wid - 70) / Math.max(1, hn - 1));
+    const hR = Math.min(24, hStep * 0.39);
+    for (let i = 0; i < hn; i++) {
       const on = i < w.lives;
-      const hx = x + 46 + i * 62;
+      const hx = x + 34 + hR * 0.5 + i * hStep;
       const hy = y + 44;
-      heartPath(xpG, hx, hy, 24);
+      heartPath(xpG, hx, hy, hR);
       xpG.fill({ color: on ? PALETTE.heart : 0x8e8778, alpha: on ? 1 : 0.55 });
-      heartPath(xpG, hx, hy, 24);
-      xpG.stroke({ width: 5.5, color: PALETTE.outline, alpha: on ? 1 : 0.5 });
+      heartPath(xpG, hx, hy, hR);
+      xpG.stroke({ width: 5.5 * (hR / 24), color: PALETTE.outline, alpha: on ? 1 : 0.5 });
     }
 
     const need = Math.round(XP.base * Math.pow(w.level, XP.curve));
     const frac = Math.max(0, Math.min(1, w.xp / need));
-    const bx = x + 22, by = y + hgt - 32, bw = wid - 44, bh = 15;
+    const coopBar = w.players.length > 1;
+    const bx = x + 22, by = y + hgt - (coopBar ? 54 : 32), bw = wid - 44, bh = 15;
     xpG.roundRect(bx, by, bw, bh, bh / 2).fill({ color: 0x0b1020, alpha: 0.7 });
     if (frac > 0) {
       xpG.roundRect(bx, by, Math.max(bh, bw * frac), bh, bh / 2)
          .fill({ color: 0x74d7ff });
     }
     xpG.roundRect(bx, by, bw, bh, bh / 2).stroke({ width: 4, color: PALETTE.outline, alpha: 0.9 });
+
+    // THE ULTIMATE'S CHARGE, under the XP bar and only in co-op. Red, because
+    // red is what the beam turns when it fires -- the bar and the weapon have
+    // to be obviously the same object or filling it means nothing.
+    //
+    // While the ultimate RUNS this shows its time remaining instead, draining
+    // the way it filled. One bar for one thing: a separate countdown somewhere
+    // else would make a child look in two places for one weapon.
+    if (w.players.length > 1) {
+      const uy = by + bh + 7;
+      const running = w.beamActiveT > 0;
+      const uf = running
+        ? w.beamActiveT / COOP.beam.activeS
+        : Math.min(1, w.beamCharge / beamChargeNeeded(w));
+      xpG.roundRect(bx, uy, bw, bh, bh / 2).fill({ color: 0x0b1020, alpha: 0.7 });
+      if (uf > 0) {
+        // Full-but-not-yet-spent and actively running both read as "hot"; a
+        // part-filled bar is a duller ember so the full one is unmistakable.
+        const tint = running ? 0xffd166 : (uf >= 1 ? 0xff4a3d : 0xa33b33);
+        xpG.roundRect(bx, uy, Math.max(bh, bw * uf), bh, bh / 2).fill({ color: tint });
+      }
+      xpG.roundRect(bx, uy, bw, bh, bh / 2)
+         .stroke({ width: 4, color: PALETTE.outline, alpha: 0.9 });
+    }
   }
 
   function drawHud(w) {
@@ -1119,15 +1152,15 @@ export async function createRenderer(canvas) {
       const beam = tether(w);
       // THREE STATES, AND ONLY THE FIRST IS NOTHING:
       //
-      //   no LINK BEAM          nothing drawn. A permanent line read as a
-      //                         weapon that was not working, and the eye
-      //                         learns to ignore it.
-      //   held, but too far     a BLUE thread. This one is an instruction:
-      //                         you have it, come closer. Without it a child
-      //                         holding the toy out of range gets no signal at
-      //                         all and cannot tell the pickup did anything.
-      //   held, and in range    the RED cable. It is burning.
-      if (beam && beam.hasToy) {
+      //   RECHARGING        nothing drawn. No damage at any distance, and
+      //                     nothing the players can do to bring it back -- a
+      //                     line here reads as a weapon that is not working,
+      //                     and the eye learns to ignore the one element the
+      //                     whole co-op game is built on.
+      //   READY, TOO FAR    a BLUE thread. An instruction, not decoration:
+      //                     the weapon is up, come closer.
+      //   READY, IN RANGE   the RED cable, graded by how close they are.
+      if (beam && beam.live) {
         const B = COOP.beam;
         const K = TOYS.kinds.tether;
         // TWO STATES, DRAWN AS TWO DIFFERENT THINGS -- not as one thing with a
@@ -1135,12 +1168,19 @@ export async function createRenderer(canvas) {
         // hot is a red cable with a white-hot filament that says "and it is
         // burning". A child should not have to compare brightnesses to know
         // which one they are looking at.
+        // ARMED IS CATEGORICAL -- red or blue, and nothing in between. HOW HARD
+        // is a slope inside the red: a beam at the edge of its range is thin,
+        // dim and slow; one between two touching pods is fat, solid and
+        // crackling. The same `heat` drives the damage, so what is drawn and
+        // what is dealt cannot disagree.
         const hot = beam.armed;
+        const heat = beam.heat;
+        const lerp = (lo, hi) => lo + (hi - lo) * heat;
         const core = hot ? 0xff4a3d : 0x8fd4ff;
-        const alpha = hot ? B.alphaClose : B.alphaFar;
-        const reach = hot ? K.halfWidthPx : B.halfWidthFarPx;
-        const freq = hot ? B.waveFreqClose : B.waveFreqFar;
-        const amp = hot ? B.waveAmpPx : 0;
+        const alpha = hot ? lerp(0.30, B.alphaClose) : B.alphaFar;
+        const reach = hot ? beam.reach : B.halfWidthFarPx;
+        const freq = hot ? lerp(1.6, B.waveFreqClose) : B.waveFreqFar;
+        const amp = hot ? B.waveAmpPx * heat : 0;
 
         // Built as points so it can whip. Pinned at both pods by a sine
         // envelope, or it reads as detached rather than as current between them.
@@ -1164,12 +1204,15 @@ export async function createRenderer(canvas) {
         // THE WHITE FILAMENT ONLY EXISTS WHEN HOT. White down the middle of red
         // is what makes it read as heat rather than as a red line; the cold
         // beam has no core at all, so the two states differ in KIND.
+        // The white filament is the clearest 'this is burning' signal, so it
+        // fades in with heat rather than appearing at full strength the moment
+        // the beam arms.
         if (hot) {
           trace();
-          g.stroke({ width: Math.max(3, reach * 0.42), color: 0xffffff, alpha: 0.95 });
+          g.stroke({ width: Math.max(2, reach * 0.42), color: 0xffffff, alpha: lerp(0.35, 0.95) });
         }
 
-        const beads = hot ? B.beadsClose : B.beadsFar;
+        const beads = hot ? Math.max(1, Math.round(lerp(1, B.beadsClose))) : B.beadsFar;
         for (let k = 0; k < beads; k++) {
           const f = ((time * (0.25 + freq * 0.12) + k / beads) % 1);
           const [bx, by] = pts[Math.min(pts.length - 1, Math.round(f * segs))];

@@ -1188,6 +1188,10 @@ export const TOYS = {
     tether: {
       id: 'tether', label: 'LINK BEAM', durationS: 18, tint: 0xff5a4a,
       coopOnly: true,
+      // PARKED, NOT DELETED. The beam is a permanent weapon on its own duty
+      // cycle now (COOP.beam) rather than something you pick up. The kind stays
+      // defined so going back to the pickup version is this one flag.
+      enabled: false,
       // ARMED DAMAGE IS FLAT, and the threshold is a SWITCH rather than a
       // curve. A gradient is a chart: it asks a six-year-old to read how hard
       // the beam is hitting from how it looks, continuously. On or off is a
@@ -1457,6 +1461,94 @@ export const COOP = {
   // An earlier version moved only thickness, and Amit could not read it: a
   // thicker line says "bigger", not "hotter".
   beam: {
+    // ── A PERMANENT WEAPON ON A DUTY CYCLE ───────────────────────────────────
+    //
+    // Not a pickup. The beam is always part of co-op; what it does is cycle.
+    // Seven seconds live, three recharging -- 70 % uptime, which is often
+    // enough that two children build the habit of flying together, and absent
+    // often enough that the habit is worth something when it comes back.
+    //
+    // Free-running on world time rather than triggered, because a weapon that
+    // fires when you do something is a weapon with a rule to learn. This one
+    // just breathes, and a child reads it the way they read a lighthouse.
+    // AN ULTIMATE, EARNED BY SHOOTING. Every monster popped feeds a charge
+    // bar; when it fills, the beam comes alive for `activeS` and the bar empties
+    // back to nothing. Nothing else charges it, so the only way to get it is to
+    // play the game -- which is the point. A free-running timer gave it to you
+    // for standing still.
+    //
+    // CHARGE IS IN POINTS, NOT KILLS, so a large monster is worth six smalls
+    // exactly as it is everywhere else in the game. A child who takes on the
+    // big purple one is already choosing the harder fight; this pays for it
+    // without a second rule.
+    // ESCALATING. The first one is cheap on purpose -- a child has to SEE the
+    // ultimate happen before the bar means anything, and 420 points is a minute
+    // of play before the mechanic introduces itself. 120 is a handful of kills.
+    // Each one after costs 1.2x the last, so the first is a gift and the fifth
+    // is earned.
+    chargeFirst: 120,
+    chargeGrowth: 1.2,
+    // LONG. Much longer than the 7s duty cycle it replaces -- an ultimate that
+    // is over before two children have reacted to it arriving is a reward they
+    // never actually hold. At 16s there is time to notice it, find each other
+    // and use it.
+    activeS: 16.0,
+    // Kills during the ultimate do NOT charge the next one; the bar refills
+    // only once it ends. Otherwise a good run chains it forever and it stops
+    // being an event.
+
+    // ── RANGE, AND THE GRADIENT INSIDE IT ────────────────────────────────────
+    //
+    // Two questions, deliberately answered differently:
+    //
+    //   AM I ARMED?   Categorical. Red or blue, in range or not. This is the
+    //                 one a six-year-old has to read instantly, and a gradient
+    //                 cannot carry it -- that was the first version's failure.
+    //   HOW HARD?     Continuous, INSIDE the red. Strongest when close, visibly
+    //                 weaker toward the edge of range. Amit: the effects should
+    //                 be "strongest like it is now when we're close", and show
+    //                 "that the damage is low" as they drift apart.
+    //
+    // So the state change stays a switch and the strength is a slope within it.
+    rangeOnPx: 988,
+    rangeOffPx: 1066,
+    // At or inside this the beam is at full ferocity.
+    closeLenPx: 200,
+    dpsClose: 30,
+    dpsEdge: 3,
+    // THE CLOSE BEAM IS A FURNACE, NOT A WIRE, and this is the number that
+    // makes "closer is stronger" TRUE rather than merely drawn.
+    //
+    // Measured, and it was backwards at first: a short beam covers a narrow
+    // column that the two pods' cannons are ALREADY covering, so ferocity alone
+    // bought almost nothing (+2 % of kills at 200px, against +17 % at 650px).
+    // The beam's real job is the gap between the two firing columns, and when
+    // the pods are close there is no gap.
+    //
+    // Thickness is the only lever that moves it, because monsters travel
+    // vertically: a taller beam is a longer burn per monster, worth something
+    // even where the cannons already reach. It works -- at a half-width of 120
+    // the close range measures +17 %, level with the far end.
+    //
+    // AND IT CANNOT BE USED. At any width that actually helps, the beam engulfs
+    // both pods: a red field with the ships inside it, and a child cannot track
+    // their own pod. Tried 120 and 70; both swallow them. So this sits at 34,
+    // which reads as a thick beam and leaves the ships legible, and the close
+    // range stays mechanically modest.
+    //
+    // WHAT THIS MEANS, written down because the next person will re-derive it:
+    // the per-monster damage really is higher close (30 against 3), so the VFX
+    // gradient is honest about how hard the beam hits ANY ONE monster. Total
+    // kills still favour spreading out, because coverage beats ferocity. If
+    // close-range needs to win outright it needs a different mechanic -- area
+    // pulses from the midpoint rather than a wider line.
+    halfWidthClosePx: 34,
+    halfWidthEdgePx: 12,
+    // <1 holds the beam strong across more of its range, so the falloff is felt
+    // near the edge rather than immediately -- otherwise the useful band is a
+    // narrow one next to the pods and the extra range buys nothing.
+    heatEase: 0.75,
+
     waveFreqFar: 0.6,       // rad/s -- a slow, tired drift
     waveFreqClose: 9.0,     // rad/s -- a crackle
     waveAmpPx: 13,          // sideways whip, hot only

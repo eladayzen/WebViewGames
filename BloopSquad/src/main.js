@@ -21,7 +21,7 @@ import { createWorld, resetWorld, GameState } from './core/state.js';
 import { initInput, readInput, setPlayerCount, slotDropped } from './input/input.js';
 import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js';
 import {
-  updatePod, updateTether, updateBullets, updateCollisions, updateCoinsAndPops,
+  updatePod, updateTether, updateBeamCharge, updateBullets, updateCollisions, updateCoinsAndPops,
   updateSquad, updateSquadBombs, updateBlasts, updateLevelPopup, updateHearts,
   celebrate, popMonster, award, xpForLevel,
 } from './systems/play.js';
@@ -31,7 +31,7 @@ import { installDevUnlock } from './ui/devUnlock.js';
 import { createDevPanel } from './ui/devPanel.js';
 import { createEndings, fakeBoard } from './ui/endings.js';
 import {
-  initAudio, startMusic, stopMusic, setAudioPaused, playGameOver,
+  initAudio, startMusic, stopMusic, setAudioPaused, playGameOver, playLevelUp,
   getAudioPrefs, setSfxEnabled, setMusicEnabled, setMusicLevel,
 } from './systems/audio.js';
 import { CAMERA, DEV, MONSTERS, TOYS, SQUAD, DESIGN_W, DESIGN_H, difficulty01 } from './data/tuning.js';
@@ -94,6 +94,7 @@ async function boot() {
     }
     updateFiring(world, dt);
     // After the pods have moved: the beam is between where they ARE.
+    if (updateBeamCharge(world, dt)) playLevelUp();   // the ultimate lighting up
     updateTether(world, dt, rng);
     // After the pod has moved: the anchor's new position is what drives the
     // swing, so simulating before the move would lag the rope by a frame.
@@ -458,6 +459,12 @@ async function boot() {
       });
     }, 16);
   }
+
+  // ?lives=N starts the run with N hearts. Reaching the death screen otherwise
+  // means actually losing, which a headless browser cannot do on purpose -- and
+  // the death path is the one every run ends on.
+  const livesHook = parseInt(q.get('lives') || '', 10);
+  if (livesHook > 0) world.lives = livesHook;
 
   const forced = q.get('toy');
   if (forced) {
