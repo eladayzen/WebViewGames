@@ -10,8 +10,9 @@
 // re-applied. A monster that steered continuously would be chasing the player
 // by another name, and the player could never learn where it was going.
 
-import { MONSTERS, DESIGN_W, DESIGN_H, PLAYER, DIFFICULTY, difficulty01, lerpDiff } from '../data/tuning.js';
+import { MONSTERS, DESIGN_W, DESIGN_H, PLAYER, DIFFICULTY, COOP, coop, difficulty01, lerpDiff } from '../data/tuning.js';
 import { playHit } from './audio.js';
+import { nearestPod } from '../core/state.js';
 
 // How close to the pod's column a crossing has to be before it counts as a
 // pass at all. Roughly "could this have hit me if I had stood still?".
@@ -53,7 +54,10 @@ export function spawnMonster(w, rng) {
     DIFFICULTY.maxLiveLevelCap,
     (w.level - 1) * DIFFICULTY.maxLivePerLevel
   );
-  const cap = Math.round(lerpDiff(DIFFICULTY.maxLive, d) + levelBonus);
+  // Scaled by seat count: two pods clear far more than one, so the same cap
+  // would make co-op the easier game. See COOP in tuning.js.
+  const cap = Math.round((lerpDiff(DIFFICULTY.maxLive, d) + levelBonus) *
+                         coop(COOP.maxLiveMul, w.players.length));
   if (w.monsters.filter((m) => m.alive).length >= cap) return null;
 
   const tierName = pickTier(rng, d);
@@ -131,7 +135,8 @@ export function spawnMonster(w, rng) {
  */
 function applyClearance(w, m) {
   if (m.clearanceApplied) return;
-  const p = w.player;
+  // Clearance is measured against the pod this monster is actually heading at.
+  const p = nearestPod(w, m.x, m.y).pod;
   const clearance = MONSTERS.passClearancePx * MONSTERS.passClearanceMul + m.r + PLAYER.radius;
   // Only meaningful for something actually heading toward the pod's row.
   if (Math.abs(m.vy) < 1) return;
@@ -180,11 +185,14 @@ export function attractionAt(level) {
 }
 
 export function updateMonsters(w, dt) {
-  const p = w.player;
   const pull = attractionAt(w.level);
   const A = MONSTERS.attraction;
   for (const m of w.monsters) {
     if (!m.alive) continue;
+    // DRIFT TOWARD THE NEAREST POD, not toward player one. Attraction aimed at
+    // a fixed pod would leave the other child in permanently calm water and
+    // make co-op easier than playing alone.
+    const p = nearestPod(w, m.x, m.y).pod;
     const wasAbove = m.y < p.y;
 
     applyClearance(w, m);
@@ -247,6 +255,7 @@ export function maybeSpawn(w, rng, dt) {
   w.spawnT -= dt;
   if (w.spawnT > 0) return;
   const d = difficulty01(w.time);
-  w.spawnT = MONSTERS.spawnIntervalS * lerpDiff(DIFFICULTY.spawnIntervalMul, d);
+  w.spawnT = MONSTERS.spawnIntervalS * lerpDiff(DIFFICULTY.spawnIntervalMul, d) *
+             coop(COOP.spawnIntervalMul, w.players.length);
   spawnMonster(w, rng);
 }

@@ -3,6 +3,8 @@
 
 import { BULLETS, MONSTERS, COINS, HEARTS, PLAYER, SQUAD, TOYS, XP, DESIGN_W, DESIGN_H } from '../data/tuning.js';
 import { analytics } from './analytics.js';
+import { nearestPod } from '../core/state.js';
+import { COOP, coop } from '../data/tuning.js';
 import {
   maybeDropToy, steerHomingBullets, updateBuddies, updateChainBombs,
   consumeShield, updatePunch,
@@ -16,8 +18,12 @@ import {
 // The concept's confetti is a party, not the colour of what just popped.
 const CONFETTI = [0x7ed321, 0xf5a623, 0x9b59d0, 0x74d7ff, 0xff6b6b, 0xffc93c];
 
-export function updatePlayer(w, input, dt) {
-  const p = w.player;
+export function updatePod(w, p, input, dt) {
+  // A FROZEN BOARD MUST NOT DRIVE. A seat whose disconnect handler never fired
+  // keeps publishing its last value forever, so the pod would hold that lean
+  // and pin itself against a wall for the rest of the run. Stopping is safe
+  // whatever the frozen value was -- one frozen at zero was not moving anyway.
+  if (p.dropped) input = { x: 0, y: 0, source: input.source };
   p.x += input.x * PLAYER.lateralMaxPxS * dt;
   p.y += input.y * PLAYER.verticalMaxPxS * dt;
   p.x = Math.max(PLAYER.clampMarginX, Math.min(DESIGN_W - PLAYER.clampMarginX, p.x));
@@ -114,9 +120,12 @@ export function updateCollisions(w, rng, dt) {
     }
   }
 
-  // Monsters vs the pod.
-  const p = w.player;
-  if (p.invulnT <= 0 && p.alive) {
+  // Monsters vs each pod. INVULNERABILITY IS PER POD, the heart cost is shared:
+  // being touched protects the child it happened to, not their sibling, but it
+  // costs the team either way. One shared invulnerability would let one player
+  // run through the field for free while the other was flashing.
+  for (const p of w.players) {
+    if (p.invulnT > 0 || !p.alive) continue;
     for (const m of w.monsters) {
       if (!m.alive) continue;
       const d = Math.hypot(m.x - p.x, m.y - p.y);
@@ -130,7 +139,7 @@ export function updateCollisions(w, rng, dt) {
         popMonster(w, m, rng);
         break;
       }
-      p.hearts--;
+      w.lives--;
       p.invulnT = PLAYER.invulnS;
       w.stats.contacts++;
       playPlayerHit();
@@ -138,11 +147,14 @@ export function updateCollisions(w, rng, dt) {
       // parked on top of them, and the hit reads as an event rather than a
       // state.
       popMonster(w, m, rng);
-      if (p.hearts <= 0) p.alive = false;
+      // THE RUN ENDS FOR EVERYONE AT ONCE. Nobody is eliminated and left
+      // watching -- see the note on `players` in core/state.js.
+      if (w.lives <= 0) for (const q of w.players) q.alive = false;
       break;
     }
   }
 }
+
 
 /**
  * Recruit the monster that just popped, if it is the Nth.
@@ -179,7 +191,7 @@ function maybeRecruit(w, m) {
  */
 export function updateSquad(w, dt) {
   if (!SQUAD.enabled) return;
-  const p = w.player;
+  const p = w.players[0];
 
   // Record the path, not the clock: a point is only added once the pod has
   // actually travelled `pathStepPx`. Standing still adds nothing, which is what
@@ -428,8 +440,8 @@ export function updateLevelPopup(w, dt) {
 function maybeDropHeart(w, m, rng) {
   const chance = HEARTS.dropFrom[m.tierName] || 0;
   if (!chance) return;
-  if (w.player.hearts >= PLAYER.hearts) return;
-  if (w.hearts.length >= HEARTS.maxLive) return;
+  if (w.lives >= coop(COOP.hearts, w.players.length)) return;
+  if (w.hearts.length >= coop(COOP.heartMaxLive, w.players.length)) return;
   if (w.time - w.lastHeartT < HEARTS.minGapS) return;
   if (rng.next() >= chance) return;
   w.lastHeartT = w.time;
@@ -437,11 +449,13 @@ function maybeDropHeart(w, m, rng) {
 }
 
 export function updateHearts(w, dt) {
-  const p = w.player;
   for (const h of w.hearts) {
     if (!h.alive) continue;
     h.t -= dt;
     h.bob += dt * 3.2;
+    // Homes to whichever pod is closest, so a pickup belongs to the field
+    // rather than to player one.
+    const p = nearestPod(w, h.x, h.y).pod;
     const dx = p.x - h.x, dy = p.y - h.y;
     const d = Math.hypot(dx, dy) || 1;
     if (d < HEARTS.magnetRadius) {
@@ -454,7 +468,7 @@ export function updateHearts(w, dt) {
       h.alive = false;
       // Clamped, not assumed: a heart collected in the same frame the cap was
       // reached must not push the player to four.
-      if (p.hearts < PLAYER.hearts) p.hearts++;
+      if (w.lives < coop(COOP.hearts, w.players.length)) w.lives++;
       playHeart();
     }
     if (h.t <= 0) h.alive = false;
@@ -463,10 +477,10 @@ export function updateHearts(w, dt) {
 }
 
 export function updateCoinsAndPops(w, dt) {
-  const p = w.player;
   for (const c of w.coins) {
     if (!c.alive) continue;
     c.t -= dt;
+    const p = nearestPod(w, c.x, c.y).pod;
     const dx = p.x - c.x, dy = p.y - c.y;
     const d = Math.hypot(dx, dy);
     if (d < COINS.magnetRadius) {
@@ -500,4 +514,97 @@ export function updateCoinsAndPops(w, dt) {
     if (f.t <= 0) f.alive = false;
   }
   w.pops = w.pops.filter((f) => f.alive);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE TETHER
+//
+// A beam between two pods that burns what crosses it. There is no button: it
+// exists because two children are standing where they are standing, which makes
+// it the only thing on the field that gives either of them a reason to care
+// where the other one is.
+//
+// It began as a BUG -- one shared trail array, stitched back and forth between
+// the pods -- and the bug is the design note: the accidental version already
+// read as a weapon to the person playing it before anyone described it as one.
+//
+// WHY A THRESHOLD AND NOT A CURVE. The first version scaled damage smoothly
+// with separation, and it was measured to be dominant in the WRONG direction:
+// the beam's share of kills rose from 11 % hugging to 45 % at full spread,
+// because coverage grows faster than damage falls. Flying to opposite edges and
+// mowing beat aiming. Steepening the curve fixed the numbers and left it
+// unreadable -- Amit, playing it: the visuals "don't explain me in a really
+// clear way that the closer you get, the higher the damage".
+//
+// A switch solves both. Under `onWithinPx` the beam is live and flat; past
+// `offBeyondPx` it is decoration. There is no wide-and-weak state to exploit,
+// and the thing a child has to learn is one sentence long.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Distance from point c to the segment a-b, and nothing else. */
+function pointToSegment(cx, cy, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(cx - ax, cy - ay);
+  let t = ((cx - ax) * dx + (cy - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(cx - (ax + t * dx), cy - (ay + t * dy));
+}
+
+/**
+ * The tether between two pods: where it is, and whether it is ARMED.
+ *
+ * THE LINE IS ALWAYS THERE. It is the bond between two children and it costs
+ * nothing -- a cool, quiet blue, doing no damage. What the LINK BEAM pickup
+ * buys is not the line, it is the line going live.
+ *
+ * ARMED IS A SWITCH, NOT A SLOPE. While the toy is running, the beam is hot
+ * whenever the pods are closer than `onWithinPx` and cold when they drift past
+ * `offBeyondPx`. Two thresholds rather than one, because a single line makes
+ * the beam strobe red/blue several times a second when someone hovers exactly
+ * on it -- unreadable, and it looks broken.
+ *
+ * Why a switch at all: a gradient asks a six-year-old to read how hard the beam
+ * is hitting from how it looks, continuously, which is a chart. On or off is a
+ * state. A state is something they can act on -- fly closer until it goes red,
+ * then stay there -- and that is the entire mechanic.
+ */
+export function tether(w) {
+  const alive = w.players.filter((p) => p.alive && !p.dropped);
+  if (alive.length < 2) return null;
+  const [a, b] = alive;
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const kind = TOYS.kinds.tether;
+  // Either child's pickup arms the beam: it is one object between the two of
+  // them and cannot sensibly belong to one.
+  const inst = w.toys.find((t) => t.kind.id === 'tether');
+  let armed = false;
+  if (inst) {
+    // Hysteresis, held on the instance so it survives between frames.
+    if (inst.beamOn === undefined) inst.beamOn = false;
+    if (inst.beamOn) inst.beamOn = len <= kind.offBeyondPx;
+    else inst.beamOn = len <= kind.onWithinPx;
+    armed = inst.beamOn;
+  }
+  // `hasToy` and `armed` are DIFFERENT QUESTIONS and the drawing needs both:
+  // no toy at all means no line, while a toy held too far apart means a line
+  // that is visibly waiting. Collapsing the two hid the whole instruction.
+  return { a, b, len, hasToy: !!inst, armed, dps: armed ? kind.dps : 0, inst };
+}
+
+/** Burn whatever is lying across it. */
+export function updateTether(w, dt, rng) {
+  const beam = tether(w);
+  // No toy, or too far apart: the line is decoration this frame.
+  if (!beam || !beam.armed) return;
+  const reach = TOYS.kinds.tether.halfWidthPx;
+  for (const m of w.monsters) {
+    if (!m.alive) continue;
+    if (pointToSegment(m.x, m.y, beam.a.x, beam.a.y, beam.b.x, beam.b.y) > m.r + reach) continue;
+    // Damage over time rather than on contact: a monster that drifts through
+    // slowly takes more than one that crosses fast, which is what makes the
+    // beam a place rather than a line to be touched once.
+    registerHit(m, beam.dps * dt);
+    if (m.hp <= 0) popMonster(w, m, rng);
+  }
 }

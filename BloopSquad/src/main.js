@@ -18,10 +18,10 @@ import { analytics } from './systems/analytics.js';
 import { createLoop } from './core/loop.js';
 import { makeRng } from './core/rng.js';
 import { createWorld, resetWorld, GameState } from './core/state.js';
-import { initInput, readInput } from './input/input.js';
+import { initInput, readInput, setPlayerCount, slotDropped } from './input/input.js';
 import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js';
 import {
-  updatePlayer, updateBullets, updateCollisions, updateCoinsAndPops,
+  updatePod, updateTether, updateBullets, updateCollisions, updateCoinsAndPops,
   updateSquad, updateSquadBombs, updateBlasts, updateLevelPopup, updateHearts,
   celebrate, popMonster, award, xpForLevel,
 } from './systems/play.js';
@@ -51,7 +51,23 @@ async function boot() {
   initAudio();
   startMusic();
   const rng = makeRng(0x1005);
-  const world = createWorld();
+
+  // HOW MANY SEATS THIS RUN HAS, decided before anything reads it.
+  //
+  // Read HERE and not down with the other `?` hooks, which live 350 lines
+  // below: createWorld needs it on the next line, and a `seats` declared after
+  // its own use is the temporal-dead-zone ReferenceError this file has already
+  // been bitten by twice (see the note by `const q`). Both times it killed the
+  // rest of boot() silently, because the renderer had already started.
+  //
+  // The board is the source of truth when there is one -- the app publishes a
+  // seat per connected player -- and `?players=` is the desk override, so two
+  // people can play on one keyboard with no hardware at all.
+  const seatQuery = new URLSearchParams(location.search).get('players');
+  const liveSeats = Array.isArray(window.__gbPlayers) ? window.__gbPlayers.length : 0;
+  const seats = setPlayerCount(Math.max(1, seatQuery ? parseInt(seatQuery, 10) || 1 : liveSeats || 1));
+
+  const world = createWorld(seats);
   world.state = GameState.RUNNING;
   /**
    * THE FIRST RUN OF A SESSION STARTS HERE, not in restart().
@@ -69,9 +85,16 @@ async function boot() {
     if (world.paused || world.state !== GameState.RUNNING) return;
     world.time += dt;
 
-    const input = readInput(dt);
-    updatePlayer(world, input, dt);
+    // ONE READ PER POD. Each seat has its own board (or its own key set), and
+    // a seat whose board has frozen is marked so the pod stops instead of
+    // holding that lean into a wall for the rest of the run.
+    for (const pod of world.players) {
+      pod.dropped = slotDropped(pod.slot);
+      updatePod(world, pod, readInput(dt, pod.slot), dt);
+    }
     updateFiring(world, dt);
+    // After the pods have moved: the beam is between where they ARE.
+    updateTether(world, dt, rng);
     // After the pod has moved: the anchor's new position is what drives the
     // swing, so simulating before the move would lag the rope by a frame.
     updateChain(world, dt);
@@ -97,13 +120,18 @@ async function boot() {
       // mode most likely to be rejected -- it moves the frame on the axis every
       // dodge is made on -- but it has to be felt to be ruled out.
       const dead = DESIGN_W * CAMERA.deadZoneFrac;
-      const target = Math.max(-dead, Math.min(dead, world.player.x - DESIGN_W * 0.5));
+      // The MIDPOINT of the pods, so neither child is pushed off-frame by the
+      // other's dodge.
+      let mid = 0;
+      for (const q of world.players) mid += q.x;
+      mid /= world.players.length;
+      const target = Math.max(-dead, Math.min(dead, mid - DESIGN_W * 0.5));
       world.camera.x += (target - world.camera.x) * Math.min(1, dt / CAMERA.followLag);
     } else {
       world.camera.x = 0;
     }
 
-    if (!world.player.alive) {
+    if (world.players.every((q) => !q.alive)) {
       // BEFORE the state changes: which level they died on, and how far into
       // its XP bar they were, are facts still true here and gone a line later.
       reportLevelFailed();
@@ -418,6 +446,19 @@ async function boot() {
     openDevPanel().button.click();
   }
 
+  // ?sep=N parks the pods N apart and holds them there. The beam's whole
+  // design is a curve against separation, and the two ends of that curve are
+  // otherwise only reachable by two people flying -- which a screenshot cannot
+  // do.
+  const sepHold = parseInt(q.get('sep') || '', 10);
+  if (sepHold > 0 && world.players.length > 1) {
+    setInterval(() => {
+      world.players.forEach((p, i) => {
+        p.x = DESIGN_W / 2 + (i - (world.players.length - 1) / 2) * sepHold;
+      });
+    }, 16);
+  }
+
   const forced = q.get('toy');
   if (forced) {
     for (const name of forced.split(',')) {
@@ -438,18 +479,18 @@ async function boot() {
       const tier = tiers[i % tiers.length];
       world.squad.push({
         tint: tier.tint, eyes: (i % 3) + 1, horns: true,
-        joinT: 0, bob: i * 1.3, x: world.player.x, y: world.player.y,
+        joinT: 0, bob: i * 1.3, x: world.players[0].x, y: world.players[0].y,
       });
     }
     // Walk a smooth curve and record a point only every `pathStepPx`, exactly as
     // the real recorder does. A naive dense sampling folds the path back on
     // itself and the arc-length walk then zigzags -- which looks like a bug in
     // the follow code and is not one.
-    let px = world.player.x, py = world.player.y;
+    let px = world.players[0].x, py = world.players[0].y;
     for (let f = 0; f < 4000; f++) {
       const t = f / 400;
-      const nx = world.player.x + Math.sin(t * 1.15) * 330;
-      const ny = world.player.y + Math.sin(t * 0.55) * 80;
+      const nx = world.players[0].x + Math.sin(t * 1.15) * 330;
+      const ny = world.players[0].y + Math.sin(t * 0.55) * 80;
       if (Math.hypot(nx - px, ny - py) >= SQUAD.pathStepPx) {
         world.trail.push({ x: nx, y: ny });
         px = nx; py = ny;

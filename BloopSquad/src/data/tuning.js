@@ -75,6 +75,32 @@ export const PLAYER = {
   sensorYSign: -1,
   keyboardRampS: 0.18,
 
+  // HOW FAR APART TWO PODS START. Far enough that two identical shapes are not
+  // overlapping in the first second of a run -- a child who cannot tell which
+  // pod is theirs at the moment the game starts never recovers that. Narrow
+  // enough that both are still well inside the field and neither begins the
+  // run pinned against an edge.
+  coopSpreadPx: 260,
+
+  // DETECTING A BOARD THAT HAS BEEN STEPPED OFF, OR HAS DROPPED.
+  //
+  // A disconnected board does NOT read as neutral. Its address stops resolving
+  // and the app's angle maths yields a constant FULL deflection, so the pod
+  // steers hard over and stays there at full speed until the run ends. There is
+  // no mid-game re-pairing and the platform ships no connect watchdog, so this
+  // is ours to catch. (Carve session, bobo_play 820d929 -- they are guarding it
+  // too, and they found it the hard way.)
+  //
+  // Magnitude alone cannot be the tell, because a child really can hold a full
+  // lean. The tell is that a real lean is never STILL: a board under a human
+  // jitters every frame, while a board whose address stopped resolving returns
+  // the identical float forever. So the test is pegged AND bit-identical.
+  //
+  // 0.9s is well past any sampling hiccup and well under the time it takes a
+  // six-year-old to wonder why nothing is happening.
+  peggedAt: 0.97,
+  droppedBoardS: 0.9,
+
   // The pod may not reach the very edges: something has to be able to pass it.
   clampMarginX: 70,
   clampMinY: DESIGN_H * 0.30,
@@ -622,6 +648,22 @@ export const XP = {
 // ---------------------------------------------------------------------------
 
 export const POD = {
+  // WHOSE POD IS WHOSE. Seat 0 keeps the hull it has always had, so a
+  // single-player run looks exactly as it did and the familiar ship stays the
+  // familiar ship. Every other seat gets a tinted hull and a matching thruster.
+  //
+  // A COLOUR SWAP, NOT A BOLT-ON. The note below about accretion is about parts
+  // stuck onto the silhouette at a different fidelity; recolouring a surface
+  // the recipe already draws keeps the shading, the gloss and the outline
+  // exactly where they were. The dome, the pilot and the outline stay shared,
+  // because those are what make it read as the same family of ship.
+  //
+  // Tints are from the leaderboard's wheel, picked to stay apart from each
+  // other AND from the monsters' green/orange/purple -- a pod that reads as a
+  // monster at three metres is worse than one that reads as its sibling's.
+  seatTints: [null, 0xffc93c, 0x9be564, 0xf48dd4],
+  seatThrusters: [null, 0xffa14a, 0x6fc24a, 0xd678b4],
+
   // FOUR SHIPS, NOT SEVEN BOLT-ONS. The first version added a part per tier --
   // fins, a halo, extra rim lights, gold trim -- and Amit's verdict was that it
   // "revealed a lower production value feeling". He was right, and the diagnosis
@@ -1135,6 +1177,35 @@ export const TOYS = {
     // It punches ONE thing at a time, hard. A weapon that helps when you are
     // cornered has to be legible in the instant it acts, and an area effect in
     // that moment reads as the screen doing something rather than as help.
+    // THE TETHER. Co-op only -- it needs two pods to exist between, so
+    // `coopOnly` keeps it out of the drop table in a one-player run where it
+    // would be a pickup that does nothing.
+    //
+    // A LONG DURATION ON PURPOSE. This is the one toy whose value is a HABIT
+    // rather than an effect: it is asking two children to fly near each other,
+    // and that takes longer to learn than a punch takes to land. A short one
+    // would end before they worked out what it wanted from them.
+    tether: {
+      id: 'tether', label: 'LINK BEAM', durationS: 18, tint: 0xff5a4a,
+      coopOnly: true,
+      // ARMED DAMAGE IS FLAT, and the threshold is a SWITCH rather than a
+      // curve. A gradient is a chart: it asks a six-year-old to read how hard
+      // the beam is hitting from how it looks, continuously. On or off is a
+      // state, and a state is what they can act on -- fly closer until it goes
+      // red, stay there.
+      dps: 22,
+      // Under this the beam is live. Widened 1.5x from 360 after play: at 360
+      // the two pods had to be almost touching, which left no room to actually
+      // play -- both children were flying the same small patch of field and
+      // neither could dodge without breaking the beam. At 540 there is a real
+      // working distance between them.
+      onWithinPx: 540,
+      // The switch has hysteresis -- it turns ON at 360 and only OFF again at
+      // 400. Without it, hovering exactly on the line strobes the beam red and
+      // blue several times a second, which is both ugly and unreadable.
+      offBeyondPx: 600,
+      halfWidthPx: 26,
+    },
     punch: {
       id: 'punch', label: 'PUNCH ARM', durationS: 13, tint: 0xffd166,
       reachPx: 340,
@@ -1191,7 +1262,7 @@ export const TOYS = {
   // was ALSO the most-seen toy by accident -- equal weight plus the longest
   // duration meant it occupied more seconds of a run than anything else, so its
   // share of screen time was well above its share of drops.
-  weights: { wand: 0.7, twirl: 0.35, buddies: 1.4, rapid: 1.3, chain: 1.3, shield: 1.0, punch: 1.1, cross: 1.2 },
+  weights: { wand: 0.7, twirl: 0.35, buddies: 1.4, rapid: 1.3, chain: 1.3, shield: 1.0, punch: 1.1, cross: 1.2, tether: 1.6 },
 
   // ---- FAMILIES, AND WHY THE DROP IS NOT A PURE ROLL ----------------------
   //
@@ -1211,7 +1282,7 @@ export const TOYS = {
   families: {
     shooter: ['wand', 'cross'],
     bomb: ['buddies', 'chain'],
-    close: ['punch', 'shield', 'rapid'],
+    close: ['punch', 'shield', 'rapid', 'tether'],
   },
 
   // WHAT EACH LEVEL OPENS UP. A toy cannot drop until the player has reached
@@ -1229,7 +1300,7 @@ export const TOYS = {
   //
   // So: one shooter, one bomb and one close weapon from the first present, and
   // the rest arrive with levels. Variety first, escalation second.
-  unlockLevel: { wand: 1, buddies: 1, rapid: 1, twirl: 1, cross: 3, punch: 4, chain: 5, shield: 6 },
+  unlockLevel: { wand: 1, buddies: 1, rapid: 1, twirl: 1, tether: 2, cross: 3, punch: 4, chain: 5, shield: 6 },
 
   // Every level past the first adds this much to a toy's duration, capped.
   //
@@ -1312,4 +1383,93 @@ export function difficulty01(timeS) {
 
 export function lerpDiff(range, d) {
   return range.from + (range.to - range.from) * d;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CO-OP
+//
+// Everything that changes when more than one child is on the field. One table,
+// because the first version scaled nothing and the result was incoherent in two
+// directions at once: two cannons against the same number of monsters made the
+// fighting much easier, while five shared hearts and two shared pickups made
+// surviving and collecting meaningly stingier PER CHILD. Easier and meaner at
+// the same time is the worst of both.
+//
+// Scales are indexed by seat count, so [1] is always 1 and a single-player run
+// can never be touched by anything in here.
+// ─────────────────────────────────────────────────────────────────────────────
+export const COOP = {
+  // MORE MONSTERS, BUT NOT DOUBLE. Two pods already cover far more of the field
+  // than one, so x2 reads as chaos rather than as challenge -- and chaos is
+  // exactly what a six-year-old cannot parse. 1.55 on the cap with a slightly
+  // faster arrival is about 1.7x the pressure, against 2x the guns.
+  maxLiveMul:       [1, 1, 1.55, 1.95, 2.25],
+  spawnIntervalMul: [1, 1, 0.80, 0.70, 0.64],
+
+  // EIGHT, NOT FIVE AND NOT TEN. Measured: two pods take almost exactly twice
+  // the contacts of one (2.0 vs 1.0 over three simulated minutes), so five
+  // shared hearts burn 2x as fast and a co-op run would end sooner than a solo
+  // one. Ten would restore the per-child count exactly, but two children also
+  // CLEAR about 2.6x as fast, so the run does not need twice the padding.
+  // Eight lands the hearts-per-contact ratio close to solo without making a
+  // co-op run drag.
+  hearts:           [5, 5, 8, 9, 10],
+
+  // Enough on the field that each child sees pickups at close to the solo rate,
+  // without the field becoming a carpet of them.
+  toyMaxLive:       [2, 2, 3, 4, 4],
+  heartMaxLive:     [2, 2, 3, 3, 4],
+
+  // ── THE TETHER ────────────────────────────────────────────────────────────
+  //
+  // A beam between the two pods that hurts what crosses it.
+  //
+  // IT WAS AN ACCIDENT FIRST. A single shared trail array had both pods pushing
+  // into it, so the renderer stitched one ribbon back and forth BETWEEN the two
+  // ships -- a flickering light-blue line in PALETTE.thruster, appearing at
+  // level 4 when the exhaust ribbon starts. Amit saw it mid-run, before it was
+  // fixed, and asked for it as a weapon. Keeping the origin here because the
+  // thing it accidentally proved is the reason it is worth building: a line
+  // between two players is the only element on the field that makes each child
+  // care where the other one is.
+  //
+  // NO BUTTON, as with everything else in this game. It exists because of where
+  // two people are standing, which is the whole mechanic.
+  // ── THE TETHER'S LOOK ─────────────────────────────────────────────────────
+  //
+  // The line between two pods exists ALWAYS and costs nothing: it is the bond,
+  // not the weapon. What it does is decided by the LINK BEAM toy (TOYS.kinds
+  // .tether) -- there is no damage in this block any more, only appearance.
+  //
+  // It began as a BUG. A single shared trail array had both pods pushing into
+  // it, so the renderer stitched one ribbon back and forth BETWEEN the ships --
+  // a flickering light-blue line appearing at level 4 when the exhaust starts.
+  // Amit saw it mid-run, before it was fixed, and asked for it as a weapon. The
+  // accident is kept here because of what it proved: a line between two players
+  // is the only element on the field that makes each child care where the other
+  // one is.
+  //
+  // COLD AND HOT ARE DIFFERENT THINGS, not one thing with a dial. Cold is a
+  // calm thin blue thread with no core. Hot is a thick red cable with a
+  // white-hot filament that cannot hold still. Three channels move together --
+  // FREQUENCY (read first, and from furthest away), OPACITY, and AGITATION --
+  // because one of them alone is a detail and three of them at once is a state.
+  // An earlier version moved only thickness, and Amit could not read it: a
+  // thicker line says "bigger", not "hotter".
+  beam: {
+    waveFreqFar: 0.6,       // rad/s -- a slow, tired drift
+    waveFreqClose: 9.0,     // rad/s -- a crackle
+    waveAmpPx: 13,          // sideways whip, hot only
+    waveCycles: 2.2,        // arcs along the beam's length
+    alphaFar: 0.12,         // barely visible
+    alphaClose: 0.92,       // solid
+    beadsFar: 1,
+    beadsClose: 4,
+    halfWidthFarPx: 14,     // the cold thread. The hot one is the toy's.
+    },
+};
+
+/** Pick a seat-count-scaled value, clamped to the table. */
+export function coop(table, seats) {
+  return table[Math.max(0, Math.min(table.length - 1, seats | 0))];
 }

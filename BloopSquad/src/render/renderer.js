@@ -15,8 +15,9 @@
 // not a spec for that.
 
 import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
-import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, SKY, POD, XP, difficulty01 } from '../data/tuning.js';
-import { punchExtension, activeToy } from '../systems/toys.js';
+import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, SKY, POD, XP, COOP, coop, difficulty01 } from '../data/tuning.js';
+import { punchExtension, activeToy, podOf } from '../systems/toys.js';
+import { tether } from '../systems/play.js';
 
 const PALETTE = {
   bg: 0x0b1020,
@@ -485,7 +486,9 @@ export async function createRenderer(canvas) {
   // than per frame, for the same reason the squad trail was: a stationary pod
   // would otherwise fill the buffer with identical points and the ribbon would
   // collapse to a dot the moment the player held still.
-  const podTrail = [];
+  // ONE TRAIL PER SEAT. A single shared array had both pods pushing into it,
+  // which draws one ribbon zig-zagging between two ships.
+  const podTrails = new Map();
 
   /** One small alien in the canopy, drawn with the SAME recipe as everything
    *  else -- fill, thick outline, catchlight. The first version of the second
@@ -512,10 +515,16 @@ export async function createRenderer(canvas) {
     const tilt = p.lean * 0.18;
     const cx = p.x + tilt * r * 0.5;
     const t = podTier(level);
+    // The seat's colours. Seat 0 resolves to the shared palette, so one player
+    // is pixel-identical to how it has always looked.
+    const hull = POD.seatTints[p.slot % POD.seatTints.length] || PALETTE.hull;
+    const flame = POD.seatThrusters[p.slot % POD.seatThrusters.length] || PALETTE.thruster;
 
     // The exhaust ribbon is recorded and drawn even while the pod is blinking
     // after a hit -- a trail that vanished on every hit would strobe with it.
     if ((level || 1) >= POD.trailFrom) {
+      let podTrail = podTrails.get(p.slot);
+      if (!podTrail) { podTrail = []; podTrails.set(p.slot, podTrail); }
       const last = podTrail[podTrail.length - 1];
       if (!last || Math.hypot(p.x - last.x, p.y - last.y) >= POD.trailStepPx) {
         podTrail.push({ x: p.x, y: p.y });
@@ -525,10 +534,11 @@ export async function createRenderer(canvas) {
         const f = i / podTrail.length;
         g.moveTo(podTrail[i - 1].x, podTrail[i - 1].y)
          .lineTo(podTrail[i].x, podTrail[i].y)
-         .stroke({ width: r * 0.5 * f, color: PALETTE.thruster, alpha: 0.30 * f });
+         .stroke({ width: r * 0.5 * f, color: flame, alpha: 0.30 * f });
       }
-    } else if (podTrail.length) {
-      podTrail.length = 0;
+    } else {
+      const podTrail = podTrails.get(p.slot);
+      if (podTrail) podTrail.length = 0;
     }
 
     if (blink) return;
@@ -542,11 +552,11 @@ export async function createRenderer(canvas) {
     for (const nx of spread) {
       const ex = cx + nx * r;
       g.ellipse(ex, fy + r * 0.5, r * 0.30, r * 0.58 * flick)
-       .fill({ color: PALETTE.thruster, alpha: 0.28 });
+       .fill({ color: flame, alpha: 0.28 });
       g.moveTo(ex - r * 0.20, fy)
        .quadraticCurveTo(ex, fy + r * 1.10 * flick, ex + r * 0.20, fy)
        .closePath()
-       .fill({ color: PALETTE.thruster });
+       .fill({ color: flame });
       g.moveTo(ex - r * 0.09, fy)
        .quadraticCurveTo(ex, fy + r * 0.64 * flick, ex + r * 0.09, fy)
        .closePath()
@@ -557,7 +567,7 @@ export async function createRenderer(canvas) {
     // fill, then the underside shade INSIDE the silhouette, then gloss, then the
     // outline last so nothing overpaints it.
     hullPath(p.x, p.y, r, t);
-    g.fill({ color: PALETTE.hull });
+    g.fill({ color: hull });
 
     // Belly shade: a dark ellipse clipped visually by sitting inside the hull.
     g.ellipse(p.x, p.y + r * (t.keel * 0.56), r * t.hullW * 0.86, r * (t.keel * 0.40))
@@ -1027,8 +1037,8 @@ export async function createRenderer(canvas) {
     // HEARTS, big. They are the only thing on this plaque a player checks mid
     // fight -- the score is read afterwards and the XP bar is ambient -- so they
     // get the size, and the rest of the plaque is laid out around them.
-    for (let i = 0; i < PLAYER.hearts; i++) {
-      const on = i < w.player.hearts;
+    for (let i = 0; i < coop(COOP.hearts, w.players.length); i++) {
+      const on = i < w.lives;
       const hx = x + 46 + i * 62;
       const hy = y + 44;
       heartPath(xpG, hx, hy, 24);
@@ -1083,10 +1093,9 @@ export async function createRenderer(canvas) {
       world.x = CAMERA.mode === 'lateral' ? -w.camera.x : 0;
       g.clear();
       // Several toys run at once now; each block below asks for its own.
-      const chainToy = activeToy(w, 'chain');
-      const shieldToy = activeToy(w, 'shield');
-      const punchToy = activeToy(w, 'punch');
-      const buddiesToy = activeToy(w, 'buddies');
+      // PER POD, not per field: in co-op each child's chain hangs under their
+      // own pod and each shield wraps its own owner. Resolved per seat below.
+      const toyFor = (id, slot) => activeToy(w, id, slot);
 
       // TINTED PER BULLET, not per active toy. The base gun and the toy fire at
       // the same time now, so one colour for everything on screen would hide
@@ -1103,10 +1112,81 @@ export async function createRenderer(canvas) {
 
       // Buddy bots orbit OUTSIDE the pod, drawn before it so the pod stays the
       // thing the eye lands on.
+      // THE TETHER, drawn before the pods so the ships sit on top of it rather
+      // than being cut in half by it. Three strokes: a wide soft glow, the core,
+      // and a travelling pulse -- the pulse is what makes it read as live
+      // current instead of a ruled line.
+      const beam = tether(w);
+      // THREE STATES, AND ONLY THE FIRST IS NOTHING:
+      //
+      //   no LINK BEAM          nothing drawn. A permanent line read as a
+      //                         weapon that was not working, and the eye
+      //                         learns to ignore it.
+      //   held, but too far     a BLUE thread. This one is an instruction:
+      //                         you have it, come closer. Without it a child
+      //                         holding the toy out of range gets no signal at
+      //                         all and cannot tell the pickup did anything.
+      //   held, and in range    the RED cable. It is burning.
+      if (beam && beam.hasToy) {
+        const B = COOP.beam;
+        const K = TOYS.kinds.tether;
+        // TWO STATES, DRAWN AS TWO DIFFERENT THINGS -- not as one thing with a
+        // dial on it. Cold is a calm blue thread that says "you two are joined";
+        // hot is a red cable with a white-hot filament that says "and it is
+        // burning". A child should not have to compare brightnesses to know
+        // which one they are looking at.
+        const hot = beam.armed;
+        const core = hot ? 0xff4a3d : 0x8fd4ff;
+        const alpha = hot ? B.alphaClose : B.alphaFar;
+        const reach = hot ? K.halfWidthPx : B.halfWidthFarPx;
+        const freq = hot ? B.waveFreqClose : B.waveFreqFar;
+        const amp = hot ? B.waveAmpPx : 0;
+
+        // Built as points so it can whip. Pinned at both pods by a sine
+        // envelope, or it reads as detached rather than as current between them.
+        const dx = beam.b.x - beam.a.x, dy = beam.b.y - beam.a.y;
+        const L = Math.max(1, beam.len);
+        const nx = -dy / L, ny = dx / L;
+        const segs = 26;
+        const pts = [];
+        for (let i = 0; i <= segs; i++) {
+          const f = i / segs;
+          const env = Math.sin(Math.PI * f);
+          const o = Math.sin(f * B.waveCycles * Math.PI * 2 - time * freq) * amp * env;
+          pts.push([beam.a.x + dx * f + nx * o, beam.a.y + dy * f + ny * o]);
+        }
+        const trace = () => {
+          g.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+        };
+        trace(); g.stroke({ width: reach * 2 + 14, color: core, alpha: alpha * 0.18 });
+        trace(); g.stroke({ width: reach * 2, color: core, alpha: alpha * 0.7 });
+        // THE WHITE FILAMENT ONLY EXISTS WHEN HOT. White down the middle of red
+        // is what makes it read as heat rather than as a red line; the cold
+        // beam has no core at all, so the two states differ in KIND.
+        if (hot) {
+          trace();
+          g.stroke({ width: Math.max(3, reach * 0.42), color: 0xffffff, alpha: 0.95 });
+        }
+
+        const beads = hot ? B.beadsClose : B.beadsFar;
+        for (let k = 0; k < beads; k++) {
+          const f = ((time * (0.25 + freq * 0.12) + k / beads) % 1);
+          const [bx, by] = pts[Math.min(pts.length - 1, Math.round(f * segs))];
+          g.circle(bx, by, reach * 0.95).fill({ color: core, alpha: alpha * 0.30 });
+          g.circle(bx, by, reach * 0.45).fill({ color: hot ? 0xffffff : core, alpha: alpha });
+        }
+      }
+
+      for (const pod of w.players) {
+      const chainToy = toyFor('chain', pod.slot);
+      const shieldToy = toyFor('shield', pod.slot);
+      const punchToy = toyFor('punch', pod.slot);
+      const buddiesToy = toyFor('buddies', pod.slot);
       // The bomb chain, drawn under the pod. Rope first so the links sit on it.
       if (chainToy && chainToy.chain.length) {
         const toy = chainToy.kind;
-        let px = w.player.x, py = w.player.y + PLAYER.radius;
+        let px = pod.x, py = pod.y + PLAYER.radius;
         for (const c of chainToy.chain) {
           g.moveTo(px, py).lineTo(c.x, c.y)
            .stroke({ width: 7, color: PALETTE.outline, alpha: 0.9 });
@@ -1125,7 +1205,7 @@ export async function createRenderer(canvas) {
       if (shieldToy && shieldToy.charges > 0) {
         const toy = shieldToy.kind;
         const R = toy.radiusPx;
-        const px = w.player.x, py = w.player.y;
+        const px = pod.x, py = pod.y;
         const breathe = 1 + Math.sin(time * 3) * 0.03;
         g.circle(px, py, R * breathe).fill({ color: toy.tint, alpha: 0.13 });
         g.circle(px, py, R * breathe).stroke({ width: 4, color: toy.tint, alpha: 0.5 });
@@ -1149,7 +1229,7 @@ export async function createRenderer(canvas) {
         const ext = punchExtension(w);
         if (ext > 0) {
           const st = punchToy.punch;
-          const px = w.player.x, py = w.player.y;
+          const px = pod.x, py = pod.y;
           const hx = px + (st.tx - px) * ext;
           const hy = py + (st.ty - py) * ext;
           // Segments thin toward the fist, which is what makes it read as an arm
@@ -1199,7 +1279,7 @@ export async function createRenderer(canvas) {
       // thing the eye lands on.
       for (let i = w.squad.length - 1; i >= 0; i--) drawSquadMember(w.squad[i], time);
 
-      if (w.player.alive) drawPod(w.player, time, w.level);
+      if (pod.alive) drawPod(pod, time, w.level);
 
       // THE TOY TIMER: A BAR UNDER THE POD.
       //
@@ -1220,7 +1300,7 @@ export async function createRenderer(canvas) {
       // Narrower than the single bar was, because five of them at full width
       // would be a wall under the pod rather than a readout.
       const bar = TOYS.timerBar;
-      const stack = w.toys.filter((inst) => inst.total > 0);
+      const stack = w.toys.filter((inst) => inst.total > 0 && inst.slot === pod.slot);
       // Anything that occupies the space BELOW the pod pushes the whole stack
       // above it -- the chain drew straight through the old single bar.
       const above = stack.some((inst) => inst.kind.timerAbove);
@@ -1229,10 +1309,10 @@ export async function createRenderer(canvas) {
         const inst = stack[i];
         const frac = Math.max(0, Math.min(1, inst.t / inst.total));
         const wid = bar.width * 0.78;
-        const bx = w.player.x - wid / 2;
+        const bx = pod.x - wid / 2;
         const by = above
-          ? w.player.y - PLAYER.radius - bar.offsetY - bar.height - 18 - i * rowH
-          : w.player.y + PLAYER.radius + bar.offsetY + i * rowH;
+          ? pod.y - PLAYER.radius - bar.offsetY - bar.height - 18 - i * rowH
+          : pod.y + PLAYER.radius + bar.offsetY + i * rowH;
         const r = bar.height / 2;
         g.roundRect(bx, by, wid, bar.height, r)
          .fill({ color: PALETTE.outline, alpha: 0.85 });
@@ -1242,12 +1322,13 @@ export async function createRenderer(canvas) {
           // empties -- at this size, an off-centre bar reads as the pod being
           // lopsided rather than as a timer running out.
           const wFill = Math.max(bar.height, wid * frac);
-          g.roundRect(w.player.x - wFill / 2, by, wFill, bar.height, r)
+          g.roundRect(pod.x - wFill / 2, by, wFill, bar.height, r)
            .fill({ color: inst.kind.tint });
         }
         g.roundRect(bx, by, wid, bar.height, r)
          .stroke({ width: 3, color: 0x0b1020, alpha: 0.9 });
       }
+      }  // end per-pod
       drawHud(w);
       drawSceneFlash();
     },

@@ -8,8 +8,9 @@
 // skip the base gun by returning early. It did exactly that until it was fixed;
 // see updateFiring.
 
-import { TOYS, BULLETS, PLAYER } from '../data/tuning.js';
+import { TOYS, BULLETS, PLAYER, COOP, coop } from '../data/tuning.js';
 import { registerHit } from './monsters.js';
+import { nearestPod } from '../core/state.js';
 import { playShoot, playPickup } from './audio.js';
 
 /**
@@ -24,9 +25,14 @@ import { playShoot, playPickup } from './audio.js';
  * three of them. The alternative -- per-kind shapes -- saves nothing that
  * matters at eight instances and costs a type check at every read.
  */
-export function createToyInstance(w, kind, durationS) {
+export function createToyInstance(w, kind, durationS, slot = 0) {
   const inst = {
     kind,
+    // WHOSE TOY THIS IS. A pickup is collected by one child, and the ability
+    // it grants arms THEIR pod -- the chain hangs under them, the buddies
+    // orbit them, the punch reaches from them. Sharing one instance between
+    // two pods would mean one rope stretched between two children.
+    slot,
     t: durationS,
     total: durationS,
     fireT: 0,        // this toy's own fire clock, independent of every other
@@ -57,8 +63,9 @@ export function createToyInstance(w, kind, durationS) {
     // updateChainBombs read "no links left" as "spent" and expired the toy on
     // its first frame. Picked up, nothing happened, no error anywhere.
     for (let i = 0; i < kind.links; i++) {
-      const y = w.player.y + PLAYER.radius + kind.linkPx * (i + 1);
-      inst.chain.push({ x: w.player.x, y, px: w.player.x, py: y, armT: kind.armS });
+      const owner = w.players.find((q) => q.slot === slot) || w.players[0];
+      const y = owner.y + PLAYER.radius + kind.linkPx * (i + 1);
+      inst.chain.push({ x: owner.x, y, px: owner.x, py: y, armT: kind.armS });
     }
   }
   return inst;
@@ -66,9 +73,18 @@ export function createToyInstance(w, kind, durationS) {
 
 /** The running instance of one kind, or null. The renderer and the collision
  *  hooks ask by id rather than walking the list themselves. */
-export function activeToy(w, id) {
-  for (const inst of w.toys) if (inst.kind.id === id) return inst;
+export function activeToy(w, id, slot = null) {
+  for (const inst of w.toys) {
+    if (inst.kind.id !== id) continue;
+    if (slot !== null && inst.slot !== slot) continue;
+    return inst;
+  }
   return null;
+}
+
+/** The pod a toy instance is armed on. Falls back to seat 0 if that seat went. */
+export function podOf(w, inst) {
+  return w.players.find((q) => q.slot === inst.slot) || w.players[0];
 }
 
 /** Roll for a toy where a monster just died. */
@@ -77,7 +93,7 @@ export function maybeDropToy(w, m, rng) {
   const chance = (TOYS.dropFrom[m.tierName] || 0) *
                  eb[Math.min(eb.length - 1, Math.max(0, w.level - 1))];
   if (!chance) return;
-  if (w.toyPickups.filter((t) => t.alive).length >= TOYS.maxLive) return;
+  if (w.toyPickups.filter((t) => t.alive).length >= coop(COOP.toyMaxLive, w.players.length)) return;
   if (w.time - w.lastToyDropT < TOYS.minGapS) return;
   if (rng.next() >= chance) return;
 
@@ -115,6 +131,9 @@ export function pickToyKind(w, rng) {
   const eligible = (name) => {
     const kind = TOYS.kinds[name];
     if (!kind || kind.enabled === false) return false;
+    // A co-op toy in a one-player run is a pickup that does nothing -- worse
+    // than no pickup, because a child still flies across the screen for it.
+    if (kind.coopOnly && w.players.length < 2) return false;
     return (TOYS.unlockLevel[name] || 1) <= w.level;
   };
 
@@ -141,11 +160,12 @@ export function pickToyKind(w, rng) {
 }
 
 export function updateToyPickups(w, dt) {
-  const p = w.player;
   for (const c of w.toyPickups) {
     if (!c.alive) continue;
     c.t -= dt;
     c.bob += dt * 3.4;
+    // Drawn to whoever is nearest, and armed on whoever actually reaches it.
+    const p = nearestPod(w, c.x, c.y).pod;
     const dx = p.x - c.x, dy = p.y - c.y;
     const d = Math.hypot(dx, dy) || 1;
     if (d < TOYS.magnetRadius) {
@@ -156,7 +176,7 @@ export function updateToyPickups(w, dt) {
     }
     if (d < PLAYER.radius + TOYS.radius) {
       c.alive = false;
-      equip(w, c.kind);
+      equip(w, c.kind, p.slot);
     }
     if (c.t <= 0) c.alive = false;
   }
@@ -181,7 +201,7 @@ export function updateToyPickups(w, dt) {
  *
  * The forward cannon is not a toy and is untouched by anything in here.
  */
-export function equip(w, kindName) {
+export function equip(w, kindName, slot = 0) {
   const kind = TOYS.kinds[kindName];
   if (!kind) return;
   // Levels lengthen a toy a little. Deliberately small and capped: the
@@ -191,7 +211,9 @@ export function equip(w, kindName) {
   const bonus = Math.min(TOYS.levelDurationCap, 1 + (w.level - 1) * TOYS.levelDurationBonus);
   const dur = kind.durationS * bonus;
 
-  const existing = activeToy(w, kind.id);
+  // Per SEAT: a chain on player one must not be refreshed by player two
+  // picking one up, or the second child's pickup would arm the first's pod.
+  const existing = activeToy(w, kind.id, slot);
   if (existing) {
     // Refresh, do not stack a second copy. Two chains would be two ropes from
     // one anchor and two shields would double the charges invisibly -- the
@@ -200,7 +222,7 @@ export function equip(w, kindName) {
     existing.total = dur;
     if (kind.id === 'shield') existing.charges = kind.charges;
   } else {
-    w.toys.push(createToyInstance(w, kind, dur));
+    w.toys.push(createToyInstance(w, kind, dur, slot));
   }
   w.stats.toysUsed++;
   playPickup();
@@ -231,9 +253,6 @@ function spawnBullet(w, x, y, vx, vy, homing, tint, damage) {
  * was. A player can have a worse round; they can never have a worse pod.
  */
 export function updateFiring(w, dt) {
-  const p = w.player;
-  if (!p.alive) return;
-
   // Expire finished toys first, so nothing fires on the frame it ends.
   for (const inst of w.toys) {
     inst.t -= dt;
@@ -248,23 +267,31 @@ export function updateFiring(w, dt) {
   // does not forbid improving it, which is the opposite failure mode. The tint
   // rides along so a rate buff -- the hardest kind to see -- is visible.
   //
-  // Read from whichever active toy supplies a base interval, taking the FASTEST
-  // if several ever do. `rapid` is the only one today, but reducing across the
-  // list rather than finding the first one means a second never silently loses
-  // to list order.
-  let baseInterval = BULLETS.intervalS;
-  let baseTint;
-  for (const inst of w.toys) {
-    if (inst.kind.baseIntervalS && inst.kind.baseIntervalS < baseInterval) {
-      baseInterval = inst.kind.baseIntervalS;
-      baseTint = inst.kind.tint;
+  // Read from whichever of THAT POD'S toys supplies a base interval, taking the
+  // FASTEST if several ever do. `rapid` is the only one today, but reducing
+  // across the list rather than finding the first one means a second never
+  // silently loses to list order.
+  // EVERY POD FIRES, on its own clock. Rule 3 is per pod: no toy, and no
+  // sibling, can stop another child's cannon.
+  for (const p of w.players) {
+    if (!p.alive) continue;
+    // A pod's own rate buff, not the field's: rapid picked up by one child
+    // speeds THEIR cannon. Falls back to the shared base.
+    let interval = BULLETS.intervalS;
+    let tint;
+    for (const inst of w.toys) {
+      if (inst.slot !== p.slot) continue;
+      if (inst.kind.baseIntervalS && inst.kind.baseIntervalS < interval) {
+        interval = inst.kind.baseIntervalS;
+        tint = inst.kind.tint;
+      }
     }
-  }
-  p.fireT -= dt;
-  if (p.fireT <= 0) {
-    p.fireT = baseInterval;
-    spawnBullet(w, p.x, p.y - PLAYER.radius, 0, -BULLETS.speedPxS, false, baseTint);
-    playShoot();
+    p.fireT -= dt;
+    if (p.fireT <= 0) {
+      p.fireT = interval;
+      spawnBullet(w, p.x, p.y - PLAYER.radius, 0, -BULLETS.speedPxS, false, tint);
+      playShoot();
+    }
   }
 
   // ---- ...and whatever every active toy adds on top of it. ----------------
@@ -274,6 +301,8 @@ export function updateFiring(w, dt) {
   // none of them can starve another, because no two of them share a timer.
   for (const inst of w.toys) {
     const kind = inst.kind;
+    const p = podOf(w, inst);
+    if (!p.alive) continue;
     if (kind.spinRadPerS) inst.spin += kind.spinRadPerS * dt;
 
     if (kind.id === 'buddies') {
@@ -293,6 +322,7 @@ export function updateFiring(w, dt) {
     if (kind.id === 'rapid') continue;
     if (kind.id === 'shield') continue;   // see consumeShield, from collisions
     if (kind.id === 'punch') continue;    // see updatePunch
+    if (kind.id === 'tether') continue;   // see updateTether, in play.js
 
     inst.fireT -= dt;
     if (inst.fireT > 0) continue;
@@ -392,11 +422,18 @@ export function consumeShield(w) {
  * answer the one thing that is already beside you.
  */
 export function updatePunch(w, dt, onHit) {
-  const inst = activeToy(w, 'punch');
-  if (!inst || !inst.punch) return;
+  // Every punch instance, not "the" punch: in co-op both children can be
+  // holding one at the same time, each reaching from their own pod.
+  for (const inst of w.toys) {
+    if (inst.kind.id !== 'punch' || !inst.punch) continue;
+    updateOnePunch(w, inst, dt, onHit);
+  }
+}
+
+function updateOnePunch(w, inst, dt, onHit) {
   const kind = inst.kind;
   const st = inst.punch;
-  const p = w.player;
+  const p = podOf(w, inst);
 
   if (st.phase === 'idle') {
     st.cool = Math.max(0, st.cool - dt);
@@ -466,10 +503,15 @@ export function punchExtension(w) {
  * velocity the physics then carries down the chain.
  */
 export function updateChain(w, dt) {
-  const inst = activeToy(w, 'chain');
-  if (!inst || !inst.chain.length) return;
+  for (const inst of w.toys) {
+    if (inst.kind.id !== 'chain' || !inst.chain.length) continue;
+    updateOneChain(w, inst, dt);
+  }
+}
+
+function updateOneChain(w, inst, dt) {
   const kind = inst.kind;
-  const p = w.player;
+  const p = podOf(w, inst);
   const anchorX = p.x;
   const anchorY = p.y + PLAYER.radius;
 
@@ -539,10 +581,15 @@ export function updateChainBombs(w, onDetonate) {
  * Iterated back to front and spliced, because a detonation removes the buddy.
  */
 export function updateBuddies(w, onDetonate) {
-  const inst = activeToy(w, 'buddies');
-  if (!inst) return;
+  for (const inst of w.toys) {
+    if (inst.kind.id !== 'buddies') continue;
+    updateOneBuddies(w, inst, onDetonate);
+  }
+}
+
+function updateOneBuddies(w, inst, onDetonate) {
   const kind = inst.kind;
-  const p = w.player;
+  const p = podOf(w, inst);
   for (let i = inst.buddies.length - 1; i >= 0; i--) {
     const b = inst.buddies[i];
     const a = inst.spin + b.a;
