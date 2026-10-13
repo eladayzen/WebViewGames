@@ -19,11 +19,29 @@ import {
 const CONFETTI = [0x7ed321, 0xf5a623, 0x9b59d0, 0x74d7ff, 0xff6b6b, 0xffc93c];
 
 export function updatePod(w, p, input, dt) {
-  // A FROZEN BOARD MUST NOT DRIVE. A seat whose disconnect handler never fired
-  // keeps publishing its last value forever, so the pod would hold that lean
-  // and pin itself against a wall for the rest of the run. Stopping is safe
-  // whatever the frozen value was -- one frozen at zero was not moving anyway.
-  if (p.dropped) input = { x: 0, y: 0, source: input.source };
+  // THE DROPPED-BOARD GUARD USED TO ZERO THE INPUT HERE. It is gone, and the
+  // reason is worth keeping, because the idea will look obviously correct to
+  // the next person who has it.
+  //
+  // The tell for a dead board was bit-identical readings frame to frame: a real
+  // board under a human always jitters, so a value that does not move is not a
+  // person. True of hardware -- and false of everything else. The Editor's
+  // simulated seats ease to EXACTLY 1.0 and then sit there, so a child holding
+  // a direction for 0.9s was read as a disconnection and their pod stopped
+  // dead. Amit hit it within minutes: "when I move both players at the same
+  // time, sometimes one of them stops".
+  //
+  // It also was not buying much. The designed disconnect path REMOVES the seat
+  // -- __gbPlayers shrinks and the roster republishes -- so a seat that is
+  // still being published is still connected. The frozen-at-last-value case
+  // only happens when the disconnect handler never fired at all, and even then
+  // this game clamps its pods to the field, so the worst outcome is a pod
+  // parked at an edge rather than one flying off forever.
+  //
+  // A guard that stops a real child playing, to protect against a rare failure
+  // whose consequence is a parked pod, is a bad trade. `slotDropped` stays in
+  // input.js as a detector; nothing acts on it until there is evidence from
+  // real hardware.
   p.x += input.x * PLAYER.lateralMaxPxS * dt;
   p.y += input.y * PLAYER.verticalMaxPxS * dt;
   p.x = Math.max(PLAYER.clampMarginX, Math.min(DESIGN_W - PLAYER.clampMarginX, p.x));
@@ -573,7 +591,9 @@ function pointToSegment(cx, cy, ax, ay, bx, by) {
  * then stay there -- and that is the entire mechanic.
  */
 export function tether(w) {
-  const alive = w.players.filter((p) => p.alive && !p.dropped);
+  // Not filtered by `dropped` any more: a child holding a lean was being read
+  // as a disconnected board, which killed the beam as well as their movement.
+  const alive = w.players.filter((p) => p.alive);
   if (alive.length < 2) return null;
   const [a, b] = alive;
   const len = Math.hypot(b.x - a.x, b.y - a.y);

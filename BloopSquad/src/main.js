@@ -18,7 +18,7 @@ import { analytics } from './systems/analytics.js';
 import { createLoop } from './core/loop.js';
 import { makeRng } from './core/rng.js';
 import { createWorld, resetWorld, resizePods, GameState } from './core/state.js';
-import { initInput, readInput, setPlayerCount, slotDropped, liveSeatCount } from './input/input.js';
+import { initInput, readInput, setPlayerCount, liveSeatCount } from './input/input.js';
 import { updateMonsters, maybeSpawn, spawnMonster } from './systems/monsters.js';
 import {
   updatePod, updateTether, updateBeamCharge, updateBullets, updateCollisions, updateCoinsAndPops,
@@ -105,7 +105,6 @@ async function boot() {
     }
 
     for (const pod of world.players) {
-      pod.dropped = slotDropped(pod.slot);
       updatePod(world, pod, readInput(dt, pod.slot), dt);
     }
     updateFiring(world, dt);

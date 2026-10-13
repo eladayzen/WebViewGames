@@ -27,9 +27,11 @@ export function makePods(n) {
     alive: true,
     fireT: 0,
     lean: 0,        // -1..1, for the pod's tilt
-    // True while this seat's board looks stepped-off or dropped. The pod stops
-    // rather than ploughing, because a disconnected board reads as a CONSTANT
-    // FULL LEAN and would otherwise fly into a wall and stay there.
+    // Vestigial: nothing writes or reads it any more. The dropped-board guard
+    // that used to zero this seat's input fired on a child simply HOLDING a
+    // lean -- see the note at the top of updatePod in systems/play.js -- and
+    // was removed. Kept as a field only so a future hardware-driven version has
+    // an obvious home.
     dropped: false,
   }));
 }

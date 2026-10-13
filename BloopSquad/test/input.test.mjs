@@ -168,3 +168,47 @@ test('keyboard: two players split the arrows from WASD, independently', async ()
   for (let i = 0; i < 60; i++) p0 = readInput(1 / 60, 0);
   assert.ok(Math.abs(p0.x) < 0.05, 'player 1 stops when only player 2 is holding a key');
 });
+
+// ── A HELD LEAN IS NOT A DISCONNECTION ──────────────────────────────────────
+//
+// The Editor's simulated seats ease to exactly 1.0 and then stay there, so the
+// dropped-board detector fired on a child simply holding a direction and the
+// pod stopped dead. Amit, within minutes of first playing it in Unity: "when I
+// move both players at the same time, sometimes one of them stops". This pins
+// the behaviour that matters -- the pod keeps moving -- rather than the
+// detector, which is still allowed to have an opinion.
+
+test('a pod holding a steady full lean keeps moving', async () => {
+  reset();
+  setPlayerCount(2);
+  const { updatePod } = await import('../src/systems/play.js');
+  const { createWorld } = await import('../src/core/state.js');
+  const w = createWorld(2);
+  // Both seats pegged and perfectly still, exactly as the Editor sends them.
+  window.__gbPlayers = [[1, 0], [-1, 0]];
+  const dt = 1 / 60;
+  const startX = w.players.map((p) => p.x);
+  for (let i = 0; i < 60 * 3; i++) {
+    for (const p of w.players) updatePod(w, p, readInput(dt, p.slot), dt);
+  }
+  // Three seconds of held lean: both must have travelled, in opposite
+  // directions, however the detector feels about it.
+  assert.ok(w.players[0].x > startX[0] + 50, 'seat 0 kept moving right');
+  assert.ok(w.players[1].x < startX[1] - 50, 'seat 1 kept moving left');
+});
+
+test('the beam survives a held lean too', async () => {
+  reset();
+  setPlayerCount(2);
+  const { tether } = await import('../src/systems/play.js');
+  const { createWorld, GameState } = await import('../src/core/state.js');
+  const w = createWorld(2);
+  w.state = GameState.RUNNING;
+  w.beamActiveT = 5;
+  window.__gbPlayers = [[1, 0], [1, 0]];
+  const dt = 1 / 60;
+  for (let i = 0; i < 60 * 3; i++) readInput(dt, 0), readInput(dt, 1);
+  const b = tether(w);
+  assert.ok(b, 'the tether still exists after 3s of held lean');
+  assert.equal(b.live, true);
+});
