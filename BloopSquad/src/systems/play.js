@@ -72,14 +72,32 @@ export function updateBullets(w, dt) {
   w.bullets = w.bullets.filter((b) => b.alive);
 }
 
-export function popMonster(w, m, rng) {
+/**
+ * @param {number|null} bySlot which seat gets the credit, when it is known.
+ *
+ * WHEN IT IS NOT KNOWN, THE NEAREST POD GETS IT. A bomb's blast, a punch, the
+ * beam -- none of them carry a firer, and threading one through every weapon
+ * would be a lot of plumbing for a number that only ever appears on the end
+ * screen. Proximity is the right guess for all three: a child's bomb goes off
+ * where that child is, and the beam's damage is already graded by closeness, so
+ * the end of the cable doing the work IS the nearer pod.
+ *
+ * It is a guess, and when the two pods are on top of each other it is close to
+ * a coin toss -- but so is the truth at that moment. This is why the end screen
+ * presents these as what each child was part of and never ranks one against the
+ * other.
+ */
+export function popMonster(w, m, rng, bySlot = null) {
   m.alive = false;
   m.hitT = 0;
   // Pitched by tier, so a big one pops lower than a small one and the field has
   // a range rather than one repeated noise.
   playPop(1 - Math.min(1, m.maxHp / 42));
   w.stats.popped++;
-  award(w, m.points);
+  const slot = bySlot != null ? bySlot : nearestPod(w, m.x, m.y).pod?.slot;
+  const scorer = w.players.find((p) => p.slot === slot);
+  if (scorer) scorer.popped++;
+  award(w, m.points, slot);
   // Feed the ultimate. Only in co-op (the beam needs two pods to exist between)
   // and only while it is NOT running, so a good stretch cannot chain it.
   if (w.players.length > 1 && w.beamActiveT <= 0) w.beamCharge += m.points;
@@ -136,7 +154,7 @@ export function updateCollisions(w, rng, dt) {
       if (dx * dx + dy * dy > (m.r + BULLETS.radius) * (m.r + BULLETS.radius)) continue;
       b.alive = false;
       registerHit(m, b.damage || BULLETS.damage);
-      if (m.hp <= 0) popMonster(w, m, rng);
+      if (m.hp <= 0) popMonster(w, m, rng, b.slot);
       break;
     }
   }
@@ -351,9 +369,16 @@ export function xpForLevel(level) {
  * thresholds at once, and an `if` would swallow the second level silently --
  * the player would watch the bar fill and nothing happen.
  */
-export function award(w, points) {
+export function award(w, points, bySlot = null) {
   w.stats.score += points;
   w.xp += points;
+  // The per-seat tally is a SHADOW of the team score, never a substitute for
+  // it: w.stats.score is still the only number that is played for, submitted or
+  // ranked. Nothing below this line reads the shadow.
+  if (bySlot != null) {
+    const p = w.players.find((q) => q.slot === bySlot);
+    if (p) p.points += points;
+  }
   let need = xpForLevel(w.level);
   while (w.xp >= need) {
     w.xp -= need;
@@ -518,7 +543,8 @@ export function updateCoinsAndPops(w, dt) {
     if (d < PLAYER.radius + COINS.radius) {
       c.alive = false;
       w.stats.coins++;
-      award(w, COINS.score);
+      p.coins++;
+      award(w, COINS.score, p.slot);
       playCoin();
     }
     if (c.t <= 0) c.alive = false;

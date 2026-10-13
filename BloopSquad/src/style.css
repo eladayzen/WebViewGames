@@ -590,6 +590,51 @@ body.dev-invincible::after {
 .board-sep { text-align: center; color: #9aa7c0; padding: 0 0 4px; font-weight: 900; }
 
 /* ---------------------------------------------------------------------------
+   CO-OP: WHO WAS PLAYING, above the board.
+
+   Two rows, in SEAT ORDER, never sorted -- the markup can't rank them because
+   the renderer never reorders them, and this is where that promise is kept
+   visually too: both rows are the same size, the same weight and the same
+   background. The only thing that differs is the dot, which carries the pod's
+   own colour so a child can match the row to the ship they were just flying.
+
+   Deliberately lighter than a .board-row. The board underneath is the ranking;
+   this is a caption, and if it competed the screen would read as two boards.
+   --------------------------------------------------------------------------- */
+.coop-players { margin-top: 14px; text-align: left; }
+.coop-player {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 2px;
+  font: 800 15px system-ui, sans-serif;
+  color: #17223d;
+}
+.coop-dot {
+  width: 26px; height: 26px; border-radius: 999px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  border: 3px solid #131a2b;
+  font: 900 12px system-ui, sans-serif; color: #17223d;
+}
+.coop-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The contribution. Quieter than the name on purpose: the name is who you are,
+   the number is only what happened, and nothing here is a score. */
+.coop-did { font-weight: 700; color: #6b7a9c; white-space: nowrap; }
+
+/* "Playing together has its own board." Small, under the title, and the one
+   place the screen explains where a team score went. */
+.board-note {
+  font: 700 11px system-ui, sans-serif; color: #6b7a9c;
+  text-align: center; margin: -6px 0 10px;
+}
+/* A team has no single avatar, so its rows carry a mark rather than an initial. */
+.board-dot-team { background: #cfd8e8; }
+
+/* THE CO-OP SCREEN IS TALLER BY TWO ROWS, and the card does not scroll -- only
+   the row list does (see the note further down). So the list gives the space
+   back, rather than pushing PLAY AGAIN off the bottom of a phone. */
+body.is-coop #scoreboard-rows,
+body.is-coop #quit-scoreboard-rows { max-height: clamp(72px, 22vh, 180px); }
+
+/* ---------------------------------------------------------------------------
    IN-GAME CHROME, in the same recipe as the end screens: cream fill, thick dark
    outline, a solid drop that collapses on press. The white hairline circles read
    as an operating system's buttons sitting on top of a game; these read as part
@@ -743,6 +788,14 @@ body.dev-invincible::after {
 }
 .board-dot { width: clamp(18px, 3.89vmin, 28px); height: clamp(18px, 3.89vmin, 28px); font-size: clamp(9px, 1.81vmin, 13px); }
 .board-rank { width: clamp(18px, 3.61vmin, 26px); }
+.coop-players { margin-top: clamp(8px, 1.94vmin, 14px); }
+.coop-player {
+  font-size: clamp(10px, 2.08vmin, 15px);
+  gap: clamp(6px, 1.39vmin, 10px);
+  padding: clamp(3px, 0.69vmin, 5px) 2px;
+}
+.coop-dot { width: clamp(17px, 3.61vmin, 26px); height: clamp(17px, 3.61vmin, 26px); font-size: clamp(8px, 1.67vmin, 12px); }
+.board-note { font-size: clamp(8px, 1.53vmin, 11px); margin-bottom: clamp(6px, 1.39vmin, 10px); }
 
 /* --- settings panel ------------------------------------------------------ */
 #settings-panel {

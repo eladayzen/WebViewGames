@@ -99,8 +99,17 @@
       <div class="board-card">
         <div id="quit-title" class="board-title">RUN ENDED</div>
         <div id="quit-stats" class="board-sub"></div>
+        <!-- CO-OP: who was playing, and what each of them did. Empty and
+             hidden in a one-player run, which must look exactly as it always
+             has. Built in JS because the seat count is not known until the app
+             has published its roster. -->
+        <div id="quit-coop-players" class="coop-players hidden"></div>
         <div id="quit-scoreboard" class="hidden">
           <div id="quit-scoreboard-title">BEST RUNS</div>
+          <!-- Says, in co-op only, that a team run is ranked against team runs
+               and not against solo ones. A score that quietly went somewhere
+               else would be worse than the problem it solves. -->
+          <div id="quit-scoreboard-note" class="board-note hidden"></div>
           <ol id="quit-scoreboard-rows"></ol>
         </div>
         <div class="board-buttons">
@@ -121,8 +130,11 @@
              deliberately ABOVE #restart-button: the host synth-clicks that
              button while this overlay is visible, so the reading order has to
              put the board before the thing that dismisses it. -->
+        <!-- CO-OP: see the note on #quit-coop-players. -->
+        <div id="coop-players" class="coop-players hidden"></div>
         <div id="scoreboard" class="hidden">
           <div id="scoreboard-title">BEST RUNS</div>
+          <div id="scoreboard-note" class="board-note hidden"></div>
           <ol id="scoreboard-rows"></ol>
         </div>
         <!-- QUIT alongside PLAY AGAIN, matching the X flow: dying and stopping

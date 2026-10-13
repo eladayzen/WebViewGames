@@ -232,9 +232,13 @@ export function equip(w, kindName, slot = 0) {
  *  bullet rather than read from the active toy at impact time, because a bullet
  *  outlives the toy that fired it -- a twirl shot still in flight when the timer
  *  runs out must still land for three. */
-function spawnBullet(w, x, y, vx, vy, homing, tint, damage) {
+function spawnBullet(w, x, y, vx, vy, homing, tint, damage, slot = 0) {
   if (w.bullets.length >= BULLETS.maxLive) return;
-  w.bullets.push({ alive: true, x, y, vx, vy, homing: !!homing, tint, damage });
+  // `slot` rides along for the same reason `damage` does: the bullet outlives
+  // the frame that fired it, and the end screen wants to credit the child who
+  // actually shot the thing rather than whoever happens to be standing nearest
+  // when it lands.
+  w.bullets.push({ alive: true, x, y, vx, vy, homing: !!homing, tint, damage, slot });
 }
 
 /**
@@ -289,7 +293,8 @@ export function updateFiring(w, dt) {
     p.fireT -= dt;
     if (p.fireT <= 0) {
       p.fireT = interval;
-      spawnBullet(w, p.x, p.y - PLAYER.radius, 0, -BULLETS.speedPxS, false, tint);
+      spawnBullet(w, p.x, p.y - PLAYER.radius, 0, -BULLETS.speedPxS, false, tint,
+                  undefined, p.slot);
       playShoot();
     }
   }
@@ -335,7 +340,7 @@ export function updateFiring(w, dt) {
         spawnBullet(w,
           p.x + dx * PLAYER.radius, p.y + dy * PLAYER.radius,
           dx * kind.speedPxS, dy * kind.speedPxS,
-          false, kind.tint, kind.damage);
+          false, kind.tint, kind.damage, p.slot);
       }
       continue;
     }
@@ -344,7 +349,7 @@ export function updateFiring(w, dt) {
       for (let i = 0; i < kind.arms; i++) {
         const a = inst.spin + (Math.PI * 2 * i) / kind.arms;
         spawnBullet(w, p.x, p.y, Math.cos(a) * kind.speedPxS, Math.sin(a) * kind.speedPxS,
-                    false, kind.tint, kind.damage);
+                    false, kind.tint, kind.damage, p.slot);
       }
       continue;
     }
@@ -357,7 +362,7 @@ export function updateFiring(w, dt) {
       const a = -Math.PI / 2 + inst.side * kind.launchSpreadRad;
       spawnBullet(w, p.x, p.y - PLAYER.radius,
                   Math.cos(a) * kind.speedPxS, Math.sin(a) * kind.speedPxS,
-                  true, kind.tint);
+                  true, kind.tint, undefined, p.slot);
     }
   }
 }

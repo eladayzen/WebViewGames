@@ -27,6 +27,19 @@ export function makePods(n) {
     alive: true,
     fireT: 0,
     lean: 0,        // -1..1, for the pod's tilt
+
+    // WHAT THIS SEAT DID. Per-pod, alongside the shared w.stats, and only ever
+    // read by the end screen -- nothing in the simulation branches on it.
+    //
+    // It exists because co-op has one score and two children, and a team result
+    // that says only "4200 points" tells neither of them what they did. These
+    // are a CONTRIBUTION, not a ranking: they are never compared on screen, and
+    // the board stores the team's total, not a split of it. Two siblings being
+    // handed a verdict on which of them was better is the exact thing a shared
+    // score was chosen to avoid.
+    popped: 0,
+    coins: 0,
+    points: 0,
     // Vestigial: nothing writes or reads it any more. The dropped-board guard
     // that used to zero this seat's input fired on a child simply HOLDING a
     // lean -- see the note at the top of updatePod in systems/play.js -- and

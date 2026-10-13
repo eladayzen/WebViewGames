@@ -30,6 +30,7 @@ import { createSettingsPanel } from './ui/settingsPanel.js';
 import { installDevUnlock } from './ui/devUnlock.js';
 import { createDevPanel } from './ui/devPanel.js';
 import { createEndings, fakeBoard } from './ui/endings.js';
+import { refreshRoster, ensureRoster } from './systems/roster.js';
 import {
   initAudio, startMusic, stopMusic, setAudioPaused, playGameOver, playLevelUp,
   getAudioPrefs, setSfxEnabled, setMusicEnabled, setMusicLevel,
@@ -101,8 +102,19 @@ async function boot() {
       if (live && live !== world.players.length) {
         setPlayerCount(live);
         resizePods(world, live);
+        // The seats changed, so the names have. Asked for here and not at the
+        // end of the run: the roster is only needed for the result screen, but
+        // fetching it THEN would race the screen appearing, and a result that
+        // says "PLAYER 2" for half a second before correcting itself looks like
+        // a fault. It is a cheap call and it is never on a hot path.
+        refreshRoster();
       }
     }
+
+    // Names for the result screen, fetched while the run is still going so the
+    // screen is right the first time it paints. A no-op once every seat is
+    // named, and on every one-player run.
+    ensureRoster(world.players.length, world.time);
 
     for (const pod of world.players) {
       updatePod(world, pod, readInput(dt, pod.slot), dt);
@@ -302,6 +314,11 @@ async function boot() {
 
   const endings = createEndings(document, {
     getScore: () => world.stats.score,
+    // Read at the moment a run ends, never captured at boot: a seat can arrive
+    // mid-run (the app publishes its roster after the page loads), so a pod
+    // list taken here would be the one-player list on most co-op runs.
+    getPods: () => world.players,
+    getLevel: () => world.level,
     getStatsLine: () => {
       const r = report();
       return `${r.score} points · ${r.popped} popped · level ${r.level}`;
@@ -557,7 +574,7 @@ async function boot() {
   // the app, so this is the only way to see the TALL version of these screens --
   // which is the one that can overflow a phone.
   const rows = parseInt(q.get('rows') || '0', 10);
-  if (rows > 0) setTimeout(() => fakeBoard(document, rows), 0);
+  if (rows > 0) setTimeout(() => fakeBoard(document, rows, world.players), 0);
   if (screen === 'dead') { world.state = GameState.FAILED; showGameOver(); }
 
   // ?art=1 puts one of every tier on screen at fixed positions, immediately.
