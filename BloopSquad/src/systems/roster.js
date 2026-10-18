@@ -109,6 +109,13 @@ export function refreshRoster() {
  * fetch at the moment the seat count changed therefore comes back short about
  * as often as not, and there is no event to wait on. Called every frame; does
  * nothing on nearly all of them.
+ *
+ * WHY IT IS SAFE TO STOP once every seat has a name, even a generic one: the
+ * profile is chosen when a board connects in the pairing flow, which is before
+ * the game launches. There is no path today on which a seat gains a profile
+ * mid-run, so a name cannot improve after we stop asking (confirmed with the
+ * app side, 15 Oct). If that ever changes, keep re-asking while any name is
+ * still a generic label -- `isGenericLabel` below already identifies them.
  */
 export function ensureRoster(seats, timeS) {
   if (seats < 2) return;
@@ -116,6 +123,24 @@ export function ensureRoster(seats, timeS) {
   if (timeS - lastAskT < RETRY_S) return;
   lastAskT = timeS;
   refreshRoster();
+}
+
+/**
+ * Is this a generic seat label rather than somebody's name?
+ *
+ * Matters because of the BADGE, not the row. Two seats labelled "Player 1" and
+ * "Player 2" have the same initial -- two identical P badges side by side,
+ * which is the one thing the badge exists to prevent. That was already handled
+ * for OUR fallback by using the seat number, but the app now sends the seat
+ * label as its own fallback when a seat has no profile picked (BAL-605, device
+ * report 15 Oct), so the collision can arrive from the other side too and the
+ * test for it has to be on the string, not on where it came from.
+ *
+ * Deliberately narrow: only "player" followed by digits, any case or spacing.
+ * A child actually called "Player" keeps their P.
+ */
+function isGenericLabel(name) {
+  return /^player\s*\d+$/i.test(String(name).trim());
 }
 
 /**
@@ -136,11 +161,15 @@ export function seatIdentity(slot) {
     name,
     // The app's own colour wins when there is one: it is what the lobby showed.
     color: (entry && entry.color) || fallback,
-    // THE SEAT NUMBER WHEN THERE IS NO NAME, not the first letter. Unnamed
-    // seats are "PLAYER 1" and "PLAYER 2", whose initials are both P -- two
-    // identical badges side by side, which is precisely the thing the badge is
-    // there to prevent. Caught in a screenshot, not in review.
-    initial: entry && entry.name ? name.charAt(0).toUpperCase() : String(slot + 1),
+    // THE SEAT NUMBER WHENEVER THE NAME IS A GENERIC LABEL, not the first
+    // letter. "PLAYER 1" and "PLAYER 2" share an initial -- two identical P
+    // badges side by side, which is precisely the thing the badge is there to
+    // prevent. Caught in a screenshot, not in review. The label can now come
+    // from either side (ours when the roster is silent, the app's when a seat
+    // has no profile), so the check is on the string itself.
+    initial: entry && entry.name && !isGenericLabel(entry.name)
+      ? name.charAt(0).toUpperCase()
+      : String(slot + 1),
     named: !!(entry && entry.name),
   };
 }

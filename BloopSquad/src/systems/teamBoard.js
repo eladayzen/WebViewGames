@@ -38,6 +38,29 @@
 // Nothing here should be built as though a shared backend were coming; it is
 // not, and the same note is already on systems/scoreboard.js.
 
+// ── SUBMITTING A TEAM RUN TO THE PLATFORM (BAL-605) ─────────────────────────
+//
+// The host is gaining a second argument: `submitScore(value, {mode, seats})`,
+// where `mode` is a game-defined string the app does not interpret and the
+// BRIDGE resolves who was in each seat. The game deliberately does not pass
+// identities: the roster it receives is `{index, name, color, isMain}` with no
+// profile id in it, and names are display strings that two sub-profiles on one
+// account can share, so anything this file invented would be a guess.
+//
+// WHY THE FEATURE DETECTION HERE IS POSITIVE-ONLY, AND MUST STAY THAT WAY.
+// An older app build's `submitScore` takes one argument and IGNORES the
+// second. It does not throw, it does not warn -- it files the number, and the
+// number is a two-player score landing on the one signed-in child's solo
+// board. That is precisely the permanent damage this whole module exists to
+// avoid (see the note above: scores cannot be withdrawn), and it would happen
+// silently on every device still running the old build.
+//
+// So this must never be probed by trying. There is no safe "attempt it and see
+// what happens" here, because the failure mode of the attempt IS the bug. The
+// host has to say yes first, and anything other than an explicit yes means the
+// blob, which is what shipped and what works.
+const COOP_MODE = 'coop';
+
 const KEY = 'coopRuns';
 const MAX_ROWS = 20;
 
@@ -49,6 +72,45 @@ function sdk() {
 export function teamBoardAvailable() {
   const gb = sdk();
   return !!(gb && typeof gb.load === 'function' && typeof gb.save === 'function');
+}
+
+/**
+ * Will the host record a co-op run as a co-op run?
+ *
+ * `GoBalance.capabilities.scoreModes === true` and nothing else. Settled with
+ * the app side on BAL-605, where the contract is: there is no `capabilities`
+ * object in the SDK today, and it arrives carrying this one flag as a literal
+ * `true` in the SAME commit that teaches `submitScore` the options object --
+ * never earlier and never separately. So the flag cannot be present on a build
+ * that would ignore the argument.
+ *
+ * Identity comparison, not truthiness. `'yes'` and `1` are both things a
+ * hand-written config could produce and neither is a promise from the host, so
+ * neither counts. Nor does `submitScore.length` -- arity says nothing about a
+ * wrapper, and a wrong guess here submits a team score to a child's solo board.
+ */
+export function coopSubmitAvailable() {
+  const gb = sdk();
+  if (!gb || typeof gb.submitScore !== 'function') return false;
+  const caps = gb.capabilities;
+  return !!caps && caps.scoreModes === true;
+}
+
+/**
+ * Hand the run to the platform, when the platform can hold it.
+ *
+ * Resolves true/false and never rejects: this is additive. The blob below is
+ * still written either way and is still what the result screen renders, so a
+ * failed or absent submit costs the player nothing and the screen never waits
+ * on the network to find out.
+ */
+function submitTeamRun(entry) {
+  if (!coopSubmitAvailable()) return Promise.resolve(false);
+  const gb = sdk();
+  return Promise.resolve()
+    .then(() => gb.submitScore(entry.score, { mode: COOP_MODE, seats: entry.seats }))
+    .then(() => true)
+    .catch(() => false);
 }
 
 function loadBlob() {
@@ -88,6 +150,10 @@ export function recordTeamRun(run) {
     at: Date.now(),
   };
 
+  // Fired alongside the blob write, not before it: the local board is the one
+  // the player is about to look at, and it must not wait on a host round trip.
+  const submitted = submitTeamRun(entry);
+
   return loadBlob().then((blob) => {
     const prev = Array.isArray(blob && blob[KEY]) ? blob[KEY].filter(Boolean) : [];
     const rows = rank(prev.concat([entry]));
@@ -102,6 +168,14 @@ export function recordTeamRun(run) {
         gb.save({ ...(blob || {}), [KEY]: rows.map(({ rank: _r, ...k }) => k) });
       } catch { /* a failed save must never block the screen */ }
     }
-    return { rows: marked, placed: marked.find((r) => r.isRun) || null, stored: teamBoardAvailable() };
+    return submitted.then((sent) => ({
+      rows: marked,
+      placed: marked.find((r) => r.isRun) || null,
+      stored: teamBoardAvailable(),
+      // Whether the run ALSO reached the account board. Nothing renders this
+      // yet -- the screen's wording is true either way -- but a caller that
+      // wants to say "and it is on the family's co-op board" can.
+      submitted: sent,
+    }));
   });
 }
