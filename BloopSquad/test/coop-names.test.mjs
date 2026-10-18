@@ -84,7 +84,13 @@ async function installHost(roster, blob = null) {
       getScoreboard: () => Promise.resolve({ complete: true, entries: [] }),
       load: () => Promise.resolve(blob),
       save: (b) => { saved.push(b); return Promise.resolve(true); },
-      players: () => Promise.resolve(roster),
+      // THE HOST'S OWN SHAPE, not a convenient one. `players` is an array and
+      // `getPlayers()` returns it; there is no `players()` function inside the
+      // app. A harness that offered one is what hid the real bug for three
+      // days -- see test/roster-host-shape.test.mjs.
+      multiplayer: true,
+      players: roster,
+      getPlayers: () => roster,
     },
   };
   globalThis.document = makeDoc();
@@ -107,7 +113,8 @@ async function playACoopRun() {
 }
 
 test('REAL PROFILE NAMES reach the screen, the saved row and the board', async () => {
-  // Exactly what the bridge sends from gobalance 724e279c onwards.
+  // Exactly what the bridge sends from gobalance 724e279c onwards, in the
+  // shape the host's SDK publishes it in.
   const saved = await installHost([
     { index: 0, name: 'Ada', color: '#ff5577', isMain: true },
     { index: 1, name: 'Ben', color: '#55ddff' },

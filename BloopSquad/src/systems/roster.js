@@ -7,12 +7,14 @@
 // and on a device two siblings share, the names are the whole point of the
 // result screen.
 //
-// WHERE THE NAMES COME FROM. `GoBalance.players()` answers with the roster the
-// app built when the boards paired -- one entry per connected player, index
-// aligned with `window.__gbPlayers`, which is the same alignment the input
-// reader uses. There is no other source: the page cannot reach the app's
-// profile store, and copying names into the save blob would go stale the first
-// time somebody is renamed in the lobby.
+// WHERE THE NAMES COME FROM. The host's SDK holds a roster the app built when
+// the boards paired -- one entry per connected player, index aligned with
+// `window.__gbPlayers`, which is the same alignment the input reader uses. It
+// is read as `GoBalance.players`, AN ARRAY, or through `GoBalance.getPlayers()`
+// which returns the same array; see `liveRoster` below for why reading it as a
+// function instead meant no name ever arrived. There is no other source: the
+// page cannot reach the app's profile store, and copying names into the save
+// blob would go stale the first time somebody is renamed in the lobby.
 //
 // THE INDEX IS POSITIONAL AND IT SHIFTS. If a board drops mid-run the roster
 // republishes and everyone after the gap moves up a slot, so a name captured at
@@ -23,7 +25,7 @@
 // score is attributed by it, and nothing is stored under it.
 //
 // EVERYTHING IS FEATURE-DETECTED, as everywhere else: at a plain dev URL there
-// is no SDK, `players()` does not exist, and every seat falls back to its
+// is no SDK, there is no roster to read, and every seat falls back to its
 // number and its pod's own tint. That path is the one most screenshots are
 // taken on, so it has to look finished rather than broken.
 
@@ -73,6 +75,44 @@ function normalise(e, i) {
 }
 
 /**
+ * The roster the APP'S OWN SDK is already holding, or null if it has none yet.
+ *
+ * `GoBalance.players` IS AN ARRAY. This file was written against the shape in
+ * systems/gbSdk.js -- `players: () => send('players.get')`, a function -- and
+ * that shim only ever installs itself when `window.GoBalance` is ABSENT, which
+ * inside the app it never is: WebGameController injects the host's own SDK as
+ * the first script in <head>. There, `players` is an array of
+ * `{index, name, color, isMain, x, y}`, `getPlayers()` returns that same array
+ * with the tilts refreshed, and there is no `players()` function at all. So the
+ * `typeof gb.players !== 'function'` check below sent every single call
+ * straight back with null -- on every device, on every build, since this file
+ * was written. The roster was never once read, and both the name AND the colour
+ * of every seat came from the fallbacks in `seatIdentity`. That is the "PLAYER 1 + PLAYER 2" on the 18 Oct screenshot --
+ * nothing to do with the app, which had been sending the names since 15 Oct.
+ *
+ * Both shapes are read because both genuinely exist in this codebase: the
+ * host's array in the app, gbSdk.js's function at a URL the host does not
+ * serve.
+ *
+ * GATED ON `multiplayer`, which the host SDK sets only once it has a real
+ * answer. Until then its `players` holds a one-seat placeholder --
+ * `{index: 0, name: '', color: '#ffffff'}` -- and caching that would be worse
+ * than having nothing: an empty name still falls back, but `#ffffff` is a
+ * COLOUR, so seat 0's dot would go white and stop matching the pod it is there
+ * to match.
+ */
+function liveRoster() {
+  const gb = sdk();
+  if (!gb || gb.multiplayer !== true) return null;
+  try {
+    const list = typeof gb.getPlayers === 'function' ? gb.getPlayers() : gb.players;
+    return Array.isArray(list) && list.length ? list : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Ask the host for the roster and remember it.
  *
  * Called once at boot and again when the seat count changes. Never throws and
@@ -80,6 +120,11 @@ function normalise(e, i) {
  * exactly the dev-URL case and is already handled.
  */
 export function refreshRoster() {
+  const live = liveRoster();
+  if (live) {
+    cached = live.filter(Boolean).map(normalise);
+    return Promise.resolve(cached);
+  }
   const gb = sdk();
   if (!gb || typeof gb.players !== 'function') return Promise.resolve(null);
   if (inFlight) return Promise.resolve(cached);
