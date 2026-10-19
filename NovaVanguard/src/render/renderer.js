@@ -53,13 +53,28 @@ import { activeAisles } from '../patterns/patterns.js';
 
 const TWO_PI = Math.PI * 2;
 
+/**
+ * MSAA off by default, `?aa=1` to put it back.
+ *
+ * Not expected to be the win on its own -- MSAA costs fill, and a 32% pixel cut
+ * moved Nova's frame by 0.4 ms (PERF_FINDINGS.md), which is the signature of a
+ * frame that is not fill-bound. What it DOES buy is memory: at dpr 2 this canvas
+ * is a 3840x2160 backing store, and multisampling it is tens of MB of VRAM on
+ * top of the textures, on the one device where VRAM is the live suspect.
+ *
+ * The flag exists so the question can be settled on the tablet in two page
+ * loads instead of two builds. Nothing in the game reads it twice; it is picked
+ * up once, here.
+ */
+const AA = new URLSearchParams(location.search).get('aa') === '1';
+
 export async function createRenderer(mountEl) {
   const app = new Application();
   await app.init({
     width: DESIGN_W,
     height: DESIGN_H,
     background: 0x05060a,
-    antialias: true,
+    antialias: AA,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     autoDensity: true,
     // Unity drives the frame rate through the rAF shim + __pumpFrames; Pixi's

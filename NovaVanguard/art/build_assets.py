@@ -110,7 +110,29 @@ for raw, stem, feather, kind, bloom in SURFACES:
         print(f'  authored feather mismatch {seam_mismatch(src, feather):.2f}/255')
 
     tile = make_v_seamless(src, feather=feather)
-    tile = tile.resize((1024, 2048), Image.LANCZOS)  # power-of-two REPEAT wrap
+    # 512x1024, NOT 1024x2048, AND THIS IS THE WHOLE POINT OF THE SIZE.
+    #
+    # Nova sat at ~41 ms / 24 fps on Elad's iPad and would not respond to
+    # anything: 7% JavaScript, +0.38 correlation with object count, and a pixel
+    # budget that moved the frame 0.4 ms across a 32% pixel cut (PERF_FINDINGS.md
+    # -- "Nova Vanguard, still unsolved"). The one suspect left standing was
+    # texture memory: 69 textures, 25.7 Mpx, ~103 MB as uncompressed RGBA, of
+    # which these ten surface tiles alone were 84 MB. That fits every
+    # observation -- a fixed per-frame floor, independent of output resolution
+    # and of scene size, absent on desktop where VRAM is ample, absent in
+    # Rooftop Ninja which holds 60 fps at MORE pixels on the same device.
+    #
+    # Halving each axis takes those ten from 84 MB to 21 MB and the whole game
+    # from ~103 MB to ~40 MB.
+    #
+    # It costs sharpness and the arithmetic is worth knowing before changing it
+    # back: /render sets tileScale = DESIGN_W / baseTex.width, so a 1024-wide
+    # tile was ALREADY magnified 1.875x into the 1920 design space, and 512
+    # makes that 3.75x. The scroll period is unchanged -- baseTex.height *
+    # tileScale is 3840 either way -- so nothing in the renderer needs touching.
+    #
+    # STILL POWER-OF-TWO, which is what the REPEAT wrap needs.
+    tile = tile.resize((512, 1024), Image.LANCZOS)
     # DAYLIT SURFACES GET PULLED BACK TO THE §5.4 SATURATION BAND. A real
     # satellite ocean is far more saturated than the dark surfaces ever were
     # (measured 0.52 against a 0.35 cap) -- and unlike luminance, saturation is
