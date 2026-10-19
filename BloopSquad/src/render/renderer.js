@@ -18,6 +18,7 @@ import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, SKY, POD, XP, COOP, coop, difficulty01 } from '../data/tuning.js';
 import { punchExtension, activeToy, podOf } from '../systems/toys.js';
 import { tether, beamChargeNeeded } from '../systems/play.js';
+import { seatTint } from '../systems/roster.js';
 
 const PALETTE = {
   bg: 0x0b1020,
@@ -515,10 +516,15 @@ export async function createRenderer(canvas) {
     const tilt = p.lean * 0.18;
     const cx = p.x + tilt * r * 0.5;
     const t = podTier(level);
-    // The seat's colours. Seat 0 resolves to the shared palette, so one player
-    // is pixel-identical to how it has always looked.
-    const hull = POD.seatTints[p.slot % POD.seatTints.length] || PALETTE.hull;
-    const flame = POD.seatThrusters[p.slot % POD.seatThrusters.length] || PALETTE.thruster;
+    // The seat's colours. THE LOBBY'S COLOUR WINS when there is one: the child
+    // picked a board and watched the app give that seat red, teal, purple or
+    // orange, and the ship they fly should be the colour they were just shown.
+    // There is no lobby in single player, so seat 0 on a one-player run still
+    // resolves to the shared palette and that screen is pixel-identical to how
+    // it has always looked.
+    const lobby = seatTint(p.slot);
+    const hull = lobby ? lobby.hull : POD.seatTints[p.slot % POD.seatTints.length] || PALETTE.hull;
+    const flame = lobby ? lobby.flame : POD.seatThrusters[p.slot % POD.seatThrusters.length] || PALETTE.thruster;
 
     // The exhaust ribbon is recorded and drawn even while the pod is blinking
     // after a hit -- a trail that vanished on every hit would strobe with it.

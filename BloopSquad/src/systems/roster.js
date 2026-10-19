@@ -219,6 +219,35 @@ export function seatIdentity(slot) {
   };
 }
 
+/**
+ * The HULL AND THRUSTER a seat's pod should be painted, or null to keep the
+ * one in POD.seatTints.
+ *
+ * THE LOBBY ALREADY ASSIGNED THESE AND THE CHILD HAS ALREADY SEEN THEM. Every
+ * seat gets a colour when the boards pair -- red, teal, purple, orange, in
+ * that order -- and it is on screen during pairing, next to the name, before
+ * the game launches. A pod painted anything else is asking a seven-year-old to
+ * hold two different answers to "which one is me": the one the app told them
+ * and the one the game drew.
+ *
+ * So the lobby wins when there is a lobby. There is no lobby in single player
+ * -- `liveRoster` returns nothing when `multiplayer` is false -- so seat 0 on a
+ * one-player run keeps the hull it has always had and that screen is untouched.
+ *
+ * THE THRUSTER IS DERIVED, not looked up. The three authored pairs in
+ * POD.seatThrusters are each the hull darkened by roughly a seventh, and the
+ * lobby can hand us any colour it likes, so the relationship has to be a rule
+ * rather than a fourth row in a table.
+ */
+export function seatTint(slot) {
+  const entry = cached && cached.find((e) => e.index === slot);
+  const hex = entry && entry.color;
+  if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
+  const hull = parseInt(hex.slice(1), 16);
+  const ch = (shift) => Math.round(((hull >> shift) & 0xff) * 0.85);
+  return { hull, flame: (ch(16) << 16) | (ch(8) << 8) | ch(0) };
+}
+
 /** Testing and the dev hooks only. */
 export function __setRoster(list) {
   cached = list ? list.map(normalise) : null;
