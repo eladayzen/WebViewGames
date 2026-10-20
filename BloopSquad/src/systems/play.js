@@ -599,6 +599,65 @@ function pointToSegment(cx, cy, ax, ay, bx, by) {
 }
 
 /**
+ * WHO THE BEAM JOINS, AND WHY IT IS NOT ALWAYS THE SAME TWO.
+ *
+ * With two boards there is one pair and nothing to decide. With three or four
+ * there are three or six, and a beam that always joined seats 1 and 2 would
+ * hand the best thing in the game to the same two children for the whole run
+ * while the others watched. Elad, 19 Oct, when 3- and 4-board runs landed.
+ *
+ * A QUEUE, NOT A DICE ROLL. Drawing at random repeats: on four seats a fair
+ * draw gives the same pair twice running one time in six, and a seven-year-old
+ * who just had it does not experience that as luck. The order below is fixed
+ * and it is a round: every pair happens once before any happens twice, and
+ * every seat appears in exactly half of them.
+ *
+ * THE FOUR-SEAT ORDER ALTERNATES, and that is the best that exists rather than
+ * a compromise. Among the six pairs of four children, each pair has exactly
+ * ONE other pair it shares nobody with -- so a run of six where the turn
+ * changes hands completely every time cannot be built. Alternating can:
+ * complete handover, overlap, complete handover, and so on, including across
+ * the wrap back to the start. The consequence worth having is that no child is
+ * in three turns running.
+ *
+ * Three seats are tighter still -- with three children every pair shares
+ * someone with the next, always -- so the cycle below is simply the round, and
+ * each seat sits out exactly one turn in three.
+ */
+const BEAM_PAIRS = {
+  2: [[0, 1]],
+  3: [[0, 1], [1, 2], [0, 2]],
+  4: [[0, 1], [2, 3], [0, 2], [1, 3], [0, 3], [1, 2]],
+};
+
+/**
+ * The two pods this beam belongs to, or null if there is nobody to join.
+ *
+ * Reads the queue by SEAT, not by position in the alive list, so a board that
+ * drops cannot silently shift whose turn it is. A seat can vanish mid-run
+ * (resizePods shrinks the table), so the queue is looked up by the count that
+ * is actually flying and the cursor is taken modulo its length -- a cursor
+ * left over from four seats stays meaningful at three.
+ *
+ * The fallback is the OLD behaviour, the first two alive, and it is reached
+ * only if the seat count is one this table does not describe. Pods die
+ * together when the team's hearts run out, never one at a time, so there is no
+ * such thing here as a pair with one dead half.
+ */
+export function beamPair(w) {
+  const alive = w.players.filter((p) => p.alive);
+  if (alive.length < 2) return null;
+  const order = BEAM_PAIRS[w.players.length];
+  if (order) {
+    const [sa, sb] = order[((w.beamPairIdx || 0) % order.length + order.length) % order.length];
+    const a = w.players[sa];
+    const b = w.players[sb];
+    if (a && b && a.alive && b.alive) return [a, b];
+  }
+  return [alive[0], alive[1]];
+}
+
+/**
  * The tether between two pods: where it is, and whether it is ARMED.
  *
  * THE LINE IS ALWAYS THERE. It is the bond between two children and it costs
@@ -619,9 +678,9 @@ function pointToSegment(cx, cy, ax, ay, bx, by) {
 export function tether(w) {
   // Not filtered by `dropped` any more: a child holding a lean was being read
   // as a disconnected board, which killed the beam as well as their movement.
-  const alive = w.players.filter((p) => p.alive);
-  if (alive.length < 2) return null;
-  const [a, b] = alive;
+  const pair = beamPair(w);
+  if (!pair) return null;
+  const [a, b] = pair;
   const len = Math.hypot(b.x - a.x, b.y - a.y);
   const B = COOP.beam;
 
@@ -681,6 +740,20 @@ export function updateBeamCharge(w, dt) {
   if (w.players.length < 2) return false;
   if (w.beamActiveT > 0) {
     w.beamActiveT = Math.max(0, w.beamActiveT - dt);
+    // THE TURN PASSES WHEN THE BEAM GOES OUT, so the pair cannot change under
+    // two children who are mid-ultimate and flying toward each other.
+    //
+    // Nothing is drawn while the bar refills -- the renderer draws the line
+    // only when the beam is live -- so passing the turn here rather than at
+    // the next lighting makes no visible difference. It is done here because
+    // this is the one moment the pair is provably finished with.
+    if (w.beamActiveT === 0) {
+      w.beamPairIdx = (w.beamPairIdx || 0) + 1;
+      // The range switch has hysteresis, and it belongs to the pair that just
+      // finished. A new pair starting far apart would otherwise inherit "in
+      // range" and light hot at a distance it should be cold at.
+      w.beamInRange = false;
+    }
     return false;
   }
   if (w.beamCharge < beamChargeNeeded(w)) return false;

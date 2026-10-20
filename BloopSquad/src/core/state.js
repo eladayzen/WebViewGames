@@ -82,6 +82,11 @@ export function createWorld(seats = 1) {
     beamActiveT: 0,
     // How many ultimates this run has spent; each costs 1.2x the last.
     beamUses: 0,
+    // WHOSE TURN THE BEAM IS. An index into the pair queue in systems/play.js,
+    // advanced every time the beam goes out. On two boards there is one pair
+    // and this never matters; on three or four it is what stops the same two
+    // children owning the ultimate for the whole run.
+    beamPairIdx: 0,
 
     // The rescued squad, and the pod's recent path they follow along. The
     // history is sampled every frame and read at a delay per member, which is
