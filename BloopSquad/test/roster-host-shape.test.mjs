@@ -68,7 +68,9 @@ test("THE SDK'S ONE-SEAT PLACEHOLDER IS NOT AN ANSWER", async () => {
   const got = await refreshRoster();
 
   assert.equal(got, null, 'multiplayer is still false: no roster has arrived');
-  assert.equal(seatIdentity(0).color, '#74d7ff', "seat 0 keeps its own hull colour");
+  // Seat 0 falls back to POD.seatTints, which IS the lobby's red -- not to the
+  // placeholder's #ffffff, which is the whole point of the gate.
+  assert.equal(seatIdentity(0).color, '#f65e5e', 'the written-down lobby colour, not white');
   assert.equal(seatIdentity(0).name, 'PLAYER 1');
   assert.equal(seatIdentity(0).named, false, 'so the end screen still waits for it');
 });

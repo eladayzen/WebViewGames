@@ -193,15 +193,19 @@ function isGenericLabel(name) {
  *
  * The colour falls back to THE POD'S OWN TINT, not to a leaderboard colour.
  * The whole job of this line on the result screen is to let a child match a row
- * to the ship they were flying ten seconds ago, so seat 1's row has to be the
- * same gold their pod was. Seat 0 has no tint (it is the original single-player
- * pod and must stay pixel-identical), so it takes the hull colour explicitly.
+ * to the ship they were flying ten seconds ago, so a teal row has to belong to
+ * the teal pod. Since the tints became the lobby's own four, that holds for
+ * seat 0 as well -- it used to be the one exception, because the solo pod has
+ * no tint, and this screen only ever appears with two or more flying.
  */
 export function seatIdentity(slot) {
   const entry = cached && cached.find((e) => e.index === slot);
   const name = (entry && entry.name) || `PLAYER ${slot + 1}`;
+  // The same four the pod is painted. POD.seatTints has no empty rows any
+  // more -- it is the lobby's own set -- so the dot beside a name is the
+  // colour of that child's ship whether or not the roster ever answered.
   const tint = POD.seatTints[slot % POD.seatTints.length];
-  const fallback = tint == null ? '#74d7ff' : '#' + (tint >>> 0).toString(16).padStart(6, '0');
+  const fallback = '#' + (tint >>> 0).toString(16).padStart(6, '0');
   return {
     name,
     // The app's own colour wins when there is one: it is what the lobby showed.
@@ -234,18 +238,25 @@ export function seatIdentity(slot) {
  * -- `liveRoster` returns nothing when `multiplayer` is false -- so seat 0 on a
  * one-player run keeps the hull it has always had and that screen is untouched.
  *
- * THE THRUSTER IS DERIVED, not looked up. The three authored pairs in
- * POD.seatThrusters are each the hull darkened by roughly a seventh, and the
- * lobby can hand us any colour it likes, so the relationship has to be a rule
- * rather than a fourth row in a table.
+ * THE THRUSTER IS DERIVED, not looked up. The authored pairs this replaced
+ * were each the hull darkened by roughly a seventh, and the lobby can hand us
+ * any colour it likes, so the relationship has to be a rule rather than a
+ * fourth row in a table. `thrusterFor` is that rule and it is exported,
+ * because the renderer needs the same one for POD.seatTints at a dev URL --
+ * the same number written in two files is a number that will eventually be
+ * two different numbers.
  */
+export function thrusterFor(hull) {
+  const ch = (shift) => Math.round(((hull >> shift) & 0xff) * 0.85);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
 export function seatTint(slot) {
   const entry = cached && cached.find((e) => e.index === slot);
   const hex = entry && entry.color;
   if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
   const hull = parseInt(hex.slice(1), 16);
-  const ch = (shift) => Math.round(((hull >> shift) & 0xff) * 0.85);
-  return { hull, flame: (ch(16) << 16) | (ch(8) << 8) | ch(0) };
+  return { hull, flame: thrusterFor(hull) };
 }
 
 /** Testing and the dev hooks only. */

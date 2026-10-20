@@ -67,3 +67,21 @@ test('black is a colour, and must not be mistaken for absent', () => {
   __setRoster([{ index: 0, name: 'P1', color: '#000000', isMain: true }]);
   assert.deepEqual(seatTint(0), { hull: 0, flame: 0 });
 });
+
+test('THE WRITTEN-DOWN TABLE IS THE LOBBY TABLE, for the dev URL', async () => {
+  // No bridge at a dev URL, so the pods are painted from POD.seatTints. It
+  // used to be blue/gold/green/pink, so the game looked like one thing on a
+  // desk and another on a device. Elad, 20 Oct, looking at a four-player dev
+  // URL: "player one should use red color. player two teal".
+  const { POD } = await import('../src/data/tuning.js');
+  assert.deepEqual(POD.seatTints, LOBBY.map((h) => parseInt(h.slice(1), 16)));
+});
+
+test('the fallback and the live colour go through ONE thruster rule', async () => {
+  const { thrusterFor } = await import('../src/systems/roster.js');
+  __setRoster(seatRoster(4));
+  for (let slot = 0; slot < 4; slot++) {
+    assert.equal(seatTint(slot).flame, thrusterFor(seatTint(slot).hull),
+      'a live seat and a written-down one must darken identically');
+  }
+});

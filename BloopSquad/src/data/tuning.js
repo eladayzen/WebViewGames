@@ -648,9 +648,27 @@ export const XP = {
 // ---------------------------------------------------------------------------
 
 export const POD = {
-  // WHOSE POD IS WHOSE. Seat 0 keeps the hull it has always had, so a
-  // single-player run looks exactly as it did and the familiar ship stays the
-  // familiar ship. Every other seat gets a tinted hull and a matching thruster.
+  // WHOSE POD IS WHOSE -- AND IT IS THE LOBBY WHO DECIDES.
+  //
+  // These are the app's own seat colours, MultiplayerManagerUI.playersColors
+  // in multiplayerPopup.prefab: red, teal, purple, orange, in that order. The
+  // child has already been shown theirs next to their name on the pairing
+  // screen before the game launches, so any other answer here is the game
+  // contradicting the app about the one thing a seven-year-old needs to know
+  // at a glance.
+  //
+  // WHY THE TABLE EXISTS AT ALL when systems/roster.js reads the live colour
+  // straight off the bridge: there is no bridge at a dev URL, and the fallback
+  // used to be a palette of our own -- blue, gold, green, pink -- so the game
+  // looked like one thing on a desk and another on a device. Two answers to
+  // "which one is me" is the bug; having the fallback agree with the lobby is
+  // the fix. The live roster still wins when it is there, because a seat can
+  // be recoloured in the app and this table cannot know about it.
+  //
+  // SEAT 0 IS STILL UNTINTED IN SINGLE PLAYER. The renderer only reaches this
+  // table above one player; one child flying alone gets PALETTE.hull and the
+  // familiar ship, exactly as always. Seat 1 being red is a statement about
+  // which of FOUR you are, and it means nothing when there is only one.
   //
   // A COLOUR SWAP, NOT A BOLT-ON. The note below about accretion is about parts
   // stuck onto the silhouette at a different fidelity; recolouring a surface
@@ -658,11 +676,16 @@ export const POD = {
   // exactly where they were. The dome, the pilot and the outline stay shared,
   // because those are what make it read as the same family of ship.
   //
-  // Tints are from the leaderboard's wheel, picked to stay apart from each
-  // other AND from the monsters' green/orange/purple -- a pod that reads as a
-  // monster at three metres is worse than one that reads as its sibling's.
-  seatTints: [null, 0xffc93c, 0x9be564, 0xf48dd4],
-  seatThrusters: [null, 0xffa14a, 0x6fc24a, 0xd678b4],
+  // KNOWN AND ACCEPTED: seat 4's orange is 4 degrees of hue from the medium
+  // monster and seat 3's purple 11 from the large one. The old table was
+  // chosen to avoid exactly that, and matching the lobby is worth more --
+  // Elad's call, 19 Oct. The pods stay brighter and more saturated than the
+  // monsters and keep their white outline, dome and pilot.
+  //
+  // No thruster table any more: it is the hull through thrusterFor() in
+  // systems/roster.js, which is the same rule the live lobby colour goes
+  // through. Two tables meant two places for the relationship to drift.
+  seatTints: [0xf65e5e, 0x00c9d1, 0xca47fa, 0xff8c00],
 
   // FOUR SHIPS, NOT SEVEN BOLT-ONS. The first version added a part per tier --
   // fins, a halo, extra rim lights, gold trim -- and Amit's verdict was that it

@@ -18,7 +18,7 @@ import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { DESIGN_W, DESIGN_H, CAMERA, PLAYER, BULLETS, COINS, HEARTS, MONSTERS, TOYS, SQUAD, SKY, POD, XP, COOP, coop, difficulty01 } from '../data/tuning.js';
 import { punchExtension, activeToy, podOf } from '../systems/toys.js';
 import { tether, beamChargeNeeded } from '../systems/play.js';
-import { seatTint } from '../systems/roster.js';
+import { seatTint, thrusterFor } from '../systems/roster.js';
 
 const PALETTE = {
   bg: 0x0b1020,
@@ -509,22 +509,28 @@ export async function createRenderer(canvas) {
      .fill({ color: PALETTE.mouth });
   }
 
-  function drawPod(p, time, level) {
+  function drawPod(p, time, level, seats) {
     const blink = p.invulnT > 0 && Math.floor(p.invulnT * 12) % 2 === 0;
     const r = PLAYER.radius;
     const lw = Math.max(4, r * 0.11);
     const tilt = p.lean * 0.18;
     const cx = p.x + tilt * r * 0.5;
     const t = podTier(level);
-    // The seat's colours. THE LOBBY'S COLOUR WINS when there is one: the child
-    // picked a board and watched the app give that seat red, teal, purple or
-    // orange, and the ship they fly should be the colour they were just shown.
-    // There is no lobby in single player, so seat 0 on a one-player run still
-    // resolves to the shared palette and that screen is pixel-identical to how
-    // it has always looked.
+    // The seat's colours, in order of authority:
+    //
+    //   1. THE LIVE LOBBY COLOUR, when the app is there to give one. A seat
+    //      can be recoloured in the app and only the bridge knows about it.
+    //   2. POD.seatTints, which are the same four the lobby uses, written
+    //      down. This is the dev-URL path and it exists so a desk and a device
+    //      do not disagree about which pod is whose.
+    //   3. PALETTE.hull -- SINGLE PLAYER ONLY. One child flying alone keeps
+    //      the familiar ship, pixel-identical to how it has always looked.
+    //      "You are red" is a statement about which of four you are, and it
+    //      says nothing when there is only one of you.
     const lobby = seatTint(p.slot);
-    const hull = lobby ? lobby.hull : POD.seatTints[p.slot % POD.seatTints.length] || PALETTE.hull;
-    const flame = lobby ? lobby.flame : POD.seatThrusters[p.slot % POD.seatThrusters.length] || PALETTE.thruster;
+    const tint = seats > 1 ? POD.seatTints[p.slot % POD.seatTints.length] : null;
+    const hull = lobby ? lobby.hull : (tint == null ? PALETTE.hull : tint);
+    const flame = lobby ? lobby.flame : (tint == null ? PALETTE.thruster : thrusterFor(tint));
 
     // The exhaust ribbon is recorded and drawn even while the pod is blinking
     // after a hit -- a trail that vanished on every hit would strobe with it.
@@ -1328,7 +1334,7 @@ export async function createRenderer(canvas) {
       // thing the eye lands on.
       for (let i = w.squad.length - 1; i >= 0; i--) drawSquadMember(w.squad[i], time);
 
-      if (pod.alive) drawPod(pod, time, w.level);
+      if (pod.alive) drawPod(pod, time, w.level, w.players.length);
 
       // THE TOY TIMER: A BAR UNDER THE POD.
       //
