@@ -136,6 +136,30 @@ function deadzone(v, dz) {
 }
 
 /** Read one board's raw pair, or null when that slot has no board behind it. */
+/**
+ * ONE KEY CLUSTER PER SEAT, for a desk with no boards on it.
+ *
+ * Seats 2, 3 and 4 all used to answer to WASD -- the rule was literally
+ * `slot === 0 ? arrows : WASD` -- so a four-player dev URL moved three pods
+ * with one hand and they could never be separated. That was invisible until
+ * three- and four-board runs became a thing worth testing at a desk, which
+ * they became this week (BAL-607, and the link beam now taking turns).
+ *
+ * THIS IS THE DEV FALLBACK AND NOTHING ELSE. On a device every seat reads its
+ * own board through `window.__gbPlayers` and never reaches this code; the
+ * clusters below exist so that what a person can drive at a keyboard matches
+ * what the game can actually do.
+ *
+ * Numpad down is BOTH 2 and 5. 2 is where the classic cluster puts it and 5 is
+ * where a hand sitting on 4/6 expects it, and accepting both costs nothing.
+ */
+const KEYBOARDS = [
+  { up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'] },
+  { up: ['KeyW'],    down: ['KeyS'],      left: ['KeyA'],      right: ['KeyD'] },
+  { up: ['KeyI'],    down: ['KeyK'],      left: ['KeyJ'],      right: ['KeyL'] },
+  { up: ['Numpad8'], down: ['Numpad2', 'Numpad5'], left: ['Numpad4'], right: ['Numpad6'] },
+];
+
 function rawPair(slot) {
   if (typeof window === 'undefined') return null;
   const arr = window.__gbPlayers;
@@ -194,17 +218,14 @@ export function readInput(dt, slot = 0) {
   // like a lean -- a dev convenience, never a second input path.
   //
   // In single player the arrows and WASD are the same control, as they have
-  // always been. Only a game that asked for two players splits them, and then
-  // slot 0 is the arrows and slot 1 is WASD.
+  // always been. Only a game that asked for more than one player splits them,
+  // and then each seat gets its own cluster from KEYBOARDS above.
   const split = wantPlayers > 1;
-  const right = split ? (slot === 0 ? ['ArrowRight'] : ['KeyD'])
-                      : ['ArrowRight', 'KeyD'];
-  const left  = split ? (slot === 0 ? ['ArrowLeft'] : ['KeyA'])
-                      : ['ArrowLeft', 'KeyA'];
-  const down  = split ? (slot === 0 ? ['ArrowDown'] : ['KeyS'])
-                      : ['ArrowDown', 'KeyS'];
-  const up    = split ? (slot === 0 ? ['ArrowUp'] : ['KeyW'])
-                      : ['ArrowUp', 'KeyW'];
+  const pad = KEYBOARDS[slot % KEYBOARDS.length];
+  const right = split ? pad.right : ['ArrowRight', 'KeyD'];
+  const left  = split ? pad.left  : ['ArrowLeft', 'KeyA'];
+  const down  = split ? pad.down  : ['ArrowDown', 'KeyS'];
+  const up    = split ? pad.up    : ['ArrowUp', 'KeyW'];
   const any = (codes) => codes.some((c) => keys.has(c)) ? 1 : 0;
 
   const tx = any(right) - any(left);
