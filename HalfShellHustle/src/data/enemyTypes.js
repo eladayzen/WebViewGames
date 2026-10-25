@@ -66,7 +66,7 @@ import {
 // the whole prop scales up uniformly, not just taller.
 //
 // Round 5, direct feedback: "not touching the edges of the element."
-// Measured the actual foot_soldier_0.png alpha footprint directly -- the
+// Measured the actual foot_soldier_0.webp alpha footprint directly -- the
 // base plate spans ~55% of the full (square) texture width, so at
 // PYLON_HEIGHT=5.2 that's a real ~2.86-unit-wide plate, well past the
 // 1.8 the shadow was still set to (a leftover guess from round 2, never

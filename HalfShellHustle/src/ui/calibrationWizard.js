@@ -5,7 +5,7 @@
 // landed (see boardCalibration.js's own header).
 //
 // Reuses the SAME board art the intro tutorial uses (.intro-board,
-// gobalance_horizontal_board.png) -- direct request: "you have that asset
+// gobalance_horizontal_board.webp) -- direct request: "you have that asset
 // already... even animation of it tilting sideways" -- but its rotation is
 // driven LIVE from the real tilt sample every poll, not a canned demo sweep.
 // #calibration-board overrides .intro-board's 0.4s eased transition to

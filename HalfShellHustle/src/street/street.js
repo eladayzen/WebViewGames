@@ -53,7 +53,7 @@ const FULL_WIDTH = ROAD_WIDTH + SIDEWALK_WIDTH * 2;
 
 const BUILDING_RECYCLE_Z = DESPAWN_Z; // same "safe to recycle, past the camera" bound obstacles use
 const BUILDING_BASE_X = ROAD_WIDTH / 2 + SIDEWALK_WIDTH + 1.5;
-// Sampled from street_tex.png's own sidewalk band (avg #d9caad) so the
+// Sampled from street_tex.webp's own sidewalk band (avg #d9caad) so the
 // ground-filler strip (below) reads as a continuation of the same sidewalk,
 // not a mismatched patch.
 const SIDEWALK_FILLER_COLOR = 0xd9caad;
@@ -290,7 +290,7 @@ export function createStreet(scene, themeKey = 'centralCity') {
 // texture. Every texture reaching this code came from entities/
 // textureLoader.js's getTexture(), which caches forever by URL specifically
 // so a texture is loaded once and reused -- centralCity and sunnyStreet
-// currently even share one street_tex.png through that cache. Disposing a
+// currently even share one street_tex.webp through that cache. Disposing a
 // cached texture here would leave the cache Map holding a dead reference
 // that silently breaks every FUTURE getTexture() call for that URL,
 // including a theme being switched back INTO later. The cost of leaving

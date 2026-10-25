@@ -47,7 +47,7 @@ export const OBSTACLE_TYPES = {
     // the dark core all but disappears. Narrower and deeper concentrates it.
     //
     // Round 2, direct feedback: "not touching the edges of the element."
-    // Measured the actual barricade.png alpha footprint directly (its base/
+    // Measured the actual barricade.webp alpha footprint directly (its base/
     // legs span ~97-98% of the sprite's own painted width, not the ~85%
     // originally guessed) -- the shadow was narrower than the real prop, not
     // an illusion from the gradient's own feathered falloff. Widened past

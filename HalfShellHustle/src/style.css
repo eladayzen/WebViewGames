@@ -1039,8 +1039,8 @@ html, body {
   background: radial-gradient(ellipse at 50% 42%, rgba(255, 200, 90, 0.4), rgba(20, 10, 5, 0.88) 72%);
 }
 
-/* Curtain panels -- each is a pre-split half (src/assets/lc_curtain_left.png
-   / lc_curtain_right.png) of one symmetric TMNT-styled artwork, so the two
+/* Curtain panels -- each is a pre-split half (src/assets/lc_curtain_left.webp
+   / lc_curtain_right.webp) of one symmetric TMNT-styled artwork, so the two
    meet as one continuous image at the center seam rather than needing to
    tile or align two independent images. background-size: cover rather than
    a fixed size because #stage's own pixel size can vary slightly with
@@ -1092,13 +1092,13 @@ html, body {
    repeats the pattern), so this needed no size/position changes. */
 #lc-curtain-left {
   left: 0;
-  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('./assets/lc_curtain_left.png');
+  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('./assets/lc_curtain_left.webp');
   transform: translateX(-100%);
 }
 
 #lc-curtain-right {
   right: 0;
-  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('./assets/lc_curtain_right.png');
+  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('./assets/lc_curtain_right.webp');
   transform: translateX(100%);
 }
 
@@ -1274,7 +1274,7 @@ html, body {
   paint-order: stroke fill;
 }
 
-/* Real GoBalance board art (src/assets/gobalance_horizontal_board.png,
+/* Real GoBalance board art (src/assets/gobalance_horizontal_board.webp,
    copied from the Unity project's CrazySnowboard UI -- the real board icon
    players already associate with steering, not a redrawn stand-in). One
    shared visual footprint for both steps; each step's own JS-driven
@@ -1283,7 +1283,7 @@ html, body {
 .intro-board {
   width: 24vmin;
   aspect-ratio: 358 / 266;
-  background-image: url('./assets/gobalance_horizontal_board.png');
+  background-image: url('./assets/gobalance_horizontal_board.webp');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -1306,12 +1306,12 @@ html, body {
    means the highlight is exactly the foot the art already draws -- no second
    asset to keep in step, and no halo sitting slightly off the shape. The
    ellipses are hand-fitted to the two footprints in
-   gobalance_horizontal_board.png; if that art is ever replaced they need
+   gobalance_horizontal_board.webp; if that art is ever replaced they need
    refitting, which is the one cost of this approach. */
 .cal-foot {
   position: absolute;
   inset: 0;
-  background-image: url('./assets/gobalance_horizontal_board.png');
+  background-image: url('./assets/gobalance_horizontal_board.webp');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;

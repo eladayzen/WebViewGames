@@ -32,7 +32,7 @@ function envTexture(file, w, h) {
 // orange/white A-frame design (§5.3, §6). A gameplay prop, not an
 // environment reskin, so it's shared across every theme rather than
 // duplicated per-theme.
-export const BARRICADE_TEXTURE = envTexture('barricade.png', 640, 585);
+export const BARRICADE_TEXTURE = envTexture('barricade.webp', 640, 585);
 
 // Coin collectibles (data/coinTypes.js) -- real Kolbo art, replacing the
 // procedurally-drawn radial-gradient glow blobs the first pass used. Direct
@@ -43,7 +43,7 @@ export const BARRICADE_TEXTURE = envTexture('barricade.png', 640, 585);
 // apart stylistically.
 //
 // Gameplay props like BARRICADE_TEXTURE above, so shared across every theme.
-export const COIN_COMMON_TEXTURE = envTexture('coin_common.png', 506, 512);
+export const COIN_COMMON_TEXTURE = envTexture('coin_common.webp', 506, 512);
 // The bonus coin is the SAME coin as above -- same silhouette, same rim, same
 // turtle-shell emblem -- re-rendered as a faceted crystal rather than solid
 // gold metal, and in a completely different colour. Direct feedback arrived in
@@ -65,7 +65,7 @@ export const COIN_COMMON_TEXTURE = envTexture('coin_common.png', 506, 512);
 // coin_bonus_green_alt.png -- swapping is one file copy plus the sparkleColor
 // hex in data/coinTypes.js. It measured marginally stronger against the sky and
 // the red brick; blue was chosen as the stated preference.
-export const COIN_BONUS_TEXTURE = envTexture('coin_bonus.png', 512, 512);
+export const COIN_BONUS_TEXTURE = envTexture('coin_bonus.webp', 512, 512);
 
 // Ability pickups (data/pickupTypes.js). Real Kolbo art in the same inked,
 // cel-shaded language as everything else, replacing the canvas-drawn shapes
@@ -79,8 +79,8 @@ export const COIN_BONUS_TEXTURE = envTexture('coin_bonus.png', 512, 512);
 // nothing like a heart. A halo was tried here and measured against the real
 // sky colour: the magnet's cool-blue one was flatly invisible against
 // street.js's pale blue sky, which is the one place it would have mattered.
-export const PICKUP_MAGNET_TEXTURE = envTexture('pickup_magnet.png', 458, 512);
-export const PICKUP_LIFE_TEXTURE = envTexture('pickup_life.png', 512, 450);
+export const PICKUP_MAGNET_TEXTURE = envTexture('pickup_magnet.webp', 458, 512);
+export const PICKUP_LIFE_TEXTURE = envTexture('pickup_life.webp', 512, 450);
 
 // Per-lane elevated platform art (entities/platform.js) -- the box (walkable
 // deck) and ramp (incline) are gameplay props like BARRICADE_TEXTURE above,
@@ -102,8 +102,8 @@ export const PICKUP_LIFE_TEXTURE = envTexture('pickup_life.png', 512, 450);
 // vertical axis before saving (the horizontal-plank / horizontal-stripe
 // motifs both repeat cleanly; an earlier diagonal-stripe ramp attempt was
 // discarded for showing a visible phase-mismatch seam when tiled).
-export const PLATFORM_BOX_TEXTURE = envTexture('platform_box.png', 640, 640);
-export const PLATFORM_RAMP_TEXTURE = envTexture('platform_ramp.png', 480, 640);
+export const PLATFORM_BOX_TEXTURE = envTexture('platform_box.webp', 640, 640);
+export const PLATFORM_RAMP_TEXTURE = envTexture('platform_ramp.webp', 480, 640);
 
 // SCRAP-BOT SKIN, POC: this pool used to spawn a Foot Clan grunt ("Foot
 // Soldier") -- combat doesn't fit a non-fighting collector hero. First
@@ -126,16 +126,16 @@ export const PLATFORM_RAMP_TEXTURE = envTexture('platform_ramp.png', 480, 640);
 // proportions -- only the core glow color differs. Earlier art archived at
 // art/final/alt/foot_soldier_*_v1_soldier.png (original grunt) and
 // _v2_chest.png (the rejected chest).
-export const FOOT_SOLDIER_TEXTURE = envTexture('foot_soldier_0.png', 2028, 2028); // purple glow
+export const FOOT_SOLDIER_TEXTURE = envTexture('foot_soldier_0.webp', 2028, 2028); // purple glow
 
 // Same lineage/style as FOOT_SOLDIER_TEXTURE (one batch generation, not
 // four independent ones -- avoids one variant drifting off-model), each
 // with a different core-glow color matching this type's own poof-color
 // family in data/enemyTypes.js, for a real feeling of variety, not just a
 // single reused prop.
-export const FOOT_SOLDIER_SWORD_TEXTURE = envTexture('foot_soldier_sword.png', 2028, 2028); // red
-export const FOOT_SOLDIER_NUNCHAKU_TEXTURE = envTexture('foot_soldier_nunchaku.png', 2028, 2028); // green
-export const FOOT_SOLDIER_STAFF_TEXTURE = envTexture('foot_soldier_staff.png', 2028, 2028); // teal
+export const FOOT_SOLDIER_SWORD_TEXTURE = envTexture('foot_soldier_sword.webp', 2028, 2028); // red
+export const FOOT_SOLDIER_NUNCHAKU_TEXTURE = envTexture('foot_soldier_nunchaku.webp', 2028, 2028); // green
+export const FOOT_SOLDIER_STAFF_TEXTURE = envTexture('foot_soldier_staff.webp', 2028, 2028); // teal
 
 export const THEMES = {
   // Bright, cheerful, semi-casual DAYLIGHT palette per direct playtest
@@ -170,7 +170,7 @@ export const THEMES = {
   // this session. Original pre-fix pair archived at art/final/alt/
   // facade_a_v1_original.png / facade_b_v1_original.png.
   sunnyStreet: {
-    street: envTexture('street_tex.png', 576, 768),
+    street: envTexture('street_tex.webp', 576, 768),
     // Two facade variants -- alternated across building instances by index
     // for cheap variety without generating a full per-building library (§2
     // "keep art generation minimal" instinct). bodyColor is each facade's own
@@ -178,8 +178,8 @@ export const THEMES = {
     // generic (previously purple, explicitly flagged as looking
     // "procedurally generated") placeholder color.
     facades: [
-      { tex: envTexture('facade_a.png', 1342, 1514), bodyColor: 0x95624d }, // red-brick tenement, floral mural, vertical fire-escape ladder
-      { tex: envTexture('facade_b.png', 1304, 1517), bodyColor: 0x957547 }, // golden-yellow book-and-gift shopfront, icon-only signage
+      { tex: envTexture('facade_a.webp', 1342, 1514), bodyColor: 0x95624d }, // red-brick tenement, floral mural, vertical fire-escape ladder
+      { tex: envTexture('facade_b.webp', 1304, 1517), bodyColor: 0x957547 }, // golden-yellow book-and-gift shopfront, icon-only signage
     ],
     // Distant skyline matte painting -- fog-immune (material.fog = false,
     // set in street.js) so it stays fully visible at that distance, the same
@@ -189,7 +189,7 @@ export const THEMES = {
     // daylight foreground, reading as an ominous burning-city backdrop
     // rather than depth/atmosphere.
     //
-    // Was skyline.png (centralCity's own backdrop, reused) until direct
+    // Was skyline.webp (centralCity's own backdrop, reused) until direct
     // feedback -- tier 3 was showing the exact same skyline the player
     // already saw at tier 1. Replaced with a skyline of its own: warm
     // brick/brownstone low-rise rooftops and water towers matching this
@@ -199,7 +199,7 @@ export const THEMES = {
     // and saturated, background fading to a hazy blue-grey downtown
     // silhouette) applying the depth lesson harborDocks' skyline fix
     // learned. Alt candidate archived at art/final/alt/skyline_sunny_v1_alt.png.
-    skyline: envTexture('skyline_sunny.png', 3168, 1344),
+    skyline: envTexture('skyline_sunny.webp', 3168, 1344),
     buildingProfile: {
       widthCycle: [6, 7, 8], // building width (along the street) cycles through these
       depth: 8, // building depth (perpendicular to the street)
@@ -261,7 +261,7 @@ export const THEMES = {
   //   dropping one of the two fixes. The final assets were built by chaining
   //   two independently-verified single-fix edits.
   centralCity: {
-    street: envTexture('street_tex.png', 576, 768), // TODO: dedicated downtown avenue texture
+    street: envTexture('street_tex.webp', 576, 768), // TODO: dedicated downtown avenue texture
     // 2 -> 4 facades, direct feedback after playtesting the fix pass: "I think
     // maybe we need a bit more variation inside the theme." With only 2 facades
     // cycling across 18 buildings per side, each one repeated 9 TIMES down a
@@ -287,12 +287,12 @@ export const THEMES = {
     // the convention remains a per-batch check, not something the model can be
     // trusted to hold from an instruction alone.
     facades: [
-      { tex: envTexture('facade_c1.png', 2048, 2048), bodyColor: 0x886255 }, // red-brick walk-up over a green shopfront + graffiti shutter
-      { tex: envTexture('facade_c2.png', 2048, 2048), bodyColor: 0x968569 }, // mustard commercial block over a diner, neon marquee
-      { tex: envTexture('facade_c3.png', 1052, 1350), bodyColor: 0x6f7272 }, // blue-grey walk-up over a bodega/fruit-stand + sticker gate
-      { tex: envTexture('facade_c4.png', 1243, 1351), bodyColor: 0x5b5950 }, // charcoal-brass block over a laundromat, rooftop AC units
+      { tex: envTexture('facade_c1.webp', 2048, 2048), bodyColor: 0x886255 }, // red-brick walk-up over a green shopfront + graffiti shutter
+      { tex: envTexture('facade_c2.webp', 2048, 2048), bodyColor: 0x968569 }, // mustard commercial block over a diner, neon marquee
+      { tex: envTexture('facade_c3.webp', 1052, 1350), bodyColor: 0x6f7272 }, // blue-grey walk-up over a bodega/fruit-stand + sticker gate
+      { tex: envTexture('facade_c4.webp', 1243, 1351), bodyColor: 0x5b5950 }, // charcoal-brass block over a laundromat, rooftop AC units
     ],
-    skyline: envTexture('skyline.png', 1600, 906), // reused -- already a fitting daylight city skyline
+    skyline: envTexture('skyline.webp', 1600, 906), // reused -- already a fitting daylight city skyline
     buildingProfile: {
       // widthCycle is the FRONTAGE along the street -- the span of the wall the
       // player actually looks at (see street.js's axis note; this field used to
@@ -335,12 +335,12 @@ export const THEMES = {
   // DIFFERENT ON EVERY AXIS a runner actually sees, not just the facades:
   //   - GROUND: weathered wood dock planking + a cracked concrete quay,
   //     rope-and-cleat trim -- centralCity/sunnyStreet both use the same
-  //     cream-paver sidewalk + grey asphalt street_tex.png (a real
+  //     cream-paver sidewalk + grey asphalt street_tex.webp (a real
   //     leftover placeholder, still marked TODO on centralCity above). The
   //     ground plane is in frame every single frame, so reusing it here would
   //     have undercut "really different" more than any facade choice could.
   //   - SKYLINE: cargo cranes, a container ship, a striped lighthouse --
-  //     replacing both themes' shared downtown skyline.png.
+  //     replacing both themes' shared downtown skyline.webp.
   //   - PALETTE: weathered teal, rust-orange, driftwood tan, deep navy --
   //     a genuinely different hue family from centralCity's brick/mustard/
   //     charcoal and sunnyStreet's red-brick/golden-yellow.
@@ -353,7 +353,7 @@ export const THEMES = {
   // Same locked daylight mood as both other themes (never re-litigated) --
   // "different" is carried by palette and material language, not time of day.
   harborDocks: {
-    street: envTexture('street_harbor.png', 1792, 2400),
+    street: envTexture('street_harbor.webp', 1792, 2400),
     // 2752x1265 -> 3136x1344 with the atmospheric-depth pass below -- dims
     // here MUST track the actual file exactly or street.js's skyline plane
     // (SKYLINE_WIDTH is a fixed world-unit constant, height derived from
@@ -367,7 +367,7 @@ export const THEMES = {
     // caught via screenshot. PASS 2 fixed it by passing aspect_ratio:
     // "auto" instead (preserves the source's own shape) rather than trying
     // to hand-pick a matching preset.
-    skyline: envTexture('skyline_harbor.png', 3136, 1344),
+    skyline: envTexture('skyline_harbor.webp', 3136, 1344),
     // ATMOSPHERIC DEPTH PASS (direct feedback): "I need to feel a little bit
     // more in the distance. I have too much big details over there. It
     // feels like I'm about to reach it." The crane/ship/warehouse cluster
@@ -424,8 +424,8 @@ export const THEMES = {
     // extend the existing clapboard siding into the white area only,
     // nothing else touched. Archived: art/final/alt/facade_h2_v4_topright_whitegap.png.
     facades: [
-      { tex: envTexture('facade_h1.png', 2048, 2048), bodyColor: 0x69746c }, // teal corrugated-metal cargo warehouse, roll-up door, portholes
-      { tex: envTexture('facade_h2.png', 2048, 2048), bodyColor: 0x8b8884 }, // weathered clapboard harbor-master shack, lighthouse cupola, bait counter
+      { tex: envTexture('facade_h1.webp', 2048, 2048), bodyColor: 0x69746c }, // teal corrugated-metal cargo warehouse, roll-up door, portholes
+      { tex: envTexture('facade_h2.webp', 2048, 2048), bodyColor: 0x8b8884 }, // weathered clapboard harbor-master shack, lighthouse cupola, bait counter
     ],
     buildingProfile: {
       // A 5-value cycle against only 2 facades (not the 4 centralCity has) --
@@ -482,11 +482,11 @@ export const THEMES = {
   // trying later; the art files it references (facade_s1/s2, street_subway,
   // skyline_subway) are likewise still on disk, just orphaned.
   subwayPlatform: {
-    street: envTexture('street_subway.png', 1792, 2400),
-    skyline: envTexture('skyline_subway.png', 2752, 1536),
+    street: envTexture('street_subway.webp', 1792, 2400),
+    skyline: envTexture('skyline_subway.webp', 2752, 1536),
     facades: [
-      { tex: envTexture('facade_s1.png', 1316, 1438), bodyColor: 0x5e6d58 }, // teal/cream mosaic tile bay, riveted mustard support pillar, tunnel arch
-      { tex: envTexture('facade_s2.png', 1316, 1438), bodyColor: 0x727060 }, // turnstiles + newsstand kiosk, cream/green tile, flat striped overhang
+      { tex: envTexture('facade_s1.webp', 1316, 1438), bodyColor: 0x5e6d58 }, // teal/cream mosaic tile bay, riveted mustard support pillar, tunnel arch
+      { tex: envTexture('facade_s2.webp', 1316, 1438), bodyColor: 0x727060 }, // turnstiles + newsstand kiosk, cream/green tile, flat striped overhang
     ],
     buildingProfile: {
       widthCycle: [16, 20, 14, 18, 22], // 5 values against 2 facades, same anti-lockstep reasoning as harborDocks
@@ -522,11 +522,11 @@ export const THEMES = {
   // TIER_THEMES. Kept for the same reason; art files (facade_r1/r2,
   // street_rooftop, skyline_rooftop) are likewise orphaned on disk.
   rooftopBridge: {
-    street: envTexture('street_rooftop.png', 1792, 2400),
-    skyline: envTexture('skyline_rooftop.png', 2752, 1521),
+    street: envTexture('street_rooftop.webp', 1792, 2400),
+    skyline: envTexture('skyline_rooftop.webp', 2752, 1521),
     facades: [
-      { tex: envTexture('facade_r1.png', 1324, 1481), bodyColor: 0x60797b }, // wooden water tower on X-braced legs, vertical ladder, pigeon coop
-      { tex: envTexture('facade_r2.png', 1428, 1536), bodyColor: 0x77878d }, // rooftop mechanical shed, HVAC unit, small abstract graffiti mural, flat safety railing
+      { tex: envTexture('facade_r1.webp', 1324, 1481), bodyColor: 0x60797b }, // wooden water tower on X-braced legs, vertical ladder, pigeon coop
+      { tex: envTexture('facade_r2.webp', 1428, 1536), bodyColor: 0x77878d }, // rooftop mechanical shed, HVAC unit, small abstract graffiti mural, flat safety railing
     ],
     buildingProfile: {
       widthCycle: [14, 20, 11, 17, 15], // 5 values against 2 facades, same anti-lockstep reasoning as the other themes
@@ -579,8 +579,8 @@ export const THEMES = {
   // theme's own note: the ground plane is in frame every frame, and the
   // skyline needs to actually look like a forest horizon, not a street's.
   funkyForest: {
-    street: envTexture('street_forest.png', 1792, 2400),
-    skyline: envTexture('skyline_forest.png', 3168, 1344),
+    street: envTexture('street_forest.webp', 1792, 2400),
+    skyline: envTexture('skyline_forest.webp', 3168, 1344),
     // Two forest-cabin wall facades -- same one-generation-call-then-split
     // technique as every other theme's paired facades (avoids one variant
     // drifting off-model against the other), this time split top/bottom
@@ -599,8 +599,8 @@ export const THEMES = {
     // this time by sampling every ~20 rows for a stray near-white column
     // before shipping, not just spot-checking one row.
     facades: [
-      { tex: envTexture('facade_f1.png', 1722, 1130), bodyColor: 0xb07a3e }, // warm honey-brown plank wall, teal glowing mushrooms/moss
-      { tex: envTexture('facade_f2.png', 1722, 1130), bodyColor: 0x8c887e }, // cool weathered-grey plank wall, magenta glowing mushrooms/moss
+      { tex: envTexture('facade_f1.webp', 1722, 1130), bodyColor: 0xb07a3e }, // warm honey-brown plank wall, teal glowing mushrooms/moss
+      { tex: envTexture('facade_f2.webp', 1722, 1130), bodyColor: 0x8c887e }, // cool weathered-grey plank wall, magenta glowing mushrooms/moss
     ],
     buildingProfile: {
       // Wider variety and looser gaps than a tidy city block, but still
@@ -647,11 +647,11 @@ export const THEMES = {
   // margin, not just buildings filling the frame) crop of it yielded. Old
   // too-big version archived at art/final/alt/skyline_warehouse_v1_toobig.png.
   warehouse: {
-    street: envTexture('street_warehouse.png', 1792, 2400),
-    skyline: envTexture('skyline_warehouse.png', 2048, 868),
+    street: envTexture('street_warehouse.webp', 1792, 2400),
+    skyline: envTexture('skyline_warehouse.webp', 2048, 868),
     facades: [
-      { tex: envTexture('facade_w1.png', 1780, 1188), bodyColor: 0x8f97a0 }, // galvanized steel-grey corrugated panel, rust-orange crate stacks
-      { tex: envTexture('facade_w2.png', 1780, 1188), bodyColor: 0xd8c49a }, // warm tan/cream corrugated panel, blue crate stacks
+      { tex: envTexture('facade_w1.webp', 1780, 1188), bodyColor: 0x8f97a0 }, // galvanized steel-grey corrugated panel, rust-orange crate stacks
+      { tex: envTexture('facade_w2.webp', 1780, 1188), bodyColor: 0xd8c49a }, // warm tan/cream corrugated panel, blue crate stacks
     ],
     buildingProfile: {
       // Wide, blocky warehouse proportions -- wider average than
@@ -698,11 +698,11 @@ export const THEMES = {
   // cropping as every facade since the funkyForest lesson. Original
   // too-saturated pass archived at art/final/alt/facade_wb{1,2}_v1_toocolorful.png.
   warehouseRoof: {
-    street: envTexture('street_warehouse.png', 1792, 2400),
-    skyline: envTexture('skyline_warehouse_roof.png', 3168, 1344),
+    street: envTexture('street_warehouse.webp', 1792, 2400),
+    skyline: envTexture('skyline_warehouse_roof.webp', 3168, 1344),
     facades: [
-      { tex: envTexture('facade_wb1.png', 2036, 1012), bodyColor: 0x9aa3ac }, // muted cool box pile: dusty blue-grey, tan
-      { tex: envTexture('facade_wb2.png', 2036, 1012), bodyColor: 0xb08c5e }, // muted warm box pile: tan, weathered wood, mustard
+      { tex: envTexture('facade_wb1.webp', 2036, 1012), bodyColor: 0x9aa3ac }, // muted cool box pile: dusty blue-grey, tan
+      { tex: envTexture('facade_wb2.webp', 2036, 1012), bodyColor: 0xb08c5e }, // muted warm box pile: tan, weathered wood, mustard
     ],
     buildingProfile: {
       widthCycle: [20, 28, 17, 24, 22],
@@ -725,7 +725,7 @@ export const THEMES = {
   // Street art, round 1, was rejected before shipping: the first generation
   // came back as a vertical wall-panel texture, not the top-down
   // center-lane-plus-side-border ground texture every other theme's street
-  // asset actually is (see street_warehouse.png/street_harbor.png for the
+  // asset actually is (see street_warehouse.webp/street_harbor.webp for the
   // convention -- flanking border treatment framing a walkable center
   // lane). Regenerated correctly as a top-down chrome/concrete walkway with
   // a glowing cyan center strip and grated, hazard-striped side borders.
@@ -737,11 +737,11 @@ export const THEMES = {
   // each (10.1% / 0.9%) is legitimate glowing-porthole/light-panel content,
   // not gap.
   spaceCity: {
-    street: envTexture('street_space.png', 896, 1200),
-    skyline: envTexture('skyline_space.png', 3168, 1344),
+    street: envTexture('street_space.webp', 896, 1200),
+    skyline: envTexture('skyline_space.webp', 3168, 1344),
     facades: [
-      { tex: envTexture('facade_sp1.png', 1792, 1200), bodyColor: 0xaab4d6 }, // cool chrome/lavender panel wall, cyan glowing portholes, satellite dish
-      { tex: envTexture('facade_sp2.png', 1792, 1200), bodyColor: 0x8f8a80 }, // warm grey panel wall, amber glowing portholes, magenta trim piping
+      { tex: envTexture('facade_sp1.webp', 1792, 1200), bodyColor: 0xaab4d6 }, // cool chrome/lavender panel wall, cyan glowing portholes, satellite dish
+      { tex: envTexture('facade_sp2.webp', 1792, 1200), bodyColor: 0x8f8a80 }, // warm grey panel wall, amber glowing portholes, magenta trim piping
     ],
     buildingProfile: {
       // Narrower frontage than centralCity's storefronts, taller than
