@@ -31,11 +31,11 @@ export const ASSET_MANIFEST = {
   // compresses to nothing, and JPEG ringing in a black field would show up as
   // haze under additive blending.
   surfaceAshfallBase: 'assets/surface-ashfall-base.jpg',
-  surfaceAshfallGlow: 'assets/surface-ashfall-glow.png',
+  surfaceAshfallGlow: 'assets/surface-ashfall-glow.webp',
   surfaceKesselringBase: 'assets/surface-kesselring-base.jpg',
-  surfaceKesselringGlow: 'assets/surface-kesselring-glow.png',
+  surfaceKesselringGlow: 'assets/surface-kesselring-glow.webp',
   surfaceBulwarkBase: 'assets/surface-bulwark-base.jpg',
-  surfaceBulwarkGlow: 'assets/surface-bulwark-glow.png',
+  surfaceBulwarkGlow: 'assets/surface-bulwark-glow.webp',
   // §5.4 #5, The Hive Plate -- the fourth surface. Its glow layer is nearly
   // empty (0.13% of frame area against Ashfall's 1.17%), which is the art
   // telling the truth about the place: hive matter is lit by what is buried in
@@ -46,110 +46,110 @@ export const ASSET_MANIFEST = {
   // contribute. The files exist so the renderer's per-surface glow lookup does
   // not need a special case.
   surfaceSkyfieldBase: 'assets/surface-skyfield-base.jpg',
-  surfaceSkyfieldGlow: 'assets/surface-skyfield-glow.png',
+  surfaceSkyfieldGlow: 'assets/surface-skyfield-glow.webp',
   surfaceGlacisBase: 'assets/surface-glacis-base.jpg',
-  surfaceGlacisGlow: 'assets/surface-glacis-glow.png',
-  shipLevel: 'assets/ship-level.png',
-  shipRollL: 'assets/ship-roll-l.png',
-  shipRollR: 'assets/ship-roll-r.png',
+  surfaceGlacisGlow: 'assets/surface-glacis-glow.webp',
+  shipLevel: 'assets/ship-level.webp',
+  shipRollL: 'assets/ship-roll-l.webp',
+  shipRollR: 'assets/ship-roll-r.webp',
   // Air enemies (§6.2). One image per body, rotated at runtime to heading.
-  drone: 'assets/enemy-drone.png',
-  emitter: 'assets/enemy-emitter.png',
+  drone: 'assets/enemy-drone.webp',
+  emitter: 'assets/enemy-emitter.webp',
   // Level two's two types (§6.2). Chromatically separated from everything
   // already on the playfield: crimson and bone-ivory against the player's
   // blue-and-white, the drone's purple and the Emitter's acid jade.
-  warden: 'assets/enemy-warden.png',
-  splitter: 'assets/enemy-splitter.png',
+  warden: 'assets/enemy-warden.webp',
+  splitter: 'assets/enemy-splitter.webp',
   // §6.2's 2 HP tier, and the answer to playtest round 5's only art note. It is
   // the drone's own violet faction seen UP-ARMOURED -- bolted gunmetal plate
   // over a violet core -- because the tier language in this game is armour, and
   // a wholly new hue would have said "different job" rather than "same job,
   // tougher". See the HP-tier rule above ENEMY in /data/tuning.js.
-  lancer: 'assets/enemy-lancer.png',
+  lancer: 'assets/enemy-lancer.webp',
   // THE CRAFT RIMS (ENEMY.rim). One per craft, cut from that craft's own alpha
   // by art/build_assets.py rather than authored -- so adding an enemy adds its
   // rim, and there is no step anyone can forget. Drawn additively BEHIND the
   // hull in the type's family colour; see the note on ENEMY.rim for why an
   // alpha-derived silhouette is the only version of this that works on a dark
   // craft.
-  droneRim: 'assets/enemy-drone-rim.png',
-  emitterRim: 'assets/enemy-emitter-rim.png',
-  wardenRim: 'assets/enemy-warden-rim.png',
-  splitterRim: 'assets/enemy-splitter-rim.png',
-  lancerRim: 'assets/enemy-lancer-rim.png',
-  bolt: 'assets/proj-player-bolt.png',
+  droneRim: 'assets/enemy-drone-rim.webp',
+  emitterRim: 'assets/enemy-emitter-rim.webp',
+  wardenRim: 'assets/enemy-warden-rim.webp',
+  splitterRim: 'assets/enemy-splitter-rim.webp',
+  lancerRim: 'assets/enemy-lancer-rim.webp',
+  bolt: 'assets/proj-player-bolt.webp',
   // The pickup weapon's round (WEAPONS.scatter). Cyan-white like every other
   // player projectile -- §5.4's ownership coding admits no exceptions, so a
   // temporary weapon changes shape and never side.
-  spread: 'assets/proj-player-spread.png',
-  boltRapid: 'assets/proj-player-rapid.png',
+  spread: 'assets/proj-player-spread.webp',
+  boltRapid: 'assets/proj-player-rapid.webp',
   // The three additional pickup weapons (WEAPONS). Each shape IS its weapon's
   // behaviour rather than decoration: a needle that goes through, a finned
   // missile that steers, a crescent shockwave with no reach. All cyan-white --
   // §5.4's ownership coding admits no exceptions.
-  lance: 'assets/proj-player-lance.png',
-  swarm: 'assets/proj-player-swarm.png',
-  flak: 'assets/proj-player-flak.png',
-  orb: 'assets/proj-enemy-orb.png',
+  lance: 'assets/proj-player-lance.webp',
+  swarm: 'assets/proj-player-swarm.webp',
+  flak: 'assets/proj-player-flak.webp',
+  orb: 'assets/proj-enemy-orb.webp',
   // The frangible orb (BULLET.frangible) is a SEPARATE TEXTURE, not the orb
   // tinted: shape is the axis that reads at speed and in peripheral vision,
   // and a recolour of one silhouette cannot carry it.
-  orbShard: 'assets/proj-enemy-shard.png',
+  orbShard: 'assets/proj-enemy-shard.webp',
   // The canisters (§5.6). One per weapon: the same casing with a different
   // emblem on the face, so which weapon is on offer can be read before the
   // player commits to crossing the frame for it. Spun and pulsed at runtime
   // from one static sprite each, exactly as §5.6 requires.
-  pickupRapid: 'assets/pickup-rapid.png',
-  pickupBarrier: 'assets/pickup-barrier.png',
-  pickupRepair: 'assets/pickup-repair.png',
-  pickupScatter: 'assets/pickup-scatter.png',
-  pickupLance: 'assets/pickup-lance.png',
-  pickupSwarm: 'assets/pickup-swarm.png',
-  pickupFlak: 'assets/pickup-flak.png',
+  pickupRapid: 'assets/pickup-rapid.webp',
+  pickupBarrier: 'assets/pickup-barrier.webp',
+  pickupRepair: 'assets/pickup-repair.webp',
+  pickupScatter: 'assets/pickup-scatter.webp',
+  pickupLance: 'assets/pickup-lance.webp',
+  pickupSwarm: 'assets/pickup-swarm.webp',
+  pickupFlak: 'assets/pickup-flak.webp',
   // Boss (§6.4): one hull + one pod + one blown pod, instanced four times.
-  bossCinderjawHull: 'assets/boss-cinderjaw-hull.png',
-  bossPod: 'assets/boss-pod.png',
-  bossPodDead: 'assets/boss-pod-dead.png',
+  bossCinderjawHull: 'assets/boss-cinderjaw-hull.webp',
+  bossPod: 'assets/boss-pod.webp',
+  bossPodDead: 'assets/boss-pod-dead.webp',
   // Boss two -- Brood Gantry. One hull plus THREE bay states, because the
   // fight's mechanic is a bay that opens and shuts: the shut state is the
   // difference between "this is armour" and "this is a target that is closed",
   // and a fight that cannot say which is the fight boss one shipped as.
-  bossBroodGantryHull: 'assets/boss-broodgantry-hull.png',
-  bossBayOpen: 'assets/boss-bay-open.png',
-  bossBayShut: 'assets/boss-bay-shut.png',
-  bossBayDead: 'assets/boss-bay-dead.png',
+  bossBroodGantryHull: 'assets/boss-broodgantry-hull.webp',
+  bossBayOpen: 'assets/boss-bay-open.webp',
+  bossBayShut: 'assets/boss-bay-shut.webp',
+  bossBayDead: 'assets/boss-bay-dead.webp',
   // Boss three -- Nadir Coil. One hull plus three segment states, the same
   // three-texture vocabulary boss two's bays use: the player already knows that
   // lit means shootable, a dark shutter means armoured and char means dead, so
   // boss three spends none of its teaching budget on re-establishing it and can
   // spend all of it on the ends rule instead (§6.4, BOSS.coil).
-  bossNadirCoilHull: 'assets/boss-nadircoil-hull.png',
-  bossVespidaeHull: 'assets/boss-vespidae-hull.png',
-  bossSac: 'assets/boss-sac.png',
-  bossSacDead: 'assets/boss-sac-dead.png',
-  bossSiegeHull: 'assets/boss-siege-hull.png',
-  bossEmplacement: 'assets/boss-emplacement.png',
-  bossEmplacementDead: 'assets/boss-emplacement-dead.png',
-  bossCoilOpen: 'assets/boss-coil-open.png',
-  bossCoilShut: 'assets/boss-coil-shut.png',
-  bossCoilDead: 'assets/boss-coil-dead.png',
+  bossNadirCoilHull: 'assets/boss-nadircoil-hull.webp',
+  bossVespidaeHull: 'assets/boss-vespidae-hull.webp',
+  bossSac: 'assets/boss-sac.webp',
+  bossSacDead: 'assets/boss-sac-dead.webp',
+  bossSiegeHull: 'assets/boss-siege-hull.webp',
+  bossEmplacement: 'assets/boss-emplacement.webp',
+  bossEmplacementDead: 'assets/boss-emplacement-dead.webp',
+  bossCoilOpen: 'assets/boss-coil-open.webp',
+  bossCoilShut: 'assets/boss-coil-shut.webp',
+  bossCoilDead: 'assets/boss-coil-dead.webp',
   // The shared damage overlay (§6.2), tinted and scaled per entity.
-  scorch: 'assets/fx-scorch.png',
+  scorch: 'assets/fx-scorch.webp',
   // Props, ONE SET PER SURFACE. Keys are named through /data/surfaces.js and
   // nothing outside /render resolves one -- so a fourth surface's props are a
   // row there plus four rows here, and no code path changes.
-  propAshfallContainer: 'assets/prop-ashfall-container.png',
-  propAshfallRock: 'assets/prop-ashfall-rock.png',
-  propAshfallWreck: 'assets/prop-ashfall-wreck.png',
-  propAshfallPipe: 'assets/prop-ashfall-pipe.png',
-  propKesselringPallet: 'assets/prop-kesselring-pallet.png',
-  propKesselringHatch: 'assets/prop-kesselring-hatch.png',
-  propKesselringRig: 'assets/prop-kesselring-rig.png',
-  propKesselringCradle: 'assets/prop-kesselring-cradle.png',
-  propBulwarkClamp: 'assets/prop-bulwark-clamp.png',
-  propBulwarkMast: 'assets/prop-bulwark-mast.png',
-  propBulwarkGrille: 'assets/prop-bulwark-grille.png',
-  propBulwarkManifold: 'assets/prop-bulwark-manifold.png',
+  propAshfallContainer: 'assets/prop-ashfall-container.webp',
+  propAshfallRock: 'assets/prop-ashfall-rock.webp',
+  propAshfallWreck: 'assets/prop-ashfall-wreck.webp',
+  propAshfallPipe: 'assets/prop-ashfall-pipe.webp',
+  propKesselringPallet: 'assets/prop-kesselring-pallet.webp',
+  propKesselringHatch: 'assets/prop-kesselring-hatch.webp',
+  propKesselringRig: 'assets/prop-kesselring-rig.webp',
+  propKesselringCradle: 'assets/prop-kesselring-cradle.webp',
+  propBulwarkClamp: 'assets/prop-bulwark-clamp.webp',
+  propBulwarkMast: 'assets/prop-bulwark-mast.webp',
+  propBulwarkGrille: 'assets/prop-bulwark-grille.webp',
+  propBulwarkManifold: 'assets/prop-bulwark-manifold.webp',
   // The Hive Plate's fixtures are GROWN rather than bolted on, which is the
   // whole reason the surface reads as a different idiom from the three before
   // it: a resin pool and a chitin ridge are the ground swelling, not objects

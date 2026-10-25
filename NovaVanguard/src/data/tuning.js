@@ -3362,7 +3362,7 @@ export const BOSS = {
 
   // The hull's DAMAGE-TAKING silhouette, as a fraction of its drawn half-height.
   //
-  // Measured off the shipped art rather than guessed: boss-cinderjaw-hull.png
+  // Measured off the shipped art rather than guessed: boss-cinderjaw-hull.webp
   // is a lens whose body runs to |ny| = 0.72 of the texture, with a narrow
   // central mast carrying on to the texture edge. The old test used the full
   // rect, so a bolt could "deflect" in empty space up to 69px below the visible
