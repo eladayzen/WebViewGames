@@ -40,9 +40,9 @@ import {
 // Active-buff chips (ooze/shield/magnet). Static icon URLs -- Vite only
 // bundles new URL(import.meta.url) with a literal path, not a template.
 const BUFF_ICON_URLS = {
-  ooze: new URL('../assets/ooze_canister.png', import.meta.url).href,
-  shield: new URL('../assets/powerup_shield.png', import.meta.url).href,
-  magnet: new URL('../assets/powerup_magnet.png', import.meta.url).href,
+  ooze: new URL('../assets/ooze_canister.webp', import.meta.url).href,
+  shield: new URL('../assets/powerup_shield.webp', import.meta.url).href,
+  magnet: new URL('../assets/powerup_magnet.webp', import.meta.url).href,
 };
 
 // Intro tutorial step 1's item icons -- the real gameplay sprites (pizza +
@@ -50,11 +50,11 @@ const BUFF_ICON_URLS = {
 // falls," not a generic icon (same principle the reference pattern used).
 const INTRO_GOOD_ICON_URLS = {
   pizza: INTRO_PRIMARY_GOOD_URL, // theme-provided: an idol (original) or the pizza slice (TMNT)
-  shield: new URL('../assets/powerup_shield.png', import.meta.url).href,
-  magnet: new URL('../assets/powerup_magnet.png', import.meta.url).href,
-  wave: new URL('../assets/powerup_wave.png', import.meta.url).href,
+  shield: new URL('../assets/powerup_shield.webp', import.meta.url).href,
+  magnet: new URL('../assets/powerup_magnet.webp', import.meta.url).href,
+  wave: new URL('../assets/powerup_wave.webp', import.meta.url).href,
 };
-const INTRO_BOMB_ICON_URL = new URL('../assets/bomb.png', import.meta.url).href;
+const INTRO_BOMB_ICON_URL = new URL('../assets/bomb.webp', import.meta.url).href;
 
 // Step 2 plays the character's REAL run-cycle while it sweeps, not a static
 // pose. Built from player.js's exported RUN_CYCLE_KEYS (the single source of
@@ -74,16 +74,16 @@ const BOX_ICON_URLS = {
   ...THEME_BOX_ICON_URLS,
   // The bomb-kill set reuses the box-completion celebration with a bomb icon
   // (theme-neutral, stays here).
-  bombsquad: new URL('../assets/bomb.png', import.meta.url).href,
+  bombsquad: new URL('../assets/bomb.webp', import.meta.url).href,
 };
 
 // Booster reveal art/labels for the box-completion popup, keyed by the reward
 // effect (see data/boxColors.js). The earned booster is shown BIG below the
 // bonus so it reads as the important payoff (2026-08-02). 'wave' = "blow up".
 const BOOSTER_INFO = {
-  shield: { url: new URL('../assets/powerup_shield.png', import.meta.url).href, label: 'SHIELD', hex: '#4CE05A' },
-  magnet: { url: new URL('../assets/powerup_magnet.png', import.meta.url).href, label: 'MAGNET', hex: '#F84FA0' },
-  wave: { url: new URL('../assets/powerup_wave.png', import.meta.url).href, label: 'BLOW UP', hex: '#FF8A2E' },
+  shield: { url: new URL('../assets/powerup_shield.webp', import.meta.url).href, label: 'SHIELD', hex: '#4CE05A' },
+  magnet: { url: new URL('../assets/powerup_magnet.webp', import.meta.url).href, label: 'MAGNET', hex: '#F84FA0' },
+  wave: { url: new URL('../assets/powerup_wave.webp', import.meta.url).href, label: 'BLOW UP', hex: '#FF8A2E' },
 };
 
 // Up to this many box-completion celebrations can show at once so two boxes
@@ -391,7 +391,7 @@ export function createUI() {
     const graphic = document.createElement('div');
     graphic.className = 'box-graphic';
 
-    const bombUrl = new URL('../assets/bomb.png', import.meta.url).href;
+    const bombUrl = new URL('../assets/bomb.webp', import.meta.url).href;
     const ghost = document.createElement('img');
     ghost.className = 'box-ghost';
     ghost.src = bombUrl;

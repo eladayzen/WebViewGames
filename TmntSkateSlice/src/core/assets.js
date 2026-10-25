@@ -33,25 +33,25 @@ const MANIFEST = {
   ...HERO_SPRITES,
   ...COLLECTIBLE_MANIFEST,
 
-  pizza_slice: new URL('../assets/pizza_slice.png', import.meta.url).href,
-  ooze_canister: new URL('../assets/ooze_canister.png', import.meta.url).href,
-  bomb: new URL('../assets/bomb.png', import.meta.url).href,
-  heart: new URL('../assets/heart.png', import.meta.url).href, // extra-life pickup (systems/heartDrop.js)
+  pizza_slice: new URL('../assets/pizza_slice.webp', import.meta.url).href,
+  ooze_canister: new URL('../assets/ooze_canister.webp', import.meta.url).href,
+  bomb: new URL('../assets/bomb.webp', import.meta.url).href,
+  heart: new URL('../assets/heart.webp', import.meta.url).href, // extra-life pickup (systems/heartDrop.js)
 
   // Special-ability pickups (progression update, 2026-07-30). ooze_canister
   // above is recolored green->cyan; these 3 are new icons.
-  powerup_shield: new URL('../assets/powerup_shield.png', import.meta.url).href,
-  powerup_wave: new URL('../assets/powerup_wave.png', import.meta.url).href,
-  powerup_magnet: new URL('../assets/powerup_magnet.png', import.meta.url).href,
+  powerup_shield: new URL('../assets/powerup_shield.webp', import.meta.url).href,
+  powerup_wave: new URL('../assets/powerup_wave.webp', import.meta.url).href,
+  powerup_magnet: new URL('../assets/powerup_magnet.webp', import.meta.url).href,
 
-  bg_rooftop: new URL('../assets/bg_rooftop.png', import.meta.url).href,
-  bg_fire_escape: new URL('../assets/bg_fire_escape.png', import.meta.url).href,
-  bg_alley: new URL('../assets/bg_alley.png', import.meta.url).href,
-  bg_subway: new URL('../assets/bg_subway.png', import.meta.url).href,
-  bg_sewer: new URL('../assets/bg_sewer.png', import.meta.url).href,
-  bg_neon_street: new URL('../assets/bg_neon_street.png', import.meta.url).href,
-  bg_warehouse: new URL('../assets/bg_warehouse.png', import.meta.url).href,
-  bg_docks: new URL('../assets/bg_docks.png', import.meta.url).href,
+  bg_rooftop: new URL('../assets/bg_rooftop.webp', import.meta.url).href,
+  bg_fire_escape: new URL('../assets/bg_fire_escape.webp', import.meta.url).href,
+  bg_alley: new URL('../assets/bg_alley.webp', import.meta.url).href,
+  bg_subway: new URL('../assets/bg_subway.webp', import.meta.url).href,
+  bg_sewer: new URL('../assets/bg_sewer.webp', import.meta.url).href,
+  bg_neon_street: new URL('../assets/bg_neon_street.webp', import.meta.url).href,
+  bg_warehouse: new URL('../assets/bg_warehouse.webp', import.meta.url).href,
+  bg_docks: new URL('../assets/bg_docks.webp', import.meta.url).href,
 };
 
 function loadOne(src) {

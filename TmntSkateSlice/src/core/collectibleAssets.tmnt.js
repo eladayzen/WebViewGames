@@ -7,11 +7,11 @@
 // chips keep the dedicated colored-cardboard box art. Net effect: the TMNT
 // build renders exactly as it did before this split (verified by diffing the
 // built dist/ output).
-const pizzaBox = new URL('../assets/pizza_box.png', import.meta.url).href;
-const pizzaBoxBlue = new URL('../assets/pizza_box_blue.png', import.meta.url).href;
-const pizzaBoxPurple = new URL('../assets/pizza_box_purple.png', import.meta.url).href;
-const pizzaBoxRed = new URL('../assets/pizza_box_red.png', import.meta.url).href;
-const pizzaSlice = new URL('../assets/pizza_slice.png', import.meta.url).href;
+const pizzaBox = new URL('../assets/pizza_box.webp', import.meta.url).href;
+const pizzaBoxBlue = new URL('../assets/pizza_box_blue.webp', import.meta.url).href;
+const pizzaBoxPurple = new URL('../assets/pizza_box_purple.webp', import.meta.url).href;
+const pizzaBoxRed = new URL('../assets/pizza_box_red.webp', import.meta.url).href;
+const pizzaSlice = new URL('../assets/pizza_slice.webp', import.meta.url).href;
 
 // pizza_slice is already in core/assets.js's base MANIFEST, so nothing extra
 // to add for the canvas image loader here.
@@ -55,7 +55,7 @@ export function bonusWaveTitle() {
 // center-cropped, exactly as it shipped (positions stay 'center'). Kept out of
 // shared CSS so the non-TMNT build never references this art (ui.js sets these
 // as CSS vars; style.css reads them).
-export const STAGE_CURTAIN_LEFT_URL = new URL('../assets/stage_curtain_left.png', import.meta.url).href;
-export const STAGE_CURTAIN_RIGHT_URL = new URL('../assets/stage_curtain_right.png', import.meta.url).href;
+export const STAGE_CURTAIN_LEFT_URL = new URL('../assets/stage_curtain_left.webp', import.meta.url).href;
+export const STAGE_CURTAIN_RIGHT_URL = new URL('../assets/stage_curtain_right.webp', import.meta.url).href;
 export const STAGE_CURTAIN_LEFT_POS = 'center';
 export const STAGE_CURTAIN_RIGHT_POS = 'center';

@@ -10,10 +10,10 @@
 // pizza_slice for every tier + separate cardboard-box chips) -- see
 // collectibleAssets.tmnt.js, which maps every color back to pizza_slice so
 // the TMNT build renders exactly as before.
-const idolRegular = new URL('../assets/gem_regular.png', import.meta.url).href;
-const idolBlue = new URL('../assets/gem_blue.png', import.meta.url).href;
-const idolPurple = new URL('../assets/gem_purple.png', import.meta.url).href;
-const idolRed = new URL('../assets/gem_red.png', import.meta.url).href;
+const idolRegular = new URL('../assets/gem_regular.webp', import.meta.url).href;
+const idolBlue = new URL('../assets/gem_blue.webp', import.meta.url).href;
+const idolPurple = new URL('../assets/gem_purple.webp', import.meta.url).href;
+const idolRed = new URL('../assets/gem_red.webp', import.meta.url).href;
 
 // Merged into core/assets.js's canvas image MANIFEST. Keyed by the sprite
 // keys the falling item + collect-flyer look up at render time.
@@ -67,7 +67,7 @@ export function bonusWaveTitle() {
 // middle, so each half is edge-pinned toward the seam (left panel -> right,
 // right panel -> left) so the centered motif reunites when the panels meet.
 // ui.js sets these as CSS vars on the panels; style.css reads them.
-export const STAGE_CURTAIN_LEFT_URL = new URL('../assets/stage_curtain_rn_left.png', import.meta.url).href;
-export const STAGE_CURTAIN_RIGHT_URL = new URL('../assets/stage_curtain_rn_right.png', import.meta.url).href;
+export const STAGE_CURTAIN_LEFT_URL = new URL('../assets/stage_curtain_rn_left.webp', import.meta.url).href;
+export const STAGE_CURTAIN_RIGHT_URL = new URL('../assets/stage_curtain_rn_right.webp', import.meta.url).href;
 export const STAGE_CURTAIN_LEFT_POS = 'right center';
 export const STAGE_CURTAIN_RIGHT_POS = 'left center';

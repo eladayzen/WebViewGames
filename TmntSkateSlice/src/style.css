@@ -1309,7 +1309,7 @@ html, body {
 .intro-board {
   width: 140px;
   aspect-ratio: 358 / 266;
-  background-image: url('./assets/gobalance_horizontal_board.png');
+  background-image: url('./assets/gobalance_horizontal_board.webp');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
