@@ -2,10 +2,10 @@
 // in-run billboard; hit is the game-over pose swapped in by main.js when
 // the run ends (§6: "game-over pose"). Both generated against the same
 // style anchor via Kolbo -- see STYLE.md.
-export const PLAYER_SPRITE_URL = new URL('../assets/raph_ride.png', import.meta.url).href;
-export const PLAYER_HIT_SPRITE_URL = new URL('../assets/raph_hit.png', import.meta.url).href;
+export const PLAYER_SPRITE_URL = new URL('../assets/raph_ride.webp', import.meta.url).href;
+export const PLAYER_HIT_SPRITE_URL = new URL('../assets/raph_hit.webp', import.meta.url).href;
 export const PLAYER_PLACEHOLDER_COLOR = 0xff5a3c;
-// Natural aspect (height / width) of raph_ride.png (388x511 -- new locked
+// Natural aspect (height / width) of raph_ride.webp (388x511 -- new locked
 // back-view skater pose, §"changing the character" plan), so the billboard
 // doesn't stretch the art.
 export const PLAYER_ASPECT = 511 / 388;
