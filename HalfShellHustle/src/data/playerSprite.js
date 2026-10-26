@@ -1,3 +1,4 @@
+import { assetUrl, RUN_FRAMES, JUMP_FRAMES, FRAME_ASPECT } from '@theme';
 // Leonardo's POC art (build doc §2, §6, as amended by direct playtest
 // feedback): a whole-body running cycle, viewed from behind, katana drawn
 // in hand -- matching pipeline/build-docs/laneRunnerRef.png's look/
@@ -135,21 +136,17 @@
 // holdUnits 3 on both peak-hop frames (1 and 4, the L/R mirrored pair):
 // direct request -- the airborne moment reads better held a beat longer
 // than the push-off/descend transitions around it.
-const FRAMES_RAW = [
-  { file: 'leo_run_0.webp', holdUnits: 1, yOffset: -0.05, xOffset: 0 },
-  { file: 'leo_run_1.webp', holdUnits: 3, yOffset: 0.2, xOffset: 0.1 },
-  { file: 'leo_run_2.webp', holdUnits: 1, yOffset: 0, xOffset: 0 },
-  { file: 'leo_run_3.webp', holdUnits: 1, yOffset: -0.05, xOffset: 0 },
-  { file: 'leo_run_4.webp', holdUnits: 3, yOffset: 0.2, xOffset: -0.1 },
-  { file: 'leo_run_5.webp', holdUnits: 1, yOffset: 0, xOffset: 0 },
-];
+// The cycle itself is THEME DATA -- the turtle runs on four frames and the
+// scrap-bot on six, with different holds and offsets, and mixing them would
+// put one character's pose inside the other's run. See data/theme.tmnt.js.
+const FRAMES_RAW = RUN_FRAMES;
 
 // All 4 frames share this exact canvas size (see the ONE-LINEAGE REBUILD
 // note above) -- one shared aspect ratio for the whole cycle, not per-frame.
-export const PLAYER_FRAME_ASPECT = 760 / 800;
+export const PLAYER_FRAME_ASPECT = FRAME_ASPECT;
 
 export const PLAYER_RUN_FRAMES = FRAMES_RAW.map(({ file, holdUnits, yOffset, xOffset }) => ({
-  url: new URL(`../assets/${file}`, import.meta.url).href,
+  url: assetUrl(file),
   holdUnits,
   yOffset,
   xOffset,
@@ -362,10 +359,6 @@ export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
 // divides JUMP_RISE_DURATION evenly across however many entries are here --
 // so repeating the same URL is what gives crouch-dip 2/3 of that budget
 // before leo_run_1 takes over for the last 1/3 and then holds (last entry).
-export const PLAYER_JUMP_FRAMES = [
-  { file: 'leo_jump_0.webp' }, // crouch-dip (was the run cycle's old frame 0)
-  { file: 'leo_jump_0.webp' },
-  { file: 'leo_run_1.webp' }, // peak-hop-right, held for the rest of the jump
-].map(({ file }) => ({
-  url: new URL(`../assets/${file}`, import.meta.url).href,
+export const PLAYER_JUMP_FRAMES = JUMP_FRAMES.map((file) => ({
+  url: assetUrl(file),
 }));
