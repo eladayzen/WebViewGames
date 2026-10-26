@@ -1,4 +1,3 @@
-import { assetUrl } from '@theme';
 // Environment art (build doc §0, §9.1's environment-art correction, §5.4's
 // per-block re-theming): real Kolbo-illustrated 2D textures for the street/
 // sidewalk surface, building facades, and a distant skyline matte painting --
@@ -26,11 +25,7 @@ import { assetUrl } from '@theme';
 // street-cross-section image forced onto a wide/short tile cell) is what
 // caused the smeared, distorted first pass.
 function envTexture(file, w, h) {
-  // Resolved by the THEME, not from this directory. Which pictures a build
-  // uses is the only difference between RoboRun and the TMNT game, and it is
-  // decided entirely by which theme module `@theme` is aliased to -- see
-  // data/theme.tmnt.js for the contract.
-  return { url: assetUrl(file), w, h, aspect: h / w };
+  return { url: new URL(`../assets/${file}`, import.meta.url).href, w, h, aspect: h / w };
 }
 
 // Barricade lane-blocker obstacle -- real Kolbo art matching laneRunnerRef's

@@ -1,0 +1,1542 @@
+// Renderer/scene/camera bootstrap + top-level game loop + state machine
+// (build doc §9.2, §9.3, §10 POC milestones). POC scope only: no CHASE
+// meter, no scoring, no blocks, no pizza/coin/smoke-bomb, no Foot-bot in
+// view -- a hit ends the run immediately (§2).
+
+import * as THREE from 'three';
+import '../style.css';
+// MUST be the first game import: installs window.__gbSensor/window.GoBalance
+// stand-ins before anything else (systems/boardCalibration.js in particular)
+// checks for them. No-op the instant the real host is present -- see the
+// module's own header.
+import '../systems/devSensorMock.js';
+
+import { createStreet, updateStreet, disposeStreet } from '../street/street.js';
+import {
+  createCameraRig, updateCameraRig, resetCameraRig, triggerCameraShake,
+} from '../street/camera-rig.js';
+import {
+  createPlayer, resetPlayer, setPlayerLane, startPlayerJump, startPlayerAttack, updatePlayer,
+  getPlayerHeadAnchor, setPlayerVisible, grantMagnet, isMagnetActive, triggerBlockedNudge,
+} from '../entities/player.js';
+import { createRibbon, resetRibbon, updateRibbon } from '../entities/ribbon.js';
+import {
+  createObstaclePool, resetObstaclePool, spawnObstacle, updateObstaclePool,
+} from '../entities/obstacles.js';
+import { checkObstacleHit } from '../entities/collision.js';
+import {
+  createContactShadow, pulseContactShadow, updateContactShadow, setContactShadowVisible,
+} from '../entities/contactShadow.js';
+import {
+  createEnemyPool, resetEnemyPool, spawnEnemy, updateEnemyPool, checkEnemyHit, killEnemy,
+} from '../entities/enemy.js';
+import {
+  createPlatformField, resetPlatformField, spawnPlatform, updatePlatformField,
+  checkPlatformKillBarrierHit, markPlatformCleared, isPlatformLaneBlocked,
+} from '../entities/platform.js';
+import {
+  createCoinPool, resetCoinPool, spawnCoinCluster, updateCoinPool, collectCoins, despawnCoin,
+  applyMagnetPull,
+} from '../entities/coins.js';
+import {
+  createPickupPool, resetPickupPool, spawnPickup, updatePickupPool, collectPickups, despawnPickup,
+} from '../entities/pickups.js';
+import { spawnArrivalTime, hazardSpacingMultiplierAt } from '../systems/difficulty.js';
+import { createSpawnerState, resetSpawner, updateSpawner } from '../systems/spawner.js';
+import {
+  createScoreState, resetScoreState, awardEnemyKill, awardCoin,
+  creditDisplayed, settleScore,
+} from '../systems/scoring.js';
+import {
+  initPointsFly, spawnPointsFly, updatePointsFly, clearPointsFly,
+  refreshPointsFlyTarget,
+} from '../ui/pointsFly.js';
+import {
+  progressAt, tierName, themeForTier, obstacleIntervalForTier, isFinalTierCleared,
+} from '../systems/progression.js';
+import { speedAt, distanceTraveledBy, seedDistanceAt } from '../systems/speed.js';
+import {
+  createLivesState, resetLivesState, tryHit, isInvulnerable, gainLife,
+} from '../systems/lives.js';
+import { installGbSdk } from '../systems/gbSdk.js';
+import { analytics } from '../systems/analytics.js';
+import { submitRun, fetchBoard, resultSections } from '../systems/scoreboard.js';
+import {
+  createGameState, restartToRunning, triggerGameOver, triggerLevelComplete, triggerIntro,
+  triggerCleared,
+} from './gameState.js';
+import {
+  INTRO_LANE_CYCLE, INTRO_LANE_STATE_HOLD_SEC, INTRO_JUMP_CYCLE,
+  INTRO_LANE_STEP_AUTO_ADVANCE_SEC, INTRO_JUMP_STEP_AUTO_ADVANCE_SEC,
+} from '../data/introTutorial.js';
+import {
+  updateSteering, pollLaneStep, getLaneTarget, pollJumpPress,
+} from '../input/input.js';
+import * as hud from '../ui/hud.js';
+import { initSteeringPanel, setSteeringPanelLifecycleHooks } from '../ui/steeringPanel.js';
+import { setCalibrationLifecycleHooks } from '../ui/calibrationWizard.js';
+import {
+  initDevPanel, setNextThemeHandler, setAddScoreHandler, setShowVictoryHandler,
+} from '../ui/devPanel.js';
+import { installDevUnlock } from '../ui/devUnlock.js';
+import {
+  initAudio, playSfx, pauseMusic, resumeMusic,
+} from '../systems/audio.js';
+import { getVfxEnabled } from '../systems/vfxSettings.js';
+import {
+  LANE_X, CENTER_LANE, ASPECT_W, ASPECT_H, CAMERA_FOV, LIVES_START, LIVES_SOFTCAP, SPAWN_Z,
+} from '../data/constants.js';
+import {
+  INTRO_WALL_ENABLED, INTRO_WALL_ENEMY_COUNT, INTRO_WALL_SPAWN_Z,
+  INTRO_NORMAL_ENEMY_DELAY_SEC, INTRO_OBSTACLE_DELAY_SEC,
+  INTRO_SEED_ENABLED, INTRO_SEED_OBSTACLE_ARRIVALS, INTRO_SEED_ENEMY_ARRIVALS,
+  INTRO_SEED_PLATFORM_ARRIVALS, INTRO_SEED_COIN_ARRIVALS,
+  LEVEL_RESTART_SEED_OBSTACLE_ARRIVALS, LEVEL_RESTART_SEED_ENEMY_ARRIVALS,
+  LEVEL_RESTART_SEED_PLATFORM_ARRIVALS, LEVEL_RESTART_SEED_COIN_ARRIVALS,
+} from '../data/introSequence.js';
+import {
+  LEVEL_COUNTDOWN_SECONDS, LEVEL_SWAPS_ENVIRONMENT, LEVEL_CURTAIN_CLOSE_DELAY_SEC,
+  LEVEL_CURTAIN_TRANSITION_SEC,
+} from '../data/progression.js';
+import { PLATFORM_ENABLED } from '../data/platformSequence.js';
+import {
+  OBSTACLE_FIRST_SPAWN_DELAY_SEC, ENEMY_FIRST_SPAWN_DELAY_SEC, ENEMY_SPAWN_INTERVAL_SEC,
+  MIN_ENEMY_OBSTACLE_GAP_SEC, PLATFORM_FIRST_SPAWN_DELAY_SEC, PLATFORM_SPAWN_INTERVAL_SEC,
+  PLATFORM_KILL_TYPE_ENABLED, PLATFORM_KILL_TYPE_CHANCE,
+  COIN_FIRST_SPAWN_DELAY_SEC, COIN_CLUSTER_SPAWN_INTERVAL_SEC,
+  OBSTACLE_SPAWN_INTERVAL_SEC, EASE_IN_DURATION_SEC, LEVEL_RESTART_EASE_IN_DURATION_SEC,
+  LEVEL_RESTART_PLATFORM_FIRST_DELAY_SEC,
+  PICKUP_FIRST_SPAWN_DELAY_SEC, PICKUP_SPAWN_INTERVAL_SEC,
+  PICKUP_MAGNET_SPAWN_CHANCE, PICKUP_LIFE_SPAWN_CHANCE,
+} from '../data/spawnConfig.js';
+import { PLAYER_RUN_FRAMES, RUN_FRAME_DURATION } from '../data/playerSprite.js';
+import { COIN_TYPES } from '../data/coinTypes.js';
+import { installPerfHud } from '../systems/perfHud.js';
+import { pixelRatioFor } from '../systems/pixelBudget.js';
+import {
+  ParticlePool, spawnDustPuff, spawnEnemyPoof, spawnCoinSparkle,
+  createSpeedStreaks, updateSpeedStreaks,
+} from '../systems/vfx.js';
+
+/**
+ * TEACH THE HOST'S SDK ONE MORE METHOD, before anything can try to use it.
+ *
+ * The app injects its own GoBalance SDK as the first script in <head>, and that
+ * SDK has no analytics call -- see systems/gbSdk.js. This adds `logEvent` to it
+ * and touches nothing else. A no-op outside the WebView.
+ */
+installGbSdk();
+
+function boot() {
+  const app = document.getElementById('app');
+  const stage = document.getElementById('stage');
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // Opt-in only: ?budget=N, default unchanged from what ships. Whether a pixel
+  // budget helps HERE is unmeasured -- the identical change bought Skateboard
+  // Extreme 40ms and Nova 0.4ms, so it demonstrably does not generalise.
+  renderer.setPixelRatio(pixelRatioFor(window.innerWidth, window.innerHeight));
+  app.appendChild(renderer.domElement);
+
+  const perf = installPerfHud({
+    canvas: renderer.domElement,
+    label: 'roborun',
+    probe: () => {
+      const r = renderer.info.render;
+      return [`${r.calls} calls  ${(r.triangles / 1000).toFixed(1)}k tris`];
+    },
+  });
+  // A handle for measuring what those draw calls ARE, from the console or a
+  // driver script. Diagnostic only, and it holds no state of its own.
+  window.__perfScene = () => scene;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(CAMERA_FOV, ASPECT_W / ASPECT_H, 0.1, 220);
+
+  // No scene lights: every material here is unlit (MeshBasicMaterial for
+  // street/buildings, SpriteMaterial for player/obstacles) by design, so the
+  // painted-in shading from the illustrated textures reads as intended
+  // instead of getting re-shaded (§0, §9.1's environment-art correction).
+  // Mutable now that a level transition can rebuild it under a new theme
+  // (startNextLevel below) -- tier 1's theme, matching createStreet's own
+  // default, so nothing changes at boot for a run that never reaches tier 2.
+  let street = createStreet(scene, themeForTier(1));
+  let currentThemeKey = themeForTier(1);
+
+  const player = createPlayer();
+  scene.add(player.sprite);
+
+  // Separate flutter-ribbon object disabled: the active run-cycle set
+  // (data/playerSprite.js) reverted to the original 4-frame art, which has
+  // the long mask-tail ribbon baked directly into the body -- rendering
+  // this too would double it up. Re-enable alongside a body set that only
+  // bakes in a short neutral knot.
+  // const ribbon = createRibbon();
+  // scene.add(ribbon.sprite);
+
+  const obstacleField = createObstaclePool(scene);
+  const spawnerState = createSpawnerState();
+
+  // Was TEMPORARILY false (direct request to hide enemies for a look at the
+  // rest of the scene) -- restored. Still kept as a named flag rather than
+  // deleted: the "enemy" art itself is being replaced next (scrap-bot skin
+  // has no combat, so a Foot Soldier doesn't fit), and this is the one
+  // switch that turns the whole mechanic off again if that swap needs
+  // isolating from the rest of the scene mid-work.
+  const ENEMIES_ENABLED = true;
+
+  // Foot Soldier "bump-to-kill" enemy (direct feedback's addition, entities/
+  // enemy.js): own pool/spawner from the barricade obstacles since a hit
+  // here KILLS the enemy and scores, it doesn't end the run.
+  const enemyField = createEnemyPool(scene);
+  const enemySpawnerState = createSpawnerState(ENEMY_FIRST_SPAWN_DELAY_SEC);
+
+  // Per-lane elevated platform (direct feedback's height system, data/
+  // platformSequence.js): a solid, collidable object per lane -- 'kill'
+  // (a black barrier: jump it or it's a hit, same as a barricade) or
+  // 'ramp' (automatic, forced, no way through it except up).
+  const platformField = createPlatformField(scene);
+  const platformSpawnerState = createSpawnerState(PLATFORM_FIRST_SPAWN_DELAY_SEC);
+
+  // Coin collectibles (direct feedback's addition, entities/coins.js): the
+  // only purely-positive pickup besides bumping an enemy. Own pool/spawner,
+  // and each tick spawns a whole CLUSTER (a row/arc/ramp-trail), not one
+  // coin -- see spawnCoinCluster.
+  const coinField = createCoinPool(scene);
+  const coinSpawnerState = createSpawnerState(COIN_FIRST_SPAWN_DELAY_SEC);
+  const pickupField = createPickupPool(scene);
+  const pickupSpawnerState = createSpawnerState(PICKUP_FIRST_SPAWN_DELAY_SEC);
+
+  const cameraRig = createCameraRig(camera);
+  const gs = createGameState();
+
+  // Lives (systems/lives.js): an obstacle now costs one life instead of
+  // ending the run outright, with a brief invulnerability window after each
+  // hit -- that window is required for correctness, not polish; see lives.js.
+  const livesState = createLivesState();
+
+  // Run-cycle energy VFX (experimental pass): ground contact shadow, dust
+  // puffs fired on each foot-contact frame, and near-camera speed streaks.
+  const contactShadow = createContactShadow(scene);
+  // Pool sized for ~2 overlapping puffs' worth of particles (spawnDustPuff's
+  // 16+8=24 per puff) with headroom, since more volume was asked for and a
+  // too-small pool would silently start overwriting a puff's own particles
+  // mid-life via the ring-buffer cursor.
+  const dustPool = new ParticlePool(scene, 100, 0.4, 0.14);
+  const DUST_AHEAD_OFFSET = 0.19; // spawn slightly ahead (more -Z, direction of travel) of his feet, not directly under/behind him where his own sprite covers it -- kept proportional to entities/player.js's PLAYER_SCALE
+  const DUST_FAN_RATE = 0.1; // outward left/right drift per unit of camera-ward scroll, see ParticlePool.scrollZ
+  const speedStreaks = createSpeedStreaks(scene);
+  // Separate pool from dustPool -- different tuning (bigger/lighter poof
+  // burst) and keeps the two effects' particle budgets from competing.
+  // Sized for one full kill-poof (spawnEnemyPoof's 20 origins x 7 + a 40-
+  // particle central burst = 180) with headroom for a second overlapping
+  // kill before the first burst's particles finish fading.
+  const enemyPoofPool = new ParticlePool(scene, 220, 0.5, 0.6);
+  // Third pool, again for a structural reason rather than just tuning:
+  // ParticlePool fixes point size and opacity in its CONSTRUCTOR, not per
+  // spawn() call, so a coin's small bright spark can't be produced by either
+  // pool above no matter what options are passed. Sized from the actual
+  // worst case: 12 particles per sparkle (systems/vfx.js's
+  // spawnCoinSparkle), row coins arriving ~0.16s apart against a ~0.34s
+  // life = ~3 overlapping = ~36 live, so 80 is comfortable headroom.
+  const coinSparklePool = new ParticlePool(scene, 80, 0.28, 0.85);
+
+  // ONE merged total now (systems/scoring.js). The old separate `score`
+  // (enemy kills) and `coinsCollected` counters are gone from the HUD --
+  // direct feedback wanted every source summed into a single points value --
+  // but their per-source tallies live on inside this state for the recap.
+  const score = createScoreState();
+
+  let distance = 0;
+  // Rotates through data/playerSprite.js's ATTACK_SEQUENCES kill to kill
+  // (not random) so back-to-back kills don't just repeat the same one.
+  let attackSequenceIndex = 0;
+  // Seconds of red damage-flash left (see index.html's #damage-flash for why
+  // this is a timer rather than a one-frame toggle).
+  let damageFlashTimer = 0;
+  // See the blocked-lane branch in tick(): absolute steering retries a refused
+  // move every frame, so the lurch needs a floor on how often it can re-fire.
+  let blockedNudgeCooldown = 0;
+  const BLOCKED_NUDGE_REPEAT_SEC = 0.45;
+  // Recomputed every frame from gameTime (systems/speed.js). Held here rather
+  // than recomputed at each of the eight places that need it, so every pool
+  // is provably scrolling at the same rate on any given frame.
+  let currentSpeed = speedAt(0);
+  const DAMAGE_FLASH_DURATION_SEC = 0.14;
+  const DAMAGE_FLASH_PEAK_OPACITY = 0.42;
+  const DAMAGE_SHAKE_INTENSITY = 0.4; // same magnitude CarRacer uses for a crash
+  const damageFlashEl = document.getElementById('damage-flash');
+
+  // Running game-clock (seconds since the current run started) purely for
+  // data/constants.js's MIN_ENEMY_OBSTACLE_GAP_SEC spacing rule below --
+  // `distance` is world units, this needs to be time to compare directly
+  // against spawn timestamps.
+  let gameTime = 0;
+  let lastObstacleSpawnTime = -Infinity;
+  let lastEnemySpawnTime = -Infinity;
+
+  // --- Level state. A level ends when a tier threshold is crossed; the world
+  // restarts while points, tier, lives AND the run clock (hence speed) all
+  // carry over. `levelStartTime` is the gameTime that level began at, and it's
+  // what makes the grace ramp and the seed placement level-relative instead of
+  // run-relative -- both would otherwise behave as if the run were still young.
+  let levelIndex = 1;
+  let levelStartTime = 0;
+  let levelCountdown = 0;
+  // The tier a level-complete transition is FOR, captured at the moment it
+  // fires rather than derived by blindly incrementing levelIndex at the
+  // countdown's end -- a single huge award can in principle cross more than
+  // one tier threshold in one frame, and levelIndex must land on the tier
+  // actually reached, not just "one more than before", or the wrong theme
+  // gets picked below.
+  let pendingLevelTier = 1;
+
+  // Set once per level-complete beat by tick's countdown branch below, at
+  // LEVEL_CURTAIN_CLOSE_DELAY_SEC in -- guards ui/hud.js's closeLevelCurtains
+  // so it fires exactly once per beat instead of every frame past that point.
+  let levelCurtainsClosed = false;
+  // Set once per beat, LEVEL_CURTAIN_TRANSITION_SEC AFTER levelCurtainsClosed
+  // -- guards the environment swap the same way, and deliberately a separate
+  // flag/timing check from it rather than reusing levelCurtainsClosed: the
+  // swap must wait for the CLOSE ANIMATION TO FINISH, not just start.
+  let levelEnvironmentSwapped = false;
+
+  // --- Intro tutorial (data/introTutorial.js, ui/hud.js) -------------------
+  // All dt-driven from tick's 'intro' branch below, same reasoning as every
+  // other timed effect in this file: pausing genuinely holds it.
+  let introStep = 1; // 1 = lane steering, 2 = jump
+  let introElapsed = 0; // time since the CURRENT step started -- drives auto-advance
+  let introLaneIndex = 0; // index into INTRO_LANE_CYCLE
+  let introLaneCycleElapsed = 0;
+  let introRunFrameIndex = 0;
+  let introRunFrameElapsed = 0;
+  let introJumpCycleIndex = 0;
+  let introJumpCycleElapsed = 0;
+
+  const rollPlatformType = () => (
+    PLATFORM_KILL_TYPE_ENABLED && Math.random() < PLATFORM_KILL_TYPE_CHANCE ? 'kill' : 'ramp'
+  );
+
+  // Pre-places entities already in flight at staggered distances, so the run
+  // OPENS with a populated pipeline instead of waiting a full far-travel for
+  // the first live spawn to arrive (data/introSequence.js's INTRO_SEED_* lists
+  // carry the reasoning and the arrival times).
+  //
+  // seedZ inverts the SPEED RAMP, not a fixed speed: a seed meant to arrive at
+  // t must be placed exactly as far out as the world will actually scroll in
+  // those t seconds, which is systems/speed.js's distanceTraveledBy (the
+  // integral of the ramp). Using a flat `t * speed` here would make every
+  // authored arrival time land late, progressively worse for later entries.
+  //
+  // Order matters, and gives correct mutual avoidance for free: platforms
+  // first, then obstacles/enemies (which refuse lanes blocked by a platform
+  // footprint), then coins (which refuse lanes with a nearby obstacle).
+  // Seeding in any other order would let a later seed land on top of an
+  // earlier one.
+  function seedPipeline(isFirstLevel) {
+    // Placement is measured from THIS LEVEL's start, not the run's. Speed
+    // carries across levels, so by level 2 the world is at or near SPEED_MAX
+    // and covers far more ground per second than a standing start -- using the
+    // run-start formula would place every seed far too close and they'd all
+    // arrive early and bunched. See systems/speed.js's seedDistanceAt.
+    //
+    // Returns null past the spawn horizon rather than placing the entity
+    // beyond SPAWN_Z, outside the live pipeline's own reach. That guard earns
+    // its keep at level 2+: the faster world shrinks the seedable window from
+    // ~13.1s to ~9.7s, so an entry that was fine at run start can fall off the
+    // end here. Skipping is right -- a missing seed is a small gap, a
+    // mis-placed one arrives from nowhere.
+    const seedZ = (arrivalSec) => {
+      const d = seedDistanceAt(levelStartTime, arrivalSec);
+      return d > Math.abs(SPAWN_Z) ? null : -d;
+    };
+
+    // Level 1 gets the full teaching intro; later levels get the sparser set
+    // (data/introSequence.js) -- the player already knows what an enemy is.
+    const obstacles = isFirstLevel ? INTRO_SEED_OBSTACLE_ARRIVALS : LEVEL_RESTART_SEED_OBSTACLE_ARRIVALS;
+    const enemies = isFirstLevel ? INTRO_SEED_ENEMY_ARRIVALS : LEVEL_RESTART_SEED_ENEMY_ARRIVALS;
+    const platforms = isFirstLevel ? INTRO_SEED_PLATFORM_ARRIVALS : LEVEL_RESTART_SEED_PLATFORM_ARRIVALS;
+    const coins = isFirstLevel ? INTRO_SEED_COIN_ARRIVALS : LEVEL_RESTART_SEED_COIN_ARRIVALS;
+
+    if (PLATFORM_ENABLED) {
+      // Explicit, distinct lanes: spawnPlatform otherwise picks at random with
+      // no mutual-exclusion check, so two seeds could stack in one lane.
+      platforms.forEach((t, i) => {
+        const z = seedZ(t);
+        if (z !== null) spawnPlatform(platformField, rollPlatformType(), (CENTER_LANE + i) % LANE_X.length, z);
+      });
+    }
+    for (const t of obstacles) {
+      const z = seedZ(t);
+      // false: skip the cross-lane platform gap check for seeds -- see
+      // entities/obstacles.js's spawnObstacle for why.
+      if (z !== null) spawnObstacle(obstacleField, platformField, null, z, false);
+    }
+    for (const t of enemies) {
+      const z = seedZ(t);
+      if (ENEMIES_ENABLED && z !== null) spawnEnemy(enemyField, platformField, null, null, z);
+    }
+    for (const t of coins) {
+      const z = seedZ(t);
+      if (z !== null) spawnCoinCluster(coinField, platformField, obstacleField, gameTime, z);
+    }
+  }
+
+  // Rebuilds the WORLD for a level: entities, spawners, player, camera. Does
+  // NOT touch anything the player has earned (points, tier, lives) or the run
+  // clock -- so speed carries across a level transition exactly as asked.
+  //
+  // fullReset() below adds the session wipe on top for a brand-new run. Keeping
+  // the two apart is the whole reason a level transition is cheap: this is the
+  // only half a new level needs.
+  function resetLevelWorld(isFirstLevel) {
+    resetPlayer(player);
+    resetObstaclePool(obstacleField);
+    resetEnemyPool(enemyField);
+    resetPlatformField(platformField);
+    // A run start uses 0 (forced by the seeding horizon -- see spawnConfig.js);
+    // a LEVEL start must not, or the immediate live platform lands on top of
+    // the seeded one, which at level-2 speed is a ~19-unit interpenetration.
+    resetSpawner(
+      platformSpawnerState,
+      isFirstLevel ? PLATFORM_FIRST_SPAWN_DELAY_SEC : LEVEL_RESTART_PLATFORM_FIRST_DELAY_SEC,
+    );
+    resetCoinPool(coinField);
+    resetSpawner(coinSpawnerState, COIN_FIRST_SPAWN_DELAY_SEC);
+    resetPickupPool(pickupField);
+    resetSpawner(pickupSpawnerState, PICKUP_FIRST_SPAWN_DELAY_SEC);
+    // Clears any death shake still decaying and snaps the camera back to
+    // centre, so a quick retry doesn't inherit the previous run's jolt.
+    resetCameraRig(cameraRig);
+    setPlayerVisible(player, true);
+    setContactShadowVisible(contactShadow, true);
+    damageFlashTimer = 0;
+    blockedNudgeCooldown = 0;
+    damageFlashEl.style.opacity = '0';
+    lastObstacleSpawnTime = -Infinity;
+    lastEnemySpawnTime = -Infinity;
+
+    // Stamped BEFORE seeding: seedPipeline measures every arrival from it.
+    levelStartTime = gameTime;
+
+    // The teaching wall is a run-start device only -- direct feedback: "we
+    // don't need the seeded intro" on a level change. Later levels lean on the
+    // sparser seed lists plus the grace ramp instead.
+    if (INTRO_WALL_ENABLED && isFirstLevel) {
+      // data/introSequence.js: one enemy in EVERY lane, close and arriving
+      // fast -- an unmissable first teaching moment ("killing these is
+      // safe/good") instead of several seconds of nothing happening.
+      for (let lane = 0; lane < INTRO_WALL_ENEMY_COUNT; lane++) {
+        if (ENEMIES_ENABLED) spawnEnemy(enemyField, platformField, null, lane, INTRO_WALL_SPAWN_Z);
+      }
+      lastEnemySpawnTime = gameTime;
+      resetSpawner(enemySpawnerState, INTRO_NORMAL_ENEMY_DELAY_SEC);
+      resetSpawner(spawnerState, INTRO_OBSTACLE_DELAY_SEC);
+    } else {
+      resetSpawner(enemySpawnerState, ENEMY_FIRST_SPAWN_DELAY_SEC);
+      resetSpawner(spawnerState, OBSTACLE_FIRST_SPAWN_DELAY_SEC);
+    }
+
+    if (INTRO_SEED_ENABLED) seedPipeline(isFirstLevel);
+  }
+
+  // A brand-new run: everything above, plus the session wipe.
+  function fullReset() {
+    gameTime = 0;
+    distance = 0;
+    attackSequenceIndex = 0;
+    levelIndex = 1;
+    pendingLevelTier = 1;
+    levelCountdown = 0;
+    levelCurtainsClosed = false;
+
+    // A brand-new run always starts back at tier 1's environment, even if the
+    // PREVIOUS run had progressed into sunnyStreet before dying -- theme
+    // progress is session-scoped, same as points/tier/lives. Guarded the same
+    // way startNextLevel is: only rebuild if the theme is actually different,
+    // so a run that dies before ever reaching tier 2 doesn't pay a teardown/
+    // rebuild cost for a theme it was already in.
+    if (LEVEL_SWAPS_ENVIRONMENT) {
+      const firstTheme = themeForTier(1);
+      if (firstTheme && firstTheme !== currentThemeKey) {
+        disposeStreet(scene, street);
+        street = createStreet(scene, firstTheme);
+        currentThemeKey = firstTheme;
+      }
+    }
+    resetLivesState(livesState);
+    resetScoreState(score);
+    clearPointsFly();
+    // Before updatePoints, so the bar snaps to empty without animating
+    // backwards from wherever the previous run ended.
+    hud.resetProgressUI();
+    hud.updatePoints(score.displayed);
+    hud.updateLives(livesState.lives);
+    resetLevelWorld(true);
+  }
+
+  // --- Intro tutorial -------------------------------------------------------
+  // Shown every run (direct feedback: "every time when I start a new game"),
+  // not just the first one ever -- called from both boot() and restart()
+  // below, always right after fullReset() has the world already built and
+  // frozen. See core/gameState.js's 'intro' state for why this is safe
+  // against GOBALANCE_SDK.md's "no key required" contract.
+  function beginIntro() {
+    triggerIntro(gs);
+    introStep = 1;
+    introElapsed = 0;
+    introLaneIndex = 0;
+    introLaneCycleElapsed = 0;
+    introRunFrameIndex = 0;
+    introRunFrameElapsed = 0;
+    hud.showIntroTutorial();
+  }
+
+  function advanceIntroStep() {
+    introStep = 2;
+    introElapsed = 0;
+    introJumpCycleIndex = 0;
+    introJumpCycleElapsed = 0;
+    hud.setIntroStep(2);
+    hud.setIntroJumpCycleState(0, INTRO_JUMP_CYCLE[0]);
+  }
+
+  function dismissIntro() {
+    hud.hideIntroTutorial();
+    /**
+     * A RUN BEGINS HERE, not at boot and not at restart(): both lead into the
+     * intro tutorial, which a player can sit on or back out of, and counting
+     * those would inflate every start the funnel reports. This is the moment
+     * they commit. Before the first tier is reported, so the stream reads
+     * forward.
+     */
+    analytics.runStarted();
+    reportTierStart();
+    restartToRunning(gs);
+  }
+
+  document.getElementById('intro-next-button').addEventListener('click', () => {
+    playSfx('sfx_ui_tap');
+    if (gs.current === 'intro' && introStep === 1) advanceIntroStep();
+  });
+  document.getElementById('intro-start-button').addEventListener('click', () => {
+    playSfx('sfx_ui_tap');
+    if (gs.current === 'intro' && introStep === 2) dismissIntro();
+  });
+
+  // --- Level transition ---------------------------------------------------
+  // Entered when a landing points label pushes the score past a tier
+  // threshold. The world freezes (gs.current gates the whole of tick's update
+  // block), the overlay announces what's next, and a countdown runs before the
+  // next level is built.
+  /**
+   * The analytics view of where a run is -- two readers, so the mapping from
+   * this game's shape to the shared vocabulary lives in one place.
+   *
+   * A TIER IS A LEVEL, as a stage is in Rooftop Ninja and a surface in Nova.
+   * progressAt() already computes the fraction through the current tier's score
+   * band for the HUD bar, so progress_pct is that number and not new arithmetic.
+   *
+   * THE ID IS SYNTHESISED, not taken from TIER_NAMES. The names run out -- there
+   * are three thresholds and then a fixed step onward -- so a strong run climbs
+   * past them into tiers with no name at all. `tier_7` is a stable key for such a
+   * tier; a display name that repeats or blanks would collapse distinct tiers
+   * into one row in every report.
+   */
+  function reportTierStart() {
+    analytics.levelStarted(`tier_${levelIndex}`, levelIndex);
+  }
+
+  function reportTierFailed() {
+    const p = progressAt(score.total);
+    // frac is already 0..1 through the tier's band; the module wants a
+    // numerator and a denominator, so give it the fraction out of 100.
+    analytics.levelFailed(score.total, Math.round(p.frac * 100), 100);
+  }
+
+  function beginLevelComplete(nextTier) {
+    // REPORTED HERE, where levelIndex is still the tier JUST FINISHED -- it
+    // only becomes the next one in startNextLevel(), after the countdown.
+    analytics.levelCleared(score.total);
+    triggerLevelComplete(gs);
+    playSfx('sfx_level_complete');
+    // Experiment, direct request: silence the music bed across the whole
+    // transition so the fanfare/countdown gets the moment to itself, then
+    // bring it back once the next level actually starts (startNextLevel).
+    pauseMusic();
+    // Credit anything still in the air. Without this the transition would
+    // display a total lower than the one that triggered it, and those points
+    // would then land during the NEXT level.
+    settleScore(score);
+    clearPointsFly();
+    hud.updatePoints(score.displayed);
+    pendingLevelTier = nextTier;
+    levelCountdown = LEVEL_COUNTDOWN_SECONDS;
+    levelCurtainsClosed = false;
+    levelEnvironmentSwapped = false;
+    hud.setLevelCountdown(LEVEL_COUNTDOWN_SECONDS);
+    // levelIndex is still the tier JUST FINISHED here -- it only becomes
+    // nextTier inside startNextLevel, later. Direct request: say which
+    // level that was ("Level 1", for example).
+    hud.showLevelComplete(levelIndex, nextTier);
+  }
+
+  function startNextLevel() {
+    hud.hideLevelComplete();
+    levelIndex = pendingLevelTier;
+    // After the assignment, so it names the tier about to be played rather
+    // than the one just left.
+    reportTierStart();
+    resetLevelWorld(false);
+    restartToRunning(gs);
+    resumeMusic();
+    // The environment swap (if any) already happened when the curtains
+    // closed, below -- just reveal it, rather than popping straight to it.
+    hud.openLevelCurtains();
+  }
+
+  // Submit the finished run to the family-account board, then fetch + render
+  // it into the game-over overlay. Fire-and-forget: never awaited, never
+  // blocks the death screen, and a no-op outside the app (scoreboard.js
+  // feature-detects). SUBMIT BEFORE FETCH so the run just played is in the
+  // board. Called ONCE from the death site (not tick()'s per-frame gameover
+  // branch, which would resubmit every frame). `justScored` is held locally
+  // so the row can be found + highlighted (entries carry no run id).
+  function submitAndShowBoard(justScored) {
+    submitRun(justScored).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, justScored);
+        hud.showScoreboard(board, near.length ? [top, near] : [top]);
+      })
+    );
+  }
+
+  function endRun() {
+    // BEFORE the state changes: which tier ended them, and how far into it they
+    // got, are facts about the run that are still true here.
+    reportTierFailed();
+    triggerGameOver(gs);
+    playSfx('sfx_gameover');
+    // The blink lives inside tick()'s running guard, so once the state flips
+    // it stops being recomputed -- without this the sprite (and its shadow)
+    // can freeze mid-blink and sit INVISIBLE on the game-over screen.
+    setPlayerVisible(player, true);
+    setContactShadowVisible(contactShadow, true);
+    // Anything still mid-flight is credited immediately -- a label that never
+    // landed must not cost the player points on the recap.
+    settleScore(score);
+    clearPointsFly();
+    hud.updatePoints(score.displayed);
+    hud.showGameOver(score, distance);
+    submitAndShowBoard(score.total);
+  }
+
+  // One life lost, with the feedback that sells it: a camera jolt, a red
+  // screen flash, and the blink driven by the invulnerability window in
+  // tick() below. Returns whether the hit was fatal, so a caller can skip
+  // its own follow-up work when the run just ended.
+  //
+  // tryHit is the gate for whether damage lands at all -- but every caller
+  // here already checks isInvulnerable before looping, so a `false` return
+  // means something got past that check and is worth not double-reporting.
+  function takeDamage() {
+    const result = tryHit(livesState, gameTime);
+    if (!result.hit) return false;
+
+    hud.updateLives(livesState.lives);
+    triggerCameraShake(cameraRig, DAMAGE_SHAKE_INTENSITY);
+    damageFlashTimer = DAMAGE_FLASH_DURATION_SEC;
+    playSfx('sfx_hit');
+
+    if (result.dead) {
+      endRun();
+      return true;
+    }
+    return false;
+  }
+
+  function restart() {
+    hud.hideGameOver();
+    hud.hideVictory(); // defensive: a fast repeat could reach here mid-celebration
+    fullReset();
+    beginIntro();
+  }
+
+  document.getElementById('restart-button').addEventListener('click', restart);
+  window.addEventListener('keydown', (e) => {
+    if (gs.current === 'gameover' && (e.code === 'Space' || e.code === 'Enter')) restart();
+    else if (gs.current === 'intro' && (e.code === 'Space' || e.code === 'Enter')) {
+      if (introStep === 1) advanceIntroStep();
+      else dismissIntro();
+    }
+  });
+
+  // PLAY AGAIN off the quit board -- same as the game-over RETRY button, plus
+  // dismissing the board itself first.
+  function restartFromQuit() {
+    hud.hideQuit();
+    restart();
+  }
+
+  // TEMPORARY debug view (direct feedback: "lose all the graphics except
+  // for the player and the enemies... so I can see what's going on with
+  // the basic shapes") -- press G to toggle wireframe on every mesh
+  // material in the scene. Player/obstacles/enemies are THREE.Sprite, not
+  // Mesh, so `wireframe` doesn't apply to them at all -- they stay fully
+  // rendered while the street/buildings/platform placeholder geometry
+  // strips down to bare outlines, exactly separating "environment art" from
+  // "gameplay entities" for free.
+  let debugWireframe = false;
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyG') return;
+    debugWireframe = !debugWireframe;
+    scene.traverse((obj) => {
+      if (obj.material && 'wireframe' in obj.material) obj.material.wireframe = debugWireframe;
+    });
+  });
+
+  let paused = false;
+  const pauseButton = document.getElementById('pause-button');
+
+  // One route for pause, so the icon/badge/audio can never drift out of step
+  // with each other -- used by the pause button AND the quit-confirm flow
+  // (GOBALANCE_APP_INTEGRATION.md "Quitting").
+  function setPaused(value) {
+    paused = value;
+    pauseButton.innerHTML = paused ? '&#9654;' : '&#9208;';
+    hud.setPausedBadge(paused);
+    // Direct request: "pause should pause music as well." Guarded on
+    // gs.current === 'levelcomplete' on the RESUME side only -- that state
+    // already owns muting the music itself (beginLevelComplete/
+    // startNextLevel), so unpausing mid-transition must not resume it early
+    // and race startNextLevel's own resumeMusic call.
+    if (paused) pauseMusic();
+    else if (gs.current !== 'levelcomplete') resumeMusic();
+  }
+
+  pauseButton.addEventListener('click', () => {
+    playSfx('sfx_ui_tap');
+    setPaused(!paused);
+  });
+
+  // ONE owner for "some modal is up, so the sim is paused", rather than a
+  // save/restore pair per panel (settings panel: direct request, 2026-09-29,
+  // "settings button should pause the game like pause as well"; calibration
+  // wizard: same).
+  //
+  // WHY A SET AND NOT A PAIR EACH (device bug, found by Elad + gobalance-33):
+  // the CALIBRATE row hands straight over from one modal to the other in a
+  // single tap. With a pair each, the closing settings panel restores the
+  // state from before SETTINGS opened -- the game running -- while the wizard
+  // is already up, and the game was left live behind the wizard. That is
+  // worse than background noise: the wizard widens the tilt ruler to 45
+  // degrees for the duration of sampling, so a live game behind it is being
+  // steered at a scale nothing was tuned for, and the same lean that measures
+  // the player's reach also plays (and can lose) their run.
+  //
+  // Counting open modals means a handover never passes through zero, so there
+  // is no transient resume to race -- and the next modal anyone adds gets this
+  // for free instead of reintroducing the bug. Pausing still restores the
+  // state from before the FIRST modal opened, so a player who paused manually
+  // and then opened settings is still paused afterwards.
+  const openModals = new Set();
+  let pausedBeforeModals = false;
+  function modalOpened(name) {
+    if (openModals.size === 0) {
+      pausedBeforeModals = paused;
+      setPaused(true);
+    }
+    openModals.add(name);
+  }
+  function modalClosed(name) {
+    // Guarded so a double-close can't release a pause another modal still
+    // wants -- the release must happen exactly once, whichever way the player
+    // leaves (finished / cancelled / back).
+    if (!openModals.delete(name)) return;
+    if (openModals.size === 0) setPaused(pausedBeforeModals);
+  }
+
+  setCalibrationLifecycleHooks(
+    () => modalOpened('calibration'),
+    () => modalClosed('calibration'),
+  );
+  setSteeringPanelLifecycleHooks(
+    () => modalOpened('settings'),
+    () => modalClosed('settings'),
+  );
+
+  // Leave the game back to the app's games list. Prefer the SDK's back();
+  // fall back to the raw native bridge so a game whose module failed to load
+  // is still escapable (the inline #gb-back onclick has the same fallback).
+  function leaveToLobby() {
+    /**
+     * THE ONE PLACE THE PLAYER DELIBERATELY LEAVES, so it is where the session
+     * closes. The heartbeat in systems/analytics.js covers every exit that never
+     * reaches this line -- an app killed from the switcher, a flat battery.
+     */
+    analytics.gameLeft();
+    if (window.GoBalance && typeof window.GoBalance.back === 'function') {
+      window.GoBalance.back();
+      return;
+    }
+    if (window.Unity) window.Unity.call('nav:back');
+  }
+
+  // Quit-confirm flow (GOBALANCE_APP_INTEGRATION.md "Quitting"). Remember
+  // whether the game was already paused when the X raised the confirm, so
+  // KEEP PLAYING restores that state rather than blindly unpausing someone
+  // who had deliberately paused.
+  let pausedBeforeConfirm = false;
+
+  // The X (#gb-back) hook. Only interrupts a LIVE run with a confirm; from
+  // any screen where the player is already stopped (intro/levelcomplete/
+  // gameover, or the quit board itself) it just leaves. Ignores repeat taps
+  // while the confirm is already up so pausedBeforeConfirm isn't clobbered.
+  window.__gbBack = () => {
+    if (hud.isQuitOpen()) return leaveToLobby();
+    if (hud.isConfirmOpen()) return;
+    if (gs.current !== 'running') return leaveToLobby();
+    pausedBeforeConfirm = paused;
+    setPaused(true);
+    hud.showConfirm();
+  };
+
+  // Confirmed a mid-run quit: end the run, submit it (a run ended by choice
+  // still happened), and show the quit board with the family leaderboard.
+  // The board is shown immediately with just the result line; the
+  // leaderboard fills in when the async fetch resolves. No auto-restart
+  // timer -- the player chose to stop.
+  function endRunAndShowQuit() {
+    hud.hideConfirm();
+    setPaused(true);
+    const runScore = score.total;
+    // Same "SCORE X · Y" pattern as TmntSkateSlice's quit board (there, Y is
+    // BEST COMBO -- this game has no combo, so tier reached is the closest
+    // equivalent headline second stat, same source as the death screen's own
+    // breakdown (hud.js's showGameOver).
+    const statsText = `SCORE ${Math.floor(runScore).toLocaleString()} · ${tierName(progressAt(runScore).tier)}`;
+    hud.showQuit(statsText, null, []);
+    submitRun(runScore).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, runScore);
+        hud.showQuit(statsText, board, near.length ? [top, near] : [top]);
+      })
+    );
+  }
+
+  document.getElementById('confirm-stay').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx('sfx_ui_tap');
+    hud.hideConfirm();
+    setPaused(pausedBeforeConfirm); // restore prior state, not blind unpause
+  });
+  document.getElementById('confirm-quit').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx('sfx_ui_tap');
+    endRunAndShowQuit();
+  });
+  document.getElementById('quit-again').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx('sfx_ui_tap');
+    restartFromQuit();
+    setPaused(false);
+  });
+  document.getElementById('quit-leave').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx('sfx_ui_tap');
+    leaveToLobby();
+  });
+
+  // Cleared the final tier (systems/progression.js's isFinalTierCleared) =
+  // the whole run is won. Direct request, 2026-09-17: "an end screen after
+  // our current last theme, very celebrative." Mirrors NovaVanguard/
+  // TmntSkateSlice's completeCampaign -- a victory beat of its own (state
+  // 'cleared', its own overlay, CONTINUE-only, no timer, no
+  // #restart-button), so finishing does not feel identical to dying. Guarded
+  // on 'running' the same way endRun is; isFinalTierCleared stays true
+  // forever once crossed, so a later frame hitting this same check harmlessly
+  // no-ops here (gs.current is no longer 'running' by then).
+  function completeRun() {
+    if (gs.current !== 'running') return;
+    triggerCleared(gs);
+    playSfx('sfx_level_complete');
+    // Anything still mid-flight is credited immediately -- same reasoning as
+    // endRun/beginLevelComplete: a label that never landed must not cost the
+    // player points on the recap.
+    settleScore(score);
+    clearPointsFly();
+    hud.updatePoints(score.displayed);
+    hud.showVictory(`SCORE ${Math.floor(score.total).toLocaleString()}`);
+  }
+
+  // CONTINUE off the victory screen -> the shared end board (leaderboard,
+  // play again, leave, no timer) with an "ALL TIERS CLEARED!" headline. The
+  // score is submitted first so it lands on the board -- same as the quit
+  // path, and the same "a run is whole, or it is nothing" rule every ending
+  // here follows.
+  function continueFromVictory() {
+    if (gs.current !== 'cleared') return;
+    hud.hideVictory();
+    const runScore = score.total;
+    const statsText = `SCORE ${Math.floor(runScore).toLocaleString()}`;
+    hud.showQuit(statsText, null, [], 'ALL TIERS CLEARED!');
+    submitRun(runScore).then(() =>
+      fetchBoard().then((board) => {
+        const { top, window: near } = resultSections(board.rows, runScore);
+        hud.showQuit(statsText, board, near.length ? [top, near] : [top], 'ALL TIERS CLEARED!');
+      })
+    );
+  }
+
+  // NO timer and CONTINUE is the only way off this screen: a stray touch
+  // must not take away the earned beat the way it could on a death/quit
+  // screen with an auto-timer.
+  document.getElementById('victory-continue').addEventListener('click', (e) => {
+    e.stopPropagation();
+    playSfx('sfx_ui_tap');
+    continueFromVictory();
+  });
+
+  // SFX + music (systems/audio.js). Called early and unconditionally --
+  // GOBALANCE_SDK.md requires the game reach a playable state on load with
+  // no key needed, so this can't block boot: it kicks off buffer loading in
+  // the background and installs a one-time gesture listener to unlock
+  // playback, both fire-and-forget. The intro tutorial's own first tap/key
+  // is the natural first gesture that satisfies it.
+  initAudio();
+
+  // Player settings panel (ui/steeringPanel.js): SENSITIVITY + SFX/MUSIC only
+  // now (2026-09-16 split -- see that file's header). Also re-sends the
+  // stored host sensitivity at boot -- that threshold is a scene field which
+  // resets on every scene load, so a saved preference that isn't re-sent
+  // does nothing. No-op in a browser.
+  initSteeringPanel();
+
+  // Dev tools panel (ui/devPanel.js): steering MODE + every absolute-mode
+  // tilt threshold, VFX, RECENTRE BOARD, and the theme-skip button below --
+  // everything that used to live in the player settings panel except
+  // sensitivity/SFX/music. Built now but not appended to the DOM until
+  // unlocked (devPanel.mount, passed to installDevUnlock below).
+  const devPanel = initDevPanel();
+  // DEV: "jump to next theme" button (ui/devPanel.js). Reuses the exact same
+  // beginLevelComplete path a real tier-up takes (curtain, environment swap,
+  // everything) rather than a separate ad-hoc theme swap -- this exercises
+  // the real transition, not a shortcut around it. Guarded on 'running' the
+  // same way the organic tier-up check is, so it can't misfire mid-transition,
+  // during the intro, or on the game-over screen. Returning false (not
+  // throwing/no-op) lets the panel show a clear "NOT RUNNING" instead of
+  // silently doing nothing.
+  setNextThemeHandler(() => {
+    if (gs.current !== 'running') return false;
+    beginLevelComplete(levelIndex + 1);
+    return true;
+  });
+
+  // DEV: "add N points" quick-adds (ui/devPanel.js). Takes the exact same
+  // path a real landed label does -- credit + the final-tier/tier-up check
+  // (completeRun/beginLevelComplete) -- just crediting `displayed` instantly
+  // instead of animating a flying label, since this is a debug shortcut, not
+  // a real catch. Guarded on 'running' the same way NEXT THEME is.
+  function devAddPoints(amount) {
+    score.total += amount;
+    const before = progressAt(score.displayed).tier;
+    score.displayed = score.total;
+    hud.updatePoints(score.displayed, true);
+    if (isFinalTierCleared(score.displayed)) {
+      completeRun();
+      return;
+    }
+    const after = progressAt(score.displayed).tier;
+    if (after > before) beginLevelComplete(after);
+  }
+  setAddScoreHandler((amount) => {
+    if (gs.current !== 'running') return false;
+    devAddPoints(amount);
+    return true;
+  });
+
+  // DEV: "show final ending screen" (ui/devPanel.js). Jumps straight to the
+  // real victory beat regardless of actual score -- completeRun itself
+  // doesn't check the score at all, only gs.current, so this is the exact
+  // same path a genuine clear takes, not a mock/separate screen.
+  setShowVictoryHandler(() => {
+    if (gs.current !== 'running') return false;
+    completeRun();
+    return true;
+  });
+
+  // Dev tools unlock (ui/devUnlock.js, TEMPLATE FILE ported verbatim from
+  // NovaVanguard -- see its own header): a 7-second hold, then a 4-digit
+  // code, gates the panel above so nothing dev-only is one accidental tap
+  // away for a real player. Anchored to a big INVISIBLE hit rect (#dev-hit,
+  // styled in style.css) covering the whole wide area around the lives tray
+  // (direct request) rather than the hearts themselves -- those are tiny,
+  // individually-animated icons that would make a reliable 7-second hold
+  // impossible to land. Appended to <body> (NOT into #hud, which is
+  // pointer-events:none) and kept clear of the top-right chrome buttons
+  // (back/pause/settings), which stay tappable. `?dev=1` skips the hold for
+  // a desktop session.
+  const devHit = document.createElement('div');
+  devHit.id = 'dev-hit';
+  document.body.appendChild(devHit);
+  installDevUnlock(document, devHit, devPanel.mount);
+  if (/[?&]dev=1\b/.test(window.location.search || '')) devPanel.mount();
+
+  // Flying "+N" labels (ui/pointsFly.js). The counter element is the flight
+  // TARGET, so it must already exist and be laid out -- hence init here, after
+  // fitStageToAspect has sized #stage, not at module scope.
+  initPointsFly(
+    stage, document.getElementById('hud'), document.getElementById('points-value'),
+    // A label landing is the ONLY thing that moves the visible number, and it
+    // punches the counter as it lands. See systems/scoring.js.
+    //
+    // Tier-up is detected HERE, off the displayed total, not off the awarded
+    // one -- so the celebration fires at the moment the bar actually fills
+    // rather than a second earlier when the points were technically earned.
+    (points, variant) => {
+      const before = progressAt(score.displayed).tier;
+      creditDisplayed(score, points);
+      hud.updatePoints(score.displayed, true, variant);
+      // The LAST authored tier's own threshold ends the run in victory, not
+      // a tier-up transition -- checked BEFORE the normal tier-up compare
+      // below, since progressAt now pins at that tier forever (after > before
+      // would never fire again past it anyway, but this is the actual
+      // ending, not a no-op to fall through past).
+      if (gs.current === 'running' && isFinalTierCleared(score.displayed)) {
+        completeRun();
+        return;
+      }
+      const after = progressAt(score.displayed).tier;
+      // Compares tier NUMBERS rather than testing one boundary: a single award
+      // can cross more than one threshold, and the level should end on the tier
+      // actually reached. Guarded on state so a label landing during an
+      // already-running transition can't re-enter it.
+      if (after > before && gs.current === 'running') beginLevelComplete(after);
+    },
+  );
+
+  // Heart tray built once from the CURRENT cap -- not from
+  // LIVES_MAX_SUPPORTED, which is only a documented ceiling; a tray sized to
+  // that would render pre-greyed hearts (see ui/hud.js's initLivesTray).
+  hud.initLivesTray(LIVES_START);
+
+  // Debug: grant the magnet ability (entities/player.js). SCAFFOLDING -- there
+  // is no magnet pickup entity yet, so this is currently the only way to see
+  // the coin-pull at all. Remove once a real pickup grants it.
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyM') grantMagnet(player);
+  });
+
+  function fitStageToAspect() {
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    let width = winW;
+    let height = (width * ASPECT_H) / ASPECT_W;
+    if (height > winH) {
+      height = winH;
+      width = (height * ASPECT_W) / ASPECT_H;
+    }
+    stage.style.width = `${width}px`;
+    stage.style.height = `${height}px`;
+    renderer.setSize(width, height);
+    camera.aspect = ASPECT_W / ASPECT_H;
+    camera.updateProjectionMatrix();
+    // The points counter just moved with the stage -- labels in flight aim at a
+    // cached pixel position, so it has to be re-measured or they land wide.
+    refreshPointsFlyTarget();
+  }
+  window.addEventListener('resize', fitStageToAspect);
+  fitStageToAspect();
+
+  let lastContactFrame = player.frameIndex;
+
+  const clock = new THREE.Clock();
+  function tick() {
+    requestAnimationFrame(tick);
+    perf.mark();
+    const dt = Math.min(clock.getDelta(), 1 / 30);
+
+    // Intro tutorial. Runs on dt like every other timed effect here, so
+    // pausing genuinely holds it rather than letting it expire behind the
+    // pause screen.
+    if (!paused && gs.current === 'intro') {
+      introElapsed += dt;
+      if (introStep === 1) {
+        introLaneCycleElapsed += dt;
+        if (introLaneCycleElapsed >= INTRO_LANE_STATE_HOLD_SEC) {
+          introLaneCycleElapsed -= INTRO_LANE_STATE_HOLD_SEC;
+          introLaneIndex = (introLaneIndex + 1) % INTRO_LANE_CYCLE.length;
+          hud.setIntroLaneState(INTRO_LANE_CYCLE[introLaneIndex]);
+        }
+        // Independent cycle from the lane state above -- the run-cycle leg
+        // animation plays at its own normal in-game cadence (RUN_FRAME_
+        // DURATION) throughout, regardless of which lane is currently shown.
+        introRunFrameElapsed += dt;
+        if (introRunFrameElapsed >= RUN_FRAME_DURATION) {
+          introRunFrameElapsed -= RUN_FRAME_DURATION;
+          introRunFrameIndex = (introRunFrameIndex + 1) % PLAYER_RUN_FRAMES.length;
+          hud.setIntroRunFrame(introRunFrameIndex);
+        }
+        if (introElapsed >= INTRO_LANE_STEP_AUTO_ADVANCE_SEC) advanceIntroStep();
+      } else {
+        introJumpCycleElapsed += dt;
+        const currentHold = INTRO_JUMP_CYCLE[introJumpCycleIndex].holdSec;
+        if (introJumpCycleElapsed >= currentHold) {
+          introJumpCycleElapsed -= currentHold;
+          introJumpCycleIndex = (introJumpCycleIndex + 1) % INTRO_JUMP_CYCLE.length;
+          hud.setIntroJumpCycleState(introJumpCycleIndex, INTRO_JUMP_CYCLE[introJumpCycleIndex]);
+        }
+        if (introElapsed >= INTRO_JUMP_STEP_AUTO_ADVANCE_SEC) dismissIntro();
+      }
+    }
+
+    // Level-complete countdown. Runs on dt like every other timed effect here,
+    // so pausing genuinely holds it rather than letting it expire behind the
+    // pause screen.
+    if (!paused && gs.current === 'levelcomplete') {
+      levelCountdown -= dt;
+      // ceil, floored at 1: the display should read "1" for the whole final
+      // second rather than flashing a 0 nobody is meant to see.
+      hud.setLevelCountdown(Math.max(1, Math.ceil(levelCountdown)));
+      // Fires once, LEVEL_CURTAIN_CLOSE_DELAY_SEC into the countdown -- the
+      // flag guard is required because this branch runs every frame past
+      // that point, and closeLevelCurtains() re-adding an already-present
+      // class would be harmless but pointless. Only STARTS the close
+      // animation -- see the swap check below for why the swap itself
+      // waits for it to actually finish.
+      if (!levelCurtainsClosed
+        && LEVEL_COUNTDOWN_SECONDS - levelCountdown >= LEVEL_CURTAIN_CLOSE_DELAY_SEC) {
+        hud.closeLevelCurtains();
+        levelCurtainsClosed = true;
+      }
+
+      // THE ENVIRONMENT SWAP, once the curtains have actually FINISHED
+      // closing (LEVEL_CURTAIN_TRANSITION_SEC after the check above), not
+      // the instant they START to. Direct feedback, two rounds: a black
+      // frame was first visible right as the curtains pulled OPEN (the old
+      // code swapped in startNextLevel(), racing the reveal); moving the
+      // swap to the close trigger instead just moved the same visible
+      // stutter to peek out from behind the curtains WHILE THEY WERE STILL
+      // MID-SLIDE, since closeLevelCurtains() only starts a CSS transition,
+      // it doesn't block until it finishes. Waiting the extra
+      // LEVEL_CURTAIN_TRANSITION_SEC is what actually gets the swap
+      // (disposeStreet + createStreet, ~50 meshes, fresh textures that may
+      // never have been decoded/uploaded to the GPU this session) to run
+      // fully behind a fully-opaque curtain, with real hidden frames left
+      // over (see data/progression.js) before the countdown ends.
+      //
+      // Guarded on the theme key actually CHANGING, not just on
+      // LEVEL_SWAPS_ENVIRONMENT being on. themeForTier WRAPS past the last
+      // entry in data/progression.js's TIER_THEMES rather than returning
+      // null (direct feedback: rotate back to the first theme once the
+      // last one's been presented) -- so this guard's job today is purely
+      // "don't tear down and rebuild an identical street for no reason."
+      // pendingLevelTier, not levelIndex -- levelIndex is still the tier
+      // this run is ABOUT to leave; it only becomes the new one inside
+      // startNextLevel(), which hasn't run yet at this point.
+      if (!levelEnvironmentSwapped && levelCurtainsClosed
+        && LEVEL_COUNTDOWN_SECONDS - levelCountdown
+          >= LEVEL_CURTAIN_CLOSE_DELAY_SEC + LEVEL_CURTAIN_TRANSITION_SEC) {
+        levelEnvironmentSwapped = true;
+        if (LEVEL_SWAPS_ENVIRONMENT) {
+          const nextTheme = themeForTier(pendingLevelTier);
+          if (nextTheme && nextTheme !== currentThemeKey) {
+            disposeStreet(scene, street);
+            street = createStreet(scene, nextTheme);
+            currentThemeKey = nextTheme;
+          }
+        }
+      }
+      if (levelCountdown <= 0) startNextLevel();
+    }
+
+    if (!paused && gs.current === 'running') {
+      gameTime += dt;
+      // ONE speed for the whole world this frame (systems/speed.js). Every
+      // pool below gets this exact value -- the spacing guarantees in
+      // entities/platform.js and data/spawnConfig.js only hold because no
+      // pool ever scrolls at its own rate.
+      currentSpeed = speedAt(gameTime);
+      if (blockedNudgeCooldown > 0) blockedNudgeCooldown = Math.max(0, blockedNudgeCooldown - dt);
+      updateSteering();
+
+      // ABSOLUTE steering (input/input.js): the board reports a TARGET lane
+      // rather than a step, so close the gap one lane at a time. Stepping
+      // instead of jumping straight to the target is what keeps the
+      // platform-block check meaningful on every lane crossed -- a two-lane
+      // sweep with something parked in the middle lane correctly stops at the
+      // obstruction rather than teleporting past it. One step per frame is
+      // effectively instant to the eye anyway; the lane easing renders it as a
+      // single smooth sweep.
+      const laneTarget = getLaneTarget();
+      const step = laneTarget === null
+        ? pollLaneStep()
+        : Math.sign(laneTarget - player.targetLane);
+
+      if (step !== 0) {
+        const desiredLane = player.targetLane + step;
+        // Off the edge of the road entirely -- no lane to move into. Do
+        // NOTHING, deliberately: direct feedback singled this case out as the
+        // one that should stay silent. The player can see he's in the
+        // outermost lane, so a refusal there needs no explanation, whereas a
+        // refusal caused by a platform is genuinely ambiguous.
+        if (desiredLane >= 0 && desiredLane <= LANE_X.length - 1) {
+          // Direct feedback: switching into a lane with an active platform
+          // taller than his current elevation used to just teleport him on
+          // top of it -- an unearned climb, not a step/hop. Refused outright
+          // here rather than ending the run, since "blocked, not allowed to
+          // go" (his own words) is a softer, less punishing read than a hit;
+          // walking across two adjacent same-height decks stays allowed (the
+          // height gap there is ~0, under isPlatformLaneBlocked's threshold),
+          // and stepping into a LOWER/empty lane is still free -- that's the
+          // legitimate "fall off the edge" case, handled by updatePlayer's
+          // gravity once he's there.
+          if (isPlatformLaneBlocked(platformField, desiredLane, player.sprite.position.z, player.elevationY)) {
+            // Refused by a platform/ramp -- lurch that way and spring back, so
+            // the input visibly registered rather than looking dropped.
+            //
+            // Rate-limited because absolute mode re-attempts the SAME move
+            // every frame for as long as the lean is held (which is the right
+            // behaviour -- it means you slot in automatically the moment the
+            // platform passes). Without this the lurch would re-trigger
+            // continuously and read as a vibration rather than a bump.
+            if (blockedNudgeCooldown <= 0) {
+              triggerBlockedNudge(player, step);
+              blockedNudgeCooldown = BLOCKED_NUDGE_REPEAT_SEC;
+            }
+          } else {
+            setPlayerLane(player, desiredLane);
+          }
+        }
+      }
+      if (pollJumpPress()) {
+        // Plain physical hop, nothing platform-specific about the press
+        // itself -- direct feedback: no separate trigger mechanic. Whether
+        // it clears a kill barrier is purely a function of being airborne
+        // (jumpElapsed !== null) at the moment of contact, read directly by
+        // entities/player.js's updatePlayer and checkPlatformKillBarrierHit
+        // below.
+        //
+        // startPlayerJump itself no-ops while already airborne (jumpElapsed
+        // !== null) -- the SFX has to check the SAME condition explicitly,
+        // direct feedback: it was firing on every press of the button, not
+        // only when a jump actually started.
+        const jumpStarting = player.jumpElapsed === null;
+        startPlayerJump(player);
+        if (jumpStarting) playSfx('sfx_jump');
+      }
+      updatePlayer(player, dt, platformField);
+      // updateRibbon(ribbon, dt, getPlayerHeadAnchor(player)); -- disabled, see above
+      updateStreet(street, dt, currentSpeed);
+
+      // Foot-contact VFX: fires once per transition INTO a contact pose
+      // (frame 1 or 3, see data/playerSprite.js), grounded only -- a jump's
+      // contact-frame swaps shouldn't kick up dust mid-air.
+      const enteredContact = player.frameIndex !== lastContactFrame
+        && (player.frameIndex === 1 || player.frameIndex === 3)
+        && player.jumpElapsed === null;
+      lastContactFrame = player.frameIndex;
+      const vfxOn = getVfxEnabled();
+      if (enteredContact) {
+        pulseContactShadow(contactShadow);
+        // + player.elevationY: same reasoning as entities/contactShadow.js's
+        // own elevation follow -- otherwise dust puffs on a platform deck
+        // spawned down at street level instead of at his actual feet.
+        if (vfxOn) {
+          spawnDustPuff(
+            dustPool, player.sprite.position.x, 0.05 + player.elevationY, player.sprite.position.z - DUST_AHEAD_OFFSET,
+          );
+        }
+      }
+      // Post-hit blink -- fast enough to read as "intangible right now", and
+      // recomputed from scratch every frame (with an explicit visible-true
+      // branch) so it can never latch the sprite hidden. The contact shadow
+      // blinks with him; a shadow left on the street under a blinked-out
+      // character reads as a bug.
+      const blinkedOut = isInvulnerable(livesState, gameTime)
+        && Math.floor(gameTime * 14) % 2 !== 0;
+      setPlayerVisible(player, !blinkedOut);
+      setContactShadowVisible(contactShadow, !blinkedOut);
+
+      // Red damage flash, decayed on the run clock so it freezes under pause
+      // like every other timed effect here.
+      if (damageFlashTimer > 0) {
+        damageFlashTimer = Math.max(0, damageFlashTimer - dt);
+        const t = damageFlashTimer / DAMAGE_FLASH_DURATION_SEC;
+        damageFlashEl.style.opacity = `${t * DAMAGE_FLASH_PEAK_OPACITY}`;
+      }
+
+      updateContactShadow(contactShadow, player, dt);
+      // VFX toggle (ui/devPanel.js's VFX row, systems/vfxSettings.js):
+      // hide the whole pool/mesh rather than just skipping spawns above --
+      // otherwise particles already in flight at the moment of toggling OFF
+      // would sit frozen on screen (update/scrollZ stop touching them) and
+      // the streak mesh would freeze mid-cycle instead of disappearing.
+      dustPool.points.visible = vfxOn;
+      speedStreaks.mesh.visible = vfxOn;
+      if (vfxOn) {
+        dustPool.update(dt);
+        dustPool.scrollZ(currentSpeed * dt, DUST_FAN_RATE);
+        updateSpeedStreaks(speedStreaks, dt, currentSpeed);
+      }
+
+      // Assignment, not accumulation: systems/speed.js's closed form is the
+      // single source of truth for "how far have we come", shared with the
+      // spawn-seeding and coin-arc math. An Euler sum here would slowly
+      // disagree with them for no benefit.
+      // Still tracked (the game-over recap shows it) but no longer on the HUD
+      // -- direct feedback: "we can hide the distance meter."
+      distance = distanceTraveledBy(gameTime);
+
+      // MIN_ENEMY_OBSTACLE_GAP_SEC (constants.js): skip a spawn attempt that
+      // would land too close to the OTHER type's last spawn -- both spawn
+      // at the same fixed SPAWN_Z and scroll at the same speed, so this gap
+      // (enforced once, here, at spawn time) holds for the entity's entire
+      // lifetime. The spawner's own interval timer still resets normally
+      // either way, it just tries again next interval.
+      //
+      // The interval is stretched for the opening stretch of a run
+      // (systems/difficulty.js) -- direct feedback's "value to control how easy
+      // it is on the start", and deliberately about PLACEMENT, not speed. Two
+      // things worth knowing about this line:
+      //
+      //   1. It's keyed on when this obstacle will ARRIVE, not on gameTime.
+      //      Everything spawns ~13s of travel upstream, so an ease-in keyed on
+      //      spawn time would be fully spent before the player saw any of it.
+      //   2. updateSpawner only reads `interval` on the frame it actually
+      //      fires, so recomputing it every frame is free -- each gap is set by
+      //      the difficulty at the moment that gap begins.
+      // Level-relative, not run-relative: a fresh level re-arms the grace ramp
+      // (over the shorter LEVEL_RESTART window, since the player is already
+      // warmed up) instead of opening at whatever pace the run had climbed to.
+      const easeDuration = levelIndex === 1
+        ? EASE_IN_DURATION_SEC
+        : LEVEL_RESTART_EASE_IN_DURATION_SEC;
+      // TIER BASELINE (data/progression.js's TIER_OBSTACLE_INTERVAL_*):
+      // tier 1 keeps OBSTACLE_SPAWN_INTERVAL_SEC exactly as authored, later
+      // tiers tighten from there -- direct feedback, "level 2 feels easier
+      // than level 1," half of which was that nothing made later tiers
+      // harder at all.
+      const tierInterval = obstacleIntervalForTier(levelIndex, OBSTACLE_SPAWN_INTERVAL_SEC);
+      const easedInterval = tierInterval
+        * hazardSpacingMultiplierAt(spawnArrivalTime(gameTime) - levelStartTime, easeDuration);
+      // CLAMPED against the PREVIOUS tier's own settled interval, level 2+
+      // only. The other half of the "feels easier" bug: LEVEL_RESTART_EASE_
+      // IN_DURATION_SEC's grace ramp can widen spacing back toward
+      // EASE_IN_HAZARD_SPACING_MULTIPLIER at the very start of a level, and
+      // with tier 1's own baseline that grace was widening spacing PAST what
+      // the player had already been surviving in the level before it --
+      // i.e. tier 2 opened measurably sparser than tier 1 had settled to.
+      // This floor guarantees a level transition can never read as easier
+      // than the level before it, however the ease-in/tier numbers above end
+      // up tuned later. No previous tier exists for tier 1 itself, so it's
+      // unclamped -- that's the run's own onboarding ramp, untouched.
+      const obstacleInterval = levelIndex === 1
+        ? easedInterval
+        : Math.min(easedInterval, obstacleIntervalForTier(levelIndex - 1, OBSTACLE_SPAWN_INTERVAL_SEC));
+      updateSpawner(spawnerState, dt, () => {
+        if (gameTime - lastEnemySpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
+          // data/introSequence.js: spawn close instead of at the far
+          // SPAWN_Z while the pipeline is still filling, so the run-start
+          // stretch doesn't sit empty for one full ~9s far-travel time.
+          spawnObstacle(obstacleField, platformField);
+          lastObstacleSpawnTime = gameTime;
+        }
+      }, obstacleInterval);
+      updateObstaclePool(obstacleField, dt, currentSpeed);
+
+      // An obstacle costs ONE life rather than ending the run. The whole loop
+      // is gated on the invulnerability window (rather than testing it per
+      // hit, matching CarRacer's rig) because a barricade's collision window
+      // spans many frames -- without this a single obstacle would drain every
+      // life in one pass. See systems/lives.js.
+      if (!isInvulnerable(livesState, gameTime)) {
+        for (const slot of obstacleField.pool) {
+          if (checkObstacleHit(player, slot)) {
+            takeDamage();
+            break;
+          }
+        }
+      }
+
+      // Kill-barrier platform, missed -- same consequence as an obstacle hit.
+      // Returns the slot (not a bool) so a SURVIVED hit can mark it cleared:
+      // otherwise the player stays at street level while the platform's opaque
+      // deck box scrolls over him, hiding him inside it for seconds. See
+      // entities/platform.js's checkPlatformKillBarrierHit.
+      if (!isInvulnerable(livesState, gameTime)) {
+        const barrierSlot = checkPlatformKillBarrierHit(
+          player, platformField, player.jumpElapsed === null,
+        );
+        if (barrierSlot) {
+          const fatal = takeDamage();
+          if (!fatal) markPlatformCleared(barrierSlot);
+        }
+      }
+
+      // Foot Soldier: opposite of an obstacle hit -- contact KILLS the
+      // enemy (dissolve poof + score + the player's auto spin-attack)
+      // instead of ending the run.
+      updateSpawner(enemySpawnerState, dt, () => {
+        if (ENEMIES_ENABLED && gameTime - lastObstacleSpawnTime >= MIN_ENEMY_OBSTACLE_GAP_SEC) {
+          spawnEnemy(enemyField, platformField);
+          lastEnemySpawnTime = gameTime;
+        }
+      }, ENEMY_SPAWN_INTERVAL_SEC);
+      updateEnemyPool(enemyField, dt, currentSpeed, platformField);
+      const hitEnemy = checkEnemyHit(player, enemyField);
+      if (hitEnemy) {
+        if (vfxOn) {
+          spawnEnemyPoof(
+            enemyPoofPool,
+            hitEnemy.sprite.position.x, hitEnemy.sprite.position.y, hitEnemy.sprite.position.z,
+            hitEnemy.sprite.scale.x, hitEnemy.sprite.scale.y, hitEnemy.type.poofColors,
+          );
+        }
+        // Read the position BEFORE killEnemy hides the sprite -- the label
+        // has to launch from where the kill visibly happened.
+        const killX = hitEnemy.sprite.position.x;
+        const killY = hitEnemy.sprite.position.y;
+        const killZ = hitEnemy.sprite.position.z;
+        killEnemy(hitEnemy);
+        playSfx('sfx_enemy_kill');
+        startPlayerAttack(player, attackSequenceIndex);
+        attackSequenceIndex += 1;
+        spawnPointsFly(killX, killY, killZ, camera, awardEnemyKill(score), 'enemy');
+      }
+      enemyPoofPool.points.visible = vfxOn;
+      if (vfxOn) enemyPoofPool.update(dt);
+
+      if (PLATFORM_ENABLED) {
+        updateSpawner(platformSpawnerState, dt, () => {
+          spawnPlatform(platformField, rollPlatformType());
+        }, PLATFORM_SPAWN_INTERVAL_SEC);
+      }
+      updatePlatformField(platformField, dt, currentSpeed);
+
+      // Coins: purely positive, so nothing here can end the run. Placed
+      // AFTER the platform section on purpose -- a coin cluster's placement
+      // queries live platform geometry (ramp spans to climb, footprints the
+      // jump-arc pattern must avoid), so platforms should already have
+      // scrolled this frame before that's asked.
+      //
+      // No data/introSequence.js ramp-up close-spawn treatment, unlike every
+      // spawner above: that closes an empty-pipeline FAIRNESS gap, and
+      // missing a coin costs the player nothing. See data/spawnConfig.js.
+      updateSpawner(coinSpawnerState, dt, () => {
+        spawnCoinCluster(coinField, platformField, obstacleField, gameTime);
+      }, COIN_CLUSTER_SPAWN_INTERVAL_SEC);
+      // Must run BEFORE collectCoins -- it's what resolves each coin's live
+      // surface height for this frame (same ordering reason updateEnemyPool
+      // precedes checkEnemyHit above).
+      updateCoinPool(coinField, dt, currentSpeed, platformField);
+      // Magnet: its own pass, strictly AFTER updateCoinPool (so its x/y writes
+      // aren't overwritten by the pool's surface-follow) and BEFORE
+      // collectCoins (so the pull strength collection reads is current this
+      // frame). Called unconditionally -- when the buff is down it eases each
+      // coin's pull back to zero and returns it to its own lane.
+      applyMagnetPull(coinField, player, dt, isMagnetActive(player));
+      const collected = collectCoins(player, coinField, platformField);
+      for (const slot of collected) {
+        playSfx('sfx_coin');
+        if (vfxOn) {
+          spawnCoinSparkle(
+            coinSparklePool,
+            slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
+            slot.type.sparkleColor,
+          );
+        }
+        spawnPointsFly(
+          slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
+          camera, awardCoin(score, slot.type),
+          slot.type === COIN_TYPES.bonus ? 'bonus' : 'coin',
+        );
+        despawnCoin(slot);
+      }
+      coinSparklePool.points.visible = vfxOn;
+      if (vfxOn) coinSparklePool.update(dt);
+
+      // Ability pickups (entities/pickups.js). ONE attempt per interval that
+      // then rolls for what it produces, rather than two competing spawners --
+      // that's what stops a magnet and a heart ever landing on top of each
+      // other, and keeps the rarity readable straight off the two chances in
+      // data/spawnConfig.js.
+      //
+      // The life roll goes FIRST (it's the rare prize; it shouldn't lose its
+      // slot to the common one) and is gated on the player ACTUALLY MISSING a
+      // life. That gate is the real rarity control: at full health a heart
+      // would be a no-op pickup, and a pickup that does nothing when collected
+      // teaches the player to ignore the next one.
+      //
+      // Placed after the coin section for the same reason coins come after
+      // platforms: placement queries live platform + obstacle geometry, so
+      // both should already have scrolled this frame before it's asked.
+      updateSpawner(pickupSpawnerState, dt, () => {
+        const wantsLife = livesState.lives < LIVES_SOFTCAP;
+        if (wantsLife && Math.random() < PICKUP_LIFE_SPAWN_CHANCE) {
+          spawnPickup(pickupField, platformField, obstacleField, 'life');
+        } else if (Math.random() < PICKUP_MAGNET_SPAWN_CHANCE) {
+          spawnPickup(pickupField, platformField, obstacleField, 'magnet');
+        }
+        // Otherwise nothing this interval -- that's the point.
+      }, PICKUP_SPAWN_INTERVAL_SEC);
+      updatePickupPool(pickupField, dt, currentSpeed, platformField);
+      for (const slot of collectPickups(player, pickupField, platformField)) {
+        // Reuses the coin sparkle, tinted to the pickup's own halo colour --
+        // same burst, so a pickup reads as "a collect, but bigger" rather than
+        // as an unrelated effect.
+        if (vfxOn) {
+          spawnCoinSparkle(
+            coinSparklePool,
+            slot.sprite.position.x, slot.sprite.position.y, slot.sprite.position.z,
+            slot.type.sparkleColor,
+          );
+        }
+        if (slot.type.effect === 'magnet') {
+          grantMagnet(player);
+        } else if (slot.type.effect === 'life') {
+          // gainLife is clamped to LIVES_SOFTCAP and reports whether it did
+          // anything -- so a heart collected at full health (only reachable if
+          // damage was healed between spawn and pickup) silently does nothing
+          // rather than showing a phantom HUD change.
+          if (gainLife(livesState)) hud.updateLives(livesState.lives);
+        }
+        despawnPickup(slot);
+      }
+    }
+
+    // Follow the eased lane-center position, not the per-frame xOffset snap
+    // -- otherwise the small foot-plant jitter reads as camera pan/tilt.
+    // elevationY rides up with the player on an elevated platform stretch
+    // (entities/platform.js) so the camera keeps the same relative framing.
+    // dt only drives the shake. Passing 0 while paused freezes the decay AND
+    // skips applying jitter, so a paused screen sits still instead of
+    // vibrating forever. Deliberately NOT gated on gs.current: the death shake
+    // should play out across the game-over screen.
+    // Outside the running guard so labels keep animating regardless of game
+    // state, and frozen by pause like every other timed effect here. endRun
+    // settles and clears them explicitly, so nothing is left hanging over the
+    // game-over screen (which would sit behind it anyway -- overlay z-index 20
+    // vs label 15).
+    if (!paused) updatePointsFly(dt);
+    // Points-counter punch/burst -- see ui/hud.js's own comment for why this
+    // is a per-frame JS timer rather than a CSS animation. Frozen by pause
+    // like pointsFly above it.
+    if (!paused) hud.updateHudEffects(dt);
+
+    updateCameraRig(cameraRig, player.laneX, player.elevationY, paused ? 0 : dt);
+
+    renderer.render(scene, camera);
+    perf.frame();
+  }
+
+  fullReset();
+  beginIntro();
+  tick();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}

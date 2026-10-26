@@ -5,19 +5,6 @@
 
 import * as THREE from 'three';
 import '../style.css';
-import { assetUrl as themeAsset } from '@theme';
-
-// The three images style.css draws, handed to it as custom properties. See
-// the note at the top of style.css: CSS cannot resolve the `@theme` alias,
-// and each theme owns a separate assets directory, so these cannot be plain
-// url() paths any more. Set before anything renders.
-for (const [prop, file] of [
-  ['--theme-curtain-left', 'lc_curtain_left.webp'],
-  ['--theme-curtain-right', 'lc_curtain_right.webp'],
-  ['--theme-board', 'gobalance_horizontal_board.webp'],
-]) {
-  document.documentElement.style.setProperty(prop, `url('${themeAsset(file)}')`);
-}
 // MUST be the first game import: installs window.__gbSensor/window.GoBalance
 // stand-ins before anything else (systems/boardCalibration.js in particular)
 // checks for them. No-op the instant the real host is present -- see the

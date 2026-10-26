@@ -1,4 +1,3 @@
-import { assetUrl } from '@theme';
 // Leonardo's mask-tail ribbon (build doc §6, §9.1): a separate looping
 // flutter-cycle billboard, independent of the body run-cycle frames (per
 // direct feedback -- previously baked into the body art, now its own
@@ -22,7 +21,7 @@ export const RIBBON_FRAMES = Array.from({ length: FRAME_COUNT }, (_, i) => ({
   // `name.png` cannot see `ribbon_${i}.png`. It shipped asking for a file
   // that no longer existed. If the ribbon is ever re-encoded again, this line
   // has to be changed by hand.
-  url: assetUrl(`ribbon_${i}.webp`),
+  url: new URL(`../assets/ribbon_${i}.webp`, import.meta.url).href,
 }));
 export const RIBBON_ASPECT = FRAME_H / FRAME_W;
 

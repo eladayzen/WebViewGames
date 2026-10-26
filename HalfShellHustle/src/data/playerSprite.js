@@ -1,4 +1,3 @@
-import { assetUrl, RUN_FRAMES, JUMP_FRAMES, FRAME_ASPECT } from '@theme';
 // Leonardo's POC art (build doc §2, §6, as amended by direct playtest
 // feedback): a whole-body running cycle, viewed from behind, katana drawn
 // in hand -- matching pipeline/build-docs/laneRunnerRef.png's look/
@@ -118,45 +117,32 @@ import { assetUrl, RUN_FRAMES, JUMP_FRAMES, FRAME_ASPECT } from '@theme';
 // instead of sitting dead-center every contact. Knee-drive frames stay
 // neutral. Added on top of the lane-position easing in entities/player.js,
 // not baked into it, so lane-changing still eases normally underneath.
-// SCRAP-BOT SKIN, POC, take 2: direct feedback caught that the old frame 0
-// (crouch-dip) "has nothing to do with the run" -- it read as a jump
-// anticipation pose, not a stride. Reassigned rather than regenerated: it's
-// now PLAYER_JUMP_FRAMES[0] instead (see below). The run cycle is the
-// three actual running poses from the old 12-frame set (former run_1/2/3:
-// push-off, peak-hop-right, descend) plus a horizontally-mirrored copy of
-// each (a pixel-guaranteed flip, not a second AI generation -- guarantees
-// the left/right pair actually matches, same technique this project's
-// turtle-era run cycle used for its own L/R mirror). 6 frames total.
-//   0: push-off            -- launching, stretching taller
-//   1: peak hop, right leg forward -- airborne, right leg forward
-//   2: descending          -- falling, right leg reaching down
-//   3: push-off, mirrored  -- same beat, flipped
-//   4: peak hop, left leg forward  -- mirror of 1
-//   5: descending, mirrored -- mirror of 2, loops back to 0
-// holdUnits 3 on both peak-hop frames (1 and 4, the L/R mirrored pair):
-// direct request -- the airborne moment reads better held a beat longer
-// than the push-off/descend transitions around it.
-// The cycle itself is THEME DATA -- the turtle runs on four frames and the
-// scrap-bot on six, with different holds and offsets, and mixing them would
-// put one character's pose inside the other's run. See data/theme.tmnt.js.
-const FRAMES_RAW = RUN_FRAMES;
+const FRAMES_RAW = [
+  { file: 'leo_run_0.webp', holdUnits: 1, yOffset: -0.15, xOffset: 0 }, // knee-drive-right
+  { file: 'leo_run_1.webp', holdUnits: 1, yOffset: 0, xOffset: 0.15 }, // contact-right
+  { file: 'leo_run_2.webp', holdUnits: 1, yOffset: -0.15, xOffset: 0 }, // knee-drive-left
+  { file: 'leo_run_3.webp', holdUnits: 1, yOffset: 0, xOffset: -0.15 }, // contact-left
+];
 
 // All 4 frames share this exact canvas size (see the ONE-LINEAGE REBUILD
 // note above) -- one shared aspect ratio for the whole cycle, not per-frame.
-export const PLAYER_FRAME_ASPECT = FRAME_ASPECT;
+export const PLAYER_FRAME_ASPECT = 760 / 800;
 
 export const PLAYER_RUN_FRAMES = FRAMES_RAW.map(({ file, holdUnits, yOffset, xOffset }) => ({
-  url: assetUrl(file),
+  url: new URL(`../assets/${file}`, import.meta.url).href,
   holdUnits,
   yOffset,
   xOffset,
 }));
 
-// Seconds per hold-unit (see holdUnits above). 0.75 was a deliberate
-// slow-motion value for diagnosing the frame sequence (now fixed, see the
-// FRAMES_RAW reassignment note above) -- back to a real gameplay pace, in
-// the same ballpark as the old 4-frame cycle's 0.102/frame.
-export const RUN_FRAME_DURATION = 0.09;
+// Short labels for the temporary on-screen frame-debug readout (ui/hud.js,
+// wired in core/main.js) -- lets direct feedback reference "frame 1"
+// unambiguously instead of describing a pose in words.
+export const FRAME_LABELS = ['knee-drive-R', 'contact-R', 'knee-drive-L', 'contact-L'];
+
+// Seconds per hold-unit (see holdUnits above) -- one "contact" frame lasts
+// exactly this long; one "knee-drive" frame lasts 3x this.
+export const RUN_FRAME_DURATION = 0.102; // 0.12 * 0.85 -- 15% faster
 
 // --- Attack sequences (auto-triggered on a Foot Soldier kill, entities/
 // enemy.js, via entities/player.js's startPlayerAttack) -- direct feedback's
@@ -166,7 +152,7 @@ export const RUN_FRAME_DURATION = 0.09;
 // tracks the rotation index) rather than always playing the same one.
 //
 // Every sequence is one-lineage seeded from the existing contact-right run
-// frame (leo_run_1.webp) via a single gpt-image/1.5-image-to-image pose edit
+// frame (leo_run_1.png) via a single gpt-image/1.5-image-to-image pose edit
 // that generated all 4 of ITS frames together as one 2x2 grid (per the
 // batch-prompt-character-sprite-sets rule -- separate one-by-one edits risk
 // a frame drifting off-model), then sliced at a shared FIXED cell size with
@@ -180,22 +166,75 @@ export const RUN_FRAME_DURATION = 0.09;
 // the exact per-frame-recompute bug the run cycle's fixed canvas fixed) -- a
 // slight squash for a fraction of a second under heavy motion-blur linework
 // doesn't read.
-// SCRAP-BOT SKIN, POC (halfshellhustle-hero-skin branch): direct request --
-// this hero doesn't fight, so no dedicated attack art was made for him.
-// "I don't care that the attack seq will be exactly like the run" -- so
-// every attack sequence just plays the run cycle instead of leo_spin/
-// leo_turn/leo_lunge (those files are still turtle art, left in place but
-// unreferenced). Same aspect as the run cycle now, not a separate square
-// one, since there's no independent art driving its own proportions anymore.
-export const ATTACK_FRAME_ASPECT = PLAYER_FRAME_ASPECT;
+export const ATTACK_FRAME_ASPECT = 1;
 
-export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
-  key: `run-reuse-${i}`,
-  frameDuration: RUN_FRAME_DURATION,
-  frames: PLAYER_RUN_FRAMES.map((f) => ({ url: f.url })),
-}));
+const ATTACK_SEQUENCE_DEFS = [
+  {
+    key: 'swirl',
+    filePrefix: 'leo_spin',
+    // 0: wind-up -- torso starting to twist, blades sweeping outward.
+    // 1: mid-spin -- blades arcing in a near-full circle of motion-blur.
+    // 2: continuing spin -- blur whipping around the other side.
+    // 3: landing -- blades snap to a forward running-ready grip, untwisting
+    //    back toward the standard back-facing running pose.
+    frameCount: 4,
+    // Reached via 0.055 -> 0.0715 -> 0.0858 across direct feedback (each
+    // step "too fast to register as playing").
+    frameDuration: 0.0858,
+  },
+  {
+    key: 'turn',
+    filePrefix: 'leo_turn',
+    // Bigger than 'swirl' -- a full turn-around rather than an over-the-
+    // shoulder blur, briefly showing his front.
+    // 0: starting the spin, same back view as the run pose, blades
+    //    beginning to swing out wide to both sides.
+    // 1: mid-turn -- rotated ~180 degrees, his FRONT (face/belly) visible,
+    //    blades held out wide, peak motion-blur.
+    // 2: continuing the rotation past the front, turning back toward a
+    //    rear 3/4 view, blur easing off.
+    // 3: landing -- back to the run pose, blades settling forward.
+    frameCount: 4,
+    // Slower than 'swirl' per direct feedback -- the bigger turn needs more
+    // time to register. Dialed back from 0.12 -> 0.10 (direct feedback: "a
+    // bit faster"), still slower than 'swirl's 0.0858 on purpose.
+    frameDuration: 0.10,
+    // Playback order direct feedback landed on after reviewing the frames
+    // slowed way down (0, 1, 2, 3 read wrong) -- generated-frame index 2
+    // first, then 1, then 0, then 3. Source files/comments above still
+    // describe each frame by its generated index, not its playback order.
+    frameOrder: [2, 1, 0, 3],
+  },
+  {
+    key: 'lunge',
+    filePrefix: 'leo_lunge',
+    // A forward lunge-thrust rather than an in-place spin -- launches
+    // forward low with both blades pointed straight ahead as the one big
+    // dramatic peak frame, then tucks into a fast recovery roll back up
+    // into his stride.
+    // 0: wind-up -- crouching low, coiled backward, blades pulled in tight.
+    // 1: peak lunge -- launched forward and low, body stretched horizontal,
+    //    both blades held together pointed straight ahead like a spear.
+    // 2: recovery roll -- tucked into a ball, shell leading, blades in.
+    // 3: landing -- popping back up into the standard running pose.
+    frameCount: 4,
+    frameDuration: 0.0858, // same pace as 'swirl' for now
+  },
+];
 
-// --- Jump frames. entities/player.js plays PLAYER_JUMP_FRAMES once, evenly sliced
+export const ATTACK_SEQUENCES = ATTACK_SEQUENCE_DEFS.map((def) => {
+  const order = def.frameOrder || Array.from({ length: def.frameCount }, (_, i) => i);
+  return {
+    key: def.key,
+    frameDuration: def.frameDuration,
+    frames: order.map((i) => ({
+      url: new URL(`../assets/${def.filePrefix}_${i}.webp`, import.meta.url).href,
+    })),
+  };
+});
+
+// --- Jump frames (art only -- not wired into core/main.js's frame-debug
+// HUD). entities/player.js plays PLAYER_JUMP_FRAMES once, evenly sliced
 // across JUMP_RISE_DURATION, then holds the LAST entry for the rest of the
 // jump (hold and fall). After PASS 3 below shipped, the game code was
 // briefly simplified to show only ONE static pose for the entire jump
@@ -207,8 +246,8 @@ export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
 // kept for lineage/context even though only PASS 4's 3 frames ship now.
 //
 // PASS 1 (3-frame launch/mid-ascent/peak progression, symmetric forward-V
-// blade grip): one-lineage seeded from leo_run_1.webp (primary, camera
-// angle/build/style) + leo_lunge_1.webp (secondary, "blades held forward"
+// blade grip): one-lineage seeded from leo_run_1.png (primary, camera
+// angle/build/style) + leo_lunge_1.png (secondary, "blades held forward"
 // grip concept only) via a 2x2-grid generate_image_edit
 // (gpt-image/1.5-image-to-image). First attempt merged both blades into
 // one hand (other arm missing); one follow-up edit restored a second
@@ -217,7 +256,7 @@ export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
 // PASS 2 (BLADE-ORIENTATION FIX): direct feedback rejected the symmetric
 // forward-V as reading like a jumping-jack/balance pose, not an attack.
 // Pushed blades forward/down and roughly parallel instead -- adapting
-// leo_lunge_1.webp's forward-parallel grip. Overwrote the same
+// leo_lunge_1.png's forward-parallel grip. Overwrote the same
 // leo_jump_grid.png (two chained edits, same merged-hand bug hit and
 // fixed again).
 //
@@ -229,18 +268,18 @@ export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
 // generated fresh from TWO existing shipped run-cycle/attack frames as dual
 // source_images (gpt-image/1.5-image-to-image, per KOLBO_ASSET_PIPELINE.md's
 // guidance for a meaningful pose change):
-//   - leo_run_0.webp (knee-drive-right) as the PRIMARY reference, called out
+//   - leo_run_0.png (knee-drive-right) as the PRIMARY reference, called out
 //     explicitly as the literal source of truth for BOTH the camera angle
 //     (straight-on back view, shell flat-on, no rotation -- the #1 thing
 //     the prior pass got wrong) AND the leg pose (one knee driven up,
 //     trailing leg extended low -- an asymmetric jump-appropriate leg
 //     silhouette that already existed in the run cycle, not reinvented).
-//   - leo_lunge_1.webp (peak lunge) as a SECONDARY reference for the
+//   - leo_lunge_1.png (peak lunge) as a SECONDARY reference for the
 //     "blades held close together near the body" grip idea only --
 //     explicitly prompted to ignore its horizontal dive body angle.
 // Generated 3 candidates in one call (not committing to the first result,
 // per this pass's own risk of repeating the camera-angle drift) and
-// visually checked each against leo_run_0.webp's body/shell angle before
+// visually checked each against leo_run_0.png's body/shell angle before
 // picking one. Two of the three drifted the sword-cross up above/behind
 // the head (arms spread wide, closer to the rejected "swept to one side"
 // failure mode); the third had the swords crossed close to the body but
@@ -259,13 +298,13 @@ export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
 // its own alpha bbox (only one frame this time -- no sibling frames to keep
 // canvas-aligned against, so a per-frame bbox crop doesn't reopen the
 // run-cycle's multi-frame centroid-drift bug), then scaled by a single
-// factor to a content height of 695px -- chosen to match leo_run_0.webp's
+// factor to a content height of 695px -- chosen to match leo_run_0.png's
 // own alpha-bbox content height (728-33=695) so the character reads at the
 // same on-screen scale as the run cycle -- and placed onto a fresh 800x760
 // canvas with its bbox horizontally centered on the canvas's horizontal
 // center (x=400, the same convention the prior jump-frame pass used) and a
-// 33px top margin (matching leo_run_0.webp's own top margin). The result is
-// visibly narrower than leo_run_0.webp's bbox (blades point up/in rather
+// 33px top margin (matching leo_run_0.png's own top margin). The result is
+// visibly narrower than leo_run_0.png's bbox (blades point up/in rather
 // than out to the sides) -- expected and correct, not a bug: it's the
 // direct visual signature of "tucked in close to the body" instead of the
 // old wide flying-V silhouette.
@@ -277,7 +316,7 @@ export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
 // PASS 4 (this one -- real 3-frame progression again, much more precise
 // direct feedback than PASS 1/2 got): direct feedback gave an exact,
 // per-frame breakdown this time -- squeeze-down, launching-up, then a main
-// pose described as "basically close to [leo_run_1.webp, the contact-right
+// pose described as "basically close to [leo_run_1.png, the contact-right
 // run frame] but the back should be a bit more stretched, ... heads a
 // little bit up like looking up, but the arms should be in front hidden by
 // the torso and shield, ... crossed but most of them hidden ... showing a
@@ -290,7 +329,7 @@ export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
 // chained-edit process, all 3 frames were generated together in ONE
 // gpt-image/1.5-image-to-image call (per the batch-prompt-character-
 // sprite-sets rule) as three side-by-side panels in a single 3:2-aspect
-// image, with leo_run_1.webp as the SOLE source_image (flattened onto a
+// image, with leo_run_1.png as the SOLE source_image (flattened onto a
 // real white RGB background first, per KOLBO_ASSET_PIPELINE.md's
 // upload_media gotcha -- re-uploading an RGBA PNG as-is risks the
 // transparent area re-encoding into a non-white noisy fill). The prompt
@@ -331,7 +370,7 @@ export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
 //     frame's headband center was placed at the shared canvas center,
 //     x=400.
 //   - GROUND LINE at canvas y=728 for every frame's bbox BOTTOM -- matches
-//     leo_run_0.webp/leo_run_1.webp/the old leo_jump_0.webp's own content
+//     leo_run_0.png/leo_run_1.png/the old leo_jump_0.png's own content
 //     bottom exactly, so a foot-plant reads at the same height turn to
 //     turn instead of popping vertically on the swap.
 // Net effect: all 3 frames share one 800x760 canvas, one horizontal
@@ -345,20 +384,10 @@ export const ATTACK_SEQUENCES = [0, 1, 2].map((i) => ({
 // leo_spin_grid.png / leo_turn_grid.png / leo_lunge_grid.png naming
 // convention for a batch source). art/final/ mirrors what shipped to
 // src/assets/.
-// SCRAP-BOT SKIN, POC, take 3: direct request -- keep the crouch-dip
-// takeoff frame, but replace the rest of the launch/hold progression with
-// a single held pose: the run cycle's own peak-hop-right frame
-// (leo_run_1.webp, PLAYER_RUN_FRAMES[1]), reused directly rather than
-// duplicated as a separate asset. entities/player.js's rise-slice logic
-// (Math.floor(riseT * PLAYER_JUMP_FRAMES.length), clamped) already handles
-// any array length -- with 2 entries that's a quick flash of frame 0 at
-// takeoff, then frame 1 held for the rest of the rise, hang, and fall.
-// leo_jump_1/2/3.png are now unreferenced (left in place, not deleted).
-// Frame 0 repeated 2x, not a holdUnits value: the rise-slice logic above
-// has no hold-duration concept of its own (unlike the run cycle), it just
-// divides JUMP_RISE_DURATION evenly across however many entries are here --
-// so repeating the same URL is what gives crouch-dip 2/3 of that budget
-// before leo_run_1 takes over for the last 1/3 and then holds (last entry).
-export const PLAYER_JUMP_FRAMES = JUMP_FRAMES.map((file) => ({
-  url: assetUrl(file),
+export const PLAYER_JUMP_FRAMES = [
+  { file: 'leo_jump_0.webp' }, // squeeze-down
+  { file: 'leo_jump_1.webp' }, // launching-up
+  { file: 'leo_jump_2.webp' }, // main pose -- holds for the rest of the jump
+].map(({ file }) => ({
+  url: new URL(`../assets/${file}`, import.meta.url).href,
 }));

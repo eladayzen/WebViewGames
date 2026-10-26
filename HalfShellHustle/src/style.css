@@ -1,9 +1,3 @@
-/* THEME IMAGES COME IN AS CUSTOM PROPERTIES, not as url() paths.
-   CSS cannot read the `@theme` alias -- that is a JS module -- and the two
-   themes keep complete, separate asset directories so a bare
-   url('./assets/x.webp') would no longer resolve for either of them. The
-   three below are set once at boot by core/main.js from the theme's own
-   assetUrl(); see data/theme.tmnt.js for why the separation is absolute. */
 * {
   margin: 0;
   padding: 0;
@@ -1098,13 +1092,13 @@ html, body {
    repeats the pattern), so this needed no size/position changes. */
 #lc-curtain-left {
   left: 0;
-  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), var(--theme-curtain-left);
+  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('./assets/lc_curtain_left.webp');
   transform: translateX(-100%);
 }
 
 #lc-curtain-right {
   right: 0;
-  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), var(--theme-curtain-right);
+  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url('./assets/lc_curtain_right.webp');
   transform: translateX(100%);
 }
 
@@ -1289,7 +1283,7 @@ html, body {
 .intro-board {
   width: 24vmin;
   aspect-ratio: 358 / 266;
-  background-image: var(--theme-board);
+  background-image: url('./assets/gobalance_horizontal_board.webp');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -1317,7 +1311,7 @@ html, body {
 .cal-foot {
   position: absolute;
   inset: 0;
-  background-image: var(--theme-board);
+  background-image: url('./assets/gobalance_horizontal_board.webp');
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
