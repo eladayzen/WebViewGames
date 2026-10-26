@@ -69,11 +69,45 @@ rebuilt from any pushed source at all — the work existed only in one worktree.
 Both were invisible: the build succeeds, the bundle looks fine, the game runs.
 The hash check is the only thing that catches either one before players do.
 
-## Source folder names are not the shipped folder names
+## Check where a game lands, and how many games a folder builds
 
-`HalfShellHustle/` ships into `StreamingAssets/RoboRun/`. Check where a game actually lands
-before you sync; the names differ for several games, and the shipped folder is also the key for
-that game's saves, so renaming it after launch orphans every player's save data.
+**One folder does not always mean one game, and a plain `npm run build` is not always the
+thing that ships.** Both halves of that have cost real time.
+
+| source folder | build command | ships into |
+|---|---|---|
+| `TmntSkateSlice/` | `npm run build:tmnt` | `StreamingAssets/TmntSkateSlice/` |
+| `TmntSkateSlice/` | `npm run build:original` | `StreamingAssets/RooftopNinja/` |
+| everything else | `npm run build` | `StreamingAssets/<same name>/` |
+
+**In `TmntSkateSlice`, a plain `npm run build` produces NEITHER shipped game.** It is a third,
+mode-less bundle that nothing ships. Nothing warns you: it builds, it runs, and it is wrong.
+That folder holds both themes' art and aliases `@hero-assets` to a different module per mode,
+so the build you did not ask for is a real build of a game nobody plays.
+
+Everywhere else the source folder name now equals the shipped folder name. `HalfShellHustle/`
+used to build into `StreamingAssets/RoboRun/`, which is how this section started; the two were
+split into separate folders on 2026-10-26 and that mismatch is gone. Don't create a new one.
+
+**The shipped folder name is a three-way contract the moment a build ships**, and only the
+first use is obvious:
+
+- the `StreamingAssets` folder the app serves the game from;
+- the per-profile save key;
+- the Firestore document id, **derived** from it rather than listed --
+  `FirestoreStructureStrings.WebGameKey("HalfShellHustle")` -> `web_half_shell_hustle`.
+
+Renaming afterwards migrates nothing. It files progress under a new document and every
+player's saved state reads as absent. Pick the final name before the first build, not before
+launch.
+
+**Two skins of one game is not automatically one folder.** `TmntSkateSlice`/`RooftopNinja`
+share a folder because they differ only in pictures. `HalfShellHustle`/`RoboRun` were tried
+that way and lasted an afternoon: the reskin had also made the enemies taller, stopped them
+breathing, collapsed four shadow footprints into one and lifted them off the ground, so turtle
+art on robot numbers gave oversized hovering enemies. A theme module can swap pictures; it
+cannot swap how a character occupies the world. If the two versions differ in **feel**, give
+them separate folders and accept that a fix in one no longer reaches the other.
 
 ## Shipping into the Unity project (`~/UnityProjects/gobalance`)
 

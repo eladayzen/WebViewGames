@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test test/beam-pairs.test.mjs test/coop-credit.test.mjs test/coop-end.test.mjs test/coop-names.test.mjs test/coop-submit.test.mjs test/input.test.mjs test/keyboard-seats.test.mjs test/roster-host-shape.test.mjs test/roster-identity.test.mjs test/seat-colours.test.mjs"
   },
   "devDependencies": {
     "vite": "^6.0.0"
