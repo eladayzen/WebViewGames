@@ -598,7 +598,15 @@
         <rect x="14" y="5" width="4" height="14" rx="1.2" fill="currentColor"/>
       </svg>
     </button>
-    <button type="button" class="chrome-btn" id="btnBack" data-act="back" aria-label="back">
+    <!-- id="gb-back" by repo convention, not by the SDK doc's layout. All six
+         shipped games carry that id, and not one of them uses the doc's fixed
+         top-left pill -- they all restyled it into this same top-right trio, so
+         in BloopSquad and RoboRun #gb-back IS the X. The app does not look the id
+         up (nothing in Assets/GoBalance/WebGames references it); the button works
+         through its own act into host.exit(), which this transport sends as
+         nav:back. The id earns its keep the day something drives every game at
+         once and asks each one for its way off the board. -->
+    <button type="button" class="chrome-btn" id="gb-back" data-act="back" aria-label="back">
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
         <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
       </svg>
@@ -627,12 +635,11 @@
      about it; a game-side #gameover-overlay would be a second name for a state
      the body attribute already owns.
 
-     NO #gb-back BUTTON, deliberately. GOBALANCE_SDK.md's required DOM contract
-     is #gameover-overlay, #restart-button, an input path and a module entry --
-     it does not require that id. This game's chrome already carries an X at the
-     top right (CHROME.md), it walks the back ladder, and its top rung is
-     host.exit(), which this transport delivers as nav:back. The SDK's own fixed
-     overlay button would be a second back in a different corner. -->
+     NO SEPARATE BACK BUTTON. The SDK boilerplate shows #gb-back as a fixed
+     top-left pill; every shipped game in this repo instead puts that id on the
+     X in its own top-right chrome, which is what this game does too (see
+     #gb-back above). A second back in a different corner is what the doc's
+     literal markup would produce here. -->
 <script>
   (function () {
     var ov = document.createElement('div');

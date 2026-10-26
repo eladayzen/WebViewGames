@@ -114,6 +114,20 @@ try {
   checked++; check('#gameover-overlay and #restart-button exist', sdk.overlay && sdk.restart);
   checked++; check('the overlay starts hidden, so restart is not auto-clicked', sdk.hidden === true);
 
+  // #gb-back is a REPO convention, not an app lookup -- nothing in
+  // Assets/GoBalance/WebGames references the id, and the button works through
+  // its own act either way. It is asserted here because the day something
+  // drives every web game and asks each one for its way off the board, the game
+  // that named its quit button something else is the one that fails, and the
+  // failure will look like that game having no exit at all.
+  const back = await page.evaluate(() => {
+    const b = document.getElementById('gb-back');
+    if (!b) return { ok: false };
+    const r = b.getBoundingClientRect();
+    return { ok: r.width > 0 && r.height > 0, w: Math.round(r.width), h: Math.round(r.height) };
+  });
+  checked++; check('#gb-back exists and is actually on screen', back.ok, `${back.w ?? 0}x${back.h ?? 0}`);
+
   await page.screenshot({ path: path.join(here, 'bootqa-title.png') });
   console.log(`\n  screenshot -> bootqa-title.png`);
 } finally {
@@ -123,5 +137,5 @@ try {
 
 // A harness that threw before here never printed this line, which is the point.
 console.log(`\n  ${checked} checks run, ${fails.length} failed`);
-if (checked < 8) { console.log('  HARNESS DID NOT FINISH'); process.exit(2); }
+if (checked < 9) { console.log('  HARNESS DID NOT FINISH'); process.exit(2); }
 process.exit(fails.length ? 1 : 0);
