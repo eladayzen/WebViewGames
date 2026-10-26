@@ -1,0 +1,3 @@
+# Harness output. bootqa.mjs writes a screenshot of the title screen every run;
+# it is evidence for the run that produced it, not a tracked asset.
+bootqa-*.png

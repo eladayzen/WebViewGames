@@ -1,0 +1,491 @@
+/* bobo-ui — the menu layer every BoBo web game shares.
+ *
+ * ── WHAT THIS IS AND WHY IT EXISTS ──────────────────────────────────────────
+ * Five games ship out of this repo into one app, and a player meets all five
+ * back to back. Before this file each had its own reset, its own type scale,
+ * its own screen state machine and its own idea of what a button was — five
+ * hand-rolled systems, about 4,600 lines of CSS, that had converged on the same
+ * SHAPE by copying each other's comments without ever sharing a line. Every fix
+ * cost five edits, four of which were forgotten, and the drift was invisible
+ * until you played two games in a row.
+ *
+ * So: this file owns STRUCTURE and BEHAVIOUR. It does not own the look.
+ *
+ * ── THE TOKEN CONTRACT ──────────────────────────────────────────────────────
+ * Every game defines these, and nothing else, in its own `theme.css`:
+ *
+ *   --halo     the deepest ground the game has. Every readable colour in this
+ *              file is solved against it, and the text halo is built from it.
+ *              NEVER a literal black; a game's own darkest tone.
+ *   --ink      primary readable. --ink2 secondary. --ink3 quietest.
+ *   --rule     non-text UI: borders, axes, pips. Carries a contrast ratio too.
+ *   --accent   the one saturated colour. --accent-ink reads ON it.
+ *
+ * Anything a game needs beyond that belongs in its own stylesheet, not here.
+ * The fallbacks below are a neutral dusk so a game with no theme still renders
+ * legibly rather than as black-on-black; they are not a design.
+ *
+ * ── THE THREE RULES THIS FILE ENFORCES ──────────────────────────────────────
+ *
+ * 1. NO `opacity` ON ANYTHING THAT CARRIES A CONTRAST RATIO. Lifted verbatim
+ *    from wend, which paid for it: a colour solved to 7.4:1 and then multiplied
+ *    by an 0.55 opacity is a colour at 1.96:1 that nobody chose, and `opacity`
+ *    fades the text-shadow the ratio was solved against as well — one property,
+ *    two ways of lying. There are three ink tiers; a string that wants to be
+ *    quieter takes a lower tier, never a lower alpha. `opacity` survives only
+ *    as on-screen/off-screen, where nothing is claimed about the faded state.
+ *
+ * 2. TYPE IS A SCALE OF SEVEN, each at least 23% larger than the one below.
+ *    wend's round 1 had 16 sizes for 25 strings, nine of them inside a 6% band
+ *    — a hierarchy that costs everything and signals nothing. No rule anywhere
+ *    may name a length that is not one of these tokens.
+ *
+ * 3. EVERY SCALE VALUE THAT A FINGER TOUCHES HAS A px FLOOR. Composition scales
+ *    with the frame, so it is vmin. A touch target is a finger, and a finger is
+ *    the same size on a 1600 px viewport as on a 640 px one. In landscape vmin
+ *    is the SHORT axis — the height — so on a phone reporting ~360 px of it,
+ *    an unfloored 10vmin button is 36 px, under every guideline there is.
+ *
+ * ── AND THE TWO THINGS IT DELIBERATELY DOES NOT HAVE ────────────────────────
+ *
+ * NO LEAN-DRIVEN MENUS. There is no `data-dir`, no hold meter, no `.bar`, and
+ * `screens.js` never reads the sensor. Three of the five games used to steer
+ * their menus by holding a lean, and it is gone on purpose: a menu is discrete,
+ * a lean is analogue and lagged by a third of a second, and the player standing
+ * on the board is the one person who cannot make a small precise movement. A
+ * button is a button. See `screens.js` for what replaced it.
+ *
+ * NO PORTRAIT LAYOUT. These games are landscape-locked (`orientation:
+ * 'landscape'` in every BoboHost construction). The layout below is designed at
+ * 640x360 first — the smallest real landscape phone viewport after safe-area
+ * insets — and grows from there, rather than being designed tall and patched
+ * with `max-height` rules afterwards, which is how four of the five ended up
+ * with menus that overflowed on the device they ship on.
+ */
+
+@font-face {
+  font-family: 'Manrope';
+  src: url('/fonts/Manrope-Variable.ttf') format('truetype-variations');
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+:root {
+  /* ── type: seven sizes, ratio >= 1.23 at every step ─────────────────────
+     Floors engage below about 650 px of short axis; at 1600x900 and on a
+     2400x1080 phone frame the vmin term still wins every one of them, so a
+     desktop composition never moves. `--t0` has no floor: it is the build
+     stamp, a diagnostic, and the one string that should not grow. */
+  --t0: 1.5vmin;                  /* diagnostics: the build stamp */
+  --t1: max(1.85vmin, 12px);      /* meta, chips, medal words */
+  --t2: max(2.3vmin, 15px);       /* hints, secondary lines, results detail */
+  --t3: max(2.9vmin, 18.5px);     /* primary instruction, card names */
+  --t4: max(3.7vmin, 23px);       /* the run's own name on pause and results */
+  --t5: max(5.4vmin, 28.5px);     /* h2 */
+  --t6: min(11vmin, 84px);        /* the logo */
+
+  /* ── tracking: four values, wider as the type gets larger and rarer ───── */
+  --ls-0: 0.05em;   /* names and numbers — anything read as a word */
+  --ls-1: 0.11em;   /* instructions and body */
+  --ls-2: 0.17em;   /* eyebrows, hints, small caps-feeling runs */
+  --ls-3: 0.26em;   /* display */
+
+  /* ── spacing: four values, for every gap and every pad ─────────────────── */
+  --g1: 0.8vmin;
+  --g2: 1.5vmin;
+  --g3: 2.6vmin;
+  --g4: 4.4vmin;
+
+  --radius: 1.3vmin;
+
+  /* ── buttons: the only px in the file, and rule 3 is why ────────────────
+     The floors are deliberately generous — the player may be standing on a
+     balance board a metre from a propped-up phone. */
+  --btn-h: max(9vmin, 58px);       /* the primary action on every screen */
+  --btn-h2: max(7.4vmin, 48px);    /* every secondary action, incl. every exit */
+  --btn-px: max(3.4vmin, 20px);
+  --btn-r: max(1.1vmin, 10px);
+  --tb1: max(var(--t3), 20px);     /* primary label */
+  --tb2: max(var(--t2), 16px);     /* secondary label */
+  --tb3: max(var(--t1), 13px);     /* the note under a label */
+
+  /* ── the neutral fallback palette. A game's theme.css replaces all of it. */
+  --halo: #16131f;
+  --ink: #f2ece4;
+  --ink2: #c3b9ad;
+  --ink3: #a99e92;
+  --rule: #837868;
+  --accent: #ffc258;
+  --accent-ink: #1a1206;
+
+  /* ── READABILITY OVER A LIVE 3D SCENE ────────────────────────────────────
+     Reported from hardware: "some texts are hard to read." Two causes, both
+     the quiet end of the hierarchy being too quiet once the thing behind it
+     is moving:
+
+     1. `--ink3` was carrying whole CONTROLS, not just captions. `.say-ghost` —
+        every "leave the game" in the repo — was `--ink3` on no background at
+        all, so the lowest-contrast colour in the system was painting a button.
+        That tier is for a caption BESIDE something readable, never for the
+        readable thing itself.
+     2. The secondary buttons had a 62% `--halo` ground, which over a bright
+        frame (carve's lit snow, wend's chalk boards) is most of the way to
+        transparent. A control's ground is not decoration — it is what makes
+        its label's solved ratio true.
+
+     So button grounds are near-opaque and the ghost tier steps UP to `--ink2`.
+     Nothing here lowers a tier or reaches for `opacity`: see rule 1. */
+  --btn-ground: color-mix(in srgb, var(--halo) 88%, transparent);
+
+  /* One screen-level transition for the whole interface. 0.34 s was the first
+     answer and it was too short: a level or track load stalls 83-400 ms, so the
+     fade finished BEFORE the swap it was covering and the entry showed a single
+     frame with a whole-screen luminance step. 0.62 s outlasts the worst of them.
+     The cost is that a screen takes a beat longer to appear, which is cheaper
+     than a cut. */
+  --screen-ms: .62s;
+
+  --safe-t: max(2.2vmin, env(safe-area-inset-top));
+  --safe-r: max(2.6vmin, env(safe-area-inset-right));
+  --safe-b: max(2.2vmin, env(safe-area-inset-bottom));
+  --safe-l: max(2.6vmin, env(safe-area-inset-left));
+  /* THE CENTRED COLUMN IS CENTRED ON THE FRAME, NOT ON THE SAFE BOX. A 132 px
+     left inset used to move a panel's contents 66 px right of centre while
+     anything positioned from `50vw` stayed put, so two centred things sat on
+     two different centres. Padding is symmetric at the larger of the two. */
+  --safe-x: max(var(--safe-l), var(--safe-r));
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: var(--halo);
+  font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* The canvas, whatever a game calls it. */
+canvas#gl, canvas#stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* ── the text halo ──────────────────────────────────────────────────────────
+ * Every readable string over the 3D scene gets one. A single blurred
+ * text-shadow is not opaque near the glyph — measured at under two units of 255
+ * — so this stacks several tight layers in the SAME opaque `--halo`, which
+ * builds real coverage immediately around each stroke. That is what makes the
+ * ink tiers' solved ratios actually true regardless of what the scene is doing
+ * this frame. */
+.halo-text,
+.logo, h1, h2, .tagline, .hint, .eyebrow, .say, .chip, .stamp,
+.big-name, .sel-pos, .mid-score, .r-stats, .card-name, .card-meta {
+  text-shadow:
+    0 0 0.03em var(--halo), 0 0 0.03em var(--halo),
+    0 0 0.09em var(--halo), 0 0 0.09em var(--halo),
+    0 0 0.2em var(--halo),  0 0 0.2em var(--halo),
+    0 0 0.45em var(--halo), 0 0 0.9em var(--halo), 0 0 1.6em var(--halo);
+}
+
+/* ── the wash ───────────────────────────────────────────────────────────────
+ * ONE dimming element for every non-play state. Two screens overlap for the
+ * length of a fade, and two washes compositing is a different colour than one.
+ * `screens.js` toggles `.is-on`; a game decides in its own CSS which states
+ * count as play. */
+.wash {
+  position: fixed; inset: 0; background: rgba(6, 8, 12, .42);
+  opacity: 0; transition: opacity var(--screen-ms) ease; pointer-events: none;
+}
+.wash.is-on { opacity: 1; }
+
+/* ── screens ────────────────────────────────────────────────────────────────
+ * WHICH SCREEN IS UP IS DRIVEN BY `body[data-state]`, read here, written by
+ * exactly one place (`screens.js`). One writer and one reader cannot drift; two
+ * writers can, and a screen left visible over the world is the kind of bug that
+ * survives a whole round because it only shows in one state.
+ *
+ * They FADE rather than `display: none`, because four separate whole-frame pops
+ * were measured off that in wend. A screen that is not active keeps its layout
+ * and loses its pointer events, so the canvas is never covered by a dead
+ * hit-target. */
+.screen {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--safe-t) var(--safe-x) var(--safe-b);
+  opacity: 0; visibility: hidden;
+  transition: opacity var(--screen-ms) ease, visibility 0s linear var(--screen-ms);
+  pointer-events: none;
+}
+.screen.is-active {
+  opacity: 1; visibility: visible;
+  transition: opacity var(--screen-ms) ease, visibility 0s;
+}
+/* Only an ACTIVE screen's controls take a pointer, and a CONTROL IS ANYTHING
+   CARRYING `data-act` — not a hand-kept list of classes.
+   This was `.say, .rail-nav, .chrome-btn`, and the list went stale the first
+   time something new became clickable: the level and track cards were turned
+   into real buttons, were bound correctly, and could not be pressed, because
+   the one place that grants pointer events had never heard of them. `data-act`
+   is already the definition of a control everywhere else in this layer
+   (`screens.js` binds by it), so it is the definition here too. */
+.screen.is-active [data-act] { pointer-events: auto; }
+
+/* BAL-590: a swap between two panels is instant. `Screens.go` holds this for
+   two frames whenever both the old and the new state are menus, so the fade
+   survives only where it means something -- the game stepping back behind the
+   interface, and coming forward again. Between panels it was two fades
+   crossing, and the run blinked through the gap. */
+body.scr-swap .screen,
+body.scr-swap .screen.is-active .inner > * { transition: none; }
+
+/* ── the panel ──────────────────────────────────────────────────────────────
+ * Three slots, in reading order: `.head` says where you are, `.body` is
+ * whatever this screen is actually about, `.says` is what you can do. A screen
+ * may omit any of them. The landscape rule at the foot of this file re-flows
+ * exactly these three and nothing else, which is only possible because every
+ * screen in every game uses the same three. */
+.inner {
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--g3);
+  width: 100%; max-width: min(92vw, 720px);
+  max-height: 100%;
+  text-align: center;
+}
+
+.head { display: flex; flex-direction: column; align-items: center; gap: var(--g1); }
+.body { display: flex; flex-direction: column; align-items: center; gap: var(--g2);
+        width: 100%; min-height: 0; }
+
+/* The staggered entry. Cheap, and it is what stops a screen of six elements
+   arriving as one slab. */
+.screen .inner > * {
+  opacity: 0; transform: translateY(0.9vmin);
+  transition: opacity .34s ease, transform .34s ease;
+}
+.screen.is-active .inner > * { opacity: 1; transform: none; }
+.screen.is-active .inner > *:nth-child(2) { transition-delay: .04s; }
+.screen.is-active .inner > *:nth-child(3) { transition-delay: .08s; }
+.screen.is-active .inner > *:nth-child(4) { transition-delay: .12s; }
+.screen.is-active .inner > *:nth-child(n+5) { transition-delay: .16s; }
+
+/* ── typography ─────────────────────────────────────────────────────────── */
+.logo, h1 {
+  font-size: var(--t6); font-weight: 200; letter-spacing: var(--ls-3);
+  line-height: 1; color: var(--ink);
+}
+h2 { font-size: var(--t5); font-weight: 300; letter-spacing: var(--ls-2); color: var(--ink); }
+.big-name  { font-size: var(--t4); font-weight: 300; letter-spacing: var(--ls-0); color: var(--ink); }
+.mid-score { font-size: var(--t4); font-weight: 300; letter-spacing: var(--ls-0); color: var(--ink); }
+.tagline   { font-size: var(--t2); letter-spacing: var(--ls-2); color: var(--ink2); }
+.hint      { font-size: var(--t2); letter-spacing: var(--ls-2); color: var(--ink2); }
+.eyebrow   { font-size: var(--t1); letter-spacing: var(--ls-3); color: var(--ink2); }
+.r-stats   { font-size: var(--t2); letter-spacing: var(--ls-1); color: var(--ink2); }
+
+/* ── buttons ────────────────────────────────────────────────────────────────
+ * `.say` is the only button shape there is. It is a real `<button>` carrying
+ * `data-act`; `screens.js` binds the act, so the thing a player presses and the
+ * thing that happens are one element rather than two controls that agree by
+ * luck.
+ *
+ * Three tiers and they are a hierarchy, not three colours: `.say-go` is the one
+ * thing this screen is FOR, `.say-sub` is a real alternative, `.say-ghost` is
+ * the way out. A screen with two `.say-go`s has not decided what it is for. */
+.says {
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: var(--g2); width: 100%; max-width: min(72vw, 440px);
+}
+
+.say {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.15em;
+  min-height: var(--btn-h2);
+  padding: 0 var(--btn-px);
+  border: 1px solid var(--rule);
+  border-radius: var(--btn-r);
+  background: var(--btn-ground);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: transform .12s ease, border-color .18s ease,
+              background-color .18s ease, color .18s ease;
+}
+
+.say-go {
+  min-height: var(--btn-h);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.say-go .btn-note { color: color-mix(in srgb, var(--accent-ink) 72%, transparent); }
+
+.say-ghost {
+  min-height: var(--btn-h2);
+  border-color: color-mix(in srgb, var(--rule) 60%, transparent);
+  background: color-mix(in srgb, var(--halo) 62%, transparent);
+  color: var(--ink2);
+}
+
+.btn-label { font-size: var(--tb2); letter-spacing: var(--ls-1); line-height: 1.15; }
+.say-go .btn-label { font-size: var(--tb1); font-weight: 600; }
+.btn-note  { font-size: var(--tb3); letter-spacing: var(--ls-2); color: var(--ink2); }
+
+.say:active { transform: scale(.97); }
+.say:focus-visible, .rail-nav:focus-visible, .chrome-btn:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+/* Hover is a mouse, and the device this ships on has none. Gated so a touch
+   device never gets a "stuck hover" after a tap. */
+@media (hover: hover) {
+  .say:hover { border-color: var(--accent); }
+  .say-go:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); }
+  .say-ghost:hover { color: var(--ink2); }
+}
+
+/* Chrome: the pause button, the build stamp's toggle. Never a `.say` — these
+   are not one of the things the screen is for, and giving them the same shape
+   as the actions would say they were. */
+.chrome-btn {
+  border: 1px solid var(--rule); border-radius: var(--btn-r);
+  background: var(--btn-ground);
+  color: var(--ink); font: inherit; font-size: var(--t1);
+  letter-spacing: var(--ls-2);
+  min-height: max(6vmin, 40px); padding: 0 max(2.4vmin, 14px);
+  cursor: pointer;
+}
+
+/* ── the horizontal picker ──────────────────────────────────────────────────
+ * A level, an opponent, a track. Two arrows and a card. It used to step on a
+ * left/right FLICK of the board in three games; it is arrows now, for the same
+ * reason the menus are. */
+/* MAX-WIDTH, or the arrows end up in opposite corners of the frame. `.card`
+   is `flex: 1 1 auto`, so on a wide panel — or on any panel while the card's
+   contents are still loading — it grows to fill and pushes the two arrows to
+   the screen edges, which reads as two unrelated buttons rather than a picker
+   with a thing between them. */
+.rail-row { display: flex; align-items: center; justify-content: center;
+            gap: var(--g2); width: 100%;
+            max-width: min(100%, 420px); margin-inline: auto; }
+.rail-nav {
+  flex: 0 0 auto;
+  width: max(8vmin, 52px); height: max(8vmin, 52px);
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--rule); border-radius: 50%;
+  background: var(--btn-ground);
+  color: var(--ink); font-size: var(--t2); font-family: inherit;
+  cursor: pointer; transition: transform .12s ease, border-color .18s ease;
+}
+.rail-nav:active { transform: scale(.94); }
+.rail-nav[disabled] { color: var(--ink3); border-color: color-mix(in srgb, var(--rule) 45%, transparent); }
+
+/* `.card` is a real `<button>` in every game that has one — the card IS the
+   thing being chosen, so it is the thing a finger goes to, and leaving it inert
+   made the rail a picture of a control rather than a control. That means its UA
+   chrome has to be reset here, once, or each game re-discovers it. */
+.card { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+        align-items: center; gap: var(--g1);
+        border: 0; background: none; color: inherit; font: inherit;
+        padding: 0; text-align: center; cursor: pointer; }
+.card:active { transform: scale(.98); }
+.card-name { font-size: var(--t3); letter-spacing: var(--ls-0); color: var(--ink); }
+.card-meta { font-size: var(--t1); letter-spacing: var(--ls-2); color: var(--ink2); }
+.sel-pos   { font-size: var(--t1); letter-spacing: var(--ls-2); color: var(--ink2); }
+.sel-pos b { font-weight: 700; color: var(--ink); }
+
+/* ── the corner: the lean dial, the link chip, the build stamp ───────────── */
+.corner { position: fixed; display: flex; flex-direction: column;
+          align-items: center; gap: var(--g1); }
+.corner-r { top: var(--safe-t); right: var(--safe-r); }
+.corner-l { top: var(--safe-t); left: var(--safe-l); }
+
+.dial { position: relative; width: max(10vmin, 54px); height: max(10vmin, 54px); }
+.dial-svg { width: 100%; height: 100%; overflow: visible; }
+.dial-gamut { fill: color-mix(in srgb, var(--halo) 70%, transparent);
+              stroke: var(--rule); stroke-width: 1.4; }
+.dial-axis { stroke: var(--rule); stroke-width: 0.7; }
+.dial .dot {
+  position: absolute; left: 50%; top: 50%;
+  width: 16%; height: 16%; margin: -8% 0 0 -8%;
+  border-radius: 50%; background: var(--accent);
+  transform: translate(calc(var(--dx, 0) * 100%), calc(var(--dy, 0) * 100%));
+}
+
+.chip  { font-size: var(--t1); letter-spacing: var(--ls-2); color: var(--ink2); }
+.chip[data-state="live"]  { color: var(--ink); }
+.chip[data-state="stale"] { color: var(--accent); }
+.stamp { font-size: var(--t0); letter-spacing: var(--ls-1); color: var(--ink3); }
+
+.fatal {
+  position: fixed; inset: 0; display: none;
+  align-items: center; justify-content: center;
+  padding: var(--g4); background: var(--halo);
+  color: var(--ink); font-size: var(--t3); letter-spacing: var(--ls-1);
+  text-align: center;
+}
+.fatal.is-on { display: flex; }
+
+/* ── LANDSCAPE, WHICH IS THE ONLY ORIENTATION ───────────────────────────────
+ *
+ * The binding case is a phone held sideways: about 640x360 CSS px, and after
+ * safe-area insets nearer 336 px of usable height. A pause screen with an
+ * eyebrow, a heading, a score and four actions needs roughly 420 px stacked —
+ * so stacked is not available, and no amount of shrinking type fixes a stack
+ * that is 25% too tall. It has to re-flow.
+ *
+ * So below 560 px of height the panel becomes TWO COLUMNS: what-and-where on
+ * the left, what-you-can-do on the right, each vertically centred. That is the
+ * classic landscape menu and it roughly halves the height needed — the actions
+ * column alone is 58 + 48 + 48 px plus two gaps, about 190 px, which fits with
+ * room over.
+ *
+ * `.body` spans both columns when it exists and is allowed to scroll, because a
+ * level rail or a results grid is the one thing that genuinely may not fit; the
+ * head and the actions never scroll, since an action you have to scroll to find
+ * is an action nobody finds.
+ *
+ * This is a `max-height` query and NOT `orientation: landscape`, deliberately.
+ * Orientation says which way the phone is; height says whether the layout fits,
+ * which is the actual question. A short desktop window gets the same treatment
+ * and is a free preview of the phone. */
+@media (max-height: 560px) {
+  .inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "head says" "body body";
+    align-items: center;
+    column-gap: var(--g4); row-gap: var(--g2);
+    max-width: min(96vw, 860px);
+  }
+  .head { grid-area: head; }
+  .says { grid-area: says; max-width: none; justify-self: stretch; }
+  .body {
+    grid-area: body;
+    min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    width: 100%;
+  }
+  /* A screen with no `.body` is head-and-actions only, and the two should sit
+     against each other rather than at opposite edges of an 860 px panel. */
+  .inner:not(:has(.body)) { max-width: min(90vw, 680px); }
+
+  /* The logo is display type and display type is the first thing to give when
+     the frame is short — it is also the string a player needs least, having
+     just tapped the game's own tile to get here. */
+  .logo, h1 { font-size: min(9vmin, 52px); }
+  .screen .inner > * { transform: none; }
+}
+
+/* Shorter still — a 320 px-tall landscape frame, which is the floor of what
+   ships. Everything that is decoration goes. */
+@media (max-height: 400px) {
+  .inner { column-gap: var(--g3); }
+  .tagline, .stamp { display: none; }
+  .logo, h1 { font-size: min(8vmin, 42px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen, .screen .inner > *, .wash, .say, .rail-nav {
+    transition-duration: .01ms !important;
+  }
+  .screen .inner > * { transform: none; }
+}

@@ -1,0 +1,2319 @@
+/* carve — in-WebView UI.
+ *
+ * The whole presentation lives here rather than in Flutter overlays, because
+ * stacking widgets on an Android platform view forces hybrid composition and a
+ * texture copy of the surface every frame.
+ *
+ * The look is alpine rather than neon: frosted glass over snow, cold blues, one
+ * warm accent that tracks the sun as the run moves from first light to
+ * alpenglow. --accent is rewritten from the mood mixer each frame, so the UI
+ * warms up with the sky.
+ */
+
+@font-face {
+  font-family: 'Manrope';
+  src: url('/fonts/Manrope-Variable.ttf') format('truetype-variations');
+  font-weight: 200 800;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Chakra Petch';
+  src: url('/fonts/ChakraPetch-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Chakra Petch';
+  src: url('/fonts/ChakraPetch-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: block;
+}
+
+/* ── THE TOKEN CONTRACT ─────────────────────────────────────────────────────
+ * `bobo-ui/base.css` solves every readable colour against these seven and
+ * defines nothing else about the look. carve's answer is alpine: cold blues on
+ * a near-black slate, one warm accent that `mood.js` REWRITES EACH FRAME so the
+ * interface warms with the sky as the run moves from first light to alpenglow.
+ * That is why `--accent` is a live token and not a constant, and why anything
+ * reading it must tolerate it moving.
+ *
+ * `--muted`, `--glass` and `--stroke` predate the shared layer and stay: the
+ * in-play HUD below still uses them and they are not part of the contract. The
+ * three ink tiers are what the contract asks for, and they are declared here
+ * rather than inherited so a critic can read the whole palette in one place. */
+:root {
+  /* ── TWO ACCENTS, BECAUSE THEY ARE TWO DIFFERENT KINDS OF THING ─────────
+     `--accent` is a CONTRACT colour: `base.css` puts `--accent-ink` on top of
+     it and promises the pair is readable. `--sky` is the mood mixer's live
+     output, rewritten every frame by `hud.setAccent()` as the run moves from
+     first light to alpenglow, and it is any colour the sky happens to be.
+
+     They were the same token until a 640x360 capture showed the title wordmark
+     and the "drop in" button both rendered dark-maroon-on-dark and unreadable:
+     the mixer had walked `--accent` down to an alpenglow tone while
+     `--accent-ink` stayed the near-black chosen for a pale blue. A token that
+     carries a contrast ratio cannot also be an arbitrary runtime colour — that
+     is the same rule as "no `opacity` on a solved colour", arriving from the
+     other direction, and it is worth one extra token to keep.
+
+     So: the interface takes `--accent`, the world's own flourishes take
+     `--sky`, and the wordmark takes `--sky` deliberately because it is the one
+     string that is meant to warm with the mountain. */
+  --accent: #8fd0ff;
+  --accent-ink: #061320;
+  --sky: #8fd0ff;
+  --halo: #060c15;
+  --ink: #eef4ff;
+  --ink2: #b9c8de;
+  --ink3: #9fb0c8;
+  --rule: rgba(190, 218, 255, 0.30);
+  --muted: #9fb0c8;
+  --bad: #ff5d78;
+  /* 0.58 relied on a backdrop blur for legibility; the blur is banned now
+     (see the note above `.wash`), so the glass carries its own opacity. */
+  --glass: rgba(10, 18, 30, 0.82);
+  --stroke: rgba(190, 218, 255, 0.16);
+  /* The two feedback colours the game already passes in as literals: the warm
+     one for air, the green for a streak. Named here so the HUD's own flourishes
+     can agree with the callouts main.js writes. */
+  --hot: #ffcf87;
+  /* The menu's accent. Raw `--sky` follows the mood mixer, and at a warm hour
+     it lands on a dusty alpenglow that makes an "on" row read as a DISABLED
+     one. Same hue, lifted: more saturation, more light. The plain `--sky`
+     fallback stands wherever relative color syntax is missing. CLAMPED, not
+     multiplied: the sky ranges from a dark alpenglow to near-white haze, and a
+     multiplier that rescues one end blows out the other. */
+  --sky-pop: hsl(from var(--sky) h max(s, 75) clamp(62, l, 70));
+  --good: #97d700;
+  /* The HUD is pale text laid over whatever the mountain happens to be doing,
+     and the mountain is no longer a dark blue field — lit snow now reaches
+     near-white, so pale-on-pale simply vanished. A soft wide shadow cannot fix
+     that: it spreads too far to raise local contrast. This is a tight, dark,
+     nearly opaque contact shadow that acts as an outline over bright ground,
+     with the wide one kept behind it for the dark sky. Every piece of HUD text
+     uses it, so the legibility is a property of the HUD rather than something
+     each element remembers to ask for. */
+  --ink-shadow: 0 1px 2px rgba(4, 10, 20, 0.92), 0 0 6px rgba(4, 10, 20, 0.7),
+                0 2px 18px rgba(0, 0, 0, 0.55);
+  /* THE RAIL'S REAL WIDTH, and the only number anything beside it may use.
+     --sb-w is what JS computes from the viewport; the rail is that PLUS the
+     safe inset, because the notch is padding inside it (BAL-609). Everything
+     that sits next to the rail -- the split divider, the half strips, the
+     finisher panels, the countdown names, the solo HUD rows -- was still
+     offsetting by the bare --sb-w, so since that fix every one of them
+     overlapped the rail by the inset. Elad saw it as the separator line
+     drawing across the map. One name, so they cannot drift apart again. */
+  --sb-total: calc(var(--sb-w, 180px) + var(--safe-l));
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+}
+
+/* The UA rule is only `display: none`, so any later `display` on a class beats
+ * it. That once painted an opaque full-screen panel over a perfectly healthy
+ * game and made the start button unclickable. Never remove this. */
+[hidden] { display: none !important; }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0f18;
+  color: var(--ink);
+  font-family: 'Manrope', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* Over the canvas, under everything that is actually UI. It carries the frozen
+   frame while the menu is up; the canvas beneath it has stopped drawing. */
+#postcard {
+  position: fixed;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  pointer-events: none;
+  z-index: 1;
+}
+#postcard[hidden] { display: none; }
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── HUD ──────────────────────────────────────────────────────────────── */
+
+.hud {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+.hud.is-live { opacity: 1; }
+
+.hud-top {
+  position: absolute;
+  top: calc(var(--safe-t) + 14px);
+  left: calc(var(--safe-l) + 18px);
+  right: calc(var(--safe-r) + 18px);
+  /* A COLUMN ON THE LEFT, not a row spanning the width.
+   *
+   * The convention (BUILD_NOTES.md) reserves the top right for back and pause
+   * and puts score and every other status top-left. This row was
+   * `space-between` with score at one end and the combo at the other, so the
+   * combo sat exactly where the chrome row now is and the two drew on top of
+   * each other.
+   *
+   * Stacked rather than set side by side, because the CLOCK is centred on the
+   * viewport and the left column has about 160px before it reaches it — not
+   * enough for a six-figure score AND a combo beside it. Downward is free: the
+   * three wipeout pips that used to live under the score are gone. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.stat-label {
+  font-size: 10px;
+  letter-spacing: 0.20em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-shadow: var(--ink-shadow);
+  margin-bottom: 1px;
+}
+.stat-value {
+  font-family: 'Chakra Petch', monospace;
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-shadow: var(--ink-shadow);
+  font-variant-numeric: tabular-nums;
+}
+/* Left now, with the rest of the status column. The class name survives
+ * because it is what the markup says; what it MEANT was 'the one on the
+ * other side', and there is no other side any more. */
+/* ── A PLACING READS NUMBER-FIRST ──────────────────────────────────────────
+ *
+ * Every other stat in this column is a LABEL over a VALUE, because the value is
+ * a number whose meaning you have to be told -- 8,315 of what, 0:41 of what.
+ * A placing is not: "1st" carries its own meaning and the word under it is the
+ * unit, exactly the way the speed readout says 92 and then KM/H.
+ *
+ * So the race's column is flipped rather than relabelled twice: same element,
+ * same position, same type, and the number gets the eye first because during a
+ * race it is the only thing on screen that changes for a reason.
+ */
+.stat.is-place {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+}
+
+.stat-right { text-align: left; }
+
+/* Everything that flourishes is scaled from the edge it is anchored to, so a
+ * bump never reaches for a screen edge it cannot have. */
+.stat .stat-value { transform-origin: 0% 50%; }
+.stat-right .stat-value { transform-origin: 0% 50%; }
+
+/* The run's own length. Sits under the score in the left status column.
+ *
+ * `tabular-nums` IS DECLARED AND IS NOT TRUSTED — Chakra Petch has no `tnum`
+ * feature to answer it, which is the whole reason the centred clock is anchored
+ * to the viewport rather than to its neighbours. Here it does not matter,
+ * because this column is left-aligned: digits changing width push to the RIGHT,
+ * into empty space, and nothing downstream of it moves. */
+.elapsed {
+  /* The same shadow its neighbours in this column carry. It had none, which was
+   * survivable over a dark sky and would not have been over bright snow — and
+   * a readout that is legible at first light and not at bluebird is a readout
+   * that has been tested once. */
+  text-shadow: var(--ink-shadow);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+/* ── score ────────────────────────────────────────────────────────────── */
+
+.score-wrap { position: relative; }
+/* The gain that just landed, rising off the right of the total. Absolute so a
+ * six-figure score and a four-figure gain never reflow the top bar between
+ * them, and empty of layout influence when idle. */
+.score-gain {
+  position: absolute;
+  left: 100%;
+  top: 4px;
+  margin-left: 8px;
+  opacity: 0;
+  white-space: nowrap;
+  font-family: 'Chakra Petch', monospace;
+  font-weight: 700;
+  font-size: 12.5px;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  color: color-mix(in srgb, var(--hot) calc(var(--gain, 0) * 100%), var(--ink));
+  text-shadow: var(--ink-shadow);
+  font-variant-numeric: tabular-nums;
+  transform-origin: 0% 50%;
+  pointer-events: none;
+}
+
+/* ── combo ────────────────────────────────────────────────────────────── */
+
+/* Shrink-wrapped to the number, not to the column: the ring below centres on
+ * this box, and a full-width box would centre it on empty space to the left. */
+.combo-wrap { position: relative; display: inline-block; vertical-align: top; }
+/* The multiplier warms as it climbs — the same move the sky is making, only
+ * faster. --heat is written to the column once per promotion, never per frame,
+ * and the ring and the charge bar below inherit it from there. */
+#comboStat { --heat: 0; }
+#combo {
+  color: color-mix(in srgb, var(--hot) calc(var(--heat) * 80%), var(--sky));
+  text-shadow: var(--ink-shadow),
+    0 0 calc(var(--heat) * 20px) color-mix(in srgb, var(--hot) calc(var(--heat) * 60%), transparent);
+  transition: color 420ms ease, text-shadow 420ms ease;
+}
+/* Snap to the loss, bleed back out of it: the transition above does the
+ * recovery, this one does the hit. */
+#combo.broke {
+  color: var(--bad);
+  text-shadow: var(--ink-shadow);
+  transition: color 70ms linear, text-shadow 70ms linear;
+}
+/* The shockwave off a promotion. Held back to the next beat when one is
+ * nearly here — see BEAT_SNAP_MS in hud.js. */
+.combo-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--hot) calc(var(--heat, 0) * 70%), var(--sky));
+  /* --ink-shadow's job, done for a stroke instead of a glyph: a dark hairline
+     on both sides of the ring so it survives over lit snow. */
+  box-shadow: 0 0 0 1px rgba(4, 10, 20, 0.32), inset 0 0 0 1px rgba(4, 10, 20, 0.28);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.combo-charge {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 7px;
+}
+.combo-charge i {
+  width: 13px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(190, 218, 255, 0.15);
+  box-shadow: 0 1px 2px rgba(4, 10, 20, 0.8);
+  transform-origin: 50% 50%;
+  transition: background 260ms ease, box-shadow 300ms ease;
+}
+.combo-charge i.on {
+  background: color-mix(in srgb, var(--hot) calc(var(--heat, 0) * 70%), var(--sky));
+  box-shadow: 0 1px 2px rgba(4, 10, 20, 0.8),
+    0 0 9px color-mix(in srgb, var(--sky) 70%, transparent);
+}
+/* At the cap there is nothing left to charge, so the bar simply breathes. */
+.combo-charge.maxed i { animation: chargeBreathe 2000ms ease-in-out infinite; }
+.combo-charge.maxed i:nth-child(2) { animation-delay: 90ms; }
+.combo-charge.maxed i:nth-child(3) { animation-delay: 180ms; }
+.combo-charge.maxed i:nth-child(4) { animation-delay: 270ms; }
+@keyframes chargeBreathe {
+  0%, 100% { opacity: 1; transform: scaleY(1); }
+  50% { opacity: 0.55; transform: scaleY(0.72); }
+}
+
+/* The board hitting the snow, drawn at the bottom of the screen where the board
+ * actually is. Two layers, because one cannot survive both grounds this game
+ * has: a cold blue core at the very edge, which tints over lit snow where a
+ * white flash would be invisible, and a compression shadow rising off the
+ * bottom that carries the moment when the ground beneath is dark.
+ * Idle at opacity 0 — hud.js animates it and lets it fall straight back. */
+.land-flash {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22%;
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: 50% 100%;
+  background:
+    radial-gradient(140% 112% at 50% 116%,
+      rgba(174, 213, 255, 0.95), rgba(174, 213, 255, 0) 60%),
+    linear-gradient(to top, rgba(8, 16, 30, 0.62), rgba(8, 16, 30, 0) 76%);
+}
+/* A landing that was not clean gets the same weight in a worse colour. */
+.land-flash.sketchy {
+  background:
+    radial-gradient(140% 112% at 50% 116%,
+      rgba(255, 168, 112, 0.85), rgba(255, 168, 112, 0) 60%),
+    linear-gradient(to top, rgba(30, 12, 12, 0.6), rgba(30, 12, 12, 0) 76%);
+}
+
+.callouts {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 34%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+.callout {
+  font-family: 'Chakra Petch', monospace;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+  color: var(--ink);
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.7);
+  animation: callout 900ms ease-out forwards;
+}
+.callout.big { font-size: 27px; letter-spacing: 0.08em; }
+/* The race's tree/rock hit -- "stronger feedback, the text needs to be
+   bigger." A tier above big, because losing half your speed to a tree is a
+   bigger event than any gate. */
+.callout.huge { font-size: 46px; letter-spacing: 0.10em; font-weight: 800; }
+@keyframes callout {
+  0% { opacity: 0; transform: translateY(14px) scale(0.9); }
+  18% { opacity: 1; transform: translateY(0) scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-20px); }
+}
+
+/* A callout that belongs to a landing arrives the other way round: it drops in
+ * from above, overshoots past its resting place and settles, so the words carry
+ * the same direction the rider just did. It leaves upward like the rest. */
+/* Linear overall, curved per step, for the reason given above _play in hud.js:
+ * an easing on the whole animation moves every percentage written below. The
+ * drop lands at 130 ms and the words hold still from 400 ms. */
+.callout.slam { animation: calloutSlam 1000ms linear forwards; }
+@keyframes calloutSlam {
+  0% { opacity: 0; transform: translateY(-30px) scale(1.45);
+       animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+  13% { opacity: 1; transform: translateY(3px) scale(0.97);
+        animation-timing-function: cubic-bezier(0.25, 0.8, 0.3, 1); }
+  26% { transform: translateY(-1px) scale(1.012);
+        animation-timing-function: ease-out; }
+  40% { opacity: 1; transform: none; }
+  72% { opacity: 1; transform: none; animation-timing-function: ease-in; }
+  100% { opacity: 0; transform: translateY(-16px); }
+}
+
+.hud-bottom {
+  position: absolute;
+  left: calc(var(--safe-l) + 18px);
+  right: calc(var(--safe-r) + 18px);
+  bottom: calc(var(--safe-b) + 16px);
+}
+
+/* ── edge meter ───────────────────────────────────────────────────────── */
+
+.edge-meter {
+  --glow: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 10px;
+  margin: 0 auto 12px;
+  width: min(76%, 320px);
+}
+.edge-half {
+  flex: 1;
+  height: 5px;
+  background: rgba(190, 218, 255, 0.11);
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+}
+.edge-left { justify-content: flex-end; }
+.edge-right { justify-content: flex-start; }
+.edge-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--sky) 55%, transparent),
+    var(--sky));
+  /* Brightness rides the length of the held arc, so a linked carve visibly
+   * charges up rather than just showing how far the board is tipped. */
+  box-shadow: 0 0 calc(4px + var(--glow) * 18px)
+    color-mix(in srgb, var(--sky) calc(35% + var(--glow) * 55%), transparent);
+  transition: width 60ms linear;
+}
+.edge-tick {
+  width: 2px;
+  height: 11px;
+  margin: 0 5px;
+  border-radius: 1px;
+  background: rgba(220, 236, 255, 0.5);
+  transform-origin: 50% 50%;
+}
+/* Flat centre — the point the board passes through between edges — is where the
+ * music is put. It only starts keeping time once the multiplier is above one,
+ * so the HUD picks up the beat as a reward for riding well rather than ticking
+ * at the player from the first second. */
+.edge-meter.is-hot .edge-tick { background: rgba(228, 242, 255, 0.72); }
+
+/* BAL-588: HIDDEN, and hidden here rather than deleted. "For now hide only the
+   lower one" -- the hour/time-of-day progression bar, the lower of the two
+   lines above the mood name. Its writers keep running (they cost two DOM
+   writes a frame) so putting it back is this one rule, not a rebuild of the
+   plumbing. The upper line, `.edge-meter`, is the live tilt readout and stays. */
+.progress { display: none; }
+
+.progress {
+  position: relative;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(190, 218, 255, 0.14);
+  overflow: visible;
+}
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sky) 40%, transparent), var(--sky));
+}
+.progress-head {
+  position: absolute;
+  top: 50%;
+  left: 0%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sky);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 14px var(--sky);
+  transition: background 200ms ease;
+}
+.progress-head.miss { background: var(--bad); box-shadow: 0 0 14px var(--bad); transition: none; }
+/* A clean gate pings off the head of the run. Its own element so the ring can
+ * be scaled without fighting the head's centring transform, which is rewritten
+ * from the run's progress every frame. */
+.progress-head i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  border: 1.5px solid var(--sky);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hud-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 9px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-shadow: var(--ink-shadow);
+}
+.hud-meta em {
+  font-style: normal;
+  font-size: 9px;
+  opacity: 0.7;
+}
+#moodName { transform-origin: 0% 50%; }
+/* Speed is the one number that is always true, so it is the one that is allowed
+ * to glow. --fast rises from nothing at 52 km/h to full at 86 and is written in
+ * eighths, so the readout warms over a second of hard riding rather than
+ * flickering with every km/h. */
+#speedText {
+  --fast: 0;
+  font-family: 'Chakra Petch', monospace;
+  font-weight: 700;
+  font-size: 14px;
+  color: color-mix(in srgb, var(--hot) calc(var(--fast) * 85%), var(--ink));
+  text-shadow: var(--ink-shadow),
+    0 0 calc(var(--fast) * 14px) color-mix(in srgb, var(--hot) calc(var(--fast) * 55%), transparent);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  transform-origin: 100% 50%;
+  transition: color 500ms ease, text-shadow 500ms ease;
+}
+
+/* The top-right chrome row. See index.html for why it is no longer centred.
+ *
+ * THE OFFSETS ARE ABSOLUTE, and carve gets them for free: this file redefines
+ * `--safe-t`/`--safe-r` as raw `env(...)` (they are `max(2.2vmin, env(...))` in
+ * base.css), so `+ 12px` really is twelve pixels on a phone without a notch.
+ * swerve had to reach past its own `--safe-x` for exactly this reason. The only
+ * thing that should ever move this row is a real notch. */
+.chrome-row {
+  position: absolute;
+  top: calc(var(--safe-t) + 12px);
+  right: calc(var(--safe-r) + 12px);
+  /* Above the two-player walls (z 30): back and pause must never dim. */
+  z-index: 38;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 240ms ease;
+}
+.chrome-row.is-live { opacity: 0.8; pointer-events: auto; }
+/* The calibration wizard is modal (see calibrate.js). While it is up the
+   corner buttons must not act: the X used to close the menu and resume the
+   run underneath the overlay, which is a game you can hear but cannot see or
+   reach. BAL-591. */
+/* The chrome row is inert under the wizard EXCEPT for the X. Everything in
+   that row would be a trap door mid-measurement -- except the one control
+   whose whole job is "get me out of here", which has to keep working or the
+   wizard becomes a room with no door (Elad, stuck in the two-board version in
+   the Editor). */
+body.bcal-open .chrome-row { pointer-events: none; }
+body.bcal-open .chrome-row [data-act="back"] { pointer-events: auto; }
+
+/* 40, not the convention's "~38": `bobo-ui/base.css` floors every button at
+ * `min-height: 40px` as a tap-target minimum, so a 38 px circle measures 38
+ * wide and 40 tall — an oval, and a broken pitch. The shared floor is the
+ * better rule to keep, and 40 on an 8 px gap preserves the 48 px pitch. */
+.chrome-btn {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--stroke);
+  border-radius: 50%;
+  background: var(--glass);
+  color: var(--ink);
+}
+/* No `translateX` to preserve any more — the row owns the position now, so the
+ * press can be a plain scale. It used to have to repeat the centring transform
+ * or the button jumped half its width on every tap. */
+.chrome-btn:active { transform: scale(0.92); }
+
+/* ── THE HALO IS OFF IN THIS GAME, EVERYWHERE ──────────────────────────────
+ *
+ * `base.css` stacks nine dark text-shadows reaching 25.6 px on `.logo`, `h1`,
+ * `h2`, `.tagline`, `.hint`, `.eyebrow`, `.say`, `.chip` and `.stamp`. Its own
+ * note says what it is for — "every readable string over the 3D scene gets one"
+ * — and for a game that writes menu text straight onto the mountain that is
+ * exactly right.
+ *
+ * CARVE DOES NOT DO THAT. Every one of those strings sits on `.panel`, which is
+ * a dark frosted card: the contrast is already solved by the card, and the halo
+ * is nine copies of a dark blur under text that did not need it. On the lobby's
+ * light-filled buttons it was worse than useless — dark blur under near-black
+ * letters, which reads as the text being out of focus.
+ *
+ * THE HUD KEEPS ITS OWN SHADOW and must. `--ink-shadow` is a different thing:
+ * a tight 1 px drop with two wider layers behind it, on text that genuinely
+ * floats over white snow with nothing between. That is the one place in this
+ * game where a shadow is load-bearing, and it is not what this rule turns off.
+ *
+ * SCOPED TO CARVE deliberately. `base.css` is shared by all five games and the
+ * other four write text over their scenes differently; turning it off there is
+ * their call, not something to do from here. */
+.logo, h1, h2, .tagline, .hint, .eyebrow, .say, .chip, .stamp,
+.big-name, .sel-pos, .mid-score, .r-stats, .card-name, .card-meta,
+.say .btn-label, .say-sub-label, .halo-text {
+  text-shadow: none;
+}
+
+.say-mode { flex-direction: column; gap: 3px; padding-top: 13px; padding-bottom: 13px; }
+
+/* THE MODE'S NAME IS THE BUTTON; the tagline underneath is a caption on it. At
+ * 600 against the sub-label's 500 the two read as one block of text at a
+ * glance, which is the wrong shape for a choice — the thing being chosen has to
+ * win. Manrope ships here as a variable face (`Manrope-Variable.ttf`), so 800
+ * is a real weight and not a browser-synthesised smear. */
+/* UPPERCASE IN CSS, NOT IN THE DATA. `name` is also what a mode is called in a
+ * log line and in a commit message, and shouting there would be wrong — this is
+ * a decision about the button, so it lives with the button. The extra tracking
+ * is not optional with it: caps set at a display size without it close up and
+ * read as one shape. */
+.say-mode .btn-label {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+.say-mode .say-sub-label { font-weight: 500; }
+.say-sub-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  opacity: 0.72;
+  font-weight: 500;
+}
+
+/* ── screens ──────────────────────────────────────────────────────────── */
+
+/* ── THE MENUS: what this game adds to `bobo-ui`, and nothing more ──────────
+ *
+ * `base.css` owns the screen machinery, the panel, the type scale, the buttons
+ * and the landscape re-flow. Everything below is carve's own: the alpine look
+ * (frosted glass over snow), the wordmark, and the four run-specific blocks
+ * (the primer, the best line, the countdown, the results grid).
+ *
+ * The rules that used to live here and are GONE, because base.css does them
+ * better than five copies did: `.screen`, `.panel`, `.eyebrow`, `.tagline`,
+ * `.btn`/`.btn-primary`/`.btn-ghost`, `.sensor-row`, `.buildstamp`, `.fatal`,
+ * and both `max-height` patches. The `max-height` pair is the important
+ * deletion — they were a portrait-first layout being apologised for twice, and
+ * the shared layer is laid out for 640x360 to begin with.
+ */
+
+/* The wash is carve's: alpine glass rather than a flat dim, because the thing
+   behind it is bright snow and a flat dim over near-white reads as grey haze.
+
+   NO backdrop-filter, HERE OR ANYWHERE OVER THE CANVAS. It asks the compositor
+   to snapshot and blur the live WebGL surface, and on real GPUs (macOS Metal,
+   Android WebView) that path drops tiles under load: rectangular BLACK patches
+   that persist across runs and modes and only clear on reload. Reported as
+   "flickering black", diagnosed live on 2026-10-01 -- killing every
+   backdrop-filter stopped it with nothing else changed. swerve's stylesheet
+   had already written this rule down; it now applies to all five games. The
+   gradient runs a little deeper to buy back the legibility the blur paid for.
+
+   The cross-platform write-up -- same ban, plus the two diagnostics that found
+   it -- is WEBVIEW_RENDERING.md in the GoBalance repo, next to
+   BOARD_SENSITIVITY.md. If that file has moved, this comment still stands on
+   its own; the doc is the shared copy, not the only one. */
+.wash {
+  background: radial-gradient(120% 90% at 50% 40%,
+    rgba(6, 12, 22, 0.38), rgba(4, 8, 15, 0.88));
+}
+/* The countdown is the one menu state with nothing to read, so it gets no
+   wash — the player is about to ride and wants to see the hill. */
+body[data-state="count"] .wash { opacity: 0; }
+
+.inner {
+  padding: max(2vmin, 14px) max(2.6vmin, 18px);
+  border: 1px solid var(--stroke);
+  border-radius: max(1.8vmin, 16px);
+  background: linear-gradient(180deg, rgba(18, 30, 48, 0.90), rgba(8, 14, 24, 0.94));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+/* The countdown has no panel to frame. */
+body[data-state="count"] .inner { border: 0; background: none; box-shadow: none; }
+
+/* ── THE COUNT CLEARS THE SEAM ────────────────────────────────────────────
+   Centred in the viewport, the number lands exactly ON the split divider --
+   half of it in each player's picture, which is the one place in a split
+   screen nothing may sit. Raised into the top half and cut down in size,
+   because a 26vmin glyph inside a half-height viewport is enormous anyway.
+   Single player keeps it centred: there is no seam to avoid. */
+body.is-2p .screen[data-state="count"] { align-items: flex-start; }
+/* 5vh, not 3: the tick animation scales the glyph to 1.5x from its centre on
+   the way in, so the resting box is not the box that has to fit. At 3vh the
+   measured top went NEGATIVE mid-animation -- clipped against the top of the
+   frame for a few frames on every number. */
+body.is-2p .count { font-size: min(17vmin, 130px); margin-top: 5vh; }
+
+/* The wordmark. The one place this game uses Chakra Petch, and the one string
+   that carries the mood mixer's live `--accent` — the title warms with the sky
+   as the run moves from first light to alpenglow. */
+.logo {
+  font-family: 'Chakra Petch', monospace;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+  /* THE DESCENDER NEEDS A BOX TO BE PAINTED IN. base.css gives .logo and h1
+     line-height 1, which is right for a shared default and wrong for this one
+     word: the fill here is a gradient shown through `background-clip: text`,
+     and a background only exists inside the element's box. With a 1em box the
+     tail of a lowercase g hangs BELOW it, so there is no background there to
+     show through and the glyph is cut off mid-stroke -- "letter g is slightly
+     cut off" (Elad, 2026-10-18), on "game mode".
+     Not fixed in base.css: that rule is shared by all five games and only this
+     one paints its heading through a gradient. */
+  line-height: 1.22;
+  /* BOTH STOPS ARE NEAR INK LIGHTNESS, and the second is only TINTED by the
+     sky rather than being it. `#ffffff -> var(--sky)` was the first attempt and
+     it rendered the wordmark almost black at dusk, because half a gradient made
+     of an arbitrary runtime colour is arbitrary too. Mixing the sky INTO the
+     ink keeps the warmth the mixer is for and keeps the word readable at every
+     hour of the run. */
+  background: linear-gradient(180deg, var(--ink),
+              color-mix(in srgb, var(--sky) 55%, var(--ink)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* ── A TEXT-SHADOW AND `background-clip: text` CANNOT COEXIST ────────────
+     `base.css` gives every readable string a nine-layer halo in `--halo` so its
+     solved contrast survives whatever the 3D scene is doing. On a glyph whose
+     own fill is `transparent`, that halo is the ONLY thing painted in the glyph
+     shape — so the wordmark rendered as a solid near-black silhouette with the
+     gradient invisible behind it. It read as "the gradient is wrong" and two
+     fixes were aimed at the gradient before the shadow was the answer.
+     The drop-shadow below does this word's legibility instead, and it filters
+     the composited result rather than stamping the glyph. */
+  text-shadow: none;
+  filter: drop-shadow(0 6px 26px color-mix(in srgb, var(--sky) 40%, transparent));
+}
+.eyebrow { text-transform: uppercase; }
+
+.primer {
+  list-style: none; width: 100%;
+  display: flex; flex-direction: column; gap: var(--g1);
+  font-size: var(--t2); line-height: 1.45; color: var(--ink2);
+  text-align: left;
+}
+.primer li { position: relative; padding-left: 1.1em; }
+.primer li::before {
+  content: ''; position: absolute; left: 0; top: 0.55em;
+  width: 0.42em; height: 0.42em; border-radius: 50%;
+  background: color-mix(in srgb, var(--sky) 70%, transparent);
+}
+.primer b { color: var(--ink); font-weight: 700; }
+
+.bestline {
+  display: flex; align-items: baseline; gap: var(--g2);
+  font-size: var(--t2); color: var(--ink2); letter-spacing: var(--ls-1);
+}
+.bestline strong {
+  font-family: 'Chakra Petch', monospace; font-size: var(--t4);
+  font-weight: 700; color: var(--ink);
+}
+.rank-chip {
+  font-family: 'Chakra Petch', monospace; font-size: var(--t1); font-weight: 700;
+  color: var(--accent-ink); background: var(--accent);
+  border-radius: 0.4em; padding: 0.15em 0.45em;
+}
+
+/* ── the countdown ─────────────────────────────────────────────────────── */
+.count {
+  font-family: 'Chakra Petch', monospace; font-weight: 700;
+  font-size: min(26vmin, 190px); line-height: 1; color: var(--ink);
+  text-shadow: var(--ink-shadow);
+}
+.count.tick { animation: tick 560ms cubic-bezier(0.2, 1, 0.3, 1); }
+@keyframes tick {
+  0% { opacity: 0; transform: scale(1.5); }
+  22% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0.86; transform: scale(1); }
+}
+
+.spinner {
+  width: max(5vmin, 30px); height: max(5vmin, 30px);
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent);
+  animation: spin 900ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.pulse-ring {
+  width: max(7vmin, 42px); height: max(7vmin, 42px); border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: pulse 1500ms ease-out infinite;
+}
+@keyframes pulse {
+  0% { transform: scale(0.7); opacity: 1; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+
+/* ── results ───────────────────────────────────────────────────────────── */
+.rank {
+  font-family: 'Chakra Petch', monospace; font-weight: 700;
+  font-size: min(13vmin, 84px); line-height: 1; color: var(--accent);
+  animation: rank 420ms cubic-bezier(0.2, 1, 0.3, 1);
+}
+@keyframes rank {
+  from { opacity: 0; transform: scale(0.6) rotate(-8deg); }
+  to { opacity: 1; transform: none; }
+}
+.final-score {
+  font-family: 'Chakra Petch', monospace; font-weight: 700;
+  font-size: var(--t5); color: var(--ink);
+}
+.newbest {
+  font-size: var(--t1); letter-spacing: var(--ls-3); text-transform: uppercase;
+  color: var(--accent-ink); background: var(--accent);
+  border-radius: 0.4em; padding: 0.2em 0.6em;
+}
+
+.results-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--g2); width: 100%;
+}
+.results-grid > div {
+  display: flex; flex-direction: column; align-items: center; gap: 0.15em;
+  padding: var(--g1) 0;
+  border-radius: var(--btn-r);
+  background: rgba(255, 255, 255, 0.045);
+}
+.results-grid span {
+  font-family: 'Chakra Petch', monospace; font-weight: 700;
+  font-size: var(--t3); color: var(--ink);
+}
+.results-grid em {
+  font-style: normal; font-size: var(--t1); letter-spacing: var(--ls-2);
+  color: var(--ink3); text-align: center;
+}
+
+/* Four stat tiles in a row need width the 640px frame does not have once the
+   panel is two columns, so they wrap to 2x2 there. This is the ONE place this
+   game overrides the shared landscape rule, and it overrides the contents of
+   `.body`, never the three-slot layout itself. */
+@media (max-height: 560px) {
+  .results-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .primer li:nth-child(3) { display: none; }
+}
+
+.diag {
+  position: fixed; left: var(--safe-l); bottom: var(--safe-b);
+  max-width: 60vw; padding: 6px 10px;
+  font-family: 'Chakra Petch', monospace; font-size: 10px; line-height: 1.5;
+  color: var(--ink2); background: rgba(4, 8, 15, 0.8);
+  white-space: pre; pointer-events: none;
+}
+.buildstamp { pointer-events: auto; padding: 6px 10px; }
+
+/* ── the title corner, moved out from under the chrome row ─────────────────
+ *
+ * `base.css` anchors `.corner-r` flush to `top/right`, which is the exact
+ * corner the back/pause row now occupies. Measured at 412px wide before this:
+ * `sensorText` spanned x 272-412 and the build stamp 301-383, while the back
+ * button held 360-400 — so BOTH ran underneath the button, and the sensor chip
+ * reached the very edge of the screen.
+ *
+ * Dropped below the row instead of shrunk: the row is 40px tall at a 12px
+ * inset, so it owns everything above y=52. */
+.corner-r {
+  top: calc(var(--safe-t) + 60px);
+  right: calc(var(--safe-r) + 14px);
+  align-items: flex-end;
+}
+
+/* The stamp is a stamp again. It briefly became a 213x45 pill because it
+ * toggled the diagnostics overlay and could not be found when it was needed;
+ * the overlay lives behind the dev unlock now, where the convention puts it, so
+ * this reports a build and is not a control. */
+
+/* The overlay it used to open. Bigger and higher-contrast than the original
+ * because it is read off a phone at arm's length by someone describing a bug. */
+#diag {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: rgba(8, 11, 22, 0.82);
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+.diag-text { white-space: pre; }
+
+/* THE WRENCH MAKES THE ROW TOO WIDE FOR THE CLOCK, and only the wrench does.
+ * Measured at 412px: three buttons start at x=264 and the clock ends at 252, a
+ * 12px gap; the fourth button starts the row at 216 and overlaps the countdown
+ * by 36. Rather than shrink a row whose 48px pitch is the convention, the clock
+ * drops below it — and only while the dev tools are unlocked, so no player ever
+ * sees the game laid out differently. */
+body.dev-unlocked .clock { top: calc(var(--safe-t) + 58px); }
+
+/* ── the two panels ────────────────────────────────────────────────────────
+ *
+ * One set of rules for both, because the only difference between them is who
+ * is allowed to find them. See panels.js and CHROME.md "Two panels, not one".
+ *
+ * HEIGHT-CAPPED, and that cap is the reason `close` can be the last row: on a
+ * board there is no Escape key and no second pointer, so a close row pushed
+ * below the fold is a trapped player. The cap is on the PANEL and the rows
+ * scroll inside it, so the row is always reachable however many rows there are.
+ */
+.panel {
+  position: absolute;
+  top: calc(var(--safe-t) + 60px);
+  right: calc(var(--safe-r) + 12px);
+  width: min(248px, calc(100vw - 32px));
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  background: rgba(10, 14, 28, 0.94);
+  z-index: 40;
+}
+
+.panel-head {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 2px 2px 6px;
+}
+
+.panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 13px;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  text-align: left;
+  color: var(--ink);
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.panel-row:active { transform: scale(0.98); }
+.panel-row.is-on {
+  border-color: color-mix(in srgb, var(--sky) 60%, transparent);
+  border-color: color-mix(in srgb, var(--sky-pop) 75%, transparent);
+}
+
+.panel-state {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.panel-row.is-on .panel-state { color: var(--sky); color: var(--sky-pop); }
+
+/* A stepper is not a button, so it does not get the press feedback a row does. */
+.panel-step { gap: 6px; padding: 6px 8px 6px 13px; }
+.panel-step-label { flex: 1; }
+.panel-step-value {
+  min-width: 46px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--sky);
+  color: var(--sky-pop);
+}
+.panel-step-btn {
+  width: 32px;
+  min-height: 32px;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--ink);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.panel-step-btn:active { transform: scale(0.9); }
+
+.panel-head-later { margin-top: 8px; }
+
+/* Last row, and visually the way out rather than another setting. */
+.panel-close {
+  justify-content: center;
+  margin-top: 4px;
+  color: var(--muted);
+  background: none;
+}
+
+/* ── the dev code pad ──────────────────────────────────────────────────────
+ * Ids come from the lifted `devUnlock.js` and must not be renamed here. */
+#devcode-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 9, 18, 0.84);
+}
+#devcode-card {
+  width: min(280px, calc(100vw - 48px));
+  padding: 16px;
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  background: rgba(12, 16, 32, 0.96);
+}
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+#devcode-dots {
+  font-size: 22px;
+  letter-spacing: 0.35em;
+  color: var(--ink);
+}
+#devcode-dots.devcode-wrong { color: var(--bad); }
+#devcode-close {
+  width: 34px; height: 34px; min-height: 34px;
+  font-size: 18px; line-height: 1;
+  color: var(--muted);
+  border: 1px solid var(--stroke);
+  border-radius: 50%;
+  background: none;
+}
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.devcode-key {
+  min-height: 52px;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink);
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.devcode-key:active { transform: scale(0.94); }
+
+/* The press target while it is being held. Subtle on purpose: a visible
+ * "something is happening" would make the gesture discoverable, and being
+ * undiscoverable is half of what it is for. */
+.devhold { opacity: 0.55; }
+/* The hold target. #ui is `pointer-events: none`, so it must opt back in or a
+ * press never reaches it. touch-action and the callout/select rules stop a
+ * phone turning a seven-second hold into a text selection or a context menu. */
+#score {
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.clock {
+  /* CENTRED ON THE VIEWPORT, NOT BETWEEN ITS NEIGHBOURS — inherited from the
+   * mission block this replaced, and the reason has not gone away. As a flex
+   * child of `.hud-top` (`space-between`) its position followed the score
+   * column's WIDTH, and that column changes width on nearly every frame even at
+   * a constant digit count, because `font-variant-numeric: tabular-nums` is
+   * declared on `.stat-value` and Chakra Petch has no `tnum` feature to answer
+   * it. Measured over forty seconds of play: 486 width changes, every one on a
+   * new score string. A mission panel jittering 2.5px was a bug; a COUNTDOWN
+   * doing it would be unreadable. */
+  position: absolute;
+  top: calc(var(--safe-t) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.clock-row { display: flex; align-items: baseline; gap: 4px; }
+/* Empty unless the mode supplies one — the race reads in metres, and a bare
+ * number in the clock's own slot would read as seconds. */
+.clock-unit {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.clock:not(.has-unit) .clock-unit { display: none; }
+
+.clock-value {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+  /* Drawn straight over snow, which is the brightest thing in the frame and is
+   * white at every mood. A panel behind it would be a box in the middle of the
+   * sky; a shadow costs no layout and survives a white background. */
+  text-shadow: 0 2px 10px rgba(10, 14, 30, 0.55), 0 0 2px rgba(10, 14, 30, 0.4);
+  transition: color 160ms linear;
+}
+
+/* The SECOND reading of the same number, and it earns its place because a
+ * numeral cannot show a rate. Draining visibly is what tells a player whether
+ * they are gaining or losing before they have counted anything. */
+.clock-bar {
+  width: 92px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.22);
+  overflow: hidden;
+}
+
+.clock-bar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 2px;
+  background: var(--sky);
+  transform-origin: 0 50%;
+  transition: background-color 160ms linear;
+}
+
+/* A gain and a loss must be told apart without reading the callout, so they are
+ * different colours AND different shapes: a gain swells, a loss shakes. */
+.clock.gained .clock-value { color: var(--good, #97d700); animation: clockGain 340ms ease-out; }
+.clock.lost .clock-value { color: var(--bad); animation: clockLose 300ms ease-out; }
+
+@keyframes clockGain {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+
+@keyframes clockLose {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+  100% { transform: translateX(0); }
+}
+
+/* Under CLOCK.lowAt this is the only thing worth looking at, and it says so.
+ * The pulse runs on a whole second so it reads as a TICK rather than as an
+ * animation that happens to be playing. */
+.clock.is-low .clock-value {
+  color: var(--bad);
+  animation: clockTick 1s ease-in-out infinite;
+}
+.clock.is-low .clock-bar i { background: var(--bad); }
+
+@keyframes clockTick {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.72; transform: scale(1.06); }
+}
+
+/* The line on the results screen. Spans the grid rather than joining it: it is
+   a verdict on the run, not another statistic from it. */
+.results-mission {
+  width: 100%;
+  margin-top: 2px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  text-align: center;
+  font-size: 12.5px;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(190, 218, 255, 0.07);
+}
+.results-mission:empty { display: none; }
+.results-mission.is-complete {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 40%, transparent);
+  background: color-mix(in srgb, var(--good) 10%, transparent);
+}
+
+/* ── THE NOTE UNDER THE MAX TILT ANGLE ROW ─────────────────────────────────
+   Two jobs in one element: it says what the number means, and it carries the
+   "you just calibrated" warning. One element rather than two because a warning
+   that appears in a space which was empty a moment ago shifts every row below
+   it, and the rows below it are the ones with close on them. */
+.panel-note {
+  padding: 2px 12px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  opacity: .55;
+}
+.panel-note.is-warn {
+  opacity: 1;
+  color: #fcd34d;
+}
+
+/* The route screen's tutorial line -- replaces the "select / route" pair. Bold
+   by request, sized to be read not glanced, and allowed two lines on a phone. */
+.explainer {
+  margin: 0 0 6px;
+  font-weight: 800;
+  font-size: clamp(16px, 2.6vmin, 22px);
+  line-height: 1.35;
+  letter-spacing: .01em;
+  max-width: 28ch;          /* narrower, so it reliably wants two lines */
+  margin-inline: auto;
+  /* Balance the two lines so a short last word is never orphaned on its own
+     line -- "...time runs out!" was dropping "out!" alone. */
+  text-wrap: balance;
+}
+
+/* The race placing: beside the kilometres on one baseline, a shade BIGGER than
+   them (44 vs 40) -- "same size or even the first a bit bigger". */
+.place-now {
+  font-weight: 800;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  text-shadow: 0 2px 22px rgba(0, 0, 0, 0.75);
+}
+/* The hairline between the placing and the kilometres. */
+.place-sep {
+  width: 2px;
+  height: 34px;
+  margin: 0 12px;
+  align-self: center;
+  background: var(--ink);
+  opacity: 0.45;
+  border-radius: 1px;
+}
+/* "Big squeeze animation -- becoming bigger and lighter -- when I'm passing or
+   being passed." Replayable: the class is pulled off on a timer in setPlace. */
+.place-now.bump { animation: placeBump 600ms cubic-bezier(0.2, 1.4, 0.4, 1); }
+@keyframes placeBump {
+  0%   { transform: scale(1); filter: brightness(1); }
+  30%  { transform: scale(1.7); filter: brightness(1.9); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* Two sibling menus under shared/bobo-ui/menunav.js; which rows a menu shows
+   is markup, not mode-flipping. The settings screen's back-to-pause row is
+   hidden by main.js when no run is suspended beneath. */
+
+
+/* ── THE TWO-PLAYER ENDING SCREEN ─────────────────────────────────────────
+   The winner's name, how the race ended, and a card per rider in that
+   rider's colour. In two-player this IS the verdict, so the single-player
+   result furniture (grade, score, stat grid, mission) retires below. */
+.r2p {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+}
+.r2p[hidden] { display: none; }
+.r2p-win {
+  margin: 0;
+  font-size: clamp(20px, 3.8vmin, 36px);
+  font-weight: 800;
+  line-height: 1.15;
+  color: #fff;
+  text-align: center;
+  max-width: min(78vw, 560px);
+  overflow-wrap: anywhere;
+}
+.r2p-how {
+  margin: 0;
+  font-size: clamp(11px, 1.6vmin, 14px);
+  line-height: 1.4;
+  color: var(--ink2);
+  text-align: center;
+  max-width: min(78vw, 560px);
+}
+.r2p-cards {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+.r2p-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  min-width: 150px;
+  max-width: min(230px, 38vw);
+  background: rgba(10, 16, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.r2p-card-1 { --wall-c: var(--p1, #f65e5e); }
+.r2p-card-2 { --wall-c: var(--p2, #00c9d1); }
+/* The winner's card carries its colour; the other steps back a shade. */
+.r2p-card.is-win {
+  border-color: var(--wall-c);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--wall-c) 35%, transparent);
+}
+.r2p-card:not(.is-win) { opacity: 0.78; }
+.r2p-place {
+  font-size: clamp(18px, 3vmin, 28px);
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+}
+.r2p-name {
+  font-size: clamp(11px, 1.7vmin, 14px);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #fff;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* WRAPS RATHER THAN SPILLS. The unfinished rider's stat is "0.8 KM" over
+   "TO THE FINISH", which is three times the width of "TIME" and wider still
+   once this is translated -- Italian "AL TRAGUARDO", Czech "DO CILE". Two
+   cards sit side by side on a landscape phone, so the row is allowed to
+   break onto a second line instead of pushing the card wider than its half.
+   Measured at 740x360 with the longest of the three: both cards inside their
+   halves, nothing clipped. */
+.r2p-stats { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 4px;
+  max-width: 100%; }
+.r2p-stats > div { min-width: 0; }
+.r2p-stats span {
+  display: block;
+  font-size: clamp(14px, 2.2vmin, 20px);
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.r2p-stats em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink3);
+}
+/* The 1p result furniture says one player's numbers; in a two-player race
+   the cards above say both, so it all retires. */
+body.is-2p .screen[data-state="results"] .rank,
+body.is-2p .screen[data-state="results"] #overTitle,
+body.is-2p .screen[data-state="results"] .final-score,
+body.is-2p .screen[data-state="results"] .newbest,
+body.is-2p .screen[data-state="results"] .results-grid,
+body.is-2p .screen[data-state="results"] .results-mission { display: none; }
+
+/* ── BAL-594: THE FINISHER'S PANEL ────────────────────────────────────────
+   Left side of that player's own half, clear of the score block in the
+   opposite corner -- which is the 7-second dev-unlock hold target, and a
+   missed press landing there would unlock the wrench instead of ending the
+   race. Only ever shown in two-player. */
+.done-panel {
+  position: fixed;
+  /* Right of the sidebar, which owns the screen's left edge during a race. */
+  left: calc(var(--sb-total) + 16px);
+  top: 16%;
+  width: min(44vw, 300px);
+  z-index: 45;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+.done-panel-b { top: 66%; }
+/* THE EXPLANATION LINE NEEDS A PLATE, not a shadow.
+   It was --ink2 (a pale blue-grey) with a 10px blurred drop shadow, sitting
+   directly on the canvas -- and the canvas under it is SNOW. Pale ink on white
+   with a soft shadow is not low contrast, it is invisible: measured on a
+   bluebird frame the line was unreadable while the button eight pixels below it
+   was perfectly legible, because the button has a plate and this did not.
+   A blur cannot rescue text whose backdrop is brighter than the text; only an
+   opaque backdrop can, which is why every other readable surface in this game
+   carries one. Same plate as the dev panel and the same width as the button
+   underneath, per the pattern Elad approved on BAL-580.
+   NOT backdrop-filter: see the house rule above -- it drops black compositor
+   tiles over the canvas, which is the bug this whole screen was fighting. */
+.done-line {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: rgba(10, 14, 28, 0.94);
+  font-size: clamp(12px, 1.6vmin, 15px);
+  line-height: 1.35;
+  color: var(--ink);
+  text-shadow: var(--ink-shadow);
+}
+.done-go { width: 100%; }
+body:not(.is-2p) .done-panel { display: none; }
+
+/* ── BAL-611: THE NAME, IN THE MIDDLE OF YOUR OWN HALF ────────────────────
+   Shown ONLY during the countdown and ONLY in two-player, centred in the half
+   it belongs to and carrying that player's colour, so the first thing each
+   player sees is their own name where they are already looking.
+
+   It fades rather than vanishing: the countdown ends on "drop" and a label
+   that disappears on the same frame reads as a glitch. Opacity and
+   visibility, never display, or there is nothing to transition. */
+.count-name {
+  position: fixed;
+  left: var(--sb-total); right: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 44;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 420ms ease;
+}
+body.is-2p .count-name { display: flex; }
+body.is-2p[data-state="count"] .count-name { opacity: 1; visibility: visible; }
+/* Pushed down from the half's centre so the raised count has the top of the
+   frame to itself -- see the count rule above. Each still sits well inside
+   its own half, which is the only thing the label has to prove. */
+/* 40%: the short landscape phone is the binding case -- a 197px half holding
+   a 100px glyph (at its 1.5x animation peak) and a 64px card. At 36% the two
+   cleared each other by 6px, which is not clearance, it is luck. */
+.count-name-1 { top: 40%; transform: translateY(-50%); --wall-c: var(--p1, #f65e5e); }
+.count-name-2 { top: 78%; transform: translateY(-50%); --wall-c: var(--p2, #00c9d1); }
+.count-name b {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px; height: 64px;
+  border-radius: 16px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #0b0f18;
+  background: var(--wall-c, #fff);
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+  flex: none;
+}
+.count-name span {
+  font-size: clamp(22px, 5vmin, 46px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  /* Capped against the half's width so a long profile name cannot run off the
+     side -- the same lesson the rail taught, applied before it bites. */
+  max-width: 58vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2px 6px rgba(4, 8, 20, 0.9), 0 4px 22px rgba(4, 8, 20, 0.7);
+}
+
+/* ── BAL-594: THE SPLIT-SCREEN DIVIDER ────────────────────────────────────
+   A DOM rule rather than anything in the scene, and that is the point: it
+   sits above the canvas, so it is drawn after both post chains have finished
+   and cannot be bloomed, graded or bled across. It also costs nothing to move
+   if the split ever becomes left/right. Only present in two-player. */
+body.is-2p .split-divider {
+  position: fixed;
+  /* Starts at the rail's edge: the map panel owns its full height, and the
+     divider belongs to the two pictures, not to the rail (the reference). */
+  left: var(--sb-total); right: 0; top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+  z-index: 40;
+  pointer-events: none;
+}
+.split-divider { display: none; }
+/* Only while the frame IS two pictures: over a menu panel the line is a bar
+   across somebody's screen (the settings-spam screenshot, 2026-10-14). */
+body.is-2p[data-state="play"] .split-divider,
+body.is-2p[data-state="count"] .split-divider { display: block; }
+
+/* ── BAL-594: NO EDGE METER IN TWO-PLAYER ──────────────────────────────────
+   There is ONE meter, it is fed by player one, and it lives in #hudBottom --
+   which in two-player is physically sitting on PLAYER TWO's half. So it
+   showed the wrong player's edge in the place the wrong player was looking.
+
+   Hidden rather than doubled, which is what Elad asked for ("either we
+   remove it completely, or we remove it only in this mode, or we generate
+   one per player. Whichever is the easiest"). One per half is the better
+   answer and it is not the ask; it stays available the day the HUD is split
+   properly for the ending screen. Single-player keeps its meter untouched. */
+body.is-2p #edgeMeter { display: none; }
+
+/* ── BAL-594: THE TWO READOUTS MATCH ──────────────────────────────────────
+   Elad, on the first split-screen build: the top readout was "much bigger
+   than the one on the bottom", and both should sit in the LEFT corner with
+   the player's name above them. So in two-player the clock gives up its
+   title-position centring and its 40/44px numerals and becomes the same
+   shape as .hud2: name line, then place | distance, top-left of its own
+   half. Single-player keeps the big centred clock untouched. */
+.hud-name {
+  font-size: clamp(11px, 1.7vmin, 14px);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  /* White, not the muted ink -- Elad: over snow the muted grey disappears. */
+  color: #fff;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
+}
+/* The name only earns its place when there are two of the same readout. */
+body:not(.is-2p) .clock .hud-name { display: none; }
+body.is-2p .clock {
+  left: calc(var(--safe-l) + 18px);
+  transform: none;
+  align-items: flex-start;
+}
+body.is-2p .clock-value,
+body.is-2p .place-now { font-size: clamp(16px, 2.6vmin, 26px); }
+body.is-2p .place-sep { height: clamp(12px, 1.9vmin, 20px); margin: 0 10px; }
+
+/* ── THE LEFT SIDEBAR (the reference frame's rail) ─────────────────────────
+   One translucent glass panel, full height, over the scenery -- the reference
+   overlays the picture rather than cropping the lens, so the walls' viewport
+   inset is gone with the walls. Carries the mode + course, the race clock,
+   the gap, and the course map. Shown in ANY race, single-player field race
+   included; JS owns --sb-w. */
+:root { --sb-w: 180px; --wall-fade: 48px; }
+.side-bar {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  /* THE NOTCH IS NOT PART OF THE RAIL (BAL-609). --sb-w is the width the rail
+     is meant to HAVE, computed from the viewport in JS, which knows nothing
+     about safe-area insets. With border-box the left padding is subtracted
+     from it, and that padding carries the inset -- so on an iPhone 15 in
+     landscape, 59px of camera turned a 150px rail into 65px of usable space
+     and the clock, the place name and the map were all clipped. Measured, not
+     reasoned: BLACKPINE wanted 66px, the clock 80px, the map 69px.
+     Elad, who was right about the cause: "i think it happens because of the
+     camera - just give it a bit more width."
+     Adding the inset back makes --sb-w mean usable width on every device. */
+  width: var(--sb-total);
+  box-sizing: border-box;
+  padding: calc(var(--safe-t) + 12px) 12px calc(var(--safe-b) + 12px) calc(var(--safe-l) + 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  z-index: 36;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(10, 18, 40, 0.78) 0%, rgba(10, 18, 40, 0.42) 22%,
+      rgba(10, 18, 40, 0.38) 78%, rgba(8, 14, 32, 0.72) 100%),
+    url('sb_map_bg.jpg') center / cover no-repeat,
+    #0c1430;
+  text-shadow: 0 1px 8px rgba(4, 8, 20, 0.85);
+  border-right: 1px solid rgba(150, 190, 255, 0.3);
+  box-shadow: 8px 0 30px rgba(0, 0, 0, 0.28);
+}
+/* The belt behind the braces above: whatever any future child does, the rail
+   keeps it. The map, the marks and the dots are all positioned inside it. */
+.side-bar { overflow: hidden; }
+.side-bar[hidden] { display: none; }
+.sb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid rgba(120, 200, 255, 0.55);
+  /* A FLEX CHILD WILL NOT SHRINK BELOW ITS CONTENT unless it is told it may:
+     min-width defaults to auto, so a long place name pushed the text block
+     wider than the rail instead of fitting inside it, and the overflow landed
+     on the mountain -- "on the mobile version, words spill out where the map
+     is displayed" (Elad, 2026-10-18, a landscape phone, where the rail is at
+     its 150px floor). */
+  min-width: 0;
+}
+.sb-head-text { min-width: 0; }
+.sb-peak { width: 25px; height: 25px; color: #cfe4ff; flex: none; }
+.sb-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+.sb-course {
+  /* The floor was 13px, which is wider than the rail can hold at 150px once
+     the peak icon and the gap are paid for. Shrinking is the first defence
+     and the ellipsis is the backstop: a clipped name is a bad look, a name
+     written across the piste is a broken one. */
+  font-size: clamp(11px, 2.1vmin, 18px);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-timer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: clamp(13px, 2.5vmin, 21px);
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.sb-watch { width: 16px; height: 16px; color: #cfe4ff; flex: none; }
+.sb-gap {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.sb-gap b {
+  margin-left: 6px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: #ff5868;
+  font-variant-numeric: tabular-nums;
+}
+/* The map: the course's own bending line, start at the bottom, finish at the
+   top, markers and dots riding it. Inset from the panel's right edge so the
+   CP labels have room. */
+.sb-map {
+  position: relative;
+  flex: 1;
+  min-height: 120px;
+  margin: 6px 4px 4px 0;
+}
+.sb-map-svg { position: absolute; inset: 0; width: 46%; height: 100%; overflow: visible; }
+.sb-map-path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 1))
+    drop-shadow(0 0 8px rgba(190, 225, 255, 0.95))
+    drop-shadow(0 0 18px rgba(130, 195, 255, 0.9))
+    drop-shadow(0 0 32px rgba(110, 180, 255, 0.7));
+}
+/* Course markers (start, checkpoints, finish): a ring on the line, the label
+   in the right-hand column. Injected by _paintSidebar once per race. */
+.sb-mark { position: absolute; left: 0; right: 0; height: 0; pointer-events: none; }
+.sb-mark i {
+  position: absolute;
+  width: 9px; height: 9px;
+  border: 2.5px solid #fff;
+  border-radius: 50%;
+  background: #0e1830;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
+}
+/* BAL-612: "the circle item of the checkpoint on the map can glow and squeeze."
+   Fired when a rider actually crosses it, in that rider's colour. The squeeze
+   is what carries it at this size -- a 9px dot can glow all it likes and still
+   be missed; the scale change is what the eye catches in peripheral vision,
+   which is where this dot lives while you are busy steering.
+   translate(-50%, -50%) is reproduced in every keyframe because a transform
+   is replaced wholesale, not merged -- dropping it would fling the dot off
+   its own line for the length of the animation. */
+@keyframes sbPulse {
+  0%   { transform: translate(-50%, -50%) scale(1);
+         box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5), 0 0 0 0 var(--pulse-c, #fff); }
+  30%  { transform: translate(-50%, -50%) scale(0.55);
+         box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5), 0 0 12px 5px var(--pulse-c, #fff); }
+  60%  { transform: translate(-50%, -50%) scale(1.45);
+         box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5), 0 0 16px 7px var(--pulse-c, #fff); }
+  100% { transform: translate(-50%, -50%) scale(1);
+         box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5), 0 0 0 0 transparent; }
+}
+.sb-mark.sb-pulse i {
+  animation: sbPulse 760ms cubic-bezier(0.2, 1, 0.3, 1);
+  border-color: var(--pulse-c, #fff);
+}
+
+/* The finish's ring is the checker banner instead. */
+.sb-mark.sb-finish i {
+  width: 16px; height: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 2px;
+  background: repeating-conic-gradient(#fff 0 25%, #10141c 0 50%) 0 0 / 6px 6px;
+}
+/* The start's is the peak icon's little mountain. */
+.sb-mark.sb-start i {
+  width: 12px; height: 9px;
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  clip-path: polygon(0 100%, 50% 0, 100% 100%);
+}
+.sb-mark b {
+  position: absolute;
+  left: 52%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  line-height: 1.3;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  white-space: nowrap;
+}
+.sb-mark b em {
+  display: block;
+  font-style: normal;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.58);
+}
+/* The racers: a dot per rider on the line; in two-player each carries a 1P/2P
+   pill in the player's colour, the reference's tags. */
+.sb-dot {
+  position: absolute;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  z-index: 2;
+}
+.sb-dot.is-me { width: 14px; height: 14px; }
+.sb-tag {
+  position: absolute;
+  transform: translate(calc(-100% - 9px), -50%);
+  padding: 2px 6px 3px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #0b0f18;
+  background: var(--tag-c, #fff);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  z-index: 3;
+  white-space: nowrap;
+}
+.sb-tag::after {
+  content: '';
+  position: absolute;
+  left: 100%; top: 50%;
+  transform: translateY(-50%);
+  border: 4px solid transparent;
+  border-left-color: var(--tag-c, #fff);
+  border-right: none;
+}
+.sb-tag.on-r { transform: translate(11px, -50%); }
+.sb-tag.on-r::after {
+  left: auto;
+  right: 100%;
+  border-left: 4px solid transparent;
+  border-right: 4px solid var(--tag-c, #fff);
+}
+
+/* ── THE PER-CAMERA CHROME (two-player) ───────────────────────────────────
+   One set per half, the reference's overlay: place | km covered top-centre
+   (centred on the CAMERA, so the sidebar is excluded), TO FINISH top-right,
+   identity row bottom-left. All of it only while the race is live (has-sb),
+   so the attract lobby behind the menus stays clean. */
+.half-top {
+  position: fixed;
+  left: var(--sb-total); right: 0;
+  display: none;
+  justify-content: center;
+  align-items: baseline;
+  z-index: 35;
+  pointer-events: none;
+  /* Hard shadow first, soft bloom second: against pure white fog -- the
+     leader's half at a big gap -- the soft one alone left this strip
+     unreadable (Elad, device screenshot 2026-10-14). */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 2px 14px rgba(0, 0, 0, 0.55);
+}
+body.is-2p.has-sb .half-top { display: flex; }
+/* NOT DURING THE COUNTDOWN. "while it's showing dont show the 1st 2nd and
+   meter" -- a placing before anybody has raced is noise, and the distance has
+   not started counting down yet. They fade in with the start, alongside the
+   corner name. The clock below is the single-player equivalent of the same
+   strip. */
+body.is-2p .half-top { transition: opacity 420ms ease; }
+body.is-2p[data-state="count"] .half-top { opacity: 0; }
+.clock { transition: opacity 420ms ease; }
+body[data-state="count"] .clock { opacity: 0; }
+.half-top-1 { top: calc(var(--safe-t) + 8px); }
+.half-top-2 { top: calc(50% + 8px); }
+.half-top > b {
+  font-size: clamp(24px, 5vmin, 50px);
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+}
+.ht-sep {
+  width: 2px;
+  height: clamp(16px, 3.2vmin, 32px);
+  background: rgba(255, 255, 255, 0.55);
+  transform: translateY(3px);
+}
+.ht-dist {
+  font-size: clamp(17px, 3.2vmin, 34px);
+  font-weight: 700;
+  color: #fff;
+}
+.ht-dist b { font-weight: 700; }
+.ht-dist em { font-style: normal; font-size: 0.55em; color: rgba(255, 255, 255, 0.75); margin-left: 4px; }
+/* A LABELLED value: small caps naming the number, then the number. Both of
+   the race-shape values wear one -- "we have to put text for each one
+   because it's not clear" (Elad). */
+.ht-pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: clamp(15px, 2.7vmin, 27px);
+  font-weight: 700;
+  color: #fff;
+}
+.ht-pair em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+}
+.ht-pair b { font-variant-numeric: tabular-nums; }
+/* The gap wears the sidebar's own colour language: red is a gap you are
+   chasing, green is a gap you own. */
+.ht-pair b.trail { color: #ff5868; }
+.ht-pair b.lead { color: #6dff9e; }
+
+
+
+/* WHO, bottom-left of each half: the avatar badge and the name. This corner
+   has moved twice on sight and that is the process working: out of the
+   identity row to the top-left, then down here -- "I will take the name and
+   icon from the left upper corner to the bottom left corner and the speed to
+   the right bottom corner" (Elad, playing it). */
+.half-name {
+  position: fixed;
+  left: calc(var(--sb-total) + 16px);
+  display: none;
+  align-items: center;
+  gap: 10px;
+  z-index: 36;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8), 0 3px 14px rgba(0, 0, 0, 0.65);
+}
+/* TWO-PLAYER ONLY, and that is the whole point of it. The badge answers
+   "which of these two is me", a question that does not exist in a solo run --
+   where it sat in the corner saying YOU to the only person on the mountain.
+   Elad, 2026-10-18: "I don't need to see the player badge and have it say
+   you. It's not relevant when it's not multiplayer mode."
+
+   The name is still COMPUTED in solo (main.js _paintHalves), because the same
+   function paints the place, the distance and the speed bar that the solo HUD
+   does use. Only this corner is hidden. */
+body.is-2p.has-sb .half-name { display: flex; }
+/* THE NAME IS SAID ONCE. With the HUD now live from the first frame of the
+   countdown (BAL-610), the corner badge and the centred card were both saying
+   the same thing at the same time. The big one owns the countdown; this one
+   fades in as that fades out, so the name HANDS OVER from the middle of your
+   half to its corner instead of appearing twice and then once. */
+body.is-2p .half-name { transition: opacity 420ms ease; }
+body.is-2p[data-state="count"] .half-name { opacity: 0; }
+.half-name-1 { bottom: calc(50% + 16px); --wall-c: var(--p1, #f65e5e); }
+.half-name-2 { bottom: calc(var(--safe-b) + 16px); --wall-c: var(--p2, #00c9d1); }
+/* Capped hard: a long profile name must ellipsize long before it can reach
+   the centred strip -- the demo's double-barrelled name ran clean through
+   "1st | 248 m" (Elad: "I don't understand the values of distances"). */
+/* Capped wider than it was (15vw): real profile names arrived with the roster
+   and "JONATHAN-ALEXAND..." is not a name anybody recognises. Still capped,
+   because the centred strip above must stay clear -- see the note above. */
+.half-name .wall-name { margin-top: 0; max-width: 26vw; }
+
+/* HOW FAST, bottom-right of each half: the hero speed and its segmented bar
+   in the player's colour, right-anchored so the two speeds stack on the same
+   screen edge. */
+.half-id {
+  position: fixed;
+  right: calc(var(--safe-r) + 16px);
+  display: none;
+  align-items: flex-start;
+  gap: 12px;
+  z-index: 37;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8), 0 3px 14px rgba(0, 0, 0, 0.65);
+}
+.half-id .id-col { align-items: flex-end; }
+body.is-2p.has-sb .half-id { display: flex; }
+/* The solo race gets the same hero speed block, above the bottom bar; the
+   old tiny km/h readout in the bottom bar yields to it. */
+body.has-sb:not(.is-2p) .half-id-1 { display: flex; bottom: calc(var(--safe-b) + 68px); }
+body.has-sb:not(.is-2p) #speedText { display: none; }
+.half-id-1 { bottom: calc(50% + 16px); --wall-c: var(--p1, #f65e5e); }
+.half-id-2 { bottom: calc(var(--safe-b) + 16px); --wall-c: var(--p2, #00c9d1); }
+/* BAL-612: "left corner's name ui - make it bigger and clearer". It answers
+   "which of these two is me", so it has to be readable at a glance from a
+   couple of metres back, standing on a board -- not scanned. Grown rather
+   than restyled: the shape was right, the scale was not. */
+.wall-avatar {
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #0b0f18;
+  background: var(--wall-c, #fff);
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  flex: none;
+}
+/* ── ONE PLATE, EVERY READOUT ─────────────────────────────────────────────
+   "can we have the same style of background for each element?" -- so it is
+   declared once and worn by all of them, rather than each corner inventing
+   its own weight.
+
+   Why any plate at all: the snow is white and so is the text. A drop shadow
+   cannot rescue light type whose backdrop is brighter than it is; that is the
+   lesson the finisher's line taught, and the speed readout had it worse,
+   because the UNLIT half of its segmented bar is pale by design and vanished
+   entirely -- the bar read as full at any speed.
+
+   Why this light, and this tight: the first cut was 58% with a hairline and
+   generous padding, and it "takes a lot of screen". These chips sit over the
+   picture for the whole run. 42%, no border, and the smallest padding that
+   still reads as a surface -- enough to separate type from snow, not enough
+   to become furniture.
+
+   NOT backdrop-filter. House rule, and this is exactly the surface it was
+   written about. */
+.hud-chip,
+.half-name .wall-name {
+  background: rgba(10, 14, 28, 0.42);
+  border-radius: 10px;
+  padding: 3px 10px 4px;
+}
+/* THE TOP STRIP KEEPS ITS BARE TYPE. Elad, having seen it plated: "disable
+   the one on top - not sure it's better." It sits over the centre of the
+   picture rather than in a corner, where a panel reads as something in the
+   way; its hard-then-soft text shadow was already solving the same problem.
+   The chip element stays in the markup, unstyled, so turning it back on is
+   one rule rather than a markup change. */
+.half-top .hud-chip, .clock-row { background: none; padding: 0; }
+.half-top .hud-chip { gap: 12px; }
+.hud-chip { display: flex; align-items: baseline; gap: 12px; }
+
+/* ── THE SPEED BLOCK: TWO SURFACES, NOT ONE ───────────────────────────────
+   "i meant the whole thing on the right lower corner: have different color
+   for the text ui and the element ui." Plated as a single slab, the number
+   and the bar read as one grey box. They are two different kinds of thing --
+   a value you read and a gauge you glance at -- so they get two different
+   surfaces.
+
+   The READOUT keeps the neutral chip. The GAUGE sits on a track tinted with
+   the player's own colour, which also does a second job: the unlit segments
+   are pale by design and were invisible over snow, and a tinted track gives
+   them something to be pale against. */
+.id-col {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 5px; min-width: 0;
+  background: none; padding: 0; border-radius: 0;
+}
+.id-kmh {
+  background: rgba(10, 14, 28, 0.42);
+  border-radius: 10px;
+  padding: 3px 10px 4px;
+  margin-top: 0;
+}
+.speed-bar {
+  display: flex; gap: 3px;
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--wall-c, #fff) 26%, rgba(6, 10, 22, 0.66));
+}
+.wall-place {
+  font-size: clamp(20px, 3.6vmin, 34px);
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+}
+.wall-name {
+  font-size: clamp(15px, 2.8vmin, 24px);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #fff;
+  max-width: 34vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+.id-kmh { margin-top: 3px; }
+.id-kmh b {
+  font-size: clamp(24px, 4.4vmin, 42px);
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  text-shadow:
+    0 0 10px rgba(255, 255, 255, 0.55),
+    0 0 2px rgba(255, 255, 255, 0.9),
+    0 1px 3px rgba(0, 0, 0, 0.9),
+    0 2px 14px rgba(0, 0, 0, 0.75);
+}
+.id-kmh em {
+  font-style: normal;
+  font-size: 0.42em;
+  font-weight: 800;
+  color: #fff;
+  margin-left: 6px;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.4), 0 2px 10px rgba(0, 0, 0, 0.7);
+}
+.speed-bar i {
+  width: 12px; height: 7px;
+  transform: skewX(-16deg);
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.speed-bar i.on {
+  background: var(--wall-c, #fff);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--wall-c, #fff) 55%, transparent);
+}
+
+/* ── THE OVERHEAD BUBBLES ──────────────────────────────────────────────────
+   The reference's "EM"/"TC" badges: a coloured tag floating over every OTHER
+   racer visible in your camera, projected per frame by _paintRiderTags.
+   Positioned by transform; the -50%,-100% anchor puts the tail on the head. */
+.rider-tag {
+  position: fixed;
+  left: 0; top: 0;
+  padding: 3px 8px 4px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #0b0f18;
+  background: var(--tag-c, #fff);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  z-index: 33;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.rider-tag::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 100%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--tag-c, #fff);
+  border-bottom: none;
+}
+
+/* THE CENTRAL BORDER'S GRADIENTS -- kept from the walls layout (Elad: "drop
+   all of the gradients except the ones in the middle"). Each player's colour
+   rises from the floor of their own frame; they now span from the sidebar to
+   the right edge. */
+.hfade {
+  position: fixed;
+  left: var(--sb-total);
+  right: 0;
+  height: var(--wall-fade);
+  display: none;
+  pointer-events: none;
+  z-index: 30;
+}
+body.is-2p.has-sb .hfade { display: block; }
+.hfade-1b { --wall-c: var(--p1, #f65e5e); top: calc(50% - var(--wall-fade)); }
+.hfade-2b { --wall-c: var(--p2, #00c9d1); bottom: 0; }
+.hfade-1b, .hfade-2b {
+  background: linear-gradient(to top,
+    color-mix(in srgb, var(--wall-c, #223) 44%, transparent), transparent);
+}
+
+/* The sidebar and per-half chrome carry everything, so the stacked top-left
+   readouts and the bottom strip retire in two-player: the clock's job moved
+   to the sidebar timer and half-tops, and #hudBottom carried player one's
+   speed on player two's half. */
+body.is-2p .clock { display: none; }
+body.is-2p .hud-bottom { display: none; }
+/* Single-player race: the sidebar overlays the score column's corner, so the
+   HUD steps right while it is up. */
+body.has-sb:not(.is-2p) .hud-top { left: calc(var(--sb-total) + 16px); }
+body.has-sb:not(.is-2p) .hud-bottom { left: calc(var(--sb-total) + 16px); }
+/* ...and the centred clock centres on the CAMERA, not the window. */
+body.has-sb:not(.is-2p) .clock { left: calc(50% + var(--sb-total) / 2); }
+
+/* ── BAL-584: THE BOARD, AS IT IS STANDING ─────────────────────────────────
+   The GoBalance board itself, the same picture the calibration wizard shows,
+   so the two screens are plainly about the same object.
+
+   THE STAGE IS SQUARE, and that is load-bearing rather than tidy: a board
+   turned a quarter turn needs its own LENGTH in height, so a stage sized to
+   the board's depth lets the turned board spill over the copy below it --
+   which is exactly what the first cut did. One length drives both.
+
+   TWO NESTED FRAMES, AND THE ORDER MATTERS. The OUTER one rocks, in SCREEN
+   space; the inner one carries the stance. It was the other way round first,
+   which put the rock in the BOARD's frame on the theory that the steering
+   lean runs along the board's long axis. It does not, and the ticket's own
+   input spec says so: turned a quarter, steering reads the board's OTHER
+   axis, and that axis points left-right across the screen. So the tilt a
+   player makes to steer is a left/right tilt OF THE SCREEN in every stance --
+   only the board lying under it is turned. Rocking inside the stance frame
+   tipped the turned board nose-to-tail, which is the lean that does nothing
+   in that stance, and would have taught exactly the wrong motion. */
+.stance-stage {
+  --len: min(58vw, 26vh, 240px);
+  perspective: 560px;
+  height: var(--len);
+  display: flex; align-items: center; justify-content: center;
+  width: 100%;
+}
+/* The screen-space tilt: this is the motion being taught. */
+.stance-rock {
+  width: var(--len); height: var(--len);
+  display: flex; align-items: center; justify-content: center;
+  transform-style: preserve-3d;
+  animation: stance-rock 3s ease-in-out infinite;
+}
+/* And the board lying inside it, turned to whichever stance is chosen.
+   NO TIP-BACK. It was tipped 18 degrees away from the viewer to suggest a
+   board lying on the ground, and the cost was that the motion never read as
+   purely left and right -- the board sat permanently cocked, and a lean on
+   top of a cock is two angles to separate instead of one. Face-on, the rock
+   is the only angle on screen and it says one thing. */
+.stance-board {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  transform-style: preserve-3d;
+  transform: rotateZ(0deg);
+  transition: transform 460ms cubic-bezier(.22, .61, .36, 1);
+}
+.stance-board[data-deg="90"]  { transform: rotateZ(90deg); }
+.stance-board[data-deg="-90"] { transform: rotateZ(-90deg); }
+.stance-art {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.5));
+  user-select: none; -webkit-user-drag: none;
+}
+/* ONE SWEEP, SIDE TO SIDE, AND NO PAUSE IN THE MIDDLE. The keyframes sit at
+   the EXTREMES, not at centre: with ease-in-out that puts the easing where
+   the motion actually reverses and carries full speed through the middle.
+   Keyframing centre as well -- which is what this did first -- eases into and
+   out of the centre too, so the board hesitated three times a cycle and the
+   movement read as a stutter rather than a lean. */
+@keyframes stance-rock {
+  0%   { transform: rotateY(-15deg); }
+  50%  { transform: rotateY(15deg); }
+  100% { transform: rotateY(-15deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stance-rock { animation: none; }
+}
+
+/* THE ONLY SENTENCE ON THE SCREEN, so it is sized like one. It began as the
+   second of two lines, in the muted secondary style a supporting note gets;
+   with the headline and the placement line both gone it is the whole message
+   and was still whispering. Scales with the frame so a phone does not get a
+   caption. (`.stance-place` went with the copy it styled.) */
+.stance-how {
+  margin: 0;
+  font-size: clamp(17px, 3.4vmin, 26px);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+/* ── THE PAUSE AND SETTINGS MENUS STAY ONE COLUMN ──────────────────────────
+   The shared layer splits a short screen into headline | actions so the
+   actions never scroll. Elad's preference is that these two menus do not read
+   that way -- a half-screen of headline beside a column of rows. They are
+   stacked and centred instead, and because that is exactly the trade the
+   shared rule was making, the column is allowed to scroll rather than put a
+   row past the bottom edge: BAL-587 was that mistake and it cost a ticket. */
+@media (max-height: 560px) {
+  .screen[data-state="pause"] .inner,
+  .screen[data-state="settings"] .inner,
+  .screen[data-state="stance"] .inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: min(92vw, 420px);
+    max-height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    row-gap: var(--g2);
+  }
+  .screen[data-state="pause"] .head,
+  .screen[data-state="settings"] .head,
+  .screen[data-state="stance"] .head { text-align: center; }
+  /* Display type is the first thing to give when the frame is short -- the
+     same call the shared rule makes about the logo, for the same reason. */
+  .screen[data-state="pause"] h2,
+  .screen[data-state="settings"] h2,
+  .screen[data-state="stance"] h2 { font-size: min(7vmin, 30px); }
+  .screen[data-state="pause"] .says,
+  .screen[data-state="settings"] .says,
+  .screen[data-state="stance"] .says { width: 100%; max-width: none; }
+  /* No stage override: `--len` already answers to the short side. */
+}
+
+/* The settings panel, rendered inline inside the menu instead of floating:
+   same rows, same painters, none of the dropdown chrome. */
+/* The inline panel rows carry their own handlers, not `data-act`, so the
+   base layer's opt-in never reaches them -- without this the mouse falls
+   through to the canvas. Scoped to is-active like the data-act rule. */
+.screen.is-active #menuSettings { pointer-events: auto; }
+#menuSettings .panel {
+  /* BAL-586: THE CLIP EDGE MOVES OFF THE STROKE. `.panel` is a scroll
+     container (`overflow-y: auto`, for the old floating dropdown), and a
+     scroll container clips at its padding box. Inline the padding was zeroed,
+     so that clip edge landed exactly on the rows' 1px borders: at a phone's
+     fractional device-pixel ratio the outer edge of the stroke is cut and the
+     rounded corners lose their arc. That is why `calibrate your lean`, the
+     one row OUTSIDE this panel, was perfect in the QA screenshot.
+     2px of padding is all the stroke needs, and it is invisible.
+     NOT `overflow: visible` -- that was tried and it is worse: a visible
+     overflow also drops the flex `min-height: 0` a scroll container gets, so
+     at phone heights the panel grew past its box and `.panel-note` covered
+     the calibrate button and swallowed its taps. Measured, not guessed. */
+  padding: 2px;
+  position: static;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  margin-top: 14px;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+#menuSettings .panel-close { display: none; }
+
+
+/* BAL-597: the two seats' reach, under the max-tilt stepper. Only rendered
+   when there is a second board to report -- see panels.js. */
+.panel-seats {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 2px 2px;
+}
+.panel-seat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.panel-seat-name {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-seat-val {
+  color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}

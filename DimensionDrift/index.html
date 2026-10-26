@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- ── GOBALANCE SDK INTEGRATION ──────────────────────────────────────────────
+     Copied verbatim from GOBALANCE_SDK.md, "Boilerplate every game needs".
+     Every line is guarded on window.Unity or is a transparent shim, so this
+     page stays testable in a plain browser and under `npm run dev`. -->
+<script>
+  // The only channel for JS errors on-device -- there is no devtools console
+  // inside the WebView, so surface them through the native bridge instead.
+  window.addEventListener('error', function (e) {
+    if (window.Unity) window.Unity.call('JS ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    if (window.Unity) window.Unity.call('JS UNHANDLED REJECTION: ' + e.reason);
+  });
+
+  // rAF shim: WKWebView treats the occluded Unity overlay as a background tab
+  // and suspends requestAnimationFrame entirely. Queue callbacks instead of
+  // scheduling them natively; Unity flushes the queue via __pumpFrames() every
+  // frame regardless of visibility. A real native loop keeps running underneath,
+  // so a normal browser behaves exactly as before.
+  (function () {
+    var nativeRAF = window.requestAnimationFrame.bind(window);
+    window.__rafQueue = [];
+    window.requestAnimationFrame = function (cb) { window.__rafQueue.push(cb); return window.__rafQueue.length; };
+    window.cancelAnimationFrame = function () {};
+    window.__pumpFrames = function () {
+      var q = window.__rafQueue;
+      if (!q.length) return;
+      window.__rafQueue = [];
+      var t = performance.now();
+      for (var i = 0; i < q.length; i++) {
+        try { q[i](t); }
+        catch (e) { if (window.Unity) window.Unity.call('RAF CB ERROR: ' + e.message); }
+      }
+    };
+    (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+  })();
+</script>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0f18">
+<title>Dimension Drift</title>
+<!-- An inline favicon, so the browser stops requesting /favicon.ico and putting
+     a 404 in the console on every load. Harmless in itself, and exactly the kind
+     of standing red line that trains everyone to ignore the console — which is
+     where the real ones appear. Data URI, so it costs no request. rally has had
+     one for a while; the other four did not, and the shared shot tool named the
+     file rather than printing a bare "404 (Not Found)", which is how it got
+     fixed instead of skimmed. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M2 24h28l-8-14-5 8-3-4z' fill='%238fd0ff'/%3E%3Ccircle cx='24' cy='7' r='3' fill='%23ffcf87'/%3E%3C/svg%3E">
+<!-- The shared menu layer first, the game's own sheet second: the game
+     overrides the shared layer and never the other way round. Copied into
+     this game's output by build.mjs, so the tarball stays self-contained
+     (DISTRIBUTION.md) rather than depending on a file outside it. -->
+<link rel="stylesheet" href="/base.css">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+<!-- THE LOBBY IS A POSTCARD. One frame of the real world, rendered at the
+     mood of the moment and then frozen, so the menu costs nothing to sit in.
+     See _takePostcard in main.js for why this is not a shipped image. -->
+<div id="postcard" hidden></div>
+
+<!-- ONE dimming element for every menu state; `Screens` toggles it. -->
+<div class="wash"></div>
+
+<!-- Everything below is the game's UI. It lives in the WebView rather than in
+     Flutter overlays: compositing Flutter widgets over an Android platform view
+     forces a texture copy every frame, which would hand back the performance
+     the WebGL renderer just won. -->
+<div id="ui">
+
+  <!-- HUD -->
+  <div class="hud" id="hud">
+    <!-- The weight of a landing, drawn where the board meets the snow. Sits
+         behind everything else in the HUD and is transparent until it fires. -->
+    <div class="land-flash" id="landFlash"></div>
+
+    <div class="hud-top" id="hudTop">
+      <div class="stat">
+        <div class="stat-label" id="scoreLabel">score</div>
+        <div class="score-wrap">
+          <div class="stat-value" id="score">0</div>
+          <!-- Out of flow on purpose: the gain ghost must never move the score. -->
+          <div class="score-gain" id="scoreGain"></div>
+        </div>
+      </div>
+
+      <!-- HOW LONG THIS RUN HAS ACTUALLY LASTED, counting up from zero. The
+           clock in the middle of the screen counts DOWN and is a resource;
+           this is the run's length, and on an endless descent it is the number
+           a player will quote to someone else.
+
+           IT IS A LABELLED STAT, not a bare numeral. It shipped as a 13px
+           muted line with no label tucked under the score, and the first
+           person to look for it could not find it — which is the whole test a
+           readout has to pass. It now reads as SCORE / TIME / COMBO, the same
+           shape as everything else in this column. -->
+      <div class="stat stat-time" id="timeStat">
+        <div class="stat-label">time</div>
+        <div class="elapsed" id="elapsed">0:00</div>
+      </div>
+      <div class="stat stat-right" id="comboStat">
+        <div class="stat-label">combo</div>
+        <div class="combo-wrap">
+          <div class="combo-ring" id="comboRing"></div>
+          <div class="stat-value" id="combo">&times;1</div>
+        </div>
+        <!-- Four clean scores fill the bar; the fourth promotes the multiplier.
+             It used to be read against the three wipeout pips opposite — those
+             drain, these charge — and those pips are gone, replaced by the
+             clock. The pairing that survives is with the CLOCK: the streak this
+             bar charges is what multiplies a full drift line's seconds, capped
+             at x3. See timer.js. -->
+        <div class="combo-charge" id="comboCharge"><i></i><i></i><i></i><i></i></div>
+      </div>
+    </div>
+
+    <!-- THE CLOCK. The run ends when this reaches zero and nothing else ends
+         it, so it is the most important number on the screen and it is drawn
+         like one.
+
+         CENTRED ON THE VIEWPORT, and it inherits that anchoring from the
+         mission block it replaced — for the reason recorded there, which has
+         not gone away. As the middle child of `.hud-top` (`space-between`) its
+         position was a function of the score column's WIDTH, and that column
+         both gains digits over a run and changes width on nearly every frame at
+         a constant digit count, because `tabular-nums` is declared on
+         `.stat-value` but Chakra Petch has no `tnum` feature to answer it.
+         Measured: 486 width changes in forty seconds, none of them while the
+         text stood still. A countdown jittering 2.5px every tenth of a second
+         would be far worse than a mission panel doing it. -->
+    <div class="clock" id="clock">
+      <!-- BAL-594: whose readout this is. Only drawn in two-player, where the
+           same shape appears twice and a bare number no longer says whose it
+           is. Filled from the host roster (_playerNames); the text here is
+           the browser fallback until Unity supplies real names. -->
+      <div class="hud-name" id="hudName1">Player 1</div>
+      <div class="clock-row">
+        <!-- THE PLACING, CENTRE STAGE, SIDE BY SIDE with the kilometres and a
+             hairline between them -- "same size or even a bit bigger." In the
+             clock row so the pair share one baseline and the one centring that
+             does not jitter. Both hidden outside the race. -->
+        <div class="place-now" id="placeNow" hidden>&mdash;</div>
+        <i class="place-sep" id="placeSep" hidden></i>
+        <div class="clock-value" id="clockValue">60</div>
+        <!-- Empty unless the mode supplies one. The race reads in metres and a
+             bare number in the clock's own slot would read as seconds. -->
+        <span class="clock-unit" id="clockUnit"></span>
+      </div>
+      <div class="clock-bar"><i id="clockFill"></i></div>
+    </div>
+
+    <i class="split-divider"></i>
+    <!-- BAL-594: the finisher's panel, one per half, LEFT side.
+         Deliberately NOT a child of the score block: that is the 7-second
+         dev-unlock hold target, and Skateboard Extreme's own note is that a
+         slightly-off press must not land on it. Hidden until that player is
+         home. The explanation line is mandatory -- without it the button
+         reads as strictly better than waiting, and people end a race they
+         were still winning without knowing what they gave up. -->
+    <!-- THE SIDEBAR (the reference frame's left rail, which replaced the four
+         walls): ONE translucent glass panel for the whole race -- the mode and
+         course name, the shared race clock, the gap between the leaders, and
+         the course map with every racer on it. It OVERLAYS the scenery rather
+         than insetting the lens, exactly like the reference; shown in any race
+         (the single-player field race included), hidden outside one. Markers
+         and dots are injected per race by _paintSidebar. -->
+    <div class="side-bar" id="sideBar" hidden>
+      <div class="sb-head">
+        <svg class="sb-peak" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M2 20h20L14 7l-3.2 5.2L8.5 9z" fill="currentColor"/>
+          <circle cx="19" cy="4.5" r="2" fill="currentColor" opacity="0.75"/>
+        </svg>
+        <div class="sb-head-text">
+          <div class="sb-eyebrow">race</div>
+          <div class="sb-course" id="sbCourse">the mountain</div>
+        </div>
+      </div>
+      <div class="sb-timer">
+        <svg class="sb-watch" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="13.5" r="8" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 9.5v4l2.6 1.8M9.5 2.5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span id="sbTime">00:00.00</span>
+      </div>
+      <div class="sb-gap">gap <b id="sbGap">&mdash;</b></div>
+      <div class="sb-map" id="sbMap">
+        <svg class="sb-map-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <path class="sb-map-path" id="sbPath" d=""></path>
+        </svg>
+      </div>
+    </div>
+
+    <!-- The middle gradients survive the walls (Elad kept exactly these two):
+         each player's colour rises from the floor of their own frame. They now
+         span from the sidebar to the right edge. -->
+    <i class="hfade hfade-1b"></i>
+    <i class="hfade hfade-2b"></i>
+
+    <!-- THE PER-CAMERA CHROME, one set per half, straight from the reference:
+         the big place and the kilometres COVERED top-centre, TO FINISH at the
+         top right, and the identity row at the bottom left -- avatar badge,
+         place over name, then the speed with its segmented bar in the
+         player's colour. The identity rows sit just right of the sidebar. -->
+    <!-- The top strip holds the PLACE and ONE distance. It briefly carried
+         covered metres and the gap too, each labelled -- and seeing all three
+         rendered, Elad cut it back to the only one a racer steers by: "we
+         don't want the value of covered and gap, just to finish line" --
+         and then cut the label too: with one value left, the words were
+         noise. The gap still lives in the sidebar, labelled. -->
+    <div class="half-top half-top-1">
+      <!-- The row spans the half so the chip can be centred in it; the CHIP is
+           what carries the plate. Backgrounding the row itself would paint a
+           band across the whole picture. -->
+      <div class="hud-chip ht-chip">
+        <b id="htPlace1">&mdash;</b><i class="ht-sep"></i>
+        <span class="ht-pair"><b id="htFin1">&mdash;</b></span>
+      </div>
+    </div>
+    <div class="half-top half-top-2">
+      <!-- The row spans the half so the chip can be centred in it; the CHIP is
+           what carries the plate. Backgrounding the row itself would paint a
+           band across the whole picture. -->
+      <div class="hud-chip ht-chip">
+        <b id="htPlace2">&mdash;</b><i class="ht-sep"></i>
+        <span class="ht-pair"><b id="htFin2">&mdash;</b></span>
+      </div>
+    </div>
+    <!-- WHO, top-left; HOW FAST, bottom-left. Split on Elad's instruction:
+         "everything with the name to the left upper corner and keep
+         everything with the speed in the bottom left corner." -->
+    <div class="half-name half-name-1">
+      <div class="wall-avatar" id="wallAv1">P1</div>
+      <div class="wall-name"><span id="wallName1">Player 1</span></div>
+    </div>
+    <div class="half-name half-name-2">
+      <div class="wall-avatar" id="wallAv2">P2</div>
+      <div class="wall-name"><span id="wallName2">Player 2</span></div>
+    </div>
+    <div class="half-id half-id-1">
+      <div class="id-col">
+        <div class="id-kmh"><b id="idSpeed1">0</b><em>km/h</em></div>
+        <div class="speed-bar" id="speedBar1"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+    </div>
+    <div class="half-id half-id-2">
+      <div class="id-col">
+        <div class="id-kmh"><b id="idSpeed2">0</b><em>km/h</em></div>
+        <div class="speed-bar" id="speedBar2"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+    </div>
+
+    <!-- THE OVERHEAD BUBBLES: a small coloured tag floating over every OTHER
+         racer visible in your camera -- the reference's "EM"/"TC" badges.
+         Projected from the 3D rider positions every frame (_paintRiderTags);
+         elements are injected per cast, like the map dots. -->
+    <div class="rider-tags" id="riderTags"></div>
+
+    <div class="done-panel" id="donePanel1" hidden>
+      <p class="done-line" id="doneLine1"></p>
+      <button type="button" class="say say-sub done-go" data-act="call-race">
+        <span class="btn-label">finish the race</span>
+      </button>
+    </div>
+    <div class="done-panel done-panel-b" id="donePanel2" hidden>
+      <p class="done-line" id="doneLine2"></p>
+      <button type="button" class="say say-sub done-go" data-act="call-race">
+        <span class="btn-label">finish the race</span>
+      </button>
+    </div>
+    <div class="callouts" id="callouts"></div>
+
+    <div class="hud-bottom" id="hudBottom">
+      <!-- Which edge, how hard, and how long it has been held. -->
+      <div class="edge-meter" id="edgeMeter">
+        <div class="edge-half edge-left"><div class="edge-fill" id="edgeL"></div></div>
+        <div class="edge-tick" id="edgeTick"></div>
+        <div class="edge-half edge-right"><div class="edge-fill" id="edgeR"></div></div>
+      </div>
+      <div class="progress" id="progress">
+        <div class="progress-fill" id="progressFill"></div>
+        <div class="progress-head" id="progressHead"><i id="progressPing"></i></div>
+      </div>
+      <div class="hud-meta">
+        <span id="moodName">first light</span>
+        <span id="speedText">0 <em>km/h</em></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading. `is-active` in the markup so the very first frame is this and
+       not a bare canvas; `Screens` takes over from `main.js`'s first go(). -->
+  <div class="screen is-active" data-state="load">
+    <div class="inner">
+      <div class="head">
+        <div class="spinner"></div>
+        <p class="tagline" id="loadText">waxing the board…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── THE MENUS ──────────────────────────────────────────────────────────
+       Structure and behaviour come from `shared/bobo-ui` (base.css +
+       screens.js); this file supplies only the words and the acts. Every
+       action is a real `<button data-act>`, bound once by `Screens` through
+       delegation, and there is no lean-driven path to any of them — see
+       screens.js's header for why the three games that had one no longer do.
+
+       The three slots are always `.head` / `.body` / `.says`, in that order,
+       because the landscape rule in base.css re-flows exactly those three and
+       nothing else. A screen may omit any of them; it may not invent a
+       fourth. -->
+
+  <div class="screen" data-state="title">
+    <div class="inner">
+      <div class="head">
+        <!-- The lobby's job is to ask a question, not to say the game's name
+             again: the platform already knows what it launched, and the player
+             is looking at a list of two things wanting to know what the list
+             IS. Matches the place screen below, which asks "where". -->
+        <div class="eyebrow">select</div>
+        <h1 class="logo">Game Mode</h1>
+
+      </div>
+
+      <!-- NO BEST SCORE HERE. Asked for directly, and it was always the wrong
+           screen for it: a best is a number from ONE mode -- the endless
+           descent -- shown above a list that offers two, with a letter grade
+           beside it that grades neither. The results panel is where a run's
+           number belongs, and a leaderboard is where a best will. -->
+
+      <!-- THE LOBBY'S BUTTONS ARE BUILT FROM THE MODE REGISTRY, never written
+           here. Registering a mode is the only step needed to make it playable,
+           so there is no second list to forget and no way for this screen and
+           the game to disagree about which modes exist. Lifted straight from
+           HillBomb's `modeSelect.js`, which says the same thing about itself.
+
+           It replaced a single `drop in` button. The screen is otherwise
+           unchanged, and so is the back ladder: this IS the inner lobby, so its
+           X still leaves to the platform and nothing else does. -->
+      <div class="says" id="modeList"></div>
+    </div>
+
+    <!-- BAL-589: the sensor chip ("BoBo connected" / "using touch & keys") and
+         the build stamp are GONE from the game screen, at all times. The build
+         id is still reachable where a tester needs it and a player cannot
+         find it: the dev panel's diagnostics line, behind the 7-second hold.
+         `Hud.setSensorState` and `Hud.setBuild` survive as guarded no-ops --
+         see the note on `setBest` for why the call sites are not deleted. -->
+  </div>
+
+  <!-- THE SECOND LOBBY SCREEN: where the run happens.
+       Built from the place registry for the same reason the mode list is built
+       from the mode registry -- registering a place is the only step needed to
+       make it playable, so this screen and the game cannot disagree about which
+       places exist.
+
+       Its X goes back to the mode list, NOT to the platform. The title screen is
+       still the inner lobby and still the only screen whose X leaves. -->
+  <div class="screen" data-state="place">
+    <div class="inner">
+      <div class="head">
+        <!-- Was "select / race route" across two sizes. Elad replaced the label
+             with a TUTORIAL LINE: this screen is the last thing a player reads
+             before riding, so it carries the one sentence that explains the
+             mode -- bold, on top, per mode from the registry. -->
+        <h2 class="explainer" id="placeFor">route</h2>
+      </div>
+      <div class="says" id="placeList"></div>
+    </div>
+  </div>
+
+  <!-- The countdown owns the whole frame and has no panel: there is nothing to
+       do on it, so it has no `.inner` and no actions. -->
+  <!-- BAL-611: WHOSE HALF IS THIS? Asked at the only moment it matters -- the
+       countdown, before anybody is moving. The bottom-left badge answers the
+       same question, but it is small, in a corner, and at the start of a race
+       both players are looking at the middle. Two-player only; in a solo run
+       there is nothing to disambiguate.
+
+       DELIBERATELY OUTSIDE #hud. The HUD is held at opacity 0 until the
+       countdown ENDS (setLive fires with the state change to `play`), so a
+       label living inside it would be invisible for every frame it was meant
+       to be read -- which is exactly what the first version of this did. -->
+  <div class="count-name count-name-1"><b id="countAv1">P1</b><span id="countName1"></span></div>
+  <div class="count-name count-name-2"><b id="countAv2">P2</b><span id="countName2"></span></div>
+
+  <div class="screen" data-state="count">
+    <div class="count" id="countNum">3</div>
+  </div>
+
+  <!-- TWO SIBLING MENUS UNDER ONE NAV (shared/bobo-ui/menunav.js): the pause
+       menu is the run's questions, the settings menu is the knobs, and the
+       navigation rules -- toggling corner buttons, one suspend per visit,
+       X-closes, X-confirms-exit -- live in the shared system so the next game
+       on this repo reuses them instead of re-inventing them. The old floating
+       dropdown stays gone on every platform. -->
+  <div class="screen" data-state="pause" id="menuScreen">
+    <div class="inner">
+      <div class="head">
+        <h2 id="menuTitle">paused</h2>
+      </div>
+      <div class="says">
+        <button type="button" class="say say-go" data-act="resume">
+          <span class="btn-label">resume</span>
+        </button>
+        <button type="button" class="say say-sub" data-act="restart">
+          <span class="btn-label">restart the run</span>
+        </button>
+        <!-- CALIBRATION LIVES ON THE PAUSE SCREEN because the measurement is
+             taken standing on the board, which is where the player already is
+             mid-run. Asking them to leave the run, find a settings screen and
+             step back on is asking for a different lean than the one the game
+             will actually get. -->
+        <button type="button" class="say say-sub" data-act="calibrate">
+          <span class="btn-label">calibrate your lean</span>
+        </button>
+        <button type="button" class="say say-sub" data-act="to-settings">
+          <span class="btn-label">settings</span>
+        </button>
+        <button type="button" class="say say-ghost" data-act="quit">
+          <span class="btn-label">leave the run</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- THE SETTINGS MENU: the gear's screen, from the lobby or from a run (where
+       the nav keeps the run suspended and `to-pause` leads back). The inline
+       settings rows (music, effects, max tilt angle) mount into #menuSettings
+       from main.js -- same createSettingsPanel, no floating chrome. -->
+  <div class="screen" data-state="settings">
+    <div class="inner">
+      <div class="head">
+        <h2>settings</h2>
+      </div>
+      <div class="says">
+        <button type="button" class="say say-sub" data-act="calibrate">
+          <span class="btn-label">calibrate your lean</span>
+        </button>
+        <!-- the inline settings rows mount here: max tilt angle first (right
+             below calibrate, as asked), then sound -->
+        <div id="menuSettings"></div>
+        <!-- BAL-585: NO `back` AND NO `close` ROWS. Both repeated a corner
+             button: the X closes this menu, the gear toggles it, and mid-run
+             the pause button crosses back to the pause menu without a second
+             suspend (menunav rule 2). A row that duplicates a button teaches
+             the player there are two systems when there is one. -->
+      </div>
+    </div>
+  </div>
+
+  <!-- BAL-584: HOW THE BOARD IS STANDING. Shown before the countdown of every
+       run and from the settings menu, because a player who has turned their
+       board to match the rider on screen is steering with an axis the game is
+       not reading, and nothing on screen would ever tell them so. The board
+       here is the calibration wizard's board, turned to the chosen stance. -->
+  <div class="screen" data-state="stance">
+    <div class="inner">
+      <div class="says">
+        <div class="stance-stage">
+          <!-- Two nested frames, and the ORDER is the whole point: the OUTER
+               one rocks in SCREEN space, the inner one carries the stance.
+               The tilt a player makes to steer is a left/right tilt of the
+               screen whatever way the board is lying -- see styles.css. -->
+          <div class="stance-rock">
+            <div class="stance-board" id="stanceBoard">
+              <img class="stance-art" src="gobalance_board.png" alt="" draggable="false">
+            </div>
+          </div>
+        </div>
+        <!-- ONE LINE, and the same line in every stance. The picture already
+             says which way the board is lying and the rock already shows the
+             motion; spelling both out again in two paragraphs was noise. -->
+        <p class="stance-how">Tilt right and left to move!</p>
+        <button type="button" class="say" data-act="stance-ok">
+          <span class="btn-label">ok</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" data-state="sensor">
+    <div class="inner">
+      <div class="head">
+        <div class="pulse-ring"></div>
+        <h2>sensor lost</h2>
+        <p class="tagline">stand by — reconnecting to your BoBo</p>
+      </div>
+      <div class="says">
+        <button type="button" class="say say-ghost" data-act="quit">
+          <span class="btn-label">back to lobby</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" data-state="results">
+    <div class="inner">
+      <div class="head">
+        <div class="rank" id="rank">A</div>
+        <h2 id="overTitle">run complete</h2>
+        <div class="final-score" id="finalScore">0</div>
+        <div class="newbest" id="newBest" hidden>new best</div>
+        <!-- Two-player only: the race's own ending screen -- who won, how it
+             ended, and one card per rider (place, time at the line, top
+             speed) in that rider's colour. The single-player result bits
+             (grade, score, stat grid) are CSS-retired in two-player; this
+             panel is the whole verdict. -->
+        <div class="r2p" id="r2p" hidden>
+          <h3 class="r2p-win" id="r2pWin">&mdash;</h3>
+          <p class="r2p-how" id="r2pHow"></p>
+          <div class="r2p-cards">
+            <div class="r2p-card r2p-card-1" id="r2pCard1">
+              <div class="wall-avatar" id="r2pAv1">P1</div>
+              <div class="r2p-place" id="r2pPlace1">&mdash;</div>
+              <div class="r2p-name" id="r2pName1">Player 1</div>
+              <div class="r2p-stats">
+                <div><span id="r2pTime1">&mdash;</span><em id="r2pTimeLbl1">time</em></div>
+                <div><span id="r2pTop1">0</span><em>top km/h</em></div>
+              </div>
+            </div>
+            <div class="r2p-card r2p-card-2" id="r2pCard2">
+              <div class="wall-avatar" id="r2pAv2">P2</div>
+              <div class="r2p-place" id="r2pPlace2">&mdash;</div>
+              <div class="r2p-name" id="r2pName2">Player 2</div>
+              <div class="r2p-stats">
+                <div><span id="r2pTime2">&mdash;</span><em id="r2pTimeLbl2">time</em></div>
+                <div><span id="r2pTop2">0</span><em>top km/h</em></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="body">
+        <div class="results-grid">
+          <div><span id="statGates">0</span><em>gates</em></div>
+          <div><span id="statCarves">0</span><em>carves linked</em></div>
+          <div><span id="statAir">0.0s</span><em>air time</em></div>
+          <div><span id="statTop">0</span><em>top km/h</em></div>
+        </div>
+        <div class="results-mission" id="resultsMission"></div>
+      </div>
+
+      <div class="says">
+        <button type="button" class="say say-go" data-act="restart">
+          <span class="btn-label">run it again</span>
+        </button>
+        <button type="button" class="say say-ghost" data-act="quit">
+          <span class="btn-label">back to lobby</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- THE TOP-RIGHT CHROME ROW (WebViewGames/BUILD_NOTES.md, as adopted by
+       swerve). Back is the OUTERMOST button, at the corner; pause sits to its
+       left. 40 px circles on an 8 px gap gives the convention's 12 / 60 px
+       offsets and its 48 px pitch.
+
+       IT MOVED HERE TO GET OUT OF THE CLOCK'S WAY. Pause was at `left: 50%`
+       with `translateX(-50%)` — the only game in the family that put it in the
+       middle — and the countdown wants that spot, centred on the viewport, for
+       the anti-jitter reason recorded on `.clock`. Two absolutely-positioned
+       elements at `left: 50%` is exactly as much overlap as it sounds.
+
+       PAUSE KEEPS ITS SVG rather than taking the convention's `&#9208;` glyph.
+       BUILD_NOTES specifies the codepoint as a PLACEHOLDER — "real icon art can
+       replace it later without changing the DOM contract" — and carve already
+       has the real art. The contract is the id and the act, and both are
+       unchanged.
+
+       OUTSIDE `#hud`, which fades with `is-live`: on a board the X is the only
+       way out of a game, and a button that fades with the score is missing
+       exactly when it is needed. -->
+  <div class="chrome-row" id="chromeRow">
+    <!-- The wrench is NOT here until it is unlocked (7s hold + code). It is
+         inserted ahead of the gear at that point, so the row reads
+         wrench / gear / pause / back and the convention's 48px pitch holds
+         however many buttons are showing. -->
+    <button type="button" class="chrome-btn" id="btnSettings" aria-label="settings">
+      <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+        <path d="M12 8.6a3.4 3.4 0 100 6.8 3.4 3.4 0 000-6.8z" stroke="currentColor" stroke-width="1.8" fill="none"/>
+        <path d="M19.4 13.6a7.7 7.7 0 000-3.2l1.9-1.4-1.9-3.3-2.2.9a7.6 7.6 0 00-2.8-1.6L14 2h-4l-.4 2.4a7.6 7.6 0 00-2.8 1.6l-2.2-.9L2.7 8.4l1.9 1.4a7.7 7.7 0 000 3.2l-1.9 1.4 1.9 3.3 2.2-.9a7.6 7.6 0 002.8 1.6L10 22h4l.4-2.4a7.6 7.6 0 002.8-1.6l2.2.9 1.9-3.3z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <button type="button" class="chrome-btn" id="btnPause" data-act="pause" aria-label="pause">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <rect x="6" y="5" width="4" height="14" rx="1.2" fill="currentColor"/>
+        <rect x="14" y="5" width="4" height="14" rx="1.2" fill="currentColor"/>
+      </svg>
+    </button>
+    <button type="button" class="chrome-btn" id="btnBack" data-act="back" aria-label="back">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Tap the build stamp on the title screen to toggle. Exists so a report can
+       be "it says trail 0" instead of "there is no trail".
+
+       THE TEXT HAS ITS OWN NODE because `setDiag` writes `textContent`, and
+       doing that on the container would delete the capture button on the first
+       frame it drew. -->
+  <div class="diag" id="diag" hidden>
+    <div class="diag-text" id="diagText"></div>
+  </div>
+
+  <div class="fatal" id="fatal"></div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+<!-- ── UNITY'S RESTART CONTRACT ───────────────────────────────────────────────
+     While #gameover-overlay LACKS the `hidden` class the host synthetically
+     clicks #restart-button. This game's results screen is
+     body[data-state="results"], so a 1px off-screen overlay mirrors that state
+     and forwards the click to the screen's own restart act. No game code knows
+     about it; a game-side #gameover-overlay would be a second name for a state
+     the body attribute already owns.
+
+     NO #gb-back BUTTON, deliberately. GOBALANCE_SDK.md's required DOM contract
+     is #gameover-overlay, #restart-button, an input path and a module entry --
+     it does not require that id. This game's chrome already carries an X at the
+     top right (CHROME.md), it walks the back ladder, and its top rung is
+     host.exit(), which this transport delivers as nav:back. The SDK's own fixed
+     overlay button would be a second back in a different corner. -->
+<script>
+  (function () {
+    var ov = document.createElement('div');
+    ov.id = 'gameover-overlay';
+    ov.className = 'hidden';
+    ov.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;';
+    var rb = document.createElement('button');
+    rb.id = 'restart-button';
+    rb.addEventListener('click', function () {
+      var b = document.querySelector('.screen[data-state="results"] [data-act="restart"]');
+      if (b) b.click();
+    });
+    ov.appendChild(rb);
+    document.body.appendChild(ov);
+    new MutationObserver(function () {
+      ov.classList.toggle('hidden', document.body.dataset.state !== 'results');
+    }).observe(document.body, { attributes: true, attributeFilter: ['data-state'] });
+  })();
+</script>
+
+</body>
+</html>
