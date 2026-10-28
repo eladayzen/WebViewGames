@@ -50,8 +50,55 @@ async function sources() {
   return Promise.all(files.map((f) => readFile(f, 'utf8')));
 }
 
+/**
+ * Source with its COMMENTS REMOVED.
+ *
+ * This check greps source text for a filename, and that was fooled the first
+ * time it mattered -- by a comment, in this repo, saying which painting the
+ * lobby used to show. The asset was genuinely orphaned, the suite went green,
+ * and the only reference left to it anywhere was a sentence of prose.
+ *
+ * Prose is exactly where a filename lingers longest: an asset gets unhooked
+ * from the code and keeps being talked about in the comment that explains why
+ * it was unhooked. So a mention in a comment is the LEAST trustworthy evidence
+ * that a file is still needed, while being the easiest to write by accident.
+ *
+ * A regex cannot do this -- `url('https://x')` and `'// not a comment'` both
+ * sit inside string literals, and a naive strip eats them and invents orphans.
+ * Hence the small state machine: it tracks strings and template literals so
+ * only real comments are dropped.
+ */
+function stripComments(src) {
+  let out = '';
+  let i = 0;
+  let quote = null;          // ' " or ` while inside a string literal
+  while (i < src.length) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (quote) {
+      if (c === '\\') { out += c + (d ?? ''); i += 2; continue; }
+      if (c === quote) quote = null;
+      out += c; i++; continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; out += c; i++; continue; }
+    if (c === '/' && d === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+    if (c === '/' && d === '*') {
+      i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i += 2; continue;
+    }
+    // HTML comments, for index.html, which is scanned alongside the JS.
+    if (src.startsWith('<!--', i)) {
+      const end = src.indexOf('-->', i);
+      i = end === -1 ? src.length : end + 3; continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
+
 const shipped = (await walk(PUBLIC)).filter((f) => !NOT_CONTENT.has(f));
-const text = (await sources()).join('\n');
+const text = stripComments((await sources()).join('\n'));
 
 test('public/ is not empty, so neither side of this check is vacuous', () => {
   // Without this, a public/ that lost its contents would make "nothing is

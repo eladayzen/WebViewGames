@@ -234,8 +234,27 @@ const readAngle = async (reply) => {
   }
 };
 
-/** The lobby painting. Relative to index.html, so it resolves in every build. */
-const LOBBY_ART = 'lobby_bg.jpg';
+/**
+ * The lobby painting, relative to index.html so it resolves in every build --
+ * or `null` for a flat fill of `LOBBY_FILL`.
+ *
+ * NULL ON PURPOSE, AND TEMPORARILY. `lobby_bg.jpg` is carve's painted alpine
+ * lobby and it is still shipped, still correct, and still what this reverts to
+ * in one line. But it is also the first thing on screen, and while this game
+ * and carve are open side by side on one machine it is the ONLY thing
+ * distinguishing them at a glance -- two identical snowy lobbies, and no way
+ * to tell which window is the port without riding it.
+ *
+ * Black is not a design decision and should not be mistaken for one. It is a
+ * placeholder that says "this one is not carve", held until the Dimension X
+ * art exists. The rendered-snapshot fallback below is untouched and still
+ * covers a missing or failed image; this is a third state, deliberately
+ * chosen, not a failure to load.
+ */
+const LOBBY_ART = null;
+
+/** What the lobby is filled with when there is no painting. */
+const LOBBY_FILL = '#000';
 
 const TWO_PLAYER = (() => {
   const v = new URLSearchParams(location.search).get('2p');
@@ -636,13 +655,13 @@ class Game {
     // that arrives afterwards would never be shown. If it lands late it is
     // swapped in under the already-frozen lobby; if it never lands the
     // rendered fallback stands and the player sees a mountain either way.
-    {
+    if (LOBBY_ART) {
       const art = new Image();
       art.onload = () => {
         this._artReady = true;
         if (this._frozen && this._wantsPostcard()) {
           const layer = this._el('postcard');
-          if (layer) layer.style.backgroundImage = `url(${LOBBY_ART})`;
+          if (layer) this._paintLobby(layer);
         }
       };
       art.onerror = () => {
@@ -650,6 +669,11 @@ class Game {
         console.warn(`[carve] lobby art missing (${LOBBY_ART}); falling back to a rendered frame`);
       };
       art.src = LOBBY_ART;
+    } else {
+      // There is nothing to wait for, so the lobby is ready on the first frame
+      // rather than falling through to the rendered snapshot -- a flat fill is
+      // the chosen look here, not the absence of one.
+      this._artReady = true;
     }
 
     if (this.host.transport === 'gobalance') installGbSdk();
@@ -4003,6 +4027,20 @@ class Game {
    * postcard is taken on the first lobby frame and the same still carries
    * through to the place list, so there is no transition to misread.
    */
+  /**
+   * Paint the lobby layer: the painting if there is one, the flat fill if not.
+   *
+   * Both the preload's late swap-in and the freeze itself paint this layer, and
+   * they used to each write the background themselves -- fine while there was
+   * exactly one way to do it, and two places to miss the moment there are two.
+   * `backgroundColor` is cleared rather than left behind, so switching back to
+   * a painting does not leave a fill underneath a transparent image.
+   */
+  _paintLobby(layer) {
+    layer.style.backgroundImage = LOBBY_ART ? `url(${LOBBY_ART})` : 'none';
+    layer.style.backgroundColor = LOBBY_ART ? '' : LOBBY_FILL;
+  }
+
   _takePostcard() {
     const layer = this._el('postcard');
     if (!layer || this._frozen) return;
@@ -4018,7 +4056,7 @@ class Game {
     // better lobby than a live one. Nothing about this costs a frame either
     // way; the choice is purely what the player looks at.
     if (this._artReady) {
-      layer.style.backgroundImage = `url(${LOBBY_ART})`;
+      this._paintLobby(layer);
       layer.hidden = false;
       this._frozen = true;
       return;
