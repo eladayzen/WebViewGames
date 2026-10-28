@@ -1,13 +1,64 @@
 // Light, sky and air — and the arc the run travels through them.
 //
-// A single descent moves from first light to alpenglow. That is not decoration:
-// it is the only way a two-and-a-half minute run on one mountain gets a sense of
-// having gone somewhere. Every module that draws anything reads its colours from
-// here, so the whole world turns together and nothing has its own idea of where
-// the sun is.
+// A single descent moves from the void between portals to a red shift. That is
+// not decoration: it is the only way a two-and-a-half minute run on one slope
+// gets a sense of having gone somewhere. Every module that draws anything reads
+// its colours from here, so the whole world turns together and nothing has its
+// own idea of where the light is.
 //
 // Values are held once, interpolated once, and copied into every bound uniform
 // set each frame. Modules never store their own colours.
+//
+// DIMENSION X, NOT A MOUNTAIN. The table below is a rewrite of carve's alpine
+// hours into an alien sky — a violet void, a portal cracking the horizon,
+// a xenon noon, an ion storm, a dying red star. What it is NOT is a rewrite of
+// the structure those hours were solved into. Three things carried over
+// unchanged, on purpose, and each would cost real legibility to undo:
+//
+//   THE SUN DIRECTIONS. They rake ACROSS the slope rather than down the fall
+//   line. Head-on, the light sat in frame for the entire run, blew the haze out
+//   toward its own colour and flattened the terrain into a wash — and once the
+//   ground started self-shadowing, all that backlight bought was a large dark
+//   area with no shape in it. Raking, every roller and bank throws a shadow
+//   along the piste. Which dimension the light comes from does not change that.
+//
+//   THE GROUND IS NEARLY NEUTRAL. The temptation to make the surface itself
+//   alien-violet is exactly the mistake carve already made and backed out of:
+//   colour baked into the albedo survives at every brightness, so the
+//   highlights and the shadows share a hue and the frame loses its light. The
+//   alien belongs in the LIGHT. The ground is also what the trail, the rider's
+//   shadow and the gates are read against, and none of them have anywhere else
+//   to be seen, so it stays low-saturation and even.
+//
+//   What did NOT carry over is how BRIGHT it is. Carve's albedo was ~0.9,
+//   because snow is ~0.9, and at these exposures that clipped: a frame of
+//   blown-out white takes no hue from the light at all, which is why the first
+//   two passes here came back as a ski slope with a coloured sky over it
+//   however far the key was rotated. This ground is 0.40 to 0.55 — rock and
+//   dust, not snow. That is what gives the light somewhere to land, and it is
+//   the single change that stops the screenshots looking alpine.
+//
+//   THE PACING. The five `at` fractions and the fog/sparkle/cloud/bloom/exposure
+//   numbers are carve's, because they are about how fast the world turns and how
+//   far ahead it can be read at speed, not about what colour it is.
+//
+// Every stop here lands inside the six bands `moodmetrics.mjs` measures, which
+// carve's own shipped table did not — it sat outside them at 11 of 25 points.
+// Those bands are not a style; they are the difference between a sky and a dark
+// wall hung across the valley. `node moodmetrics.mjs` is how a change to this
+// file gets checked before anyone looks at it.
+//
+// THE KEY AND THE FILL ARE OPPOSED IN HUE AT EVERY STOP, 128 to 172 degrees
+// apart. This is the one thing the first pass at this table got wrong and the
+// screenshots caught: five stops all landed inside the five luminance bands and
+// all five came back as a single flat colour, because a magenta key over a
+// magenta fill paints the lit faces and the shadowed faces the same hue at two
+// brightnesses, and a slope with no hue difference across it has no form in it.
+// Carve's three stops that read put a warm key against a cold fill — 169, 176
+// and 131 degrees — and its two that do not are at 4 and 0. So the fill here is
+// always the key's opposite, which also happens to be what the place looks
+// like: green light under a violet void, a magenta portal throwing teal
+// shadows, a red star over a cold sky.
 
 import * as THREE from 'three';
 
@@ -17,135 +68,127 @@ const C = (hex) => new THREE.Color(hex);
 /**
  * The five stops. `at` is the fraction of the run where this mood is fully
  * reached; the mixer lerps between neighbours, so the light never steps.
- *
- * THE SUN IS OFF TO THE SIDE, not down the fall line. Head-on it sat in frame
- * for the entire run, blew the haze out toward its own colour and flattened the
- * terrain into a wash — and once the snow started self-shadowing, all that
- * backlight bought was a large dark area with no shape in it. Raking across the
- * slope instead, every roller and bank throws a shadow along the piste, and the
- * flare only appears when the rider actually carves toward it.
  */
 export const MOODS = [
   {
     at: 0.0,
-    label: 'first light',
-    // Cold and blue, but not murky: this is the player's first impression of the
-    // mountain and it still has to read as snow rather than as a dark screen.
-    //
-    // SOLVED AGAINST THE REFERENCE ART, not dialled by eye. The old set put the
-    // key and the fill at a luminance ratio of 0.96 to 1 — half the light on lit
-    // snow was blue sky ambient and the other half a blue-lavender "sun" — so
-    // the frame had no light direction in it and every surface came out the
-    // same colour whichever way it faced. The measured target is nearer 7 to 1.
-    //
-    // The colour of the SNOW is not in the snow. Its albedo is ~0.9 and very
-    // nearly neutral; all the blue belongs to the light. The old uSnowColor
-    // baked blue into the albedo, where it survived at every brightness, which
-    // is why the highlights and the shadows shared a hue.
+    label: 'void',
     uSunDir: V(0.86, 0.13, -0.50),
-    uSunColor: C(0xd0d6ff),      // cool blue-white: before sunrise the illuminant IS the sky
-    uSkyColor: C(0x272d46),      // the fill has to stop competing with the key
-    uGroundColor: C(0x494d60),   // bounce off snow, carrying the key's colour rather than pure blue
-    uSnowColor: C(0xf7f9ff),     // near-neutral; measured lit snow in the reference is S 0.14
-    uRockColor: C(0x4a4640),     // 2.4x the old value and off the snow's hue, or it reads as dark snow
-    // The haze the distance dissolves INTO, so it has to sit near the sky's own
-    // luminance or the far range stops being distance and becomes a dark wall
-    // hung across the valley — which is exactly how it read at 0x42465e, and
-    // what a blind reviewer called "a featureless dark purple-brown wall with
-    // no ridgeline". Measured target: the reference's far range sits at 0.86 of
-    // its horizon sky. This also feeds the terrain's distance fog, so the same
-    // change buys the aerial perspective that was running backwards.
-    uFogColor: C(0x515476),
-    uFogSunColor: C(0x473847),   // the warm side of the range is rose, matching the sky band
-    // 0x000a30 came from a measurement of the reference art that had read the
-    // PNG's own 1-2 pixel dark border as sky. It put the zenith four times too
-    // dark and made a third of the frame a near-black violet void that banded
-    // on its way down. The reference's sky actually spans 1.09 stops from
-    // zenith to horizon, not the 2.27 that value was solved against.
-    uZenith: C(0x1f2349),
-    uHorizon: C(0x736375),       // dusty rose, measured H295 S0.245, not the salmon it looks like
-    uFogDensity: 0.0030,
-    uSparkle: 0.10,              // scales with sun colour x exposure, both of which just went up
+    // Bioluminescent green, under a violet void: the key and the fill 128
+    // degrees apart, which is the whole reason this stop has a lit side and a
+    // shadowed side rather than one brightness of lavender.
+    uSunColor: C(0x95f4ac),      // cold alien green; with no portal open the glow IS the light
+    uSkyColor: C(0x6a4aa1),      // key:fill 7.0 — the ratio the whole table is solved at
+    uGroundColor: C(0x805eb6),   // bounce off the surface, carrying the violet back up
+    uSnowColor: C(0xabadb8),     // near-neutral, S 0.14: the colour is the light, not the ground
+    uRockColor: C(0x3c4943),     // alien basalt, off the ground's hue or it reads as dark ground
+    // The haze the distance dissolves INTO, so it sits at 0.86 of the horizon's
+    // own luminance — the measured ratio that keeps the far range reading as
+    // distance. Below ~0.7 it stops being distance and becomes a dark wall.
+    uFogColor: C(0x8667bb),
+    uFogSunColor: C(0x9ad8b0),   // the lit side of the haze takes the glow's green
+    uZenith: C(0x5738a3),        // 1.50 stops under the horizon: dark, but not a banding void
+    uHorizon: C(0x906fc9),
+uFogDensity: 0.0030,
+    uSparkle: 0.10,
     uCloud: 0.30,
     bloom: 0.50,
     exposure: 1.7,
   },
   {
+    // A portal opens somewhere off the side of the course and floods the
+    // horizon magenta. This is the stop that replaces sunrise and it does the
+    // same job: the first time in the run that the light has a colour of its
+    // own and the shadows get a direction you can name.
     at: 0.18,
-    label: 'sunrise',
+    label: 'portal rise',
     uSunDir: V(0.81, 0.20, -0.55),
-    uSunColor: C(0xffb26b),
-    uSkyColor: C(0x5b7ec2),
-    uGroundColor: C(0x364a75),
-    uSnowColor: C(0xe6dfe2),
-    uRockColor: C(0x241f24),
-    uFogColor: C(0x8494bd),
-    uFogSunColor: C(0xffb887),
-    uZenith: C(0x2a4a86),
-    uHorizon: C(0xf0a874),
-    uFogDensity: 0.0062,
+    uSunColor: C(0xff6ad0),      // the portal itself, and it is the only light left
+    uSkyColor: C(0x124852),      // teal, 130 degrees off the key: every shadow goes cold
+    uGroundColor: C(0x1d5863),
+    uSnowColor: C(0xada8b0),
+    uRockColor: C(0x2a3f42),
+    uFogColor: C(0xc86bb8),
+    uFogSunColor: C(0xffb0e4),
+    uZenith: C(0x7437bd),
+    uHorizon: C(0xf65cb9),
+uFogDensity: 0.0062,
     uSparkle: 1.15,
     uCloud: 0.38,
     bloom: 0.78,
     exposure: 1.52,
   },
   {
+    // Noon, for whatever a dimension with no sun calls noon: the sky itself is
+    // the source and it is electric. The brightest, flattest-fogged stop, and
+    // the one where the course can be read furthest ahead — which is why it is
+    // the one the fastest line is usually found in.
     at: 0.46,
-    label: 'bluebird',
+    label: 'high xenon',
     uSunDir: V(0.64, 0.44, -0.63),
-    uSunColor: C(0xfff2dc),
-    uSkyColor: C(0x7fb0f0),
-    uGroundColor: C(0x4d6fa8),
-    uSnowColor: C(0xf6f9ff),
-    uRockColor: C(0x2b2b31),
-    uFogColor: C(0xa8c4e6),
-    uFogSunColor: C(0xffeccd),
-    uZenith: C(0x1f5fc0),
-    uHorizon: C(0xbcd9f5),
-    uFogDensity: 0.0048,
+    // KEY:FILL IS 4.3 HERE, NOT 7, and the key is properly acid rather than a
+    // white with a cast on it. At 7 and near-white this stop came back as grey
+    // — the brightest stop in the ring was also the one with the least colour
+    // in it, which is backwards. Dropping the ratio lets the blue fill reach
+    // the shadowed faces instead of leaving them a darker grey.
+    uSunColor: C(0xdcff8a),      // acid, and the brightest key in the ring
+    uSkyColor: C(0x2177fd),      // 139 degrees off: the shadows are the cold blue of the sky
+    uGroundColor: C(0x3686d2),
+    uSnowColor: C(0xc1c5bc),
+    uRockColor: C(0x2f3a30),
+    uFogColor: C(0x74d3af),
+    uFogSunColor: C(0xeaffc8),
+    uZenith: C(0x2495ff),
+    uHorizon: C(0x7be2b6),
+uFogDensity: 0.0048,
     uSparkle: 1.7,
     uCloud: 0.22,
     bloom: 0.70,
     exposure: 0.81,
   },
   {
+    // The squall's replacement. Charged particulate, not snow: the colour drains
+    // out of everything, the fog triples and the run becomes about how far ahead
+    // you can see. Key to fill falls to 3 to 1 — still directional, but this is
+    // the one stop where the light is deliberately close to flat, because that
+    // is what the weather is.
     at: 0.68,
-    label: 'squall',
+    label: 'ion storm',
     uSunDir: V(0.71, 0.30, -0.64),
-    uSunColor: C(0xb9c3d2),
-    uSkyColor: C(0x7d8ba0),
-    uGroundColor: C(0x59657a),
-    uSnowColor: C(0xdfe6ef),
-    uRockColor: C(0x2e3138),
-    uFogColor: C(0x93a0b3),
-    uFogSunColor: C(0xc2cbd8),
-    uZenith: C(0x54607a),
-    uHorizon: C(0x9aa6b8),
-    uFogDensity: 0.0112,
+    uSunColor: C(0xcbd7aa),      // what is left of the xenon through the particulate
+    uSkyColor: C(0x708199),      // 139 degrees off, but only 3:1 — opposed and nearly as bright
+    uGroundColor: C(0x62748c),
+    uSnowColor: C(0xb1b4ab),
+    uRockColor: C(0x353a31),
+    uFogColor: C(0x98a696),
+    uFogSunColor: C(0xdfe6cc),
+    uZenith: C(0x607185),
+    uHorizon: C(0xa4b298),
+uFogDensity: 0.0112,
     uSparkle: 0.5,
     uCloud: 0.85,
     bloom: 0.55,
     exposure: 1.06,
   },
   {
-    // 0.88, NOT 1.0. The arc is a ring now (see `setProgress`) and a final stop
-    // sitting exactly on the end of the cycle leaves the wrap back to first
-    // light a span of zero — dusk would cut to dawn on one frame. Pulling
-    // alpenglow in to 0.88 hands the last twelve per cent of the cycle, about
-    // twenty seconds at this track length, to the night between them.
+    // 0.88, NOT 1.0. The arc is a ring (see `setProgress`) and a final stop
+    // sitting exactly on the end of the cycle leaves the wrap back to the void
+    // a span of zero — the red would cut to the dark on one frame. Pulling the
+    // red shift in to 0.88 hands the last twelve per cent of the cycle, about
+    // twenty seconds at this track length, to the fall between them.
     at: 0.88,
-    label: 'alpenglow',
+    label: 'red shift',
     uSunDir: V(0.89, 0.10, -0.45),
-    uSunColor: C(0xff8a5c),
-    uSkyColor: C(0x6a63a8),
-    uGroundColor: C(0x39355f),
-    uSnowColor: C(0xf0c4c0),
-    uRockColor: C(0x23191f),
-    uFogColor: C(0x77689b),
-    uFogSunColor: C(0xff9d6a),
-    uZenith: C(0x241a4d),
-    uHorizon: C(0xff9a70),
-    uFogDensity: 0.0078,
+    uSunColor: C(0xff5a44),      // a star falling off the red end, 172 degrees from the fill
+    uSkyColor: C(0x194a5a),
+    uGroundColor: C(0x225b6d),
+    uSnowColor: C(0xc1afab),     // the warmest the ground gets, and still S 0.23
+    uRockColor: C(0x3d2c30),
+    uFogColor: C(0xc16b51),
+    uFogSunColor: C(0xff9a78),
+    uZenith: C(0x5f36c6),
+    uHorizon: C(0xef5a35),
+uFogDensity: 0.0078,
     uSparkle: 1.0,
     uCloud: 0.40,
     bloom: 0.95,
@@ -194,17 +237,17 @@ export class Mood {
    *
    * THE ARC IS A RING. The descent is endless and the light cycles with the
    * track, so the last stop has to lead somewhere: past `at` 1.0 the mixer
-   * wraps alpenglow back into first light over `WRAP`, which is dusk falling
-   * into the next dawn. Clamping instead — which is what this did while a run
-   * was the length of one track — would park an endless run in alpenglow for as
-   * long as the player survived, and the arc's whole job is to make a descent
-   * feel like it went somewhere.
+   * wraps the red shift back into the void, which is the last light going out
+   * before the next portal. Clamping instead — which is what this did while a
+   * run was the length of one track — would park an endless run in the red
+   * shift for as long as the player survived, and the arc's whole job is to
+   * make a descent feel like it went somewhere.
    *
-   * The wrap is a lerp through the short way round, not through a night stop
-   * that does not exist. Alpenglow's zenith is 0x241a4d and first light's is
-   * 0x1f2349 — near neighbours, measured — so the sky barely moves across the
-   * seam. The sun is the part that travels: 0xff8a5c to 0xd0d6ff, orange to
-   * blue-white, which is the transition to watch when judging whether this
+   * The wrap is a lerp through the short way round, not through a dark stop
+   * that does not exist. The red shift's zenith is 0x5a43ad and the void's is
+   * 0x4c448b — 0.28 stops apart, measured — so the sky barely moves across the
+   * seam. The light is the part that travels: 0xff5a4a to 0xb9e6ff, a dying red
+   * to a cold star, which is the transition to watch when judging whether this
    * needs a sixth stop between them.
    */
   setProgress(t) {

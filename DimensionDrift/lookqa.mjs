@@ -146,13 +146,15 @@ try {
   // between. This is the set a palette is judged on: one frame per mood is the
   // only way to see that a re-theme carried the WHOLE arc rather than looking
   // right at the one hour it was dialled in at.
-  const STOPS = [
-    ['0-first-light', 0.00],
-    ['1-sunrise', 0.18],
-    ['2-bluebird', 0.46],
-    ['3-squall', 0.68],
-    ['4-alpenglow', 0.88],
-  ];
+  //
+  // READ OFF `mood.js` RATHER THAN LISTED HERE. The first version hardcoded the
+  // five alpine names, and the first re-theme left nine files on disk called
+  // `chase-1-sunrise` holding a frame of a magenta portal — the captures the
+  // whole change was to be judged on, labelled with the thing it had just
+  // stopped being. A stop added, removed or renamed is now captured under its
+  // own name with nothing to remember.
+  const { MOODS } = await import('./src/mood.js');
+  const STOPS = MOODS.map((m, i) => [`${i}-${m.label.replace(/\s+/g, '-')}`, m.at]);
   for (const [name, m] of STOPS) {
     await canonical(m);
     await shot(`chase-${name}`);

@@ -26,10 +26,14 @@
 //           a different far range past it. The race already proves this works;
 //           it draws a random offset every run for replayability.
 //
-//   HOURS   the mood's five stops (first light, sunrise, bluebird, squall,
-//           alpenglow) are colour tables that the snow, rock, fog, sky and sun
-//           shaders all read. A place that narrows which stops it draws from
-//           changes the light without touching a line of code.
+//   HOURS   the mood's five stops (void, portal rise, high xenon, ion storm,
+//           red shift) are colour tables that the ground, rock, fog, sky and
+//           key shaders all read. A place that narrows which stops it draws
+//           from changes the light without touching a line of code.
+//           "Hours" is carve's word for them and it has outlived its dimension
+//           -- there is no sun here and nothing is an hour -- but it is the
+//           field name on every place below, so renaming it is a separate
+//           change from recolouring them.
 //
 // So a place is a REGION plus a LIGHT, and both compose with what the modes
 // already do rather than fighting it: the mode still randomises within the
@@ -149,11 +153,11 @@ export function pickHour(place) {
 
 // ── THE PLACES ──────────────────────────────────────────────────────────────
 //
-// NAMED AS PLACES, which the first set were not. FIRST LIGHT and WHITEOUT are
+// NAMED AS PLACES, which the first set were not. FIRST LIGHT and WHITEOUT were
 // an hour and a weather, and both of those are things a place HAS rather than
-// things a place IS -- the mood label in the corner of the HUD already says
-// "first light" when the light is that, so the word was on screen twice meaning
-// two different things. A player picking a level is picking ground.
+// things a place IS -- the mood label in the corner of the HUD already names
+// the light when the light is that, so the word was on screen twice meaning two
+// different things. A player picking a level is picking ground.
 //
 // Each name is now the thing you would actually see there: a bowl, a set of
 // rock needles, a stand of near-black pine, a hollow with nothing visible out
