@@ -59,6 +59,11 @@ const base = `http://127.0.0.1:${server.address().port}`;
 
 let browser;
 let checked = 0;
+// Raised once the lobby says how many modes there are. Until then it is "the
+// nine page checks, plus the mode count, plus at least one mode" -- so a
+// harness that dies before it has even read the registry still trips the
+// did-not-finish guard rather than reporting a tidy pass over nothing.
+let expected = 11;
 try {
   browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -130,6 +135,72 @@ try {
 
   await page.screenshot({ path: path.join(here, 'bootqa-title.png') });
   console.log(`\n  screenshot -> bootqa-title.png`);
+
+  // ── EVERY MODE ACTUALLY STARTS ─────────────────────────────────────────────
+  //
+  // Reaching the title screen is where this harness used to stop, and the title
+  // screen is a MENU. It proved the bundle ran and the renderer came up; it
+  // proved nothing about the two things behind the two buttons on it.
+  //
+  // Race mode was broken by the port and shipped that way. `modes/race.js`
+  // reset its boost streak with `chain = 0`, naming a variable that had not
+  // existed since the streak was split per player -- dead code that carve
+  // never noticed, because carve bundles to `format: 'iife'` and sloppy mode
+  // turns an assignment to an undeclared name into a harmless global. A module
+  // is always strict. Here the same line threw, every race died between the
+  // route screen and the countdown, and the only sign was an unhandled
+  // rejection in the console while the lobby sat there looking fine.
+  //
+  // One class of bug, two instances in one evening (see `test/source-parses`),
+  // and the same root: this game is a STRICTER host than the one the code grew
+  // up in. Neither was visible from the title screen.
+  //
+  // THE LIST COMES FROM THE LOBBY, not from an array written here. The lobby
+  // builds its buttons from the mode registry, so a mode registered tomorrow is
+  // covered tomorrow without anyone remembering to extend this -- which is the
+  // only kind of coverage that survives.
+  const modes = await page.evaluate(() =>
+    [...document.querySelectorAll('#modeList button[data-mode]')].map((b) => b.dataset.mode));
+  expected = 9 + modes.length;
+  console.log(`\n  modes registered: ${modes.join(', ') || '(none)'}`);
+  checked++; check('the lobby offers at least one mode', modes.length > 0);
+
+  for (const mode of modes) {
+    const tab = await browser.newPage();
+    await tab.setViewport({ width: 1280, height: 720 });
+    const boom = [];
+    tab.on('console', (m) => { if (m.type() === 'error') boom.push(m.text()); });
+    tab.on('pageerror', (e) => boom.push(`pageerror: ${e.message}`));
+    let why = '';
+    try {
+      await tab.goto(`${base}/index.html`, { waitUntil: 'load', timeout: 30000 });
+      await tab.waitForFunction(() => document.body.dataset.state === 'title',
+        { timeout: 30000, polling: 100 });
+      await tab.click(`[data-act="start"][data-mode="${mode}"]`);
+      // The route screen, then the stance screen -- which waits for a human and
+      // is the reason a naive "click start and wait for play" times out on a
+      // game that is running perfectly.
+      await tab.waitForSelector('[data-act="place"]', { visible: true, timeout: 15000 });
+      await tab.click('[data-act="place"]');
+      await tab.waitForSelector('[data-act="stance-ok"]', { visible: true, timeout: 15000 });
+      await tab.click('[data-act="stance-ok"]');
+      // Then a real three-second countdown before the state turns.
+      await tab.waitForFunction(() => window.CARVE?._game?.state === 'play',
+        { timeout: 30000, polling: 100 });
+      // AND STAY there. A mode that throws on its first integrated frame
+      // reaches `play` and leaves it again, which a bare state check would call
+      // a pass.
+      await new Promise((r) => setTimeout(r, 2000));
+      const still = await tab.evaluate(() => window.CARVE?._game?.state);
+      if (still !== 'play') why = `left play for ${still}`;
+      else if (boom.length) why = boom[0].slice(0, 160);
+    } catch (err) {
+      why = `${err.name}: ${String(err.message).split('\n')[0]}`.slice(0, 160);
+      if (boom.length) why = boom[0].slice(0, 160);
+    }
+    await tab.screenshot({ path: path.join(here, `bootqa-mode-${mode}.png`) }).catch(() => {});
+    checked++; check(`mode '${mode}' reaches play and keeps running`, why === '', why);
+  }
 } finally {
   await browser?.close();
   server.close();
@@ -137,5 +208,5 @@ try {
 
 // A harness that threw before here never printed this line, which is the point.
 console.log(`\n  ${checked} checks run, ${fails.length} failed`);
-if (checked < 9) { console.log('  HARNESS DID NOT FINISH'); process.exit(2); }
+if (checked < expected) { console.log('  HARNESS DID NOT FINISH'); process.exit(2); }
 process.exit(fails.length ? 1 : 0);

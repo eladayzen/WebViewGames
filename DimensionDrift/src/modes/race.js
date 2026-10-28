@@ -492,7 +492,19 @@ export default registerMode({
         else game.rivals.spawn(game.rider.p);
         lastP = game.rider.p;
         playerRate = 0;
-        chain = 0;
+        // `chains`, PLURAL AND BY INDEX. This read `chain = 0` -- a leftover
+        // from before the streak was split per player (BAL-594), naming a
+        // variable that has not existed since. carve never noticed: its bundle
+        // is `format: 'iife'` (build.mjs), so the assignment ran in sloppy mode
+        // and quietly created a global nobody reads, and `create()` is called
+        // fresh per run so the state it meant to reset was already [0, 0].
+        // Dead code, harmless, invisible.
+        //
+        // This game ships ES modules, and a module is ALWAYS strict -- so the
+        // same line is a ReferenceError that killed every race before the
+        // countdown. Nothing was wrong with the logic; the port simply moved it
+        // somewhere the mistake is fatal instead of free.
+        chains[0] = chains[1] = 0;
         placed = null;
         done = false;
         crossedAt = null;

@@ -3885,7 +3885,7 @@ class Game {
       `trail  ${this.trail.samples.length} samples\n` +
       `u      ${r.u.toFixed(1)}m  camOff ${camOff}m\n` +
       `air    ${r.airborne ? 'yes' : 'no'}  speed ${(r.speed * 3.6).toFixed(0)}\n` +
-      `flick  ${flick}`,
+      `flick  ${flick}`
     );
   }
 

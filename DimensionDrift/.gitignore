@@ -1,3 +1,11 @@
 # Harness output. bootqa.mjs writes a screenshot of the title screen every run;
 # it is evidence for the run that produced it, not a tracked asset.
 bootqa-*.png
+
+# The per-mode screenshots bootqa writes now that it walks the lobby, and the
+# look-capture sets lookqa.mjs writes per tag. Same argument as above and a
+# sharper one: a tagged capture set is nine PNGs PER RUN, and the whole point of
+# the harness is that you take a `before` and an `after` every time you touch
+# the palette. Tracked, that is a repo that grows without bound with images
+# nobody will ever open twice.
+shots/
