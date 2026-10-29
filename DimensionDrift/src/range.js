@@ -152,8 +152,51 @@ const LAYERS = [
  * mountain twice.
  */
 const RANGE_PROFILES = {
-  /** What this game has always had: broad rolling massifs with crests on them. */
+  /** What carve has always had: broad rolling massifs with crests on them. */
   ridges: LAYERS,
+
+  /**
+   * SHATTERED. The default's massifs are the alpine shape in this file -- broad
+   * domes at gradients of half, with crests sitting on them, which is what a
+   * range of granite looks like after ice has been over it for a million years.
+   * Nothing has been over this one.
+   *
+   * The change is on the MASSIFS, not the summits, and that is the whole trick:
+   * `spires` left the massifs gentle on purpose so its needles would have a
+   * bulk to stand on, and the result still reads as a mountain range with sharp
+   * tops. Taking mG from 0.50-0.74 up past 1.2 turns the bulk itself into
+   * steep-sided blocks, so the skyline is a line of broken plates standing on
+   * end rather than a profile of hills.
+   *
+   * mH is also spread WIDE -- 60 to 230 where the default runs 128 to 204. The
+   * file's own note says a narrow spread is what makes summits agree with each
+   * other and read as one massif; disagreeing is the point here. Neighbouring
+   * blocks at a third of each other's height is a landscape that was broken
+   * rather than built.
+   *
+   * Few summits on top, and steep. With blocks this sharp underneath, a crowd
+   * of spires as well is noise at a kilometre.
+   */
+  shatter: [
+    {
+      r0: 1000, r1: 1300, rows: 6, baseY: -45, apron: 0,
+      massifs: 22, mH: [60, 230], mG: [1.20, 1.95],
+      summits: 6, sH: [150, 420], sG: [1.60, 2.60],
+      floor: [42, 152], floorP: 20, detail: 0.008, rowPow: 1.0, pkU: [0.38, 0.78],
+    },
+    {
+      r0: 830, r1: 1110, rows: 6, baseY: -30, apron: 0,
+      massifs: 26, mH: [38, 148], mG: [1.25, 2.05],
+      summits: 7, sH: [96, 265], sG: [1.55, 2.45],
+      floor: [24, 98], floorP: 26, detail: 0.009, rowPow: 1.0, pkU: [0.38, 0.78],
+    },
+    {
+      r0: 720, r1: 1010, rows: 12, baseY: -52, apron: 165, apronP: 9,
+      massifs: 34, mH: [26, 104], mG: [1.30, 2.10],
+      summits: 9, sH: [64, 170], sG: [1.45, 2.30],
+      floor: [14, 64], floorP: 34, detail: 0.006, rowPow: 1.5, pkU: [0.54, 0.80],
+    },
+  ],
 
   /**
    * SHARP. Few summits, twice to three times the height, and gradients from
@@ -609,7 +652,18 @@ export class FarRange {
          * the same reason: a straight mix would make the rock read as shadow at
          * one hour and as paint at another.
          */
-        uRockTint: { value: new THREE.Vector3(1.46, 0.92, 0.58) },
+        /**
+         * VIOLET, NOT BROWN, and it has to stay luminance-neutral or it stops
+         * being a tint and starts being an exposure change.
+         *
+         * The shader multiplies `tone` by this and then by 0.62, so the 0.62 is
+         * the darkening and this is only the hue. Weighted by (0.2126, 0.7152,
+         * 0.0722) it has to come to 1: 0.2126*1.40 + 0.7152*0.81 + 0.0722*1.70
+         * = 1.00. The value it replaces, (1.46, 0.92, 0.58), came to the same 1
+         * and was a warm earth brown — correct for a mountain made of granite,
+         * and the last earth-coloured thing left in the upper half of the frame.
+         */
+        uRockTint: { value: new THREE.Vector3(1.40, 0.81, 1.70) },
         uRockAmt: { value: 0 },
         uSnowLine: { value: 60 },
       },

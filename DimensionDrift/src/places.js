@@ -159,9 +159,15 @@ export function pickHour(place) {
 // the light when the light is that, so the word was on screen twice meaning two
 // different things. A player picking a level is picking ground.
 //
-// Each name is now the thing you would actually see there: a bowl, a set of
-// rock needles, a stand of near-black pine, a hollow with nothing visible out
-// of it.
+// Each name is the thing you would actually see there: an open basin, a field
+// of standing shards, a gorge packed with crystal, a hollow with nothing
+// visible out of it.
+//
+// THE IDS DO NOT CHANGE WITH THE NAMES. `bowl`, `needles`, `blackpine` and
+// `hollow` are what `analytics.levelStarted` reports and what `lookqa.mjs`
+// drives, so renaming them would break the continuity of every number already
+// recorded against them and silently retheme nothing. The id is a key; the
+// name is what a player reads. Only one of those is Dimension X's business.
 //
 // Three, because one is not a screen and two is not a choice. They are far
 // enough apart on the mountain to be different ground rather than three names
@@ -174,24 +180,52 @@ export function pickHour(place) {
 
 registerPlace({
   id: 'bowl',
-  name: 'THE BOWL',
-  tagline: 'the home slope',
+  name: 'THE BASIN',
+  tagline: 'the home ground',
   order: 0,
-  /** The stretch carve has always been tuned and measured on. Every default. */
+  /** The stretch this game has always been tuned and measured on. Every default. */
   offset: [0, 6000],
   hours: [0, 1],
-  /** A little shape, so even the home slope is not a straight trough. */
+  /** A little shape, so even the home ground is not a straight trough. */
   valley: 0.45,
+  /**
+   * HUE IN THE FAR RANGE, which the home ground had none of.
+   *
+   * `rock` is not about geology here, it is about colour: the range shader
+   * tints and darkens the faces too steep to hold dust and below the line, and
+   * with the tint now violet (see `uRockTint` in range.js) that is the only
+   * way the biggest surface in the upper frame gets a hue of its own instead
+   * of being a pale plate of whatever the fog is doing.
+   *
+   * Lower than the shards' 0.85 and with a higher line, because this is the
+   * open place: the range is a backdrop here, not the subject.
+   */
+  rock: 0.9,
+  /**
+   * 400 PUTS THE LINE ABOVE EVERYTHING. `low` is 1 BELOW `snowLine`, so a line
+   * over the tallest summit means elevation gates nothing and the tint lands
+   * purely on the steepness term — the faces too steep to hold dust take the
+   * violet, the flat tops stay the pale colour of the air. That is rock with
+   * dust on its ledges. A line THROUGH the range, which is what the shards
+   * want, gives the other picture: pale above, coloured below, which at this
+   * distance is indistinguishable from a snow cap.
+   */
+  snowLine: 400,
+  /**
+   * NOT THE DEFAULT ROLLING MASSIFS. They are the alpine shape in `range.js`
+   * and they occupy the top third of the frame. See `shatter` there.
+   */
+  rangeProfile: 'shatter',
 });
 
 registerPlace({
   id: 'needles',
-  name: 'THE NEEDLES',
+  name: 'THE SHARDS',
   tagline: 'bare rock and big air',
   order: 3,
   offset: [18000, 26000],
   hours: [2, 3],
-  /** Above the treeline: almost nothing to hit, and the air to use it. */
+  /** Above the crystal line: almost nothing to hit, and the air to use it. */
   trees: 26,
   obstacles: 0.6,
   fog: 0.75,
@@ -210,10 +244,12 @@ registerPlace({
   rangeProfile: 'spires',
   range: 0.88,
   /**
-   * BARE ROCK ON THE LOWER NEEDLES. Above the snow line they stay white; below
-   * it the steep faces show the rock they are made of, which is what makes a
-   * spire read as rock with snow ON it rather than as a white shape. It is also
-   * the only colour in the frame that is not snow, sky or fog.
+   * BARE ROCK ON THE LOWER SHARDS. `snowLine` keeps its name because it is a
+   * uniform read by a shader, but what it means here is the height above which
+   * a face stays the pale colour of the air. Below it the steep faces take the
+   * rock tint, which is what makes a spire read as rock with dust ON it rather
+   * than as a pale shape, and it is the strongest hue in the frame that is not
+   * sky or fog.
    */
   rock: 0.85,
   snowLine: 150,
@@ -224,9 +260,12 @@ registerPlace({
 });
 
 registerPlace({
+  // The id outlived the thing it was named after by one commit: this place was
+  // a stand of near-black pine until the forest became crystal. It stays `blackpine`
+  // because analytics has been counting runs under that key for months.
   id: 'blackpine',
-  name: 'BLACKPINE',
-  tagline: 'a gorge full of trees',
+  name: 'GLASSWOOD',
+  tagline: 'a gorge packed with crystal',
   order: 2,
   offset: [9000, 15000],
   hours: [1, 3],
@@ -235,7 +274,7 @@ registerPlace({
   trees: 165,
   obstacles: 2.6,
   fog: 1.15,
-  /** A gorge with trees in it. The sides come to the rim and the line curves. */
+  /** A gorge with a forest in it. The sides come to the rim and the line curves. */
   valley: 1.0,
   /** Thickets with lanes between them, crowding a corridor that is already a
    *  gorge -- and a tight weave, because there is no room for a traverse. */
@@ -244,8 +283,8 @@ registerPlace({
   /**
    * A LONG LOW FAR SIDE. Deep in the valley you are looking ACROSS at the other
    * wall rather than up at a range, so the skyline is bluffs: flat, level, and
-   * boring on purpose -- it is the trees that are the subject here, and a
-   * jagged horizon above them would compete with them for the frame.
+   * boring on purpose -- it is the forest that is the subject here, and a
+   * jagged horizon above it would compete with it for the frame.
    */
   rangeProfile: 'bluffs',
   range: 1,
