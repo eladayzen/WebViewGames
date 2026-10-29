@@ -81,236 +81,115 @@ const INSIDE_P = INSIDE_TREES / TREES_PER_BAND;
 const MARGIN_P = MARGIN_TREES / (TREES_PER_BAND * (1 - INSIDE_P));
 
 /**
- * A branch whorl: the one shape in this file that had to be got right, twice.
+ * ── THE FOREST IS CRYSTAL ───────────────────────────────────────────────────
  *
- * `lit.js` grants snow on `smoothstep(0.45, 0.92, N.y)`, so a surface only takes
- * a full load at N.y >= 0.92 — a slope no steeper than about 23°. The old tree
- * was three cones whose flanks sit at N.y 0.37–0.50, which is why `snowCap: 0.85`
- * was a no-op: ninety-seven percent of every tree received exactly zero snow and
- * our forest was bare in a frame whose reference is visibly laden.
+ * What stood here was a laden conifer, and it was the single most alpine object
+ * in the frame: ninety a band, on both walls, in every shot. The palette could
+ * not touch it. A violet sky over a stand of snowy pines is a ski slope at
+ * dusk, which is what the first Dimension X captures came back as.
  *
- * The obvious fix — a flat ring at each tier — fails for this game specifically.
- * A horizontal disc has no vertical extent, and the trees that matter stand on
- * the valley WALLS, which the chase camera sees close to edge-on; the shelves
- * would have collapsed to a hairline exactly where they were needed. So a whorl
- * is a closed lens: an upper cone that can take a load sitting on a lower cone
- * whose normals point down and therefore stay near-black.
+ * THE IDENTIFIERS STILL SAY TREE, deliberately. `trees`, `treesPerBand`,
+ * `TREE_R`, `kind: 'tree'` and the race's obstacle set are the game's word for
+ * "the standing thing that blocks you", and they are read by `places.js`,
+ * `modes/race.js`, the collision list and the HUD. Renaming the concept is a
+ * refactor across five files that changes no pixel; changing the species is
+ * this function. Only the builder is renamed, so a reader who greps for `tree`
+ * still finds every placement rule where it has always been.
  *
- * That much survives. What did not is the assumption that a whorl's load may be
- * AXISYMMETRIC. Build the upper cone as a surface of revolution at a uniform
- * N.y and every tier frosts right the way round, so every horizontal row of
- * pixels through the tree is either all snow or all body — and a column of rows
- * alternating 100% white and 0% white is not a laden conifer, it is a pagoda.
- * That is exactly what shipped last round: nine white-rimmed discs on a mast.
+ * NOTHING ABOUT DIFFICULTY MOVED. `TREE_R` is still 0.75 m, the density, the
+ * clumping, the reach, the inside-piste and margin counts and the race's
+ * blockers are all untouched — a spire stands exactly where a conifer stood and
+ * costs exactly the same to hit. The one honest difference is that the conifer
+ * overhung its own collision radius two to one (a 1.5 m bottom whorl around a
+ * 0.75 m hit circle), so its outer branches were scenery you rode through. The
+ * spire's cluster spans about 1.05 m, so what looks solid very nearly is.
  *
- * The reference measures the other way. Per-row bright fraction down one of its
- * specimens runs 0.16 / 0.24 / 0.23 / 0.12 / 0.17 / 0.11 / 0.13 / 0.19 / 0.03 /
- * 0.06 / 0.13 — never a full row, never an empty one, and never twice the same.
- * Snow on a real conifer sits on individual branches, so any row across the tree
- * cuts some laden branches and some bare ones. The load has to be broken up in
- * AZIMUTH, not just in height, and it has to sit at the branch TIPS: the old
- * build put the highest N.y at the cone apex, which is the axis, so the bright
- * pooled into a filled disc around the trunk — the white ring the reviewer saw.
- *
- * So the whorl is authored per arm now. Each of a whorl's `seg` faces is one
- * branch, with its own reach, its own droop and its own snow, and the normal is
- * set outright at both ends of it rather than being whatever the cone's slope
- * happens to give.
+ * NO SNOW. `matTree` carried `snowCap: 0.80`, which mixes a surface toward the
+ * GROUND colour on upward-facing normals — one line, and it is half of why the
+ * forest read as snowy whatever shape it was. It is 0 here, and the ninety
+ * lines of solved constants that aimed every branch normal at that gate
+ * (LOADED, TIP_NY, BARE_NY, LOAD_CORE, BARE_CORE, the per-arm authoring) are
+ * gone with it rather than left to mislead. They were real findings and they
+ * are still in carve, which still has snow to put on them.
  */
-// A tier is TALL — half again as tall as its own radius, and three times that at
-// the crown. This is the other half of the pagoda and it took longer to see than
-// the load did. A whorl is a lens: its widest point is the rim, and above and
-// below the rim it closes to a point, so shallow lenses stacked at a pitch near
-// their own radius pinch the outline to nothing between every pair of them.
-// That is the stair-stepping; and at the crown, where the radii get small and
-// the pitch does not, it opened into daylight and the top of the tree came apart
-// into a spike, a tuft and a mass with sky between them. A tier 0.8 m tall at a
-// pitch of 0.4 keeps two or three tiers of cover at every height, so the outline
-// is a continuous taper with the rims scalloping its edge. The normals are
-// authored, so a steep tier is lit exactly as a flat one would be: this is a
-// silhouette decision and it changes nothing about the snow.
-const WHORL_UP = 0.55;                  // upper cone height / radius
-const WHORL_DOWN = 1.20;                // lower cone height / radius
-const WHORL_TILT = 0.20;                // radians of build-time lean, max
-// Measured, not guessed. Per-row bright fraction down one tree, same method on
-// both images: the reference runs 0.16/0.24/0.23/0.12/0.17/0.11/0.13/0.19/0.03/
-// 0.06/0.13, mean 0.14. The pagoda ran 0.11/0.30/0.00/0.49/0.68/0.51/0.16/0.00/
-// 0.00/0.00/0.00 — the zeroes and the 0.68 next to each other ARE the stripes,
-// and no amount of tone tuning fixes a row that is either all snow or none.
-// These trees run 0.02/0.06/0.26/0.09/0.13/0.21/0.12/0.27/0.25/0.24/0.20.
-const LOADED = 0.30;                    // arms per whorl that take a full load
-const TIP_NY = [0.94, 0.995];           // aim of a laden arm's rim normal
-// An unladen arm points DOWN, and that is not a detail. `lit.js` shades ambient
-// as mix(ground, sky, N.y * 0.5 + 0.5), so a normal aimed level takes half the
-// sky — and a tree whose bare arms sit at N.y 0.2-0.5 comes out a pale grey
-// ghost with no snow on it at all, which is what the first tall-tier build was.
-// The shallow whorls it replaced had been dark for the wrong reason: most of
-// what you saw of them was the DOWNWARD shell, and the tall ones show their
-// upper flanks instead. Aim the bare arms below the horizon and the darkness is
-// stated rather than incidental. It measures: tree bodies land at 0.40-0.51 of
-// the snow beside them against the reference's 0.38.
-const BARE_NY = [-0.54, 0.00];          // aim of an unladen arm's rim normal
-// The other end of each arm, where it meets the axis — the inner edge on a flat
-// tier, the top on a crown one. Both are aimed below the gate, a laden arm only
-// just: the load is a fleck at the branch END and the inside of every tier stays
-// body-coloured, which is the difference between snow on a tree and a tree made
-// of snow. Aiming a laden arm's whole length at the gate was tried and it is
-// what turned the crown into a white party hat.
-const LOAD_CORE = [0.30, 0.54];
-const BARE_CORE = [-0.68, -0.12];
-//
-// Nine tiers is 78 triangles, against the pagoda's 88 for nine shallow ones and
-// its separate spire, and it covers the tree far better. 86 all in with the
-// trunk, down from 98.
-//
-// `up` overrides WHORL_UP, and the top two entries are the CROWN, drawn out past
-// their own radius so the tree comes to a point. The leader was a separate part
-// for two builds and both were wrong. A spire has no skirt of its own, so it sat
-// in a gap above the crown as a detached white needle — one to two pixels wide
-// with the brightest value in the frame in it, on top of every tree on the wall.
-// Built as a whorl it gets the underside that ties it to the tier below and the
-// build-time lean, and it has to be THIN: the reference's leader is under a
-// tenth of the tree's width, and the crown is the one part of a tree silhouetted
-// against open snow rather than against the rest of the tree, so it is the part
-// that gets judged on its own.
-//
-// `load` overrides the die roll. Everywhere else the load is drawn at random and
-// averaged over forty arms, but the crown is four faces that a player sees
-// individually on all 1440 instances — and this geometry is built ONCE and
-// shared, so "a third of arms on average" is no protection at all when the one
-// draw that happens comes up all ones. Alternating is stated outright.
-const WHORLS = [
-  { r: 1.50, y: 0.55, seg: 5 },
-  { r: 1.47, y: 0.98, seg: 5 },
-  { r: 1.40, y: 1.38, seg: 5 },
-  { r: 1.28, y: 1.78, seg: 4 },
-  { r: 1.12, y: 2.16, seg: 4 },
-  { r: 0.94, y: 2.52, seg: 4 },
-  { r: 0.74, y: 2.86, seg: 4 },
-  { r: 0.52, y: 3.18, seg: 4, up: 1.15 },
-  { r: 0.28, y: 3.56, seg: 4, up: 2.90, load: [1, 0, 1, 0] },
+const SPIRE_SINK = 0.55;                // metres of shard below the origin
+
+/**
+ * The cluster: one leader and five lesser shards around it, each `lean`
+ * radians out from vertical at bearing `az` and standing `off` metres from the
+ * axis. Heights fall off fast on purpose — six shards of a similar size is a
+ * bundle of sticks, and the silhouette that reads at speed is one spike with a
+ * broken skirt at its foot, which is also what the conifer's outline was.
+ */
+const SHARDS = [
+  { r: 0.58, h: 3.40, seg: 5, az: 0.00, off: 0.00, lean: 0.05 },
+  { r: 0.43, h: 2.05, seg: 5, az: 1.30, off: 0.52, lean: 0.30 },
+  { r: 0.37, h: 1.52, seg: 4, az: 2.90, off: 0.64, lean: 0.38 },
+  { r: 0.31, h: 1.08, seg: 4, az: 4.40, off: 0.60, lean: 0.44 },
+  { r: 0.25, h: 0.74, seg: 4, az: 5.50, off: 0.72, lean: 0.52 },
+  { r: 0.20, h: 0.52, seg: 4, az: 0.70, off: 0.80, lean: 0.60 },
 ];
 
 /**
- * Aim a vertex normal at a chosen N.y, keeping the bearing it already had.
+ * One shard: a faceted shaft that tapers to a point.
  *
- * Multiplying N.y and renormalising — which is what the pagoda did — cannot
- * reach a target, because how far a given multiplier moves N.y depends on the
- * cone's own slope. The snow gate is a smoothstep with a hard floor at 0.45 and
- * a hard ceiling at 0.92, so "which side of the gate is this arm on" has to be
- * something the geometry states outright rather than something it lands on.
+ * THE CROSS-SECTION IS NOT A REGULAR POLYGON. A `seg`-sided prism of equal
+ * radii is a traffic cone however sharply it tapers — the eye reads the even
+ * spacing before it reads anything else. Each bearing gets its own radius
+ * multiplier, held in `k` so the shaft and the point above it agree at the seam
+ * they share: one face wide and its neighbour narrow is what makes the facets
+ * catch the light at different angles, which is the whole reason a crystal
+ * looks like one.
+ *
+ * Open-ended, both parts. The bottom is below the ground and the top is the
+ * apex, so no cap is ever seen and every cap is a triangle fan nobody draws.
  */
-function aimY(nm, v, ny) {
-  const s = Math.sqrt(Math.max(0, 1 - ny * ny));
-  const hx = nm.getX(v);
-  const hz = nm.getZ(v);
-  const hl = Math.hypot(hx, hz) || 1;
-  nm.setXYZ(v, (hx / hl) * s, ny, (hz / hl) * s);
-}
-
-/**
- * One whorl, as a pair of open cone shells sharing a rim.
- *
- * The rim is displaced per angle and BOTH shells get the identical displacement,
- * so the lens stays shut however far it is pushed around — and it is pushed a
- * long way now. `rj` is what breaks the silhouette: an arm at 0.66 and its
- * neighbour at 1.20 is nearly a two-to-one difference in reach, so the tier is a
- * star and not a disc. `yj` is what breaks the BAND: a rim that stays in one
- * plane draws its load as a level white line across the full width of the tree,
- * and dropping arms by up to a third of the radius makes that line weave through
- * the tiers above and below instead of separating them.
- *
- * `ConeGeometry` gives every face its own apex vertex (they share a position,
- * not an index), which is what makes per-arm normals possible at all: the apex
- * carries the arm inward and the rim carries it outward. Rim vertices are shared
- * between neighbours, so a laden arm bleeds into the two beside it and the load
- * comes out as a soft fleck rather than a hard facet.
- */
-function whorl(r, seg, rand, upK = WHORL_UP, load = null) {
-  const hu = r * upK;
-  const hd = r * WHORL_DOWN;
-  const up = new THREE.ConeGeometry(r, hu, seg, 1, true);
-  const dn = new THREE.ConeGeometry(r, hd, seg, 1, true);
-  const rj = [];
-  const yj = [];
-  const ny = [];
-  for (let i = 0; i < seg; i++) {
-    // Reach, not width: an arm is a chord between two rim points, so at seg 5
-    // one arm at 1.26 of nominal on the bottom tier came out as a flat blade
-    // two metres long sticking out of the side of the tree. Enough spread to
-    // interlock the tiers, not enough to grow a wing.
-    rj.push(range(rand, 0.66, 1.20));
-    yj.push(range(rand, -0.34, 0.12) * r);
-    const wet = load ? load[i % load.length] : rand() < LOADED;
-    ny.push(wet ? range(rand, ...TIP_NY) : range(rand, ...BARE_NY));
-  }
-  // A whorl with no laden arm at all is a one-in-five draw at seg 4, and a tree
-  // with a bare tier in the middle of it reads as damage rather than as variety.
-  if (!ny.some((t) => t >= TIP_NY[0])) ny[(rand() * seg) | 0] = range(rand, ...TIP_NY);
-  // A cone's rim vertex and the apex vertex belonging to the same face carry the
-  // same bearing, in the position of one and the normal of the other, so one
-  // formula indexes both and an arm can be authored end to end.
-  const arm = (ax, az) => ((Math.round((Math.atan2(az, ax) / (Math.PI * 2)) * seg) % seg) + seg) % seg;
-  for (const [g, h, isUp] of [[up, hu, true], [dn, hd, false]]) {
+function shard(rBase, h, seg, rand) {
+  const rTip = rBase * range(rand, 0.10, 0.26);
+  const hTip = rBase * range(rand, 1.7, 3.2);
+  const shaft = new THREE.CylinderGeometry(rTip, rBase, h, seg, 1, true).toNonIndexed();
+  const point = new THREE.ConeGeometry(rTip, hTip, seg, 1, true).toNonIndexed();
+  shaft.translate(0, h * 0.5, 0);
+  point.translate(0, h + hTip * 0.5, 0);
+  const k = [];
+  for (let i = 0; i < seg; i++) k.push(range(rand, 0.70, 1.28));
+  for (const g of [shaft, point]) {
     const p = g.attributes.position;
-    const nm = g.attributes.normal;
     for (let v = 0; v < p.count; v++) {
       const x = p.getX(v);
       const z = p.getZ(v);
-      if (Math.abs(p.getY(v) + h * 0.5) > 1e-4) {
-        // Apex. Only the upper shell's matters — the lower shell's normals all
-        // point below the horizon and take nothing whatever they are aimed at.
-        if (!isUp) continue;
-        const k = arm(nm.getX(v), nm.getZ(v));
-        aimY(nm, v, range(rand, ...(ny[k] >= TIP_NY[0] ? LOAD_CORE : BARE_CORE)));
-        continue;
-      }
-      const k = arm(x, z);
-      p.setXYZ(v, x * rj[k], p.getY(v) + yj[k], z * rj[k]);
-      if (isUp) aimY(nm, v, ny[k]);
+      // The apex sits on the axis and has no bearing to look up.
+      if (Math.abs(x) < 1e-6 && Math.abs(z) < 1e-6) continue;
+      const i = ((Math.round((Math.atan2(z, x) / (Math.PI * 2)) * seg) % seg) + seg) % seg;
+      p.setXYZ(v, x * k[i], p.getY(v), z * k[i]);
     }
   }
-  up.translate(0, hu * 0.5, 0);
-  dn.rotateX(Math.PI);
-  dn.translate(0, -hd * 0.5, 0);
-  return [up, dn];
+  return [shaft, point];
 }
 
-function buildTreeGeometry(rand) {
+function buildSpireGeometry(rand) {
   const parts = [];
-  // Open ended, and it stops inside the leader. The whorls do not meet edge to
-  // edge near the crown and the trunk showing through the gaps is what a conifer
-  // looks like; what it must never do is stick out of the TOP, which is a dark
-  // one-pixel aerial on every tree in the frame. Nothing ever sees the end caps.
-  const trunk = new THREE.CylinderGeometry(0.05, 0.19, 3.9, 4, 1, true);
-  trunk.translate(0, 1.95, 0);
-  parts.push(trunk);
-  for (const w of WHORLS) {
-    // Jittered once, at build time. Every tree shares this geometry, so this
-    // buys an irregular profile rather than per-tree variety — that comes from
-    // the instance scale. The lean is safe: a laden arm is aimed at N.y 0.97,
-    // 14° off vertical, and the snow gate does not begin to close until 23°.
-    const r = w.r * range(rand, 0.84, 1.16);
-    const y = w.y + range(rand, -0.06, 0.06);
-    const tilt = range(rand, -WHORL_TILT, WHORL_TILT);
-    const axis = rand() * Math.PI * 2;
-    // Every tier gets its own clocking. Without it each whorl's arms sit at the
-    // same bearings as the one below — seg is 4 or 5, so that is four or five
-    // vertical ribs running the height of the tree, and a stack of stars that
-    // line up reads as one solid stack all over again.
-    const spin = rand() * Math.PI * 2;
-    // One offset for the pair, or the two halves of the whorl come apart.
-    const ox = w.r * range(rand, -0.06, 0.06);
-    const oz = w.r * range(rand, -0.06, 0.06);
-    for (const g of whorl(r, w.seg, rand, w.up ?? WHORL_UP, w.load ?? null)) {
-      g.rotateY(spin);
-      g.rotateY(axis);
-      g.rotateX(tilt);
-      g.rotateY(-axis);
-      parts.push(g.translate(ox, y, oz));
+  for (const s of SHARDS) {
+    // Jittered once, at build time. Every spire shares this geometry, so this
+    // buys an irregular cluster rather than per-instance variety — that comes
+    // from the instance scale and tint, exactly as it did for the conifer.
+    const rBase = s.r * range(rand, 0.86, 1.14);
+    const h = s.h * range(rand, 0.88, 1.12);
+    const az = s.az + range(rand, -0.45, 0.45);
+    for (const g of shard(rBase, h, s.seg, rand)) {
+      // Lean first, then swing to the bearing, then step out along it: the
+      // whole cluster splays AWAY from the axis rather than all one way.
+      g.rotateZ(range(rand, 0.5, 1) * s.lean);
+      g.rotateY(-az);
+      parts.push(g.translate(Math.cos(az) * s.off, -SPIRE_SINK, Math.sin(az) * s.off));
     }
   }
-  return mergeGeometries(parts, false);
+  const g = mergeGeometries(parts, false);
+  // FLAT, not smooth. The merged shards arrive with the normals of a surface of
+  // revolution, which rounds each facet off and gives the cluster a waxy look;
+  // recomputing them per triangle is what makes the faces read as faces.
+  g.computeVertexNormals();
+  return g;
 }
 
 function buildRockGeometry(rand) {
@@ -383,23 +262,29 @@ export class Scatter {
     this.seed = seed;
     this.bands = Math.ceil(VIEW / BAND) + 2;
 
-    // Near-black, and barely green. The reference's conifers carry no pigment of
-    // their own worth speaking of: their darkest pixels measure RGB(27,34,60),
-    // which is the blue ambient and nothing else. A green that survives the light
-    // is what made ours read as models standing in the snow.
-    // snowCap 0.80, up from the 0.58 the pagoda needed. The cap is a ceiling on
-    // how far ONE surface goes toward snow, not on how much of the tree is
-    // laden, and the two were being confused: when every tier frosted right the
-    // way round, the only way to stop a white tree was to stop the white, and
-    // 0.58 is a tree whose brightest pixel is a grey. Now that the load is about
-    // one arm in three and sits at their tips, holding it back reads as grubby
-    // rather than as restrained — so the tips and the leader are allowed to reach
-    // the parity with ground snow the reference gives them, and the tree stays
-    // dark because most of it is aimed below the horizon. Measured against the
-    // snow beside them our bodies come out at 0.40-0.51 and the reference's at
-    // 0.38, which is what the body colour and the bare arms' aim are for.
+    // THE SPIRES. `snowCap: 0` is the point of this line: at 0.80 every upward
+    // face mixed toward the GROUND colour, which frosts a crystal exactly the
+    // way it frosted a conifer and is half of why the forest read as alpine
+    // whatever shape it was.
+    //
+    // EMISSIVE 0.9, AND IT IS NOT A TYPO NEXT TO THE 0.10 SPECULAR IT REPLACED.
+    // `lit.js` adds `albedo * uEmissive`, so the scalar is multiplied by a
+    // colour, not by white: on an albedo this dark, 0.30 added two percent of
+    // one and the first spires came back as black spikes. 0.9 lands the glow at
+    // roughly the lit faces' own brightness, which is a stone with light inside
+    // it rather than a lamp.
+    //
+    // It is flat across the whole material, so it cannot be put at the tips
+    // only — the buried base lifts as much as the point. That is the ceiling on
+    // it: much past 1 and ninety of these a band stop being scenery and start
+    // competing with the gates, which are the things a player has to read.
+    //
+    // The flash is `specular` with a tight `gloss` lobe, up from the conifer's
+    // 0.10/14. A facet catches the key for the moment the camera crosses it and
+    // goes dark again, which is what says crystal at speed; a conifer wanted the
+    // opposite and got a broad dull lobe.
     this.matTree = makeLitMaterial(mood, {
-      color: 0x232c2f, wrap: 0.5, gloss: 14, specular: 0.10, snowCap: 0.80,
+      color: 0x4c3a92, wrap: 0.30, gloss: 52, specular: 0.60, snowCap: 0, emissive: 0.9,
     });
     this.matRock = makeLitMaterial(mood, {
       color: 0x3a3a42, wrap: 0.4, gloss: 18, specular: 0.16, snowCap: 0.55,
@@ -413,7 +298,7 @@ export class Scatter {
     this.materials = [this.matTree, this.matRock, this.matPole];
 
     const rand = mulberry32(seed ^ 0x51ed);
-    this.trees = new InstancePool(buildTreeGeometry(mulberry32(seed ^ 0x7ee3)), this.matTree,
+    this.trees = new InstancePool(buildSpireGeometry(mulberry32(seed ^ 0x7ee3)), this.matTree,
       this.bands * TREES_CAP, scene);
     /**
      * LIVE DENSITY, set by the place. The forest is the thing that most changes
@@ -606,12 +491,19 @@ export class Scatter {
       this._s.set(sxz * range(rand, 0.94, 1.06), sy, sxz * range(rand, 0.94, 1.06));
       this._m.compose(this._v, this._q, this._s);
       this.trees.mesh.setMatrixAt(gi, this._m);
-      // Varying toward BLUE, never toward green. The tint multiplies albedo
-      // before the snow mix, and a green lift on a sunlit lower cone put a bright
-      // green rim under every tier — the one saturated hue in a frame whose
-      // reference has none.
+      // HUE AS WELL AS BRIGHTNESS, which is the opposite of what the conifer
+      // wanted. That tint varied only toward blue and never toward green,
+      // because a saturated hue on a tree was the one thing the alpine
+      // reference did not have. A crystal field is the case that inverts it:
+      // one violet repeated ninety times a band is a bought asset placed
+      // ninety times, and the cheapest cure is that no two neighbours are the
+      // same stone. The swing runs violet to magenta to cold blue, which are
+      // the hues the mood ring already travels through, so a stand lights
+      // coherently at every stop instead of fighting one of them.
       const shade = range(rand, 0.55, 1.25);
-      this.trees.tint.setXYZ(gi, shade * range(rand, 0.86, 1.0), shade, shade * range(rand, 1.0, 1.14));
+      const warm = range(rand, 0.80, 1.30);          // toward magenta
+      const cool = range(rand, 0.80, 1.30);          // toward cold blue
+      this.trees.tint.setXYZ(gi, shade * warm, shade * range(rand, 0.84, 1.0), shade * cool);
       list.push({ x, z, r: TREE_R * scale + RIDER_R, kind: 'tree' });
     }
 
