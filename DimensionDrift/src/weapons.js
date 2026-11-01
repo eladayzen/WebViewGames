@@ -11,27 +11,59 @@
 // swap code paths, it swaps a row. Nothing downstream of `WEAPONS[id]` knows
 // or cares whether the shooter is a player, a rival or a drone.
 //
-// ── THE ONE RULE THE TABLE ENCODES ─────────────────────────────────────────
+// ── RANGE IS THE MECHANIC NOW, SO RANGE IS THE NUMBER TO TUNE ──────────────
 //
-// YOU OUTRANGE THEM. A ninja star reaches 86 m and a drone's bolt reaches 58.
-// That twenty-eight-metre band is the whole fight: a drone you kill while
-// closing through it never fires a shot, and a drone you do not kill starts
-// shooting the moment you are inside its own reach. Nothing else in this file
-// is as load-bearing as that pair of numbers, and they are the first two to
-// move if the mode plays wrong.
+// The gun used to acquire through a flaring corridor along the board's
+// heading, and the input to it was where you pointed. It now takes the NEAREST
+// enemy, full stop (see `combat.js`). That moves the player's agency off the
+// heading and onto distance: the only question the gun asks is how far away
+// the closest thing is, so `rangeMax` stopped being a detail and became the
+// mechanic.
 //
-// MOST OF THE STAR'S ENVELOPE IS NOT NEW. The reach, the corridor, the rate
-// and the guidance are the constants the gun already shipped with — 86 m, a
-// 5-to-15 m corridor, 0.36 s, 11 rad/s. They were measured over a thousand
-// metres of ride and three product faults were found and fixed against them,
-// and none of that work was about snow or about a clock, so moving them to
-// build a new mode would have thrown the measurement away.
+// WHICH IS WHY THE REACH CAME DOWN AT THE SAME TIME. 86 m with a corridor was
+// a long shot you had to earn by committing a line; 86 m with nearest-wins is
+// a gun that fires continuously at whatever happens to be on the mountain, and
+// a weapon that is always firing is a weapon with no decision in it. 52 m
+// makes the approach a decision again — you are not shooting until you have
+// chosen to be close.
 //
-// THE SPEED IS THE ONE THAT CHANGED, on Elad's call: 135 m/s down to 78. The
-// row's own note has the argument. It is the one constant in that list that
-// was never about the gun WORKING — every fault the thousand metres found was
-// in the aim, the formation geometry or the overkill rule, and none of them
-// moved when the flight time doubled.
+// ── AND YOU STILL OUTRANGE THEM ────────────────────────────────────────────
+//
+// A star reaches 52 m and a drone's bolt reaches 44. That eight-metre band is
+// the fight: a drone you kill while closing through it never fires, and one
+// you do not kill starts shooting the moment you are inside its own reach.
+//
+// THE DRONES CAME DOWN WITH THE PLAYER, and that was not asked for — the brief
+// was the main weapon. It is here because the ratio is load-bearing and
+// cutting one side of it alone inverts the mode: at 52 against their old 58
+// the drones would outrange the player, so every engagement would open with
+// you being shot at and no answer available, which is a different game and
+// not the one anyone chose. ONE NUMBER UNDOES IT. If the drones should out-
+// reach the player, raise `blaster.rangeMax` past 52 and nothing else moves.
+//
+// THEIR RATE WENT UP BECAUSE THEIR REACH WENT DOWN, and this is the part that
+// had to be measured rather than reasoned. The first cut took them to 34 m and
+// left the cooldown near where it was, and the result was a mode with no teeth
+// in it: nine bolts fired at a rider who spent nine hundred metres not fighting
+// back, against twenty-eight before, and a health bar that barely moved. The
+// drones had become decoration.
+//
+// The arithmetic is straightforward once it is written down. A drone's threat
+// over one pass is (2 x reach / closing speed) / cooldown shots. At 58 m and
+// 2.4 s that was 1.6; at 34 m and 1.9 s it was 1.2 — and at 44 m and 1.15 s it
+// is 2.5, which puts the damage per kilometre back where it was measured
+// before any of this moved. A shorter reach with a faster rate is also a
+// better enemy than a long slow one: the engagement is tighter, so the
+// decision to close or stay wide happens at a moment the player can see.
+//
+// ── WHAT IS STILL INHERITED, AND MEASURED ──────────────────────────────────
+//
+// The rate and the guidance are the constants the gun shipped with — 0.36 s,
+// 11 rad/s — measured over a thousand ridden metres against three product
+// faults. The SPEED changed on Elad's call (135 m/s to 78; the row's own note
+// has the argument) and the REACH and the targeting rule changed on his call
+// too. What none of those touched is the overkill rule, which was the actual
+// finding in that thousand metres and is about flight time rather than aim.
 //
 // It also means the skill is the one this game already asks for and not a new
 // one. Acquiring at 70 m and HOLDING the heading through the approach is a
@@ -136,12 +168,12 @@ export const WEAPONS = {
     damage: 1,
     cooldown: 0.36,
     speed: 78,
-    // 6, not the drones' 16. The player's own minimum is short because a star
+    // 6, not the drones' 12. The player's own minimum is short because a star
     // leaving the hand of a rider who is already pointed at something does not
     // need room to turn; the drones' is long because they are shooting at a
     // target that is carving and their bolts are slow.
     rangeMin: 6,
-    rangeMax: 86,
+    rangeMax: 52,
     aimNear: 5.0,
     aimFar: 15.0,
     turn: 11.0,
@@ -174,11 +206,11 @@ export const WEAPONS = {
     cooldown: 0.30,
     speed: 88,
     rangeMin: 6,
-    // AND THE REACH GROWS. The default outranges a drone by 28 m; this
-    // outranges it by 38. A power-up that only hits harder changes how fast a
+    // AND THE REACH GROWS. The default outranges a drone by 18 m; this
+    // outranges it by 28. A power-up that only hits harder changes how fast a
     // fight ends; one that also starts it sooner changes whether the fight
     // happens at all, which is a bigger feeling for the same arithmetic.
-    rangeMax: 96,
+    rangeMax: 62,
     aimNear: 6.0,
     aimFar: 17.0,
     turn: 13.0,
@@ -210,7 +242,7 @@ export const WEAPONS = {
     cooldown: 0.40,
     speed: 88,
     rangeMin: 6,
-    rangeMax: 96,
+    rangeMax: 62,
     aimNear: 7.0,
     aimFar: 20.0,
     turn: 13.0,
@@ -244,14 +276,15 @@ export const WEAPONS = {
     id: 'blaster',
     label: 'drone bolt',
     damage: 6,
-    cooldown: 2.4,
+    cooldown: 1.15,
     speed: 62,
-    rangeMin: 16,
-    rangeMax: 58,
-    // A WIDE CORRIDOR, because a drone is a turret and can face anywhere. The
-    // player's narrow one exists because the player's heading is the input;
-    // a drone has no such constraint and pretending it does would read as the
-    // enemy being bad at its job for no reason the player can see.
+    rangeMin: 12,
+    rangeMax: 44,
+    // VESTIGIAL. Both sides now acquire by distance alone, so nothing reads
+    // these — they are kept because a weapon row with holes in it is a row
+    // that crashes the first time something iterates it, and because the
+    // corridor is one `acquire` away from coming back if the nearest-wins
+    // rule does not survive play.
     aimNear: 10.0,
     aimFar: 26.0,
     turn: 2.6,

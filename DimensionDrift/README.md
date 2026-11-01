@@ -33,10 +33,24 @@ in its place, in the same spot on screen, so a player arriving from chill vibe
 already knows where to look for the thing running out. Dead is dead — no lives,
 no respawn, no regeneration.
 
-**You outrange them.** A ninja star reaches 86 m and a drone's bolt reaches 58.
-That 28 m band is the mode: a drone killed while you close through it never
-fires, one still alive when you enter its reach starts shooting. So the skill
-is the one this game already asks for — acquire early and *hold the heading*.
+**The gun shoots whatever is nearest.** There is no fire button and there is no
+aim: you cannot miss by looking the wrong way and you cannot pick a target by
+turning toward it. The only question the gun asks is how far away the closest
+enemy is — so the player's agency is *range*, not heading.
+
+It used to aim through a flaring corridor along the board, and the reach was
+86 m to match. Both changed together, and they had to: nearest-wins at 86 m is
+a gun that fires continuously at whatever is on the mountain, and a weapon
+that is always firing has no decision in it. **A star reaches 52 m and a drone's
+bolt reaches 44.** That 8 m band is the fight — a drone killed while you close
+through it never fires; one still alive when you enter its reach starts
+shooting. Steering still matters, just not to the gun: it is what reaches a
+medkit, takes a power gate, and keeps a drone outside its own reach.
+
+Measured consequence worth knowing: *fighting costs more health than coasting*.
+Riding 900 m without engaging ends at 58/100; spending the same 900 m closing
+on drones ends at 34 — and kills eleven instead of eight. Closing is the risk
+the mode is now about.
 
 A drone takes three stars; a cyan **power gate** (one in five) gives you a
 weapon that kills in one, or more rarely one that throws three at a time and
@@ -232,7 +246,9 @@ test: reintroducing the exact bug turns three of its cases red.
   in the game, which is exactly what a green build cannot see.
 - `combatqa.mjs` — rides a measured kilometre and reports shots, kills, sweeps,
   escapes and the hit rate, then re-tests the same live drones against a heading
-  forty degrees off to prove the targeting corridor actually constrains. Combat
+  forty degrees off to prove the gun does **not** read the heading — the
+  positive form of a check that used to prove the opposite, rewritten when the
+  corridor was replaced by nearest-wins. Combat
   has no visible state between events — a frame either has a bolt in it or it
   does not — so `lookqa.mjs` cannot see this feature at all and a gun that
   silently never fired would pass every other gate here.

@@ -32,13 +32,19 @@
 // ── WHAT THE COURSE CARRIES ─────────────────────────────────────────────────
 // Motes and DRONES are OFF (`setEnabled(false)` on both). Motes feed the clock
 // and there is no clock, so riding through a currency you cannot spend is an
-// invitation to detour for nothing. The drones are off for the stronger half of
-// the same argument: the gun is steered by pointing the board, so a squad
-// across the piste charges a contest decided by speed in exactly the currency
-// the contest is measured in. HillBomb dropped its crystals from the race
-// course for this reason and put it better: "a contest decided by speed should
-// not also be asking you to detour for points, and the two pickups would
-// compete for the same glance."
+// invitation to detour for nothing. The drones are off for a related argument
+// that has since had to be rewritten: it used to be that the gun was steered
+// by pointing the board, so a squad across the piste charged a contest decided
+// by speed in exactly the currency it is measured in. The gun no longer reads
+// the heading at all -- it takes the nearest enemy (see `combat.js`) -- so
+// that particular case is gone.
+//
+// They stay off for what is left of it, which is enough on its own, and
+// HillBomb put it better when it dropped its crystals from the race course:
+// "a contest decided by speed should not also be asking you to detour for
+// points, and the two pickups would compete for the same glance." Drones now
+// also SHOOT BACK in the mode that has them, and a race with incoming fire in
+// it is a different contest rather than a garnished one.
 //
 // The slalom gates STAY. They are what carve is, and the lean-as-a-force
 // question the whole game exists to answer is asked by a slalom.
@@ -446,11 +452,10 @@ export default registerMode({
         // keep a second copy that can drift.
         game.finishP = finishP;
         game.pickups.setEnabled(false);
-        // AND THE DRONES, for the same reason and not a weaker one. The gun is
-        // steered by pointing the board, so a squad across the piste is a
-        // detour priced in heading -- which is precisely the thing a contest
-        // decided by speed must not also be charging for. The two would compete
-        // for the same glance as the gates, and the gates are what carve is.
+        // AND THE DRONES. The reason in the header used to be that the gun
+        // was steered by pointing the board; it is not any more, so what
+        // stands is the plainer half -- a squad competes for the same glance
+        // as the gates, and the gates are what carve is.
         game.combat.setEnabled(false);
         game.finishLine.place(game.terrain, finishP);
         // No gates past the line — see `Course.limitP`. A little short of it,

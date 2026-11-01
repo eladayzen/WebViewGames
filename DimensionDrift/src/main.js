@@ -996,10 +996,13 @@ class Game {
           ? { ahead: +(this.combat.target.p - this.rider.p).toFixed(1),
               u: +this.combat.target.u.toFixed(1) }
           : null,
-        drones: this.combat.aheadOf(this.rider).map((d) => ({
+        // THE FIGHTER, NOT THE RIDER. `aheadOf` reads the weapon's reach, and
+        // only a Fighter carries one — handed a Rider it silently fell back to
+        // the default row, which is right today and wrong the moment a power
+        // is running.
+        drones: this.combat.aheadOf(this.roster.fighters[0] ?? this.rider).map((d) => ({
           ahead: +d.ahead.toFixed(1), u: +d.u.toFixed(1),
-          along: +d.along.toFixed(1), across: +d.across.toFixed(1),
-          width: +d.width.toFixed(1), inCorridor: d.inCorridor, dead: d.dead,
+          dist: +d.dist.toFixed(1), hp: d.hp, inReach: d.inReach, dead: d.dead,
         })),
       },
     });

@@ -17,8 +17,9 @@
 //      BOLT_TURN problem and not a targeting one.
 //   2. THE CORRIDOR ACTUALLY CONSTRAINS. The whole design rests on the gun
 //      shooting only what the board points at — so the same live drones are
-//      re-tested against a heading rotated forty degrees, and nothing may be
-//      acquirable. A corridor that is accidentally a sphere passes check 1
+//      re-tested against a heading rotated forty degrees, and the SAME drones
+//      must be acquirable. The gun takes the nearest enemy and does not read
+//      the heading, so a corridor creeping back in passes check 1
 //      perfectly and makes the steering meaningless.
 //   3. THE POOL HOLDS. Twenty-four bolts, recycled; if the live count ever
 //      reaches the cap, shots are being silently dropped.
@@ -284,47 +285,117 @@ try {
   console.log(`  steered ${Math.round(steeredM)} m: shots ${fired}  kills ${killed}  ` +
     `sweeps ${sweeps}  hit rate ${(killed / Math.max(1, fired) * 100).toFixed(0)}%\n`);
   check('the steered ride finished inside its budget', !steerStalled);
-  check('steering at the lock kills more than riding straight',
-    killed / steeredM > ride.kills / RIDE,
-    `${killed}/${Math.round(steeredM)} m vs ${ride.kills}/${RIDE} m`);
+  // ── A CHECK THAT OUTLIVED ITS MECHANIC ────────────────────────────────
+  //
+  // This used to read "steering at the lock kills more than riding straight",
+  // and it was the headline claim of the whole file: the gun aimed through a
+  // corridor along the heading, so the ratio between a steered kilometre and a
+  // straight one WAS the feature. Measured at the time: 6 kills riding
+  // straight, 14 steering.
+  //
+  // The gun takes the nearest enemy now and does not read the heading at all,
+  // so that ratio is not a claim this game makes any more. The same measurement
+  // today is 15 straight against 16 steered — it still passed, by a margin
+  // thinner than the run-to-run noise, which is the most dangerous state a
+  // check can be in: green, and measuring nothing.
+  //
+  // What replaced it is the thing the new rule DOES promise, and it is the
+  // inverse: A RIDER WHO NEVER TURNS STILL FIGHTS. Aim is not an input, so the
+  // straight kilometre has to convert on its own, and the two rates have to be
+  // close rather than far apart. If steering ever doubles the rate again, a
+  // corridor has come back from somewhere.
+  const straightRate = ride.kills / RIDE * 1000;
+  const steeredRate = killed / steeredM * 1000;
+  check('a rider who never turns still fights', straightRate > 5,
+    `${straightRate.toFixed(1)} kills/km riding straight`);
+  check('and steering does not change that much',
+    steeredRate < straightRate * 2.2,
+    `${steeredRate.toFixed(1)} steered vs ${straightRate.toFixed(1)} straight, per km`);
   check('a whole squad can be swept', sweeps > 0, `${sweeps} swept`);
 
-  // ── 2. the corridor actually constrains ───────────────────────────────────
-  // The same live drones, re-tested against a heading rotated forty degrees.
-  // `aheadOf` reads `rider.heading`, so swapping it and reading back is a
-  // direct test of the acquisition geometry with no riding involved.
+  // ── 2. the acquisition rule is NEAREST, and it is bounded ─────────────────
+  //
+  // THIS PHASE USED TO TEST A CORRIDOR. It rotated the heading forty degrees
+  // and asserted that nothing was acquirable any more, which was the right
+  // test of the right mechanic right up until the mechanic changed: the gun
+  // now takes the nearest enemy and does not read the heading at all
+  // (`combat.js`). Left as it was, the check would have gone red on a correct
+  // build and told whoever saw it nothing about what had happened.
+  //
+  // So it asserts the rule that IS there, and it asserts the two halves of it
+  // separately, because "nearest" and "in reach" fail in different ways:
+  //
+  //   HEADING-INDEPENDENT. The same drones, read back through a heading turned
+  //   forty degrees, must be acquirable in exactly the same way. That is the
+  //   positive form of the old check and it catches a corridor coming back by
+  //   accident as surely as the old one caught a sphere.
+  //
+  //   BOUNDED. Nothing outside the weapon's reach is ever acquirable, which is
+  //   the half that carries the design now — see the note in `weapons.js` on
+  //   why the reach came down to 52 m when the corridor went away.
   const rot = await ev(() => {
     const g = CARVE._game;
+    const f = g.roster.fighters[0];
+    // STAND THE RIDER NEXT TO A DRONE FIRST.
+    //
+    // The first run of this phase passed every check on an empty set — "0 in
+    // reach straight, 0 turned", "furthest acquirable 0.0 m" — because at that
+    // instant nothing happened to be within 52 m. A check that passes when
+    // there is nothing to check is worse than no check: it is a green light
+    // with no circuit behind it.
+    //
+    // The drone is brought to the rider rather than the rider to the drone,
+    // because moving the rider moves the band ring, the camera and the
+    // collision state, and this phase wants none of that — only a geometry
+    // read.
+    const near = g.combat._near(f.p, 0, 2);
+    for (const squad of near) {
+      for (const d of squad.drones) {
+        if (d.dead) continue;
+        d.x = f.x + 2;
+        d.z = f.z - 24;
+        d.y = f.y + 3;
+        d.drawnY = d.y;
+        break;
+      }
+      break;
+    }
     const h = g.rider.heading;
     const keep = { x: h.x, y: h.y, z: h.z };
-    const straight = g.combat.aheadOf(g.rider);
+    const straight = g.combat.aheadOf(f);
     const a = 40 * Math.PI / 180;
     h.set(keep.x * Math.cos(a) - keep.z * Math.sin(a), keep.y,
       keep.x * Math.sin(a) + keep.z * Math.cos(a)).normalize();
-    const turned = g.combat.aheadOf(g.rider);
+    const turned = g.combat.aheadOf(f);
     h.set(keep.x, keep.y, keep.z);
+    const live = straight.filter((d) => !d.dead);
     return {
       drones: straight.length,
-      straightIn: straight.filter((d) => d.inCorridor).length,
-      turnedIn: turned.filter((d) => d.inCorridor).length,
-      // WIDEST OVER THE DRONES THE GUN COULD ACTUALLY SHOOT. `aheadOf` reports
-      // everything nearby, including drones past RANGE_MAX, and the width
-      // formula is a straight interpolation that keeps growing out there --
-      // a drone 94 m away reports a 16 m corridor it is not in. The first
-      // version measured that number and failed on it, which was the harness
-      // reading a quantity the game never uses.
-      widest: Math.max(0, ...straight
-        .filter((d) => d.along >= 6 && d.along <= 86)
-        .map((d) => d.width)),
+      straightIn: straight.filter((d) => d.inReach).length,
+      turnedIn: turned.filter((d) => d.inReach).length,
+      reach: f.gun.rangeMax,
+      // The furthest thing the gun considers acquirable, and the nearest it
+      // does not. Together these say the reach is a real boundary rather than
+      // a number nothing reads.
+      maxIn: Math.max(0, ...live.filter((d) => d.inReach).map((d) => d.dist)),
+      minOut: Math.min(1e9, ...live.filter((d) => !d.inReach && d.dist > 10)
+        .map((d) => d.dist)),
     };
   });
-  // AIM_FAR is 15 m in `combat.js`; the corridor may never be wider than that
-  // anywhere the gun will fire.
-  check('the corridor flares with range, and is bounded',
-    rot.widest <= 15.01, `widest ${rot.widest.toFixed(1)} m`);
-  check('a heading forty degrees off acquires nothing',
-    rot.turnedIn === 0, `${rot.turnedIn} still in corridor of ${rot.drones} nearby`);
-  check('drones were seen inside the corridor while riding',
+  // THE PRECONDITION IS ITS OWN CHECK, so an empty set can never again be
+  // mistaken for a pass.
+  check('there is something in reach to test against',
+    rot.straightIn > 0, `${rot.straightIn} in reach`);
+  check('acquisition does not read the heading',
+    rot.straightIn > 0 && rot.turnedIn === rot.straightIn,
+    `${rot.straightIn} in reach straight, ${rot.turnedIn} turned 40 deg`);
+  check('and it is bounded by the weapon reach',
+    rot.maxIn > 0 && rot.maxIn <= rot.reach + 0.01,
+    `furthest acquirable ${rot.maxIn.toFixed(1)} m of ${rot.reach} m`);
+  check('nothing past the reach is acquirable',
+    rot.minOut > rot.reach - 0.01,
+    rot.minOut > 1e8 ? 'nothing out of reach nearby' : `nearest rejected ${rot.minOut.toFixed(1)} m`);
+  check('drones were acquired while riding',
     corridorSeen.size > 0, `${corridorSeen.size} distinct lock ranges`);
   // The lock is the only feedback the player gets that the gun has found
   // something. If it never shows, the mechanic is invisible even when it works.
@@ -365,5 +436,5 @@ try {
 }
 
 console.log(`\n  ${checked} checks run, ${fails.length} failed  ->  ${SHOTS}`);
-if (checked < 17) { console.log('  HARNESS DID NOT FINISH'); process.exit(2); }
+if (checked < 19) { console.log('  HARNESS DID NOT FINISH'); process.exit(2); }
 process.exit(fails.length ? 1 : 0);

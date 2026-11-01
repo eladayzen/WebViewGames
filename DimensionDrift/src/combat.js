@@ -1,27 +1,40 @@
-// COMBAT — the drones, the gun that finds them, and the bolts in between.
+// COMBAT — the drones, the gun that finds them, and the shots in between.
 //
-// ── WHY THERE IS NO FIRE BUTTON, AND WHY THAT IS THE DESIGN ────────────────
+// ── WHY THERE IS NO FIRE BUTTON ────────────────────────────────────────────
 //
-// This game has one input: a lean. Speed is not granted, it is the component of
-// gravity along wherever the board is pointing minus drag minus what the edge
-// scrubs, so every turn is already a negotiation. Bolting a trigger onto that
-// would add a second, unrelated conversation — aim here, steer there — and the
-// sensor the real hardware sends has nowhere to put it.
+// This game has one input: a lean. Speed is not granted, it is the component
+// of gravity along wherever the board is pointing minus drag minus what the
+// edge scrubs, so every turn is already a negotiation. Bolting a trigger onto
+// that would add a second, unrelated conversation, and the sensor the real
+// hardware sends has nowhere to put it.
 //
-// So the gun is automatic, and the ONLY input to it is WHERE THE BOARD POINTS.
-// A drone inside the corridor ahead of the heading is acquired and shot; a
-// drone outside it rides past untouched and pays nothing. That makes combat a
-// LINE mechanic, which is the mechanic this game already is — the same reason
-// `pickups.js` places its motes along steepest descent rather than at points:
-// the reward has to be bought with a commitment of heading, because heading is
-// the only currency the player actually spends.
+// So the gun is automatic. That part has never changed.
 //
-// Read that corridor as the thesis of this file. Everything below is in service
-// of it: the squads are spread ACROSS the piste so that a full sweep costs a
-// traverse, the fire range is long enough that the decision is made early, and
-// the bolt is guided so that a shot fired at something you were genuinely
-// pointed at connects. All the agency is in the acquisition. None of it is in
-// the trigger, because there is no trigger.
+// ── WHAT IT AIMS AT, AND WHAT THAT COST ────────────────────────────────────
+//
+// It used to aim through a flaring CORRIDOR along the board's heading, and the
+// argument was that this made combat a line mechanic — the only input to the
+// gun was where you pointed, so a kill was bought with a commitment of heading,
+// the same currency every gate and every mote is paid in.
+//
+// It now takes THE NEAREST ENEMY, full stop. Elad's call, and the honest
+// summary of what moved is in `acquire` below rather than hidden in it:
+//
+//   AIM IS NOT AN INPUT. You cannot miss by looking the wrong way and you
+//   cannot pick a target by turning toward it.
+//
+//   RANGE IS THE INPUT INSTEAD, which is why the reach came down from 86 m to
+//   52 in the same change. Nearest-wins at a long reach is a gun that fires
+//   continuously at whatever is on the mountain; at a short one, the approach
+//   is a decision again — you are not shooting until you have chosen to be
+//   close, and you are not safe until you have chosen to stay wide.
+//
+//   STEERING STILL MATTERS, just not to the gun: it is what reaches a medkit,
+//   what takes a power gate, and what keeps a drone outside its own reach.
+//
+// Whether that trade is the right one is a question for play, not for this
+// comment. What this comment is for is making sure nobody reads the file in
+// six months and believes the corridor is still there.
 //
 // ── WHAT THIS DELIBERATELY DOES NOT DO (STAGE ONE) ─────────────────────────
 //
@@ -659,67 +672,88 @@ export class Combat {
    * which looks, from outside, exactly like a gun that cannot aim.
    */
   /**
-   * THE CORRIDOR TEST, as one function that does not know who is shooting.
+   * NEAREST ENEMY IN REACH. One function, and it does not know who is shooting.
    *
-   * This used to take a Rider and walk the drones. It now takes a SHOOTER —
-   * anything with a position and a heading — a list of CANDIDATES and a WEAPON
-   * row, which is the same test with the three things it actually depends on
-   * named. That is what makes a drone able to run it against the players, and
-   * what will make a rival able to run it against another rider without a line
-   * of this changing.
+   * ── THIS REPLACED A CORRIDOR, AND THAT IS A DESIGN CHANGE ────────────────
    *
-   * NEAREST VALID WINS, with one tie-break: a target that already has a
-   * projectile on the way is taken last. Without it a four-shot burst at a
-   * squad puts all four shots into the first drone, kills it four times over
-   * and leaves the formation intact — which looks, from outside, exactly like
-   * a gun that cannot aim.
+   * What used to be here was a flaring corridor along the shooter's heading —
+   * 5 m wide at the muzzle, 15 m at eighty — and the file's whole first
+   * paragraph was an argument for it: the gun has no trigger, so the ONLY
+   * input to it was where the board points, and combat was a line mechanic
+   * paid in the same currency as every gate and every mote.
    *
-   * @param {{x:number,z:number,heading:{x:number,z:number}}} shooter
+   * Elad's call is that the gun shoots the closest enemy, full stop. The
+   * corridor is gone. It is worth being plain about what that moves, because
+   * the file now argues something different from what it used to:
+   *
+   *   HEADING NO LONGER FEEDS THE GUN. You cannot miss by looking the wrong
+   *   way, and you cannot choose a target by turning toward it. Aim is not an
+   *   input any more.
+   *
+   *   RANGE IS THE INPUT INSTEAD. The only question the gun asks is how far
+   *   away the nearest enemy is, so the player's agency moved from WHERE THE
+   *   BOARD POINTS to HOW CLOSE THEY LET THINGS GET — which is why the reach
+   *   came down at the same time (see `weapons.js`). A long reach with this
+   *   rule is a gun that fires continuously at whatever is on the mountain;
+   *   a short one makes the approach a decision again.
+   *
+   *   AND STEERING STILL MATTERS, just not to the gun. It is what reaches a
+   *   medkit, what takes a power gate, and what keeps a drone out of its own
+   *   58-metre reach by passing it wide.
+   *
+   * ── THE ONE THING THAT SURVIVED ──────────────────────────────────────────
+   *
+   * NEAREST VALID WINS, with the same tie-break: a target that already has
+   * enough shots on the way is skipped. That rule was measured, not reasoned
+   * — it took the hit rate from 56% to 100% in a thousand ridden metres,
+   * because a single target held in range was being shot every 0.36 s while
+   * the first shot was still 0.4 s from arriving. It has nothing to do with
+   * corridors and everything to do with flight time, so it outlived them.
+   *
+   * ── AND THE DRONES' TEST IS NOW THE SAME FUNCTION ────────────────────────
+   *
+   * There used to be two: a corridor for the players and a plain radius for
+   * the drones, on the argument that a drone is a turret with no heading the
+   * player can see. With the corridor gone both sides want the same rule, and
+   * one rule that everything shares is a rule the player can learn once.
+   *
+   * @param {{x:number,y:number,z:number}} shooter
    * @param {Array<{x:number,y:number,z:number,inbound:number}>} candidates
    * @param {import('./weapons.js').Weapon} w
    */
   static acquire(shooter, candidates, w) {
-    // Horizontal heading. A heading carries the slope in Y, and a gun aimed
-    // along it would shoot at the ground on every steep.
-    const hx = shooter.heading.x;
-    const hz = shooter.heading.z;
-    const hl = Math.hypot(hx, hz) || 1;
-    const fx = hx / hl;
-    const fz = hz / hl;
-
+    const min2 = w.rangeMin * w.rangeMin;
+    const max2 = w.rangeMax * w.rangeMax;
     let best = null;
     let bestScore = Infinity;
     for (const c of candidates) {
       const dx = c.x - shooter.x;
+      const dy = (c.drawnY ?? c.y) - (shooter.y ?? 0);
       const dz = c.z - shooter.z;
-      // Along the heading, and across it. The cross term is a 2-D wedge
-      // product, which is the perpendicular distance for a unit forward.
-      const along = dx * fx + dz * fz;
-      if (along < w.rangeMin || along > w.rangeMax) continue;
-      const across = Math.abs(dx * fz - dz * fx);
-      const width = w.aimNear + (w.aimFar - w.aimNear) * (along / w.rangeMax);
-      if (across > width) continue;
-      const score = along + (c.inbound ?? 0) * w.rangeMax;
+      // THREE-DIMENSIONAL, where the corridor was flat. A drone hovers three
+      // to six metres over the snow, so a ground-plane distance reports one
+      // sitting directly overhead as zero metres away — which under a
+      // nearest-wins rule means the gun locks onto it in preference to
+      // everything else on the mountain and keeps firing straight up.
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < min2 || d2 > max2) continue;
+      const need = c.hp !== undefined && w.damage ? Math.ceil(c.hp / w.damage) : 1;
+      // Already-covered targets take a full range's penalty rather than being
+      // excluded, so a gun with nothing else to shoot at still shoots.
+      const score = Math.sqrt(d2) + ((c.inbound ?? 0) >= need ? w.rangeMax : 0);
       if (score < bestScore) { bestScore = score; best = c; }
     }
     return best;
   }
 
   /**
-   * THE DRONES' OWN TEST, which is NOT the corridor one.
-   *
-   * A drone is a turret. It has no heading the player can see and no line it
-   * is committed to, so running it through `acquire` would be modelling a
-   * constraint that does not exist and the player would read the misses as the
-   * enemy being bad at its job for no visible reason. What a drone has instead
-   * is REACH and a choice of whom to shoot.
+   * The drones' acquisition: the same rule, plus a memory.
    *
    * WHICH ENTITY. This is the method the whole `fighters.js` layer exists for.
-   * It asks the roster for everyone not on its own team, takes the nearest one
-   * still standing, and keeps it — the `aggro` field — until that target dies
-   * or leaves reach. Keeping it matters in two player: a drone that re-chose
-   * the nearest every frame would swing between two riders carving past each
-   * other and land its shots on neither.
+   * It asks the roster for everyone not on its own team and takes the nearest
+   * — and then KEEPS it, which `acquire` on its own would not do. That matters
+   * in two player: a drone re-choosing the nearest every frame would swing
+   * between two riders carving past each other and land its shots on neither.
    *
    * In PVP this is unchanged. The roster hands back whoever is not on the
    * drone's team, which is both riders, and the nearest one gets shot at.
@@ -733,54 +767,40 @@ export class Combat {
       const hz = held.z - d.z;
       if (hx * hx + hy * hy + hz * hz <= w.rangeMax * w.rangeMax) return held;
     }
-    let best = null;
-    let bestD = w.rangeMax * w.rangeMax;
-    for (const f of foes) {
-      const dx = f.x - d.x;
-      const dy = f.y - d.y;
-      const dz = f.z - d.z;
-      const q = dx * dx + dy * dy + dz * dz;
-      // rangeMin keeps a drone from firing at something already on top of it,
-      // where a bolt at 2.6 rad/s of guidance cannot turn and would simply
-      // sail past. It is the mirror of the player's own RANGE_MIN.
-      if (q < w.rangeMin * w.rangeMin || q > bestD) continue;
-      bestD = q;
-      best = f;
-    }
-    d.aggro = best;
-    return best;
+    d.aggro = Combat.acquire(d, foes, w);
+    return d.aggro;
   }
 
   /**
-   * Every drone the corridor could reach, with the numbers the test is made on.
+   * Every drone near the rider, with the numbers the acquisition is made on.
    *
    * QA ONLY, and it exists because combat has no visible state between events:
-   * a frame either has a bolt in it or it does not, and "was that drone ever
+   * a frame either has a star in it or it does not, and "was that drone ever
    * acquired" is invisible in a screenshot either way. This is the instrument
-   * -- see the probe in `main.js` and `combatqa.mjs`. It allocates, so nothing
-   * in the frame path may call it.
+   * — see the probe in `main.js`, `combatqa.mjs` and `skirmishqa.mjs`. It
+   * allocates, so nothing in the frame path may call it.
+   *
+   * It used to report `along`, `across` and the corridor `width` at that
+   * range. There is no corridor any more (see `acquire`), so what it reports
+   * now is the only thing the rule reads: distance, and whether that distance
+   * is inside the weapon's reach.
    */
-  aheadOf(rider) {
-    const hx = rider.heading.x;
-    const hz = rider.heading.z;
-    const hl = Math.hypot(hx, hz) || 1;
-    const fx = hx / hl;
-    const fz = hz / hl;
+  aheadOf(fighter) {
+    const w = fighter.gun ?? WEAPONS.star;
     const out = [];
-    for (const squad of this._near(rider.p, 1, 2)) {
+    for (const squad of this._near(fighter.p, 1, 2)) {
       for (const d of squad.drones) {
-        const dx = d.x - rider.x;
-        const dz = d.z - rider.z;
-        const along = dx * fx + dz * fz;
-        const across = Math.abs(dx * fz - dz * fx);
-        const width = AIM_NEAR + (AIM_FAR - AIM_NEAR) * (along / RANGE_MAX);
+        const dx = d.x - fighter.x;
+        const dy = (d.drawnY ?? d.y) - (fighter.y ?? 0);
+        const dz = d.z - fighter.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
         out.push({
-          ahead: d.p - rider.p, u: d.u, along, across, width, dead: d.dead,
-          inCorridor: !d.dead && along >= RANGE_MIN && along <= RANGE_MAX && across <= width,
+          ahead: d.p - fighter.p, u: d.u, dist, dead: d.dead, hp: d.hp,
+          inReach: !d.dead && dist >= w.rangeMin && dist <= w.rangeMax,
         });
       }
     }
-    return out.sort((a, b) => a.ahead - b.ahead);
+    return out.sort((a, b) => a.dist - b.dist);
   }
 
   /** Every live drone in reach of `p`, as a flat list the gun can walk. */
