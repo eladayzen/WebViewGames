@@ -60,7 +60,30 @@ import { Input } from './input.js';
 import { clamp } from './rng.js';
 import { BoboHost } from './shared/bobo-host/index.js';
 
-const RIDER_URL = '/models/rider.glb';
+// ── WHO THE PLAYER IS ──────────────────────────────────────────────────────
+//
+// RAPHAEL, and he arrives as a drop-in because both rigs are Mixamo. The bone
+// lookup in `rider.js` strips the prefix with /^mixamorig\d*[:_ ]?/i, which
+// matches the old model's `mixamorig1:Hips` and this one's `mixamorigHips`
+// alike — so the procedural posing that drives the carve, the crouch, the air
+// and the wipeout found every bone it reaches for without a line changing.
+//
+// The only bones he does not have are the ring and pinky fingers, twelve bones
+// nothing in this game has ever posed.
+//
+// WHAT THE CONVERSION COST, because a character is the one asset where it is
+// worth writing down: 31,131 triangles down to 8,835, four 2048 PBR maps down
+// to one 1024 albedo, 12.8 MB down to 904 KB. `lit.js` has no PBR path — it
+// is one hand-written flat-shaded model reading a base colour and an optional
+// map — so normal, metallic and roughness had nowhere to go.
+//
+// THE OLD RIDER IS DELETED, NOT PARKED BESIDE HIM, and a unit test is why:
+// `assets-referenced` asserts that every file shipped in public/ is reached by
+// the game, and it failed the moment this line moved — 231 KB of human
+// snowboarder downloading on every load for nobody. It is in git; `git show
+// HEAD~1:public/models/rider.glb` is as cheap a revert as leaving it in the
+// build, and it costs no player anything.
+const RIDER_URL = '/models/raphael.glb';
 
 /**
  * Seconds to bring the music up over at the start of a run.
