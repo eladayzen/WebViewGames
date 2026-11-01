@@ -15,16 +15,64 @@ Stage one, which is **web only**. No Unity drop, no StreamingAssets folder, no
 browser and nothing more is claimed.
 
 **Themed so far:** the light (five Dimension X mood stops in `src/mood.js`, in
-place of carve's five alpine hours), the forest (crystal spires, not conifers),
-the far range (a `shatter` profile of broken plates, not rolling massifs), the
-four places and their names, and the asset namespace — `/audio/carve/*` became
-`/audio/*` and `tracks/carve.json` became `tracks/drift.json`, so the old game's
-name is not baked into this one's shipped paths.
+place of carve's five alpine hours), **the ground** (rock, not snow — see
+below), the forest (crystal spires, not conifers), the far range (a `shatter`
+profile of broken plates, not rolling massifs), the four places and their
+names, and the asset namespace — `/audio/carve/*` became `/audio/*` and
+`tracks/carve.json` became `tracks/drift.json`, so the old game's name is not
+baked into this one's shipped paths.
 
-**New, and not in carve at all:** the drones and the gun (`src/combat.js`).
+**New, and not in carve at all:** the drones and the gun (`src/combat.js`), and
+the floating islands (`src/islands.js`).
 
-**Still carve, still ahead:** the ground texture, the rider, the board (it is
-still a snowboard), the turtles, the soundtrack.
+**Still carve, still ahead:** the rider, the board (it is still a snowboard),
+the turtles, the soundtrack.
+
+### The ground stopped being snow
+
+The largest surface in every frame was a groomed piste, and that was the thing
+all the recolouring had been losing to: a comb of groomer passes says *ski
+slope* louder than any amount of violet says anything else. Two changes, and
+the second is the one that was missed twice.
+
+**Texture.** `SNOW_FRAG` in `src/mountain.js` is now a rock surface. Corduroy
+and sastrugi are gone; **strata** (bedding planes, a function of world y alone,
+so bands run level around a spur and resume at the same height across a gully —
+the one cue no tangent-plane texture can fake) and **jointing** (the same noise
+fetch as the sastrugi, creased so the normal breaks instead of rolling) replace
+them. The ice sparkle became a sparse mica glint on broken ground only. The
+wrapped diffuse went from 0.35 to 0.12 and the shadow floor from 0.26 to 0.15,
+because rock does not scatter light through itself — that pair is what makes
+the strata and the joints visible at all.
+
+**Value.** The first pass took the albedo to 0.40–0.55 linear and it still read
+as snow — not by hue, not by texture, but because a large, bright,
+low-saturation expanse under a coloured sky *is* snow to the eye before it is
+anything else. It is down another full stop, to 0.20–0.28.
+
+The corduroy was doing a job — drawing the ridable corridor — and three
+non-periodic channels took it over: the facets smooth on the track, the
+jointing and scree damp there, and the albedo lifts. The track is now the
+*smooth* thing in a broken frame rather than the striped thing in a plain one,
+which is a larger contrast than the comb and does not stop resolving at
+distance.
+
+`src/trail.js` carries a CPU copy of this light model, by design, and the two
+diverged when the ground changed. They are back in sync; if the wrap or the
+shadow floor moves in `mountain.js`, it moves there too.
+
+### Floating islands
+
+`src/islands.js`. Two instanced pools — slabs (44–165 m, out to 820 m either
+side, up to 290 m over the fall line) and chunks (3–11 m, closer and lower) —
+recycled in bands as a pure function of (band index, seed), two draw calls, no
+per-frame work beyond a band check. Two size classes rather than one, because a
+single class gives the eye no depth cue and reads as a backdrop plate however
+well it is drawn.
+
+They are the one element in frame that no mountain can explain. Nothing here
+has a collider and the nearest slab is 260 m off the centre line, so the file
+can be deleted and the game plays identically.
 
 ### The one rule the re-theme has kept throughout
 
@@ -32,7 +80,11 @@ Difficulty has not moved. `TREE_R`, the tree density, the clumping, the reach,
 the inside-piste and margin counts, the obstacle lane and the race's blockers
 are all exactly the numbers carve was tuned on. The crystal spires replaced the
 conifers at the same collision radius; the drones hover above a standing rider's
-head and have no collider at all. Every change so far is a change to what the
+head and have no collider at all; the floating islands are scenery with no
+collider and never come within 260 m of the centre line. The ground's rewrite
+is a shader and a palette — `relief()`, `crossSection()` and the fall profile,
+which are the three functions that decide what the mountain actually does to a
+rider, are untouched. Every change so far is a change to what the
 mountain LOOKS like or to what you can earn on it, never to what can hurt you.
 That is a decision and it should be spent deliberately, not leaked into a
 feature pass.

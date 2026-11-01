@@ -34,6 +34,7 @@ installLogRing();
 import { Course, ReferenceRun, planGates, planKickers } from './course.js';
 import { Pickups } from './pickups.js';
 import { Combat } from './combat.js';
+import { Islands } from './islands.js';
 import { createFinishLine } from './finishLine.js';
 import { createStartLine } from './startLine.js';
 import { createRivals } from './rivals.js';
@@ -1091,6 +1092,7 @@ class Game {
       // belongs next to them in any reading of the world; before the particles,
       // because its hooks are wired below once there is something to emit.
       this.combat = new Combat(this.terrain, this.scene, this.mood, SEED);
+      this.islands = new Islands(this.terrain, this.scene, this.mood, SEED);
       this.particles = new Particles(this.scene, 900);
       this.snowfall = new Snowfall(this.scene, 800, 64);
       // The gun's feedback, wired here rather than inside `combat.js`, which
@@ -1179,7 +1181,7 @@ class Game {
 
       this.litMaterials = [
         ...this.rider.materials, ...this.scatter.materials, ...this.course.materials,
-        ...this.pickups.materials, ...this.combat.materials,
+        ...this.pickups.materials, ...this.combat.materials, ...this.islands.materials,
         // Player two's rider is lit like every other object. Left out of this
         // list it never got uFogBase/uCamPos and rode as a pale fog ghost --
         // the same failure the rivals' jerseys had (see the frame loop).
@@ -1358,6 +1360,7 @@ class Game {
     // Bolts in the air are dropped here too, or a seek teleports the rider out
     // from under a shot that then chases them down the next stretch.
     this.combat.reset(p);
+    this.islands.reset(p);
     // Fast-forward the plan so gates are not spawned for beats already past.
     while (this.course.planIdx < this.gatePlan.length
       && this.gatePlan[this.course.planIdx].t < t) this.course.planIdx++;
@@ -3623,6 +3626,9 @@ class Game {
     // the pods are lit by the shared model, so they have to exist in their
     // final frame positions before the common uniforms are pushed, or they
     // ride one frame behind the fog they are standing in.
+    // Scenery, so it scrolls whatever the state is -- the results screen and
+    // the crash camera both still look at the sky.
+    this.islands.update(this.rider.p);
     for (const ev of this.combat.update(dt, this.rider, this.state === 'play')) {
       this._award(ev.points, ev.label, { big: ev.type === 'sweep', color: ev.color });
       // A SWEPT SQUAD PAYS THE CLOCK AND A KILL DOES NOT. See CLOCK.squad in

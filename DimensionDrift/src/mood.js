@@ -28,15 +28,33 @@
 //   highlights and the shadows share a hue and the frame loses its light. The
 //   alien belongs in the LIGHT. The ground is also what the trail, the rider's
 //   shadow and the gates are read against, and none of them have anywhere else
-//   to be seen, so it stays low-saturation and even.
+//   to be seen, so it stays low-saturation and even. `moodmetrics.mjs` holds
+//   the saturation under 0.30 and that has never moved.
 //
-//   What did NOT carry over is how BRIGHT it is. Carve's albedo was ~0.9,
-//   because snow is ~0.9, and at these exposures that clipped: a frame of
-//   blown-out white takes no hue from the light at all, which is why the first
-//   two passes here came back as a ski slope with a coloured sky over it
-//   however far the key was rotated. This ground is 0.40 to 0.55 — rock and
-//   dust, not snow. That is what gives the light somewhere to land, and it is
-//   the single change that stops the screenshots looking alpine.
+//   What did NOT carry over is how BRIGHT it is, and it has now been pulled
+//   down TWICE for the same reason. Carve's albedo was ~0.9, because snow is
+//   ~0.9, and at these exposures that clipped: a frame of blown-out white
+//   takes no hue from the light at all, which is why the first two passes came
+//   back as a ski slope with a coloured sky over it however far the key was
+//   rotated. The first cut took it to 0.40-0.55 linear.
+//
+//   That was still snow. Not by hue and not by texture — by VALUE. A surface
+//   at half a stop under white is a bright surface, and the eye reads a large
+//   bright low-saturation expanse under a coloured sky as snow before it reads
+//   anything else in the frame; the ground shader can build strata and joints
+//   into it all day and they arrive as detail ON snow. So it is down another
+//   full stop, to 0.20-0.28 linear — a mid-value rock, which is what the
+//   reference art actually shows and what the exposure ladder was always
+//   waiting for.
+//
+//   THE DARK COMPANION MOVED WITH IT. uRockColor is the bare face the ground
+//   mixes toward where debris cannot rest, and it is down 0.8 of a stop rather
+//   than a full one, on purpose: `moodmetrics.mjs` bounds rock:ground at 0.35,
+//   a ratio that exists so the exposed face reads as a different MATERIAL and
+//   not merely as ground in shadow. Halving both would have held the ratio
+//   exactly and that is the trap — the ground got darker, so the dark has to
+//   get darker by less to stay as far away from it. The ratios land 0.11-0.23
+//   where they were 0.07-0.15.
 //
 //   THE PACING. The five `at` fractions and the fog/sparkle/cloud/bloom/exposure
 //   numbers are carve's, because they are about how fast the world turns and how
@@ -80,8 +98,8 @@ export const MOODS = [
     uSunColor: C(0x95f4ac),      // cold alien green; with no portal open the glow IS the light
     uSkyColor: C(0x6a4aa1),      // key:fill 7.0 — the ratio the whole table is solved at
     uGroundColor: C(0x805eb6),   // bounce off the surface, carrying the violet back up
-    uSnowColor: C(0xabadb8),     // near-neutral, S 0.14: the colour is the light, not the ground
-    uRockColor: C(0x3c4943),     // alien basalt, off the ground's hue or it reads as dark ground
+    uSnowColor: C(0x7d7e86),     // near-neutral, S 0.14: the colour is the light, not the ground
+    uRockColor: C(0x35413c),     // alien basalt, off the ground's hue or it reads as dark ground
     // The haze the distance dissolves INTO, so it sits at 0.86 of the horizon's
     // own luminance — the measured ratio that keeps the far range reading as
     // distance. Below ~0.7 it stops being distance and becomes a dark wall.
@@ -106,8 +124,8 @@ uFogDensity: 0.0030,
     uSunColor: C(0xff6ad0),      // the portal itself, and it is the only light left
     uSkyColor: C(0x124852),      // teal, 130 degrees off the key: every shadow goes cold
     uGroundColor: C(0x1d5863),
-    uSnowColor: C(0xada8b0),
-    uRockColor: C(0x2a3f42),
+    uSnowColor: C(0x7e7a80),
+    uRockColor: C(0x25383b),
     uFogColor: C(0xc86bb8),
     uFogSunColor: C(0xffb0e4),
     uZenith: C(0x7437bd),
@@ -134,8 +152,8 @@ uFogDensity: 0.0062,
     uSunColor: C(0xdcff8a),      // acid, and the brightest key in the ring
     uSkyColor: C(0x2177fd),      // 139 degrees off: the shadows are the cold blue of the sky
     uGroundColor: C(0x3686d2),
-    uSnowColor: C(0xc1c5bc),
-    uRockColor: C(0x2f3a30),
+    uSnowColor: C(0x8d9089),
+    uRockColor: C(0x2a342a),
     uFogColor: C(0x74d3af),
     uFogSunColor: C(0xeaffc8),
     uZenith: C(0x2495ff),
@@ -158,8 +176,8 @@ uFogDensity: 0.0048,
     uSunColor: C(0xcbd7aa),      // what is left of the xenon through the particulate
     uSkyColor: C(0x708199),      // 139 degrees off, but only 3:1 — opposed and nearly as bright
     uGroundColor: C(0x62748c),
-    uSnowColor: C(0xb1b4ab),
-    uRockColor: C(0x353a31),
+    uSnowColor: C(0x81837d),
+    uRockColor: C(0x2f342b),
     uFogColor: C(0x98a696),
     uFogSunColor: C(0xdfe6cc),
     uZenith: C(0x607185),
@@ -182,8 +200,8 @@ uFogDensity: 0.0112,
     uSunColor: C(0xff5a44),      // a star falling off the red end, 172 degrees from the fill
     uSkyColor: C(0x194a5a),
     uGroundColor: C(0x225b6d),
-    uSnowColor: C(0xc1afab),     // the warmest the ground gets, and still S 0.23
-    uRockColor: C(0x3d2c30),
+    uSnowColor: C(0x8d807d),     // the warmest the ground gets, and still S 0.23
+    uRockColor: C(0x36272a),
     uFogColor: C(0xc16b51),
     uFogSunColor: C(0xff9a78),
     uZenith: C(0x5f36c6),

@@ -82,6 +82,7 @@ uniform vec3  uCamPos;
 uniform vec3  uBase;
 uniform vec3  uSnowColor;
 uniform float uFogDensity;
+uniform float uFogMul;
 uniform float uFogFalloff;
 uniform float uFogBase;
 uniform float uWrap;
@@ -178,7 +179,16 @@ void main() {
   // ground they stand on. The whole point of this file is that solid objects
   // "sit in the same air as the mountain" — and the one line that decides that
   // was the one line that disagreed.
-  float f = uFogDensity * 0.5 * exp(-uFogFalloff * (uCamPos.y - uFogBase)) * dist * k;
+  // uFogMul is the ONE per-material escape from the mood's own density, and it
+  // is 1.0 for everything that stands on the ground. The floating islands set
+  // it, because they are drawn two to three times further out than anything
+  // else here and the honest number erases them at the foggiest stops. See
+  // FOG_MUL in islands.js for the full argument; the reason it lives on the
+  // material rather than in the mood is that the mood's density is a property
+  // of the AIR, which is shared, and this is a statement about one object's
+  // path through it.
+  float f = uFogDensity * uFogMul * 0.5
+          * exp(-uFogFalloff * (uCamPos.y - uFogBase)) * dist * k;
   float fog = 1.0 - exp(-max(f, 0.0));
   float toSun = pow(max(dot(-V, L), 0.0), 5.0);
 
@@ -214,6 +224,7 @@ export function makeLitMaterial(mood, {
       uFogColor: { value: new THREE.Color(0xa8c4e6) },
       uFogSunColor: { value: new THREE.Color(0xffeccd) },
       uFogDensity: { value: 0.0056 },
+      uFogMul: { value: 1 },
       uFogFalloff: { value: 0.012 },
       uFogBase: { value: 0 },
       uCamPos: { value: new THREE.Vector3() },

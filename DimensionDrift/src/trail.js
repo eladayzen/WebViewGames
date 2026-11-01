@@ -971,9 +971,19 @@ export class Trail {
     const L = m.uSunDir;
     // N·L with N = (-gx, 1, -gz) / |...|.
     const ndl = (-g.gx * L.x + L.y - g.gz * L.z) * inv;
-    // Wrap width and shadow floor are the snow shader's, not this file's own.
-    const wrap = Math.min(1, Math.max(0, (ndl + 0.35) / 1.35));
-    const shade = 0.26 + 0.74 * vis;
+    // Wrap width and shadow floor are the GROUND shader's, not this file's own,
+    // and keeping that true is this function's entire contract — it exists to
+    // repaint the surface the groove cut through, so any divergence shows up
+    // as a ribbon lit by a different sun from the hill it lies on.
+    //
+    // THEY DIVERGED ONCE, when the ground stopped being snow. The wrap went to
+    // 0.12 and the shadow floor to 0.15 there because rock does not scatter
+    // light through itself, and these two lines kept snow's 0.35 and 0.26: the
+    // trail came back a bright white ribbon on dark rock, which is the one
+    // thing in the frame that still read as a ski slope after everything else
+    // had stopped. If either constant moves in mountain.js, it moves here.
+    const wrap = Math.min(1, Math.max(0, (ndl + 0.12) / 1.12));
+    const shade = 0.15 + 0.85 * vis;
     const dome = 0.5 + 0.5 * ny;
     const d2 = dome * dome;
     const d4 = d2 * d2;
@@ -996,9 +1006,24 @@ export class Trail {
     const sky = m.uSkyColor;
     const ground = m.uGroundColor;
     const snow = m.uSnowColor;
-    out[0] = snow.r * (sun.r * direct + ground.r + (sky.r - ground.r) * hemi);
-    out[1] = snow.g * (sun.g * direct + ground.g + (sky.g - ground.g) * hemi);
-    out[2] = snow.b * (sun.b * direct + ground.b + (sky.b - ground.b) * hemi);
+    // AND THE TEXTURE THE GROUND HAS THAT THIS CANNOT AFFORD.
+    //
+    // The ground shader multiplies its albedo by a stack of patterns — the
+    // regional tone drift, the joint darkening, the scree pit — every one of
+    // which is written about its own mean, but the means are not 1. Their
+    // product is about 0.87, so the hill is systematically an eighth darker
+    // than this function's answer for the same square metre, and that showed
+    // as the second half of the bright-ribbon fault above.
+    //
+    // Evaluating those patterns here is not an option: this runs on the CPU
+    // for every vertex of a ribbon that is rewritten every frame. One constant
+    // standing for their product is, and it is honest about what it is. If a
+    // term is added to or removed from the albedo stack in mountain.js, this
+    // number is what has to be re-derived.
+    const tex = 0.87;
+    out[0] = snow.r * tex * (sun.r * direct + ground.r + (sky.r - ground.r) * hemi);
+    out[1] = snow.g * tex * (sun.g * direct + ground.g + (sky.g - ground.g) * hemi);
+    out[2] = snow.b * tex * (sun.b * direct + ground.b + (sky.b - ground.b) * hemi);
     return out;
   }
 

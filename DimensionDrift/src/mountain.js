@@ -462,28 +462,61 @@ void main() {
 }
 `;
 
-// The snow shader. Four things, in order of how much they matter:
+// The ground shader. It used to be the snow shader, and the measurement table
+// in the middle of it is the reason the rewrite kept so much of it.
 //
-//  1. WRAPPED DIFFUSE. Snow is so forward-scattering that light wraps far past
-//     the terminator. Shading it with plain N·L gives grey plastic; wrapping the
-//     lobe is most of the reason this reads as snow at all.
-//  2. SPARKLE. Individual ice crystals catching the sun, as a per-cell random
-//     normal through a very tight specular lobe. Only a few pixels fire and they
-//     scintillate as the camera moves — the detail the eye reads as "real snow".
-//  3. CORDUROY. Groomer lines along the fall line, in two scales: a 2.42 m pass
-//     band, which is what the eye actually reads as grooming at any distance, and
-//     the 0.24 m tiller ridge as a whisper on top of it. Both applied to the
-//     normal AND to the albedo, because at first light the altitude gate makes a
-//     lateral normal tilt worth very little (see the light block).
+// WHAT CHANGED AND WHAT DID NOT. "The texture of the floor is going to have to
+// change" is the whole brief, and the floor is the largest surface in every
+// frame: the palette, the spires, the drones and the far range were all
+// fighting a groomed white piste, and losing, because a comb of groomer passes
+// says ski slope louder than any amount of violet says anything else.
 //
-//     MEASURE THE CAMERA BEFORE YOU RETUNE ANY THRESHOLD IN HERE. Every distance
-//     constant this shader has ever carried was set against a camera nobody had
-//     measured, and the file has claimed 2.4 m / 29.7 m, then "seven metres up
-//     looking forty ahead", then 5.9 m / 13 m at 27° down. Probed on the
-//     canonical frame (tools ride to p = 300 and freeze): the chase camera sits
-//     8.68 m above the drawn snow, pitched 7.2° down, 61.7° vertical fov on a
-//     1320x800 frame. What the thresholds actually need is not the camera but
-//     what it implies — the world footprint of a pixel, which runs
+// But only the TEXTURE was wrong. Everything below the albedo block — the
+// altitude-gated beam, the sky-dome exponent normalised on the piste, the
+// directional pre-dawn key, the height fog, the facet normals, the screen
+// footprint table — is about how a long slope is lit and how far ahead it can
+// be read at speed. None of that is a statement about snow, and four of those
+// five were solved against measurements that are still the measurements. So
+// the surface was replaced and the lighting was retuned in two places where it
+// made a claim about the MATERIAL (see the wrap and the shadow floor), and
+// nothing else below the albedo moved.
+//
+// What the surface is now, in order of how much it matters:
+//
+//  1. STRATA. Bedding planes, a function of world y alone, folded by a slow
+//     lateral noise and creased so they have edges. This is the term that does
+//     the most work, because it is the only one that is not a feature OF the
+//     surface: the bands run level around a spur and pick up at the same
+//     height across a gully, which says the landform was cut out of layered
+//     rock. No tangent-plane texture can say that at any quality.
+//  2. JOINTING. The crack set a face breaks along — the sastrugi's fetch,
+//     coarsened to block scale and creased, so the normal breaks instead of
+//     rolling. Rounded swells are a drift; this is not.
+//  3. THE TRACK, which is what replaced the corduroy. The groomer lines were
+//     drawing the ridable corridor, and that job has to survive the look
+//     change. Three non-periodic channels do it — the facets smooth, the
+//     jointing and the scree damp, the albedo lifts — so the track is the
+//     SMOOTH thing in a broken frame rather than the striped thing in a plain
+//     one. That is a larger contrast than the comb and it does not stop
+//     resolving at distance.
+//  4. SELF-SHADOWING. `aShade` is marched through the height field on the CPU
+//     when a chunk is built, so it costs nothing per pixel. With a key this
+//     low it is the single biggest thing separating ground from a gradient,
+//     and it got MORE important rather than less: the shadow floor dropped
+//     from 0.26 to 0.15 when the surface stopped being translucent.
+//  5. SCREE. The granulation, with a deeper pit — snow scatters light into its
+//     own pits and rock does not — and the same two-octave, two-depth,
+//     rotated-lattice construction, which was never about snow either.
+//  6. HEIGHT FOG with directional inscatter, so valleys fill with haze, ridges
+//     emerge from it, and looking toward the sun glows.
+//
+//     MEASURE THE CAMERA BEFORE YOU RETUNE ANY THRESHOLD IN HERE. Every
+//     distance constant this shader has ever carried was set against a camera
+//     nobody had measured. Probed on the canonical frame (tools ride to
+//     p = 300 and freeze): the chase camera sits 8.68 m above the drawn
+//     ground, pitched 7.2 deg down, 61.7 deg vertical fov on a 1320x800 frame.
+//     What the thresholds need is not the camera but what it implies — the
+//     world footprint of a pixel, which runs
 //
 //         screen row     ground dist     metres/px in x     metres/px in z
 //              780           27.7 m           0.038              0.098
@@ -492,22 +525,13 @@ void main() {
 //              600           80.4 m           0.154              0.665
 //              580          101.9 m           0.275              1.665
 //
-//     — note the z column, five to seventeen times the x. That table is why every
-//     band limit here is now `resolves()` on the world size of the feature and
-//     both footprints, and why nothing in this shader fades on camDist any more.
-//     N·V on the piste runs 0.22 at the top of the visible snow to 0.63 at the
-//     bottom edge, which is where the graze band below is placed.
-//  4. SELF-SHADOWING. `aShade` is marched through the height field on the CPU
-//     when a chunk is built, so it costs nothing per pixel. With a sun this low
-//     it is the single biggest thing separating snow-covered ground from a white
-//     gradient: ridges throw long shadows down the piste and the terrain reads as
-//     terrain.
-//  5. SASTRUGI. Wind-drifted ripples, 0.54 m across and 2.41 m long on a lattice
-//     rotated 20° off the fall line, tilting the normal by the noise's own
-//     analytic gradient and drifting the albedo by its value — one fetch, two
-//     jobs — so untouched snow is not a flat white plane.
-//  6. HEIGHT FOG with directional inscatter, so valleys fill with haze, ridges
-//     emerge from it, and looking toward the sun glows.
+//     — note the z column, five to seventeen times the x. That table is why
+//     every band limit here is `resolves()` on the world size of the feature
+//     and both footprints, and why nothing fades on camDist. N.V on the piste
+//     runs 0.22 at the top of the visible ground to 0.63 at the bottom edge,
+//     which is where the graze band below is placed. The strata are the one
+//     term this table does not bound, because their period is vertical; see
+//     band1 and mppY.
 const SNOW_FRAG = /* glsl */ `
 precision highp float;
 
@@ -646,6 +670,13 @@ float resolves(vec2 cell, vec2 m) {
   return smoothstep(1.0, 2.4, min(cell.x / m.x, cell.y / m.y));
 }
 
+// The same test for a feature that has ONE period rather than two. The strata
+// are a function of world y alone, so there is no second axis for resolves()
+// to take a min over, and the footprint that bounds them is the vertical one.
+float band1(float cell, float m) {
+  return smoothstep(1.0, 2.4, cell / m);
+}
+
 float hash13(vec3 p) {
   p = fract(p * 0.1031);
   p += dot(p, p.zyx + 31.32);
@@ -683,267 +714,296 @@ void main() {
   // point that size stops being resolvable, which is the only way a texture
   // shrinks with distance the way the ground it sits on does.
   vec2 mpp = max(vec2(fwidth(vRel.x), fwidth(vRel.z)), 1e-4);
+  // AND THE VERTICAL ONE, which the snow never needed: every texture it had
+  // lived in the ground plane, so x and z bounded all of them. The strata do
+  // not — they are cut in world y — and a bedding band is at its finest on
+  // exactly the steep faces where the x and z footprints say it is coarse.
+  float mppY = max(fwidth(vRel.y), 1e-4);
 
-  // ── wind regions ────────────────────────────────────────────────────────
-  // SNOW IS NOT STATIONARY, and ours was. The reference's piste changes character
-  // across a single frame — soft drifted patches, scoured lanes with the pack
-  // showing through, bands of wind crust — while this shader applied one
-  // statistical mix to every square metre of a 2.8 km mountain. That is the other
-  // half of the repetition complaint and the harder half: no patch recurs, but no
-  // patch is distinguishable from any other either, so the surface reads as
-  // wallpaper however good the wallpaper is.
+  // ── fracture regions ────────────────────────────────────────────────────
+  // ROCK IS NOT ONE ROCK, and what varies across a face is how BROKEN it is:
+  // slabs that have held together, and ground between them that has shattered
+  // into blocks and shed its scree. This is the field that says which, and
+  // like the wind field it replaced it pays for four things at once — the
+  // jointing amplitude, the scree density, the strata contrast and a slow
+  // tonal drift. One noise paying for four is the only reason any of it fits
+  // in the budget, and that argument is unchanged by what the ground is made
+  // of.
   //
-  // Two octaves, stretched about 3:1 down the fall line, because wind leaves
-  // LANES and not blobs. These are the same two fetches that used to buy nothing
-  // but a brightness wash; they now also decide how much granule shadow and how
-  // much ripple the snow carries here, and jitter the groomer's phase. One noise
-  // paying for four things is the only reason this fits in the budget.
-  //
-  // Hoisted ABOVE the corduroy, which now reads it.
-  float wind = n21s(vec2(vWorld.x * 0.030, vWorld.z * 0.0105))
-             + 0.45 * n21s(vec2(vWorld.x * 0.13, vWorld.z * 0.045) + 9.0);
+  // NEARLY ISOTROPIC, where the wind field was stretched about 3:1 down the
+  // fall line. Wind leaves lanes; fracture does not. A jointed face breaks
+  // into blocks whose long axis is set by the joint set, not by the slope, so
+  // the stretch that made drifts read as drifts makes shatter read as combing
+  // — and combing down the fall line is the exact artefact this whole pass
+  // exists to delete. 1.6:1 keeps a little grain without it.
+  float region = n21s(vec2(vWorld.x * 0.026, vWorld.z * 0.0163))
+               + 0.45 * n21s(vec2(vWorld.x * 0.115, vWorld.z * 0.072) + 9.0);
   // Centred on the field's own mean (0.725) so neither character dominates.
-  float scour = smoothstep(0.58, 0.88, wind);
+  float broken = smoothstep(0.58, 0.88, region);
 
-  // ── corduroy ────────────────────────────────────────────────────────────
-  // Only on the groomed piste, and only where it is still resolvable.
+  // Steepness, hoisted: the strata, the jointing and the exposed-rock mix all
+  // read it. From the INTERPOLATED normal, not the faceted one — see the
+  // albedo block for why that distinction cost a valley wall full of dither.
+  float steep = 1.0 - clamp(Nv.y, 0.0, 1.0);
+
+  // ── the track ───────────────────────────────────────────────────────────
+  // THE PISTE IS A WORN SLAB, NOT A GROOMED ONE.
   //
-  // TWO SCALES, and the COARSE one is the point. The previous round cut this to
-  // a single 0.24 m ridge at a 0.045 tilt because two blind reviewers had called
-  // the old 0.9 m / 5.5 m pair "brushed denim" — but that was an amplitude fault
-  // (0.42 and 0.20 tilt, swinging ndl by ±0.335 and driving every trough to zero
-  // direct light), and the cure removed the SCALE along with the amplitude. What
-  // was left is a 6 px cosine at the bottom of frame and nothing above 40 m: a
-  // fine texture where the reference has a broad ordered one. Measured on a
-  // matched patch of foreground piste, the reference carries 70% of its variance
-  // below 0.06 cyc/px and 9% above 0.15; we carried 44% and 27%. Ordered
-  // structure turned down 14x, disordered noise left at 10x.
+  // What used to be here was corduroy: two cosines of groomer pass along the
+  // fall line, at 2.42 m and 0.24 m, in the normal and in the albedo. They
+  // were the single loudest statement in the frame that this is a ski slope.
+  // Nobody has to recognise snow to recognise a comb, which is why three
+  // rounds of recolouring never moved the first impression: the palette was
+  // alien and the surface under it was still a piste a machine had driven up
+  // and down.
   //
-  // So: a 2.42 m PASS band, which is a groomer's width and projects to 63 px at
-  // the bottom of frame and 9 px at a hundred metres — squarely the band we are
-  // short in — carrying most of the amplitude, plus the 0.24 m tiller ridge as a
-  // whisper on top of it. The pass band's phase is jittered by the wind field so
-  // it is not a perfect comb; the reference's autocorrelation has no periodic
-  // bump in it, and real passes are neither parallel nor evenly spaced.
+  // But they were doing a JOB, and deleting them without replacing it costs
+  // real legibility — they drew the ridable corridor, and the corridor is the
+  // only thing on this mountain the player is steering relative to. Three
+  // channels take it over, and not one of them is periodic:
   //
-  // Corduroy DAMPED on a kicker, not erased. At full strength the groomer
-  // lines fanned into giant converging bands across the curved face — the
-  // "weird wall". Fully masked, the face became a featureless patch that
-  // camouflaged into the piste behind it and read as a hole instead. A third
-  // of the texture keeps the surface legible as snow without the banding.
+  //   the facets blend back toward the smooth analytic normal here, exactly
+  //   as they did for the groomed version;
+  //   the jointing and the scree are damped on the track, so it is the smooth
+  //   thing in a broken frame rather than the striped thing in a plain one;
+  //   and the albedo lifts, which is what traffic does to a rock surface —
+  //   it polishes it and it dusts it.
+  //
+  // That is a LARGER contrast than the comb ever was, because it is a
+  // contrast of texture rather than of pattern, and unlike a comb it does not
+  // have a distance at which it stops being resolvable and leaves the
+  // corridor unmarked. The poles still mark the hard edge; this marks the
+  // middle.
   float piste = (1.0 - smoothstep(0.88, 1.04, abs(vU) / uHalf)) * (1.0 - vKick * 0.65);
 
-  // Faceting on the piste. Mesh columns are 2.0 m and rows 2.7 m, so a near-field
-  // facet is fifty pixels of flat shading; off the piste that is exactly right
-  // (it is what makes the walls read as crystalline ground rather than frosted
-  // glass, and it measures within 15% of the reference). On a groomed surface it
-  // is a stack of shading steps no groomer ever left, so it is blended back
-  // toward the smooth analytic normal there — but only to 0.62, not the 0.45 it
-  // was. Two-metre facets are ordered structure in exactly the band the frame is
-  // missing, and the kicker, which keeps more of them, is the one patch of snow
-  // in the frame a critic picked out as looking RIGHT.
+  // Faceting. Mesh columns are 2.0 m and rows 2.7 m, so a near-field facet is
+  // fifty pixels of flat shading — and on rock that is not a compromise, it
+  // is the look. It is the same cross-of-derivatives that made the snow read
+  // as crystalline rather than as frosted glass, doing a job it is better
+  // suited to. Off the piste it keeps full strength; on the track it is
+  // blended back to 0.62, which is the one place a stack of two-metre shading
+  // steps reads as tessellation instead of as bedrock.
   N = normalize(mix(Nv, N, mix(1.0, 0.62, piste)));
 
-  // Band limits stated as what they are: the lateral period of each cosine
-  // against the width of a pixel. The old test faded the ridges out at 2.9 px
-  // per period — well before they alias — which is the fwidth-holds-it-at-
-  // constant-screen-frequency trap this whole file just walked out of.
-  float passF  = piste * smoothstep(1.0, 2.4, 2.417 / mpp.x);
-  float ridgeF = piste * smoothstep(1.0, 2.4, 0.242 / mpp.x);
-  // The grooves run along the fall line, so they tilt the normal laterally only.
-  vec3 lateral = normalize(vec3(1.0, 0.0, 0.0) - N * N.x);
-  float pass  = cos(vU * 2.60 + wind * 1.6);
-  float ridge = cos(vU * 26.0);
-  N = normalize(N + lateral * (pass * passF * 0.085 + ridge * ridgeF * 0.075));
+  // ── strata ──────────────────────────────────────────────────────────────
+  // BEDDING PLANES, and this is the term that does most of the work.
+  //
+  // Every other texture in this shader perturbs a surface inside its own
+  // tangent plane, which is what snow IS: ripples, grooves, pitting, all of
+  // them features of the surface. Rock's signature is the opposite. It is a
+  // stack of horizontal beds that the landform has been CUT OUT OF, so the
+  // bands run level around a spur and pick up again at the same height on the
+  // far side of a gully. Nothing in the tangent plane can fake that, because
+  // the one thing it says is that the pattern does not belong to the surface.
+  //
+  // So this is a function of WORLD Y alone, warped laterally by a slow noise
+  // so the beds are folded rather than spirit-levelled — dead-level banding
+  // over a whole valley reads as a contour map.
+  //
+  // CREASED, not smooth. A plain noise in y swells like a sine and reads as a
+  // vertical gradient; a bed is a plate, with a top and a bottom. abs() about
+  // the noise's own middle puts an edge at every zero crossing and flips the
+  // gradient's sign across it, so the ledges break instead of rolling.
+  //
+  // WEIGHTED BY STEEPNESS, which is physics and convenience in one line. On
+  // near-level ground a horizontal bed lies nearly parallel to the surface,
+  // so it stretches into an enormous low-frequency wash that no band limit
+  // can help with — and near-level ground is precisely the track the player
+  // rides. The walls get the strata. The piste stays clean, and so does the
+  // one surface the trail, the rider's shadow and the gates are read against.
+  //
+  // THE BAND LIMIT IS IN Y, so resolves() is no use: it reads the x and z
+  // footprints, and a bed's period is vertical. band1 takes the footprint
+  // this shader does not otherwise measure.
+  // THE FOLD HAS TO BE SMALL AGAINST THE BED, and the first cut had it four
+  // times larger: 3.4 m of lateral warp on a 1.35 m bed is two and a half
+  // whole bands of displacement, so the pattern stopped being a function of
+  // height at all and became the warp noise itself, drawn as long raking
+  // streaks down the fall line. Measured off the first capture — the left
+  // wall came back combed diagonally, which is the corduroy artefact this
+  // block was written to delete, arriving by a different route.
+  //
+  // 0.62 m is a little under half a bed: enough that no band is level across
+  // a whole valley, not enough that any band stops being level locally. The
+  // warp's own wavelength went UP as its amplitude came down (0.0145 to
+  // 0.0062, so 69 m to 161 m), because a fold is a regional thing — beds that
+  // undulate every few metres are not folded, they are wrinkled.
+  float fold = n21s(vWorld.xz * 0.0062) * 0.62;
+  vec3  bed  = n21sd(vec2((vWorld.y + fold) * 0.74, vWorld.x * 0.013 + 31.0));
+  float bedK = band1(1.35, mppY) * smoothstep(0.10, 0.42, steep);
+  float bedS = sign(bed.x - 0.5);
+  float bedV = abs(bed.x - 0.5) * 2.0;
+  // The steepest-ascent direction in the surface's own tangent plane: the way
+  // a ledge sticks out of a wall. Degenerate on level ground, where bedK has
+  // already gone to zero, so the epsilon never has to carry anything real.
+  vec3 upT = vec3(0.0, 1.0, 0.0) - N * N.y;
+  upT = upT / max(length(upT), 1e-3);
+  // d(bedV)/dy, through the chain: the lattice gradient, the 0.74 scale, the
+  // abs()'s sign flip and the x2 the crease was normalised by.
+  N = normalize(N - upT * (bed.y * 0.74 * bedS * 2.0) * bedK * 0.42);
 
-  // ── sastrugi ────────────────────────────────────────────────────────────
-  // Wind-drifted ripples, tilted into the normal by the noise's own gradient.
+  // ── jointing ────────────────────────────────────────────────────────────
+  // Where the snow had sastrugi, rock has the crack set a face breaks along.
   //
-  // ON the piste, and now at seven tenths rather than the 0.38 it was. The
-  // kicker, where this term already ran at 0.78, is measurably the best-looking
-  // snow in the frame; the piste, where it was throttled, is the worst. That is
-  // not a coincidence and it is the cheapest correction available.
+  // The fetch is the same shape and the same cost as the one it replaces —
+  // one n21sd, value and analytic gradient out of the same four hashes — and
+  // the only change is the one that matters: the value is CREASED, by the
+  // same abs-and-sign the strata use. A smooth value noise tilted into the
+  // normal gives rounded swells, and a rounded swell is a drift. Creased, the
+  // normal breaks rather than rolls: straight-ish edges with flat-ish blocks
+  // between them, which is what a jointed face is.
   //
-  // COARSER TOO: 0.54 m across the ridges and 2.41 m along, up from 0.36 x 1.6.
-  // At the bottom of frame that is 14 px by 63 px instead of 9 by 42 — the same
-  // move from the fine band into the ordered one the corduroy just made — and
-  // the along-ridge axis now lands where the reference's variance actually is.
+  // COARSER than the sastrugi it replaces — 1.30 m by 3.44 m against 0.54 by
+  // 2.41 — because a block is bigger than a ripple, and because the band the
+  // frame measured short in is the ordered one above half a metre, not below
+  // it. At the bottom of frame that is 34 px by 90 px.
   //
-  // Scoured ground ripples and drifted ground does not, so the amplitude rides
-  // the region field; written so its mean is unchanged.
-  //
-  // ROTATED, and that is not a detail. A single octave of value noise on a
-  // lattice aligned to the world axes reads as WOVEN: the foreground came out a
-  // regular mat of same-sized blobs, which is what "repeating" looks like at
-  // arm's length. Non-square cells were not enough on their own, because the
-  // camera foreshortens z and hands them back square. Ridges running 20° off the
-  // fall line cannot square up under any foreshortening, because the lattice no
-  // longer lines up with the axis the perspective compresses.
-  const vec2 SX = vec2(1.729, 0.627);    // across the ridges, 1 / 0.544 m
-  const vec2 SZ = vec2(0.1408, -0.3904); // along them, 1 / 2.41 m
-  // Fetched UNCONDITIONALLY now: the value half of it (n.x) pays for an albedo
-  // drift below on the same rotated lattice, which is a free metre-scale term in
-  // the band the frame is short in, and the branch that used to guard it was
-  // taken over essentially the whole near field anyway.
-  vec3 sast = n21sd(vec2(dot(vWorld.xz, SX), dot(vWorld.xz, SZ)) + 17.0);
-  float sastK = resolves(vec2(0.544, 2.410), mpp);
-  float wild = 1.0 - piste * 0.30;
-  float detail = wild * sastK * 0.3 * (0.5 + 1.0 * scour);
-  // Chain rule back to world x/z: the gradient in lattice space times the same
-  // matrix, transposed. Two multiply-adds.
-  vec2 g = sast.y * SX + sast.z * SZ;
-  N = normalize(N + vec3(-g.x, 0.0, -g.y) * detail * 0.55);
+  // ROTATED, for the reason this file keeps rotating lattices: a lattice on
+  // the world axes is, to a camera looking down the fall line, a lattice on
+  // the screen's, and once its cells resolve it reads as weave. 32 degrees,
+  // off both the fall line and the strata's fold.
+  const vec2 JX = vec2(0.6525, 0.4078);   // across the joints, 1 / 1.30 m
+  const vec2 JZ = vec2(-0.1540, 0.2464);  // along them,        1 / 3.44 m
+  vec3  jnt = n21sd(vec2(dot(vWorld.xz, JX), dot(vWorld.xz, JZ)) + 17.0);
+  float jk  = resolves(vec2(1.30, 3.44), mpp);
+  float jS  = sign(jnt.x - 0.5);
+  // Damped on the track, raised where the region field says the face has
+  // shattered. A kicker is BUILT, so it keeps its own shape: vKick is already
+  // in piste.
+  float joint = jk * (1.0 - piste * 0.70) * (0.42 + 1.00 * broken);
+  vec2  jg = (jnt.y * JX + jnt.z * JZ) * jS;
+  // 0.95, not the 0.58 the sastrugi's amplitude was inherited at. A drift is a
+  // soft thing and reads at a small tilt; a block face does not read at all
+  // until the break is sharp enough to put its two sides in different light,
+  // and the wrap is now 0.12, which means a tilt has to be real to cross a
+  // terminator that tight. Measured on the first capture: at 0.58 the jointing
+  // was invisible at every distance and the only texture in the frame was the
+  // scree.
+  N = normalize(N + vec3(-jg.x, 0.0, -jg.y) * joint * 0.95);
 
   // ── albedo ──────────────────────────────────────────────────────────────
-  // ROCK FROM THE HILL, NOT FROM THE TESSELLATION. This used to threshold the
-  // FACETED normal, which is constant across a triangle: rock therefore flipped
-  // whole-triangle at a time and salted the valley walls with a hard black-and-
-  // white stipple — dither, not scree. grit made it worse, a per-cell coin flip
-  // on a 1.43 m cubic lattice that pushed neighbouring facets across the
-  // threshold at random. The interpolated normal varies smoothly through a
-  // triangle, so the snow line now follows the ground; two octaves of smooth
-  // noise break it into bands and tongues of exposed face, and the threshold is
-  // wide enough to be a transition rather than an edge.
-  float steep = 1.0 - clamp(Nv.y, 0.0, 1.0);
-  float rock = 0.0;
-  // GATED, and the gate is EXACT rather than a tolerance. grit tops out at 0.37,
-  // so below steep = 0.075 the smoothstep's argument cannot reach 0.26 and rock is
-  // identically zero however the noise falls — there is no threshold to creep
-  // across and no seam to find. The piste runs at steep = 0.04, so the two most
-  // expensive fetches in this shader were being computed for the majority of the
-  // screen to produce a guaranteed zero. It is coherent branching too: rock lives
-  // on the valley walls, which are large contiguous regions of the frame, not
-  // scattered pixels.
+  // EXPOSED ROCK FROM THE HILL, NOT FROM THE TESSELLATION. This used to
+  // threshold the FACETED normal, which is constant across a triangle: the
+  // dark rock therefore flipped whole-triangle at a time and salted the
+  // valley walls with a hard stipple — dither, not scree. The interpolated
+  // normal varies smoothly through a triangle, so the line now follows the
+  // ground; two octaves of smooth noise break it into bands and tongues, and
+  // the threshold is wide enough to be a transition rather than an edge.
+  //
+  // This survived the change of material unaltered, and it is worth saying
+  // why, because every other block in here did not. uSnowColor and uRockColor
+  // are carve's names for two tones the ground is mixed between — a pale one
+  // on what lies flat and a dark one on what stands up — and on a mountain of
+  // rock that is still exactly what the mix means: regolith and dust where
+  // debris can rest, bare dark face where it cannot. The names are the only
+  // part that is now wrong, and renaming a uniform that nine files read is a
+  // mechanical change that does not belong in the middle of a look change.
+  float rockN = 0.0;
+  // GATED, and the gate is EXACT rather than a tolerance. grit tops out at
+  // 0.37, so below steep = 0.075 the smoothstep's argument cannot reach 0.26
+  // and this is identically zero however the noise falls. The piste runs at
+  // steep = 0.04, so the two most expensive fetches in this shader were being
+  // computed over the majority of the screen to produce a guaranteed zero.
   if (steep > 0.075) {
     float grit = n21s(vWorld.xz * 0.085) * 0.26 + n21s(vWorld.xz * 0.47 + 5.0) * 0.11;
-    // A kicker is steep because it was BUILT, not because rock pokes through it —
-    // without the mask its faces came out speckled grey like scree.
-    rock = smoothstep(0.26, 0.62, steep + grit - 0.185) * (1.0 - vKick);
+    // A kicker is steep because it was BUILT, not because the face has been
+    // stripped — without the mask its faces came out speckled like scree.
+    rockN = smoothstep(0.26, 0.62, steep + grit - 0.185) * (1.0 - vKick);
   }
+  float rock = rockN;
   vec3 albedo = mix(uSnowColor, uRockColor, rock);
-  // A low sun barely picks a groove out of the normal alone, so the corduroy
-  // also darkens in the troughs. Mostly on the PASS band, which is the scale
-  // that has to carry: a tilt term is worth very little at first light, because
-  // below the sun floor the beam is replaced by a sky-dome term that reads N.y
-  // and nothing else, and a groove tilts the normal sideways. Albedo is the only
-  // channel the grooming has down there that does not go through that gate.
-  albedo *= 1.0 - passF  * 0.034 * (0.5 - 0.5 * pass)
-                - ridgeF * 0.032 * (0.5 - 0.5 * ridge);
-  // Snow is not one colour. A slow drift keeps large expanses from reading as a
-  // single flat fill. It used to run at 0.16/0.08 — 25% linear peak to peak, on
-  // 62 m and 9 m cells, which on its own exceeded the reference's ENTIRE surface
-  // texture budget and read as blotchy brightness wander rather than as snow.
-  // It is now the region field above, stretched into lanes rather than round
-  // blobs — so the brightness wander and the change of texture are the same
-  // feature of the snow instead of two unrelated ones, which is what makes a
-  // drift read as a drift. Two fetches saved.
+  // THE BEDS IN THE ALBEDO AS WELL AS IN THE NORMAL, and at first light that
+  // matters more than it should: below the sun floor the beam is replaced by
+  // a sky-dome term that reads N.y and nothing else, so a ledge that exists
+  // only as a normal tilt is worth almost nothing there. Albedo is the one
+  // channel the strata have that does not go through that gate — the same
+  // argument the corduroy used to make for itself, inherited by the term that
+  // replaced it.
   //
-  // Widened from 8.6% peak to peak to 15%. Cutting it to 8.6% was right when the
-  // frame's problem was too much mid-band energy; the frame's problem now is the
-  // opposite, and this is the coarsest albedo term in the shader.
-  albedo *= 0.877 + 0.103 * (wind - 0.725);
-  // DRIFT, on the sastrugi's own rotated lattice — 0.54 m by 2.41 m, which is
-  // 14 px by 63 px at the bottom of frame. This is free: the value half of a
-  // fetch already paid for above, whose gradient half tilts the normal. It is the
-  // one term that puts contrast at the ripple's own scale into the ALBEDO rather
-  // than into the normal, and at first light that matters more than it should —
-  // see the corduroy note above and the light block below.
-  albedo *= 1.0 + 0.09 * sastK * (0.6 + 0.8 * scour) * (sast.x - 0.5);
-  // GRANULATION — the pitting of a snow surface, and the term this whole round
-  // was called for.
+  // Mineral banding is a real colour difference and not just a shadow, so
+  // this is wider than the 3.4% the groomer troughs ran at.
+  albedo *= 1.0 - bedK * 0.16 * (1.0 - bedV);
+  // Rock is not one tone. The region field, which is already paid for, keeps
+  // large expanses from reading as a single fill — and because the same field
+  // drives the jointing and the scree, the change of colour and the change of
+  // texture are one feature of the ground rather than two unrelated ones.
+  // That is what makes a shattered patch read as shattered rather than as a
+  // brightness wobble over an even surface.
+  albedo *= 0.877 + 0.118 * (region - 0.725);
+  // The joints DARKEN, and only the joints. The crease is where water sits,
+  // where lichen grows and where the shadow of the block's own edge falls, so
+  // this is one-sided like the scree pit below and for the same reason: a
+  // symmetric term raises the variance and stays a wash. It is the value half
+  // of a fetch whose gradient half already tilted the normal, so it is free.
+  albedo *= 1.0 - 0.30 * jk * (0.4 + 0.9 * broken) * (1.0 - abs(jnt.x - 0.5) * 2.0);
+  // ── scree ───────────────────────────────────────────────────────────────
+  // The pitting of a broken surface, and the direct descendant of the
+  // granulation this replaced — same lattices, same band limits, same
+  // one-sided shape, retuned.
   //
-  // It used to sample a 5.6 cm x 9 cm lattice. Measured on the canonical frame,
-  // that cell is 1.45 px across at the BOTTOM of the screen, 0.9 px at forty
-  // metres and 0.65 px at fifty, and the band limit — which watched x only and
-  // triggered at one whole lattice unit per pixel — held it at FULL amplitude
-  // through all of that. A term that is sub-Nyquist over its entire visible
-  // extent cannot be a texture; it can only be static, which is exactly what an
-  // unprompted reviewer called it. It swung albedo from x1.21 down to x0.115: a
-  // 8.6:1 salt-and-pepper on a surface whose whole business is being smooth.
+  // THE SHAPE IS WHY IT SURVIVED THE MATERIAL CHANGE. The residual of a real
+  // ground surface after a blur is skewed NEGATIVE: a lit ground carrying
+  // dark speckle, which on snow is the micro-shadow between grains and on
+  // rock is the micro-shadow between fragments. Same statistic, same cure —
+  // only the bottom of the noise darkens, written about its own mean so it
+  // does not shift the exposure the piste is calibrated to.
   //
-  // Now 30 cm x 75 cm, which is 8 px square at the bottom of frame, 3.5 px at
-  // fifty metres and gone by a hundred — a thing that recedes — and the swing is
-  // 2.3:1. It sits deliberately between the two bands the spectral comparison
-  // measures: coarser than the 0.33 m that reads as dirt, finer than the 0.8 m
-  // the large forms live in. Snow pitting seen from thirty metres is genuinely
-  // that size.
+  // DEEPER than snow's pitting, at 2.9:1 rather than 2.3:1, because that is
+  // the one number the two materials genuinely disagree on: snow scatters
+  // light into its own pits and rock does not.
   //
-  // The SHAPE is the other half, and it is unchanged. The reference's residual
-  // after a k=12 blur is skewed about -0.5: a bright ground carrying DARK speckle,
-  // which is the micro-shadow between grains and drift pits. So this is a PIT,
-  // not a wobble — only the bottom of the noise darkens — and it is written about
-  // its own mean so it does not shift the exposure the piste is calibrated to. A
-  // symmetric term, however fine, only raises the variance and stays a wash: it
-  // moves the residual's std and not its skew.
-  //
-  // NOT A HARD CELL. An early cut hashed the lattice directly and at a few pixels
-  // a cell the eye read the LATTICE and not the snow. Value noise is band limited,
-  // so it rolls off into the fade instead of folding.
-  //
-  // The 585 m wrap that used to be here is GONE — see h21s. It was buying the
-  // hash's entropy back by repeating the whole surface every 585 m, five times a
-  // run, measured at 0.78 autocorrelation. h21s now holds its entropy to 5 km on
-  // its own and this coordinate is the plain world position again.
-  //
-  // The scratch lines that used to sit between this and the drift are gone. They
-  // were an 11 cm x 53 cm ridged noise at ±32% albedo with no band limit at all —
-  // 2.9 px at the bottom of frame, 1.3 px at fifty metres — so they were a second
-  // helping of the same static, doing the same job as the granulation one octave
-  // up. Deleting them pays for the second corduroy scale and the drift above.
-  //
-  // ROTATED, both octaves, and on DIFFERENT angles. floor()-free value noise is
-  // still sampled on a lattice, and a lattice whose axes are the world's x and z
-  // is also, under a camera looking down the fall line, a lattice whose axes are
-  // the screen's — so once its cells become resolvable it stops reading as snow
-  // and starts reading as a woven grid of little rectangles. That is what the
-  // near piste came out as at bluebird, where the beam is real and every albedo
-  // term shows three times as hard as it does at first light: a visible mat of
-  // 8 px boxes. The sastrugi already solved this for itself two blocks up; the
-  // granulation had to as well. -35 degrees for the coarse octave and +25 for the
-  // fine, so the two do not line up with each other either. Four dot products.
+  // NOT A HARD CELL, and ROTATED on two different angles. Value noise is band
+  // limited so it rolls off into the fade instead of folding, and a lattice
+  // whose axes are the world's is also — under a camera looking down the fall
+  // line — a lattice whose axes are the screen's. Both octaves rotate, and on
+  // different angles, so they do not line up with each other either.
   const vec2 QX = vec2(2.7032, -1.8928);  // 30 cm across, -35 deg
   const vec2 QZ = vec2(0.7629,  1.0895);  // 92 cm along
-  vec2 gq = vec2(dot(vWorld.xz, QX), dot(vWorld.xz, QZ));
-  float gk = resolves(vec2(0.303, 0.752), mpp);
+  vec2  gq  = vec2(dot(vWorld.xz, QX), dot(vWorld.xz, QZ));
+  float gk  = resolves(vec2(0.303, 0.752), mpp);
   float pit = max(0.0, 0.52 - n21s(gq + 61.0)) - 0.10;
-  // Loose drifted snow is all granule shadow; wind crust is glazed and has almost
-  // none. Mean unchanged, so the exposure the piste is calibrated to does not move.
-  albedo *= 1.0 - 0.72 * (1.30 - 0.6 * scour) * pit * gk;
-  // AND A SECOND OCTAVE, 13 cm by 33 cm, which is the one that has to DIE.
+  // Shattered ground is all fragment shadow; an intact slab is smooth and has
+  // almost none. Damped on the track. Mean unchanged.
+  // 0.72, back to the depth the snow ran at rather than the 0.96 the first cut
+  // raised it to. The argument for deepening it was sound — rock does not
+  // scatter light into its own pits the way snow does — and it is still true;
+  // what the capture showed is that it was being made against the wrong
+  // backdrop. On a near-white piste a 2.9:1 pit is a texture. On a mid-value
+  // one it is most of the albedo's whole range, and the near field came out a
+  // mat of speckle with the jointing and the strata underneath it.
   //
-  // Coarsening the granulation fixed the static and then went straight past the
-  // target: with nothing left below 30 cm the foreground's per-pixel gradient
-  // fell from 6.9 to 3.5 against the reference's 7.0, and the share of variance
-  // above 0.15 cyc/px went from 27% to 1.2% against its 9.3%. Snow at thirty
-  // metres does have pixel-scale detail; what it does not have is the SAME
-  // pixel-scale detail at eighty.
+  // The depth rock genuinely has over snow is bought in the LIGHT instead, by
+  // the wrap and the shadow floor, where it costs nothing in the near field
+  // because neither of those is a per-pixel pattern.
+  albedo *= 1.0 - 0.72 * (1.30 - 0.6 * broken) * (1.0 - piste * 0.45) * pit * gk;
+  // AND A SECOND OCTAVE, 13 cm by 45 cm, which is the one that has to DIE.
   //
-  // So this octave is 3.4 px across at the bottom of frame, 1.6 px at forty
-  // metres and gone by fifty — resolves() cuts it exactly where it would begin to
-  // fold — while the octave above it carries on to a hundred. Two terms retiring
-  // at different depths is what a receding surface IS, and it is why the gradient
-  // can be steep near and smooth far instead of one flat number at both.
+  // Rock at thirty metres does have pixel-scale detail; what it does not have
+  // is the SAME pixel-scale detail at eighty. This octave is 3.4 px across at
+  // the bottom of frame, 1.6 px at forty metres and gone by fifty — resolves()
+  // cuts it exactly where it would begin to fold — while the octave above it
+  // carries on to a hundred. Two terms retiring at different depths is what a
+  // receding surface IS, and it is why the gradient can be steep near and
+  // smooth far instead of one flat number at both.
   //
-  // STRETCHED 3.5:1 down the fall line, not 2.5:1: the binding constraint on a
-  // fine cell is always the z footprint, which is 2.5 to 5 times the x one
-  // everywhere in frame, so widening the cell along the axis the camera crushes
-  // buys depth for nothing in the direction the eye reads detail — the lateral
-  // one. It is a balance and not a free lunch: at 6:1 the whole foreground came
-  // out combed, a fibrous mat of long streaks that reads as brushed fur rather
-  // than as snow, because the sastrugi above is already anisotropic in nearly the
-  // same direction and the two stacked.
-  // SYMMETRIC, where the octave above it is a pit, and that is deliberate. The
-  // pit shape is what carries the residual's negative skew — bright snow with
-  // dark specks in it, which is what the reference measures at about -0.5 — and
-  // stacking a second one-sided term on top of it took the skew to -1.25, twice
-  // as far the other side. One pit for the skew and one symmetric octave for the
-  // variance lands both.
+  // SYMMETRIC, where the octave above it is a pit, and that is deliberate.
+  // The pit carries the residual's negative skew; stacking a second one-sided
+  // term on it took the skew to twice as far the other side. One pit for the
+  // skew and one symmetric octave for the variance lands both.
   const vec2 FX = vec2(6.9792, 3.2542);   // 13 cm across, +25 deg
   const vec2 FZ = vec2(-0.9298, 1.9938);  // 45 cm along
-  vec2 gf = vec2(dot(vWorld.xz, FX), dot(vWorld.xz, FZ));
+  vec2  gf = vec2(dot(vWorld.xz, FX), dot(vWorld.xz, FZ));
   float fk = resolves(vec2(0.130, 0.455), mpp);
-  albedo *= 1.0 + 1.55 * fk * (n21s(gf + 23.0) - 0.5);
-
+  // 0.95, DOWN from the 1.55 the snow ran. That number was solved to put back
+  // a per-pixel gradient that coarsening the octave above it had taken away,
+  // against a surface whose other terms were a 3.4% groomer trough and a
+  // 9% ripple drift — nothing else in the near field had any contrast in it.
+  // This surface has jointing at nearly twice the tilt and strata on top, so
+  // the same amplitude arrives on a frame that is already busy and reads as a
+  // woven mat of speckle laid over the rock rather than as the rock's own
+  // grain. Measured on the first capture, where it was the only thing visible
+  // in the near field.
+  albedo *= 1.0 + 0.95 * fk * (n21s(gf + 23.0) - 0.5);
   // ── light ───────────────────────────────────────────────────────────────
   //
   // THE SUN HAS TO CLEAR THE RANGE BEFORE IT REACHES YOU. "first light" means
@@ -979,17 +1039,35 @@ void main() {
   // read as a carpet hovering over a hole. The face needs to keep a little of
   // its true incidence so its curvature — and therefore its solidity — reads.
   ndl = mix(ndl, 0.30, vKick * 0.35);
-  // A tighter wrap than real snow. The physically honest 0.62 scattered light
-  // so far past the terminator that every facet and every slope change shaded
-  // to nearly the same value — the whole mountain compressed into one pale
-  // band and read as glass. Solidity needs light that takes sides.
-  float wrap = clamp((ndl + 0.35) / 1.35, 0.0, 1.0);
-  // Shadowed snow keeps a little direct light: it is translucent, and terrain
-  // shadow edges in real snow are soft and blue rather than hard and black.
-  // Shadowed snow is much darker than lit snow but never dark: it is lit by the
-  // whole sky and by light scattering through the snow itself. At 0.14 the
-  // shadows swallowed all the shape they were added to reveal.
-  float shade = mix(0.26, 1.0, max(vShade, vKick * 0.65));
+  // ROCK DOES NOT WRAP, and this is the single line that buys the most drama
+  // per character in the file.
+  //
+  // Snow is so forward-scattering that light carries far past the terminator,
+  // and this shader's whole first paragraph used to be about that: the wrap
+  // was the reason the surface read as snow at all. It had already been
+  // tightened once, from the physically honest 0.62 down to 0.35, because
+  // even real snow's wrap flattened the mountain into one pale band.
+  //
+  // Rock scatters almost nothing. At 0.12 the terminator is nearly where the
+  // geometry says it is, so a bed, a joint and a facet each have a lit side
+  // and a dark side instead of two brightnesses of the same grey — and the
+  // whole reason to build strata and jointing in the first place is that
+  // light takes sides across them. A wide wrap would have quietly deleted
+  // both terms. This is not a taste setting; it is what makes the two blocks
+  // above visible.
+  float wrap = clamp((ndl + 0.12) / 1.12, 0.0, 1.0);
+  // SHADOWED ROCK GOES FURTHER DOWN THAN SHADOWED SNOW, for the same reason.
+  // Snow's shadows stay bright because light enters the surface and comes
+  // back out of it somewhere else; rock's do not, and what is left in them is
+  // the sky alone. 0.26 was the measured floor for a translucent surface and
+  // it is simply wrong for an opaque one — it was lifting every cast shadow
+  // on the mountain a quarter of the way back to full light.
+  //
+  // NOT TO ZERO. The ambient term below is still the sky dome, which is real
+  // light arriving in a real shadow, and this multiplies the DIRECT term
+  // only. 0.15 is a hard shadow with shape left in it; it was measured at
+  // 0.14 once before, for snow, and called too dark — on rock it reads.
+  float shade = mix(0.15, 1.0, max(vShade, vKick * 0.65));
 
   // Is there a beam here at all? One mad and one smoothstep, in the hottest
   // shader in the game.
@@ -1097,7 +1175,18 @@ void main() {
   float graze = 4.0 * gt * (1.0 - gt);
   graze *= graze;
   float nh = max(dot(N, H), 0.0);
-  float sheen = graze * (0.35 + 0.65 * nh * nh * nh) * 0.205 * (1.0 - rock);
+  // CUT TO A THIRD, AND KEPT. The hump itself is the reason the ground reads
+  // as rolling away under the camera rather than as a backdrop hung behind
+  // it, and that is a property of the GEOMETRY and the camera, not of the
+  // material — delete it and the piste goes back to being a flat ramp
+  // whatever it is made of.
+  //
+  // What was material-specific is the AMPLITUDE. 0.205 is forward scattering
+  // through a translucent surface, which rock does not do. What a dusty rock
+  // surface does at a grazing angle is a weak backscatter off the dust lying
+  // on it, which is the same shape an order of magnitude down. 0.068, and it
+  // now reads as haze on the ground instead of as light coming through it.
+  float sheen = graze * (0.35 + 0.65 * nh * nh * nh) * 0.068 * (1.0 - rock);
 
   // ── sparkle ─────────────────────────────────────────────────────────────
   // BAND LIMITED, but NOT COARSENED — coarsening was tried and it is worse than
@@ -1127,7 +1216,26 @@ void main() {
   float lit = step(0.62, hash13(cell + 7.3));
   float near = (1.0 - smoothstep(30.0, 190.0, camDist))
              * smoothstep(0.25, 0.70, sqrt((0.042 / mpp.x) * (0.042 / mpp.y)));
-  float sparkle = glint * lit * near * uSparkle * (1.0 - rock) * vShade;
+  // MICA, NOT ICE — a fifth of the amplitude, and only on broken ground.
+  //
+  // The term is kept rather than deleted, and the reasoning is the same shape
+  // as the sheen's one block up. Everything above this line describes a sparse
+  // point process whose cells are deliberately sub-pixel and whose footprint
+  // gate was solved against a measured camera; all of that is about how to
+  // draw scattered glints without them crawling, and it is as true of a
+  // cleaved mineral face as it is of an ice crystal.
+  //
+  // What is NOT true of rock is the DENSITY. Every square centimetre of snow
+  // catches the light; a crystal face in rock is a rare event on a fresh
+  // break and absent on a weathered slab. So this runs at 0.21 of what it
+  // did, and it is multiplied by the broken field, which already says where
+  // the ground has shattered. An intact slab and the worn track get none.
+  //
+  // uSparkle itself is untouched — it is a mood field, it rides the arc from
+  // 0.10 in the void to 1.7 at high xenon, and that arc is about how hard the
+  // light is, which is a property of the hour and not of the ground.
+  float sparkle = glint * lit * near * uSparkle * 0.21 * broken
+                * (1.0 - rock) * (1.0 - piste * 0.8) * vShade;
 
   vec3 col = albedo * (direct + ambient) + uSunColor * (sheen + sparkle);
 
