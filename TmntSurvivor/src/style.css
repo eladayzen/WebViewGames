@@ -20,3 +20,49 @@ canvas { display: block; touch-action: none; }
   color: #9fb4cc; background: rgba(10, 13, 20, 0.6);
   padding: 6px 10px; border-radius: 8px; pointer-events: none;
 }
+
+/* --- the run readout ----------------------------------------------------- */
+#hud {
+  position: fixed; left: 14px; top: 12px; right: 14px; z-index: 20;
+  font: 600 15px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #9fb4cc; background: rgba(10, 13, 20, 0.6);
+  padding: 7px 11px; border-radius: 8px; pointer-events: none;
+}
+
+/* --- the level-up choice -------------------------------------------------
+   Three cards across the screen, in the same left/centre/right order as the
+   lean that picks them. The order is the instruction: nothing says "this card
+   is the left one" except that it IS the left one. */
+#levelup {
+  position: fixed; inset: 0; z-index: 30;
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 2.2vmin; padding: 8vmin 4vmin;
+  background: rgba(8, 11, 17, 0.82);
+  pointer-events: none;
+}
+#levelup.hidden { display: none; }
+
+.card {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: space-between;
+  border: 3px solid #27405e; border-radius: 18px;
+  background: #121a26; padding: 3vmin 2.4vmin;
+  transition: border-color 120ms, transform 120ms;
+}
+.card.sel { border-color: #5fd38a; transform: translateY(-1.2vmin); }
+
+/* The hold fill. Grows left to right behind the text; `transform` rather than
+   `width` so it never triggers layout while the horde is paused behind it. */
+.card-fill {
+  position: absolute; inset: 0; transform-origin: left center; transform: scaleX(0);
+  background: rgba(95, 211, 138, 0.22);
+}
+.card-body { position: relative; }
+.card-name  { font: 800 3.4vmin/1.1 system-ui, sans-serif; color: #eaf6ff; letter-spacing: 0.02em; }
+.card-blurb { margin-top: 1vmin; font: 500 2.1vmin/1.3 system-ui, sans-serif; color: #9fb4cc; }
+.card-have  { margin-top: 1.4vmin; font: 700 1.8vmin system-ui, sans-serif; color: #ffd166; }
+.card-lean  {
+  position: relative; text-align: center;
+  font: 800 2vmin ui-monospace, Menlo, monospace; color: #5c7490; letter-spacing: 0.08em;
+}
+.card.sel .card-lean { color: #5fd38a; }

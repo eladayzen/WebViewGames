@@ -71,11 +71,15 @@
 
     <div id="stage"><canvas id="game"></canvas></div>
 
-    <!-- PROTOTYPE 1 READOUT. Movement is the only thing being judged here, so
-         the only thing on screen besides the world is the number that says how
-         hard the board is being leaned. Deleted when this stops being a
-         movement prototype. -->
-    <div id="readout"></div>
+    <!-- Everything below is instrumentation for an unthemed build: the state
+         of the run in text, and the three cards. Both get replaced by real UI
+         once the loop is worth looking at rather than worth reading. -->
+    <div id="hud"></div>
+
+    <!-- THE LEVEL-UP CHOICE. Three cards, picked by leaning and committed by
+         holding -- see src/core/levelup.js for why holding, and why there is
+         a grace period before the hold counts. -->
+    <div id="levelup" class="hidden"></div>
 
     <script type="module" src="/src/main.js"></script>
   </body>

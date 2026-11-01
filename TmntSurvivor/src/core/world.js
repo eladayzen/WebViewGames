@@ -20,12 +20,33 @@ export const WORLD = {
 export const DESIGN_W = 1920;
 export const DESIGN_H = 1080;
 
+export const PLAYER_RADIUS = 42;
+
 export function createWorld() {
   return {
     player: { x: WORLD.width / 2, y: WORLD.height / 2, facing: 0 },
+    playerRadius: PLAYER_RADIUS,
     camera: { x: WORLD.width / 2, y: WORLD.height / 2 },
     distanceWalked: 0,
     timeS: 0,
+
+    // --- the run ----------------------------------------------------------
+    enemies: [],
+    bullets: [],
+    gems: [],
+    fireT: 0,
+    orbitPhase: 0,
+    kills: 0,
+    contact: false,
+
+    // --- the loop ---------------------------------------------------------
+    // XP is a count of gems, not of points. Score and XP being the same
+    // number is a rule Bloop Squad learned the hard way, but a horde game has
+    // no score yet -- when it gets one, they should be the same number there
+    // too, awarded by one function so they cannot drift apart.
+    xp: 0,
+    level: 1,
+    choice: null,       // non-null means the run is paused on a level-up
   };
 }
 
@@ -45,8 +66,9 @@ export function updateWorld(w, input, dt) {
   const p = w.player;
   const before = { x: p.x, y: p.y };
 
-  p.x += input.x * TUNING_SPEED() * dt;
-  p.y += input.y * TUNING_SPEED() * dt;
+  const speed = TUNING_SPEED() * (w.speedMul || 1);
+  p.x += input.x * speed * dt;
+  p.y += input.y * speed * dt;
 
   // Bounded. Walking into the edge stops you rather than scrolling nothing.
   p.x = Math.max(0, Math.min(WORLD.width, p.x));
