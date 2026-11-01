@@ -33,6 +33,7 @@ import { installLogRing, formatLog } from './shared/bobo-ui/logring.js';
 installLogRing();
 import { Course, ReferenceRun, planGates, planKickers } from './course.js';
 import { Pickups } from './pickups.js';
+import { Combat } from './combat.js';
 import { createFinishLine } from './finishLine.js';
 import { createStartLine } from './startLine.js';
 import { createRivals } from './rivals.js';
@@ -916,6 +917,31 @@ class Game {
       kickers: this.kickers.map((k) => ({ p: Math.round(k.p), t: +k.t.toFixed(1), u: +k.u.toFixed(1), h: +k.h.toFixed(1) })),
       pRate: +this.course.pRate.toFixed(2),
       planIdx: this.course.planIdx,
+      // ── THE GUN, AS NUMBERS ────────────────────────────────────────────
+      // Combat is the one system in this game with no visible state to screenshot
+      // between events: a frame either has a bolt in it or it does not, and
+      // "did the gun acquire that drone" is invisible either way. So the probe
+      // carries the live target and every drone the corridor could reach, with
+      // the along/across pair the acquisition test is actually made on --
+      // `combatqa.mjs` asserts on these rather than on pixels.
+      combat: {
+        shots: this.combat.stats.shots,
+        kills: this.combat.stats.kills,
+        sweeps: this.combat.stats.sweeps,
+        escaped: this.combat.stats.escaped,
+        points: this.combat.stats.points,
+        enabled: this.combat.enabled,
+        bolts: this.combat.bolts.filter((b) => b.live).length,
+        target: this.combat.target
+          ? { ahead: +(this.combat.target.p - this.rider.p).toFixed(1),
+              u: +this.combat.target.u.toFixed(1) }
+          : null,
+        drones: this.combat.aheadOf(this.rider).map((d) => ({
+          ahead: +d.ahead.toFixed(1), u: +d.u.toFixed(1),
+          along: +d.along.toFixed(1), across: +d.across.toFixed(1),
+          width: +d.width.toFixed(1), inCorridor: d.inCorridor, dead: d.dead,
+        })),
+      },
     });
 
     /** Height of the surface AS DRAWN — what the camera must stay above. QA. */
@@ -1060,8 +1086,38 @@ class Game {
       // see timer.js on why the streak may multiply the chain and never this.
       if (this.state === 'play') this._grantTime(CLOCK.mote, null);
     };
+      // ── THE DRONES AND THE GUN ───────────────────────────────────────
+      // After the Pickups, because it shares their banded-placement shape and
+      // belongs next to them in any reading of the world; before the particles,
+      // because its hooks are wired below once there is something to emit.
+      this.combat = new Combat(this.terrain, this.scene, this.mood, SEED);
       this.particles = new Particles(this.scene, 900);
       this.snowfall = new Snowfall(this.scene, 800, 64);
+      // The gun's feedback, wired here rather than inside `combat.js`, which
+      // imports neither the audio nor the particles on purpose: it decides WHAT
+      // happened and this file decides what that looks and sounds like. Same
+      // separation as `pickups.onMote`.
+      // `Particles.emit` reads .r/.g/.b off its colour, so these are Colors and
+      // not hex literals -- built once rather than per shot, which at a bolt
+      // every 0.36 s is the difference between no garbage and a steady drip.
+      const MUZZLE_COL = new THREE.Color(0xffd9a0);
+      const KILL_COL = new THREE.Color(0xff6a1f);
+      const burstAt = new THREE.Vector3();
+      this.combat.onShot = (origin) => {
+        this.audio.blaster();
+        // A muzzle flash, and a small one. It fires every 0.36 s through a
+        // whole squad, so anything bigger becomes a strobe on the player's own
+        // board -- which is the mistake the cut screen-space speed streaks
+        // already made once ("looks bad").
+        this.particles.emit(origin, MUZZLE_COL,
+          { count: 5, speed: 9, size: 1.1, life: 0.16, spread: 0.5, up: 1 });
+      };
+      this.combat.onKill = (drone, squad) => {
+        this.audio.droneDown(squad.killed - 1);
+        burstAt.set(drone.x, drone.y, drone.z);
+        this.particles.emit(burstAt, KILL_COL,
+          { count: 26, speed: 15, size: 1.9, life: 0.75, spread: 1, up: 3 });
+      };
       this._bloomOn = Game._bloomOn(this.host.transport);
       this.post = new Post(this.renderer, this.scene, this.camera, this._bloomOn);
       console.log(`[carve] bloom ${this._bloomOn ? 'on' : 'off'} (${this.host.transport})`);
@@ -1123,7 +1179,7 @@ class Game {
 
       this.litMaterials = [
         ...this.rider.materials, ...this.scatter.materials, ...this.course.materials,
-        ...this.pickups.materials,
+        ...this.pickups.materials, ...this.combat.materials,
         // Player two's rider is lit like every other object. Left out of this
         // list it never got uFogBase/uCamPos and rode as a pale fog ghost --
         // the same failure the rivals' jerseys had (see the frame loop).
@@ -1299,6 +1355,9 @@ class Game {
     this.particles.clear();
     this.course.reset(p);
     this.pickups.reset(p);
+    // Bolts in the air are dropped here too, or a seek teleports the rider out
+    // from under a shot that then chases them down the next stretch.
+    this.combat.reset(p);
     // Fast-forward the plan so gates are not spawned for beats already past.
     while (this.course.planIdx < this.gatePlan.length
       && this.gatePlan[this.course.planIdx].t < t) this.course.planIdx++;
@@ -3553,6 +3612,32 @@ class Game {
           { big: m >= CLOCK.chainMultCap, color: '#97d700' });
       }
       this.audio.driftLine(ev.taken, ev.total, ev.full);
+    }
+    // ── THE GUN ──────────────────────────────────────────────────────────
+    // Drones stream on the title screen too, for the same reason the drift
+    // lines do -- an attract loop with an empty hill is a different game from
+    // the one the player is about to start. `live` is what keeps the attract
+    // rider from shooting them.
+    //
+    // AFTER the pickups and BEFORE `updateLitCommon`, which is not arbitrary:
+    // the pods are lit by the shared model, so they have to exist in their
+    // final frame positions before the common uniforms are pushed, or they
+    // ride one frame behind the fog they are standing in.
+    for (const ev of this.combat.update(dt, this.rider, this.state === 'play')) {
+      this._award(ev.points, ev.label, { big: ev.type === 'sweep', color: ev.color });
+      // A SWEPT SQUAD PAYS THE CLOCK AND A KILL DOES NOT. See CLOCK.squad in
+      // timer.js for the argument; the short version is that one ceilinged
+      // payment per formation is the smallest shape that could work, and
+      // twenty time events a run is not a shape at all.
+      if (ev.type === 'sweep') {
+        this.audio.squadSwept(ev.total);
+        if (this.state === 'play' && this._mode?.usesClock !== false) {
+          // A DIFFERENT WORD FROM THE SCORE CALLOUT ABOVE, deliberately. Both
+          // fire on the same event and two identical lines reads as a bug in
+          // the HUD rather than as two currencies being paid.
+          this._grantTime(CLOCK.squad, 'drones down', { color: '#ff8a3d' });
+        }
+      }
     }
     // The mountain owns the sun floor — it derives it from the mood's sun
     // elevation every frame — and every other lit object borrows it, so trees,

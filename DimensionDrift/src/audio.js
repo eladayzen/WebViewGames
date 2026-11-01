@@ -1033,6 +1033,69 @@ export class Audio {
   }
 
   /**
+   * The gun. One per bolt leaving the board, so it fires every 0.36 s while a
+   * squad is in the corridor.
+   *
+   * SHORT AND DARK, AND THAT IS THE WHOLE SPEC. This is the most repeated
+   * sound in the game by a wide margin -- a run with four squads in it plays
+   * twenty of these -- and the two failure modes are both fatal: a bright one
+   * fights the music for the top of the mix every time it fires, and a long
+   * one overlaps itself into a drone. 80 ms of falling triangle with a noise
+   * tick under it stays under the track and still cuts through the ride bed.
+   *
+   * It descends rather than rising, which is the opposite of `pickup`. That
+   * ladder climbs because the value climbs; this one is not a reward, it is
+   * the report of a machine doing its job, and a rising shot would promise a
+   * payoff that only arrives if the bolt connects.
+   */
+  blaster() {
+    // Never two on the same instant. The gun is cooldown-gated so it cannot
+    // legitimately double up, but a stalled frame hands the whole backlog to
+    // one call -- the same clamp, for the same reason, as `pickup`.
+    const now = this.ctx.currentTime;
+    const at = Math.min(now + 0.12, Math.max(now, (this._shotAt ?? 0) + 0.035));
+    this._shotAt = at;
+    this._tone(880, 220, {
+      type: 'triangle', attack: 0.002, decay: 0.075, gain: 0.085, delay: at - now,
+    });
+    this._burst({
+      duration: 0.055, gain: 0.07, from: 5200, to: 1400, type: 'bandpass', q: 1.6,
+      delay: at - now,
+    });
+  }
+
+  /**
+   * A drone coming apart. One per kill.
+   *
+   * Pitched DOWN the formation, which is the inverse of the mote ladder on
+   * purpose: a drift line is a thing you are accumulating and it should feel
+   * like it is going somewhere, while a squad is a thing you are taking apart
+   * and the last one should land lower and heavier than the first.
+   *
+   * @param {number} k how many have already been killed in this squad, 0-based
+   */
+  droneDown(k = 0) {
+    const f = 300 * Math.pow(2, -k / 12);
+    this._burst({ duration: 0.26, gain: 0.26, from: 2600, to: 180, type: 'lowpass', q: 0.9 });
+    this._tone(f, f * 0.45, { type: 'sawtooth', attack: 0.004, decay: 0.22, gain: 0.13 });
+  }
+
+  /**
+   * A squad taken whole. One event per formation, matching how it is scored.
+   *
+   * A fifth over the root, which is the same interval `driftLine` uses for a
+   * clean line -- the two best things a rider can do between gates resolve on
+   * the same consonance, so the ear learns one shape and reads both.
+   */
+  squadSwept(n = 2) {
+    const big = n >= 3;
+    [0, 7, big ? 12 : 10].forEach((semi, i) => this._tone(
+      329.63 * Math.pow(2, semi / 12), 329.63 * Math.pow(2, semi / 12),
+      { type: 'triangle', attack: 0.006, decay: 0.26, gain: 0.13, delay: i * 0.05 },
+    ));
+  }
+
+  /**
    * A drift line settling. One event per chain, matching how it is scored.
    *
    * A whole line is worth about three gates and is the best thing a rider can

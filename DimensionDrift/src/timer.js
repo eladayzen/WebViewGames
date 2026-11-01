@@ -106,6 +106,22 @@ export const CLOCK = {
   /** How far the streak may multiply the chain bonus. Three, not eight. */
   chainMultCap: 3,
   /**
+   * A SQUAD OF DRONES TAKEN WHOLE, and nothing for a squad taken in part.
+   *
+   * The clock has exactly one new income stream in it since the drift lines,
+   * and it is deliberately the smallest shape that could work: one payment,
+   * on the rarest event combat produces. Squads arrive every ~113 m and a
+   * sweep means every drone in the formation, so this has a hard ceiling that
+   * riding well cannot lift -- the same argument that keeps the streak off
+   * `mote`, applied before the balance was there to break.
+   *
+   * A kill pays SCORE and no time at all (see `combat.js`). Paying both per
+   * kill would have put twenty time events into a run and made the clock a
+   * function of how many machines were on the hill rather than of how well
+   * the hill was ridden.
+   */
+  squad: 4.0,
+  /**
    * A wipeout. NOT scaled with the rest — see the x5 note in the header. At
    * -25 a crash would cost five motes and put back exactly the difficulty the
    * x5 was there to remove; at -10 it is two motes, which is felt without being

@@ -30,12 +30,15 @@
 // clock mode it would only have been a second charge on top of the seconds.
 //
 // ── WHAT THE COURSE CARRIES ─────────────────────────────────────────────────
-// Motes are OFF (`pickups.setEnabled(false)`). They feed the clock, and there is
-// no clock; riding through a currency you cannot spend is an invitation to
-// detour for nothing. HillBomb dropped its crystals from the race course for the
-// same reason and put it better: "a contest decided by speed should not also be
-// asking you to detour for points, and the two pickups would compete for the
-// same glance."
+// Motes and DRONES are OFF (`setEnabled(false)` on both). Motes feed the clock
+// and there is no clock, so riding through a currency you cannot spend is an
+// invitation to detour for nothing. The drones are off for the stronger half of
+// the same argument: the gun is steered by pointing the board, so a squad
+// across the piste charges a contest decided by speed in exactly the currency
+// the contest is measured in. HillBomb dropped its crystals from the race
+// course for this reason and put it better: "a contest decided by speed should
+// not also be asking you to detour for points, and the two pickups would
+// compete for the same glance."
 //
 // The slalom gates STAY. They are what carve is, and the lean-as-a-force
 // question the whole game exists to answer is asked by a slalom.
@@ -443,6 +446,12 @@ export default registerMode({
         // keep a second copy that can drift.
         game.finishP = finishP;
         game.pickups.setEnabled(false);
+        // AND THE DRONES, for the same reason and not a weaker one. The gun is
+        // steered by pointing the board, so a squad across the piste is a
+        // detour priced in heading -- which is precisely the thing a contest
+        // decided by speed must not also be charging for. The two would compete
+        // for the same glance as the gates, and the gates are what carve is.
+        game.combat.setEnabled(false);
         game.finishLine.place(game.terrain, finishP);
         // No gates past the line — see `Course.limitP`. A little short of it,
         // so a gate never straddles the banner.
@@ -706,6 +715,7 @@ export default registerMode({
         // chill vibe descent, which is the exact thing `stop()` exists for.
         game.rivals.despawn();
         game.pickups.setEnabled(true);
+        game.combat.setEnabled(true);
       },
     };
   },

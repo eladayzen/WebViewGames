@@ -14,12 +14,28 @@ Stage one, which is **web only**. No Unity drop, no StreamingAssets folder, no
 `manifest.txt`, no `.meta` files, no lobby tile. The game builds and runs in a
 browser and nothing more is claimed.
 
-What is **still carve** and has not been themed yet: the mountain, the snow, the
-sunrise, the rider, the soundtrack. The Dimension X look, the hoverboards, the
-turtles and the projectile combat are all ahead. The one piece of theming
-already done is the asset namespace — `/audio/carve/*` became `/audio/*` and
-`tracks/carve.json` became `tracks/drift.json`, so the old game's name is not
-baked into this one's shipped paths.
+**Themed so far:** the light (five Dimension X mood stops in `src/mood.js`, in
+place of carve's five alpine hours), the forest (crystal spires, not conifers),
+the far range (a `shatter` profile of broken plates, not rolling massifs), the
+four places and their names, and the asset namespace — `/audio/carve/*` became
+`/audio/*` and `tracks/carve.json` became `tracks/drift.json`, so the old game's
+name is not baked into this one's shipped paths.
+
+**New, and not in carve at all:** the drones and the gun (`src/combat.js`).
+
+**Still carve, still ahead:** the ground texture, the rider, the board (it is
+still a snowboard), the turtles, the soundtrack.
+
+### The one rule the re-theme has kept throughout
+
+Difficulty has not moved. `TREE_R`, the tree density, the clumping, the reach,
+the inside-piste and margin counts, the obstacle lane and the race's blockers
+are all exactly the numbers carve was tuned on. The crystal spires replaced the
+conifers at the same collision radius; the drones hover above a standing rider's
+head and have no collider at all. Every change so far is a change to what the
+mountain LOOKS like or to what you can earn on it, never to what can hurt you.
+That is a decision and it should be spent deliberately, not leaked into a
+feature pass.
 
 ## Running it
 
@@ -29,6 +45,9 @@ npm run dev        # http://localhost:5173
 npm run build      # -> dist/
 npm test           # 11 unit tests, no browser needed
 node bootqa.mjs    # builds nothing; serves dist/ and proves the game RUNS
+node combatqa.mjs  # does the gun actually hit anything?
+node lookqa.mjs --tag <name>   # the canonical look captures
+node moodmetrics.mjs           # the palette, as six measured bands
 ```
 
 `npm test` and `bootqa.mjs` are separate on purpose: the first needs no browser
@@ -102,6 +121,12 @@ test: reintroducing the exact bug turns three of its cases red.
   its title screen, with no 404s and no console errors. A green `vite build`
   proves the modules parsed and nothing else; this port changed every asset URL
   in the game, which is exactly what a green build cannot see.
+- `combatqa.mjs` — rides a measured kilometre and reports shots, kills, sweeps,
+  escapes and the hit rate, then re-tests the same live drones against a heading
+  forty degrees off to prove the targeting corridor actually constrains. Combat
+  has no visible state between events — a frame either has a bolt in it or it
+  does not — so `lookqa.mjs` cannot see this feature at all and a gun that
+  silently never fired would pass every other gate here.
 
 The suite names its files one by one rather than globbing. `node --test` pointed
 at a directory, or at a glob matching nothing, runs zero tests and exits 0 —
