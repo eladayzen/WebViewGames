@@ -63,3 +63,15 @@ test('the player is visibly flickering while invulnerable', () => {
   }
   assert.ok(seenOn && seenOff, 'a window the player cannot see reads as the game missing them');
 });
+
+test('HEALING NEVER EXCEEDS THE POOL', async () => {
+  const { heal, SURVIVAL } = await import('../src/systems/survival.js');
+  const w = { lives: SURVIVAL.maxLives - 1 };
+  assert.equal(heal(w, 1), SURVIVAL.maxLives);
+  assert.equal(heal(w, 5), SURVIVAL.maxLives, 'a heart at full health is not banked');
+});
+
+test('the pool is much bigger than Bloop Squad’s five', async () => {
+  const { SURVIVAL } = await import('../src/systems/survival.js');
+  assert.ok(SURVIVAL.maxLives >= 10);
+});

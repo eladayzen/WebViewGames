@@ -47,6 +47,13 @@ export const ENEMY = {
 
 export const GEM = { radius: 13, value: 1 };
 
+export const HEART = {
+  radius: 19,
+  // How often a kill leaves one. Low enough that finding one is an event,
+  // high enough that a long run is not a slow slide to zero.
+  dropChance: num('hdrop', 0.07),
+};
+
 /**
  * How many should be alive right now.
  *
@@ -110,10 +117,33 @@ export function updateHorde(w, dt, rng = Math.random) {
 }
 
 /** Kill it, and leave a gem where it fell. */
-export function killEnemy(w, e) {
+export function killEnemy(w, e, rng = Math.random) {
   e.alive = false;
   w.gems.push({ x: e.x, y: e.y, alive: true });
+  if (rng() < HEART.dropChance) w.hearts.push({ x: e.x, y: e.y, alive: true });
   w.kills += 1;
+}
+
+/**
+ * Hearts, which are NOT magnetised, and that is the whole design of them.
+ *
+ * Gems come to you: collecting them is not a decision, it is a reward for
+ * killing. A heart makes you GO AND GET IT -- usually back through the gap
+ * the horde just came from, because that is where the thing died. The player
+ * weighs the walk against the heart, every time, and that is a real decision
+ * made with nothing but movement, which is the only verb this game has.
+ *
+ * Give them a magnet and they become gems with a different colour.
+ */
+export function updateHearts(w, onCollect) {
+  for (const h of w.hearts) {
+    if (!h.alive) continue;
+    if (Math.hypot(w.player.x - h.x, w.player.y - h.y) < w.playerRadius + HEART.radius) {
+      h.alive = false;
+      onCollect(1);
+    }
+  }
+  if (w.hearts.length > 60) w.hearts = w.hearts.filter((h) => h.alive);
 }
 
 /**

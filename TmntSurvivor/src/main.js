@@ -19,9 +19,9 @@ import {
 } from './core/world.js';
 import { createBuild, stats, draw, take, xpForLevel, ABILITIES } from './core/abilities.js';
 import { createChoice, updateChoice, holdProgress, CHOOSE } from './core/levelup.js';
-import { updateHorde, updateGems, compactEnemies, ENEMY, GEM } from './systems/horde.js';
+import { updateHorde, updateGems, updateHearts, compactEnemies, ENEMY, GEM, HEART } from './systems/horde.js';
 import { updateFiring, updateBullets, updateOrbiters, BULLET, ORBIT } from './systems/combat.js';
-import { updateSurvival, blinking } from './systems/survival.js';
+import { updateSurvival, blinking, heal, SURVIVAL } from './systems/survival.js';
 import './style.css';
 
 __setSpeedSource(() => TUNING.speedPxS);
@@ -71,6 +71,7 @@ async function boot() {
   world.addChild(gfxGems, gfxEnemies, gfxBullets, gfxPlayer);
 
   const w = createWorld();
+  w.lives = SURVIVAL.maxLives;
   let build = createBuild();
   let st = stats(build);
   w.speedMul = st.speedPxS;
@@ -86,6 +87,7 @@ async function boot() {
   document.getElementById('restart-button').addEventListener('click', () => {
     const fresh = createWorld();
     Object.keys(fresh).forEach((k) => { w[k] = fresh[k]; });
+    w.lives = SURVIVAL.maxLives;
     build = createBuild();
     st = stats(build);
     w.speedMul = st.speedPxS;
@@ -161,6 +163,7 @@ async function boot() {
         openLevelUp();
       }
     });
+    updateHearts(w, () => heal(w, 1));
     compactEnemies(w);
 
     if (updateSurvival(w, dt)) {
@@ -176,6 +179,12 @@ async function boot() {
     for (const g of w.gems) {
       if (!g.alive) continue;
       gfxGems.circle(g.x, g.y, GEM.radius).fill({ color: 0x4fd1ff });
+    }
+
+    for (const h of w.hearts) {
+      if (!h.alive) continue;
+      gfxGems.circle(h.x, h.y, HEART.radius).fill({ color: 0xff6b8a });
+      gfxGems.circle(h.x, h.y, HEART.radius * 0.45).fill({ color: 0xffd9e1 });
     }
 
     gfxEnemies.clear();
@@ -218,7 +227,7 @@ async function boot() {
     if (hud) {
       const need = xpForLevel(w.level);
       hud.textContent =
-        `${'\u2665'.repeat(w.lives)}${'\u00b7'.repeat(Math.max(0, 5 - w.lives))}   ` +
+        `\u2665 ${w.lives}/${SURVIVAL.maxLives}   ` +
         `LV ${w.level}   xp ${w.xp}/${need}   kills ${w.kills}   ` +
         `horde ${w.enemies.filter((e) => e.alive).length}   ` +
         `${Object.entries(build).filter(([, v]) => v > 0)

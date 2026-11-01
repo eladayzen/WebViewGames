@@ -34,15 +34,16 @@ export function createWorld() {
     enemies: [],
     bullets: [],
     gems: [],
+    // Dropped hearts. A separate list from gems because they behave
+    // differently on purpose -- see systems/horde.js.
+    hearts: [],
     fireT: 0,
     orbitPhase: 0,
     kills: 0,
     contact: false,
 
     // --- staying alive ----------------------------------------------------
-    // Five, the same as Bloop Squad's co-op pool, because a number a child
-    // has already learned in one game should mean the same in the next.
-    lives: 5,
+    lives: 0,          // filled from SURVIVAL.maxLives at boot
     // INVULNERABILITY AFTER A HIT, and it is not generosity. Enemies converge,
     // so the frame you are touched you are usually touching three of them --
     // without a window, one mistake is the whole run, and the player never
