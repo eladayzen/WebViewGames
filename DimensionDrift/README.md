@@ -113,6 +113,30 @@ should organise its frame around, and **"down the hill" is about to stop being
 the only direction**. The movement change comes next; building the camera first
 means it arrives into a frame that can show it.
 
+**And the ground is not drawn.** A proof of concept — *"hide the ground I am
+flying through, make it look like I am flying in the sky."* It is a **drawing
+change and nothing else**: the mountain is still there, the rider still rides
+it, the camera still clears it, the drones still hover a measured distance over
+it and every band is still placed against it. Nothing in the simulation knows.
+
+Hiding the terrain alone does not give you sky — it gives you a **contour map**,
+because everything standing on the ground carries on standing exactly where the
+ground was. So the forest, the rocks, the marker poles, the gate marks and the
+rider's cast shadow go with it. Two predictions were wrong and the captures
+corrected them: the **carve trail** was supposed to read as a contrail and reads
+as a dark road (it is shaded as a groove cut in snow); the **gates** were
+supposed to read as rings to fly through and instead drew a dead-level line of
+flags at exactly the height the floor used to be. Both are off.
+
+The change that actually sells it is **islands below you**. They normally sit
+120–290 m above the fall line because normally there is a mountain in the way;
+with the ground gone, everything was overhead and the lower half of every frame
+was an empty wash. Parallax underneath is the only cue that says altitude.
+
+The cost, stated rather than hidden: no reward gates while the ground is off.
+Motes and medkits still pay. It is one flag — `hideGround` in
+`modes/shoulder.js`.
+
 Both rigs live side by side in `CameraRig` (`CAM_MODE`), and a mode picks one
 with `cameraFollow`. The fall-line rig's clamps are all written in world x and
 z, so none of them transfer — on a camera that orbits, clamping x to the

@@ -1129,7 +1129,7 @@ export class Trail {
     u.uFogBase.value = this.material.uniforms.uFogBase.value;
     this.shGeometry.attributes.position.needsUpdate = true;
     this.shGeometry.attributes.aT.needsUpdate = true;
-    this.shMesh.visible = u.uStrength.value > 0.01;
+    this.shMesh.visible = this.shadowOn !== false && u.uStrength.value > 0.01;
   }
 
   /**
@@ -1358,6 +1358,22 @@ export class Trail {
     this.geometry.attributes.aAlong.needsUpdate = true;
     this.geometry.attributes.aCol.needsUpdate = true;
     this.geometry.setDrawRange(0, Math.max(0, n - 1) * (VPS - 1) * 6);
+  }
+
+  /**
+   * Draw the carve ribbon and the cast shadow, or do not.
+   *
+   * BOTH, and the shadow is the one that matters. The ribbon is painted along
+   * the surface the board cut, so with the ground hidden it becomes a contrail
+   * — which is not wrong for a POC about flying and might even be the best
+   * thing in the frame. The SHADOW is a lie: it is the rider's silhouette laid
+   * on a plane that is no longer being drawn, so it hangs under them in empty
+   * air announcing exactly where the invisible floor is.
+   */
+  setVisible(v) {
+    this.mesh.visible = v;
+    this.shadowOn = v;
+    if (!v) this.shMesh.visible = false;
   }
 
   dispose() {

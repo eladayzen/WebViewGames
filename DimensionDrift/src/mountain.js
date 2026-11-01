@@ -1410,6 +1410,28 @@ export class MountainMesh {
     this.baseIndex = 0;
     this.rebuildQueue = [];
     this.pending = null;
+    /**
+     * Whether the ground is DRAWN. It is always there — the rider rides it,
+     * the camera clears it, the drones hover over it and every band in the
+     * game is still placed against it. This hides the triangles and nothing
+     * else, which is exactly what a POC of "what if there were no ground"
+     * should cost.
+     */
+    this.shown = true;
+  }
+
+  /**
+   * Draw the ground, or do not.
+   *
+   * IT HAS TO BE A FLAG AND NOT A LOOP, because chunks are shown by the
+   * streamer as they finish building (`_finish` sets `mesh.visible = true`)
+   * and a one-off pass over the ring would be undone by the next slab that
+   * came in off the rebuild queue — as a strip of mountain reappearing at the
+   * fog line every few seconds.
+   */
+  setVisible(v) {
+    this.shown = v;
+    for (const c of this.chunks) c.mesh.visible = v && c.p0 !== undefined;
   }
 
   _makeChunk() {
@@ -1541,7 +1563,7 @@ export class MountainMesh {
     attrs.aAlt.needsUpdate = true;
     job.chunk.geometry.computeBoundingSphere();
     job.chunk.p0 = job.p0;
-    job.chunk.mesh.visible = true;
+    job.chunk.mesh.visible = this.shown;
   }
 
   _buildNow(chunk, p0) {

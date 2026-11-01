@@ -95,6 +95,18 @@ const SLAB_VIEW = 1440;
 const SLAB_PER_BAND = [1, 3];           // inclusive count drawn per band
 const SLAB_SIZE = [44, 165];            // metres across
 const SLAB_RISE = [120, 290];           // metres above the fall line
+/**
+ * AND WHERE THEY SIT WHEN THERE IS NO GROUND IN THE WAY.
+ *
+ * Normally everything is overhead because normally there is a mountain below
+ * — an island at -140 m would be buried in it. With the terrain hidden (the
+ * sky POC, see `_setGroundHidden` in main.js) that constraint is gone, and
+ * putting slabs BELOW the rider is the single change that makes the mode read
+ * as flight: the eye takes altitude from parallax underneath, and with
+ * everything above, the lower half of the frame was an empty wash.
+ */
+const SLAB_RISE_SKY = [-210, 260];
+const CHUNK_RISE_SKY = [-120, 150];
 // 260, up from 180. At 180 m out and 120 m up, the nearest slab subtends a
 // wide enough angle that the camera sees it from almost directly underneath —
 // all keel and no plate, which is the one view of an island that reads as a
@@ -224,6 +236,8 @@ export class Islands {
 
     this.slabBase = NaN;
     this.chunkBase = NaN;
+    /** Whether islands may sit below the fall line. See SLAB_RISE_SKY. */
+    this.below = false;
     this._m = new THREE.Matrix4();
     this._q = new THREE.Quaternion();
     this._e = new THREE.Euler();
@@ -323,9 +337,22 @@ export class Islands {
   update(p) {
     if (!this.enabled) return;
     this._ring(this.slabs, 'slabBase', p,
-      { band: SLAB_BAND, size: SLAB_SIZE, rise: SLAB_RISE, out: SLAB_OUT }, SLAB_PER_BAND);
+      { band: SLAB_BAND, size: SLAB_SIZE, out: SLAB_OUT,
+        rise: this.below ? SLAB_RISE_SKY : SLAB_RISE }, SLAB_PER_BAND);
     this._ring(this.chunks, 'chunkBase', p,
-      { band: CHUNK_BAND, size: CHUNK_SIZE, rise: CHUNK_RISE, out: CHUNK_OUT }, CHUNK_PER_BAND);
+      { band: CHUNK_BAND, size: CHUNK_SIZE, out: CHUNK_OUT,
+        rise: this.below ? CHUNK_RISE_SKY : CHUNK_RISE }, CHUNK_PER_BAND);
+  }
+
+  /**
+   * Allow islands under the rider, for a mode that does not draw the ground.
+   *
+   * The caller must `reset` after this: a band bakes its rise when it is
+   * built, so the stretch already on the hill keeps the old spread until it
+   * recycles — which is a hundred metres of the player's first impression.
+   */
+  setBelow(v) {
+    this.below = !!v;
   }
 
   /** A seek jumps `p`; force both rings rather than scrolling to the new place. */

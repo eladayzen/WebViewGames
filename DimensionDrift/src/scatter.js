@@ -722,6 +722,20 @@ export class Scatter {
     return null;
   }
 
+  /**
+   * Draw the forest, the rocks and the marker poles, or do not.
+   *
+   * ALL THREE TOGETHER, because they share one reason for existing: they are
+   * the things standing ON the ground. With the ground hidden they would not
+   * read as scenery, they would read as a contour map of the invisible
+   * surface — which is worse than either having them or not.
+   */
+  setVisible(v) {
+    this.trees.mesh.visible = v;
+    this.rocks.mesh.visible = v;
+    this.poles.mesh.visible = v;
+  }
+
   dispose() {
     this.trees.dispose();
     this.rocks.dispose();

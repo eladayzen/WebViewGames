@@ -971,6 +971,35 @@ export class Course {
    * and none of that swing survives four seconds. Close in, the current rate,
    * because by then the swing IS the answer.
    */
+  /**
+   * Draw the gates' ground marks, or do not.
+   *
+   * THE POLES STAY UP and only the paint goes, which is the whole point of
+   * splitting them. A gate's poles floating in open sky read as a gate — every
+   * flying game ever made has rings to fly through. Its MARK is a ribbon that
+   * follows the drawn mesh vertex by vertex, so with nothing under it it does
+   * not read as a gate at all: it reads as a strip of the invisible ground,
+   * which is the one thing a sky POC cannot have in it.
+   */
+  setGroundMarks(v) {
+    this.marksOn = v;
+    for (const g of this.gates) g.line.visible = v && g.active;
+  }
+
+  /**
+   * Draw the gates at all, or do not.
+   *
+   * A FLAG AND NOT A LOOP, for the reason the mountain's own `setVisible`
+   * records: gates are shown by `_place` as they recycle into the ring, so a
+   * one-off pass is undone within a hundred metres — as flags fading back in
+   * at the horizon one at a time, which is a worse artefact than the one it
+   * was meant to remove.
+   */
+  setGatesVisible(v) {
+    this.gatesOn = v;
+    for (const g of this.gates) g.setVisible(v && g.active);
+  }
+
   _rateFor(lead) {
     const k = clamp(lead / 2.5, 0, 1);
     return this.pRateFast + (this.pRate - this.pRateFast) * k;
@@ -1120,7 +1149,8 @@ export class Course {
     // a reward gate is a reward gate, and the bare geometry is carrying the
     // "what family" read on its own.
     if (mend) for (const pole of g.poles) pole.scale.setScalar(1.85);
-    g.setVisible(true);
+    g.setVisible(this.gatesOn !== false);
+    if (this.marksOn === false) g.line.visible = false;
     g.active = true;
     const prev = this.lastPlaced.valid ? this.lastPlaced : null;
     const d = {

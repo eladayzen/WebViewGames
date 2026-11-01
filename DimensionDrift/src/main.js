@@ -3644,10 +3644,80 @@ class Game {
    * BOTH, because two-player renders two cameras and a mode where the halves
    * frame differently is a mode where one player is playing a different game.
    */
+  /**
+   * HIDE THE GROUND. A proof of concept, and deliberately only a drawing one.
+   *
+   * The mountain is still there and still does everything it did: the rider
+   * rides it, the camera clears it, the drones hover a measured distance over
+   * it, every band is placed against it and `p` still only goes one way.
+   * Nothing about the simulation knows this happened. That is the point of
+   * doing it this way round — the cheapest possible answer to "what would
+   * flying look like" is to stop drawing the floor and go and look.
+   *
+   * WHAT GOES WITH IT is the part that is not obvious. Hiding the terrain
+   * alone does not give you sky; it gives you a contour map, because every
+   * object that SITS on the ground carries on sitting exactly where the ground
+   * was and traces it out. So the forest, the rocks, the marker poles, the
+   * gates' painted marks and — most of all — the rider's cast shadow go too.
+   * The shadow is the worst offender: a silhouette on a plane that is not
+   * being drawn, hanging under the rider in open air, announcing the floor.
+   *
+   * WHAT STAYS is everything that was already in the air: the floating
+   * islands, the far range, the sky, the snowfall, the drones, the motes and
+   * the medkits.
+   *
+   * THE GATES GO TOO, which was the second wrong prediction. The reasoning
+   * was that poles hanging in open sky read as a gate to fly through — a
+   * thing every flying game has. Measured, they do not: a gate is planted at
+   * the surface, so a row of them draws a dead-level line of little flags
+   * across the middle of the frame at exactly the height the floor used to
+   * be. It is the clearest statement in the picture that there IS a floor.
+   *
+   * THE COST IS REAL AND IS NOT HIDDEN: this mode has no reward gates while
+   * the ground is off, so no weapon and no heal from a gate. The motes and
+   * the medkits still pay. That is a POC's price and it is one flag to
+   * change — see `hideGround` in modes/shoulder.js.
+   *
+   * THE CARVE TRAIL GOES, and that was a wrong prediction corrected by
+   * looking. The reasoning was that a ribbon painted along the surface the
+   * board cut becomes a contrail with nothing under it — the one place the
+   * lie works in our favour. Measured, it is the single most un-sky object in
+   * the frame: it is shaded as a groove cut into snow, so it reads as a dark
+   * ROAD unrolling behind the rider, and it is the widest, heaviest thing on
+   * screen. A contrail would have to be bright, thin and additive. That is a
+   * real piece of work and not a POC.
+   *
+   * AND THE ISLANDS COME DOWN TO MEET YOU. This is the change that actually
+   * sells it. They are normally placed 120 to 290 m ABOVE the fall line,
+   * because normally there is a mountain in the way below; with the ground
+   * gone, everything in the frame was still overhead and the lower half of
+   * every shot was an empty wash. Letting them sit below as well puts
+   * parallax under the rider, which is the only cue that says altitude.
+   */
+  _setGroundHidden(hide) {
+    const show = !hide;
+    this.mountain?.setVisible(show);
+    this.mountain2?.setVisible(show);
+    this.scatter?.setVisible(show);
+    this.scatter2?.setVisible(show);
+    this.course?.setGroundMarks(show);
+    this.course?.setGatesVisible(show);
+    this.trail?.setVisible(show);
+    this.trail2?.setVisible(show);
+    // Rebuilt rather than just re-ranged: the rise is baked into a band when
+    // it is built, so a change without a reset would leave the stretch the
+    // rider is standing in with the old spread.
+    if (this.islands) {
+      this.islands.setBelow(hide);
+      this.islands.reset(this.rider?.p ?? 0);
+    }
+  }
+
   _setCameraFollow(def) {
     const m = def?.cameraFollow === 'chase' ? CAM_MODE.CHASE : CAM_MODE.FALL_LINE;
     this.cameraRig?.setMode(m);
     this.cameraRig2?.setMode(m);
+    this._setGroundHidden(def?.hideGround === true);
   }
 
   _award(points, label, { big = false, color = null } = {}) {

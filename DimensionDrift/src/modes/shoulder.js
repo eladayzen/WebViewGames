@@ -55,6 +55,31 @@ export default registerMode({
   order: 4,
 
   /**
+   * ── THE GROUND IS NOT DRAWN ───────────────────────────────────────────
+   *
+   * A proof of concept: "hide the ground I am flying through, make it look
+   * like I am flying in the sky."
+   *
+   * IT IS A DRAWING CHANGE AND NOTHING ELSE. The mountain is still there and
+   * still does every job it did — the rider rides it, the camera clears it,
+   * the drones hover a measured distance above it, every band in the game is
+   * placed against it. Nothing in the simulation knows. That is what makes
+   * this worth doing before anything is designed around it: the cheapest
+   * honest answer to "what would flying look like" is to stop drawing the
+   * floor and go and look at it.
+   *
+   * AND IT IS WHY THIS MODE EXISTS SEPARATELY. Skirmish is the measured one —
+   * the density, the drone health, the economy, all solved against numbers
+   * that are still true. An experiment belongs next to it, not inside it.
+   *
+   * See `_setGroundHidden` in main.js for what goes with the terrain and why:
+   * hiding the ground alone does not give you sky, it gives you a CONTOUR MAP,
+   * because everything standing on the ground carries on standing exactly
+   * where the ground was.
+   */
+  hideGround: true,
+
+  /**
    * THE RIG, not the numbers. `camera` below is a partial of `TUNE` and can
    * only ever retune the framing the fall-line rig already does; this picks a
    * different rig entirely.
