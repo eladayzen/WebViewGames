@@ -37,7 +37,7 @@ import { Combat } from './combat.js';
 import { Islands } from './islands.js';
 import { Medkits } from './medkits.js';
 import { Roster, Fighter, TEAM } from './fighters.js';
-import { WEAPONS, rollPower } from './weapons.js';
+import { WEAPONS, GIFT, rollGift, MOTE_HEAL, CHAIN_HEAL } from './weapons.js';
 import { createFinishLine } from './finishLine.js';
 import { createStartLine } from './startLine.js';
 import { createRivals } from './rivals.js';
@@ -1144,10 +1144,16 @@ class Game {
       this.rivals.despawn();
       this.pickups.onMote = (mote, chain) => {
       this.audio.pickup(chain.taken - 1);
-      // THE CLOCK IS PAID PER MOTE; the score is still paid per CHAIN, in the
+      // PAID PER MOTE; the score is still paid per CHAIN, in the
       // `pickups.update` loop below. Two currencies on one object, deliberately:
       // see timer.js on why the streak may multiply the chain and never this.
-      if (this.state === 'play') this._grantTime(CLOCK.mote, null);
+      //
+      // WHICH currency is the mode's. A clock mode pays seconds; skirmish has
+      // no clock and pays health instead, and the chain keeps its look either
+      // way — the glowing line was never a statement about what it bought.
+      if (this.state !== 'play') return;
+      if (this._modeDef?.pickupsPay === 'health') this._healAll(MOTE_HEAL, null);
+      else this._grantTime(CLOCK.mote, null);
     };
       // ── THE DRONES AND THE GUN ───────────────────────────────────────
       // After the Pickups, because it shares their banded-placement shape and
@@ -2642,7 +2648,7 @@ class Game {
    * belong on the two-player ending screen, which does not exist yet.
    */
   _gateForTwo(ev) {
-    if (ev.type === 'power') { this._takePower(1, ev); return; }
+    if (ev.type === 'power') { this._takeGift(1, ev); return; }
     if (ev.type === 'boost') {
       // Player two's OWN chain -- see the note in race.js on why a streak
       // cannot be shared by two people.
@@ -3505,16 +3511,77 @@ class Game {
    * ride the same gate get the same power, which a shared random stream could
    * not guarantee and which would read as the game cheating one of them.
    */
-  _takePower(slot, ev) {
+  /**
+   * A reward gate taken, by one player.
+   *
+   * THE GATE ALREADY KNOWS WHAT IT GIVES. It was decided in the plan so that
+   * the gate could wear its own legend (see `shapePlan` in skirmish.js and the
+   * sigil block in course.js); rolling again here would hand the player
+   * something other than the thing they just rode toward, which is the one
+   * outcome worse than not telling them at all. `rollGift` survives only as
+   * the fallback for a gate that somehow arrives without a payload.
+   *
+   * TWO KINDS, ONE SWITCH. A weapon goes through `givePower`, which owns the
+   * duration; a heal through `heal`, which has no duration to own. Everything
+   * else about them — the legend, the sound, the callout — is table data.
+   */
+  _takeGift(slot, ev) {
     const f = this.roster.fighters[slot];
     if (!f || !f.alive) return;
-    // THE GATE ALREADY KNOWS. It was decided in the plan so that the gate
-    // could wear its own legend (see `shapePlan` in skirmish.js and the sigil
-    // block in course.js); rolling again here would hand the player something
-    // other than the thing they just rode towards, which is the one outcome
-    // worse than not telling them at all. `rollPower` survives as the fallback
-    // for a gate that somehow arrives without a payload.
-    f.givePower(ev.power ?? ev.gate?.powerKind ?? rollPower(Math.random()));
+    const id = ev.power ?? ev.gate?.powerKind ?? rollGift(Math.random());
+    const gift = GIFT[id];
+    if (!gift) return;
+    if (gift.kind === 'heal') {
+      const before = f.hp;
+      f.heal(gift.amount);
+      const got = f.hp - before;
+      this.healedTotal = (this.healedTotal ?? 0) + got;
+      this.audio.heal();
+      this.hud.callout(got > 0 ? `+${got} health` : 'full health',
+        { big: true, color: '#a8ffd0', slot });
+      this._gateBurst.set(0xa8ffd0);
+      this.particles.emit(
+        { x: ev.gate.x, y: this.terrain.height(ev.gate.x, ev.gate.z) + 1.4, z: ev.gate.z },
+        this._gateBurst,
+        { count: 36, speed: 11, size: 1.8, life: 0.8, up: 5, spread: 1 },
+      );
+      this.post.punch(0.24, this._gateBurst);
+      this.host.haptic('success');
+      return;
+    }
+    f.givePower(id);
+  }
+
+  /**
+   * Pay health to whoever is riding, for a pickup that has no owner.
+   *
+   * THE MOTES DO NOT KNOW WHO TOOK THEM, and that is a real gap rather than an
+   * oversight: `pickups.js` predates `fighters.js` by a long way and is driven
+   * by `this.rider` alone, so in two player the chain is collected by player
+   * one's position and nobody else's. Healing the whole crew is the honest
+   * reading of that until the pickups are moved onto the roster the way the
+   * medkits already are — it never heals the wrong person, it just heals one
+   * more person than strictly earned it, and in a co-op mode that is the
+   * forgiving direction to be wrong in.
+   *
+   * IT IS ALSO THE LINE TO DELETE when pickups.js grows a roster. Written down
+   * here so that it is, rather than quietly becoming the behaviour.
+   */
+  _healAll(amount, label) {
+    for (const f of this.roster.fighters) {
+      if (!f.alive) continue;
+      const before = f.hp;
+      f.heal(amount);
+      // THE TOTAL ACTUALLY RETURNED, not the total offered. Health is capped,
+      // so a mote taken at full health pays nothing — and a balance reading
+      // that counted the offer would say the economy is twice what a player
+      // ever receives.
+      this.healedTotal = (this.healedTotal ?? 0) + (f.hp - before);
+    }
+    if (label) {
+      this.hud.callout(`${label} +${amount}`, { color: '#a8ffd0' });
+      this.audio.heal();
+    }
   }
 
   _makeFighter(rider, slot, id) {
@@ -3771,9 +3838,18 @@ class Game {
       // has no such ceiling, which is exactly why the multiplier is kept off it.
       // See timer.js.
       if (ev.full && this.state === 'play') {
-        const m = Math.min(CLOCK.chainMultCap, this.mult);
-        this._grantTime(CLOCK.chain * m, m > 1 ? `full line x${m}` : 'full line',
-          { big: m >= CLOCK.chainMultCap, color: '#97d700' });
+        if (this._modeDef?.pickupsPay === 'health') {
+          // FLAT, not multiplied by the streak. The clock's own argument
+          // survives the change of currency: chains cannot arrive closer than
+          // 133 m however well anyone rides, so this income has a ceiling that
+          // skill cannot lift — and a multiplier on it would stack a second
+          // economy on the one the mode is actually about.
+          this._healAll(CHAIN_HEAL, 'full line');
+        } else {
+          const m = Math.min(CLOCK.chainMultCap, this.mult);
+          this._grantTime(CLOCK.chain * m, m > 1 ? `full line x${m}` : 'full line',
+            { big: m >= CLOCK.chainMultCap, color: '#97d700' });
+        }
       }
       this.audio.driftLine(ev.taken, ev.total, ev.full);
     }
@@ -3791,6 +3867,7 @@ class Game {
     // the crash camera both still look at the sky.
     this.islands.update(this.rider.p);
     for (const ev of this.medkits.update(dt, this.roster, this.state === 'play')) {
+      this.healedTotal = (this.healedTotal ?? 0) + ev.healed;
       this.audio.heal();
       healAt.copy(ev.world);
       this.particles.emit(healAt, HEAL_COL,
@@ -4746,7 +4823,7 @@ class Game {
       : null;
     for (const ev of this.course.update(dt, t, this.rider, prevP, prevX, two)) {
       if (ev.who === 1) { this._gateForTwo(ev); continue; }
-      if (ev.type === 'power') { this._takePower(0, ev); continue; }
+      if (ev.type === 'power') { this._takeGift(0, ev); continue; }
       if (ev.type === 'boost') {
         // ── A BOOST GATE, AND IT IS LOUD ──────────────────────────────────
         // "when the player goes through them we need to get much more

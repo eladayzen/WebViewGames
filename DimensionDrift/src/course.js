@@ -608,6 +608,7 @@ function makeSigilTexture(kind) {
   const C = SIGIL_PX / 2;
   const tint = {
     boost: '#c4b5fd', time: '#d6ff5a', keen: '#2ee6d6', storm: '#7df9ff',
+    mend: '#a8ffd0',
   }[kind] ?? '#ffffff';
 
   g.fillStyle = 'rgba(8, 10, 24, 0.72)';
@@ -637,6 +638,15 @@ function makeSigilTexture(kind) {
   } else if (kind === 'boost') {
     drawChevron(g, C, C * 0.78, C * 0.44, C * 0.22, 22);
     drawChevron(g, C, C * 1.26, C * 0.44, C * 0.22, 22);
+  } else if (kind === 'mend') {
+    // THE MEDKIT'S CROSS, and deliberately the identical glyph rather than a
+    // variation on it. The kits already teach what a cross means; a gate that
+    // drew a different symbol for the same payload would be a second lesson
+    // for one fact.
+    const a = C * 0.56;
+    const b = C * 0.19;
+    g.fillRect(C - a, C - b, a * 2, b * 2);
+    g.fillRect(C - b, C - a, b * 2, a * 2);
   } else if (kind === 'time') {
     // A PLUS INSIDE A DIAL. The plus says "more", the dial says "of what".
     g.lineWidth = 14;
@@ -864,7 +874,17 @@ export class Course {
     this.matPower = makeLitMaterial(mood, {
       color: 0x0d9488, wrap: 0.85, gloss: 40, specular: 0.5, emissive: 1.0,
     });
-    this.materials = [this.matBlue, this.matRed, this.matBoost, this.matTime, this.matPower];
+    // ── AND THE ONE THAT GIVES HEALTH ──────────────────────────────────────
+    // The medkit's own mint, so the two things in this game that return health
+    // are the same colour — a player who has taken one already knows what the
+    // other is. emissive 1.0 for the glow the brief asked to keep; `lit.js`
+    // multiplies the ALBEDO by it, so this lifts a mid mint rather than
+    // washing to white the way a bright base would.
+    this.matMend = makeLitMaterial(mood, {
+      color: 0x3dd68c, wrap: 0.85, gloss: 40, specular: 0.5, emissive: 1.0,
+    });
+    this.materials = [this.matBlue, this.matRed, this.matBoost, this.matTime,
+      this.matPower, this.matMend];
     /** One canvas per kind of legend, built on first use and shared. */
     this._sigils = new Map();
     this.timeGeo = buildTimePoleGeometry();
@@ -1027,20 +1047,38 @@ export class Course {
     // cannot be drawn on an object the player is looking at from sixty metres
     // away. See `shapePlan` in `modes/skirmish.js`.
     const powerKind = power ? (entry.power ?? 'keen') : null;
+    // ── THE HEAL GATE WEARS THE TIME GATE'S LOOK ───────────────────────────
+    //
+    // "I do like the look of the gates that are adding time... remove them
+    // completely from this mode and add new ones in the same look, because the
+    // glowing look is good."
+    //
+    // So the silhouette is reused rather than reinvented: tall bare poles,
+    // which this file already builds for the time gate and which exist for a
+    // reason that transfers exactly — "a time gate swaps GEOMETRY, not just
+    // colour, so the silhouette answers before the hue does". A mode with
+    // three reward gates in it needs the one that gives health to be readable
+    // from further out than the ones that give weapons, because health is the
+    // one you need at a specific moment rather than whenever.
+    //
+    // Two silhouettes for two families, then: bare poles mean health, flagged
+    // ones mean a weapon, and the sigil says which weapon.
+    const mend = powerKind === 'mend';
     const red = entry.side > 0;
     // A boost gate takes its own colour and keeps it whichever side it is on:
     // the red/blue pair means "which way does this one send you", and a gate
     // that sends you nowhere should not be answering that question. Cyan is
     // HillBomb's choice for the same object and for the same reason — it is the
     // one hue nothing else on the course uses.
-    const timed = this.timeGates && !boost && !power;
+    const timed = (this.timeGates && !boost && !power) || mend;
     // A time gate swaps GEOMETRY, not just colour: tall bare poles against the
     // slalom's flagged ones, so the silhouette answers before the hue does.
     for (let i = 0; i < 2; i++) {
       g.poles[i].geometry = timed ? this.timeGeo : g.classicGeos[i];
     }
-    g.setMaterial(power ? this.matPower : boost ? this.matBoost : timed ? this.matTime
-      : (red ? this.matRed : this.matBlue));
+    g.setMaterial(mend ? this.matMend : power ? this.matPower
+      : boost ? this.matBoost : timed ? this.matTime
+        : (red ? this.matRed : this.matBlue));
     // And the floor mark changes name with it: the mote-callout cyan for time
     // (saturated, because the pale ice of the poles would vanish ON snow), the
     // reference's dyed pink for everything else -- and thicker, "including on
@@ -1068,15 +1106,20 @@ export class Course {
     // readout is worth keeping, but it was being carried by brightness, and one
     // of the pair had to be the loudest thing in the frame for that to work.
     g.line.material.uniforms.uColor.value.set(
-      powerKind === 'storm' ? 0x7df9ff
-        : power ? 0x2ee6d6
-          : boost ? 0xa78bfa : (red ? 0xff9db4 : 0xd6a6dc));
+      mend ? 0xa8ffd0
+        : powerKind === 'storm' ? 0x7df9ff
+          : power ? 0x2ee6d6
+            : boost ? 0xa78bfa : (red ? 0xff9db4 : 0xd6a6dc));
     // AND THE LEGEND. Built once per kind and shared across every gate in the
     // ring — thirty gates with their own 256px canvas would be two megabytes
     // of texture to say four things.
     g.setSigil(power ? this._sigil(powerKind)
       : boost ? this._sigil('boost')
         : timed ? this._sigil('time') : null);
+    // Poles at the boost gate's 1.85 even though `timed` now claims this one:
+    // a reward gate is a reward gate, and the bare geometry is carrying the
+    // "what family" read on its own.
+    if (mend) for (const pole of g.poles) pole.scale.setScalar(1.85);
     g.setVisible(true);
     g.active = true;
     const prev = this.lastPlaced.valid ? this.lastPlaced : null;

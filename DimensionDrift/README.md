@@ -52,9 +52,29 @@ Riding 900 m without engaging ends at 58/100; spending the same 900 m closing
 on drones ends at 34 — and kills eleven instead of eight. Closing is the risk
 the mode is now about.
 
-A drone takes three stars; a cyan **power gate** (one in five) gives you a
-weapon that kills in one, or more rarely one that throws three at a time and
-boosts your speed. The step from 1 to 3 damage is a change of kind, not degree.
+A drone takes three stars. **Nothing in this mode pays time**, so the two
+objects that used to — the time gates and the glowing drift lines — were not
+deleted but re-denominated, because the glowing look is the best thing on the
+hill and the currency was never what made it good:
+
+| | pays |
+|---|---|
+| a glowing mote | 1 health, 3 more for a whole line |
+| a reward gate | 45 health, or a weapon, or a weapon **and** a speed boost |
+
+The heal gate wears the **time gate's silhouette** — tall bare poles where a
+weapon gate keeps the flagged ones — so the family reads before the colour
+does, and the sigil says which weapon. Health is the likeliest gift (4 in 10)
+because it is the only one that is worthless at the wrong moment; the storm is
+the rarest (2 in 10) because it is the only one that changes two things at once.
+
+The economy is the number that decides whether the mode works, and it is
+measured rather than argued: **the drones take 47 health per kilometre** from a
+rider who is not fighting, against a **ceiling of 63** if every mote on every
+line were collected. The ceiling sits above break-even on purpose — the motes
+lie along steepest descent and the drones do not, so collecting every line
+means choosing not to close, and the squads you ride past keep their health and
+their next shot.
 
 **The gates say what they give you.** Each one hangs a legend in its own gap: a
 picture of the reward, not a label for it — one star for the keen throw, three

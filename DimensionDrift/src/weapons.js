@@ -302,20 +302,96 @@ export const WEAPONS = {
 /** The weapon a fighter carries when nothing has been granted. */
 export const DEFAULT_WEAPON = 'star';
 
-/** The powers a power gate may hand out, and how often each comes up. */
-export const POWER_TABLE = [
-  { id: 'keen', weight: 3 },
-  { id: 'storm', weight: 1 },
+// ── WHAT A REWARD GATE MAY HAND OVER ───────────────────────────────────────
+//
+// Three outcomes, and they are deliberately not three sizes of the same thing.
+// A gate that always gave a weapon is a gate you take or ignore depending on
+// whether you already have one; a gate that always healed is one you take only
+// when hurt. With all three in the pool EVERY reward gate is worth riding for,
+// and which one you got is news rather than a number.
+//
+// THE HEAL IS THE COMMON ONE, at 4 of 10. Health is the resource the mode is
+// actually about — it is the thing that ends a run — and it is also the only
+// reward that is worthless at the wrong moment. Making it the likeliest
+// outcome and making it LARGE (45, nearly half a bar) is what keeps a reward
+// gate worth a detour even on a clean run, because a clean run is exactly when
+// you can afford the detour that sets up the next bad one.
+//
+// THE STORM IS THE RARE ONE, at 2 of 10. It is the only gift that changes two
+// things at once — the weapon AND the speed — and a mode where that arrives
+// every third gate is a mode balanced around having it.
+//
+// `kind` is what the receiver switches on. A weapon gift is applied through
+// `Fighter.givePower`, which knows about durations; a heal through
+// `Fighter.heal`, which does not. Nothing downstream needs to know more than
+// that, which is what lets a fourth kind be added here and nowhere else.
+export const GIFTS = [
+  {
+    id: 'mend',
+    kind: 'heal',
+    label: 'repair',
+    amount: 45,
+    weight: 4,
+    /** The legend drawn on the gate — see `makeSigilTexture` in course.js. */
+    sigil: 'mend',
+  },
+  { id: 'keen', kind: 'weapon', label: WEAPONS.keen.label, weight: 4, sigil: 'keen' },
+  { id: 'storm', kind: 'weapon', label: WEAPONS.storm.label, weight: 2, sigil: 'storm' },
 ];
 
-/** Pick a power. `r` is a float in [0,1). */
-export function rollPower(r) {
+/** @type {Record<string, typeof GIFTS[number]>} */
+export const GIFT = Object.fromEntries(GIFTS.map((g) => [g.id, g]));
+
+/** Pick a gift. `r` is a float in [0,1). */
+export function rollGift(r) {
   let total = 0;
-  for (const e of POWER_TABLE) total += e.weight;
+  for (const e of GIFTS) total += e.weight;
   let x = r * total;
-  for (const e of POWER_TABLE) {
+  for (const e of GIFTS) {
     x -= e.weight;
     if (x < 0) return e.id;
   }
-  return POWER_TABLE[0].id;
+  return GIFTS[0].id;
 }
+
+/**
+ * WHAT A GLOWING MOTE PAYS IN A MODE WITH NO CLOCK.
+ *
+ * The drift lines are the best-looking object in this game and in skirmish
+ * they were paying a currency the mode does not have — a chain of glowing
+ * motes that bought literally nothing. Riding one was a detour for nothing,
+ * which is worse than the chain being absent, because the game had taught the
+ * player to want it.
+ *
+ * ONE POINT A MOTE, THREE FOR A WHOLE LINE, and the numbers were set against
+ * the damage rather than chosen. The arithmetic is worth writing down because
+ * it is the only part of this mode that can quietly make it unloseable:
+ *
+ *   `pickups.js` runs BAND 60 at CHAIN_CHANCE 0.45, so 7.5 lines a kilometre,
+ *   and a line is 5 to 8 motes — a mean of 6.5. That is 49 motes a kilometre.
+ *   At 1 point each plus 3 a line, PERFECT COLLECTION RETURNS 71 POINTS OF
+ *   HEALTH PER KILOMETRE.
+ *
+ *   Measured against it, the drones take 47 a kilometre from a rider who is
+ *   not fighting back.
+ *
+ * So the ceiling sits above break-even, deliberately, and the reason is that
+ * the ceiling is not reachable while fighting: the motes lie along steepest
+ * descent and the drones do not, so a player collecting every line is a player
+ * choosing not to close — and the squads they ride past keep their health,
+ * their position and their next shot. The two lines compete, which is the
+ * whole of what makes this an economy rather than a drip feed.
+ *
+ * IT IS ALSO THE FIRST NUMBER TO MOVE IF THE MODE PLAYS TOO SAFE. Five a line
+ * was the first cut and took the ceiling to 86 against the same 47, which is
+ * a rider who cannot die while riding well — and "dead is dead" stops meaning
+ * anything the moment that is true.
+ *
+ * The chain bonus is flat rather than multiplied by the score streak. The
+ * clock's own note has the reason and it survives the change of currency:
+ * chains cannot arrive closer than 133 m however well anyone rides, so this
+ * income has a ceiling skill cannot lift — and a multiplier on it would be a
+ * second economy stacked on the one the mode is about.
+ */
+export const MOTE_HEAL = 1;
+export const CHAIN_HEAL = 3;

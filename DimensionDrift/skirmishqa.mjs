@@ -314,11 +314,24 @@ try {
     }
     return out;
   });
-  check('both powers come up across a run', Object.keys(kinds).length >= 2,
+  check('all three gifts come up across a run', Object.keys(kinds).length >= 3,
     JSON.stringify(kinds));
-  check('and the rarer one stays rare',
-    (kinds.storm ?? 0) > 0 && (kinds.storm ?? 0) < (kinds.keen ?? 0),
-    `${kinds.storm ?? 0} storm to ${kinds.keen ?? 0} keen`);
+  check('and the storm stays the rare one',
+    (kinds.storm ?? 0) > 0 && (kinds.storm ?? 0) < (kinds.mend ?? 0),
+    `${kinds.storm ?? 0} storm to ${kinds.mend ?? 0} mend`);
+  // THE GATE THAT GIVES HEALTH IS THE ONE WORTH READING FURTHEST OUT, so it
+  // gets its own silhouette — bare poles, where a weapon gate keeps the
+  // flagged ones. Asserted on the geometry rather than on the colour, because
+  // colour is the thing that fails first at range and in fog.
+  check('a heal gate has its own silhouette', await ev(() => {
+    const c = CARVE._game.course;
+    const live = (c.gates ?? []).filter((g) => g.active && g.data && g.data.power);
+    const mend = live.filter((g) => g.data.powerKind === 'mend');
+    const arms = live.filter((g) => g.data.powerKind !== 'mend');
+    if (!mend.length || !arms.length) return 'not both placed';
+    const bare = (g) => g.poles[0].geometry === c.timeGeo;
+    return mend.every(bare) && arms.every((g) => !bare(g));
+  }), '');
 
   check('and roughly one gate in five',
     plan.power / Math.max(1, plan.n) > 0.12 && plan.power / Math.max(1, plan.n) < 0.28,
@@ -341,6 +354,58 @@ try {
     powered.on.reach > powered.off.reach, `${powered.on.reach} m vs ${powered.off.reach} m`);
   check('the power runs on a clock', powered.on.left > 0, `${powered.on.left}s`);
   // ── THE KITS ────────────────────────────────────────────────────────────
+  // ── THE HEALTH ECONOMY, AS TWO NUMBERS ──────────────────────────────────
+  //
+  // Three sources of health now exist — the motes, the reward gates and the
+  // medkits — and the one thing that decides whether the mode works is how
+  // the TOTAL compares to what the drones take. Neither number is visible in
+  // a frame and neither is obvious from the tables, because both depend on how
+  // often the things are met rather than on what they are worth.
+  const econ = await ev(() => {
+    const g = CARVE._game;
+    const c = g.combat.stats;
+    return { damage: c.damage, healed: g.healedTotal ?? 0 };
+  });
+  const dmgPerKm = econ.damage / metres * 1000;
+  const healPerKm = econ.healed / metres * 1000;
+  // ── AND THE CEILING, WHICH IS THE NUMBER THAT DECIDES THE MODE ──────────
+  //
+  // What a harness riding the centreline collects is the FLOOR. The number
+  // that can quietly make skirmish unloseable is the other end: what a player
+  // who takes every mote on every line would be paid. That is not something a
+  // ride can measure — it would need a harness that plays better than a person
+  // — but it is a pure function of the placement, so it can simply be counted.
+  const ceiling = await ev(() => {
+    const p = CARVE._game.pickups;
+    let motes = 0;
+    let chains = 0;
+    const BANDS = 300;
+    for (let b = 0; b < BANDS; b++) {
+      p._buildBand(b);
+      const slot = ((b % p.bands) + p.bands) % p.bands;
+      const c = p.chains[slot];
+      if (c) { chains++; motes += c.n; }
+    }
+    p.reset(CARVE._game.rider.p);
+    return { motes, chains, metres: BANDS * 60 };
+  });
+  const ceilPerKm = (ceiling.motes * 1 + ceiling.chains * 3) / ceiling.metres * 1000;
+  console.log(`  economy: ${dmgPerKm.toFixed(0)} damage/km taken, `
+    + `${healPerKm.toFixed(0)} health/km returned riding straight, `
+    + `${ceilPerKm.toFixed(0)}/km if every mote were taken\n`);
+  // THE CEILING MAY EXCEED THE DAMAGE — a player who rides the mote line
+  // perfectly should be rewarded — but not by so much that it stops being a
+  // trade. Past about twice the damage, collecting beats fighting outright and
+  // the drones become scenery you ride past.
+  check('perfect mote collection does not out-earn the hill outright',
+    ceilPerKm < dmgPerKm * 2,
+    `${ceilPerKm.toFixed(0)}/km ceiling vs ${dmgPerKm.toFixed(0)}/km damage`);
+  // THE DRONES HAVE TO BE ABLE TO WIN against a rider who is not fighting.
+  // If healing outpaces damage on a passive ride, nothing on this mountain
+  // can end a run and the health bar is decoration.
+  check('the hill out-damages a passive rider\'s income',
+    dmgPerKm > healPerKm, `${dmgPerKm.toFixed(0)} taken vs ${healPerKm.toFixed(0)} returned per km`);
+
   check('kits stand on the hill', kitsSeen > 0, `${kitsSeen} standing at once`);
   const kits = await ev(() => CARVE.probe().medkits);
   // THE CADENCE, FROM THE PLACEMENT FUNCTION RATHER THAN FROM THE RIDE.
@@ -565,7 +630,7 @@ try {
   server.close();
 }
 
-if (checked < 34) {
+if (checked < 37) {
   console.log(`\n  HARNESS DID NOT FINISH — only ${checked} checks ran`);
   process.exit(2);
 }

@@ -75,7 +75,7 @@
 
 import { registerMode } from './mode.js';
 import { TEAM } from '../fighters.js';
-import { rollPower } from '../weapons.js';
+import { rollGift } from '../weapons.js';
 
 /**
  * ONE GATE IN FIVE, where chill vibe promotes one in seven to a boost.
@@ -123,8 +123,28 @@ export default registerMode({
   /** No line to start behind. */
   showsStartLine: false,
 
-  /** Nothing here pays time, so nothing here is a time gate. */
+  /**
+   * NOTHING HERE PAYS TIME, so nothing here is a time gate.
+   *
+   * The drift lines keep their look and change their currency instead — see
+   * `pickupsPay`. "I do like the look of the gates that are adding time and
+   * the mote pickups that are adding time; we should remove them completely
+   * from this mode and add new ones in the same look, because the glowing look
+   * is good."
+   */
   timeGates: false,
+
+  /**
+   * THE GLOWING MOTES PAY HEALTH HERE.
+   *
+   * A declarative flag on the DEFINITION rather than a method on the instance,
+   * which is the established shape for this sort of thing in this file —
+   * `timeGates`, `skirt` and `showsStartLine` are all read off the definition
+   * by `main.js`. It is also the trap that has caught this project twice: a
+   * copy on the instance is simply never seen, and the symptom is a feature
+   * that silently does nothing.
+   */
+  pickupsPay: 'health',
 
   create(game) {
     let seen = 0;
@@ -213,7 +233,7 @@ export default registerMode({
           h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
           h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
           h ^= h >>> 15;
-          e.power = rollPower((h >>> 0) / 4294967296);
+          e.power = rollGift((h >>> 0) / 4294967296);
         }
         return entries;
       },
