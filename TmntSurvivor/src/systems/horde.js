@@ -19,14 +19,25 @@ const num = (k, d) => {
 
 export const ENEMY = {
   radius: 34,
-  // 330 against the player's 520 -- the player is about 1.6x faster, which is
-  // roughly where this genre sits. The first value tried here was 132, and
-  // running it showed exactly why that is wrong: the player simply walks away
-  // from the entire horde in a straight line and nothing can ever reach them.
-  // No pressure, no reason to turn, and the gems get left behind too far out
-  // for the magnet, so the run never levels up at all. Outrunnable enemies do
-  // not make an easy survivor game, they make one with no loop in it.
-  speedPxS: num('espd', 330),
+  // 200 against the player's 520, and the ratio is deliberately far wider than
+  // the genre's. Two wrong values got here first and the second was wrong for
+  // a more interesting reason than the first.
+  //
+  // 132 was too slow: the player walks away from the entire horde in a
+  // straight line, nothing ever reaches them, the gems drop out of magnet
+  // range and the run never levels. Outrunnable enemies do not make an easy
+  // survivor game, they make one with no loop in it.
+  //
+  // 330 was MUCH too fast -- Elad, immediately, on a board. That number came
+  // from the genre, where the player is about 1.6x the horde. But that
+  // assumes a THUMBSTICK: instant response, instant reversal, full speed in
+  // any direction the moment you ask. A balance board has none of those. The
+  // deadzone eats the first part of every lean, changing direction means
+  // shifting your weight, and the forward/back axis is slower to engage than
+  // sideways. Nominal 520 is nothing like 520 of usable, responsive movement,
+  // so the margin on paper has to be far wider than the margin that is wanted
+  // in the hand.
+  speedPxS: num('espd', 200),
   hp: 10,
   touchDamage: 1,
   // Spawned just outside the visible frame: close enough to arrive soon,

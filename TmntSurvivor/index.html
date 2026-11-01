@@ -81,6 +81,17 @@
          a grace period before the hold counts. -->
     <div id="levelup" class="hidden"></div>
 
+    <!-- THE REQUIRED DOM CONTRACT. #gameover-overlay and #restart-button are
+         named by GOBALANCE_SDK.md; the app looks for this shape, so the ids
+         are not ours to rename however the game styles them. -->
+    <div id="gameover-overlay" class="hidden">
+      <div id="gameover-card">
+        <div id="gameover-title">OVERRUN</div>
+        <div id="gameover-stats"></div>
+        <button id="restart-button" type="button">GO AGAIN</button>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

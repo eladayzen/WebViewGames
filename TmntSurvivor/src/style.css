@@ -66,3 +66,22 @@ canvas { display: block; touch-action: none; }
   font: 800 2vmin ui-monospace, Menlo, monospace; color: #5c7490; letter-spacing: 0.08em;
 }
 .card.sel .card-lean { color: #5fd38a; }
+
+/* --- the end of a run ---------------------------------------------------- */
+#gameover-overlay {
+  position: fixed; inset: 0; z-index: 40;
+  display: grid; place-items: center;
+  background: rgba(8, 11, 17, 0.86);
+}
+#gameover-overlay.hidden { display: none; }
+#gameover-card {
+  text-align: center; padding: 6vmin 8vmin;
+  border: 3px solid #27405e; border-radius: 22px; background: #121a26;
+}
+#gameover-title { font: 800 6vmin/1 system-ui, sans-serif; color: #ff8a8a; letter-spacing: 0.04em; }
+#gameover-stats { margin-top: 2vmin; font: 600 2.4vmin ui-monospace, Menlo, monospace; color: #9fb4cc; }
+#restart-button {
+  margin-top: 4vmin; padding: 1.6vmin 5vmin; border: none; border-radius: 999px;
+  background: #5fd38a; color: #08120c; cursor: pointer;
+  font: 800 2.6vmin system-ui, sans-serif; letter-spacing: 0.04em;
+}

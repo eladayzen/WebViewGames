@@ -39,6 +39,18 @@ export function createWorld() {
     kills: 0,
     contact: false,
 
+    // --- staying alive ----------------------------------------------------
+    // Five, the same as Bloop Squad's co-op pool, because a number a child
+    // has already learned in one game should mean the same in the next.
+    lives: 5,
+    // INVULNERABILITY AFTER A HIT, and it is not generosity. Enemies converge,
+    // so the frame you are touched you are usually touching three of them --
+    // without a window, one mistake is the whole run, and the player never
+    // finds out what they did wrong. A second is long enough to walk out of
+    // the pile.
+    invulnS: 0,
+    dead: false,
+
     // --- the loop ---------------------------------------------------------
     // XP is a count of gems, not of points. Score and XP being the same
     // number is a rule Bloop Squad learned the hard way, but a horde game has

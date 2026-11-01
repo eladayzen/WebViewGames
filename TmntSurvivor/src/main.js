@@ -21,6 +21,7 @@ import { createBuild, stats, draw, take, xpForLevel, ABILITIES } from './core/ab
 import { createChoice, updateChoice, holdProgress, CHOOSE } from './core/levelup.js';
 import { updateHorde, updateGems, compactEnemies, ENEMY, GEM } from './systems/horde.js';
 import { updateFiring, updateBullets, updateOrbiters, BULLET, ORBIT } from './systems/combat.js';
+import { updateSurvival, blinking } from './systems/survival.js';
 import './style.css';
 
 __setSpeedSource(() => TUNING.speedPxS);
@@ -76,6 +77,21 @@ async function boot() {
 
   const hud = document.getElementById('hud');
   const panel = document.getElementById('levelup');
+  const over = document.getElementById('gameover-overlay');
+  const overStats = document.getElementById('gameover-stats');
+
+  // #gameover-overlay and #restart-button are the SDK's required DOM
+  // contract, not a choice -- see GOBALANCE_SDK.md. The ids matter even
+  // though this game styles them itself.
+  document.getElementById('restart-button').addEventListener('click', () => {
+    const fresh = createWorld();
+    Object.keys(fresh).forEach((k) => { w[k] = fresh[k]; });
+    build = createBuild();
+    st = stats(build);
+    w.speedMul = st.speedPxS;
+    over.classList.add('hidden');
+    closeLevelUp();
+  });
 
   function openLevelUp() {
     const options = draw(build);
@@ -130,6 +146,8 @@ async function boot() {
       return;
     }
 
+    if (w.dead) { drawFrame(); return; }
+
     updateWorld(w, input, dt);
     updateHorde(w, dt);
     updateFiring(w, st, dt);
@@ -144,6 +162,12 @@ async function boot() {
       }
     });
     compactEnemies(w);
+
+    if (updateSurvival(w, dt)) {
+      overStats.textContent =
+        `level ${w.level}    ${w.kills} killed    ${Math.floor(w.timeS)}s survived`;
+      over.classList.remove('hidden');
+    }
     drawFrame();
   });
 
@@ -177,8 +201,12 @@ async function boot() {
         ORBIT.radius,
       ).fill({ color: 0xa78bfa });
     }
-    gfxPlayer.circle(w.player.x, w.player.y, PLAYER_RADIUS).fill({ color: 0x5fd38a });
-    gfxPlayer.circle(w.player.x, w.player.y, PLAYER_RADIUS).stroke({ width: 5, color: 0x0d2c1b });
+    if (!blinking(w)) {
+      gfxPlayer.circle(w.player.x, w.player.y, PLAYER_RADIUS)
+        .fill({ color: w.invulnS > 0 ? 0xbfead1 : 0x5fd38a });
+      gfxPlayer.circle(w.player.x, w.player.y, PLAYER_RADIUS)
+        .stroke({ width: 5, color: 0x0d2c1b });
+    }
     const nx = Math.cos(w.player.facing);
     const ny = Math.sin(w.player.facing);
     gfxPlayer.circle(w.player.x + nx * PLAYER_RADIUS * 0.55,
@@ -190,6 +218,7 @@ async function boot() {
     if (hud) {
       const need = xpForLevel(w.level);
       hud.textContent =
+        `${'\u2665'.repeat(w.lives)}${'\u00b7'.repeat(Math.max(0, 5 - w.lives))}   ` +
         `LV ${w.level}   xp ${w.xp}/${need}   kills ${w.kills}   ` +
         `horde ${w.enemies.filter((e) => e.alive).length}   ` +
         `${Object.entries(build).filter(([, v]) => v > 0)
