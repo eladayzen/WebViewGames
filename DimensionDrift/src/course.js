@@ -680,7 +680,19 @@ export class Course {
     // candidates showed tall poles can, still a different language from the
     // boost's violet.
     this.matTime = makeLitMaterial(mood, { color: 0xc8ff3a, wrap: 0.85, gloss: 70, specular: 0.55, emissive: 1.4 });
-    this.materials = [this.matBlue, this.matRed, this.matBoost, this.matTime];
+    // ── THE POWER GATE ─────────────────────────────────────────────────────
+    // CYAN, and it is the same cyan the powered stars are. That is the whole
+    // of how this gate explains itself: ride through a cyan thing and the
+    // things leaving your hand turn cyan. Nobody has to be told.
+    //
+    // It is also the one hue left. Violet is a boost, lime is a mote or a time
+    // gate, pink and navy are the slalom's two sides, orange is hostile. A
+    // sixth meaning needed a sixth colour and this was the only one that did
+    // not already answer a different question.
+    this.matPower = makeLitMaterial(mood, {
+      color: 0x0d9488, wrap: 0.85, gloss: 40, specular: 0.5, emissive: 1.0,
+    });
+    this.materials = [this.matBlue, this.matRed, this.matBoost, this.matTime, this.matPower];
     this.timeGeo = buildTimePoleGeometry();
     // Set per run by the mode: chill's plain gates are TIME gates and dress
     // differently; the race's plain gates keep the slalom look.
@@ -828,19 +840,20 @@ export class Course {
     const g = this._free();
     if (!g) return;
     const boost = entry.kind === 'boost';
+    const power = entry.kind === 'power';
     const red = entry.side > 0;
     // A boost gate takes its own colour and keeps it whichever side it is on:
     // the red/blue pair means "which way does this one send you", and a gate
     // that sends you nowhere should not be answering that question. Cyan is
     // HillBomb's choice for the same object and for the same reason — it is the
     // one hue nothing else on the course uses.
-    const timed = this.timeGates && !boost;
+    const timed = this.timeGates && !boost && !power;
     // A time gate swaps GEOMETRY, not just colour: tall bare poles against the
     // slalom's flagged ones, so the silhouette answers before the hue does.
     for (let i = 0; i < 2; i++) {
       g.poles[i].geometry = timed ? this.timeGeo : g.classicGeos[i];
     }
-    g.setMaterial(boost ? this.matBoost : timed ? this.matTime
+    g.setMaterial(power ? this.matPower : boost ? this.matBoost : timed ? this.matTime
       : (red ? this.matRed : this.matBlue));
     // And the floor mark changes name with it: the mote-callout cyan for time
     // (saturated, because the pale ice of the poles would vanish ON snow), the
@@ -853,18 +866,23 @@ export class Course {
     // "which colour was that one" is the wrong question to be asking at 60 m.
     // Scaled rather than given its own geometry, so the pole, the flag and the
     // sink into the snow all stay in proportion.
-    for (const pole of g.poles) pole.scale.setScalar(boost ? 1.85 : 1);
+    // A POWER GATE IS AS BIG AS A BOOST GATE. Both are the furniture a
+    // player goes out of their way for, and both have to be read at sixty
+    // metres; the slalom's job is to be dense, not to be loud.
+    for (const pole of g.poles) pole.scale.setScalar(boost || power ? 1.85 : 1);
     g.isBoost = boost;
+    g.isPower = power;
     // A WIDER, DEEPER PAINT on the snow for a boost gate. The ribbon already
     // follows the terrain, so scaling it costs nothing and gives the second
     // read -- the pennants say it from the skyline, this says it from the line
     // you are riding, where the poles are out of frame.
-    g.line.scale.set(boost ? 1.5 : timed ? 1.35 : 1, 1, boost ? 2.2 : timed ? 1.8 : 1);
+    g.line.scale.set(boost || power ? 1.5 : timed ? 1.35 : 1, 1,
+      boost || power ? 2.2 : timed ? 1.8 : 1);
     // The two marks stay the same LUMINANCE and differ only in hue: the side
     // readout is worth keeping, but it was being carried by brightness, and one
     // of the pair had to be the loudest thing in the frame for that to work.
     g.line.material.uniforms.uColor.value.set(
-      boost ? 0xa78bfa : (red ? 0xff9db4 : 0xd6a6dc));
+      power ? 0x2ee6d6 : boost ? 0xa78bfa : (red ? 0xff9db4 : 0xd6a6dc));
     g.setVisible(true);
     g.active = true;
     const prev = this.lastPlaced.valid ? this.lastPlaced : null;
@@ -886,7 +904,7 @@ export class Course {
       prevP: prev ? prev.p : null,
       prevU: prev ? prev.u : 0,
       dtPrev: prev ? entry.t - prev.t : 0,
-      red, boost, half: boost ? BOOST_HALF : GATE_HALF,
+      red, boost, power, half: boost || power ? BOOST_HALF : GATE_HALF,
       passed: false, locked: false, t: entry.t,
       minP: this.lastPlacedP + MIN_GATE_GAP,
       x: 0, z: 0,
@@ -1077,7 +1095,7 @@ export class Course {
       // it yet -- the gate went dull in his half while he was still aiming at
       // it.
       const spent = two ? (d.passed && d.passed2) : d.passed;
-      const lit = spent ? 0.2 + d.flash * 1.6 : (d.boost ? 1.7 : 1);
+      const lit = spent ? 0.2 + d.flash * 1.6 : (d.boost || d.power ? 1.7 : 1);
       g.line.material.uniforms.uFade.value = near * lit;
 
       if (d.p - tailP < -DESPAWN_BEHIND) {
@@ -1120,7 +1138,9 @@ export class Course {
       // alone would contribute more error than the predictor does, and this
       // number exists to measure the predictor.
       d.hitT = t - (1 - k) * dt;
-      if (!d.boost) this.stats[inside ? 'passed' : 'missed']++;
+      // Neither a boost nor a power gate is part of the slalom's score: both
+      // are an offer, and missing an offer is not a fault.
+      if (!d.boost && !d.power) this.stats[inside ? 'passed' : 'missed']++;
     }
     // THE GATE ITSELF ANSWERS. Passing one used to dim its mark to 0.2 on
     // the same frame it was cleared, so the only acknowledgement at the gate
@@ -1132,8 +1152,10 @@ export class Course {
     // in both halves, so it answers whoever rides through it.
     if (inside) d.flash = 1;
     events.push({
-      type: d.boost ? (inside ? 'boost' : 'boostMiss') : (inside ? 'gate' : 'miss'),
-      timed: this.timeGates && !d.boost,
+      type: d.power ? (inside ? 'power' : 'powerMiss')
+        : d.boost ? (inside ? 'boost' : 'boostMiss')
+          : (inside ? 'gate' : 'miss'),
+      timed: this.timeGates && !d.boost && !d.power,
       who,
       gate: d,
     });

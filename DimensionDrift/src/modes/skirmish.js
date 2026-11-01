@@ -1,0 +1,248 @@
+// SKIRMISH — the hill shoots back.
+//
+// The third mode, and the first one whose rules are about something other than
+// how far or how fast. Chill vibe is a clock, race is a line, THIS IS A FIGHT.
+// Those three sentences are the whole mode table and none of them needs a
+// second one.
+//
+// ── NO CLOCK, AND HEALTH IN ITS PLACE ──────────────────────────────────────
+//
+// The clock is what ends a chill vibe run and the line is what ends a race.
+// Here it is health, and the swap is deliberately one-for-one rather than an
+// addition: a mode with both a clock and health has two independent ways to
+// lose, which means neither of them is ever the thing the player is actually
+// managing. It also frees the most valuable piece of HUD in the game — the
+// centre of the top edge, where chill vibe's countdown lives — for the bar,
+// so a player arriving from chill vibe already knows where to look for "the
+// resource that is running out".
+//
+// DEAD IS DEAD. No lives, no respawn, no regeneration. Elad's call, and the
+// consequence to be honest about is the one he was shown when he made it: a
+// bad early stretch can end a run in twenty seconds. The defence is not a
+// safety net, it is that the mode is lost by NOT FIGHTING — see the range
+// note below — so the player who is taking damage always has something they
+// could have done about it.
+//
+// ── A WIPEOUT STILL COSTS SPEED AND GROUND, AND NOT HEALTH ─────────────────
+//
+// Also Elad's call, and the stronger half of the reason is a rule this project
+// has held through every pass: DIFFICULTY DOES NOT MOVE INSIDE A FEATURE.
+// `TREE_R`, the tree density, the clumping and the reach were tuned against a
+// clock that this mode does not have. Charging health for a crash would be a
+// balance change to the terrain smuggled in under a combat mode, and it would
+// be invisible — nothing in the diff would say "the forest got harder".
+//
+// It also keeps two languages separate, which is worth more than the tidiness
+// of one pool: the terrain punishes your LINE, the drones punish your FIGHT.
+// A player who is dying can tell which one is killing them.
+//
+// ── WHY THE FIGHT IS WINNABLE: YOU OUTRANGE THEM ───────────────────────────
+//
+// A ninja star reaches 86 m and a drone's bolt reaches 58. The twenty-eight
+// metres between those numbers is the mode. A drone killed while you close
+// through that band never fires; a drone still alive when you enter its reach
+// starts shooting. So the skill is the one this game already asks for and not
+// a new one — acquire early and HOLD THE HEADING through the approach, which
+// is a commitment of line paid in exactly the currency every gate and every
+// mote is paid in.
+//
+// A drone takes three stars and the default fires every 0.36 s, so killing one
+// on the approach takes about a second of being pointed at it. That is why the
+// squads are thinned here (`density`): four drones at chill vibe's spacing
+// cannot all be cleared in the window, and a mode whose correct play is
+// impossible is a mode that teaches nothing.
+//
+// ── WHAT THE GATES DO HERE ─────────────────────────────────────────────────
+//
+// One gate in five is a POWER GATE (cyan, see `course.js`), which hands over a
+// timed weapon. `keen` — three times the damage, so a drone dies on the first
+// hit instead of the third — or, less often, `storm`, which throws three at
+// once in a fan AND gives a speed boost. The step from 1 to 3 damage is a
+// change of KIND and not of degree, which is the only kind of power-up worth
+// building: the squad that was a problem becomes a sweep.
+//
+// The rest of the gates stay a slalom and keep paying score. There is no time
+// to pay, so nothing in this mode pays time.
+//
+// ── AND IT IS WRITTEN FOR A FIGHT THAT IS NOT ALL PLAYERS ──────────────────
+//
+// Nothing in this file names `rider`. It reads `game.roster`, which is a list
+// of Fighters — see `fighters.js` for why that exists before it is needed. The
+// AI competitors and PVP arrive as entries in that list with different team
+// labels, and the two places this mode would have to change for either are
+// `ended()` (whose health ends the run) and `results()` (what the card says).
+// Both are already written against the roster rather than against a player.
+
+import { registerMode } from './mode.js';
+import { TEAM } from '../fighters.js';
+
+/**
+ * ONE GATE IN FIVE, where chill vibe promotes one in seven to a boost.
+ *
+ * More often than chill vibe's boosts because a power here is the only answer
+ * the player has to a squad they cannot out-shoot, and a mode where the answer
+ * shows up every half minute is a mode where most squads are simply endured.
+ * Not so often that the default weapon stops being the weapon: at one in five
+ * and fourteen seconds a power, a run is roughly a third powered.
+ */
+const POWER_EVERY = 5;
+
+/**
+ * THINNER THAN CHILL VIBE'S HILL, at 0.72 of the squad chance.
+ *
+ * Measured against the range band rather than chosen: at full density a squad
+ * arrives every ~113 m, which at 30 m/s is every 3.8 s, and a four-drone
+ * chevron takes about 3 s of sustained aim to clear with the default weapon.
+ * That leaves no frame of the run in which the player is not already behind,
+ * and a fight with no gaps in it is not a fight, it is weather.
+ *
+ * 0.72 puts a squad every ~157 m, or 5.2 s. The gap is the part that makes the
+ * engagements read as engagements.
+ */
+const DENSITY = 0.72;
+
+/** Three stars from the default weapon, one from either power. */
+const DRONE_HP = 3;
+
+export default registerMode({
+  id: 'skirmish',
+  name: 'skirmish',
+  tagline: 'they shoot back · stay alive',
+  routeName: 'Route',
+  explainer: 'Point the board at a drone and your stars fly. Ride through cyan gates for a stronger throw!',
+  order: 3,
+
+  /** The race's close chase, which is what both other modes settled on. */
+  camera: { camBack: 4.0, camUp: 1.9, camLookAhead: 36, camLookUp: 13 },
+
+  music: ['carve_theme', 'sunrise_ascent'],
+
+  skirt: 0.22,
+
+  /** No line to start behind. */
+  showsStartLine: false,
+
+  /** Nothing here pays time, so nothing here is a time gate. */
+  timeGates: false,
+
+  create(game) {
+    let seen = 0;
+    let downAt = null;
+
+    return {
+      /** THE WHOLE DISTINCTION. See the header. */
+      usesClock: false,
+
+      /**
+       * The same ground every time, for chill vibe's reason: this mode is
+       * scored and compared across runs, so a random offset would make a best
+       * score a statement about which stretch you happened to draw.
+       */
+      courseOffset(place) { return place.offset[0]; },
+
+      start() {
+        downAt = null;
+        seen = 0;
+        game.roster.reset();
+        game.combat.setEnabled(true);
+        // THE RULES GO ON BEFORE THE RING IS BUILT, which is why `reset` takes
+        // the rider's p: `droneHp` and `density` are both baked into a band at
+        // build time, so a mode that set them without replacing what is
+        // already on the hill would get one stretch of the previous mode's.
+        game.combat.setRules(
+          { hostile: true, droneHp: DRONE_HP, density: DENSITY },
+          game.rider.p,
+        );
+        game.hud.showHealth(true, game.roster.length);
+        game.hud.healthNames(game._playerNames?.() ?? ['Player 1', 'Player 2']);
+      },
+
+      pickMusic(ids) { return ids; },
+
+      /**
+       * ONE GATE IN FIVE IS A POWER GATE, and the rest stay a slalom.
+       *
+       * The same shape chill vibe uses to promote a boost: keep every beat and
+       * promote a few, which is the difference between a course made of power
+       * gates and a course with power gates in it.
+       */
+      shapePlan(entries) {
+        for (const e of entries) {
+          if (seen++ % POWER_EVERY === POWER_EVERY - 1) e.kind = 'power';
+        }
+        return entries;
+      },
+
+      /**
+       * The storm's speed boost comes off its weapon row, not from here — see
+       * `weapons.js`. This is what a plain boost would be worth if a gate ever
+       * handed one out, and it is chill vibe's own numbers so that a boost
+       * means one thing in this game and not two.
+       */
+      boost: { addSpeed: 12, seconds: 2.4, ceiling: 30 },
+
+      update() {
+        // THE HUD IS DRIVEN FROM HERE and not from the frame loop, because
+        // whether this mode has a health bar at all is a rule. A frame loop
+        // that drew health for every mode would need to know which modes have
+        // it, which is the mode table leaking into the renderer.
+        for (const f of game.roster) {
+          const w = f.gun;
+          game.hud.health(f.slot, f.health, {
+            weapon: f.powerLeft > 0 ? w.label : null,
+            powerLeft: f.powerLeft,
+            powerFull: w.duration ?? 1,
+          });
+        }
+      },
+
+      /**
+       * WHOSE HEALTH ENDS THE RUN.
+       *
+       * Everyone on the crew being down, which in one player is the one
+       * player and in two is both. NOT the first to fall: a split screen that
+       * cut to results the moment one rider died would end the other's run
+       * mid-corner for something they did not do.
+       *
+       * This is one of the two methods a PVP match would change, and it is
+       * already written against the roster rather than against a rider: there
+       * it would ask whether one SIDE is down rather than whether the crew is.
+       */
+      ended() {
+        if (game.roster.aliveCount(TEAM.CREW) > 0) return null;
+        // A beat before the card, so the fall, the sound and the last bolt
+        // all land before the screen changes. Without it the results panel
+        // arrives on the same frame as the hit that caused it and the player
+        // never sees what killed them.
+        if (downAt === null) downAt = game.runTime ?? 0;
+        return (game.runTime ?? 0) - downAt > 1.1 ? 'down' : null;
+      },
+
+      results() {
+        const c = game.combat.stats;
+        const acc = c.shots > 0 ? Math.round((c.kills * DRONE_HP / c.shots) * 100) : 0;
+        return {
+          title: 'you went down',
+          headline: `${c.kills}`,
+          headlineUnit: 'drones',
+          showRank: false,
+          summary: `${(game.distance / 1000).toFixed(2)} km ridden — `
+            + `${Math.round(game.score).toLocaleString('en-US')} points — `
+            + `${acc}% of stars on target`,
+          statsRow: false,
+          run: { distance: game.distance, kills: c.kills, sweeps: c.sweeps },
+        };
+      },
+
+      stop() {
+        // PUT THE HILL BACK. A mode that leaves its rules on gives them to the
+        // next run, and the next run may be chill vibe — where a drone that
+        // shoots back and takes three hits is a balance change nobody asked
+        // for. This is the one hook `mode.js` says is not optional.
+        game.combat.setRules({ hostile: false, droneHp: 1, density: 1 });
+        game.hud.showHealth(false);
+        game.roster.reset();
+      },
+    };
+  },
+});

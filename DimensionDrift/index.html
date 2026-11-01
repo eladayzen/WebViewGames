@@ -157,6 +157,46 @@
       <div class="clock-bar"><i id="clockFill"></i></div>
     </div>
 
+    <!-- ── HEALTH (skirmish) ───────────────────────────────────────────────
+         IN THE CLOCK'S OWN SLOT, and that is the point. Skirmish has no clock,
+         so the most valuable piece of screen in the HUD is free — and a player
+         coming from chill vibe already knows to look there for "the resource
+         that is running out". Putting health anywhere else would teach the
+         same lesson twice.
+
+         TWO BARS, ONE BLOCK. The second is hidden outside two player. They are
+         siblings rather than one-per-split-half because the split divider is
+         vertical and a bar per half would put player two's health on the far
+         side of the screen from their own rider at the moment the camera has
+         them on the near side. Side by side under one label, each tagged with
+         its own name, reads in both layouts.
+
+         The fill is scaled with transform, not width: width animates layout,
+         transform does not, and this updates on frames where a bolt lands
+         while a hundred drones are being drawn. -->
+    <div class="health" id="health" hidden>
+      <div class="health-row">
+        <div class="health-slot" id="healthSlot1">
+          <div class="health-name" id="healthName1">Player 1</div>
+          <div class="health-bar"><i id="healthFill1"></i></div>
+        </div>
+        <div class="health-slot" id="healthSlot2" hidden>
+          <div class="health-name" id="healthName2">Player 2</div>
+          <div class="health-bar"><i id="healthFill2"></i></div>
+        </div>
+      </div>
+      <!-- What is in your hand, and for how long. Empty on the default
+           weapon: a readout that is always on says nothing when it matters. -->
+      <div class="power-chip" id="powerChip" hidden>
+        <span id="powerLabel">keen stars</span>
+        <i class="power-bar"><b id="powerFill"></b></i>
+      </div>
+    </div>
+
+    <!-- The red at the edges when you are hit. Transparent until it fires,
+         and behind every readout so it can never cover one. -->
+    <div class="hurt-flash" id="hurtFlash"></div>
+
     <i class="split-divider"></i>
     <!-- BAL-594: the finisher's panel, one per half, LEFT side.
          Deliberately NOT a child of the score block: that is the 7-second

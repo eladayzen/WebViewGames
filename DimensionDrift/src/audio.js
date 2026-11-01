@@ -1065,6 +1065,89 @@ export class Audio {
   }
 
   /**
+   * A STAR THAT LANDED AND DID NOT KILL.
+   *
+   * The quietest voice in the fight, and that is the design: with health on
+   * the drones, most connecting shots are this one. It has to be audible
+   * enough to confirm the hit and small enough that three a second is not a
+   * rattle — so it is a tick, 18 ms of filtered noise with no tone under it at
+   * all. Every other combat voice has a pitch; this one deliberately does not,
+   * which is what keeps it out of the way of the ones that mean something.
+   */
+  droneHit() {
+    const now = this.ctx.currentTime;
+    const at = Math.min(now + 0.12, Math.max(now, (this._hitAt ?? 0) + 0.03));
+    this._hitAt = at;
+    this._burst({
+      duration: 0.018, gain: 0.075, from: 7200, to: 3200, type: 'bandpass', q: 2.4,
+      delay: at - now,
+    });
+  }
+
+  /**
+   * A drone firing at you.
+   *
+   * RISING, where the player's own gun falls. The two are on screen at the
+   * same time travelling in opposite directions and the ear has to be able to
+   * tell "I shot" from "I am being shot at" without looking — a distinction
+   * the eye can make from the colour, but only once it is already looking at
+   * the right part of the frame. Pitch direction is the cheapest cue there is
+   * and it costs nothing in the mix.
+   */
+  droneFire() {
+    const now = this.ctx.currentTime;
+    const at = Math.min(now + 0.12, Math.max(now, (this._efAt ?? 0) + 0.05));
+    this._efAt = at;
+    this._tone(180, 520, {
+      type: 'sawtooth', attack: 0.004, decay: 0.11, gain: 0.06, delay: at - now,
+    });
+  }
+
+  /**
+   * You took a hit.
+   *
+   * PITCHED BY HOW MUCH IS LEFT, so the sound of being hit at 80% and at 15%
+   * are not the same sound. A health bar lives in the corner of the screen and
+   * the player is looking at the hill; this is the channel that can actually
+   * reach them. It falls as the health does — 220 Hz at full down to 90 at
+   * nearly gone, through a lowpass that closes with it, so the last hits are
+   * both lower and duller.
+   *
+   * @param {number} health remaining, 0 to 1
+   */
+  playerHit(health = 1) {
+    const h = Math.max(0, Math.min(1, health));
+    this._tone(90 + 130 * h, 55 + 60 * h, {
+      type: 'square', attack: 0.003, decay: 0.19, gain: 0.17,
+    });
+    this._burst({
+      duration: 0.10, gain: 0.13, from: 1800 + 1600 * h, to: 220, type: 'lowpass', q: 0.8,
+    });
+  }
+
+  /** Out of health. One per run, so it can afford to be the biggest thing in
+   *  the mix: a long fall with nothing under it. */
+  playerDown() {
+    this._tone(200, 40, { type: 'sawtooth', attack: 0.004, decay: 1.1, gain: 0.3 });
+    this._burst({ duration: 0.9, gain: 0.3, from: 2400, to: 90, type: 'lowpass', q: 1.1 });
+  }
+
+  /**
+   * A power gate taken.
+   *
+   * A FIFTH ABOVE THE ROOT, which is the consonance `driftLine` and
+   * `squadSwept` already use for "that went right" — this game should not have
+   * three different ways of saying the same thing. What makes it its own event
+   * is the SECOND note a beat later: the gate is a thing that keeps paying for
+   * fourteen seconds, so its voice resolves upward instead of landing.
+   */
+  power() {
+    this._tone(392, 392, { type: 'triangle', attack: 0.006, decay: 0.26, gain: 0.16 });
+    this._tone(588, 588, { type: 'triangle', attack: 0.006, decay: 0.34, gain: 0.14, delay: 0.09 });
+    this._tone(784, 784, { type: 'sine', attack: 0.01, decay: 0.5, gain: 0.1, delay: 0.19 });
+  }
+
+  /**
    * A drone coming apart. One per kill.
    *
    * Pitched DOWN the formation, which is the inverse of the mote ladder on

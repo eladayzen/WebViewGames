@@ -35,6 +35,8 @@ import { Course, ReferenceRun, planGates, planKickers } from './course.js';
 import { Pickups } from './pickups.js';
 import { Combat } from './combat.js';
 import { Islands } from './islands.js';
+import { Roster, Fighter, TEAM } from './fighters.js';
+import { WEAPONS, rollPower } from './weapons.js';
 import { createFinishLine } from './finishLine.js';
 import { createStartLine } from './startLine.js';
 import { createRivals } from './rivals.js';
@@ -51,6 +53,7 @@ import { listModes, getMode, defaultModeId } from './modes/mode.js';
 // Registering is the side effect — see modes/mode.js. Importing a mode is what
 // puts it in the lobby, so this list is the only place a mode is switched on.
 import './modes/chillVibe.js';
+import './modes/skirmish.js';
 import { RACE_LENGTH } from './modes/race.js';
 import { Input } from './input.js';
 import { clamp } from './rng.js';
@@ -86,6 +89,21 @@ const FORE_AFT_INPUT = false;
  */
 const VERSION = '0.3.0';
 const SEED = 20260809;
+
+/**
+ * A FIGHTER'S HEALTH, on a hundred.
+ *
+ * A hundred rather than a small count so the bar has somewhere to go and the
+ * drones' damage can be tuned in single points without it stepping in visible
+ * quarters. A drone bolt is 6, so twelve of them is a run — and twelve
+ * connecting bolts is a lot of drones left alive, which is the point: the mode
+ * is lost by not fighting, not by being unlucky.
+ *
+ * It is a module constant rather than a mode's because health is not a thing a
+ * mode should be able to differ on quietly. If a second mode ever wants a
+ * different number it should say so out loud, here.
+ */
+const PLAYER_HP = 100;
 
 /**
  * The world's own defaults, named so a place can leave a key out and get them.
@@ -925,7 +943,30 @@ class Game {
       // carries the live target and every drone the corridor could reach, with
       // the along/across pair the acquisition test is actually made on --
       // `combatqa.mjs` asserts on these rather than on pixels.
+      // WHO IS IN THE FIGHT AND HOW THEY ARE DOING. Combat has no visible
+      // state between events — a frame either has a star in it or it does not
+      // — so a harness that cannot read this cannot tell a gun that is holding
+      // its fire from a gun that is broken. Same argument as the combat block
+      // below, one layer up.
+      roster: this.roster.fighters.map((f) => ({
+        id: f.id,
+        team: f.team,
+        hp: f.hp,
+        maxHp: f.maxHp,
+        alive: f.alive,
+        weapon: f.weapon,
+        powerLeft: +f.powerLeft.toFixed(2),
+        shots: f.shots,
+        hits: f.hits,
+        kills: f.kills,
+        taken: f.taken,
+        hasTarget: !!f.target,
+      })),
+      rules: { ...this.combat.rules },
       combat: {
+        enemyShots: this.combat.stats.enemyShots,
+        enemyHits: this.combat.stats.enemyHits,
+        damage: this.combat.stats.damage,
         shots: this.combat.stats.shots,
         kills: this.combat.stats.kills,
         sweeps: this.combat.stats.sweeps,
@@ -1092,6 +1133,15 @@ class Game {
       // belongs next to them in any reading of the world; before the particles,
       // because its hooks are wired below once there is something to emit.
       this.combat = new Combat(this.terrain, this.scene, this.mood, SEED);
+      /**
+       * WHO IS IN THE FIGHT. See `fighters.js` for why this is a list and not
+       * a `rider` argument: it is the seam the AI competitors and PVP arrive
+       * through, and it is cheaper to build now than to retrofit through a
+       * turret, a guidance loop and a hit test at once.
+       *
+       * Player two is added further down, where `rider2` is made.
+       */
+      this.roster = new Roster();
       this.islands = new Islands(this.terrain, this.scene, this.mood, SEED);
       this.particles = new Particles(this.scene, 900);
       this.snowfall = new Snowfall(this.scene, 800, 64);
@@ -1120,10 +1170,28 @@ class Game {
         this.particles.emit(burstAt, KILL_COL,
           { count: 26, speed: 15, size: 1.9, life: 0.75, spread: 1, up: 3 });
       };
+      // A HIT THAT DID NOT FINISH IT. With health on the drones most connecting
+      // shots do not kill, and a shot that lands with no answer at all reads as
+      // a gun that missed. Small, and deliberately a different sound from the
+      // kill: a tick, not a thud.
+      const HIT_COL = new THREE.Color(0xcfe3f5);
+      this.combat.onDroneHit = (drone) => {
+        this.audio.droneHit();
+        burstAt.set(drone.x, drone.drawnY ?? drone.y, drone.z);
+        this.particles.emit(burstAt, HIT_COL,
+          { count: 7, speed: 11, size: 1.2, life: 0.22, spread: 1, up: 1 });
+      };
+      const ENEMY_COL = new THREE.Color(0xff6a1f);
+      this.combat.onEnemyShot = (origin) => {
+        this.audio.droneFire();
+        this.particles.emit(origin, ENEMY_COL,
+          { count: 4, speed: 7, size: 1.0, life: 0.14, spread: 0.6, up: 0.5 });
+      };
       this._bloomOn = Game._bloomOn(this.host.transport);
       this.post = new Post(this.renderer, this.scene, this.camera, this._bloomOn);
       console.log(`[carve] bloom ${this._bloomOn ? 'on' : 'off'} (${this.host.transport})`);
       this.cameraRig = new CameraRig(this.camera, this.terrain);
+      this.roster.add(this._makeFighter(this.rider, 0, 'p1'));
       // ── BAL-594: PLAYER TWO ──────────────────────────────────────────
       // A rider of their own, on the same terrain and in the same scene, so
       // the world stays single and only the riders are doubled. The model is
@@ -1145,6 +1213,12 @@ class Game {
         this._syncPlayerColors();
         this.trail2 = new Trail(this.scene, this.mood);
         this._lean2 = { x: 0, y: 0 };
+        // SAME TEAM, FOR NOW. Both riders are CREW, so the drones treat them
+        // as two targets of one side and they cannot shoot each other. A PVP
+        // match is this one line with `TEAM.CREW` replaced by `PVP_B` on this
+        // fighter and `PVP_A` on player one's — `fighters.js` has the account
+        // of why nothing else has to change.
+        this.roster.add(this._makeFighter(this.rider2, 1, 'p2'));
         // ── A SECOND WINDOW ON THE WORLD ─────────────────────────────────
         // The mountain and the trees are streamed rings: ~70 m behind the
         // anchor, ~630 m ahead. One ring, anchored at the TRAILING rider,
@@ -2542,6 +2616,7 @@ class Game {
    * belong on the two-player ending screen, which does not exist yet.
    */
   _gateForTwo(ev) {
+    if (ev.type === 'power') { this._takePower(1, ev); return; }
     if (ev.type === 'boost') {
       // Player two's OWN chain -- see the note in race.js on why a streak
       // cannot be shared by two people.
@@ -3385,6 +3460,65 @@ class Game {
 
   get mult() { return multFor(this.combo); }
 
+  /**
+   * Wrap a rider as a combatant.
+   *
+   * THE FEEDBACK HANGS HERE AND NOT IN `fighters.js`, which imports neither
+   * the audio nor the HUD on purpose — the same split `combat.js` already
+   * keeps. Fighter decides WHAT happened to whom; this decides what that
+   * sounds like and what the screen says about it.
+   */
+  /**
+   * A power gate taken, by one player.
+   *
+   * WHICH POWER IS DRAWN FROM THE GATE'S OWN POSITION, not from a call to
+   * Math.random. `p` is where the gate stands on the mountain, so a given gate
+   * on a given seed always hands out the same thing — which means a stretch of
+   * course re-ridden is the same stretch, the way every other placement in
+   * this game already is. It also means the two players in a split screen who
+   * ride the same gate get the same power, which a shared random stream could
+   * not guarantee and which would read as the game cheating one of them.
+   */
+  _takePower(slot, ev) {
+    const f = this.roster.fighters[slot];
+    if (!f || !f.alive) return;
+    const p = ev.gate?.p ?? 0;
+    // A cheap hash of the metre mark: fract(sin(p) * large). Deterministic,
+    // one line, and nothing downstream needs it to be a good generator — it is
+    // choosing between two outcomes.
+    const r = Math.abs(Math.sin(p * 0.7853 + SEED * 1e-6) * 43758.5453) % 1;
+    f.givePower(rollPower(r));
+  }
+
+  _makeFighter(rider, slot, id) {
+    const f = new Fighter(rider, { id, slot, team: TEAM.CREW, maxHp: PLAYER_HP });
+    f.onDamage = (amount) => {
+      this.audio.playerHit(f.health);
+      // THE RIDER FLINCHES, because a health bar in the corner is not where
+      // the player is looking at ninety kilometres an hour. `hurt` is read by
+      // the rider's own draw and by the HUD's damage flash.
+      rider.hurt = 0.6;
+      this.hud.damageFlash(slot, f.health);
+    };
+    f.onDown = () => {
+      this.audio.playerDown();
+      this.hud.callout('down', { big: true, color: '#ff4d4d', slot });
+    };
+    f.onPower = (weaponId) => {
+      const w = WEAPONS[weaponId];
+      this.audio.power();
+      this.hud.callout(w.label, { big: true, color: '#2ee6d6', slot });
+      // "SOMETIME SPEED BOOSTS + STRONG WEAPON." The speed half rides on the
+      // weapon row rather than on the gate, so a power that should also move
+      // you says so where everything else about it is written.
+      if (w.speedUp) {
+        rider.boost(w.speedUp.seconds, w.speedUp.addSpeed, w.speedUp.ceiling);
+        this.audio.boost(w.speedUp.seconds);
+      }
+    };
+    return f;
+  }
+
   _award(points, label, { big = false, color = null } = {}) {
     const m = this.mult;
     this.score += points * m;
@@ -3629,7 +3763,11 @@ class Game {
     // Scenery, so it scrolls whatever the state is -- the results screen and
     // the crash camera both still look at the sky.
     this.islands.update(this.rider.p);
-    for (const ev of this.combat.update(dt, this.rider, this.state === 'play')) {
+    // Cooldowns, grace windows and the power clocks, for everyone in the
+    // fight. Before combat runs, so a power that expires this frame expires
+    // before the gun reads which weapon it is holding.
+    this.roster.step(dt);
+    for (const ev of this.combat.update(dt, this.roster, this.state === 'play')) {
       this._award(ev.points, ev.label, { big: ev.type === 'sweep', color: ev.color });
       // A SWEPT SQUAD PAYS THE CLOCK AND A KILL DOES NOT. See CLOCK.squad in
       // timer.js for the argument; the short version is that one ceilinged
@@ -4574,6 +4712,7 @@ class Game {
       : null;
     for (const ev of this.course.update(dt, t, this.rider, prevP, prevX, two)) {
       if (ev.who === 1) { this._gateForTwo(ev); continue; }
+      if (ev.type === 'power') { this._takePower(0, ev); continue; }
       if (ev.type === 'boost') {
         // ── A BOOST GATE, AND IT IS LOUD ──────────────────────────────────
         // "when the player goes through them we need to get much more

@@ -66,6 +66,14 @@ export class Hud {
       comboCharge: $('comboCharge'),
       chargePips: $('comboCharge').querySelectorAll('i'),
       landFlash: $('landFlash'),
+      health: $('health'),
+      healthSlots: [$('healthSlot1'), $('healthSlot2')],
+      healthFills: [$('healthFill1'), $('healthFill2')],
+      healthNames: [$('healthName1'), $('healthName2')],
+      powerChip: $('powerChip'),
+      powerLabel: $('powerLabel'),
+      powerFill: $('powerFill'),
+      hurtFlash: $('hurtFlash'),
       callouts: $('callouts'),
       progress: $('progress'),
       progressFill: $('progressFill'),
@@ -807,6 +815,89 @@ export class Hud {
     this.el.callouts.appendChild(el);
     while (this.el.callouts.childElementCount > 4) {
       this.el.callouts.firstElementChild.remove();
+    }
+  }
+
+  // ── HEALTH ────────────────────────────────────────────────────────────────
+
+  /**
+   * Turn the health readout on, and say how many bars it has.
+   *
+   * Called by the mode, not by the frame loop: whether this mode has health at
+   * all is a rule, and a rule should not be re-decided sixty times a second.
+   */
+  showHealth(on, players = 1) {
+    if (!this.el.health) return;
+    this.el.health.hidden = !on;
+    this.el.health.classList.toggle('is-two', players > 1);
+    if (this.el.healthSlots[1]) this.el.healthSlots[1].hidden = players < 2;
+    // The clock and the health live in the same place on screen on purpose
+    // (see index.html), so exactly one of them may ever be up.
+    if (on && this.el.clock) this.el.clock.hidden = true;
+  }
+
+  /**
+   * One frame of the bars.
+   *
+   * SCALE, NOT WIDTH. A width write is a layout write, and this runs on frames
+   * that are already drawing a mountain, a forest and a squad of drones.
+   */
+  health(slot, frac, { weapon = null, powerLeft = 0, powerFull = 1 } = {}) {
+    const fill = this.el.healthFills[slot];
+    const box = this.el.healthSlots[slot];
+    if (!fill || !box) return;
+    const f = Math.max(0, Math.min(1, frac));
+    fill.style.transform = `scaleX(${f})`;
+    // Two named thresholds rather than a continuous ramp — see the stylesheet
+    // for why a bar that slides has no moment the player can point at.
+    box.classList.toggle('is-hurt', f <= 0.55 && f > 0.25);
+    box.classList.toggle('is-critical', f <= 0.25);
+    // The weapon chip follows player ONE only: in split screen there is one
+    // chip and two players, and a chip that flickered between their two
+    // weapons would be worse than no chip. Player two's power arrives as a
+    // callout on their own half.
+    if (slot === 0 && this.el.powerChip) {
+      const on = !!weapon && powerLeft > 0;
+      this.el.powerChip.hidden = !on;
+      if (on) {
+        this.el.powerLabel.textContent = weapon;
+        this.el.powerFill.style.transform =
+          `scaleX(${Math.max(0, Math.min(1, powerLeft / Math.max(0.001, powerFull)))})`;
+      }
+    }
+  }
+
+  /** Name the bars. Two-player only; one player has nobody to be told from. */
+  healthNames(names) {
+    for (let i = 0; i < this.el.healthNames.length; i++) {
+      if (this.el.healthNames[i] && names[i]) this.el.healthNames[i].textContent = names[i];
+    }
+  }
+
+  /**
+   * You were hit.
+   *
+   * The vignette fires for ANY player being hit and the shake only for the one
+   * that took it. In split screen that is the right split: the red is a
+   * property of the frame and both halves share one, while the bar is a
+   * property of a player.
+   */
+  damageFlash(slot = 0) {
+    const box = this.el.healthSlots[slot];
+    if (box) {
+      box.classList.remove('hit');
+      // Reading offsetWidth restarts the animation; without it a second hit
+      // inside the 260 ms window plays nothing at all, which is exactly the
+      // case — a squad firing together — where the player most needs to see
+      // that it was more than one.
+      void box.offsetWidth;
+      box.classList.add('hit');
+    }
+    const v = this.el.hurtFlash;
+    if (v) {
+      v.classList.remove('hit');
+      void v.offsetWidth;
+      v.classList.add('hit');
     }
   }
 

@@ -22,8 +22,47 @@ names, and the asset namespace — `/audio/carve/*` became `/audio/*` and
 `tracks/carve.json` became `tracks/drift.json`, so the old game's name is not
 baked into this one's shipped paths.
 
-**New, and not in carve at all:** the drones and the gun (`src/combat.js`), and
-the floating islands (`src/islands.js`).
+**New, and not in carve at all:** the drones and the gun (`src/combat.js`),
+the floating islands (`src/islands.js`), and **skirmish** — a third mode where
+the hill shoots back (`src/modes/skirmish.js`).
+
+### Skirmish
+
+Chill vibe is a clock, race is a line, **skirmish is a fight**. No clock; health
+in its place, in the same spot on screen, so a player arriving from chill vibe
+already knows where to look for the thing running out. Dead is dead — no lives,
+no respawn, no regeneration.
+
+**You outrange them.** A ninja star reaches 86 m and a drone's bolt reaches 58.
+That 28 m band is the mode: a drone killed while you close through it never
+fires, one still alive when you enter its reach starts shooting. So the skill
+is the one this game already asks for — acquire early and *hold the heading*.
+
+A drone takes three stars; a cyan **power gate** (one in five) gives you a
+weapon that kills in one, or more rarely one that throws three at a time and
+boosts your speed. The step from 1 to 3 damage is a change of kind, not degree.
+
+A wipeout still costs speed and ground and **not** health. Terrain punishes your
+line, drones punish your fight — and the forest was tuned against a clock this
+mode does not have, so charging health for a crash would be a difficulty change
+smuggled in under a feature.
+
+### Written for the fight that is coming
+
+`src/fighters.js` exists before it is needed. Combat never sees a `Rider` — it
+sees a **Fighter**, an adapter over anything with a position and a heading, and
+asks a **Roster** one question: `foesOf(team)`. Nothing in the targeting code
+ever asks whether something is a player.
+
+That is the seam for the two things on the list. **AI competitors** join as
+entries in the roster. **PVP** is one line — player two registered on `PVP_B`
+instead of `CREW` — after which the drones shoot at both, both shoot at the
+drones, and the two riders shoot at each other. A design where combat reaches
+for `game.rider` has to be unpicked for either, and unpicking it later means
+doing it inside a turret, a guidance loop and a hit test at once.
+
+`src/weapons.js` is the other half: every projectile is the same simulation with
+a different row. A power gate swaps a row, not a code path.
 
 **Still carve, still ahead:** the rider, the board (it is still a snowboard),
 the turtles, the soundtrack.
@@ -98,6 +137,7 @@ npm run build      # -> dist/
 npm test           # 11 unit tests, no browser needed
 node bootqa.mjs    # builds nothing; serves dist/ and proves the game RUNS
 node combatqa.mjs  # does the gun actually hit anything?
+node skirmishqa.mjs # does the hill shoot back, and can it be beaten?
 node lookqa.mjs --tag <name>   # the canonical look captures
 node moodmetrics.mjs           # the palette, as six measured bands
 ```

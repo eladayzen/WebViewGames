@@ -2317,3 +2317,129 @@ body.has-sb:not(.is-2p) .clock { left: calc(50% + var(--sb-total) / 2); }
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+
+/* ── HEALTH, AND BEING HIT ──────────────────────────────────────────────────
+ * Skirmish's one resource. Sits where the clock sits, because that is where a
+ * player already looks for "the thing running out" — see index.html. */
+.health {
+  position: absolute;
+  top: calc(var(--safe-t) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.health-row { display: flex; gap: 14px; align-items: flex-start; }
+.health-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+.health-name {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-shadow: 0 1px 6px rgba(10, 14, 30, 0.6);
+}
+/* One player has no one to be told apart from. */
+.health:not(.is-two) .health-name { display: none; }
+
+.health-bar {
+  width: 148px;
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(10, 14, 30, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  overflow: hidden;
+}
+.health:not(.is-two) .health-bar { width: 190px; }
+
+.health-bar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 4px;
+  background: var(--good, #97d700);
+  transform-origin: 0 50%;
+  /* Transform, not width: this updates on frames that are already drawing a
+   * mountain, and width is a layout write. */
+  transition: transform 140ms linear, background-color 220ms linear;
+}
+
+/* THREE COLOURS, NOT A GRADIENT. A bar that slides continuously from green to
+ * red never crosses a threshold the player can name, so "I am in trouble" has
+ * no moment. Two steps give it two. */
+.health-slot.is-hurt .health-bar i { background: #ffb347; }
+.health-slot.is-critical .health-bar i { background: var(--bad, #ff4d4d); }
+.health-slot.is-critical .health-bar {
+  animation: healthPulse 900ms ease-in-out infinite;
+}
+@keyframes healthPulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(255, 77, 77, 0.5); }
+  50% { box-shadow: inset 0 0 0 1px rgba(255, 77, 77, 1), 0 0 10px rgba(255, 77, 77, 0.55); }
+}
+
+/* The hit itself, on the bar: a short shake, so a hit that takes six points off
+ * a long bar is still an event. */
+.health-slot.hit .health-bar { animation: healthHit 260ms ease-out; }
+@keyframes healthHit {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  55% { transform: translateX(3px); }
+  100% { transform: translateX(0); }
+}
+
+/* ── THE WEAPON IN YOUR HAND ─────────────────────────────────────────────── */
+.power-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(10, 14, 30, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(46, 230, 214, 0.55);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #2ee6d6;
+}
+.power-bar {
+  display: block;
+  width: 44px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(46, 230, 214, 0.28);
+  overflow: hidden;
+}
+.power-bar b {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: #2ee6d6;
+  transform-origin: 0 50%;
+}
+
+/* ── BEING HIT, AT THE EDGES ─────────────────────────────────────────────── */
+.hurt-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  /* A vignette, not a wash. A full-screen red plate over a frame the player is
+   * steering through is the one HUD effect that can genuinely make a game
+   * unplayable; pushing it to the edges leaves the line they are riding clear
+   * and still fills the periphery, which is where the eye notices it anyway. */
+  background: radial-gradient(ellipse at center,
+    rgba(255, 40, 40, 0) 42%, rgba(255, 30, 30, 0.42) 100%);
+}
+.hurt-flash.hit { animation: hurtFlash 420ms ease-out; }
+@keyframes hurtFlash {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  100% { opacity: 0; }
+}

@@ -51,6 +51,27 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeLitMaterial } from './lit.js';
 import { HALF, VIEW, meshHeight } from './mountain.js';
 import { mulberry32, range, clamp } from './rng.js';
+import { WEAPONS, TEAM } from './weapons.js';
+
+// ── THE RULES A MODE SETS, AND WHY THEY ARE NOT CONSTANTS ──────────────────
+//
+// Two modes now want different fights out of the same drones, and the
+// difference is not cosmetic: in chill vibe a drone is a scoring target that
+// cannot hurt you and dies to one hit, and in skirmish it is an enemy with
+// health that shoots back. Hard-coding either would have meant the other mode
+// getting a balance change it never asked for — and chill vibe's numbers are
+// the ones a thousand measured metres were spent on.
+//
+// So the hostile half is OFF by default. A file that ships a new capability
+// switched off is a file that cannot break the mode that was already working.
+const DEFAULT_RULES = {
+  /** Do the drones shoot back? */
+  hostile: false,
+  /** How many hits a drone takes. 1 is the game chill vibe was measured on. */
+  droneHp: 1,
+  /** A multiplier on SQUAD_CHANCE, so a mode can thin or thicken the hill. */
+  density: 1,
+};
 
 // ── PLACEMENT ───────────────────────────────────────────────────────────────
 
@@ -264,6 +285,55 @@ function buildEyeGeometry() {
  * Built along -Z so a bolt can be oriented by `lookAt`-style basis without a
  * correction quaternion.
  */
+/**
+ * A NINJA STAR — four points, a hole, and a thickness.
+ *
+ * It is a plate rather than a disc, built in the XY plane and flown along -Z
+ * like everything else, so the same `lookAt` basis the bolts use orients it
+ * and the spin is one extra rotation about that axis.
+ *
+ * THE SPIN IS NOT DECORATION. A flat plate seen edge-on from a chase camera is
+ * one pixel wide and simply is not there; spinning it means it presents its
+ * face to the key once a revolution and flashes, which is both how a thrown
+ * star actually behaves and the only reason this reads as a star at sixty
+ * metres instead of as a dash. See `spin` in `weapons.js`.
+ *
+ * FOUR POINTS, NOT SIX OR EIGHT. At the sizes this is drawn — 0.42 m across,
+ * which is a handful of pixels past thirty metres — six points blur into a
+ * disc. Four survives being small, which is the only test that matters here.
+ */
+function buildStarGeometry() {
+  const R = 0.42;
+  const r = 0.14;
+  const half = 0.03;
+  const pts = [];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const rad = i % 2 === 0 ? R : r;
+    pts.push(new THREE.Vector2(Math.cos(a) * rad, Math.sin(a) * rad));
+  }
+  const pos = [];
+  const push = (ax, ay, az, bx, by, bz, cx, cy, cz) =>
+    pos.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+  for (let i = 0; i < 8; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % 8];
+    // Two faces, front and back, wound opposite so both are lit.
+    push(0, 0, half, a.x, a.y, half, b.x, b.y, half);
+    push(0, 0, -half, b.x, b.y, -half, a.x, a.y, -half);
+    // And the rim, which is what catches the key edge-on.
+    push(a.x, a.y, half, a.x, a.y, -half, b.x, b.y, half);
+    push(b.x, b.y, half, a.x, a.y, -half, b.x, b.y, -half);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  // Built in XY, flown along -Z: stand it up so its face is across the flight
+  // path rather than along it.
+  g.rotateY(Math.PI / 2);
+  return g;
+}
+
 function buildBoltGeometry() {
   const g = new THREE.OctahedronGeometry(0.17, 0).toNonIndexed();
   g.scale(1.0, 1.0, 5.2);
@@ -342,7 +412,16 @@ export class Combat {
     // violet-green axis the whole re-theme runs along, so it separates at every
     // stop in `mood.js` instead of only at the convenient ones.
     this.matEye = new THREE.MeshBasicMaterial({ color: 0xff6a1f });
-    this.matBolt = new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
+    this.matBolt = new THREE.MeshBasicMaterial({ color: 0xff9a4d });
+    // WHITE, and the colour arrives per instance. MeshBasicMaterial multiplies
+    // its own colour by the instance colour, so a white base lets a star be
+    // exactly the hue `weapons.js` names — steel for the default, cyan for a
+    // power — without a material per weapon or a partitioned pool.
+    //
+    // Unlit like the bolts and the lock, and for the same reason: fog lives in
+    // the lit shader, and a projectile that hazes out at the ranges where
+    // knowing about it is worth most is a projectile that is not doing its job.
+    this.matStar = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
     this.podGeo = buildPodGeometry();
     this.pods = new THREE.InstancedMesh(this.podGeo, this.matPod, this.capacity);
@@ -358,11 +437,36 @@ export class Combat {
     this.eyes.instanceMatrix = this.pods.instanceMatrix;
     scene.add(this.eyes);
 
+    // ── TWO PROJECTILE MESHES, ONE PROJECTILE POOL ─────────────────────────
+    //
+    // A star and a bolt are different objects and have to be: the thing coming
+    // AT you and the thing leaving your hand are the two most important shapes
+    // in the frame to tell apart at a glance, and they are often on screen at
+    // the same time travelling in opposite directions. Two geometries, two
+    // materials, two draw calls.
+    //
+    // The RECORDS are one pool all the same, because every projectile in this
+    // game is the same simulation — fly, steer at the thing you were given,
+    // test a swept sphere, expire — and splitting the pool would have been two
+    // copies of that loop to keep in step. Each record carries which mesh it
+    // draws into, so a weapon can change shape without the simulation knowing.
+    this.starGeo = buildStarGeometry();
+    this.starMesh = new THREE.InstancedMesh(this.starGeo, this.matStar, BOLTS_CAP);
+    this.starMesh.frustumCulled = false;
+    this.starMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Per-instance colour, so a powered star is cyan without a second material
+    // and without the pool having to be partitioned by weapon.
+    this.starMesh.instanceColor = new THREE.InstancedBufferAttribute(
+      new Float32Array(BOLTS_CAP * 3).fill(1), 3);
+    this.starMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    scene.add(this.starMesh);
+
     this.boltGeo = buildBoltGeometry();
     this.boltMesh = new THREE.InstancedMesh(this.boltGeo, this.matBolt, BOLTS_CAP);
     this.boltMesh.frustumCulled = false;
     this.boltMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(this.boltMesh);
+    this.meshes = { star: this.starMesh, bolt: this.boltMesh };
 
     this.lockGeo = buildLockGeometry();
     // Unlit, like the eye and the bolt: the one element whose whole job is to
@@ -386,8 +490,33 @@ export class Combat {
       this.bolts.push({
         live: false, gi: i, life: 0,
         pos: new THREE.Vector3(), dir: new THREE.Vector3(), target: null,
+        /** The weapon row this shot was fired with. */
+        w: null,
+        /** Who fired it — a Fighter, or a drone record. For the kill credit. */
+        from: null,
+        /** 'star' or 'bolt': which mesh this record draws into. */
+        shape: 'star',
+        /** True when the target is a drone, false when it is a Fighter. */
+        atDrone: true,
+        squad: null,
+        spin: 0,
       });
     }
+    /** @type {typeof DEFAULT_RULES} */
+    this.rules = { ...DEFAULT_RULES };
+    /** Scratch for `Roster.foesOf`, which writes into a list it is handed. */
+    this._foes = [];
+    /** Scratch for the live-drone list the gun walks. */
+    this._cand = [];
+    this._col = new THREE.Color();
+    this._spinQ = new THREE.Quaternion();
+    this._muzzle = new THREE.Vector3();
+    /** The fighter the lock ring and the single-player HUD follow. */
+    this.lead = null;
+    /** (drone, weapon, by) => void — a hit that did not finish it. */
+    this.onDroneHit = null;
+    /** (originVec3, drone, target) => void */
+    this.onEnemyShot = null;
     this.cooldown = 0;
     /** The drone the gun is currently pointed at, or null. Read by the HUD. */
     this.target = null;
@@ -395,7 +524,8 @@ export class Combat {
     /** Optional hooks for audio and particles. Kept out of this file's imports. */
     this.onShot = null;      // (originVec3) => void
     this.onKill = null;      // (drone, squad) => void
-    this.stats = { shots: 0, kills: 0, sweeps: 0, escaped: 0, points: 0 };
+    this.stats = { shots: 0, kills: 0, sweeps: 0, escaped: 0, points: 0,
+      enemyShots: 0, enemyHits: 0, damage: 0 };
 
     this._m = new THREE.Matrix4();
     this._q = new THREE.Quaternion();
@@ -426,7 +556,7 @@ export class Combat {
 
     for (let i = 0; i < SQUAD_MAX; i++) this._hide(base + i);
     this.squads[slot] = null;
-    if (rand() >= SQUAD_CHANCE) return;
+    if (rand() >= SQUAD_CHANCE * this.rules.density) return;
 
     const n = SQUAD_MIN + Math.floor(rand() * (SQUAD_MAX - SQUAD_MIN + 1));
     const p0 = bandIdx * BAND + rand() * START_JITTER;
@@ -456,6 +586,21 @@ export class Combat {
         phase: rand() * Math.PI * 2,
         spin: range(rand, 0.6, 1.4) * (rand() < 0.5 ? -1 : 1),
         dead: false, gone: false, pop: 0, inbound: 0, yaw: 0,
+        // HEALTH, AND A COOLDOWN THAT STARTS SOMEWHERE RANDOM.
+        //
+        // The stagger matters more than it looks. A chevron built on one frame
+        // with every cooldown at zero fires a volley on the first frame any of
+        // them is in range — four bolts on the same tick, which a player reads
+        // as one unavoidable event rather than as four machines each deciding
+        // to shoot. Spreading the initial phase across the whole cooldown turns
+        // the same four shots into a rhythm you can ride through.
+        hp: this.rules.droneHp,
+        maxHp: this.rules.droneHp,
+        hurt: 0,
+        squad: null,
+        cd: rand() * WEAPONS.blaster.cooldown,
+        /** Which fighter this one is shooting at, or null. */
+        aggro: null,
       });
       // Brighter down the formation, because the formation is worth more down
       // it. The same one-attribute readout the drift lines use, and the only
@@ -513,35 +658,96 @@ export class Combat {
    * the first drone, kills it four times over and leaves the formation intact —
    * which looks, from outside, exactly like a gun that cannot aim.
    */
-  _acquire(rider) {
-    // Horizontal heading. `rider.heading` carries the slope in Y and a gun that
-    // aimed along it would shoot at the snow on every steep.
-    const hx = rider.heading.x;
-    const hz = rider.heading.z;
+  /**
+   * THE CORRIDOR TEST, as one function that does not know who is shooting.
+   *
+   * This used to take a Rider and walk the drones. It now takes a SHOOTER —
+   * anything with a position and a heading — a list of CANDIDATES and a WEAPON
+   * row, which is the same test with the three things it actually depends on
+   * named. That is what makes a drone able to run it against the players, and
+   * what will make a rival able to run it against another rider without a line
+   * of this changing.
+   *
+   * NEAREST VALID WINS, with one tie-break: a target that already has a
+   * projectile on the way is taken last. Without it a four-shot burst at a
+   * squad puts all four shots into the first drone, kills it four times over
+   * and leaves the formation intact — which looks, from outside, exactly like
+   * a gun that cannot aim.
+   *
+   * @param {{x:number,z:number,heading:{x:number,z:number}}} shooter
+   * @param {Array<{x:number,y:number,z:number,inbound:number}>} candidates
+   * @param {import('./weapons.js').Weapon} w
+   */
+  static acquire(shooter, candidates, w) {
+    // Horizontal heading. A heading carries the slope in Y, and a gun aimed
+    // along it would shoot at the ground on every steep.
+    const hx = shooter.heading.x;
+    const hz = shooter.heading.z;
     const hl = Math.hypot(hx, hz) || 1;
     const fx = hx / hl;
     const fz = hz / hl;
 
     let best = null;
     let bestScore = Infinity;
-    for (const squad of this._near(rider.p, 0, 2)) {
-      if (squad.done) continue;
-      for (const d of squad.drones) {
-        if (d.dead) continue;
-        const dx = d.x - rider.x;
-        const dz = d.z - rider.z;
-        // Along the heading, and across it. The cross term is a 2-D wedge
-        // product, which is the perpendicular distance for a unit forward.
-        const along = dx * fx + dz * fz;
-        if (along < RANGE_MIN || along > RANGE_MAX) continue;
-        const across = Math.abs(dx * fz - dz * fx);
-        const width = AIM_NEAR + (AIM_FAR - AIM_NEAR) * (along / RANGE_MAX);
-        if (across > width) continue;
-        // Distance, plus a full range's penalty for already being shot at.
-        const score = along + d.inbound * RANGE_MAX;
-        if (score < bestScore) { bestScore = score; best = { d, squad }; }
-      }
+    for (const c of candidates) {
+      const dx = c.x - shooter.x;
+      const dz = c.z - shooter.z;
+      // Along the heading, and across it. The cross term is a 2-D wedge
+      // product, which is the perpendicular distance for a unit forward.
+      const along = dx * fx + dz * fz;
+      if (along < w.rangeMin || along > w.rangeMax) continue;
+      const across = Math.abs(dx * fz - dz * fx);
+      const width = w.aimNear + (w.aimFar - w.aimNear) * (along / w.rangeMax);
+      if (across > width) continue;
+      const score = along + (c.inbound ?? 0) * w.rangeMax;
+      if (score < bestScore) { bestScore = score; best = c; }
     }
+    return best;
+  }
+
+  /**
+   * THE DRONES' OWN TEST, which is NOT the corridor one.
+   *
+   * A drone is a turret. It has no heading the player can see and no line it
+   * is committed to, so running it through `acquire` would be modelling a
+   * constraint that does not exist and the player would read the misses as the
+   * enemy being bad at its job for no visible reason. What a drone has instead
+   * is REACH and a choice of whom to shoot.
+   *
+   * WHICH ENTITY. This is the method the whole `fighters.js` layer exists for.
+   * It asks the roster for everyone not on its own team, takes the nearest one
+   * still standing, and keeps it — the `aggro` field — until that target dies
+   * or leaves reach. Keeping it matters in two player: a drone that re-chose
+   * the nearest every frame would swing between two riders carving past each
+   * other and land its shots on neither.
+   *
+   * In PVP this is unchanged. The roster hands back whoever is not on the
+   * drone's team, which is both riders, and the nearest one gets shot at.
+   */
+  _droneAcquire(d, foes) {
+    const w = WEAPONS.blaster;
+    const held = d.aggro;
+    if (held && held.alive) {
+      const hx = held.x - d.x;
+      const hy = held.y - d.y;
+      const hz = held.z - d.z;
+      if (hx * hx + hy * hy + hz * hz <= w.rangeMax * w.rangeMax) return held;
+    }
+    let best = null;
+    let bestD = w.rangeMax * w.rangeMax;
+    for (const f of foes) {
+      const dx = f.x - d.x;
+      const dy = f.y - d.y;
+      const dz = f.z - d.z;
+      const q = dx * dx + dy * dy + dz * dz;
+      // rangeMin keeps a drone from firing at something already on top of it,
+      // where a bolt at 2.6 rad/s of guidance cannot turn and would simply
+      // sail past. It is the mirror of the player's own RANGE_MIN.
+      if (q < w.rangeMin * w.rangeMin || q > bestD) continue;
+      bestD = q;
+      best = f;
+    }
+    d.aggro = best;
     return best;
   }
 
@@ -577,44 +783,130 @@ export class Combat {
     return out.sort((a, b) => a.ahead - b.ahead);
   }
 
-  _fire(dt, rider) {
-    this.cooldown -= dt;
-    const acquired = this._acquire(rider);
-    this.target = acquired ? acquired.d : null;
-    if (!acquired || this.cooldown > 0) return;
+  /** Every live drone in reach of `p`, as a flat list the gun can walk. */
+  _liveNear(p, back, fwd, into) {
+    into.length = 0;
+    for (const squad of this._near(p, back, fwd)) {
+      if (squad.done) continue;
+      for (const d of squad.drones) if (!d.dead) { d.squad = squad; into.push(d); }
+    }
+    return into;
+  }
 
-    // ONE BOLT PER TARGET, AND THE GUN HOLDS ITS FIRE RATHER THAN DOUBLING UP.
+  /**
+   * One fighter's gun, for one frame.
+   *
+   * THE WEAPON COMES OFF THE FIGHTER, which is the whole of what a power gate
+   * changes. Nothing here knows what `keen` or `storm` are; it reads a row.
+   */
+  _fighterFire(dt, f) {
+    if (!f.alive) { f.target = null; return; }
+    const w = f.gun;
+    this._liveNear(f.p, 0, 2, this._cand);
+    const target = Combat.acquire(f, this._cand, w);
+    f.target = target ?? null;
+    if (f === this.lead) this.target = f.target;
+    if (!target || f.cd > 0) return;
+
+    // ONE SHOT PER TARGET, AND THE GUN HOLDS ITS FIRE RATHER THAN DOUBLING UP.
     // This was 56% of shots missing in the first measured ride, and the cause
     // reads as an aiming fault but is not one: a single drone held in the
     // corridor was shot every 0.36 s while the first bolt was still 0.4 s from
-    // arriving, so roughly every other bolt arrived at something already dead
-    // and flew on down the mountain. A drone takes one hit; a second bolt was
-    // never anything but a wasted one.
+    // arriving, so roughly every other shot arrived at something already dead.
     //
-    // `inbound` already ORDERED targets by this and that was not enough -- with
-    // one drone in the corridor there is nothing to re-order onto.
-    if (acquired.d.inbound > 0) return;
+    // NOW GATED ON HEALTH RATHER THAN ON ZERO. A drone with 3 HP takes three
+    // stars, so "one at a time" would have made it un-killable at any range
+    // where the flight time exceeds the cooldown. The rule the measurement
+    // actually supports is "do not fire more shots than it takes to kill it",
+    // and with 1 HP drones that is identical to the old behaviour — which is
+    // why chill vibe's measured numbers survive this change.
+    const needed = Math.ceil(target.hp / w.damage);
+    if (target.inbound >= needed) return;
 
-    const bolt = this.bolts.find((b) => !b.live);
-    if (!bolt) return;          // 24 in the air at once is already absurd
-    this.cooldown = FIRE_CD;
+    f.cd = w.cooldown;
+    for (let k = 0; k < w.burst; k++) {
+      // A FAN, not a shotgun: the burst is spread laterally about the aim so
+      // one pass of a chevron can put a star into three different drones. Each
+      // projectile is still guided at the SAME target — the spread decides
+      // where it starts, the guidance decides where it ends, and a star that
+      // misses its drone has a real chance of meeting the next one along.
+      const off = w.burst > 1 ? (k - (w.burst - 1) * 0.5) * w.spreadDeg * Math.PI / 180 : 0;
+      if (!this._launch(f, target, w, off, target.squad, true)) break;
+    }
+    f.shots += w.burst;
+    this.stats.shots += w.burst;
+    if (f === this.lead) this.lockFlash = 1;
+    if (this.onShot) this.onShot(this._muzzle, f);
+  }
 
-    bolt.live = true;
-    bolt.life = BOLT_LIFE;
-    bolt.target = acquired.d;
-    bolt.squad = acquired.squad;
-    acquired.d.inbound++;
-    bolt.pos.set(rider.x, rider.y + MUZZLE_UP, rider.z);
+  /** Every drone in reach, deciding whether to shoot and at whom. */
+  _droneFire(dt, roster) {
+    if (!this.rules.hostile) return;
+    const w = WEAPONS.blaster;
+    const foes = roster.foesOf(TEAM.DRONE, this._foes);
+    if (!foes.length) return;
+    // Bands BEHIND as well as ahead: a drone the rider has already passed is
+    // still a drone, and a fight you can ride out of by simply not looking
+    // back is not a fight. `_near` is cheap — five slots off an array.
+    for (const squad of this._near(roster.lead?.p ?? foes[0].p, 2, 2)) {
+      for (const d of squad.drones) {
+        if (d.dead) continue;
+        d.cd -= dt;
+        const target = this._droneAcquire(d, foes);
+        if (!target || d.cd > 0) continue;
+        d.cd = w.cooldown;
+        if (!this._launch(d, target, w, 0, null, false)) continue;
+        this.stats.enemyShots++;
+        if (this.onEnemyShot) this.onEnemyShot(this._muzzle, d, target);
+      }
+    }
+  }
+
+  /**
+   * Put one projectile in the air. Returns false when the pool is dry.
+   *
+   * @param {object} from a Fighter or a drone record
+   * @param {object} at the thing to steer at
+   * @param {import('./weapons.js').Weapon} w
+   * @param {number} yawOff radians of lateral offset on the launch bearing
+   * @param {object|null} squad the kill's squad, when the target is a drone
+   * @param {boolean} atDrone which kind of thing `at` is
+   */
+  _launch(from, at, w, yawOff, squad, atDrone) {
+    const b = this.bolts.find((x) => !x.live);
+    if (!b) return false;             // 24 in the air at once is already absurd
+    b.live = true;
+    b.life = w.life;
+    b.target = at;
+    b.squad = squad;
+    b.w = w;
+    b.from = from;
+    b.shape = w.shape;
+    b.atDrone = atDrone;
+    b.spin = 0;
+    at.inbound = (at.inbound ?? 0) + 1;
+    const up = from.muzzleUp ?? MUZZLE_UP;
+    b.pos.set(from.x, (from.y ?? 0) + up, from.z);
+    this._muzzle.copy(b.pos);
     // Launched straight at the target rather than along the heading. The muzzle
-    // is on a board that is leaning, and a bolt that left along the board and
-    // then turned would read as a correction — as the gun having missed and
-    // recovered. Guidance is here for the target's own movement and the rider's,
-    // not to cover an aiming error the gun did not make.
-    bolt.dir.set(acquired.d.x - bolt.pos.x, acquired.d.y - bolt.pos.y, acquired.d.z - bolt.pos.z)
-      .normalize();
-    this.stats.shots++;
-    this.lockFlash = 1;
-    if (this.onShot) this.onShot(bolt.pos);
+    // is on a board that is leaning, and a projectile that left along the board
+    // and then turned would read as a correction — as the gun having missed and
+    // recovered. Guidance is here for the target's own movement and the
+    // shooter's, not to cover an aiming error the gun did not make.
+    b.dir.set(at.x - b.pos.x, (at.drawnY ?? at.y) - b.pos.y, at.z - b.pos.z).normalize();
+    if (yawOff !== 0) {
+      const c = Math.cos(yawOff);
+      const sn = Math.sin(yawOff);
+      const dx = b.dir.x;
+      const dz = b.dir.z;
+      b.dir.set(dx * c - dz * sn, b.dir.y, dx * sn + dz * c).normalize();
+    }
+    if (b.shape === 'star') {
+      const col = this._col.set(w.color);
+      this.starMesh.instanceColor.setXYZ(b.gi, col.r, col.g, col.b);
+      this.starMesh.instanceColor.needsUpdate = true;
+    }
+    return true;
   }
 
   /** @returns {Array} one event per drone killed this frame. */
@@ -622,69 +914,130 @@ export class Combat {
     const events = [];
     for (const b of this.bolts) {
       if (!b.live) continue;
+      const w = b.w;
       b.life -= dt;
       const t = b.target;
+      // "Still a target" means two different things for the two kinds, and
+      // conflating them was the one real hazard in generalising this loop: a
+      // drone is spent when `dead`, a fighter when its health reaches zero.
+      const liveTarget = t && (b.atDrone ? !t.dead : t.alive);
 
-      // Guidance. Toward the target if it is still alive, otherwise straight on
-      // until the bolt expires — a bolt whose drone died to an earlier shot
-      // flies off down the mountain, which is honest and costs nothing.
-      if (t && !t.dead) {
-        this._tmp.set(t.x - b.pos.x, t.y - b.pos.y, t.z - b.pos.z);
+      // Guidance. Toward the target if it is still there, otherwise straight on
+      // until it expires — a star whose drone died to an earlier shot flies off
+      // down the mountain, which is honest and costs nothing.
+      if (liveTarget) {
+        this._tmp.set(t.x - b.pos.x, (t.drawnY ?? t.y) - b.pos.y, t.z - b.pos.z);
         const d = this._tmp.length();
         if (d > 1e-4) {
           this._tmp.divideScalar(d);
-          // Lerp toward the desired direction at BOLT_TURN rad/s, which for
-          // small angles is what a slerp costs without the trigonometry.
-          b.dir.addScaledVector(this._tmp.sub(b.dir), Math.min(1, BOLT_TURN * dt)).normalize();
+          // Lerp toward the desired direction at the weapon's own turn rate,
+          // which for small angles is what a slerp costs without the
+          // trigonometry.
+          b.dir.addScaledVector(this._tmp.sub(b.dir), Math.min(1, w.turn * dt)).normalize();
         }
       }
 
-      b.pos.addScaledVector(b.dir, BOLT_SPEED * dt);
+      const step = w.speed * dt;
+      b.pos.addScaledVector(b.dir, step);
 
-      if (t && !t.dead) {
+      if (liveTarget) {
         const dx = t.x - b.pos.x;
-        const dy = t.y - b.pos.y;
+        const dy = (t.drawnY ?? t.y) - b.pos.y;
         const dz = t.z - b.pos.z;
-        // Swept, not sampled: at 135 m/s a bolt covers 2.25 m in a 60 Hz frame
+        // Swept, not sampled: at 135 m/s a star covers 2.25 m in a 60 Hz frame
         // and 9 m in a stalled one, and a point test would pass clean through a
         // 1.6 m target. The approach is nearly radial, so closing distance plus
         // the step is a sufficient and very cheap sweep.
-        if (dx * dx + dy * dy + dz * dz < (HIT_R + BOLT_SPEED * dt) * (HIT_R + BOLT_SPEED * dt)) {
-          events.push(this._kill(t, b.squad));
-          b.live = false;
-          t.inbound = Math.max(0, t.inbound - 1);
-          this._hideBolt(b.gi);
+        const r = w.hitR + step;
+        if (dx * dx + dy * dy + dz * dz < r * r) {
+          const ev = b.atDrone ? this._hitDrone(b, t) : this._hitFighter(b, t);
+          if (ev) events.push(ev);
+          this._retire(b, t);
           continue;
         }
       }
 
       if (b.life <= 0) {
-        b.live = false;
-        if (t) t.inbound = Math.max(0, t.inbound - 1);
-        this._hideBolt(b.gi);
+        this._retire(b, t);
         continue;
       }
 
-      // Oriented along flight. The geometry is built along -Z so the basis can
-      // be used as-is.
+      // Oriented along flight. Both geometries are built along -Z so the basis
+      // can be used as-is; a star additionally spins about that axis, which is
+      // the only reason it reads as a star rather than as a dash when it is
+      // edge-on to the camera.
       this._tmp.copy(b.pos).add(b.dir);
       this._basis.lookAt(b.pos, this._tmp, this._up);
       this._q.setFromRotationMatrix(this._basis);
-      this._s.set(1, 1, 1);
+      if (w.spin) {
+        b.spin += w.spin * dt;
+        this._e.set(0, 0, b.spin);
+        this._q.multiply(this._spinQ.setFromEuler(this._e));
+      }
+      this._s.setScalar(w.scale);
       this._m.compose(b.pos, this._q, this._s);
-      this.boltMesh.setMatrixAt(b.gi, this._m);
+      this.meshes[b.shape].setMatrixAt(b.gi, this._m);
     }
+    this.starMesh.instanceMatrix.needsUpdate = true;
     this.boltMesh.instanceMatrix.needsUpdate = true;
     return events;
   }
 
-  _hideBolt(gi) {
-    this._m.makeScale(0, 0, 0);
-    this.boltMesh.setMatrixAt(gi, this._m);
+  /** Take a projectile out of the air, wherever it was drawn. */
+  _retire(b, t) {
+    b.live = false;
+    if (t) t.inbound = Math.max(0, (t.inbound ?? 0) - 1);
+    this._hideIn(b.shape, b.gi);
+    b.target = null;
   }
 
-  _kill(d, squad) {
+  /**
+   * A star arrives at a drone.
+   *
+   * HEALTH IS WHY THIS IS NOT JUST `_kill`. A hit that does not finish a drone
+   * still has to say so, or a three-hit kill is two frames where the player's
+   * aim visibly connected and nothing happened — which reads as the gun being
+   * broken, not as the enemy being tough. `onDroneHit` is what main hangs a
+   * spark and a tick on.
+   */
+  _hitDrone(b, d) {
+    if (b.from && b.from.hits !== undefined) b.from.hits++;
+    d.hp -= b.w.damage;
+    if (d.hp > 0) {
+      d.hurt = 0.18;
+      if (this.onDroneHit) this.onDroneHit(d, b.w, b.from);
+      return null;
+    }
+    if (b.from && b.from.kills !== undefined) b.from.kills++;
+    return this._kill(d, b.squad ?? d.squad, b.from);
+  }
+
+  /**
+   * A bolt arrives at a fighter.
+   *
+   * The damage goes through `Fighter.damage`, which owns the grace window and
+   * decides whether it lands at all — see `fighters.js`. A bolt that arrives
+   * during someone's grace is still retired, because a projectile left in the
+   * air would connect again on the very next frame and the window would buy
+   * nothing.
+   */
+  _hitFighter(b, f) {
+    const landed = f.damage(b.w.damage, b.from);
+    if (landed) {
+      this.stats.enemyHits++;
+      this.stats.damage += b.w.damage;
+    }
+    return null;
+  }
+
+  _hideIn(shape, gi) {
+    this._m.makeScale(0, 0, 0);
+    this.meshes[shape].setMatrixAt(gi, this._m);
+  }
+
+  _kill(d, squad, by = null) {
     d.dead = true;
+    d.aggro = null;
     d.pop = POP_TIME;
     const points = KILL_BASE + KILL_STEP * squad.killed;
     squad.points += points;
@@ -692,7 +1045,7 @@ export class Combat {
     squad.last = d;
     this.stats.kills++;
     this.stats.points += points;
-    if (this.onKill) this.onKill(d, squad);
+    if (this.onKill) this.onKill(d, squad, by);
     return {
       type: 'kill',
       points,
@@ -744,8 +1097,21 @@ export class Combat {
     this.enabled = v;
     this.pods.visible = v;
     this.eyes.visible = v;
+    this.starMesh.visible = v;
     this.boltMesh.visible = v;
     if (!v) this.lock.visible = false;
+  }
+
+  /**
+   * What kind of fight this is. A mode's call — see DEFAULT_RULES.
+   *
+   * Rebuilds the ring, because `droneHp` and `density` are both baked into
+   * bands at build time and a mode that changed them without replacing what is
+   * already on the hill would get one stretch of the old rules.
+   */
+  setRules(rules, p = null) {
+    Object.assign(this.rules, rules);
+    if (p !== null) this.reset(p);
   }
 
   /**
@@ -756,23 +1122,33 @@ export class Combat {
    *   nothing is scored.
    * @returns {Array} kill and sweep events — see `_kill` and `_resolve`.
    */
-  update(dt, rider, live = true) {
+  update(dt, roster, live = true) {
     if (!this.enabled) return [];
     this.t += dt;
-    this._ring(rider.p);
+    // THE RING FOLLOWS THE LEAD FIGHTER. In two player the two riders are
+    // metres apart and either would do; the choice is stated rather than
+    // implied so that when the field of rivals arrives — spread over hundreds
+    // of metres — it is obvious that this is the line to revisit.
+    const lead = roster.fighters.find((f) => f.alive) ?? roster.fighters[0];
+    this.lead = lead;
+    if (!lead) return [];
+    this._ring(lead.p);
     let events = [];
     if (live) {
-      this._fire(dt, rider);
+      this.target = null;
+      for (const f of roster.fighters) this._fighterFire(dt, f);
+      this._droneFire(dt, roster);
       events = this._stepBolts(dt);
-      events = events.concat(this._resolve(rider));
+      events = events.concat(this._resolve(lead));
     } else {
       this.target = null;
-      // Bolts in the air when a run ends still have to land or expire, or the
-      // pool leaks across the results screen and the next run opens with a
-      // short magazine.
+      for (const f of roster.fighters) f.target = null;
+      // Projectiles in the air when a run ends still have to land or expire,
+      // or the pool leaks across the results screen and the next run opens
+      // with a short magazine.
       this._stepBolts(dt);
     }
-    this._animate(dt, rider);
+    this._animate(dt, lead);
     return events;
   }
 
@@ -787,7 +1163,13 @@ export class Combat {
         // Facing the rider, horizontally. A machine that watches you is worth
         // one atan2 a frame and is most of what makes these read as hostile
         // rather than as scenery that happens to float.
-        let yaw = Math.atan2(rider.x - d.x, rider.z - d.z) + Math.PI;
+        // Facing WHOEVER IT IS SHOOTING AT, and the lead rider when it is
+        // shooting at nobody. In two player a drone that tracked player one
+        // while firing at player two would be lying about where its attention
+        // is, and the pod's facing is the only tell the player has before the
+        // bolt leaves.
+        const watch = d.aggro && d.aggro.alive ? d.aggro : rider;
+        let yaw = Math.atan2(watch.x - d.x, watch.z - d.z) + Math.PI;
 
         if (d.pop > 0) {
           // A burst, not a fade. The shared lit shader is opaque by design, so
@@ -800,6 +1182,16 @@ export class Combat {
           lift = s * POP_RISE;
           yaw += s * 11;
           if (d.pop <= 0) { d.gone = true; this._hide(d.gi); continue; }
+        }
+
+        // A HIT THAT DOES NOT KILL STILL HAS TO LAND. With health on the
+        // drones, most connecting shots do not finish one, and without a tell
+        // the player's aim visibly works and nothing happens — which reads as
+        // the gun being broken rather than as the enemy being tough. A short
+        // flinch: the pod jumps in scale and snaps back.
+        if (d.hurt > 0) {
+          d.hurt = Math.max(0, d.hurt - dt);
+          scale *= 1 + d.hurt * 1.6;
         }
 
         const bob = Math.sin(this.t * 1.6 + d.phase) * BOB;
@@ -845,20 +1237,24 @@ export class Combat {
     for (const b of this.bolts) {
       b.live = false;
       b.target = null;
-      this._hideBolt(b.gi);
+      this._hideIn('star', b.gi);
+      this._hideIn('bolt', b.gi);
     }
+    this.starMesh.instanceMatrix.needsUpdate = true;
     this.boltMesh.instanceMatrix.needsUpdate = true;
     this.cooldown = 0;
     this.target = null;
     this.lockFlash = 0;
     this.lock.visible = false;
     this.t = 0;
-    this.stats = { shots: 0, kills: 0, sweeps: 0, escaped: 0, points: 0 };
+    this.stats = { shots: 0, kills: 0, sweeps: 0, escaped: 0, points: 0,
+      enemyShots: 0, enemyHits: 0, damage: 0 };
   }
 
   dispose() {
     this.scene.remove(this.pods);
     this.scene.remove(this.eyes);
+    this.scene.remove(this.starMesh);
     this.scene.remove(this.boltMesh);
     this.scene.remove(this.lock);
     this.lockGeo.dispose();
@@ -866,8 +1262,10 @@ export class Combat {
     this.podGeo.dispose();
     this.eyeGeo.dispose();
     this.boltGeo.dispose();
+    this.starGeo.dispose();
     this.matPod.dispose();
     this.matEye.dispose();
     this.matBolt.dispose();
+    this.matStar.dispose();
   }
 }
