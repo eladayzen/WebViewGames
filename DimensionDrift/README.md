@@ -98,6 +98,29 @@ line, drones punish your fight — and the forest was tuned against a clock this
 mode does not have, so charging health for a crash would be a difficulty change
 smuggled in under a feature.
 
+### Over the shoulder
+
+A fourth mode: `skirmish`'s rules, imported rather than copied, seen through a
+**classic third-person camera** locked behind the board instead of the fall
+line.
+
+That deliberately reverses a finding. `rider.js` explains why the camera rides
+the mountain's direction and not the rider's — *"the whole world swung round
+every time they carved… after a hard turn it was genuinely hard to tell which
+way was downhill"* — and every word is still true here. It is traded for two
+things: the board points up the screen, which is what a mode about shooting
+should organise its frame around, and **"down the hill" is about to stop being
+the only direction**. The movement change comes next; building the camera first
+means it arrives into a frame that can show it.
+
+Both rigs live side by side in `CameraRig` (`CAM_MODE`), and a mode picks one
+with `cameraFollow`. The fall-line rig's clamps are all written in world x and
+z, so none of them transfer — on a camera that orbits, clamping x to the
+rider's x is a leash that yanks the view through the character. What does
+transfer is the ground-clearance floor and the keep-the-rider-in-frame
+guarantee, the latter because it is expressed as an angle between two
+directions and so does not care which way either points.
+
 ### Written for the fight that is coming
 
 `src/fighters.js` exists before it is needed. Combat never sees a `Rider` — it

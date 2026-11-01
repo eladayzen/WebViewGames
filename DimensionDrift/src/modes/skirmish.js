@@ -105,6 +105,21 @@ const DENSITY = 0.72;
 /** Three stars from the default weapon, one from either power. */
 const DRONE_HP = 3;
 
+/**
+ * THE RULES, SEPARATED FROM THE REGISTRATION.
+ *
+ * `modes/shoulder.js` is the same fight seen through a different camera, and
+ * it reuses this rather than copying it. That is not tidiness: the numbers in
+ * this file — the density, the drone health, the gate cadence, the health
+ * economy — were each solved against a measurement, and two copies of them is
+ * two things to re-derive the next time one moves. A mode that genuinely wants
+ * different RULES should write them; a mode that wants a different CAMERA
+ * should not have to.
+ */
+export function skirmishRules(game) {
+  return BASE_CREATE(game);
+}
+
 export default registerMode({
   id: 'skirmish',
   name: 'skirmish',
@@ -146,7 +161,10 @@ export default registerMode({
    */
   pickupsPay: 'health',
 
-  create(game) {
+  create: BASE_CREATE,
+});
+
+function BASE_CREATE(game) {
     let seen = 0;
     let downAt = null;
 
@@ -311,5 +329,4 @@ export default registerMode({
         game.roster.reset();
       },
     };
-  },
-});
+}

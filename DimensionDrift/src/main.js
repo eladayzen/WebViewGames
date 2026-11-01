@@ -22,7 +22,7 @@ import { Terrain, MountainMesh, HALF, CHUNK, meshHeight, setValleyScale } from '
 import { Sky } from './sky.js';
 import { FarRange } from './range.js';
 import { Scatter, BAND } from './scatter.js';
-import { Rider, CameraRig, TUNE, setPipelineGamma } from './rider.js';
+import { Rider, CameraRig, CAM_MODE, TUNE, setPipelineGamma } from './rider.js';
 import { Trail } from './trail.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { openCalibration } from './shared/bobo-ui/calibrate.js';
@@ -55,6 +55,7 @@ import { listModes, getMode, defaultModeId } from './modes/mode.js';
 // puts it in the lobby, so this list is the only place a mode is switched on.
 import './modes/chillVibe.js';
 import './modes/skirmish.js';
+import './modes/shoulder.js';
 import { RACE_LENGTH } from './modes/race.js';
 import { Input } from './input.js';
 import { clamp } from './rng.js';
@@ -3040,6 +3041,7 @@ class Game {
           const authored = this._modeCamDefaults.get(def.id);
           if (authored && def.camera) Object.assign(def.camera, authored);
           Object.assign(TUNE, this._tuneDefaults, def.camera ?? {});
+          this._setCameraFollow(def);
         },
       });
       doc.body.appendChild(this._dev.panel);
@@ -3634,6 +3636,18 @@ class Game {
       }
     };
     return f;
+  }
+
+  /**
+   * Point both rigs at the mode's chosen camera.
+   *
+   * BOTH, because two-player renders two cameras and a mode where the halves
+   * frame differently is a mode where one player is playing a different game.
+   */
+  _setCameraFollow(def) {
+    const m = def?.cameraFollow === 'chase' ? CAM_MODE.CHASE : CAM_MODE.FALL_LINE;
+    this.cameraRig?.setMode(m);
+    this.cameraRig2?.setMode(m);
   }
 
   _award(points, label, { big = false, color = null } = {}) {
@@ -4677,6 +4691,10 @@ class Game {
   _applyModeConfig(def) {
     Object.assign(TUNE, this._tuneDefaults);
     if (def.camera) Object.assign(TUNE, def.camera);
+    // WHICH RIG, not just which numbers. `camera` is a partial of TUNE and
+    // can only ever retune the framing the rig already does; `cameraFollow`
+    // picks a different rig. See CAM_MODE in rider.js.
+    this._setCameraFollow(def);
     const ids = this._mode.pickMusic?.(def.music ?? []) ?? def.music;
     if (ids?.length) this.audio.setOrder(ids);
     console.log(`[carve] mode ${def.id} — music [${this.audio.order.map((i) => this.audio.tracks[i].id).join(', ')}]`

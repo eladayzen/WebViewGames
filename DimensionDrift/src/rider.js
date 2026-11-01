@@ -335,6 +335,22 @@ export const TUNE = {
   camMaxOffset: 3.0,      // metres the rider may sit off centre-screen, hard limit
   camFollow: 4.2,
   camBackSlack: 2.2,      // metres the follow may sag behind camBack before it is caught
+  /**
+   * HOW FAST THE CHASE RIG'S YAW CHASES THE BOARD'S, per second. Chase rig
+   * only; the fall-line rig has no yaw of its own to chase.
+   *
+   * This one number is the whole feel of a third-person camera. Too high and
+   * the rig is welded to the board: the world snaps round on every input and
+   * the turn is invisible, because the one thing that shows a turn is the
+   * character rotating against a background that has not caught up yet. Too
+   * low and the camera is looking somewhere the player is not going.
+   *
+   * 2.6 gives the board about a third of a second of lead. The position and
+   * look follows (`camFollow`, `camLookFollow`) are deliberately NOT reused
+   * for it — they smooth where the camera is, and this smooths where it faces,
+   * and a rig that does both at the same rate has no lead at all.
+   */
+  camYawFollow: 2.6,
   camLookFollow: 3.0,
   camRoll: 0.16,
   camClearance: 2.2,
@@ -2282,6 +2298,17 @@ export class Rider {
  * while the rider responds with weight is what makes half a second of input lag
  * read as mass instead of as delay.
  */
+/**
+ * HOW THE RIG FRAMES THE RIDER, as a mode's choice.
+ *
+ * `fallLine` is what this game has always done and the argument for it is in
+ * `update` below — it is not a default, it is a finding. `chase` is the
+ * classic third-person-shooter rig: locked behind the board's own heading,
+ * which is the thing that argument rejected. Both ship because the second is
+ * being tried, and the first is the one every existing mode was tuned on.
+ */
+export const CAM_MODE = { FALL_LINE: 'fallLine', CHASE: 'chase' };
+
 export class CameraRig {
   constructor(camera, terrain) {
     this.camera = camera;
@@ -2300,6 +2327,31 @@ export class CameraRig {
     this.roll = 0;
     this.fov = TUNE.fovBase;
     this.ready = false;
+    /** @type {'fallLine'|'chase'} */
+    this.mode = CAM_MODE.FALL_LINE;
+    /**
+     * The chase rig's own yaw, in radians, chasing the board's.
+     *
+     * IT IS SMOOTHED SEPARATELY FROM THE POSITION and that is the whole
+     * difference between a third-person camera that feels like one and a rig
+     * bolted to the back of a vehicle. Driving the position straight from the
+     * heading whips the entire world round on every carve at the rate the
+     * board turns; lagging the yaw lets the board rotate INSIDE the frame
+     * first and brings the view round after it, which is what reads as the
+     * camera being a thing following you rather than a thing attached to you.
+     */
+    this.yaw = 0;
+    this.yawReady = false;
+  }
+
+  /** Called by `main.js` from the mode definition's `cameraFollow`. */
+  setMode(mode) {
+    if (mode === this.mode) return;
+    this.mode = mode === CAM_MODE.CHASE ? CAM_MODE.CHASE : CAM_MODE.FALL_LINE;
+    // A rig that changed shape mid-run would interpolate between two framings
+    // that have nothing to do with each other, so it starts clean.
+    this.ready = false;
+    this.yawReady = false;
   }
 
   kick(amount) {
@@ -2319,49 +2371,123 @@ export class CameraRig {
 
   update(dt, rider, speedNorm) {
     const T = TUNE;
+    if (this.mode === CAM_MODE.CHASE) return this._updateChase(dt, rider, speedNorm);
+    return this._updateFallLine(dt, rider, speedNorm);
+  }
 
-    // THE CAMERA IS LOCKED TO THE FALL LINE, not to the board.
-    //
-    // Sitting behind the rider along their HEADING meant the whole world swung
-    // round every time they carved: the route pointed off to one side, the
-    // horizon rotated, and after a hard turn it was genuinely hard to tell which
-    // way was downhill. Riding behind the mountain's own direction instead, the
-    // route always runs away down the screen and the rider slides across the
-    // frame as they traverse — which is also a far better readout of how far off
-    // the line they actually are.
-    const cxHere = this.terrain.centerX(rider.z);
-    const drift = rider.x - cxHere;
+  /**
+   * THE CLASSIC THIRD-PERSON RIG: always behind the board.
+   *
+   * This is deliberately the thing `_updateFallLine` below argues against, and
+   * the argument has not been withdrawn — it is quoted there in full and every
+   * word of it is still true of this rig. Carving swings the world, the
+   * horizon rotates, and after a hard turn it is harder to tell which way is
+   * downhill. Those are the costs. What is bought is that the board always
+   * points up the screen, which is the convention every shooter has trained
+   * every player on, and it is the rig an open world needs — "down the hill"
+   * stops being a direction worth framing the moment you can go the other way.
+   *
+   * NONE OF THE FALL-LINE CLAMPS APPLY HERE and that is not an omission. They
+   * are all written in world x and z — "the camera may not sit further than
+   * camMaxOffset either side of the rider", "the camera may not lag further
+   * back than camBack + slack" — which are meaningful only while the rig sits
+   * on the -Z axis. On a camera that orbits, clamping x to the rider's x is a
+   * leash that yanks the view through the character every time they ride east.
+   *
+   * What IS kept: the ground-clearance floor, because a camera underground is
+   * a camera underground whatever it is following, and the keep-the-rider-in-
+   * frame guarantee, which is expressed as an angle between two directions and
+   * so does not care which way either of them points.
+   */
+  _updateChase(dt, rider, speedNorm) {
+    const T = TUNE;
 
-    // Follow most of the drift, then HARD CLAMP how far off centre the rider is
-    // allowed to sit. Following a fixed fraction alone let a deep traverse push
-    // them to the edge of a portrait frame and out of it — the camera was still
-    // pointing the right way and had still lost the rider.
-    let camX = cxHere + drift * T.camLateral;
-    camX = clamp(camX, rider.x - T.camMaxOffset, rider.x + T.camMaxOffset);
-    this._wantPos.set(camX, rider.y + T.camUp + rider.airTime * 1.2, rider.z + T.camBack);
-    const floor = this.terrain.height(this._wantPos.x, this._wantPos.z) + T.camClearance;
+    // The board's heading, FLATTENED. `rider.heading` carries the slope in y,
+    // and a camera that took its yaw from the full vector would pitch with
+    // every roller — the same reason `combat.js` flattens it before aiming.
+    const hx = rider.heading.x;
+    const hz = rider.heading.z;
+    const want = Math.hypot(hx, hz) > 1e-4 ? Math.atan2(hx, hz) : this.yaw;
+    if (!this.yawReady) { this.yaw = want; this.yawReady = true; } else {
+      // Through the SHORT WAY ROUND. A plain lerp between 3.1 and -3.1 takes
+      // the camera the long way about and the world spins once on its axis for
+      // a turn the rider never made.
+      let d = want - this.yaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      this.yaw += d * (1 - Math.exp(-T.camYawFollow * dt));
+    }
+
+    const fx = Math.sin(this.yaw);
+    const fz = Math.cos(this.yaw);
+    // Behind along the smoothed heading, and higher the faster you go — the
+    // one borrowing from the fall-line rig worth keeping, because a camera
+    // that rises with speed is how a third-person game says "fast" without
+    // touching the fov.
+    const back = T.camBack * (1 + speedNorm * 0.14);
+    this._wantPos.set(
+      rider.x - fx * back,
+      rider.y + T.camUp + rider.airTime * 1.2,
+      rider.z - fz * back,
+    );
+    const floor = Math.max(
+      this.terrain.height(this._wantPos.x, this._wantPos.z),
+      meshHeight(this.terrain, this._wantPos.x, this._wantPos.z),
+    ) + T.camClearance;
     if (this._wantPos.y < floor) this._wantPos.y = floor;
 
+    // LOOKING PAST THE RIDER'S OWN HEIGHT, not at the terrain ahead. The
+    // fall-line rig aims at a point on the snow because its job is to show the
+    // route; this one's job is to show what the board is pointed at, and on a
+    // slope the ground ahead is metres below the thing you are aiming at.
     const ahead = T.camLookAhead * (0.85 + speedNorm * 0.4);
-    const lz = rider.z - ahead;
-    const lx = clamp(this.terrain.centerX(lz) + drift * T.camLateral * 0.7,
-      rider.x - T.camMaxOffset * 1.6, rider.x + T.camMaxOffset * 1.6);
-    this._wantLook.set(lx, this.terrain.height(lx, lz) + T.camLookUp, lz);
-    // Whatever the terrain does, the view axis never climbs above the camera.
-    this._wantLook.y = Math.min(this._wantLook.y, this._wantPos.y + 1.5);
+    this._wantLook.set(
+      rider.x + fx * ahead,
+      rider.y + T.camLookUp,
+      rider.z + fz * ahead,
+    );
 
-    // THE RIDER MAY NOT LEAVE THE FRAME. `camLookUp` aims the view well above
-    // the snow so the distant range and the sky are in shot, and that is worth a
-    // great deal — but its height is a constant while the mountain's pitch is
-    // not, so on a steeper pitch the same number tips the rider off the bottom
-    // edge. It did exactly that: a capture on a 20 degree section had nothing in
-    // frame but a red dot on the last row of pixels.
-    //
-    // So the framing is expressed as a guarantee instead of a constant. The
-    // angle between the view axis and the direction to the rider is capped at a
-    // fraction of the half-fov, which holds them inside the lower third at any
-    // pitch, any speed and any aspect ratio. Below the cap this does nothing at
-    // all, so the vista is untouched wherever it already worked.
+    this._keepRiderInFrame(rider);
+
+    if (!this.ready) {
+      this.pos.copy(this._wantPos);
+      this.look.copy(this._wantLook);
+      this.ready = true;
+    } else {
+      this.pos.lerp(this._wantPos, 1 - Math.exp(-T.camFollow * dt));
+      this.look.lerp(this._wantLook, 1 - Math.exp(-T.camLookFollow * dt));
+    }
+
+    // The clearance floor on the SMOOTHED position, for the fall-line rig's
+    // reason, which is the one clamp that transfers unchanged: when the snow
+    // leaps up under the camera the target hops over it while the lagging
+    // follow sails into the mound.
+    const floorNow = Math.max(
+      this.terrain.height(this.pos.x, this.pos.z),
+      meshHeight(this.terrain, this.pos.x, this.pos.z),
+    ) + T.camClearance;
+    if (this.pos.y < floorNow) this.pos.y = floorNow;
+
+    this._finish(dt, rider);
+  }
+
+  /**
+   * THE RIDER MAY NOT LEAVE THE FRAME, whichever rig is driving.
+   *
+   * Expressed as a GUARANTEE rather than a constant, which is why it survived
+   * the chase rig unchanged: the angle between the view axis and the direction
+   * to the rider is capped at a fraction of the half-fov, so they stay inside
+   * the lower third at any pitch, any speed, any aspect ratio — and at any
+   * bearing, because an angle between two directions does not care which way
+   * either of them points. Below the cap it does nothing at all.
+   *
+   * It exists because `camLookUp` aims the view well above the snow so the
+   * range and the sky are in shot, and that height is a constant while the
+   * mountain's pitch is not. On a steeper pitch the same number tipped the
+   * rider off the bottom edge: a capture on a 20 degree section had nothing in
+   * frame but a red dot on the last row of pixels.
+   */
+  _keepRiderInFrame(rider) {
     this._toRider.set(rider.x, rider.y, rider.z).sub(this._wantPos);
     this._toLook.copy(this._wantLook).sub(this._wantPos);
     const lenR = this._toRider.length();
@@ -2380,53 +2506,11 @@ export class CameraRig {
       }
     }
 
-    if (!this.ready) {
-      this.pos.copy(this._wantPos);
-      this.look.copy(this._wantLook);
-      this.ready = true;
-    } else {
-      this.pos.lerp(this._wantPos, 1 - Math.exp(-T.camFollow * dt));
-      this.look.lerp(this._wantLook, 1 - Math.exp(-T.camLookFollow * dt));
-    }
-    // The clamps have to bind the SMOOTHED position, not just the target. An
-    // exponential follow lags its target by v/k metres at lateral speed v — on a
-    // seventy-five degree traverse that is nine metres, which quietly un-does
-    // any clamp applied upstream and walks the rider clean out of a portrait
-    // frame while the camera is still "pointing the right way".
-    this.pos.x = clamp(this.pos.x, rider.x - T.camMaxOffset, rider.x + T.camMaxOffset);
-    this.look.x = clamp(this.look.x, rider.x - T.camMaxOffset * 1.6, rider.x + T.camMaxOffset * 1.6);
-    // ALONG-TRACK, for the same reason and with far more at stake. The target is
-    // always exactly `camBack` behind the rider, but an exponential follow sits
-    // v/k metres behind a target moving at v — and here that error does not
-    // average out, it is pure extra distance. At 22 m/s and k = 4.2 the rig
-    // delivers about 18 m on device against the 13 it is configured for, and at
-    // the twelve frames a second a software rasteriser manages, nearly 21.
-    //
-    // So the rider rendered at half the size the framing was tuned for, every
-    // camBack value ever chosen was fighting a rig that ignored a third of it,
-    // and — worst for anyone tuning the look — a headless capture was framed
-    // differently from the game it was standing in for. Catching the smoothed
-    // position keeps the transient spring and removes the steady-state error,
-    // which makes the framing identical at any frame rate.
-    this.pos.z = Math.min(this.pos.z, rider.z + T.camBack + T.camBackSlack);
-    // The ground-clearance floor, for exactly the same reason. When the snow
-    // leaps up under the camera — a kicker, a roller crest — the target hops
-    // over it while the lagging follow sails INTO the mound, and the player
-    // gets a faceful of the mountain's underside. The floor on _wantPos alone
-    // cannot prevent that; this line is the actual guarantee.
-    //
-    // Against the surface AS DRAWN as well as as defined: on concave ground
-    // the mesh's chords bulge ABOVE the analytic function — a couple of metres
-    // off-piste, where the columns are twenty metres apart — so a camera
-    // cleared against the maths alone can still slip under the triangles and
-    // look straight through their culled back faces: patches of see-through
-    // snow that come and go with the angle.
-    const floorNow = Math.max(
-      this.terrain.height(this.pos.x, this.pos.z),
-      meshHeight(this.terrain, this.pos.x, this.pos.z),
-    ) + T.camClearance;
-    if (this.pos.y < floorNow) this.pos.y = floorNow;
+  }
 
+  /** Roll, shake, the look-at and the speed fov. Shared by both rigs. */
+  _finish(dt, rider, speedNorm) {
+    const T = TUNE;
     const wantRoll = -rider.edge * T.camRoll;
     this.roll += (wantRoll - this.roll) * (1 - Math.exp(-4.5 * dt));
 
@@ -2497,7 +2581,103 @@ export class CameraRig {
     if (Math.abs(this.camera.fov - this.fov) > 0.05) {
       this.camera.fov = this.fov;
       this.camera.updateProjectionMatrix();
+    }  }
+
+  _updateFallLine(dt, rider, speedNorm) {
+    const T = TUNE;
+
+    // THE CAMERA IS LOCKED TO THE FALL LINE, not to the board.
+    //
+    // Sitting behind the rider along their HEADING meant the whole world swung
+    // round every time they carved: the route pointed off to one side, the
+    // horizon rotated, and after a hard turn it was genuinely hard to tell which
+    // way was downhill. Riding behind the mountain's own direction instead, the
+    // route always runs away down the screen and the rider slides across the
+    // frame as they traverse — which is also a far better readout of how far off
+    // the line they actually are.
+    const cxHere = this.terrain.centerX(rider.z);
+    const drift = rider.x - cxHere;
+
+    // Follow most of the drift, then HARD CLAMP how far off centre the rider is
+    // allowed to sit. Following a fixed fraction alone let a deep traverse push
+    // them to the edge of a portrait frame and out of it — the camera was still
+    // pointing the right way and had still lost the rider.
+    let camX = cxHere + drift * T.camLateral;
+    camX = clamp(camX, rider.x - T.camMaxOffset, rider.x + T.camMaxOffset);
+    this._wantPos.set(camX, rider.y + T.camUp + rider.airTime * 1.2, rider.z + T.camBack);
+    const floor = this.terrain.height(this._wantPos.x, this._wantPos.z) + T.camClearance;
+    if (this._wantPos.y < floor) this._wantPos.y = floor;
+
+    const ahead = T.camLookAhead * (0.85 + speedNorm * 0.4);
+    const lz = rider.z - ahead;
+    const lx = clamp(this.terrain.centerX(lz) + drift * T.camLateral * 0.7,
+      rider.x - T.camMaxOffset * 1.6, rider.x + T.camMaxOffset * 1.6);
+    this._wantLook.set(lx, this.terrain.height(lx, lz) + T.camLookUp, lz);
+    // Whatever the terrain does, the view axis never climbs above the camera.
+    this._wantLook.y = Math.min(this._wantLook.y, this._wantPos.y + 1.5);
+
+    // THE RIDER MAY NOT LEAVE THE FRAME. `camLookUp` aims the view well above
+    // the snow so the distant range and the sky are in shot, and that is worth a
+    // great deal — but its height is a constant while the mountain's pitch is
+    // not, so on a steeper pitch the same number tips the rider off the bottom
+    // edge. It did exactly that: a capture on a 20 degree section had nothing in
+    // frame but a red dot on the last row of pixels.
+    //
+    // So the framing is expressed as a guarantee instead of a constant. The
+    // angle between the view axis and the direction to the rider is capped at a
+    // fraction of the half-fov, which holds them inside the lower third at any
+    // pitch, any speed and any aspect ratio. Below the cap this does nothing at
+    // all, so the vista is untouched wherever it already worked.
+    this._keepRiderInFrame(rider);
+
+    if (!this.ready) {
+      this.pos.copy(this._wantPos);
+      this.look.copy(this._wantLook);
+      this.ready = true;
+    } else {
+      this.pos.lerp(this._wantPos, 1 - Math.exp(-T.camFollow * dt));
+      this.look.lerp(this._wantLook, 1 - Math.exp(-T.camLookFollow * dt));
     }
+    // The clamps have to bind the SMOOTHED position, not just the target. An
+    // exponential follow lags its target by v/k metres at lateral speed v — on a
+    // seventy-five degree traverse that is nine metres, which quietly un-does
+    // any clamp applied upstream and walks the rider clean out of a portrait
+    // frame while the camera is still "pointing the right way".
+    this.pos.x = clamp(this.pos.x, rider.x - T.camMaxOffset, rider.x + T.camMaxOffset);
+    this.look.x = clamp(this.look.x, rider.x - T.camMaxOffset * 1.6, rider.x + T.camMaxOffset * 1.6);
+    // ALONG-TRACK, for the same reason and with far more at stake. The target is
+    // always exactly `camBack` behind the rider, but an exponential follow sits
+    // v/k metres behind a target moving at v — and here that error does not
+    // average out, it is pure extra distance. At 22 m/s and k = 4.2 the rig
+    // delivers about 18 m on device against the 13 it is configured for, and at
+    // the twelve frames a second a software rasteriser manages, nearly 21.
+    //
+    // So the rider rendered at half the size the framing was tuned for, every
+    // camBack value ever chosen was fighting a rig that ignored a third of it,
+    // and — worst for anyone tuning the look — a headless capture was framed
+    // differently from the game it was standing in for. Catching the smoothed
+    // position keeps the transient spring and removes the steady-state error,
+    // which makes the framing identical at any frame rate.
+    this.pos.z = Math.min(this.pos.z, rider.z + T.camBack + T.camBackSlack);
+    // The ground-clearance floor, for exactly the same reason. When the snow
+    // leaps up under the camera — a kicker, a roller crest — the target hops
+    // over it while the lagging follow sails INTO the mound, and the player
+    // gets a faceful of the mountain's underside. The floor on _wantPos alone
+    // cannot prevent that; this line is the actual guarantee.
+    //
+    // Against the surface AS DRAWN as well as as defined: on concave ground
+    // the mesh's chords bulge ABOVE the analytic function — a couple of metres
+    // off-piste, where the columns are twenty metres apart — so a camera
+    // cleared against the maths alone can still slip under the triangles and
+    // look straight through their culled back faces: patches of see-through
+    // snow that come and go with the angle.
+    const floorNow = Math.max(
+      this.terrain.height(this.pos.x, this.pos.z),
+      meshHeight(this.terrain, this.pos.x, this.pos.z),
+    ) + T.camClearance;
+    if (this.pos.y < floorNow) this.pos.y = floorNow;
+
+    this._finish(dt, rider, speedNorm);
   }
 }
 
