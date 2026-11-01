@@ -77,7 +77,18 @@ export default registerMode({
    * because everything standing on the ground carries on standing exactly
    * where the ground was.
    */
-  hideGround: true,
+  /**
+   * THE PLACE DECIDES WHICH EXPERIMENT, not this file. Each level gets to try
+   * something different with the ground — the basin is not drawn at all, the
+   * needles are a holographic field you ride on — and a mode that hard-coded
+   * one of them would need a branch per level. `skyStyle` on the place says
+   * which; see `places.js`.
+   *
+   * ONLY THIS MODE ASKS. Every other mode draws every place's ground the way
+   * it always did, which is what makes it safe to hang an experiment on a
+   * place that three shipped modes also use.
+   */
+  experimentalGround: true,
 
   /**
    * THE RIG, not the numbers. `camera` below is a partial of `TUNE` and can

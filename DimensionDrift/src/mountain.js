@@ -1353,6 +1353,161 @@ export function sunVisibility(terrain, x, z, h, sun) {
  * chunk appears at the far edge of the view where the fog has closed anyway, so
  * nobody can see it arrive in pieces.
  */
+// ── THE GROUND AS A HOLOGRAM ────────────────────────────────────────────────
+//
+// "Use the geometry of the plain close to me — not the one in the distance —
+// but as a holographic energy field I can ride on."
+//
+// It is the SAME MESH, the same vertices, the same streaming ring and the same
+// surface the rider is riding. Only the fragment stage is different, which is
+// the whole reason this is a sensible thing to try: nothing about the
+// simulation, the collision, the band placement or the camera's clearance has
+// any idea it happened.
+//
+// FOUR THINGS MAKE IT READ AS A FIELD RATHER THAN AS A TEXTURE:
+//
+//  1. A GRID IN THE COURSE'S OWN COORDINATES, not in world x and z. The lines
+//     run along `u` and along `p`, so they follow the piste as it meanders
+//     instead of cutting across it — the grid belongs to the run rather than
+//     to the world, which is what a projected field would do.
+//  2. IT IS BRIGHTEST AT GRAZING ANGLES. A Fresnel term on the faceted normal,
+//     so the surface is nearly invisible where you look straight down at it
+//     and glows where it turns away. That is the single cue that separates "a
+//     glowing plane" from "a volume of light you are looking through", and it
+//     is why the far walls of the bowl light up while the piste under the
+//     board stays clear.
+//  3. IT ENDS. `uHoloFar` fades the whole thing out with distance, which is
+//     the brief — the plain CLOSE TO ME and not the one in the distance. The
+//     horizon is left to the far range and the sky.
+//  4. IT MOVES. One slow scan travelling down the fall line. Without it the
+//     grid is a decal; with it, it is being drawn by something.
+//
+// ADDITIVE AND depthWrite OFF, so the floating islands below show through it,
+// which is both what a hologram does and what makes the altitude read.
+const HOLO_FRAG = /* glsl */ `
+precision highp float;
+
+uniform vec3  uFogColor;
+uniform float uFogDensity;
+uniform vec3  uCamPos;
+uniform vec3  uHoloColor;
+uniform float uHoloFar;
+uniform float uTime;
+uniform float uExposure;
+
+varying vec3  vWorld;
+varying vec3  vRel;
+varying vec3  vNormal;
+varying float vU;
+varying float vShade;
+varying float vKick;
+varying float vLip;
+varying float vAlt;
+
+// Distance to the nearest line of a grid of the given period, in the units the
+// coordinate is measured in, BAND LIMITED by the screen footprint of that
+// coordinate so the lines fade out rather than alias into moire when they get
+// too close together to resolve.
+float grid(float x, float period, float width, float fw) {
+  float d = abs(fract(x / period - 0.5) - 0.5) * period;
+  float w = max(width, fw * 1.5);
+  float line = 1.0 - smoothstep(w, w * 2.2, d);
+  // Below two pixels a period, the grid is no longer a grid.
+  return line * smoothstep(1.0, 2.6, period / max(fw, 1e-4));
+}
+
+void main() {
+  vec3 N = normalize(cross(dFdx(vRel), dFdy(vRel)));
+  vec3 Nv = normalize(vNormal);
+  if (dot(N, Nv) < 0.0) N = -N;
+  vec3 V = normalize(-vRel);
+  float camDist = length(vRel);
+
+  // The course's own coordinates: across the piste, and down it.
+  float u = vU;
+  float p = -vWorld.z;
+  float fwU = fwidth(u);
+  float fwP = fwidth(p);
+
+  float fine = max(grid(u, 2.0, 0.045, fwU), grid(p, 2.0, 0.045, fwP));
+  float coarse = max(grid(u, 10.0, 0.10, fwU), grid(p, 10.0, 0.10, fwP));
+
+  // GRAZING, not facing. See the header: this is the term that makes it a
+  // field rather than a lit plane.
+  float nv = clamp(dot(N, V), 0.0, 1.0);
+  // 5.0, NOT 2.6, AND IT IS THE TERM THAT NEARLY SANK THIS. A Fresnel on a
+  // long slope seen from a chase camera is near 1 over most of the FRAME: the
+  // ground runs away to the horizon, so the great majority of pixels are at
+  // grazing incidence. A gentle exponent therefore does not add a rim, it adds
+  // a flat wash over three quarters of the screen — and on an additive surface
+  // feeding a bloom pass that is a white band across the middle with the rider
+  // lost inside it, which is exactly what the first two captures showed.
+  float rim = pow(1.0 - nv, 5.0);
+
+  // One slow scan down the fall line, and a second much slower one the other
+  // way so the two never land together and the pattern has no visible loop.
+  float scan = 0.5 + 0.5 * sin(p * 0.22 - uTime * 2.6);
+  scan = pow(scan, 6.0) * 0.55
+       + 0.25 * pow(0.5 + 0.5 * sin(p * 0.035 + uTime * 0.7), 3.0);
+
+  // A FLOOR UNDER THE WHOLE SURFACE, so it is a volume and not just lines in
+  // the dark — but a low one, because the thing being ridden has to stay
+  // readable against the things standing on it.
+  float body = 0.012 + 0.05 * rim;
+
+  // ── EVERY WEIGHT HERE IS A THIRD OF WHAT IT WAS, AND THAT WAS MEASURED ──
+  //
+  // The first cut summed to well over 1 across the whole near field, and on an
+  // ADDITIVE surface that does not read as "bright cyan" — it reads as WHITE,
+  // because every channel clips to 1 together and the hue is the first thing
+  // to go. The capture came back a blown white sheet with a grid faintly
+  // visible in it, and the bowl's left wall was pure paper.
+  //
+  // It is additive AND the frame goes through bloom, so the budget is not 1,
+  // it is well under it: anything over about 0.6 is already a bloom source and
+  // comes back bigger than it was drawn. The sum below peaks near 0.75 on a
+  // grid line seen edge-on and sits around 0.1 on the piste underfoot, which
+  // is what leaves the board, the trail and the drones readable on top of it.
+  float glow = body + fine * 0.13 + coarse * 0.34 + scan * 0.14 + rim * 0.07;
+  // A HARD CEILING, and it is not a fudge — it is the only thing standing
+  // between an additive surface and a bloom pass. Every term above is bounded
+  // on its own and they still sum past 1 where a coarse line, a scan crest and
+  // a grazing angle land together, which is a guaranteed event somewhere in
+  // every frame. Clamping here costs nothing anywhere else and removes the
+  // runaway by construction rather than by tuning.
+  glow = min(glow, 0.52);
+
+  // THE SELF-SHADOW STILL APPLIES, which is most of why this reads as terrain
+  // at all rather than as a flat sheet with a grid on it. aShade is marched
+  // through the height field on the CPU when a chunk is built, so a ridge
+  // still throws its shadow down the piste — as a hole in the field.
+  glow *= mix(0.45, 1.0, max(vShade, vKick * 0.6));
+
+  // AND IT ENDS. The brief is the plain close to me, not the one in the
+  // distance; past uHoloFar there is sky and the far range and nothing else.
+  // The fade starts early — a quarter of the way out — because an additive
+  // surface that is still at half strength when it stops is a visible EDGE,
+  // and a hologram with a hard rim is a disc, not a field.
+  glow *= 1.0 - smoothstep(uHoloFar * 0.15, uHoloFar, camDist);
+
+  // ── DIVIDED BY THE HOUR'S OWN EXPOSURE ─────────────────────────────────
+  //
+  // This is additive, so it is added BEFORE tone mapping and then multiplied
+  // by whatever exposure the mood is running. The arc spans 0.81 at high
+  // xenon to 2.6 at the red shift — a factor of three — so a field tuned to
+  // sit politely under the void came back at the bright stop as a sheet of
+  // white with a bloom halo across the middle of the frame, which is what the
+  // capture showed. Nothing else in this game has the problem because
+  // everything else is multiplied by the light rather than added to it.
+  //
+  // Normalised against 1.2, near the middle of the arc, so the number below
+  // means what it meant when it was tuned.
+  glow *= clamp(1.2 / max(uExposure, 0.2), 0.35, 1.6);
+
+  gl_FragColor = vec4(uHoloColor * glow, 1.0);
+}
+`;
+
 export class MountainMesh {
   constructor(terrain, scene, mood) {
     this.terrain = terrain;
@@ -1407,9 +1562,38 @@ export class MountainMesh {
     this.spare = this._makeChunk();
     this.spare.mesh.visible = false;
     scene.add(this.spare.mesh);
+    // THE HOLOGRAM SHARES THE VERTEX STAGE, which is not a saving so much as a
+    // requirement: it needs `vU`, `vShade` and the camera-relative `vRel` that
+    // the 16384 m blacks bug was fixed with, and a second copy of that vertex
+    // shader is a second place for that fix to rot.
+    this.holoMaterial = new THREE.ShaderMaterial({
+      vertexShader: SNOW_VERT,
+      fragmentShader: HOLO_FRAG,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uFogColor: { value: new THREE.Color(0xa8c4e6) },
+        uFogDensity: { value: 0.005 },
+        uCamPos: { value: new THREE.Vector3() },
+        uHoloColor: { value: new THREE.Color(0x35e0ff) },
+        /** Metres at which the field has faded to nothing. */
+        uHoloFar: { value: 130 },
+        uTime: { value: 0 },
+        /** The mood's own exposure, pushed per frame. See the note in the
+         *  fragment shader — an additive surface has to know it. */
+        uExposure: { value: 1.2 },
+      },
+    });
+    mood.bind(this.holoMaterial.uniforms);
+    this.mood = mood;
+
     this.baseIndex = 0;
     this.rebuildQueue = [];
     this.pending = null;
+    /** @type {'solid'|'hidden'|'holo'} */
+    this.style = 'solid';
     /**
      * Whether the ground is DRAWN. It is always there — the rider rides it,
      * the camera clears it, the drones hover over it and every band in the
@@ -1430,8 +1614,26 @@ export class MountainMesh {
    * fog line every few seconds.
    */
   setVisible(v) {
-    this.shown = v;
-    for (const c of this.chunks) c.mesh.visible = v && c.p0 !== undefined;
+    this.setStyle(v ? 'solid' : 'hidden');
+  }
+
+  /**
+   * How the ground is DRAWN. It is always there either way — see `shown`.
+   *
+   * A FLAG AND NOT JUST A LOOP, because chunks are shown and materialed by the
+   * streamer as they finish building, and a one-off pass would be undone by
+   * the next slab off the rebuild queue — as a strip of solid mountain
+   * reappearing at the fog line every few seconds.
+   */
+  setStyle(style) {
+    this.style = style;
+    this.shown = style !== 'hidden';
+    const mat = style === 'holo' ? this.holoMaterial : this.material;
+    for (const c of this.chunks) {
+      c.mesh.material = mat;
+      c.mesh.visible = this.shown && c.p0 !== undefined;
+    }
+    this.spare.mesh.material = mat;
   }
 
   _makeChunk() {
@@ -1563,6 +1765,7 @@ export class MountainMesh {
     attrs.aAlt.needsUpdate = true;
     job.chunk.geometry.computeBoundingSphere();
     job.chunk.p0 = job.p0;
+    job.chunk.mesh.material = this.style === 'holo' ? this.holoMaterial : this.material;
     job.chunk.mesh.visible = this.shown;
   }
 
@@ -1634,7 +1837,13 @@ export class MountainMesh {
     u.uSunFlat.value = Math.pow(wrap, 1.25) / PISTE_DOME;
   }
 
-  update(p, camPos) {
+  update(p, camPos, dt = 0) {
+    if (this.style === 'holo') {
+      const u = this.holoMaterial.uniforms;
+      u.uCamPos.value.copy(camPos);
+      u.uTime.value += dt;
+      u.uExposure.value = this.mood?.exposure ?? 1.2;
+    }
     this.material.uniforms.uCamPos.value.copy(camPos);
     this.material.uniforms.uFogBase.value = this.terrain.baseHeight(p) - 40;
     this._syncSun();

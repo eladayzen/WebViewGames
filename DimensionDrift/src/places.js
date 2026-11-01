@@ -216,6 +216,16 @@ registerPlace({
    * and they occupy the top third of the frame. See `shatter` there.
    */
   rangeProfile: 'shatter',
+  /**
+   * THE BASIN IS THE NO-GROUND ONE: the original POC, flying with the floor
+   * simply not drawn. See `_setGroundStyle` in main.js for everything that has
+   * to go with the terrain, and why.
+   *
+   * Read only by a mode that asks — `experimentalGround` in
+   * modes/shoulder.js. Chill vibe, the race and skirmish draw this place
+   * exactly as they always have.
+   */
+  skyStyle: 'hidden',
 });
 
 registerPlace({
@@ -257,6 +267,27 @@ registerPlace({
   kickerGap: 62,
   kickerEnergy: 0.22,
   kickerBars: 0.5,
+  /**
+   * AND THE NEEDLES ARE THE HOLOGRAM. "Use the geometry of the plain close to
+   * me — not the one in the distance — but as a holographic energy field I can
+   * ride on."
+   *
+   * The same mesh, the same vertices, the same streaming ring and the same
+   * surface the rider is riding; only the fragment stage differs. See
+   * HOLO_FRAG in `mountain.js` for the four things that make it read as a
+   * field rather than as a texture, and why it ends at 190 m.
+   *
+   * It lands on THIS place rather than the basin on purpose: the spires
+   * profile gives it a skyline of needles to be seen against, and a grid that
+   * stops at 190 m needs something at the horizon or the frame has a hole in
+   * the middle of it.
+   *
+   * `skyStyle` is read ONLY by a mode that asks for it — `experimentalGround`
+   * in `modes/shoulder.js`. Chill vibe, the race and skirmish draw this
+   * place's ground exactly as they always have, which is the only reason it is
+   * safe to hang an experiment on a place three shipped modes also use.
+   */
+  skyStyle: 'holo',
 });
 
 registerPlace({

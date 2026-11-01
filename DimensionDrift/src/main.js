@@ -1535,6 +1535,8 @@ class Game {
    * terrain around them is meshed, and `_seekTo` is what re-meshes it.
    */
   _applyPlace(place) {
+    this._place = place;
+    this._applyGroundStyle();
     this.scatter.treesPerBand = place.trees ?? SCATTER_DEFAULTS.trees;
     this.scatter.obstaclesPerBand = place.obstacles ?? SCATTER_DEFAULTS.obstacles;
     this.mood.fogScale = place.fog ?? 1;
@@ -3694,10 +3696,11 @@ class Game {
    * every shot was an empty wash. Letting them sit below as well puts
    * parallax under the rider, which is the only cue that says altitude.
    */
-  _setGroundHidden(hide) {
+  _setGroundStyle(style) {
+    const hide = style !== 'solid';
     const show = !hide;
-    this.mountain?.setVisible(show);
-    this.mountain2?.setVisible(show);
+    this.mountain?.setStyle(style);
+    this.mountain2?.setStyle(style);
     this.scatter?.setVisible(show);
     this.scatter2?.setVisible(show);
     this.course?.setGroundMarks(show);
@@ -3717,7 +3720,23 @@ class Game {
     const m = def?.cameraFollow === 'chase' ? CAM_MODE.CHASE : CAM_MODE.FALL_LINE;
     this.cameraRig?.setMode(m);
     this.cameraRig2?.setMode(m);
-    this._setGroundHidden(def?.hideGround === true);
+    this._applyGroundStyle();
+  }
+
+  /**
+   * THE MODE OPTS IN, THE PLACE CHOOSES WHICH EXPERIMENT.
+   *
+   * CALLED FROM BOTH SIDES, and it has to be: the lobby picks the MODE first
+   * and the PLACE second, so a single call from the mode hook ran while
+   * `this._place` was still the previous run's — which came back as 'solid'
+   * on a place whose whole point is that it is not. Either half changing
+   * re-asks the question; neither half can answer it alone.
+   */
+  _applyGroundStyle() {
+    const def = this._modeDef;
+    this._setGroundStyle(def?.experimentalGround
+      ? (this._place?.skyStyle ?? 'hidden')
+      : 'solid');
   }
 
   _award(points, label, { big = false, color = null } = {}) {
@@ -3915,7 +3934,7 @@ class Game {
     const streamP = this.rider2 ? Math.min(this.rider.p, this.rider2.p) : this.rider.p;
     const tailCam = (!this.rider2 || this.rider.p <= this.rider2.p)
       ? this.camera : (this.camera2 ?? this.camera);
-    this.mountain.update(streamP, tailCam.position);
+    this.mountain.update(streamP, tailCam.position, dt);
     // Trees and rocks stream from the same trailing rider as the ground they
     // stand on. From player one alone, a player two a few hundred metres back
     // rode a bare, featureless slope -- nothing to read speed or distance by.

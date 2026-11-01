@@ -113,7 +113,31 @@ should organise its frame around, and **"down the hill" is about to stop being
 the only direction**. The movement change comes next; building the camera first
 means it arrives into a frame that can show it.
 
-**And the ground is not drawn.** A proof of concept — *"hide the ground I am
+**And each level does something different with the ground.** The mode opts in
+(`experimentalGround`); the **place** chooses which experiment (`skyStyle`).
+Every other mode draws every place exactly as it always did, which is the only
+reason it is safe to hang an experiment on a place three shipped modes use.
+
+| level | ground |
+|---|---|
+| THE BASIN | not drawn at all — flying |
+| THE NEEDLES | a holographic energy field you ride on |
+
+**The needles are a hologram.** The same mesh, the same vertices, the same
+streaming ring, the same surface the rider is riding — only the fragment stage
+differs. Four things make it read as a *field* rather than a texture: a grid in
+the **course's own coordinates** (along `u` and `p`, so it follows the piste as
+it meanders rather than cutting across it), a Fresnel so it glows at grazing
+angles and stays clear underfoot, a distance fade at 130 m so it is *the plain
+close to you and not the one in the distance*, and one slow scan down the fall
+line so it is being drawn by something. It keeps `aShade`, so a ridge still
+throws its shadow — as a hole in the field.
+
+It is additive with `depthWrite` off, so the floating islands below show
+through it, which is both what a hologram does and what makes the altitude
+read.
+
+**And the basin's ground is not drawn.** A proof of concept — *"hide the ground I am
 flying through, make it look like I am flying in the sky."* It is a **drawing
 change and nothing else**: the mountain is still there, the rider still rides
 it, the camera still clears it, the drones still hover a measured distance over
