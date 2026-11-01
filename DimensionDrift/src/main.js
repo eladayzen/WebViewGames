@@ -35,6 +35,7 @@ import { Course, ReferenceRun, planGates, planKickers } from './course.js';
 import { Pickups } from './pickups.js';
 import { Combat } from './combat.js';
 import { Islands } from './islands.js';
+import { Medkits } from './medkits.js';
 import { Roster, Fighter, TEAM } from './fighters.js';
 import { WEAPONS, rollPower } from './weapons.js';
 import { createFinishLine } from './finishLine.js';
@@ -104,6 +105,14 @@ const SEED = 20260809;
  * different number it should say so out loud, here.
  */
 const PLAYER_HP = 100;
+
+// MODULE SCOPE, not the constructor's. The gun's hooks are closures built in
+// `init` and can close over locals there; the medkit loop runs in the frame
+// method, which is a different scope entirely — the first cut put these beside
+// MUZZLE_COL and they were a ReferenceError waiting for the first kit.
+// `Particles.emit` reads .r/.g/.b, so these have to be Colors and not hex.
+const HEAL_COL = new THREE.Color(0xa8ffd0);
+const healAt = new THREE.Vector3();
 
 /**
  * The world's own defaults, named so a place can leave a key out and get them.
@@ -963,6 +972,15 @@ class Game {
         hasTarget: !!f.target,
       })),
       rules: { ...this.combat.rules },
+      // The kits have exactly one visible state — standing, or gone — and a
+      // run that never met one looks identical to a run where every kit was
+      // ridden past at full health. The harness needs the counters.
+      medkits: {
+        enabled: this.medkits.enabled,
+        taken: this.medkits.stats.taken,
+        healed: this.medkits.stats.healed,
+        standing: this.medkits.kits.filter((k) => k && !k.taken).length,
+      },
       combat: {
         enemyShots: this.combat.stats.enemyShots,
         enemyHits: this.combat.stats.enemyHits,
@@ -1143,6 +1161,9 @@ class Game {
        */
       this.roster = new Roster();
       this.islands = new Islands(this.terrain, this.scene, this.mood, SEED);
+      // Off until a mode turns them on — chill vibe and the race have no
+      // health, and a pickup that does nothing is worse than no pickup.
+      this.medkits = new Medkits(this.terrain, this.scene, this.mood, SEED);
       this.particles = new Particles(this.scene, 900);
       this.snowfall = new Snowfall(this.scene, 800, 64);
       // The gun's feedback, wired here rather than inside `combat.js`, which
@@ -1256,6 +1277,7 @@ class Game {
       this.litMaterials = [
         ...this.rider.materials, ...this.scatter.materials, ...this.course.materials,
         ...this.pickups.materials, ...this.combat.materials, ...this.islands.materials,
+        ...this.medkits.materials,
         // Player two's rider is lit like every other object. Left out of this
         // list it never got uFogBase/uCamPos and rode as a pale fog ghost --
         // the same failure the rivals' jerseys had (see the frame loop).
@@ -1435,6 +1457,7 @@ class Game {
     // from under a shot that then chases them down the next stretch.
     this.combat.reset(p);
     this.islands.reset(p);
+    this.medkits.reset(p);
     // Fast-forward the plan so gates are not spawned for beats already past.
     while (this.course.planIdx < this.gatePlan.length
       && this.gatePlan[this.course.planIdx].t < t) this.course.planIdx++;
@@ -3482,12 +3505,13 @@ class Game {
   _takePower(slot, ev) {
     const f = this.roster.fighters[slot];
     if (!f || !f.alive) return;
-    const p = ev.gate?.p ?? 0;
-    // A cheap hash of the metre mark: fract(sin(p) * large). Deterministic,
-    // one line, and nothing downstream needs it to be a good generator — it is
-    // choosing between two outcomes.
-    const r = Math.abs(Math.sin(p * 0.7853 + SEED * 1e-6) * 43758.5453) % 1;
-    f.givePower(rollPower(r));
+    // THE GATE ALREADY KNOWS. It was decided in the plan so that the gate
+    // could wear its own legend (see `shapePlan` in skirmish.js and the sigil
+    // block in course.js); rolling again here would hand the player something
+    // other than the thing they just rode towards, which is the one outcome
+    // worse than not telling them at all. `rollPower` survives as the fallback
+    // for a gate that somehow arrives without a payload.
+    f.givePower(ev.power ?? ev.gate?.powerKind ?? rollPower(Math.random()));
   }
 
   _makeFighter(rider, slot, id) {
@@ -3763,6 +3787,13 @@ class Game {
     // Scenery, so it scrolls whatever the state is -- the results screen and
     // the crash camera both still look at the sky.
     this.islands.update(this.rider.p);
+    for (const ev of this.medkits.update(dt, this.roster, this.state === 'play')) {
+      this.audio.heal();
+      healAt.copy(ev.world);
+      this.particles.emit(healAt, HEAL_COL,
+        { count: 18, speed: 10, size: 1.5, life: 0.5, spread: 1, up: 2 });
+      this.hud.callout(ev.label, { color: ev.color });
+    }
     // Cooldowns, grace windows and the power clocks, for everyone in the
     // fight. Before combat runs, so a power that expires this frame expires
     // before the gun reads which weapon it is holding.

@@ -118,11 +118,40 @@ try {
   check('a drone takes more than one star', rules.droneHp > 1, `${rules.droneHp} hp`);
   check('and the harness agrees with the mode on how many', rules.droneHp === DRONE_HP);
   check('the hill is thinned for the fight', rules.density < 1, `x${rules.density}`);
+  const kits0 = await ev(() => CARVE.probe().medkits);
+  check('the medkits are on in this mode', kits0.enabled === true);
   const roster0 = await ev(() => CARVE.probe().roster);
   check('there is a fighter on the crew', roster0.length >= 1 && roster0[0].team === 'crew');
   check('the fighter starts at full health',
     roster0[0].hp === roster0[0].maxHp, `${roster0[0].hp}/${roster0[0].maxHp}`);
   check('and starts on the default weapon', roster0[0].weapon === 'star');
+  // ── THE GATES SAY WHAT THEY GIVE ────────────────────────────────────────
+  //
+  // Three claims, and none of them is visible in a still frame at the range
+  // that matters: that the payload is decided in the PLAN (so it can be drawn
+  // at all), that both payloads actually occur (a legend that is always the
+  // same legend teaches nothing), and that the gate standing on the hill is
+  // wearing the one matching its own payload.
+  const gates = await ev(() => {
+    const g = CARVE._game;
+    const pw = g.gatePlan.filter((e) => e.kind === 'power');
+    const kinds = {};
+    for (const e of pw) kinds[e.power ?? 'none'] = (kinds[e.power ?? 'none'] ?? 0) + 1;
+    return { n: pw.length, kinds, withPayload: pw.filter((e) => e.power).length };
+  });
+  check('every power gate knows its payload before it is ridden',
+    gates.n > 0 && gates.withPayload === gates.n, `${gates.withPayload}/${gates.n}`);
+  check('a placed power gate wears a legend', await ev(() => {
+    const c = CARVE._game.course;
+    const live = (c.gates ?? []).filter((g) => g.active && g.data && g.data.power);
+    // Every power gate on the hill has a map, and a storm gate's map is not a
+    // keen gate's — the texture identity IS the test, since the pixels are a
+    // canvas this harness cannot read back cheaply.
+    if (!live.length) return 'none placed';
+    const maps = new Set(live.map((g) => g.sigil.material.map?.uuid ?? 'null'));
+    return live.every((g) => g.sigil.material.map) && !maps.has('null');
+  }), '');
+
   check('the health bar is up and the clock is not', await ev(() => {
     const h = document.getElementById('health');
     const c = document.getElementById('clock');
@@ -181,6 +210,8 @@ try {
   let shotFrame = false;
   let died = false;
   let stalled = false;
+  let kitsSeen = 0;
+  let kitsTaken = 0;
   const rideUntil = Date.now() + RIDE_TIMEOUT_MS;
 
   while (true) {
@@ -196,6 +227,8 @@ try {
         powerLeft: p.roster[0].powerLeft,
         enemyShots: p.combat.enemyShots,
         enemyHits: p.combat.enemyHits,
+        kitsTaken: p.medkits.taken,
+        kitsStanding: p.medkits.standing,
         // A bolt in the air whose target is a fighter: the thing a still frame
         // cannot distinguish from one of ours.
         incoming: g.combat.bolts.filter((b) => b.live && !b.atDrone).length,
@@ -206,6 +239,8 @@ try {
     if (s.incoming > 0) sawIncoming = true;
     if (s.powerLeft > 0) { sawPower = true; powerWeapon = s.weapon; }
     if (!s.alive) died = true;
+    kitsSeen = Math.max(kitsSeen, s.kitsStanding);
+    kitsTaken = Math.max(kitsTaken, s.kitsTaken);
     // THE ONE CAPTURE WORTH HAVING: incoming fire in the air with a dented
     // health bar behind it. Both of the things this file exists to prove, in
     // one frame.
@@ -260,6 +295,31 @@ try {
   });
   check('the course plans power gates',
     plan.power > 0, `${plan.power} of ${plan.n}`);
+  // ── AND BOTH PAYLOADS ACTUALLY OCCUR ────────────────────────────────────
+  //
+  // Checked HERE rather than at boot, and the move is the point: at boot the
+  // plan holds eight power gates, and at a 3:1 weighting all eight coming up
+  // the same way is a one-in-ten coin toss. A check that fails one run in ten
+  // is worse than no check — it trains everyone to ignore it. By now the plan
+  // has grown past eighty gates with the ride, which is a sample.
+  //
+  // It earned its place first time out: it caught `e.p` being undefined on a
+  // plan entry, where every gate on the mountain hashed to zero and rolled an
+  // identical payload. Nothing else in this file would have seen that.
+  const kinds = await ev(() => {
+    const out = {};
+    for (const e of CARVE._game.gatePlan) {
+      if (e.kind !== 'power') continue;
+      out[e.power ?? 'none'] = (out[e.power ?? 'none'] ?? 0) + 1;
+    }
+    return out;
+  });
+  check('both powers come up across a run', Object.keys(kinds).length >= 2,
+    JSON.stringify(kinds));
+  check('and the rarer one stays rare',
+    (kinds.storm ?? 0) > 0 && (kinds.storm ?? 0) < (kinds.keen ?? 0),
+    `${kinds.storm ?? 0} storm to ${kinds.keen ?? 0} keen`);
+
   check('and roughly one gate in five',
     plan.power / Math.max(1, plan.n) > 0.12 && plan.power / Math.max(1, plan.n) < 0.28,
     `${(100 * plan.power / Math.max(1, plan.n)).toFixed(0)}%`);
@@ -280,6 +340,67 @@ try {
   check('and it outranges a plain star',
     powered.on.reach > powered.off.reach, `${powered.on.reach} m vs ${powered.off.reach} m`);
   check('the power runs on a clock', powered.on.left > 0, `${powered.on.left}s`);
+  // ── THE KITS ────────────────────────────────────────────────────────────
+  check('kits stand on the hill', kitsSeen > 0, `${kitsSeen} standing at once`);
+  const kits = await ev(() => CARVE.probe().medkits);
+  // THE CADENCE, FROM THE PLACEMENT FUNCTION RATHER THAN FROM THE RIDE.
+  //
+  // The first cut of this file asserted that a kit was TAKEN during the
+  // straight phase and it failed, correctly and uselessly: that phase rides
+  // the centreline and kits are scattered across ±19.8 m, so catching one is
+  // a coin toss the harness has no business making. Worse, it duplicated the
+  // collect test below, which is strictly stronger because it is not random.
+  //
+  // What is worth measuring here is the thing the ride cannot show: how often
+  // a kit exists at all. Placement is a pure function of (band, seed), so it
+  // can simply be evaluated over a long stretch without riding it.
+  const cadence = await ev(() => {
+    const m = CARVE._game.medkits;
+    let kits = 0;
+    const BANDS = 240;
+    for (let b = 0; b < BANDS; b++) {
+      m._buildBand(b);
+      const slot = ((b % m.bands) + m.bands) % m.bands;
+      if (m.kits[slot]) kits++;
+    }
+    // Put the ring back where the rider is, or the next frame draws kits from
+    // the far end of the mountain.
+    m.reset(CARVE._game.rider.p);
+    return { kits, metres: BANDS * 110 };
+  });
+  const perKit = cadence.metres / Math.max(1, cadence.kits);
+  check('kits appear about every 300 m',
+    perKit > 240 && perKit < 420, `one per ${Math.round(perKit)} m`);
+  // A KIT CANNOT BE WASTED, which is the rule the module is built around and
+  // the one a player would never discover from a frame. Asserted directly:
+  // at full health a kit ridden through is not consumed.
+  const waste = await ev(async () => {
+    const g = CARVE._game;
+    const f = g.roster.fighters[0];
+    const m = g.medkits;
+    f.hp = f.maxHp;
+    // Stand a kit exactly on the rider and run a collect.
+    const slot = m.kits.findIndex((k) => k && !k.taken);
+    if (slot < 0) return { skipped: true };
+    const kit = m.kits[slot];
+    kit.x = f.x; kit.y = f.y + 0.5; kit.z = f.z;
+    m._prev.clear();
+    const atFull = m._collect(g.roster).length;
+    const stillThere = !kit.taken;
+    // And now the same kit, with the rider hurt.
+    f.hp = 40;
+    m._prev.clear();
+    kit.x = f.x; kit.y = f.y + 0.5; kit.z = f.z;
+    const hurt = m._collect(g.roster).length;
+    return { skipped: false, atFull, stillThere, hurt, hp: f.hp, taken: kit.taken };
+  });
+  if (!waste.skipped) {
+    check('a kit ridden through at full health is not consumed',
+      waste.atFull === 0 && waste.stillThere);
+    check('and the same kit still works when you need it',
+      waste.hurt > 0 && waste.taken && waste.hp > 40, `healed to ${waste.hp}`);
+  }
+
   check('the capture was taken', shotFrame);
 
   // ── 2. and it is survivable if you fight ──────────────────────────────────
@@ -444,7 +565,7 @@ try {
   server.close();
 }
 
-if (checked < 26) {
+if (checked < 34) {
   console.log(`\n  HARNESS DID NOT FINISH — only ${checked} checks ran`);
   process.exit(2);
 }

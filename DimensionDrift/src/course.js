@@ -519,6 +519,143 @@ function buildPennantGeometry() {
   return g;
 }
 
+// ── WHAT A GATE GIVES YOU, DRAWN ON THE GATE ────────────────────────────────
+//
+// "The gates should be really clear what they give me."
+//
+// They were not. A boost gate, a time gate and a power gate differed by hue
+// and by pole height, which answers "this one is special" and not "special
+// how" — and the power gates made that gap unbearable, because there are TWO
+// of them and the difference between a weapon that kills a drone in one hit
+// and one that throws three at a time with a speed boost is the difference
+// between two plans for the next hundred metres. You found out by riding
+// through, which is after the decision.
+//
+// THE SIGIL IS A PICTURE OF THE REWARD, NOT A LABEL FOR IT. Text was costed
+// and dropped on arithmetic: a 2.6 m panel at sixty metres is 32 px tall on
+// this rig, and no word survives that. A picture of the thing you are about to
+// be holding does — one star against three stars is legible at a dozen pixels,
+// because it is a count and not a shape.
+//
+// AND IT IS NOT A CROSSBAR. This file already records that a bar across the
+// top was tried twice and read as scaffolding both times; the lesson there was
+// that "anything spanning nine metres of banked mountain is a large object
+// competing with the trees, and it was winning". A 2.6 m panel at the gate's
+// centre is not that object. It spans a fifth of the gap, it is at eye height
+// rather than overhead, and it is the only thing in the frame whose job is to
+// be read rather than to be ridden through.
+//
+// IT FACES UP THE MOUNTAIN, not the camera. Billboarding is wrong here for a
+// reason specific to this game: two-player renders two cameras, so a panel
+// turned to face "the" camera is turned away from one of them. A rider always
+// arrives from uphill, so +Z is the one bearing that is right for everybody.
+
+/** Canvas size. 256 is four times what the panel ever occupies on screen. */
+const SIGIL_PX = 256;
+
+/**
+ * How high the legend floats, in metres over the drawn snow at the gate's
+ * centre.
+ *
+ * 3.0 puts it just over a standing rider's head and well under the top of a
+ * boost gate's 1.85x poles, so it reads as hanging IN the gate rather than
+ * over it. Higher and it leaves the gate's silhouette and becomes a separate
+ * floating object — which, in a game that now has floating islands in it, is
+ * a genuinely confusable thing to be.
+ */
+const SIGIL_UP = 3.0;
+
+/** One ninja star, centred at (cx,cy), as the path of an eight-pointed plate. */
+function drawStar(g, cx, cy, R, rot = 0) {
+  g.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = rot + (i / 8) * Math.PI * 2;
+    const r = i % 2 === 0 ? R : R * 0.34;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+  }
+  g.closePath();
+  g.fill();
+}
+
+/** An upward chevron, which is this game's existing shape for "faster". */
+function drawChevron(g, cx, cy, w, h, t) {
+  g.lineWidth = t;
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.beginPath();
+  g.moveTo(cx - w, cy + h);
+  g.lineTo(cx, cy - h);
+  g.lineTo(cx + w, cy + h);
+  g.stroke();
+}
+
+/**
+ * The panel for one kind of gate.
+ *
+ * A DARK BACKING DISC UNDER EVERY GLYPH, and it is not decoration. The sky in
+ * this game runs from a violet void to a hot magenta horizon to an acid green
+ * noon, and a gate stands with its upper half against exactly that. A pale
+ * glyph alone disappears at two of the five stops. The disc gives every sigil
+ * the same contrast at every hour, which is the whole point of drawing them.
+ */
+function makeSigilTexture(kind) {
+  const c = document.createElement('canvas');
+  c.width = SIGIL_PX;
+  c.height = SIGIL_PX;
+  const g = c.getContext('2d');
+  const C = SIGIL_PX / 2;
+  const tint = {
+    boost: '#c4b5fd', time: '#d6ff5a', keen: '#2ee6d6', storm: '#7df9ff',
+  }[kind] ?? '#ffffff';
+
+  g.fillStyle = 'rgba(8, 10, 24, 0.72)';
+  g.beginPath();
+  g.arc(C, C, C * 0.92, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = tint;
+  g.lineWidth = 9;
+  g.beginPath();
+  g.arc(C, C, C * 0.92 - 5, 0, Math.PI * 2);
+  g.stroke();
+
+  g.fillStyle = tint;
+  g.strokeStyle = tint;
+  if (kind === 'keen') {
+    // ONE STAR, BIG. The default weapon throws this shape; the gate says you
+    // will be throwing a better one.
+    drawStar(g, C, C, C * 0.56);
+  } else if (kind === 'storm') {
+    // THREE, IN THE FAN THEY ARE ACTUALLY THROWN IN, plus a chevron under them
+    // for the speed that comes with it. The count is the message and the count
+    // is what survives being small.
+    drawStar(g, C, C * 0.74, C * 0.33);
+    drawStar(g, C * 0.56, C * 1.06, C * 0.33);
+    drawStar(g, C * 1.44, C * 1.06, C * 0.33);
+    drawChevron(g, C, C * 1.56, C * 0.34, C * 0.17, 16);
+  } else if (kind === 'boost') {
+    drawChevron(g, C, C * 0.78, C * 0.44, C * 0.22, 22);
+    drawChevron(g, C, C * 1.26, C * 0.44, C * 0.22, 22);
+  } else if (kind === 'time') {
+    // A PLUS INSIDE A DIAL. The plus says "more", the dial says "of what".
+    g.lineWidth = 14;
+    g.beginPath();
+    g.arc(C, C, C * 0.50, 0, Math.PI * 2);
+    g.stroke();
+    g.lineWidth = 20;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(C, C * 0.62); g.lineTo(C, C * 1.38);
+    g.moveTo(C * 0.62, C); g.lineTo(C * 1.38, C);
+    g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
 class Gate {
   constructor(scene, geos, mats) {
     /** Left and right pole, each planted at its own height. */
@@ -565,6 +702,25 @@ class Gate {
       uniforms: { uColor: { value: new THREE.Color(0xff9db4) }, uFade: { value: 1 } },
     }));
     this.line.frustumCulled = false;
+
+    // The sigil. One mesh per gate, its map swapped when the gate is placed —
+    // the textures themselves are built once and shared (see `_sigil`).
+    this.sigil = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.6, 2.6),
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        // Drawn over the mountain, never into it: a panel that z-fought the
+        // ridge behind it would flicker at exactly the distance it is meant to
+        // be read at.
+        depthWrite: false,
+        // Unlit, like every other element whose job is to be read rather than
+        // to belong — the fog lives in the lit shader and a legend that hazes
+        // out at sixty metres is not a legend.
+      }),
+    );
+    this.sigil.frustumCulled = false;
+    this.sigil.visible = false;
+    scene.add(this.sigil);
     this.line.visible = false;
     this.line.renderOrder = 3;
     scene.add(this.line);
@@ -596,6 +752,22 @@ class Gate {
     this.line.visible = v;
     this.pennants[0].visible = v && this.isBoost;
     this.pennants[1].visible = v && this.isBoost;
+    this.sigil.visible = v && !!this.sigil.material.map;
+  }
+
+  /**
+   * Hang a legend on this gate, or none.
+   *
+   * A PLAIN SLALOM GATE GETS NONE, and that is the decision that keeps the
+   * others legible. A legend on every gate is wallpaper: the eye stops reading
+   * any of them, which is exactly the state this change exists to fix. The
+   * slalom is the course's grammar and needs no gloss; a sigil means "this one
+   * hands you something".
+   */
+  setSigil(tex) {
+    this.sigil.material.map = tex ?? null;
+    this.sigil.material.needsUpdate = true;
+    this.sigil.visible = !!tex && this.poles[0].visible;
   }
 
   setMaterial(m) {
@@ -693,6 +865,8 @@ export class Course {
       color: 0x0d9488, wrap: 0.85, gloss: 40, specular: 0.5, emissive: 1.0,
     });
     this.materials = [this.matBlue, this.matRed, this.matBoost, this.matTime, this.matPower];
+    /** One canvas per kind of legend, built on first use and shared. */
+    this._sigils = new Map();
     this.timeGeo = buildTimePoleGeometry();
     // Set per run by the mode: chill's plain gates are TIME gates and dress
     // differently; the race's plain gates keep the slalom look.
@@ -836,11 +1010,23 @@ export class Course {
     return clamp(Math.min(steady, left), AMP_MIN, d.ampMax);
   }
 
+  /** The shared legend texture for a kind, built on first ask. */
+  _sigil(kind) {
+    if (!kind) return null;
+    if (!this._sigils.has(kind)) this._sigils.set(kind, makeSigilTexture(kind));
+    return this._sigils.get(kind);
+  }
+
   _place(entry, p) {
     const g = this._free();
     if (!g) return;
     const boost = entry.kind === 'boost';
     const power = entry.kind === 'power';
+    // WHICH power, decided by the PLAN and not at the moment it is taken. That
+    // is what lets the gate wear its own answer: a payload rolled on contact
+    // cannot be drawn on an object the player is looking at from sixty metres
+    // away. See `shapePlan` in `modes/skirmish.js`.
+    const powerKind = power ? (entry.power ?? 'keen') : null;
     const red = entry.side > 0;
     // A boost gate takes its own colour and keeps it whichever side it is on:
     // the red/blue pair means "which way does this one send you", and a gate
@@ -882,7 +1068,15 @@ export class Course {
     // readout is worth keeping, but it was being carried by brightness, and one
     // of the pair had to be the loudest thing in the frame for that to work.
     g.line.material.uniforms.uColor.value.set(
-      power ? 0x2ee6d6 : boost ? 0xa78bfa : (red ? 0xff9db4 : 0xd6a6dc));
+      powerKind === 'storm' ? 0x7df9ff
+        : power ? 0x2ee6d6
+          : boost ? 0xa78bfa : (red ? 0xff9db4 : 0xd6a6dc));
+    // AND THE LEGEND. Built once per kind and shared across every gate in the
+    // ring — thirty gates with their own 256px canvas would be two megabytes
+    // of texture to say four things.
+    g.setSigil(power ? this._sigil(powerKind)
+      : boost ? this._sigil('boost')
+        : timed ? this._sigil('time') : null);
     g.setVisible(true);
     g.active = true;
     const prev = this.lastPlaced.valid ? this.lastPlaced : null;
@@ -904,7 +1098,7 @@ export class Course {
       prevP: prev ? prev.p : null,
       prevU: prev ? prev.u : 0,
       dtPrev: prev ? entry.t - prev.t : 0,
-      red, boost, power, half: boost || power ? BOOST_HALF : GATE_HALF,
+      red, boost, power, powerKind, half: boost || power ? BOOST_HALF : GATE_HALF,
       passed: false, locked: false, t: entry.t,
       minP: this.lastPlacedP + MIN_GATE_GAP,
       x: 0, z: 0,
@@ -969,6 +1163,10 @@ export class Course {
     }
 
     const yc = meshHeight(this.terrain, d.x, d.z);
+    // The sigil rides at the gate's centre, at the height a standing rider
+    // looks at. SET EVERY FRAME like everything else here, because the gate
+    // moves laterally as the piste meanders under it.
+    if (g.sigil.visible) g.sigil.position.set(d.x, yc + SIGIL_UP, d.z);
     g.line.position.set(d.x, yc, d.z);
     const off = g.lineOff;
     const attr = g.line.geometry.attributes.position;
@@ -1152,6 +1350,7 @@ export class Course {
     // in both halves, so it answers whoever rides through it.
     if (inside) d.flash = 1;
     events.push({
+      power: d.powerKind,
       type: d.power ? (inside ? 'power' : 'powerMiss')
         : d.boost ? (inside ? 'boost' : 'boostMiss')
           : (inside ? 'gate' : 'miss'),

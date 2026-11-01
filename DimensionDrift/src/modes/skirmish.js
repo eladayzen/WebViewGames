@@ -75,6 +75,7 @@
 
 import { registerMode } from './mode.js';
 import { TEAM } from '../fighters.js';
+import { rollPower } from '../weapons.js';
 
 /**
  * ONE GATE IN FIVE, where chill vibe promotes one in seven to a boost.
@@ -153,6 +154,12 @@ export default registerMode({
           { hostile: true, droneHp: DRONE_HP, density: DENSITY },
           game.rider.p,
         );
+        // THE ONLY WAY HEALTH COMES BACK. Dead is dead and nothing
+        // regenerates, so without kits the length of a run is fixed before it
+        // starts: a hundred points against six-point bolts is sixteen hits
+        // whatever the player does. See `medkits.js`.
+        game.medkits.setEnabled(true);
+        game.medkits.reset(game.rider.p);
         game.hud.showHealth(true, game.roster.length);
         game.hud.healthNames(game._playerNames?.() ?? ['Player 1', 'Player 2']);
       },
@@ -168,7 +175,45 @@ export default registerMode({
        */
       shapePlan(entries) {
         for (const e of entries) {
-          if (seen++ % POWER_EVERY === POWER_EVERY - 1) e.kind = 'power';
+          if (seen++ % POWER_EVERY !== POWER_EVERY - 1) continue;
+          e.kind = 'power';
+          // WHICH POWER, HERE, AND THAT IS THE WHOLE OF "THE GATES SHOULD BE
+          // CLEAR WHAT THEY GIVE ME".
+          //
+          // It used to be rolled when the gate was taken, which is the obvious
+          // place and the wrong one: a payload that does not exist until
+          // contact cannot be drawn on an object the player is reading from
+          // sixty metres away. Deciding it in the plan costs nothing and lets
+          // `course.js` hang the right legend on the right gate.
+          //
+          // DRAWN FROM THE GATE ITSELF, not from Math.random, so a given gate
+          // on a given seed always offers the same thing — a stretch re-ridden
+          // is the same stretch, the way every other placement in this game
+          // already is, and the two players in a split screen are offered the
+          // same thing by the same gate, which a shared random stream could
+          // not guarantee and which would read as the game cheating one of
+          // them.
+          //
+          // `beat` AND `t`, NOT `p`. A plan entry is {t, beat, side, u,
+          // spacing} — IT HAS NO `p`. The first cut hashed `e.p`, which is
+          // undefined, so `Math.round(undefined * 100) | 0` was 0 for every
+          // gate on the mountain and all seventeen rolled the same payload.
+          // The symptom looked like a bad generator and two rounds were spent
+          // on the hash before the input was checked; the harness found it
+          // because it asserts that BOTH powers occur, which is the kind of
+          // claim a feature like this has to make about itself.
+          //
+          // `beat` is the gate's index and restarts each lap, so `t` — the
+          // reference run's time, which does not — is mixed in with it.
+          //
+          // An integer hash rather than fract(sin(x)): gates are placed on a
+          // rhythm, so their inputs are near-regularly spaced, and a sine
+          // sampled on a regular lattice aliases.
+          let h = (e.beat | 0) ^ Math.imul(Math.round((e.t ?? 0) * 1000) | 0, 0x9e3779b1);
+          h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+          h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
+          h ^= h >>> 15;
+          e.power = rollPower((h >>> 0) / 4294967296);
         }
         return entries;
       },
@@ -230,7 +275,8 @@ export default registerMode({
             + `${Math.round(game.score).toLocaleString('en-US')} points — `
             + `${acc}% of stars on target`,
           statsRow: false,
-          run: { distance: game.distance, kills: c.kills, sweeps: c.sweeps },
+          run: { distance: game.distance, kills: c.kills, sweeps: c.sweeps,
+            healed: game.medkits.stats.healed },
         };
       },
 
@@ -240,6 +286,7 @@ export default registerMode({
         // shoots back and takes three hits is a balance change nobody asked
         // for. This is the one hook `mode.js` says is not optional.
         game.combat.setRules({ hostile: false, droneHp: 1, density: 1 });
+        game.medkits.setEnabled(false);
         game.hud.showHealth(false);
         game.roster.reset();
       },

@@ -42,6 +42,23 @@ A drone takes three stars; a cyan **power gate** (one in five) gives you a
 weapon that kills in one, or more rarely one that throws three at a time and
 boosts your speed. The step from 1 to 3 damage is a change of kind, not degree.
 
+**The gates say what they give you.** Each one hangs a legend in its own gap: a
+picture of the reward, not a label for it — one star for the keen throw, three
+stars and a chevron for the storm, chevrons for a boost, a dial and a plus for
+time. Text was costed and dropped on arithmetic (a 2.6 m panel at sixty metres
+is 32 px tall and no word survives that); a count of stars is legible at a dozen
+pixels because it is a count and not a shape. The payload is decided in the
+**plan**, not on contact — a reward that does not exist until you touch it
+cannot be drawn on something you are reading from sixty metres away.
+
+**Medkits** are the only way health comes back. Without them the length of a run
+is fixed before it starts: 100 health against 6-point bolts is sixteen hits
+whatever the player does, so good play buys delay and never recovery. One every
+~300 m, in the reward band where no tree can stand. **A kit ridden through at
+full health is not consumed** — the alternative makes the correct play "avoid
+the medkit", and a pickup you are supposed to dodge is a design that went
+wrong.
+
 A wipeout still costs speed and ground and **not** health. Terrain punishes your
 line, drones punish your fight — and the forest was tuned against a clock this
 mode does not have, so charging health for a crash would be a difficulty change

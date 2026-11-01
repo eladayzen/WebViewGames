@@ -1133,6 +1133,22 @@ export class Audio {
   }
 
   /**
+   * A medkit taken.
+   *
+   * RISING AND CONSONANT, and deliberately the warmest voice in the mode.
+   * Everything else that happens in skirmish is a report of machinery — the
+   * gun's fall, the drone's tick, the bolt's rise, the hit's drop. This is the
+   * one event that is purely good, so it is the one with a chord in it: a
+   * major triad, where `squadSwept` and `driftLine` use a bare fifth. Nothing
+   * else in this game plays a third, so it cannot be mistaken for them.
+   */
+  heal() {
+    this._tone(523, 523, { type: 'sine', attack: 0.008, decay: 0.34, gain: 0.14 });
+    this._tone(659, 659, { type: 'sine', attack: 0.012, decay: 0.42, gain: 0.12, delay: 0.05 });
+    this._tone(784, 784, { type: 'triangle', attack: 0.014, decay: 0.55, gain: 0.09, delay: 0.11 });
+  }
+
+  /**
    * A power gate taken.
    *
    * A FIFTH ABOVE THE ROOT, which is the consonance `driftLine` and
