@@ -137,6 +137,20 @@ It is additive with `depthWrite` off, so the floating islands below show
 through it, which is both what a hologram does and what makes the altitude
 read.
 
+**The islands are floating mountains now, and there is a world under them.**
+They were plates with a single cone hanging off and they read as flat dark
+triangles — because every one is seen from *below*, and a cone presents the
+same silhouette from every bearing. They have a summit with ridges, a rim and
+a **trilobed root** whose three spurs differ in length, so the silhouette
+changes with the bearing. 110–420 m, up from 44–165.
+
+A third pool sits 280–680 m **below**, four to twelve hundred metres out, up to
+1250 m across. Its numbers are set by what the camera can actually see rather
+than by taste: the first cut put it 420–1150 m down and every one of the
+thirteen in front of the rider was under the bottom edge of the frame. It has
+its own material — mid-toned with `snowCap` on, because it is the one pool seen
+from *above*, against haze, where the key lands on its top.
+
 **And the basin's ground is not drawn.** A proof of concept — *"hide the ground I am
 flying through, make it look like I am flying in the sky."* It is a **drawing
 change and nothing else**: the mountain is still there, the rider still rides

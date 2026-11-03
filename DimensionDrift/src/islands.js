@@ -93,8 +93,24 @@ import { mulberry32, range } from './rng.js';
 const SLAB_BAND = 170;
 const SLAB_VIEW = 1440;
 const SLAB_PER_BAND = [1, 3];           // inclusive count drawn per band
-const SLAB_SIZE = [44, 165];            // metres across
-const SLAB_RISE = [120, 290];           // metres above the fall line
+/**
+ * 110 TO 420 m, UP FROM 44 TO 165.
+ *
+ * "Those triangle islands don't look good enough and they are too small. They
+ * should be like mountains that I can see the lower side of."
+ *
+ * The size is half of that note and the geometry is the other half. At 165 m
+ * seen from six hundred away an island subtends about the angle a drone does
+ * at forty — it reads as debris rather than as landscape, and no amount of
+ * modelling on the underside survives being eight pixels tall. 420 m at the
+ * same range is a MOUNTAIN with a root whose shape can be read.
+ *
+ * The spread is also wider, nearly four to one, for the reason the pools exist
+ * at all: a set whose members are all within a factor of three of each other
+ * reads as one size class at one distance and gives the eye no depth to take.
+ */
+const SLAB_SIZE = [110, 420];           // metres across
+const SLAB_RISE = [140, 340];           // metres above the fall line
 /**
  * AND WHERE THEY SIT WHEN THERE IS NO GROUND IN THE WAY.
  *
@@ -105,13 +121,61 @@ const SLAB_RISE = [120, 290];           // metres above the fall line
  * as flight: the eye takes altitude from parallax underneath, and with
  * everything above, the lower half of the frame was an empty wash.
  */
-const SLAB_RISE_SKY = [-210, 260];
-const CHUNK_RISE_SKY = [-120, 150];
+const SLAB_RISE_SKY = [-240, 320];
+const CHUNK_RISE_SKY = [-140, 170];
+
+/**
+ * ── AND A WORLD FAR BELOW ──────────────────────────────────────────────────
+ *
+ * "Now that I see so much of it, more of it should be interesting — we should
+ * have environment far below us."
+ *
+ * A third pool, and it is a third pool rather than a wider spread on the slabs
+ * for one reason: DISTANCE IS WHAT MAKES DEPTH READ. A slab at -240 m is near
+ * enough to compete with the ground the rider is on. These sit four to eleven
+ * hundred metres down and are the size of the thing they stand in for — a
+ * landscape, not an object. From up here they are a floor a long way away,
+ * which is the only honest way to say "high".
+ *
+ * They are also the one pool nearly always BELOW the horizon, so on the holo
+ * level the field is drawn over them — and because that surface is additive
+ * with depthWrite off, they show through it. That is why this is worth having
+ * there specifically: a translucent floor with nothing under it is a
+ * translucent floor over a void.
+ */
+// ── AND THE NUMBERS ARE SET BY WHAT THE CAMERA CAN SEE, NOT BY TASTE ───────
+//
+// The first cut put these 420 to 1150 m down and up to 2600 m out, which is
+// exactly what "far below" sounds like and is invisible. Measured against the
+// live rig: the nearest one sat 616 m under the camera at 932 m total, which
+// is 41 degrees below the horizontal — and the frame reaches 38. Every one of
+// the thirteen in front of the rider was under the bottom edge.
+//
+// There is also a HARD CEILING nobody can tune past: the camera's far plane is
+// 1500 m, so a band further out than that is geometry built to be clipped.
+//
+// What a near-horizontal camera can actually show below itself is not straight
+// down, it is FORWARD AND DOWN — the view out of an aircraft window. So the
+// depth came up to 280-680 m and the ring was cut to the far plane, which puts
+// the nearest at about 20 degrees under the horizon: low in frame, receding,
+// and there.
+const DEEP_BAND = 240;
+const DEEP_VIEW = 1480;
+const DEEP_PER_BAND = [1, 2];
+const DEEP_SIZE = [420, 1250];
+const DEEP_RISE = [-680, -280];
+const DEEP_OUT = [0, 900];
 // 260, up from 180. At 180 m out and 120 m up, the nearest slab subtends a
 // wide enough angle that the camera sees it from almost directly underneath —
 // all keel and no plate, which is the one view of an island that reads as a
 // dark triangle rather than as ground.
-const SLAB_OUT = [260, 820];            // metres of lateral offset from the centre line
+// 240 TO 1000, and the NEAR end is the half that matters. Pushing the minimum
+// out to 380 at the same time as tripling the size cancelled the size: a 420 m
+// island at 900 m away subtends what a 165 m one did at 350. "They should be
+// like mountains" is a statement about how much of the FRAME one fills, and
+// that is distance as much as metres. The near ones now pass close enough to
+// be looked up at.
+const SLAB_OUT = [240, 1000];           // metres of lateral offset from the centre line
 
 // Chunks are small, so there is no point carrying them to a kilometre — they
 // are under a pixel long before the haze would have taken them. A shorter ring
@@ -141,50 +205,122 @@ const CHUNK_OUT = [70, 420];
 const FOG_MUL = 0.34;
 
 /**
- * One island, as a solid: an irregular plate with a keel under it.
+ * ONE FLOATING MOUNTAIN.
  *
- * THE KEEL IS THE WHOLE SILHOUETTE. A floating disc is a UFO; a floating plate
- * with a broken taper hanging off the bottom of it is a piece of ground that
- * something tore out of the earth, and the difference is entirely in what you
- * see from below — which, since these all sit above the camera, is the only
- * part of them the player ever sees.
+ * ── WHAT THIS REPLACED, AND WHY IT DID NOT WORK ────────────────────────────
  *
- * Built at radius 1 and scaled per instance. FLAT SHADED, by leaving it
- * non-indexed and letting computeVertexNormals give every triangle its own
- * normal — the same look the range and the spires have, and the reason a
- * seven-sided plate reads as rock rather than as a low-poly placeholder.
+ * The first version was an irregular plate with ONE off-centre keel hanging
+ * under it, and in the frame it read as a flat dark triangle. Three reasons,
+ * and only the third is obvious in hindsight:
+ *
+ *   EVERY ISLAND IS SEEN FROM BELOW. They sit above the rider, so the part
+ *   facing the camera is almost always the underside — and the underside was
+ *   a cone. A cone presents the same silhouette from every bearing, so thirty
+ *   of them in a frame was one shape thirty times.
+ *
+ *   THE TOP WAS FLAT. The plate had no relief at all, which was defensible
+ *   while the top was rarely visible and indefensible once the ground stopped
+ *   being drawn and the eye had time to look.
+ *
+ *   AND THEY WERE TOO SMALL. 44 to 165 m reads as debris at the distances
+ *   they live at. "They should be like mountains that I can see the lower side
+ *   of" is a statement about SCALE as much as about shape.
+ *
+ * ── WHAT IT IS NOW ─────────────────────────────────────────────────────────
+ *
+ * A proper landmass: a summit with ridges running off it, a rim, and a ROOT —
+ * the torn-out underside, which is the half that actually gets looked at.
+ *
+ * THE ROOT IS TRILOBED, not conical, and that is the whole fix. Its depth
+ * varies around the circle on three lobes with jitter on top, so the island
+ * has three descending spurs of different lengths meeting at a ragged point.
+ * From any bearing one spur is long, one is short and one is behind: the
+ * silhouette is different every time, which is what a cone could never be.
+ *
+ * Built at radius 1 and scaled per instance, FLAT SHADED by leaving it
+ * non-indexed so every triangle takes its own normal — the look the range and
+ * the spires already have, and the reason an eleven-sided mountain reads as
+ * rock rather than as a low-poly placeholder.
  */
 function buildIslandGeometry(seed, sides) {
   const rnd = mulberry32(seed);
-  const r = [];
-  for (let i = 0; i < sides; i++) r.push(range(rnd, 0.72, 1.0));
-  const top = [];
-  const rim = [];
-  for (let i = 0; i < sides; i++) {
-    const a = (i / sides) * Math.PI * 2;
-    top.push(new THREE.Vector3(Math.cos(a) * r[i], range(rnd, -0.03, 0.06), Math.sin(a) * r[i]));
-    // The rim sits slightly inside the plate and a little under it, so the top
-    // edge is an overhang rather than a bevel. An overhang catches the key on
-    // its upper face and leaves the one below it black, which is the read.
-    rim.push(new THREE.Vector3(Math.cos(a) * r[i] * 0.88, -0.17, Math.sin(a) * r[i] * 0.88));
-  }
-  // The keel's tip is OFF CENTRE. A tip on the axis makes a cone, and a cone is
-  // the one shape that looks identical from every bearing — thirty of them in a
-  // frame and the set reads as a repeated prop. Leaning it buys a different
-  // silhouette per island from the same geometry and the same draw call.
-  const tip = new THREE.Vector3(range(rnd, -0.30, 0.30), -range(rnd, 1.5, 2.6),
-    range(rnd, -0.30, 0.30));
-  const centre = new THREE.Vector3(0, range(rnd, 0.02, 0.09), 0);
-
+  const S = sides;
   const pos = [];
   const push = (a, b, c) => pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-  for (let i = 0; i < sides; i++) {
-    const j = (i + 1) % sides;
-    push(centre, top[i], top[j]);        // the plate
-    push(top[i], rim[i], rim[j]);        // the overhang, two triangles
-    push(top[i], rim[j], top[j]);
-    push(rim[i], tip, rim[j]);           // the keel
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+
+  // Per-sector character, generated once so the whole island agrees with
+  // itself: how far the rim reaches, how high the ground stands, how deep the
+  // root hangs.
+  const rim = [];
+  const crest = [];
+  const root = [];
+  const lobe = rnd() * Math.PI * 2;
+  for (let s = 0; s < S; s++) {
+    const a = (s / S) * Math.PI * 2;
+    rim.push(range(rnd, 0.74, 1.0));
+    crest.push(range(rnd, 0.55, 1.0));
+    // THREE LOBES. A root whose depth is constant is a cone; one that varies
+    // smoothly on three lobes is a mountain with spurs, and the jitter stops
+    // the three from being identical.
+    root.push((0.42 + 0.58 * (0.5 + 0.5 * Math.cos(3 * a + lobe))) * range(rnd, 0.72, 1.12));
   }
+
+  const PEAK = range(rnd, 0.34, 0.62);     // how far the summit stands over the rim
+  const DEEP = range(rnd, 1.5, 2.6);       // how far the root hangs under it
+  const at = (s, r, y) => {
+    const a = ((s % S) / S) * Math.PI * 2;
+    return V(Math.cos(a) * r, y, Math.sin(a) * r);
+  };
+
+  // ── the top: an apex, two rings of ground, and the rim ───────────────────
+  const apex = V(range(rnd, -0.12, 0.12), PEAK, range(rnd, -0.12, 0.12));
+  const TOP_R = [0.0, 0.42, 0.78, 1.0];
+  const topY = (s, t) => (t === 0 ? PEAK : PEAK * crest[s % S] * (1 - TOP_R[t]) ** 1.5);
+  for (let s = 0; s < S; s++) {
+    const r1 = TOP_R[1] * rim[s];
+    const r1b = TOP_R[1] * rim[(s + 1) % S];
+    push(apex, at(s, r1, topY(s, 1)), at(s + 1, r1b, topY(s + 1, 1)));
+    for (let t = 1; t < 3; t++) {
+      const ra = TOP_R[t] * rim[s];
+      const rb = TOP_R[t + 1] * rim[s];
+      const rc = TOP_R[t] * rim[(s + 1) % S];
+      const rd = TOP_R[t + 1] * rim[(s + 1) % S];
+      const A = at(s, ra, topY(s, t));
+      const B = at(s, rb, topY(s, t + 1));
+      const C = at(s + 1, rc, topY(s + 1, t));
+      const D = at(s + 1, rd, topY(s + 1, t + 1));
+      push(A, B, D);
+      push(A, D, C);
+    }
+  }
+
+  // ── the root: four rings down to a ragged tip ────────────────────────────
+  // The rings pull in fast at first and slowly after, which is what gives the
+  // overhang under the rim — the part that catches the key and tells the eye
+  // this is a solid that was torn out of something.
+  const DN_R = [1.0, 0.86, 0.58, 0.30, 0.10];
+  const dnY = (s, b) => -DEEP * root[s % S] * (DN_R[0] - DN_R[b]) ** 1.15;
+  for (let s = 0; s < S; s++) {
+    for (let b = 0; b < 4; b++) {
+      const A = at(s, DN_R[b] * rim[s], dnY(s, b));
+      const B = at(s, DN_R[b + 1] * rim[s], dnY(s, b + 1));
+      const C = at(s + 1, DN_R[b] * rim[(s + 1) % S], dnY(s + 1, b));
+      const D = at(s + 1, DN_R[b + 1] * rim[(s + 1) % S], dnY(s + 1, b + 1));
+      push(A, B, D);
+      push(A, D, C);
+    }
+  }
+  // The tip. OFF AXIS, so the three spurs do not meet in a point that reads as
+  // the apex of a cone.
+  let deepest = 0;
+  for (let s = 0; s < S; s++) deepest = Math.max(deepest, DEEP * root[s]);
+  const tip = V(range(rnd, -0.14, 0.14), -deepest * 1.12, range(rnd, -0.14, 0.14));
+  for (let s = 0; s < S; s++) {
+    push(at(s, DN_R[4] * rim[s], dnY(s, 4)), tip,
+      at(s + 1, DN_R[4] * rim[(s + 1) % S], dnY(s + 1, 4)));
+  }
+
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.computeVertexNormals();
@@ -224,18 +360,53 @@ export class Islands {
       color: 0x241a33, wrap: 0.16, gloss: 28, specular: 0.22, emissive: 0.05, snowCap: 0,
     });
     this.mat.uniforms.uFogMul.value = FOG_MUL;
+    // ── THE DEEP LAYER IS LIT DIFFERENTLY, BECAUSE IT IS SEEN DIFFERENTLY ──
+    //
+    // Everything above uses `mat`, which is nearly black on purpose: slabs and
+    // chunks sit ABOVE the rider, so they are read as silhouettes against the
+    // brightest thing in the frame, and a mid-tone one would dissolve into the
+    // sky at every stop in the arc.
+    //
+    // The deep layer is the opposite case in every respect. It is below, so it
+    // is seen from ABOVE against haze rather than against sky; the camera
+    // looks down at its TOP, where the key actually lands; and it is standing
+    // in for landscape rather than for an object. Drawn with the same material
+    // it came back as a flat black plate under the floor — measured on the
+    // first capture, and the single thing wrong with it.
+    //
+    // So: a mid tone that takes the light, and `snowCap` back ON, which is the
+    // one place in this file it belongs. uSnowCap mixes upward faces toward
+    // the GROUND colour, and these are the only islands whose upward faces are
+    // visible — it is what makes their tops read as ground rather than as the
+    // lid of a box.
+    this.matDeep = makeLitMaterial(mood, {
+      color: 0x4a4668, wrap: 0.30, gloss: 24, specular: 0.18, emissive: 0.03,
+      snowCap: 0.55,
+    });
+    // HAZED HARDER THAN THE REST, at nearly twice FOG_MUL. They are the
+    // furthest thing in the world that is not the far range, and distance is
+    // the only thing that says how far down they are — a crisp landmass at
+    // eight hundred metres reads as a nearby object at a strange angle.
+    this.matDeep.uniforms.uFogMul.value = FOG_MUL * 1.9;
     /** Append to main's `litMaterials` so the shared sun, fog and camera reach it. */
-    this.materials = [this.mat];
+    this.materials = [this.mat, this.matDeep];
 
     this.slabBands = Math.ceil(SLAB_VIEW / SLAB_BAND) + 2;
     this.chunkBands = Math.ceil(CHUNK_VIEW / CHUNK_BAND) + 2;
+    this.deepBands = Math.ceil(DEEP_VIEW / DEEP_BAND) + 2;
     this.slabs = this._pool(buildIslandGeometry(this.seed, 9),
       this.slabBands, SLAB_PER_BAND[1]);
     this.chunks = this._pool(buildIslandGeometry(this.seed ^ 0x9e37, 7),
       this.chunkBands, CHUNK_PER_BAND[1]);
+    // ITS OWN GEOMETRY, with more sides. A landmass a kilometre across seen
+    // against the sky shows its silhouette and almost nothing else, so the one
+    // thing worth spending triangles on down there is the outline.
+    this.deep = this._pool(buildIslandGeometry(this.seed ^ 0x51ab, 13),
+      this.deepBands, DEEP_PER_BAND[1], this.matDeep);
 
     this.slabBase = NaN;
     this.chunkBase = NaN;
+    this.deepBase = NaN;
     /** Whether islands may sit below the fall line. See SLAB_RISE_SKY. */
     this.below = false;
     this._m = new THREE.Matrix4();
@@ -245,9 +416,9 @@ export class Islands {
     this._s = new THREE.Vector3();
   }
 
-  _pool(geo, slots, perBand) {
+  _pool(geo, slots, perBand, material = this.mat) {
     const capacity = slots * perBand;
-    const mesh = new THREE.InstancedMesh(geo, this.mat, capacity);
+    const mesh = new THREE.InstancedMesh(geo, material, capacity);
     // Every instance is placed hundreds of metres off the piste and the mesh's
     // own bounding sphere is a unit ball at the origin, so three.js's cull test
     // is meaningless here and would reject the whole pool.
@@ -285,18 +456,20 @@ export class Islands {
       // falling; the lean already lives in the keel's off-centre tip.
       this._e.set(0, range(rnd, 0, Math.PI * 2), 0);
       this._q.setFromEuler(this._e);
-      // NON-UNIFORM, but only a little — and the first cut had this backwards.
-      // It squashed y to 0.42-0.70 on the argument that real islands are wide
-      // and thin, which is true of the PLATE and false of the solid: the plate
-      // is already thin by construction (the rim sits 0.17 under a top at 0),
-      // and scaling y squashes the KEEL, which is the entire silhouette from
-      // below and the only part the camera ever sees. The capture showed the
-      // result exactly — flat dark shards with nothing hanging off them.
+      // NEARLY UNIFORM, and the history here is worth keeping because the
+      // same mistake was made twice.
       //
-      // So the keel got deeper in the geometry (1.5-2.6 radii, from 0.8-1.5)
-      // and the squash is now a light 0.70-1.0, which is variation rather than
-      // a flattening.
-      this._s.set(size, size * range(rnd, 0.70, 1.0), size * range(rnd, 0.78, 1.0));
+      // The first cut squashed y to 0.42-0.70 on the argument that real
+      // islands are wide and thin. That is true of the PLATE and false of the
+      // solid: scaling y squashes the ROOT, which is the entire silhouette
+      // from below and the only part the camera ever sees. The result was flat
+      // dark shards with nothing hanging off them.
+      //
+      // It was relaxed to 0.70-1.0, which was still a flattening — the root is
+      // now two and a half radii deep and carries ridges, and taking a third
+      // off it takes the ridges with it. 0.88-1.12 is variation: some of these
+      // are tall and some are squat, and none of them is crushed.
+      this._s.set(size, size * range(rnd, 0.88, 1.12), size * range(rnd, 0.84, 1.0));
       this._m.compose(this._p, this._q, this._s);
       pool.mesh.setMatrixAt(idx, this._m);
       // A narrow tonal spread, not a colour one. The vocabulary rule in
@@ -331,6 +504,7 @@ export class Islands {
     this.enabled = v;
     this.slabs.mesh.visible = v;
     this.chunks.mesh.visible = v;
+    this.deep.mesh.visible = v && this.below;
   }
 
   /** One band check per pool, and an early return on every frame but the few. */
@@ -342,6 +516,15 @@ export class Islands {
     this._ring(this.chunks, 'chunkBase', p,
       { band: CHUNK_BAND, size: CHUNK_SIZE, out: CHUNK_OUT,
         rise: this.below ? CHUNK_RISE_SKY : CHUNK_RISE }, CHUNK_PER_BAND);
+    // ONLY WHERE THERE IS NO SOLID GROUND. On a normal run the mountain fills
+    // everything under the rider, so a landmass at -800 m is a kilometre of
+    // geometry nobody can see — and the shallowest of them would poke up
+    // through the valley floor on the steeps.
+    if (this.below) {
+      this._ring(this.deep, 'deepBase', p,
+        { band: DEEP_BAND, size: DEEP_SIZE, out: DEEP_OUT, rise: DEEP_RISE },
+        DEEP_PER_BAND);
+    }
   }
 
   /**
@@ -353,21 +536,24 @@ export class Islands {
    */
   setBelow(v) {
     this.below = !!v;
+    this.deep.mesh.visible = this.enabled && this.below;
   }
 
   /** A seek jumps `p`; force both rings rather than scrolling to the new place. */
   reset(p) {
     this.slabBase = NaN;
     this.chunkBase = NaN;
+    this.deepBase = NaN;
     this.update(p);
   }
 
   dispose() {
-    for (const pool of [this.slabs, this.chunks]) {
+    for (const pool of [this.slabs, this.chunks, this.deep]) {
       this.scene.remove(pool.mesh);
       pool.mesh.dispose();
       pool.geo.dispose();
     }
     this.mat.dispose();
+    this.matDeep.dispose();
   }
 }
