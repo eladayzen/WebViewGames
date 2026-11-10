@@ -1019,6 +1019,7 @@ class Game {
         enabled: this.fields.enabled,
         style: this.fields.style,
         liners: this.fields.liners.length,
+        tris: this.fields.tris.length,
         links: this.fields.links.length / 2,
         clipped: this.fields.stats.clipped,
       },
@@ -4311,7 +4312,11 @@ class Game {
     for (const ev of this.fields.update(dt, this.combat, this.roster,
       this.state === 'play')) {
       this.audio.crash();
-      this.hud.callout('LASER', { big: true, color: '#ff2436', slot: ev.slot ?? 0 });
+      this.hud.callout('LASER', {
+        big: true,
+        color: this.fields.style === 'triangle' ? '#1fe85c' : '#ff2436',
+        slot: ev.slot ?? 0,
+      });
       this.post.hurt(0.55);
     }
     this._updateBubbles(dt);

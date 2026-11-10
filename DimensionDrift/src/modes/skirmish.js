@@ -322,7 +322,7 @@ function BASE_CREATE(game) {
          * as confusion rather than as two mechanics. Swap this one word back
          * to try it again.
          */
-        game.fields.setStyle('liner');
+        game.fields.setStyle('triangle');
         game.fields.setEnabled(true);
         game.fields.reset();
         game.hud.showHealth(true, game.roster.length);

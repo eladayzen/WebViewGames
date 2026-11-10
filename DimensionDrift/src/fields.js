@@ -38,12 +38,13 @@ import { meshHeight } from './mountain.js';
 /**
  * How many quads the whole system may draw.
  *
- * A liner costs two -- the beam and the scorch -- and a fence panel costs one,
- * so this is 28 pods or 56 panels. The combat ring keeps a handful of squads
- * of at most four pods near the rider, so neither style comes close; the cap
- * is a guard against a pathological frame, not a budget anyone will meet.
+ * A triangle costs four (the floor polygon plus a beam to each corner), a
+ * liner two, a fence panel one. 104 is 26 pods in the most expensive style.
+ * The combat ring keeps a handful of squads of at most four pods near the
+ * rider, so no style comes close; the cap is a guard against a pathological
+ * frame, not a budget anyone will meet.
  */
-const MAX_QUADS = 56;
+const MAX_QUADS = 104;
 
 /**
  * FENCE: the panel hangs from the pods DOWN TO THE SNOW.
@@ -96,6 +97,38 @@ const RIDER_H = 2.0;
 const SPOT_R = 1.5;
 
 /**
+ * ── TRIANGLE: HOW FAR THE POLYGON REACHES ─────────────────────────────────
+ *
+ * A multiple of the pod's height, like the liner's, but far larger: the ask
+ * was explicitly for something covering a bigger area and NOT hugging the pod
+ * that casts it. At 2.6 a pod hovering 4.5 m up throws its corners 6 to 14 m
+ * out, so the polygon is a piece of ground you have to plan around rather than
+ * a mark you flick past.
+ *
+ * That distance is also what makes the shape readable. A triangle drawn tight
+ * under a drone is seen edge-on and reads as a smudge; thrown wide it is seen
+ * in plan from the chase camera, which is the one view that shows a polygon as
+ * a polygon.
+ */
+const TRI_REACH = 2.6;
+
+/**
+ * ── GREEN, WHICH IS A COLOUR THIS WORLD ALREADY SPENT ─────────────────────
+ *
+ * Asked for directly, and taken -- but it is worth recording that lime is the
+ * REWARD in this game: the motes, the full-line callout and the time gates are
+ * all 0xd6ff5a / 0x97d700, and the whole reason the barriers were moved off
+ * pink was that a hazard wearing the reward's colour is the game lying.
+ *
+ * So this is deliberately NOT that green. It is a hard blue-leaning toxic
+ * green, far from lime on the hue circle and much more saturated than anything
+ * the reward palette uses, and the polygon carries the same diagonal hazard
+ * banding the barriers do -- a second, non-chromatic channel that still works
+ * for a player who cannot separate the two hues at all.
+ */
+const TRI_COLOR = 0x1fe85c;
+
+/**
  * What riding into one costs.
  *
  * Under a barrier's 12, and the reason is the number of them: a barrier is one
@@ -106,6 +139,16 @@ const DAMAGE = 8;
 
 /** Pure red with hazard stripes, exactly as beams.js -- one vocabulary. */
 const COLOR = 0xff2436;
+
+/** Is the rider's point inside the triangle a-b-c, in the ground plane? */
+function pointInTri(px, pz, ax, az, bx, bz, cx, cz) {
+  const d1 = (px - bx) * (az - bz) - (ax - bx) * (pz - bz);
+  const d2 = (px - cx) * (bz - cz) - (bx - cx) * (pz - cz);
+  const d3 = (px - ax) * (cz - az) - (cx - ax) * (pz - az);
+  const neg = d1 < 0 || d2 < 0 || d3 < 0;
+  const pos = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(neg && pos);
+}
 
 const VERT = `
 attribute float aAlong;
@@ -139,7 +182,29 @@ void main() {
   float a;
   vec3 col = uColor;
 
-  if (vKind > 1.5) {
+  if (vKind > 2.5) {
+    // ── THE FLOOR POLYGON ────────────────────────────────────────────────
+    //
+    // vAlong and vUp carry two of the three barycentric coordinates, so the
+    // third is free and the distance to the nearest EDGE is one min(). That
+    // matters because the edge is the only part a rider negotiates with: the
+    // middle of the polygon is somewhere you are already committed to being.
+    float b0 = vAlong;
+    float b1 = vUp;
+    float b2 = 1.0 - b0 - b1;
+    float edge = min(b0, min(b1, b2));
+    float rim = 1.0 - smoothstep(0.0, 0.085, edge);
+
+    // The same diagonal hazard banding the barriers carry. A second channel
+    // that is not colour, which is the whole insurance policy on having been
+    // asked for a green that this world already spends on rewards.
+    float stripe = sin((b0 * 7.0 - b1 * 5.0) * 2.4 - uTime * 1.3);
+    float hazard = 0.6 + 0.4 * smoothstep(-0.3, 0.3, stripe);
+    float pulse = 0.86 + 0.14 * sin(uTime * 3.4 + b2 * 6.0);
+
+    a = near * pulse * (hazard * 0.26 + rim * 0.72);
+    col = uColor * (0.7 + 1.1 * rim);
+  } else if (vKind > 1.5) {
     // ── THE SCORCH ON THE SNOW ───────────────────────────────────────────
     //
     // This is the part that actually matters, so it is the part that is drawn
@@ -220,8 +285,8 @@ export class Fields {
     this.terrain = terrain;
     this.scene = scene;
     this.enabled = false;
-    /** 'liner' or 'fence'. See the header. */
-    this.style = 'liner';
+    /** 'triangle', 'liner' or 'fence'. See the header. */
+    this.style = 'triangle';
 
     this.geo = new THREE.BufferGeometry();
     this.geo.setAttribute('position',
@@ -262,6 +327,7 @@ export class Fields {
      */
     this.liners = [];
     this.links = [];
+    this.tris = [];
     this.quads = 0;
     this.t = 0;
     this.stats = { clipped: 0 };
@@ -277,9 +343,15 @@ export class Fields {
    * @param {'liner'|'fence'} style
    */
   setStyle(style) {
-    this.style = style === 'fence' ? 'fence' : 'liner';
+    this.style = (style === 'fence' || style === 'liner') ? style : 'triangle';
+    // The colour belongs to the style, not to the file: the triangles were
+    // asked for in green and the red is the barriers' vocabulary, so a build
+    // that switches style and keeps the hue would be saying two things.
+    this.mat.uniforms.uColor.value.setHex(
+      this.style === 'triangle' ? TRI_COLOR : COLOR);
     this.liners.length = 0;
     this.links.length = 0;
+    this.tris.length = 0;
   }
 
   /** Every living pod the combat ring is holding near the rider. */
@@ -331,6 +403,53 @@ export class Fields {
     }
   }
 
+  /**
+   * One triangle per pod, thrown wide across the snow.
+   *
+   * ── EVERY ONE IS A DIFFERENT SHAPE, AND NONE OF THEM IS RANDOM ──────────
+   *
+   * The corners are built from values the drone already carries -- `phase`,
+   * `spin` and `size` -- which are fixed at the moment the squad is placed and
+   * are themselves a pure function of the run's seed. So the polygons vary
+   * from pod to pod the way the ask wanted, and a given squad throws the same
+   * three shapes every time anyone rides that stretch of mountain.
+   *
+   * That second property is not a nicety. Every tuning pass in this project
+   * depends on being able to ride the same hill twice, and a hazard that
+   * reshuffled itself per frame -- or per run -- could never be judged, only
+   * endured.
+   */
+  _gatherTris(combat) {
+    const out = this.tris;
+    out.length = 0;
+    for (const d of this._pods(combat)) {
+      const podY = d.drawnY ?? d.y;
+      const h = podY - meshHeight(this.terrain, d.x, d.z);
+      if (!(h > 0.5)) continue;
+      const a0 = d.phase ?? 0;
+      const sp = Math.abs(d.spin ?? 1);
+      const sz = d.size ?? 1.2;
+      const base = h * TRI_REACH;
+      // Three corners, each at its own bearing and its own reach, so the
+      // polygon is scalene -- an equilateral one read as a decal rather than
+      // as a piece of ground, because nothing else on this hill is regular.
+      const angs = [a0, a0 + 1.45 + sp * 0.75, a0 + 3.3 + sz * 0.6];
+      const rads = [
+        base * (0.52 + sz * 0.46),
+        base * (0.86 + sp * 0.34),
+        base * (0.64 + (sz - 1.0) * 1.5 + sp * 0.2),
+      ];
+      const pts = [];
+      for (let i = 0; i < 3; i++) {
+        const x = d.x + Math.cos(angs[i]) * rads[i];
+        const z = d.z + Math.sin(angs[i]) * rads[i];
+        pts.push([x, meshHeight(this.terrain, x, z) + 0.16, z]);
+      }
+      out.push({ d, podY, pts });
+      if (out.length * 4 >= MAX_QUADS) return;
+    }
+  }
+
   /** Fence style: every neighbouring pair of living pods. See the header. */
   _gatherLinks(combat) {
     const links = this.links;
@@ -370,7 +489,42 @@ export class Fields {
 
   _draw() {
     let q = 0;
-    if (this.style === 'liner') {
+    if (this.style === 'triangle') {
+      for (const T of this.tris) {
+        if (q + 4 > MAX_QUADS) break;
+        const [A, B, C] = T.pts;
+        /**
+         * THE POLYGON AS A DEGENERATE QUAD. Every primitive in this buffer is
+         * four vertices and six indices; a triangle duplicates its last
+         * corner, so the second of the two faces collapses to nothing. That
+         * costs three unused indices and buys one index buffer, one draw call
+         * and one code path for all three styles.
+         *
+         * aAlong and aUp carry the first two barycentric coordinates -- see
+         * the floor-polygon branch of the shader for what it does with them.
+         */
+        this._quad(q++, [A, B, C, C], [1, 0, 0, 0], [0, 1, 0, 0], 3);
+        // A beam from the pod down to each corner. These are what tie the
+        // patch of ground to the thing responsible for it: without them a
+        // player sees a green shape on the snow and has no reason to connect
+        // it to the pod they could shoot to remove it.
+        const d = T.d;
+        for (const P of T.pts) {
+          if (q >= MAX_QUADS) break;
+          const vx = P[0] - d.x;
+          const vz = P[2] - d.z;
+          const m = Math.hypot(vx, vz) || 1;
+          const px = (-vz / m) * 0.26;
+          const pz = (vx / m) * 0.26;
+          this._quad(q++, [
+            [d.x + px, T.podY, d.z + pz],
+            [d.x - px, T.podY, d.z - pz],
+            [P[0] - px, P[1] + 0.04, P[2] - pz],
+            [P[0] + px, P[1] + 0.04, P[2] + pz],
+          ], [0, 0, 1, 1], [0, 1, 1, 0], 1);
+        }
+      }
+    } else if (this.style === 'liner') {
       for (const L of this.liners) {
         if (q + 2 > MAX_QUADS) break;
         const d = L.d;
@@ -432,7 +586,22 @@ export class Fields {
       // A jump this large is a seek or a respawn, not a ride.
       if (dx * dx + dz * dz > 40000) continue;
       let bit = false;
-      if (this.style === 'liner') {
+      if (this.style === 'triangle') {
+        for (const T of this.tris) {
+          const [A, B, C] = T.pts;
+          // INSIDE IT, OR ACROSS ANY EDGE OF IT. The containment test alone
+          // would miss a rider who entered and left between two frames, which
+          // at this mode's speeds is a polygon narrower than about eight
+          // metres -- which most of them are at the thin corner.
+          if (pointInTri(f.x, f.z, A[0], A[2], B[0], B[2], C[0], C[2])
+            || segCross(prev.x, prev.z, f.x, f.z, A[0], A[2], B[0], B[2])
+            || segCross(prev.x, prev.z, f.x, f.z, B[0], B[2], C[0], C[2])
+            || segCross(prev.x, prev.z, f.x, f.z, C[0], C[2], A[0], A[2])) {
+            bit = true;
+            break;
+          }
+        }
+      } else if (this.style === 'liner') {
         for (const L of this.liners) {
           // The beam where it is low enough to matter, OR the scorch it
           // lands in -- the two things the player can actually see.
@@ -466,13 +635,15 @@ export class Fields {
       this.mesh.visible = false;
       this.liners.length = 0;
       this.links.length = 0;
+      this.tris.length = 0;
     }
   }
 
   update(dt, combat, roster, live = true) {
     if (!this.enabled) return [];
     this.t += dt;
-    if (this.style === 'liner') this._gatherLiners(combat);
+    if (this.style === 'triangle') this._gatherTris(combat);
+    else if (this.style === 'liner') this._gatherLiners(combat);
     else this._gatherLinks(combat);
     const events = live ? this._hit(roster) : [];
     this._draw();
@@ -483,6 +654,7 @@ export class Fields {
     this._prev.clear();
     this.liners.length = 0;
     this.links.length = 0;
+    this.tris.length = 0;
     this.t = 0;
     this.stats = { clipped: 0 };
   }
