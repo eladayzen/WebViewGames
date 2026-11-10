@@ -140,6 +140,23 @@ export function pickOffset(place) {
 const STOPS = 5;
 let lastHour = -1;
 export function pickHour(place) {
+  /**
+   * ── A LEVEL MAY LOCK ITS LIGHT, AND ONE DOES ──────────────────────────
+   *
+   * Everything below picks an hour at random and jitters it, and the mood
+   * then WALKS through the rest of the day as the track plays. Two sources of
+   * variation, so no two runs of a level were ever lit the same way.
+   *
+   * That is lovely for a descent you are looking at and ruinous for one you
+   * are reading. Every hazard in this mode is a mark on the snow, and whether
+   * a mark separates from snow depends entirely on the light falling on both
+   * -- so a hazard tuned to be legible on one run was washed out on the next,
+   * and the tuning could never converge because the target moved. It cost
+   * several rounds before it was named.
+   *
+   * `lockHour` pins both: this value, and no walk. See `_moodAt` in main.js.
+   */
+  if (place.lockHour != null) return place.lockHour;
   const hours = place.hours?.length ? place.hours : [0, 1, 2, 3, 4];
   let i = hours[Math.floor(Math.random() * hours.length)];
   if (i === lastHour && hours.length > 1) {
@@ -354,6 +371,38 @@ registerPlace({
    * safe to hang an experiment on a place three shipped modes also use.
    */
   skyStyle: 'holo',
+  /**
+   * ── LOCKED, AND THE NUMBER WAS MEASURED TWICE ─────────────────────────
+   *
+   * Swept the whole day in twentieths, sampling the slope a rider actually
+   * reads -- under the horizon, centre third, ahead of the board.
+   *
+   * The first sweep asked only how much TEXTURE the ground has, and picked
+   * 0.95. That was wrong, and wrong in an instructive way: 0.95 is the VOID
+   * hour and its snow is purple-pink [179,165,194], so it had the most tonal
+   * variation and the WORST hue separation from the hazards drawn on it. A
+   * red wall on a pink slope is contrast on paper and mush on screen.
+   *
+   * The second sweep asked the question that matters -- how far the slope sits
+   * in colour from the red of a barrier and the green of a drone mark:
+   *
+   *     hour  slope rgb        d(red) d(green)  texture
+   *     0.95  [179,165,194]      205     192     0.192   <- most texture, worst colour
+   *     0.50  [169,202,191]      232     172     0.139   <- green mark nearly invisible
+   *     0.80  [222,206,198]      225     220     0.140   <- good colour, flat and bright
+   *     0.20  [209,184,211]      221     219     0.158   <- best of both
+   *
+   * 0.20 it is: near the top for separation from BOTH hazard colours, and
+   * still well-textured, with nothing blown out.
+   *
+   * WORTH NOTING WHAT THIS MEANS. 0.20 is where `hours` above was already
+   * aiming. The light this place was art-directed to was never the problem --
+   * the problem was that it was a RANGE, re-rolled every run and then walked
+   * through the whole day as the track played, so a hazard tuned to read on
+   * one descent was washed out on the next and the tuning could never
+   * converge. Several rounds were lost to that before it was named.
+   */
+  lockHour: 0.20,
 });
 
 registerPlace({

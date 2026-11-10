@@ -205,6 +205,38 @@ void main() {
   float a = uOn * near * vert * scan * (0.34 + 0.44 * fringe);
   vec3 col = uColor * (0.85 + 0.5 * fringe);
 
+  // ── ARROWS, POINTING AT THE WAY THROUGH ─────────────────────────────────
+  //
+  // Chevrons marching across the face of the wall toward the opening, from
+  // BOTH sides, so whichever half of the barrier is in front of you is telling
+  // you which way to go.
+  //
+  // This is the piece the barrier was missing. A wall with a hole in it tells
+  // a player that there is a way through; it does not tell them WHICH WAY, and
+  // at this speed, with the gap often off-screen behind the wall's own glow,
+  // that is a guess. An arrow is the one symbol that needs no learning at all.
+  //
+  // YELLOW, which is the last unspoken colour on this mountain -- red is the
+  // hazards, green the drone marks, lime the rewards, pink and lilac the old
+  // gates. It is also the only one of them that is not already a thing you
+  // must do something about, which is right: this is not an object, it is an
+  // instruction.
+  float dirSign = (vU < uGapLo) ? 1.0 : -1.0;
+  float gapEdge = (vU < uGapLo) ? uGapLo : uGapHi;
+  // Metres from the opening, always positive, whichever side we are on.
+  float s = (gapEdge - vU) * dirSign;
+  // The chevron: a band in a repeating coordinate, bent by height so it comes
+  // to a point. The apex sits at the SMALLEST s -- nearest the gap -- so the
+  // arrow points at the hole rather than away from it, and the whole pattern
+  // drifts the same way as time runs.
+  float p = fract(s * 0.13 + uTime * 0.5 - abs(vV - 0.46) * 1.15);
+  float band = smoothstep(0.0, 0.14, p) * (1.0 - smoothstep(0.32, 0.48, p));
+  // Kept off the top of the wall, where it would be read against the sky, and
+  // off the gap edge itself, where the posts already say everything.
+  float arrow = band * (1.0 - smoothstep(0.5, 0.92, vV)) * step(1.2, s) * uOn * near;
+  col = mix(col, vec3(1.0, 0.82, 0.12), arrow);
+  a = max(a, arrow * 0.92);
+
   // ── THE DOOR POSTS ──────────────────────────────────────────────────────
   //
   // A near-solid vertical bar down each side of the hole, at full height and

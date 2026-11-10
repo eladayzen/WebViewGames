@@ -1635,9 +1635,8 @@ class Game {
     // so a seek lands on the hour the walk would have reached, and a run
     // start lands on the place's own hour exactly.
     const moodAt = this.audio.locate(t);
-    this.mood.setProgress(this._moodPin
-      ?? (((this._moodBase ?? 0)
-        + moodAt.offset / Math.max(1, this.audio.tracks[moodAt.index].duration)) % 1));
+    this.mood.setProgress(this._moodAt(
+      moodAt.offset / Math.max(1, this.audio.tracks[moodAt.index].duration)));
     this.cameraRig.update(0.016, this.rider, 0.3);
     this.cameraRig2?.update(0.016, this.rider2 ?? this.rider, 0.3);
     this.snowfall.reset(this.camera.position);
@@ -1684,6 +1683,14 @@ class Game {
     // Where this place's day starts. The race overwrites it with a pin of its
     // own in `start`; chill vibe cycles from here.
     this._moodBase = pickHour(place);
+    /**
+     * A LEVEL THAT LOCKED ITS HOUR DOES NOT WALK EITHER. Pinning the start and
+     * then letting the descent drift through the whole day would fix only half
+     * the problem -- the light would still be different at the bottom of a run
+     * from the top, which is where a hazard that read at the start stops
+     * reading. See `pickHour` in places.js.
+     */
+    this._moodLock = place.lockHour ?? null;
     analytics.runStarted(this._modeId);
     analytics.levelStarted(this._placeId, place.order ?? 0);
     // APPLIED NOW, NOT AT THE FIRST PLAY FRAME. The race pins its own light in
@@ -1692,7 +1699,7 @@ class Game {
     // the place's weather arrived AFTER it. "I asked that change of weather and
     // hour will happen before the first countdown, not after." lapTime is zero
     // here, so the play loop's walking formula continues seamlessly from this.
-    if (this._moodPin == null) this.mood.setProgress(this._moodBase);
+    if (this._moodPin == null) this.mood.setProgress(this._moodLock ?? this._moodBase);
     this.range.setProfile(place.rangeProfile ?? 'ridges');
     this.range.setRock(place.rock ?? 0, place.snowLine ?? 60);
     this.range.setPresence(place.range ?? 1);
@@ -3539,6 +3546,22 @@ class Game {
    *   which has carried `completed` since day one and whose meaning must not be
    *   quietly re-cut underneath a host that already reads it (BRIDGE.md §4.2).
    */
+  /**
+   * Where in the day the light should be, given how far through the track the
+   * run is.
+   *
+   * THREE ANSWERS IN PRIORITY ORDER. The dev pin wins, because it exists to
+   * let someone look at one hour on purpose. Then a level's lock, which
+   * ignores `walk` entirely -- that is the whole point of locking. Otherwise
+   * the original behaviour: start at the place's own hour and walk through the
+   * rest of the day as the music plays.
+   */
+  _moodAt(walk) {
+    if (this._moodPin != null) return this._moodPin;
+    if (this._moodLock != null) return this._moodLock;
+    return (((this._moodBase ?? 0) + walk) % 1 + 1) % 1;
+  }
+
   _endRun(reason) {
     if (this.state === 'over') return;
     this._paintResults2p();
@@ -5268,8 +5291,7 @@ class Game {
     // The base is where this place's cycle STARTS. The descent still moves
     // through the whole day; it simply begins somewhere the place chose, so a
     // run on the needles opens in bluebird and one in the bowl opens at dawn.
-    this.mood.setProgress(this._moodPin
-      ?? (((this._moodBase ?? 0) + this.audio.lapTime / this.audio.duration) % 1));
+    this.mood.setProgress(this._moodAt(this.audio.lapTime / this.audio.duration));
 
     // ── gates ─────────────────────────────────────────────────────────────
     // ASKED ABOUT BOTH RIDERS, ONCE. The course is one piece of geography and
