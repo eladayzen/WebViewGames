@@ -310,6 +310,19 @@ function BASE_CREATE(game) {
          * light between themselves, and the way through is either the gap the
          * chevron left you or the one you shoot.
          */
+        /**
+         * EVERY POD RAKES A BEAM DOWN TO THE SNOW, and what the player reads
+         * is the scorch it lands in. See `fields.js`.
+         *
+         * 'fence' is the other style and it is kept whole -- a panel between
+         * each pair of pods, with the gun able to drop a section by killing a
+         * post. It works, and it is the best use this mode has found for
+         * shooting; it is parked because with barriers already standing across
+         * the course it arrived as a second wall in the same sentence and read
+         * as confusion rather than as two mechanics. Swap this one word back
+         * to try it again.
+         */
+        game.fields.setStyle('liner');
         game.fields.setEnabled(true);
         game.fields.reset();
         game.hud.showHealth(true, game.roster.length);
