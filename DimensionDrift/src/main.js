@@ -38,6 +38,7 @@ import { Islands } from './islands.js';
 import { Medkits } from './medkits.js';
 import { Boons } from './boons.js';
 import { Beams } from './beams.js';
+import { Fields } from './fields.js';
 import { Roster, Fighter, TEAM } from './fighters.js';
 import { WEAPONS, GIFT, rollGift, MOTE_HEAL, CHAIN_HEAL } from './weapons.js';
 import { createFinishLine } from './finishLine.js';
@@ -1014,6 +1015,11 @@ class Game {
       // The kits have exactly one visible state — standing, or gone — and a
       // run that never met one looks identical to a run where every kit was
       // ridden past at full health. The harness needs the counters.
+      fields: {
+        enabled: this.fields.enabled,
+        links: this.fields.links.length / 2,
+        clipped: this.fields.stats.clipped,
+      },
       beams: {
         enabled: this.beams.enabled,
         standing: this.beams.beams.filter((b) => b && !b.dead).length,
@@ -1252,6 +1258,16 @@ class Game {
        * runs, and every tuning pass in this project depends on being able to.
        */
       this.beams = new Beams(this.terrain, this.scene, SEED);
+      /**
+       * LASER FIELDS between the pods of a squad. See `fields.js`: the only
+       * hazard in this mode the GUN can answer, which is what stops the
+       * drones being scenery now that they no longer shoot back.
+       *
+       * It owns no state about the drones -- it reads `combat.squads` live
+       * each frame -- so it is constructed after combat and needs nothing
+       * from it but the reference at update time.
+       */
+      this.fields = new Fields(this.terrain, this.scene);
       /**
        * THE BARRIER, DRAWN. One per rider, because two players each get their
        * own and a single bubble would follow the wrong one.
@@ -1596,6 +1612,7 @@ class Game {
     this.medkits.reset(p);
     this.boons.reset(p);
     this.beams.reset(p);
+    this.fields.reset();
     // Fast-forward the plan so gates are not spawned for beats already past.
     while (this.course.planIdx < this.gatePlan.length
       && this.gatePlan[this.course.planIdx].t < t) this.course.planIdx++;
@@ -4282,6 +4299,18 @@ class Game {
       this.audio.crash();
       this.hud.callout('BARRIER', { big: true, color: '#ff2436', slot: ev.slot ?? 0 });
       this.post.hurt(0.7);
+    }
+    /**
+     * AFTER the combat update, so a field whose pod died to a shot this frame
+     * is already gone and cannot bill the player for a wall that is no longer
+     * there. `combat` is passed rather than held, because the links are read
+     * off the live squad records and own nothing.
+     */
+    for (const ev of this.fields.update(dt, this.combat, this.roster,
+      this.state === 'play')) {
+      this.audio.crash();
+      this.hud.callout('LASER FIELD', { big: true, color: '#ff2436', slot: ev.slot ?? 0 });
+      this.post.hurt(0.55);
     }
     this._updateBubbles(dt);
     for (const ev of this.medkits.update(dt, this.roster, this.state === 'play')) {

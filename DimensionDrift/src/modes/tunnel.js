@@ -110,6 +110,7 @@ export default registerMode({
         game.medkits.setEnabled(false);
         game.boons.setEnabled(false);
         game.beams.setEnabled(false);
+        game.fields.setEnabled(false);
         game.hud.showHealth(false);
         game.roster.reset();
 

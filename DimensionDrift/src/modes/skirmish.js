@@ -304,6 +304,14 @@ function BASE_CREATE(game) {
         setChannel(20);
         game.beams.setEnabled(true);
         game.beams.reset(game.rider.p);
+        /**
+         * AND THE SQUADS BECOME FENCES. See `fields.js`. This is what gives a
+         * drone formation teeth now that it does not shoot: the pods string
+         * light between themselves, and the way through is either the gap the
+         * chevron left you or the one you shoot.
+         */
+        game.fields.setEnabled(true);
+        game.fields.reset();
         game.hud.showHealth(true, game.roster.length);
         game.hud.healthNames(game._playerNames?.() ?? ['Player 1', 'Player 2']);
       },
@@ -438,6 +446,7 @@ function BASE_CREATE(game) {
         game.medkits.setEnabled(false);
         game.boons.setEnabled(false);
         game.beams.setEnabled(false);
+        game.fields.setEnabled(false);
         // THE CLAMP IS GLOBAL, so it has to be given back. A mode that left it
         // narrowed would hand the next run a 40 m corridor with nothing drawn
         // at the edges of it -- an invisible wall, which is the exact thing
