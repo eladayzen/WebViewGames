@@ -14,15 +14,28 @@
 // A top-down survivor cannot do that. Forward/back becomes half of all
 // movement, unbounded. Whether that is playable is not a question anyone can
 // answer at a desk, and it is not a question I should answer by picking a
-// number and defending it. So every value below is overridable from the URL
-// and shown on screen, and the deliverable of this prototype is the values
-// that felt right on a real board -- not the ones in this file.
+// number and defending it. So every value below is overridable from the URL,
+// and the deliverable of this prototype is the values that felt right on a
+// real board -- not the ones in this file.
+//
+// (An earlier version of this comment also promised the values were "shown
+// on screen". They never were. Said here rather than quietly deleted,
+// because somebody standing on a board with no readout is going to want one
+// and should know it was meant to exist.)
 //
 //   ?dzx=0.08  sideways deadzone        ?dzy=0.20  forward/back deadzone
 //   ?spd=520   walk speed, px/sec       ?ramp=0.12 keyboard ease, seconds
 //
+// ?spd= IS THE SPEED BEFORE THE GLOBAL PACE. Everything that travels in this
+// game is scaled by core/pace.js, so the walk speed actually used is
+// ?spd= x ?pace=, and the two compose. Read pace.js before changing either:
+// moving ?spd= alone changes how fast the player is RELATIVE TO THE HORDE,
+// which is a different decision from how fast the game is.
+//
 // Everything is feature-detected: at a plain dev URL there is no board, the
 // arrows and WASD stand in, and nothing here throws.
+
+import { paced } from '../core/pace.js';
 
 const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const num = (key, fallback) => {
@@ -34,8 +47,33 @@ export const TUNING = {
   // Bloop Squad's shipped values, as the STARTING POINT and nothing more.
   deadzoneX: num('dzx', 0.08),
   deadzoneY: num('dzy', 0.20),
-  speedPxS: num('spd', 520),
+  // 520 was the number every other value in the game was tuned against, so
+  // it stays written as 520 and the pace does the cutting -- see pace.js.
+  speedPxS: paced(num('spd', 520)),
   keyboardRampS: num('ramp', 0.12),
+
+  // BOARD AXIS SIGNS -- applied to the sensor read ONLY, never to the desktop
+  // keyboard fallback.
+  //
+  // THE BUG THESE FIX (Elad, on the real board, 8 Nov): "up is down and down is
+  // up." Leaning forward walked him down the screen.
+  //
+  // This is the SAME bug Nova Vanguard already found and wrote down, and the
+  // reasoning there is the authority: the board reports lean-forward as
+  // POSITIVE y, while screen space has positive y pointing DOWN. So the raw
+  // value has to be negated for forward to mean forward. GOBALANCE_SDK.md
+  // publishes `__gbSensor = {x, y}` without stating a sign convention for y,
+  // and most shipped games never touch that axis -- so every game that uses it
+  // rediscovers this, and hardware is the authority.
+  //
+  // WHY IT IS A SIGN ON THE SENSOR AND NOT ON THE MOVEMENT. Negating the
+  // movement would also invert the keyboard, where ArrowDown correctly means
+  // "walk down the screen" and is not broken. Only the board's y is wrong, so
+  // only the board's y is flipped. Named constants, so that if the hardware
+  // ever disagrees again this is a one-character change with a paper trail
+  // rather than a hunt through the input module.
+  sensorXSign: num('sxs', 1),   // lateral confirmed correct on the board
+  sensorYSign: num('sys', -1),
 };
 
 const keys = new Set();
@@ -56,6 +94,11 @@ function deadzone(v, dz) {
   return Math.sign(v) * Math.min(1, (a - dz) / (1 - dz));
 }
 
+/** The board's raw axes, turned the way the screen means them. */
+function signed(x, y) {
+  return { x: x * TUNING.sensorXSign, y: y * TUNING.sensorYSign };
+}
+
 /**
  * The board's own tilt for seat 0, or null when no board is driving it.
  *
@@ -63,15 +106,18 @@ function deadzone(v, dz) {
  * and every shipped game reads. `__gbPlayers` is the per-seat array that
  * arrived with multiplayer; seat 0 of it is the same board. Reading both means
  * this works on an older app build that only publishes the first.
+ *
+ * Both paths go through `signed()`, because both carry the board's own y
+ * convention and both were wrong in the same direction.
  */
 function boardTilt() {
   if (typeof window === 'undefined') return null;
   const arr = window.__gbPlayers;
   if (Array.isArray(arr) && arr.length && Array.isArray(arr[0])) {
-    return { x: arr[0][0], y: arr[0][1] };
+    return signed(arr[0][0], arr[0][1]);
   }
   const s = window.__gbSensor;
-  if (s && typeof s.x === 'number' && typeof s.y === 'number') return s;
+  if (s && typeof s.x === 'number' && typeof s.y === 'number') return signed(s.x, s.y);
   return null;
 }
 

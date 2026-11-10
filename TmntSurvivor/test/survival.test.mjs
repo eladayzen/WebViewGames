@@ -70,8 +70,3 @@ test('HEALING NEVER EXCEEDS THE POOL', async () => {
   assert.equal(heal(w, 1), SURVIVAL.maxLives);
   assert.equal(heal(w, 5), SURVIVAL.maxLives, 'a heart at full health is not banked');
 });
-
-test('the pool is much bigger than Bloop Squad’s five', async () => {
-  const { SURVIVAL } = await import('../src/systems/survival.js');
-  assert.ok(SURVIVAL.maxLives >= 10);
-});

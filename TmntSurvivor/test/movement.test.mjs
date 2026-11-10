@@ -23,7 +23,11 @@ test('the deadzone swallows a small lean and rescales what is past it', () => {
   globalThis.window.__gbSensor = { x: 1, y: 1 };
   const full = readInput(0.016);
   assert.equal(full.x, 1, 'a full lean still reaches full speed');
-  assert.equal(full.y, 1, 'on both axes');
+  // MAGNITUDE, not sign. The board's y is negated on the way in (it reports
+  // lean-forward as positive, the screen points positive down) -- so a full
+  // lean reads as -1 here, and that is correct. Direction is axes.test.mjs's
+  // job; this test is about the deadzone rescale reaching the full range.
+  assert.equal(Math.abs(full.y), 1, 'on both axes');
 });
 
 test('THE TWO AXES HAVE DIFFERENT DEADZONES, which is the point of the prototype', () => {
@@ -55,7 +59,9 @@ test('FACING DOES NOT TWITCH WHEN THE PLAYER STOPS', () => {
 
 test('the world is bounded -- you can be cornered', () => {
   const w = createWorld();
-  globalThis.window.__gbSensor = { x: -1, y: -1 };
+  // y is +1 because the board's y is negated on the way in -- leaning BACK is
+  // what drives the player toward the top of the world. See axes.test.mjs.
+  globalThis.window.__gbSensor = { x: -1, y: 1 };
   for (let i = 0; i < 2000; i++) updateWorld(w, readInput(1 / 60), 1 / 60);
   assert.equal(w.player.x, 0);
   assert.equal(w.player.y, 0);

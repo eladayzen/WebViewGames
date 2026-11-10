@@ -31,7 +31,14 @@ export const ABILITIES = {
   reach:    { label: 'LONG REACH',   blurb: 'Shoot further',           step: 0.25, max: 4 },
   swift:    { label: 'SWIFT',        blurb: 'Move faster',             step: 0.14, max: 4 },
   magnet:   { label: 'MAGNET',       blurb: 'Pull in loot from afar',  step: 0.60, max: 4 },
-  orbit:    { label: 'NUNCHAKU',     blurb: 'A weapon circles you',    step: 1,    max: 3 },
+  // THE KATANA IS NOT ALWAYS OUT. Every other card here is a permanent
+  // number -- fire faster, hit harder -- and a weapon that simply circles you
+  // forever is another one of those wearing a different coat. Drawn and
+  // sheathed on a cycle, it is the only thing in the build that changes what
+  // the player should be doing minute to minute: press in while it is out,
+  // keep your distance while it is not. See KATANA in systems/combat.js for
+  // the duty cycle and why each level shortens the rest rather than the sweep.
+  katana:   { label: 'KATANA',       blurb: 'A blade sweeps, then rests',  step: 1,    max: 3 },
 };
 
 // BASE MAGNET RAISED FROM 170 TO 260 after running the loop: at 170 a player
@@ -42,7 +49,7 @@ export const ABILITIES = {
 
 /** A fresh, empty build. */
 export function createBuild() {
-  return { rapid: 0, multi: 0, damage: 0, pierce: 0, reach: 0, swift: 0, magnet: 0, orbit: 0 };
+  return { rapid: 0, multi: 0, damage: 0, pierce: 0, reach: 0, swift: 0, magnet: 0, katana: 0 };
 }
 
 /**
@@ -62,7 +69,7 @@ export function stats(build) {
     rangePx: 620 * (1 + build.reach * a.reach.step),
     speedPxS: 1 + build.swift * a.swift.step,      // a MULTIPLIER on walk speed
     magnetPx: 260 * (1 + build.magnet * a.magnet.step),
-    orbiters: build.orbit * a.orbit.step,
+    blades: build.katana * a.katana.step,
   };
 }
 
@@ -72,19 +79,21 @@ export function offerable(build) {
 }
 
 /**
- * Three to choose from.
+ * Two to choose from -- one per lean direction. See levelup.js for why the
+ * screen dropped from three: the middle card sat on the player's own resting
+ * position and was therefore always half-chosen.
  *
  * WITHOUT REPLACEMENT, which is the only rule here that is load-bearing: the
  * same ability twice in one draw is a choice between two identical cards, and
  * a player reads that as the game being broken rather than as bad luck.
  *
- * Near the end of a long run there may be fewer than three left; offering two
+ * Near the end of a long run there may be fewer than two left; offering one
  * is correct and offering a padded duplicate is not.
  *
  * `rng` is injected so a test can be deterministic and so a run could later be
  * seeded and replayed.
  */
-export function draw(build, rng = Math.random, count = 3) {
+export function draw(build, rng = Math.random, count = 2) {
   const pool = offerable(build);
   const picked = [];
   while (picked.length < count && pool.length) {

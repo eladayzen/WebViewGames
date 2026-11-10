@@ -25,7 +25,13 @@ test('a kill always drops a gem and sometimes a heart', () => {
 });
 
 test('the drop is rare enough to be an event', () => {
-  assert.ok(HEART.dropChance > 0 && HEART.dropChance <= 0.15);
+  // 0.15 was loose enough to pass at the 0.07 that broke it. The ceiling
+  // that matters is the one the 70% cut established: above about 0.05 a
+  // long run gains hearts faster than the horde can take them and running
+  // out stops being a thing that can happen. The 30% put back on 2026-11-01
+  // is well inside it.
+  assert.ok(HEART.dropChance > 0, 'a drop that never happens is not a drop');
+  assert.ok(HEART.dropChance < 0.05, 'and one this common is not an event');
 });
 
 test('A HEART DOES NOT COME TO YOU -- you have to walk to it', () => {

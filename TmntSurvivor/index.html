@@ -67,14 +67,35 @@
     <div id="chrome">
       <button id="gb-back" type="button" aria-label="Quit"
               onclick="(window.__gbBack ? window.__gbBack() : (window.Unity &amp;&amp; window.Unity.call('nav:back')))">&#10005;</button>
+      <!-- QUIT THEN PAUSE, the same order in every game in this repo, so a
+           child who learns one knows them all. The X keeps the inline
+           fallback above; pause is wired in main.js because it has to stop
+           the ticker, and a game that failed to boot has nothing to pause. -->
+      <button id="pause-button" type="button" aria-label="Pause">&#10074;&#10074;</button>
     </div>
 
     <div id="stage"><canvas id="game"></canvas></div>
 
-    <!-- Everything below is instrumentation for an unthemed build: the state
-         of the run in text, and the three cards. Both get replaced by real UI
-         once the loop is worth looking at rather than worth reading. -->
-    <div id="hud"></div>
+    <!-- THE RUN, READ AT A GLANCE. See src/ui/hud.js for what each piece is
+         for; the short version is that the player is standing back from the
+         phone on a balance board and cannot read a sentence, so everything
+         here is a bar, a pip or one large number. The xp bar spans the top
+         because it is the thing they should never have to look for. -->
+    <div id="hud">
+      <div id="hud-bar">
+        <div id="level-badge">LV<span id="level-num">1</span></div>
+        <div id="xp-track"><div id="xp-fill"></div></div>
+        <div id="run-time">0:00</div>
+      </div>
+      <!-- NO HEALTH HERE. The pool is drawn over the character's own head,
+           in world space -- see HP_BAR in src/main.js for why it moved. -->
+      <div id="hud-row">
+        <div id="kills"><span id="kill-num">0</span><small>KO</small></div>
+      </div>
+      <!-- What is already stacked, so a level-up choice can be made against
+           it rather than from memory. -->
+      <div id="build-chips"></div>
+    </div>
 
     <!-- THE LEVEL-UP CHOICE. Three cards, picked by leaning and committed by
          holding -- see src/core/levelup.js for why holding, and why there is
@@ -89,6 +110,32 @@
         <div id="gameover-title">OVERRUN</div>
         <div id="gameover-stats"></div>
         <button id="restart-button" type="button">GO AGAIN</button>
+      </div>
+    </div>
+
+    <!-- PAUSED. Shown over the frozen field rather than painted across it:
+         a survivor run is a position you are holding, and hiding the horde
+         you are standing in loses the only thing worth looking at while you
+         decide. -->
+    <div id="paused-overlay" class="hidden">
+      <div class="pause-card">
+        <div class="pause-title">PAUSED</div>
+        <button id="resume-button" type="button">KEEP GOING</button>
+      </div>
+    </div>
+
+    <!-- QUIT CONFIRM, over the PAUSED field for the same reason -- the player
+         has to see the run they are being asked to give up. Only ever shown
+         mid-run: asking "are you sure?" over a screen they already chose is
+         noise. -->
+    <div id="confirm-overlay" class="hidden">
+      <div class="pause-card">
+        <div class="pause-title">QUIT?</div>
+        <div class="pause-sub">This run ends here.</div>
+        <div class="pause-buttons">
+          <button id="confirm-stay" type="button">KEEP PLAYING</button>
+          <button id="confirm-quit" type="button">QUIT</button>
+        </div>
       </div>
     </div>
 

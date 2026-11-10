@@ -13,30 +13,115 @@ canvas { display: block; touch-action: none; }
   cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
 
-/* Prototype readout. Goes when this stops being a movement prototype. */
-#readout {
-  position: fixed; left: 14px; bottom: 12px; z-index: 20;
-  font: 600 15px ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #9fb4cc; background: rgba(10, 13, 20, 0.6);
-  padding: 6px 10px; border-radius: 8px; pointer-events: none;
+/* --- the run readout -----------------------------------------------------
+   Laid out as three stacked strips down the top-left, all of them
+   pointer-events:none so nothing here can ever swallow a tap meant for the
+   game. The whole block stops short of the right edge: the chrome row lives
+   up there and the two must not overlap at any screen size.
+
+   THE RESERVE IS max(), NOT A vmin. It was 11vmin when the row held only the
+   quit X. Two buttons are 54 + 10 + 54 plus the row's own 14px inset = 132px,
+   and 11vmin is less than that on any viewport under about 1200px -- which is
+   every phone the app runs on. The floor is what guarantees the clearance;
+   the vmin still lets it breathe on a large tablet. Adding a third button
+   means raising the floor again. */
+#hud {
+  position: fixed; left: 2vmin; top: 1.6vmin; right: max(11vmin, 146px); z-index: 20;
+  display: flex; flex-direction: column; gap: 1.1vmin;
+  pointer-events: none;
+  font-family: system-ui, -apple-system, sans-serif;
 }
 
-/* --- the run readout ----------------------------------------------------- */
-#hud {
-  position: fixed; left: 14px; top: 12px; right: 14px; z-index: 20;
-  font: 600 15px ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #9fb4cc; background: rgba(10, 13, 20, 0.6);
-  padding: 7px 11px; border-radius: 8px; pointer-events: none;
+#hud-bar { display: flex; align-items: center; gap: 1.4vmin; }
+
+#level-badge {
+  flex: none; padding: 0.5vmin 1.4vmin; border-radius: 999px;
+  background: #f2c14e; color: #2a1d05;
+  font: 800 2vmin/1.35 system-ui, sans-serif; letter-spacing: 0.08em;
 }
+#level-badge span { margin-left: 0.5vmin; font-size: 2.6vmin; letter-spacing: 0; }
+
+/* The xp track. The fill is a TRANSFORM, never a width -- it moves on every
+   gem picked up, and a width change would lay out the page each time. */
+#xp-track {
+  flex: 1; height: 1.9vmin; border-radius: 999px; overflow: hidden;
+  background: rgba(10, 16, 26, 0.72);
+  box-shadow: inset 0 0 0 0.35vmin rgba(255, 255, 255, 0.07);
+}
+#xp-fill {
+  width: 100%; height: 100%; transform-origin: left center; transform: scaleX(0);
+  background: linear-gradient(90deg, #39c0e8, #6ee7ff);
+  transition: transform 90ms linear;
+}
+
+#run-time {
+  flex: none; min-width: 7vmin; text-align: right;
+  font: 800 2.6vmin/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #eaf6ff; text-shadow: 0 0.25vmin 0.6vmin rgba(0, 0, 0, 0.8);
+}
+
+/* Kills alone now that the hearts have moved onto the character's head, and
+   right-aligned so the row still ends where the timer above it does rather
+   than collapsing to the left edge under the level badge. */
+#hud-row { display: flex; align-items: center; justify-content: flex-end; gap: 2vmin; }
+
+#kills {
+  font: 800 2.4vmin/1 ui-monospace, Menlo, monospace; color: #eaf6ff;
+  text-shadow: 0 0.25vmin 0.6vmin rgba(0, 0, 0, 0.8);
+}
+#kills small { margin-left: 0.5vmin; font-size: 1.5vmin; color: #8aa0ba; letter-spacing: 0.1em; }
+
+#build-chips { display: flex; flex-wrap: wrap; gap: 0.7vmin; }
+.chip {
+  padding: 0.35vmin 1vmin; border-radius: 0.8vmin;
+  background: rgba(10, 16, 26, 0.72); color: #cfe3f5;
+  font: 700 1.5vmin/1.5 system-ui, sans-serif; font-style: normal;
+  letter-spacing: 0.06em;
+}
+.chip b { margin-left: 0.5vmin; color: #f2c14e; }
+
+/* THE LIVE BAR UNDER A CHIP. Only the katana uses it -- see ui/hud.js. It
+   runs DOWN while the blade is out and back UP while it is sheathed, so the
+   same bar answers both questions a player has: how long have I got, and how
+   long until it is back. Positioned on the chip rather than beside it so a
+   build of eight chips does not reflow when the katana is taken. */
+.chip { position: relative; overflow: hidden; }
+.chip-fill {
+  position: absolute; left: 0; bottom: 0; height: 0.45vmin; width: 100%;
+  background: #dfefff; transform-origin: left center; transform: scaleX(0);
+  pointer-events: none;
+}
+/* Nothing but the katana has a cycle, so every other chip's bar stays dark. */
+.chip:not([data-k="katana"]) .chip-fill { display: none; }
+
+/* Taking a hit. Fired from the one place that knows the heart count went
+   DOWN, rather than from a timer that would have to be kept in step. */
+@keyframes hud-hurt {
+  0%   { filter: none; }
+  18%  { filter: brightness(1.9) saturate(1.5); }
+  100% { filter: none; }
+}
+#hud.hurt { animation: hud-hurt 320ms ease-out; }
 
 /* --- the level-up choice -------------------------------------------------
-   Three cards across the screen, in the same left/centre/right order as the
-   lean that picks them. The order is the instruction: nothing says "this card
-   is the left one" except that it IS the left one. */
+   Two cards across the screen, in the same left/right order as the lean that
+   picks them. The order is the instruction: nothing says "this card is the
+   left one" except that it IS the left one. */
+/* THE CARDS ARE SIZED BY THEIR CONTENT, not by the screen.
+   They used to be a full-height 3-column grid, so each card ran the whole
+   viewport with its content in the top third and a dead half beneath it --
+   which made the icons read as small stickers in a void and exiled the lean
+   label from the thing it labels. The grid now centres a row of
+   content-height cards. */
 #levelup {
   position: fixed; inset: 0; z-index: 30;
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 2.2vmin; padding: 8vmin 4vmin;
+  /* COLUMNS COME FROM THE CARD COUNT, not from a number written here. The
+     draw is normally two, but late in a run the pool can be down to one --
+     and a fixed `repeat(2, ...)` would leave that last card sitting in the
+     left column with a hole beside it instead of centred. */
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 34vmin);
+  align-content: center; justify-content: center;
+  gap: 2.6vmin; padding: 4vmin;
   background: rgba(8, 11, 17, 0.82);
   pointer-events: none;
 }
@@ -44,9 +129,10 @@ canvas { display: block; touch-action: none; }
 
 .card {
   position: relative; overflow: hidden;
-  display: flex; flex-direction: column; justify-content: space-between;
+  display: flex; flex-direction: column; align-items: center; gap: 1.1vmin;
   border: 3px solid #27405e; border-radius: 18px;
-  background: #121a26; padding: 3vmin 2.4vmin;
+  background: #121a26; padding: 2.8vmin 2.2vmin 2.2vmin;
+  text-align: center;
   transition: border-color 120ms, transform 120ms;
 }
 .card.sel { border-color: #5fd38a; transform: translateY(-1.2vmin); }
@@ -57,10 +143,46 @@ canvas { display: block; touch-action: none; }
   position: absolute; inset: 0; transform-origin: left center; transform: scaleX(0);
   background: rgba(95, 211, 138, 0.22);
 }
-.card-body { position: relative; }
-.card-name  { font: 800 3.4vmin/1.1 system-ui, sans-serif; color: #eaf6ff; letter-spacing: 0.02em; }
-.card-blurb { margin-top: 1vmin; font: 500 2.1vmin/1.3 system-ui, sans-serif; color: #9fb4cc; }
-.card-have  { margin-top: 1.4vmin; font: 700 1.8vmin system-ui, sans-serif; color: #ffd166; }
+.card-body {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 0.6vmin;
+}
+/* THE ABILITY ICON.
+   One sheet, eight cells, positioned by percentage -- one request and one
+   decode for the whole set instead of eight images, and no flash of a card
+   with a hole in it where the picture has not arrived.
+   The cells are in ABILITIES order; data-k is the ability key, so adding a
+   ninth ability means adding a cell AND a rule here, and forgetting shows up
+   as a blank square rather than as the wrong picture. */
+.card-icon {
+  display: block;
+  /* SQUARE, AND THAT IS NOT COSMETIC. background-size here is relative to
+     the ELEMENT, so each cell is drawn at exactly the element's own width
+     and height. The cells in the sheet are square -- 192x192 -- so a
+     non-square element stretches every icon by whatever the mismatch is.
+     It was `width: 100%` against an 11vmin height, which on a wide card made
+     the magnet and the shell noticeably squat. Keep these two equal. */
+  width: 18vmin; height: 18vmin;
+  margin: 0 auto;
+  background-image: url('../assets/ability_icons.webp');
+  background-repeat: no-repeat;
+  background-size: 800% 100%;          /* eight cells across, each one square */
+  background-position-y: center;
+}
+.card-icon[data-k="rapid"]  { background-position-x: calc(0 * 100% / 7); }
+.card-icon[data-k="multi"]  { background-position-x: calc(1 * 100% / 7); }
+.card-icon[data-k="damage"] { background-position-x: calc(2 * 100% / 7); }
+.card-icon[data-k="pierce"] { background-position-x: calc(3 * 100% / 7); }
+.card-icon[data-k="reach"]  { background-position-x: calc(4 * 100% / 7); }
+.card-icon[data-k="swift"]  { background-position-x: calc(5 * 100% / 7); }
+.card-icon[data-k="magnet"] { background-position-x: calc(6 * 100% / 7); }
+.card-icon[data-k="katana"] { background-position-x: calc(7 * 100% / 7); }
+
+.card-name  { font: 800 2.9vmin/1.1 system-ui, sans-serif; color: #eaf6ff; letter-spacing: 0.02em; }
+.card-blurb { font: 500 1.9vmin/1.3 system-ui, sans-serif; color: #9fb4cc; }
+/* Reserves its line even when empty, so a card you already own one of is
+   not taller than the two beside it. */
+.card-have  { font: 700 1.7vmin/1.4 system-ui, sans-serif; color: #ffd166; min-height: 2.4vmin; }
 .card-lean  {
   position: relative; text-align: center;
   font: 800 2vmin ui-monospace, Menlo, monospace; color: #5c7490; letter-spacing: 0.08em;
@@ -85,3 +207,53 @@ canvas { display: block; touch-action: none; }
   background: #5fd38a; color: #08120c; cursor: pointer;
   font: 800 2.6vmin system-ui, sans-serif; letter-spacing: 0.04em;
 }
+
+/* The end-of-run numbers, as three figures rather than a sentence: what the
+   player tells someone else is the time, so it reads first and largest. */
+#gameover-stats {
+  margin-top: 3vmin; display: flex; justify-content: center; gap: 5vmin;
+}
+#gameover-stats b {
+  display: block; font: 800 4.4vmin/1 ui-monospace, Menlo, monospace; color: #eaf6ff;
+}
+#gameover-stats small {
+  display: block; margin-top: 0.8vmin;
+  font: 700 1.5vmin system-ui, sans-serif; color: #8aa0ba; letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* --- pause and quit ------------------------------------------------------
+   Both sit OVER the frozen field rather than replacing it. A survivor run is
+   a position you are holding; covering the horde you are standing in while
+   you decide whether to quit removes the one thing that makes the decision
+   mean anything. Hence a card, dimmed backdrop, and the field still visible
+   behind it. */
+#paused-overlay,
+#confirm-overlay {
+  position: fixed; inset: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 10, 18, 0.55);
+}
+#paused-overlay.hidden,
+#confirm-overlay.hidden { display: none; }
+
+.pause-card {
+  background: rgba(16, 22, 34, 0.96);
+  border-radius: 20px; padding: 3.2vmin 4.4vmin;
+  display: flex; flex-direction: column; align-items: center; gap: 1.6vmin;
+  box-shadow: 0 1.2vmin 4vmin rgba(0, 0, 0, 0.5);
+}
+.pause-title { font: 800 4.4vmin/1 system-ui, sans-serif; color: #eafcff; letter-spacing: 0.06em; }
+.pause-sub { font: 600 2.2vmin/1.3 system-ui, sans-serif; color: #9fb4c8; }
+.pause-buttons { display: flex; gap: 1.4vmin; }
+
+/* 54px tall to match the chrome row -- the same hand, sometimes on a moving
+   board, is pressing both. */
+.pause-card button {
+  min-height: 54px; padding: 0 3vmin; border: none; border-radius: 999px;
+  font: 800 2.4vmin/1 system-ui, sans-serif; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  background: #4fd2a8; color: #06202a;
+}
+#confirm-stay { background: #4fd2a8; color: #06202a; }
+#confirm-quit { background: rgba(255, 255, 255, 0.14); color: #eafcff; }

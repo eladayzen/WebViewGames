@@ -33,12 +33,32 @@ export function createWorld() {
     // --- the run ----------------------------------------------------------
     enemies: [],
     bullets: [],
+    // Enemy fire. A separate list from `bullets` because it is the mirror
+    // image of one: it is tested against the PLAYER, never against enemies,
+    // and the player's own shots cannot touch it.
+    enemyShots: [],
     gems: [],
     // Dropped hearts. A separate list from gems because they behave
     // differently on purpose -- see systems/horde.js.
     hearts: [],
     fireT: 0,
-    orbitPhase: 0,
+    // WHERE THE BARREL IS, in world px, or null when nothing has told us.
+    //
+    // The sim does not own this and cannot work it out: the muzzle is a point
+    // inside a drawing, so it moves with the walk cycle, the body bob and the
+    // mirror. The renderer measures it off the actual sprite each frame and
+    // writes it here; combat.js reads it and falls back to the player's own
+    // centre, which is what keeps the headless tests honest.
+    muzzle: null,
+    // Run clock at the last volley, for the star that sits in the barrel.
+    // -Infinity rather than 0 so the barrel is LOADED at the start of a run
+    // instead of spending the first fraction of a second mid-reload.
+    lastFireS: -Infinity,
+    // Where the blades are in their sweep, and where the weapon is in its
+    // draw/rest cycle. Both live on the world so a restart resets them with
+    // everything else rather than leaving a katana mid-cooldown into run two.
+    bladePhase: 0,
+    katanaT: 0,
     kills: 0,
     contact: false,
 

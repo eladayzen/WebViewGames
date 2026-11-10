@@ -11,13 +11,25 @@ const num = (k, d) => {
 };
 
 export const SURVIVAL = {
-  // TWELVE, not five. Five came from Bloop Squad, where a hit is a mistake
-  // you can see coming and avoid. Here the horde converges from every side at
-  // once and taking damage is not a mistake, it is the texture of the game --
-  // being touched is how you learn the field is closing. A pool that small
-  // turns every run into two minutes, which is too short to reach the
-  // level-ups that make a build interesting.
-  maxLives: num('lives', 12),
+  // FOURTEEN. Doubled from seven on Elad's call, 1 Nov, after playing the
+  // cut -- and the heart drop went UP 30% in the same breath, so this is a
+  // deliberate reversal of the tightening made earlier the same day and not
+  // a drift away from it.
+  //
+  // The history, because the number has now moved three times and the
+  // reasoning is what carries: five (Bloop Squad's) ended every run in two
+  // minutes; twelve let a run top itself up faster than the horde could
+  // spend it; seven was the correction to twelve and overshot. A hit in this
+  // game is not a mistake the player could have avoided -- the horde
+  // converges and contact is the texture of it -- so the pool is not a
+  // punishment dial, it is how long the run gets to be. Seven made the run
+  // short rather than tense.
+  //
+  // Read this with HEART.dropChance, as always. The pair is the difficulty,
+  // and moving one without the other moves it the wrong way: doubling the
+  // pool while leaving the drops where they were would have made a long run
+  // bottom out exactly as fast once the pool was spent.
+  maxLives: num('lives', 14),
   // One second of invulnerability. Enemies converge, so the frame you are
   // touched you are usually touching several -- without a window one mistake
   // ends the run and the player never learns what they did wrong.

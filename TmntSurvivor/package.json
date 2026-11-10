@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test test/abilities.test.mjs test/hearts.test.mjs test/levelup.test.mjs test/movement.test.mjs test/source-parses.test.mjs test/survival.test.mjs"
+    "test": "node --test test/abilities.test.mjs test/axes.test.mjs test/barrel.test.mjs test/facing.test.mjs test/ground.test.mjs test/hearts.test.mjs test/katana.test.mjs test/levelup.test.mjs test/movement.test.mjs test/pace.test.mjs test/shooter.test.mjs test/source-parses.test.mjs test/survival.test.mjs test/walk.test.mjs"
   },
   "devDependencies": {
     "vite": "^6.0.0"
