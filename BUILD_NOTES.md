@@ -56,3 +56,43 @@ which also makes collision and partial/half/full cross-section arcs cheap.
 Fits the existing Three.js carve-out this repo already reaches for
 (Astro_Tunnel, CarRacer, TmntRunner) -- no new dependency, unlike the
 PixiJS question above.
+
+## PixiJS: three things that cost a build (2026-09-14, Dawn Patrol)
+
+Dawn Patrol is the second 2D game in this repo on PixiJS v8 (after Nova
+Vanguard), and the first to hit these. All three present as "the game does
+nothing" rather than as an error, which is what makes them worth writing down.
+
+1. **`await Assets.init()` BEFORE any `Assets.load()`.** Firing a batch of
+   concurrent `Assets.load()` calls at an uninitialised `Assets` deadlocks:
+   the promises never settle, `boot()` never finishes, the title card sits
+   there forever and **nothing is logged anywhere**. There is no error to
+   search for. If a Pixi game hangs after `app.init()` resolves, this is the
+   first thing to check.
+
+2. **`Assets.setPreferences({ preferWorkers: false })` for a WebView target.**
+   Pixi's worker texture-decode path is faster on a desktop browser and
+   stalls outright in headless Chrome (and is a needless moving part inside a
+   WKWebView). Same symptom as above: a load promise that never settles. Main-
+   thread decode costs nothing measurable against a ~30-texture manifest.
+   Worth pairing with a per-asset timeout so a wedged load degrades to a
+   visible placeholder instead of a black screen on device.
+
+3. **A mask must live in the same coordinate space as the thing it masks.**
+   The letterbox pattern every game here uses -- one root container scaled and
+   offset to fit the viewport -- means a `Graphics` mask added as a CHILD of
+   that root already inherits the transform. Applying the scale/offset to the
+   mask again as well (easy to do, because it *looks* like it needs its own
+   placement) squares the scale and double-offsets it. It does not error; the
+   masked layer just ends in a hard rectangle partway across the frame, which
+   reads as an art bug rather than a transform bug.
+
+Also, for any game whose background scrolls a generated texture: **asking the
+image model for a seamless tile does not produce one.** What does work is an
+offset-blend done locally on the generated art -- cross-fade the last N columns
+over the first N, crop to `W-N` -- which makes the wrap a real continuation of
+the brushwork. Measured on Dawn Patrol's wave face: the raw generation's
+wrap-column delta was 26.2 against an interior delta of 4.5 (a very visible
+seam at 864 px/s); after the blend, 4.4 against 4.2. `DawnPatrol/tools/
+make-seamless.py` does it and prints both numbers, and fails if the seam
+survives.

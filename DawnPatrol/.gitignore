@@ -1,0 +1,6 @@
+# Derived intermediates from tools/build-assets.py. art/raw/ is already
+# ignored repo-wide; this is the second half of the same reasoning -- work/
+# holds the seam-blended and cropped stages between a raw generation and the
+# shipped asset, and every one of them is reproducible by re-running the
+# script. public/assets/ is what the game loads and stays tracked.
+art/work/

@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script>
+      // GoBalance SDK integration — see ../GOBALANCE_SDK.md for the full contract this depends
+      // on. Everything below is a no-op outside the Unity WebView (guarded by
+      // `if (window.Unity)` / feature checks), so it's always safe to ship, including when
+      // testing in a normal browser.
+
+      // The only channel for JS errors on-device — there's no devtools console inside the
+      // WebView, so surface them through the native bridge instead.
+      window.addEventListener('error', function (e) {
+        if (window.Unity) window.Unity.call('JS ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        if (window.Unity) window.Unity.call('JS UNHANDLED REJECTION: ' + e.reason);
+      });
+
+      // rAF shim: WKWebView treats the occluded Unity overlay as a background tab and
+      // suspends requestAnimationFrame entirely. Queue callbacks instead of scheduling them
+      // natively; Unity's WebGameController flushes the queue via window.__pumpFrames() every
+      // frame (~60Hz) regardless of tab visibility. A real native rAF loop keeps running
+      // underneath too, so a normal browser (testing outside Unity) behaves exactly as before.
+      (function () {
+        var nativeRAF = window.requestAnimationFrame.bind(window);
+        window.__rafQueue = [];
+        window.requestAnimationFrame = function (cb) { window.__rafQueue.push(cb); return window.__rafQueue.length; };
+        window.cancelAnimationFrame = function () {};
+        window.__pumpFrames = function () {
+          var q = window.__rafQueue;
+          if (!q.length) return;
+          window.__rafQueue = [];
+          var t = performance.now();
+          for (var i = 0; i < q.length; i++) {
+            try { q[i](t); }
+            catch (e) {
+              // ON-DEVICE this is the only channel there is: no console exists inside the
+              // WebView, so the native bridge is it.
+              if (window.Unity) window.Unity.call('RAF CB ERROR: ' + e.message);
+              // IN A BROWSER window.Unity is undefined, and swallowing the exception every
+              // frame presents as a game that simply stopped advancing with a clean console.
+              // Re-raising would break the pump, so log instead.
+              else if (typeof console !== 'undefined' && console.error) {
+                console.error('RAF CB ERROR:', e);
+              }
+            }
+          }
+        };
+        (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+      })();
+    </script>
+    <title>Dawn Patrol</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- #stage is the letterboxed 16:9 box. The Pixi canvas is sized to exactly this box by
+         render/renderer.js, and every HUD element is positioned inside it as a percentage of
+         the frame — so the DOM HUD and the playfield agree on where the margins are, which is
+         what makes §5.1's HUD-exclusion rule enforceable rather than aspirational. -->
+    <div id="stage">
+      <div id="app"></div>
+
+      <!-- ===================== TOP-LEFT: score plate ======================
+           §5.1's score exclusion rect is x [0, 0.26], y [0, 0.14]. Everything
+           in this column lives inside it. -->
+      <div id="score-plate">
+        <div id="score-value">0</div>
+        <div id="coin-row">
+          <!-- INLINE SVG, NOT A GLYPH. A coin emoji would be served from the
+               colour-emoji font on a mobile WebView and would break the palette
+               rule the whole frame depends on (§1): gold coins and Wren's coral
+               top are the ONLY warm things on screen. -->
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+            <circle cx="9" cy="9" r="7.6" fill="#e9b64a" stroke="#b9822a" stroke-width="1.4"/>
+            <ellipse cx="9" cy="9" rx="3.4" ry="5" fill="#f6d68a"/>
+          </svg>
+          <!-- RUN STATISTIC, NOT A WALLET. It does not persist, cannot be spent,
+               and has no balance semantics (§7.1, §8.6). -->
+          <span id="coin-value">0</span>
+        </div>
+        <!-- Three wipeout pips — small board silhouettes, unfilled as they are
+             spent. Absent entirely when FAIL_MODEL = 'onehit' (§7.1). -->
+        <div id="wipeout-pips"></div>
+      </div>
+
+      <!-- ===================== TOP-RIGHT: chrome + TOP RUN ================
+           HUD chrome convention (BUILD_NOTES.md): back and pause live top-right
+           as icon-only circular buttons, back is a plain X and is the outer one,
+           pause sits just to its left, status lives top-left. -->
+      <button id="gb-back"
+        onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
+        style="position:absolute;top:12px;right:12px;z-index:10001;width:48px;height:48px;
+               border:2px solid rgba(196,214,232,0.7);border-radius:999px;
+               background:rgba(24,36,56,0.9);color:#eef6fb;
+               font:600 24px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               line-height:1;display:flex;align-items:center;justify-content:center;
+               -webkit-tap-highlight-color:transparent;">&times;</button>
+
+      <!-- NO GLYPH CHARACTERS IN THE CHROME ROW. U+23F8 (pause) defaults to
+           EMOJI presentation in Unicode, so a mobile WebView serves it from the
+           colour-emoji font — it looked correct in the editor and shipped as a
+           yellow emoji on device on a previous game. Inline SVG with
+           fill:currentColor cannot be font-substituted. The paused/unpaused swap
+           is a CSS class on this button, never an innerHTML swap, so there is no
+           second place for a glyph to creep back in. -->
+      <button id="pause-button" aria-label="Pause"
+        style="position:absolute;top:12px;right:68px;z-index:9999;width:48px;height:48px;
+               border:2px solid rgba(196,214,232,0.5);border-radius:999px;
+               background:rgba(24,36,56,0.9);color:#eef6fb;cursor:pointer;line-height:1;
+               display:flex;align-items:center;justify-content:center;
+               -webkit-tap-highlight-color:transparent;">
+        <svg class="icon-pause" width="18" height="18" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <rect x="4" y="2.5" width="4.5" height="15" rx="1.4" fill="currentColor"/>
+          <rect x="11.5" y="2.5" width="4.5" height="15" rx="1.4" fill="currentColor"/>
+        </svg>
+        <svg class="icon-play" width="18" height="18" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <path d="M5 2.5 L17 10 L5 17.5 Z" fill="currentColor"/>
+        </svg>
+      </button>
+
+      <!-- THE TOP RUN PANEL. The report's single best measured finding about the
+           reference is that the number under the rival's portrait is not the
+           rival's score — it is the LIVE REMAINING GAP to it, ticking down in
+           real time as you earn. That is the reason this panel survives the
+           currency cull (§8.3).
+
+           It obeys §5.1's exclusion rect, and fades to 25% whenever the airborne
+           player's box comes within 80 px of it — the one sanctioned exception,
+           because she legitimately flies through this corner. -->
+      <div id="toprun-panel">
+        <div id="toprun-label">TOP RUN</div>
+        <div id="toprun-body">
+          <div id="toprun-portrait"></div>
+          <div id="toprun-text">
+            <div id="toprun-name">BIRDIE</div>
+            <div id="toprun-gap">25,000</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== LEFT EDGE, MID-HEIGHT: multiplier slots ===========
+           Circular rings with radial sweep drain timers, exactly as the
+           reference's HUD does. STATUS READOUTS, NEVER BUTTONS: nothing here is
+           pressable, targetable or selectable, and no input in this game can
+           affect them (§5.6, §0.4). -->
+      <div id="slot-stack">
+        <div class="slot" data-slot="0"><svg viewBox="0 0 44 44"><circle class="slot-track" cx="22" cy="22" r="18"/><circle class="slot-sweep" cx="22" cy="22" r="18"/></svg><span class="slot-label"></span></div>
+        <div class="slot" data-slot="1"><svg viewBox="0 0 44 44"><circle class="slot-track" cx="22" cy="22" r="18"/><circle class="slot-sweep" cx="22" cy="22" r="18"/></svg><span class="slot-label"></span></div>
+        <div class="slot" data-slot="2"><svg viewBox="0 0 44 44"><circle class="slot-track" cx="22" cy="22" r="18"/><circle class="slot-sweep" cx="22" cy="22" r="18"/></svg><span class="slot-label"></span></div>
+      </div>
+
+      <!-- A single centred slate band in the sky band at y ≈ 0.14. SINGLE-SLOT
+           QUEUE — one at a time, minimum 0.9 s each, depth 3, oldest
+           non-critical dropped on overflow. Two banners can never collide; that
+           is a code invariant in ui/hud.js, not a timing coincidence (§7.1). -->
+      <div id="banner" class="hidden"><span id="banner-text"></span></div>
+
+      <!-- Zone names get a low-opacity caption bottom-left instead of the
+           banner, so a zone change can never contend with a crew-mark pass. -->
+      <div id="zone-caption" class="hidden"></div>
+
+      <!-- The constraints validator fails LOUDLY (§9.5). There is no console
+           on-device, so a violation has to be visible on the screen itself. -->
+      <div id="constraint-warning" class="hidden"></div>
+
+      <!-- POC-6 instrumentation panel (§2, §10). This is a POC DELIVERABLE, not
+           a debug nicety: it is how the lean mapping and the fail-model A/B get
+           judged rather than vibed. Kept in the MVP build because POC-7's A/B is
+           still to be run on hardware. Toggle with `I`, or ?instr=1. -->
+      <div id="instr-panel" class="hidden">
+        <div id="instr-title">POC-6 · INSTRUMENTATION</div>
+        <div id="instr-body"></div>
+        <div id="instr-hint"></div>
+      </div>
+
+      <!-- ===================== TITLE =====================
+           Reaches a playable state on load WITHOUT REQUIRING A KEY PRESS —
+           there is no button on the board, so it auto-advances on its own timer
+           (§7.3, and GOBALANCE_SDK.md's "first playable/countdown state on
+           load"). NOT #gameover-overlay: the host synth-clicks #restart-button
+           whenever an element with that id is visible, so a pre-run screen
+           inside it would let Space/Enter restart a run that never started. -->
+      <div id="title-overlay" class="screen">
+        <div class="card">
+          <h1>DAWN PATROL</h1>
+          <p class="kicker">ENDLESS POINT</p>
+          <p id="title-sub">Lean left to climb the face &middot; lean right to drop</p>
+          <p id="title-best" class="hidden"></p>
+          <p id="title-countdown">Paddling out&hellip;</p>
+        </div>
+      </div>
+
+      <!-- The drop-in beat: the boat drops Wren onto the shoulder. ~2 s,
+           NON-BLOCKING, auto-advancing on its own timer. There is emphatically
+           no pre-run consumable/boost screen — that is the reference's
+           `TAP TO ACTIVATE` currency prompt and it is deleted (§0.5, §7.3). -->
+      <div id="dropin-overlay" class="hidden"><span>DROP IN</span></div>
+
+      <!-- ===================== SCORE CARD =====================
+           GoBalance SDK DOM contract (§7.4): the host checks for this exact
+           `hidden` class before synthetically clicking #restart-button, and the
+           id must be hyphenated exactly like this. -->
+      <div id="gameover-overlay" class="screen hidden">
+        <div class="card">
+          <h1>WIPEOUT</h1>
+          <dl id="scorecard-stats"></dl>
+          <div id="scorecard-total"></div>
+          <button id="restart-button" type="button">RIDE AGAIN</button>
+          <!-- BELOW the button deliberately: #restart-button stays the last and
+               most obvious thing on the card, and the host synth-clicks it on
+               Space/Enter while this overlay is visible. A 12 s auto-timeout
+               back to the title stops a walk-up queue stalling on an abandoned
+               card (§7.3). -->
+          <p id="scorecard-countdown"></p>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

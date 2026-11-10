@@ -1,0 +1,351 @@
+/* Dawn Patrol — DOM/CSS HUD overlay on top of the game canvas (§7).
+ *
+ * Visual idiom taken directly from the reference: dark translucent slate plates
+ * with soft rounded corners and cream slab-serif numerals.
+ *
+ * EVERYTHING IS SIZED RELATIVE TO THE LETTERBOXED STAGE, NEVER IN FIXED px.
+ * A fixed-px element inside a scaled overlay looks correct at a dev-server
+ * window size and then dominates the screen in the SDK's mobile WebView — a
+ * bug this repo has already paid for once (BUILD_NOTES.md, lesson 4). `--u` is
+ * one hundredth of the stage's height; use it for every size in this file.
+ */
+
+:root {
+  /* The stage is a 16:9 box letterboxed into the viewport. */
+  --stage-h: min(100vh, calc(100vw * 9 / 16));
+  --stage-w: min(100vw, calc(100vh * 16 / 9));
+  --u: calc(var(--stage-h) / 100);
+
+  /* Palette discipline is the load-bearing readability rule, not a mood note
+   * (§1). The entire frame lives in a narrow cool band; the ONLY warm colours
+   * anywhere are the gold coins and Wren's coral-orange top. */
+  --slate-plate: rgba(24, 37, 58, 0.74);
+  --slate-edge: rgba(168, 196, 222, 0.38);
+  --cream: #f4ecdc;
+  --cream-dim: rgba(244, 236, 220, 0.62);
+  --gold: #e9b64a;
+  --violet: #7b5ea8;
+  --alert: #d8544c;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #10182a;
+  overflow: hidden;
+  font-family: 'Rockwell', 'Roboto Slab', Georgia, 'Times New Roman', serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--stage-w);
+  height: var(--stage-h);
+  overflow: hidden;
+}
+
+#app, #app canvas { display: block; width: 100%; height: 100%; }
+
+.hidden { display: none !important; }
+
+/* ===================== top-left score plate (§7.1) ===================== */
+
+#score-plate {
+  position: absolute;
+  left: calc(var(--u) * 1.6);
+  top: calc(var(--u) * 1.6);
+  width: calc(var(--u) * 22);
+  padding: calc(var(--u) * 1.1) calc(var(--u) * 1.4);
+  background: var(--slate-plate);
+  border: 1px solid var(--slate-edge);
+  border-radius: calc(var(--u) * 1.6);
+  color: var(--cream);
+  pointer-events: none;
+}
+
+#score-value {
+  font-size: calc(var(--u) * 6.2);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-shadow: 0 calc(var(--u) * 0.2) calc(var(--u) * 0.5) rgba(0, 0, 0, 0.45);
+}
+
+#coin-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 0.7);
+  margin-top: calc(var(--u) * 0.5);
+  font-size: calc(var(--u) * 3.0);
+  color: var(--gold);
+}
+#coin-row svg { width: calc(var(--u) * 2.6); height: calc(var(--u) * 2.6); }
+
+#wipeout-pips {
+  display: flex;
+  gap: calc(var(--u) * 0.6);
+  margin-top: calc(var(--u) * 0.8);
+}
+.pip {
+  width: calc(var(--u) * 2.6);
+  height: calc(var(--u) * 0.9);
+  border-radius: 999px;
+  background: var(--cream);
+  opacity: 0.92;
+}
+.pip.spent { background: transparent; border: 1px solid var(--cream-dim); opacity: 0.45; }
+
+/* ===================== top-right TOP RUN panel (§8.3) ===================== */
+
+#toprun-panel {
+  position: absolute;
+  right: calc(var(--u) * 1.6);
+  top: calc(var(--u) * 9.5);
+  min-width: calc(var(--u) * 24);
+  padding: calc(var(--u) * 0.9) calc(var(--u) * 1.2);
+  background: var(--slate-plate);
+  border: 1px solid var(--slate-edge);
+  border-radius: calc(var(--u) * 1.4);
+  color: var(--cream);
+  pointer-events: none;
+  /* The airborne fade — the ONE sanctioned exception to the exclusion rule
+   * (§5.1), because the airborne player legitimately flies through this corner.
+   * Driven by a class, over 0.2 s, restoring on landing. */
+  transition: opacity 0.2s linear;
+  opacity: 1;
+}
+#toprun-panel.air-fade { opacity: 0.25; }
+
+#toprun-label {
+  font-size: calc(var(--u) * 1.7);
+  letter-spacing: 0.22em;
+  color: var(--cream-dim);
+}
+#toprun-body { display: flex; align-items: center; gap: calc(var(--u) * 1.0); }
+#toprun-portrait {
+  width: calc(var(--u) * 6.4);
+  height: calc(var(--u) * 6.4);
+  border-radius: calc(var(--u) * 0.9);
+  border: 1px solid var(--slate-edge);
+  background: rgba(12, 20, 34, 0.85) center/cover no-repeat;
+  flex: 0 0 auto;
+}
+#toprun-name { font-size: calc(var(--u) * 2.2); letter-spacing: 0.08em; }
+/* THE LIVE REMAINING GAP, ticking down as you earn — not the rival's score. */
+#toprun-gap { font-size: calc(var(--u) * 3.6); font-weight: 700; line-height: 1.05; }
+#toprun-panel.topped #toprun-gap { font-size: calc(var(--u) * 2.4); color: var(--gold); }
+
+/* HIDDEN, per Amit on a playtest build: "there is an overlay asset on the left
+   side - not clear what it is - can you hide it please?" That was this: the
+   §5.6 multiplier slot stack (x2 / x3 / x6 orb readout). The multiplier SYSTEM
+   is untouched and still scores -- only its readout is hidden, so the stack now
+   builds and drains with no on-screen indication. If it should come back in a
+   legible form rather than stay hidden, this is the one line to change. */
+#slot-stack { display: none !important; }
+
+/* ===================== left-edge multiplier slots (§5.6) ===================== */
+
+#slot-stack {
+  position: absolute;
+  left: calc(var(--u) * 0.9);
+  top: 38%;
+  height: 28%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.slot {
+  position: relative;
+  width: calc(var(--u) * 7.2);
+  height: calc(var(--u) * 7.2);
+}
+.slot svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.slot-track {
+  fill: rgba(24, 37, 58, 0.66);
+  stroke: rgba(168, 196, 222, 0.34);
+  stroke-width: 3;
+}
+.slot-sweep {
+  fill: none;
+  stroke: var(--violet);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 113.1;   /* 2 * PI * 18 */
+  stroke-dashoffset: 113.1;
+  opacity: 0;
+}
+.slot.filled .slot-sweep { opacity: 1; }
+.slot-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--u) * 2.6);
+  font-weight: 700;
+  color: var(--cream);
+}
+
+/* ===================== banner + zone caption (§7.1) ===================== */
+
+#banner {
+  position: absolute;
+  left: 50%;
+  top: 14%;
+  transform: translate(-50%, -50%);
+  padding: calc(var(--u) * 1.0) calc(var(--u) * 3.2);
+  background: var(--slate-plate);
+  border: 1px solid var(--slate-edge);
+  border-radius: calc(var(--u) * 1.2);
+  color: var(--cream);
+  font-size: calc(var(--u) * 3.4);
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+#zone-caption {
+  position: absolute;
+  left: calc(var(--u) * 2.2);
+  bottom: calc(var(--u) * 2.4);
+  color: var(--cream);
+  opacity: 0.42;
+  font-size: calc(var(--u) * 2.6);
+  letter-spacing: 0.28em;
+  pointer-events: none;
+}
+
+/* ===================== screens (§7.3) ===================== */
+
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(16, 26, 44, 0.62), rgba(16, 26, 44, 0.88));
+}
+.card {
+  min-width: calc(var(--u) * 52);
+  padding: calc(var(--u) * 3.4) calc(var(--u) * 4.4);
+  background: var(--slate-plate);
+  border: 1px solid var(--slate-edge);
+  border-radius: calc(var(--u) * 2.2);
+  color: var(--cream);
+  text-align: center;
+}
+.card h1 {
+  margin: 0;
+  font-size: calc(var(--u) * 7.2);
+  letter-spacing: 0.10em;
+}
+.card .kicker {
+  margin: calc(var(--u) * 0.4) 0 0;
+  font-size: calc(var(--u) * 2.4);
+  letter-spacing: 0.40em;
+  color: var(--cream-dim);
+}
+.card p { margin: calc(var(--u) * 1.4) 0 0; font-size: calc(var(--u) * 2.4); }
+#title-countdown, #scorecard-countdown { color: var(--cream-dim); font-size: calc(var(--u) * 2.0); }
+
+#scorecard-stats {
+  margin: calc(var(--u) * 2.0) 0 0;
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: calc(var(--u) * 0.6) calc(var(--u) * 2.4);
+  font-size: calc(var(--u) * 2.4);
+}
+#scorecard-stats dt { text-align: left; color: var(--cream-dim); letter-spacing: 0.10em; }
+#scorecard-stats dd { margin: 0; text-align: right; font-weight: 700; }
+#scorecard-total {
+  margin-top: calc(var(--u) * 1.6);
+  padding-top: calc(var(--u) * 1.2);
+  border-top: 1px solid var(--slate-edge);
+  font-size: calc(var(--u) * 6.0);
+  font-weight: 700;
+}
+
+#restart-button {
+  margin-top: calc(var(--u) * 2.2);
+  padding: calc(var(--u) * 1.3) calc(var(--u) * 4.0);
+  font-family: inherit;
+  font-size: calc(var(--u) * 2.8);
+  letter-spacing: 0.16em;
+  color: #12203a;
+  background: var(--cream);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+#dropin-overlay {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translate(-50%, -50%);
+  color: var(--cream);
+  font-size: calc(var(--u) * 4.2);
+  letter-spacing: 0.34em;
+  text-shadow: 0 calc(var(--u) * 0.3) calc(var(--u) * 0.8) rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+/* ===================== pause button icon state ===================== */
+
+#pause-button .icon-play { display: none; }
+#pause-button.paused .icon-pause { display: none; }
+#pause-button.paused .icon-play { display: block; }
+
+/* ===================== dev-only surfaces ===================== */
+
+#constraint-warning {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 4%;
+  z-index: 20000;
+  padding: calc(var(--u) * 2.0);
+  background: rgba(120, 16, 24, 0.94);
+  border: 1px solid #ff9d94;
+  border-radius: calc(var(--u) * 1.2);
+  color: #ffe9e6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(var(--u) * 1.7);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  max-height: 88%;
+  overflow: auto;
+}
+
+#instr-panel {
+  position: absolute;
+  right: calc(var(--u) * 1.6);
+  bottom: calc(var(--u) * 1.6);
+  z-index: 15000;
+  /* Wide enough for the longest aggregate row without wrapping -- the panel is
+     read at a glance during a standing session, and a clipped metric is a
+     metric nobody checks. */
+  width: calc(var(--u) * 54);
+  padding: calc(var(--u) * 1.2);
+  background: rgba(10, 18, 32, 0.88);
+  border: 1px solid rgba(150, 200, 230, 0.4);
+  border-radius: calc(var(--u) * 1.0);
+  color: #cfe6f2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(var(--u) * 1.45);
+  line-height: 1.55;
+  pointer-events: none;
+}
+#instr-title { letter-spacing: 0.18em; color: #8fd0e8; margin-bottom: calc(var(--u) * 0.6); }
+#instr-body { white-space: pre; overflow-x: auto; }
+#instr-hint { margin-top: calc(var(--u) * 0.8); opacity: 0.6; white-space: pre-wrap; }
