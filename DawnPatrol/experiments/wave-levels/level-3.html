@@ -1,0 +1,358 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>L3 Ooze Street</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H);
+document.body.appendChild(renderer.domElement);
+{ const gl = renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info');
+  window.__gpu = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'n/a'; }
+
+const scene = new THREE.Scene();
+scene.add(new THREE.AmbientLight(0xffffff, 0.6)); { const dl = new THREE.DirectionalLight(0xffffff, 2.2); dl.position.set(-4, 8, 6); scene.add(dl); }
+const camera = new THREE.PerspectiveCamera(24, W / H, 0.5, 200);
+
+
+// ---------- wave sheet: NX columns along shore (x), NT samples along profile ----------
+const NX = 200, NT = 96, XW = 64, X0 = -30;
+const PEEL_X = -6;             // where the lip is fully pitching
+
+function stageAt(x, time) {    // 0 = unbroken shoulder, 1 = pitching barrel, >1 = closed-out
+  const wob = 0.8 * Math.sin(time * 1.0 + x * 0.2);
+  return THREE.MathUtils.clamp((PEEL_X + 34 + wob - x) / 34, 0, 1.25);
+}
+let _T = 0;
+function heightAt(s, x = 0) { return 6.0 + 1.6 * Math.min(s, 1) + 0.25 * Math.sin(x * 0.33 - _T * 1.2) + 0.1 * Math.sin(x * 0.85 + _T * 1.7); }
+
+// profile: integrate heading angle phi along arc length; dir = (-cos phi, sin phi) in (z,y)
+const prof = { z: new Float32Array(NT), y: new Float32Array(NT), phi: new Float32Array(NT) };
+const ss=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t);};
+const mix=(a,b,t)=>a+(b-a)*t, D2R=Math.PI/180;
+function buildProfile(s, Hh, out) {
+  const sc = Math.min(s, 1), L = Hh * mix(2.1, 2.7, sc), dl = L / (NT - 1);
+  const phiF = mix(58, 82, sc) * D2R, C = mix(-70, 215 + 15 * Math.sin(_T * 1.3), Math.pow(sc, 0.8)) * D2R, pw = mix(1.0, 1.5, sc);
+  let z = 7.5, y = 0;
+  for (let i = 0; i < NT; i++) {
+    const t = i / (NT - 1), u = Math.max(0, (t - 0.5) / 0.5);
+    const phi = phiF * ss(0, 0.55, t) + C * Math.pow(u, pw);
+    out.z[i] = z; out.y[i] = y; out.phi[i] = phi;
+    z += -Math.cos(phi) * dl; y += Math.sin(phi) * dl;
+  }
+}
+
+// ---------- camera: match the reference composition ----------
+// rider column at 23% width, crest at ~30% from top, trough near the bottom edge, sky above the crest
+function placeCam(dx, ly, fov) { camera.fov = fov; camera.updateProjectionMatrix();
+  camera.position.set(9.0 + dx, 7.0 + (ly - 3.6) * 0.6, 46.0); camera.lookAt(-1.0 + dx, ly, 2.0); camera.updateMatrixWorld(); }
+{
+  const RX = PEEL_X + 2.0; const s0 = stageAt(RX, 0), H0 = heightAt(s0, RX); const P = { z: new Float32Array(NT), y: new Float32Array(NT), phi: new Float32Array(NT) };
+  buildProfile(s0, H0, P); let top = 0; for (let j = 0; j < NT; j++) if (P.y[j] > P.y[top]) top = j;
+  const crest = new THREE.Vector3(RX, P.y[top], P.z[top]), trough = new THREE.Vector3(RX, 0, 7.5); const jm = Math.round(NT * 0.22), mid = new THREE.Vector3(RX, P.y[jm], P.z[jm]);
+  const sy = v => (1 - v.clone().project(camera).y) / 2, sx = v => (v.clone().project(camera).x + 1) / 2;
+  let dx = 0, ly = 3.6, fov = 24;
+  const bs = (f, lo, hi, set, inc) => { for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; set(m); if ((f() > 0) === inc) hi = m; else lo = m; } set((lo + hi) / 2); };
+  for (let k = 0; k < 8; k++) {
+    bs(() => (sy(trough) - sy(crest)) - 0.60, 8, 70, m => { fov = m; placeCam(dx, ly, fov); }, false);
+    bs(() => sy(crest) - 0.30, -20, 30, m => { ly = m; placeCam(dx, ly, fov); }, true);
+    bs(() => sx(mid) - 0.24, -60, 60, m => { dx = m; placeCam(dx, ly, fov); }, false);
+  }
+  window.__cam = { dx, ly, fov, crestY: sy(crest), troughY: sy(trough), x: sx(trough) };
+}
+function makeGrid(nx, nt) {
+  const g = new THREE.BufferGeometry();
+  const pos = new Float32Array(nx * nt * 3), aP = new Float32Array(nx * nt * 2);
+  const idx = [];
+  for (let i = 0; i < nx - 1; i++) for (let j = 0; j < nt - 1; j++) {
+    const a = i * nt + j, b = (i + 1) * nt + j;
+    idx.push(a, b, a + 1, b, b + 1, a + 1);
+  }
+  g.setIndex(idx);
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aProf', new THREE.BufferAttribute(aP, 2));
+  return g;
+}
+const faceGeo = makeGrid(NX, NT);
+const NB = 24;
+const backGeo = makeGrid(NX, NB);
+
+const uniforms = { uTime: { value: 0 }, uScroll: { value: 0 } };
+const NOISE = `
+float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
+ return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+1.),f.x),f.y);}
+float fbm(vec2 p){float a=.5,s=0.;for(int i=0;i<4;i++){s+=a*vn(p);p*=2.03;a*=.5;}return s;}`;
+
+const waterMat = new THREE.ShaderMaterial({
+  uniforms, side: THREE.DoubleSide,
+  vertexShader: `
+    attribute vec2 aProf; varying vec2 vP; varying vec3 vN; varying vec3 vW;
+    void main(){ vP=aProf; vN=normalize(normalMatrix*normal); vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz;
+      gl_Position=projectionMatrix*viewMatrix*w; }`,
+  fragmentShader: `
+    uniform float uTime,uScroll; varying vec2 vP; varying vec3 vN; varying vec3 vW; ${NOISE}
+    void main(){
+      vec3 n=normalize(vN); if(!gl_FrontFacing) n=-n;
+      float t=vP.x, s=vP.y;
+      vec3 L=normalize(vec3(-0.4,0.8,0.6));
+      float d=dot(n,L);
+      // three hard bands
+      float band = d>0.55?2.:(d>0.05?1.:0.);
+      vec3 deep=vec3(0.02,0.30,0.08), mid=vec3(0.0,0.72,0.10), lite=vec3(0.55,1.0,0.35);
+      vec3 shade=vec3(0.40,0.18,0.57);   // #662d91 purple hard shadow
+      // vertical ramp: face gets lighter/translucent toward lip
+      vec3 base = mix(deep, mid, smoothstep(0.15,0.55,t));
+      base = mix(base, lite, step(0.62,t)*0.6);
+      vec3 col = band>1.5? mix(base,lite,0.45) : band>0.5? base : mix(base,shade,0.55);
+      if(!gl_FrontFacing) col = mix(col, shade, 0.35);
+      float u = vW.x + uScroll;
+      // horizontal streaks that scroll (sells speed)
+      float st = vn(vec2(u*0.35, t*38.));
+      col = mix(col, lite, step(0.83, st)*step(t,0.6)*0.7);
+      // lip foam: noise threshold, grows with stage
+      float fz = fbm(vec2(u*0.8 + uTime*0.3, t*9.0 - uTime*1.0));
+      float lipF = smoothstep(0.80,1.0,t) * (0.25+0.75*min(s,1.));
+      float foam = step(1.0 - lipF, fz*0.9+0.25);
+      // whitewater near trough where closed out
+      float ww = step(1.0, s) * smoothstep(0.35,0.0,t) ;
+      foam = max(foam, step(0.45, fbm(vec2(u*0.5, t*6.-uTime))*ww*1.6));
+      vec3 foamC = d>0.2? vec3(0.86,1.0,0.55) : vec3(0.0,0.79,1.0);
+      col = mix(col, foamC, foam);
+      gl_FragColor=vec4(col,1.);
+    }`
+});
+const faceMesh = new THREE.Mesh(faceGeo, waterMat); scene.add(faceMesh);
+const backMesh = new THREE.Mesh(backGeo, waterMat); scene.add(backMesh);
+
+// flat foreground water (shore side) with scrolling foam lines
+const seaGeo = new THREE.PlaneGeometry(140, 60, 1, 1); seaGeo.rotateX(-Math.PI / 2);
+const seaMat = new THREE.ShaderMaterial({ uniforms, vertexShader: `varying vec3 vW; void main(){vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,
+  fragmentShader: `uniform float uTime,uScroll; varying vec3 vW; ${NOISE}
+    void main(){ float u=vW.x+uScroll; vec3 c=vec3(0.16,0.12,0.22);
+      // ooze sheet near the wave, asphalt further out
+      float f=fbm(vec2(u*0.25, vW.z*0.9 - uTime*0.3));
+      float ooze = step(vW.z, 14.0 + 6.0*f);
+      c = mix(c, mix(vec3(0.02,0.30,0.08), vec3(0.0,0.72,0.10), step(0.6,f)), ooze);
+      // yellow dashed lane line
+      float lane = step(abs(vW.z-24.),0.25)*step(0.5,fract(u*0.12));
+      c = mix(c, vec3(1.0,0.83,0.0), lane*(1.-ooze));
+      // manhole covers
+      vec2 mh = vec2(fract(u/23.)*23.-11.5, vW.z-19.);
+      float m = length(mh*vec2(1.,1.6));
+      c = mix(c, vec3(0.32,0.26,0.38), step(m,1.6)*(1.-ooze));
+      c = mix(c, vec3(0.10,0.07,0.14), step(abs(m-1.2),0.12)*(1.-ooze));
+      gl_FragColor=vec4(c,1.);} ` });
+const sea = new THREE.Mesh(seaGeo, seaMat); sea.position.set(0, -0.02, 30); scene.add(sea);
+
+// tumbling foam balls in the closed-out section (whitewater)
+const foamGeo = new THREE.IcosahedronGeometry(1, 1);
+const foamMat = new THREE.ShaderMaterial({ uniforms, vertexShader: `varying vec3 vN; void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.);}`,
+  fragmentShader: `varying vec3 vN; void main(){ float d=dot(normalize(vN),normalize(vec3(-0.4,0.8,0.6)));
+    vec3 c = d>0.35? vec3(0.75,1.0,0.45): d>-0.1? vec3(0.0,0.85,0.12): vec3(0.40,0.18,0.57); gl_FragColor=vec4(c,1.);} ` });
+const NF = 70; const foam = new THREE.InstancedMesh(foamGeo, foamMat, NF); scene.add(foam);
+const fseed = Array.from({ length: NF }, (_, i) => [Math.random(), Math.random(), Math.random(), 0.6 + Math.random() * 1.3]);
+
+// street canyon: procedural brownstones behind the wave, recycled as they scroll
+const NBLD = 18;
+const bldMat = new THREE.ShaderMaterial({ uniforms, vertexShader: `attribute float aSeed; varying vec3 vL; varying vec3 vN; varying float vS;
+  void main(){ vL=position; vN=normal; vS=aSeed; gl_Position=projectionMatrix*viewMatrix*modelMatrix*instanceMatrix*vec4(position,1.);} `,
+  fragmentShader: `varying vec3 vL; varying vec3 vN; varying float vS;
+  float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
+  void main(){ vec3 base = mix(vec3(0.42,0.16,0.20), vec3(0.30,0.17,0.40), step(0.5,vS));
+    base = mix(base, vec3(0.55,0.30,0.22), step(0.8,vS));
+    float side = step(0.5, abs(vN.x)); base *= mix(1.0, 0.6, side);
+    vec2 g = vec2((vL.x+0.5)*6., (vL.y+0.5)*14.);
+    vec2 f = fract(g), c = floor(g);
+    float win = step(0.25,f.x)*step(f.x,0.75)*step(0.2,f.y)*step(f.y,0.7)*step(abs(vN.z),2.)*(1.-side);
+    float lit = step(0.6, h(c+vS*31.));
+    vec3 wc = lit>0.? (h(c+2.)>0.5? vec3(1.,0.83,0.): vec3(0.,0.79,1.)) : vec3(0.08,0.05,0.12);
+    vec3 col = mix(base, wc, win);
+    // cornice band
+    col = mix(col, vec3(0.12,0.08,0.16), step(0.96, (vL.y+0.5)));
+    gl_FragColor=vec4(col,1.);} ` });
+const bld = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), bldMat, NBLD);
+const bSeed = new Float32Array(NBLD); const bInfo = [];
+for (let i = 0; i < NBLD; i++) { bSeed[i] = Math.random(); bInfo.push({ w: 4 + Math.random() * 4, h: 7 + Math.random() * 8, slot: i }); }
+bld.geometry.setAttribute('aSeed', new THREE.InstancedBufferAttribute(bSeed, 1));
+scene.add(bld);
+const BSPAN = NBLD * 7;
+function updateBuildings(scroll) {
+  const m = new THREE.Matrix4();
+  for (let i = 0; i < NBLD; i++) {
+    const b = bInfo[i]; let x = ((i * 7 - scroll * 0.6) % BSPAN + BSPAN) % BSPAN - BSPAN / 2;
+    m.compose(new THREE.Vector3(x, b.h / 2 - 0.5, -26), new THREE.Quaternion(), new THREE.Vector3(b.w + 1.5, b.h, 6));
+    bld.setMatrixAt(i, m);
+  }
+  bld.instanceMatrix.needsUpdate = true;
+}
+
+// rider placeholder: capsule + board
+const rider = new THREE.Group();
+const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.9, 4, 10), new THREE.MeshToonMaterial({ color: 0x2f9e3a }));
+body.position.y = 0.95; rider.add(body);
+const band = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.07, 6, 16), new THREE.MeshBasicMaterial({ color: 0xe800a6 }));
+band.position.y = 1.55; band.rotation.x = Math.PI / 2; rider.add(band);
+const board = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.12, 0.6), new THREE.MeshToonMaterial({ color: 0xffd400 }));
+board.position.y = 0.06; rider.add(board);
+rider.visible = false; scene.add(rider);
+const RIDER_X = PEEL_X + 2.0;
+body.material.color.set(0x3fae2a); band.material.color.set(0xe800a6);
+
+// ---------- update geometry ----------
+const tmpP = { z: new Float32Array(NT), y: new Float32Array(NT), phi: new Float32Array(NT) };
+let riderProf = null;
+function updateWave(time) {
+  _T = time;
+  const fp = faceGeo.attributes.position.array, fa = faceGeo.attributes.aProf.array;
+  const bp = backGeo.attributes.position.array, ba = backGeo.attributes.aProf.array;
+  for (let i = 0; i < NX; i++) {
+    const x = X0 + (i / (NX - 1)) * XW;
+    const s = stageAt(x, time), Hh = heightAt(s, x);
+    buildProfile(s, Hh, tmpP);
+    // closed out (s>1): squash the curl down into the whitewater
+    const squash = 1 - 0.7 * THREE.MathUtils.clamp(s - 1, 0, 0.25) * 4;
+    let topI = 0;
+    for (let j = 0; j < NT; j++) {
+      const k = (i * NT + j);
+      const y = tmpP.y[j] * squash;
+      fp[k * 3] = x; fp[k * 3 + 1] = y; fp[k * 3 + 2] = tmpP.z[j];
+      fa[k * 2] = j / (NT - 1); fa[k * 2 + 1] = s;
+      if (tmpP.y[j] > tmpP.y[topI]) topI = j;
+      // walk forward only up to vertical part for back attach
+    }
+    // back slope: from just behind the vertical point of the face down to the sea
+    let vI = 0; for (let j = 0; j < NT; j++) { if (tmpP.phi[j] <= Math.PI / 2) vI = j; }
+    const cz = tmpP.z[vI] - 0.25, cy = tmpP.y[vI] * squash * 0.98 + 0.0;
+    const topY = Math.max(cy, tmpP.y[topI] * squash - 0.3);
+    for (let j = 0; j < NB; j++) {
+      const t = j / (NB - 1), k = i * NB + j;
+      bp[k * 3] = x; bp[k * 3 + 1] = topY * (0.5 + 0.5 * Math.cos(t * Math.PI)); bp[k * 3 + 2] = cz - t * Hh * 2.5;
+      ba[k * 2] = 0.55 - 0.5 * t; ba[k * 2 + 1] = 0;
+    }
+    if (Math.abs(x - RIDER_X) < XW / (NX - 1) / 2 + 1e-3 && !riderProf) {}
+  }
+  faceGeo.attributes.position.needsUpdate = true; faceGeo.attributes.aProf.needsUpdate = true;
+  backGeo.attributes.position.needsUpdate = true; backGeo.attributes.aProf.needsUpdate = true;
+  faceGeo.computeVertexNormals(); backGeo.computeVertexNormals();
+  // rider: sample profile at RIDER_X
+  const s = stageAt(RIDER_X, time), Hh = heightAt(s, RIDER_X); buildProfile(s, Hh, tmpP);
+  let vI = 0; for (let j = 0; j < NT; j++) if (tmpP.phi[j] <= 1.25) vI = j;  // ride range: trough..steep part below lip
+  const f = 0.04 + heightOnFace * (vI / (NT - 1) - 0.04);
+  const jf = f * (NT - 1), j0 = Math.floor(jf), j1 = Math.min(NT - 1, j0 + 1), a = jf - j0;
+  const z = tmpP.z[j0] * (1 - a) + tmpP.z[j1] * a, y = tmpP.y[j0] * (1 - a) + tmpP.y[j1] * a, ph = tmpP.phi[j0] * (1 - a) + tmpP.phi[j1] * a;
+  rider.position.set(RIDER_X, y + Math.cos(ph) * 0.12, z + Math.sin(ph) * 0.12);
+  rider.rotation.set(ph * 0.3, 0.5, 0.12 * Math.sin(time * 2));
+  // foam balls
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+  for (let n = 0; n < NF; n++) {
+    const [a1, a2, a3, sz] = fseed[n];
+    const x = X0 + a1 * 18 - ((uniforms.uScroll.value * 0.3 + a1 * 50) % 4);
+    const ph2 = time * (1.5 + a3) + a2 * 6.28;
+    const r = 2.2 + 1.8 * a2;
+    const p = new THREE.Vector3(x, 0.6 + r * (0.5 + 0.5 * Math.sin(ph2)), 6.5 + r * 0.6 * Math.cos(ph2) + a3 * 2);
+    e.set(ph2, a1 * 6, 0); q.setFromEuler(e);
+    const sc = sz * (0.9 + 0.2 * Math.sin(ph2 * 2)) * THREE.MathUtils.clamp((PEEL_X - 1 - x) / 3, 0, 1);
+    m.compose(p, q, new THREE.Vector3(sc, sc, sc)); foam.setMatrixAt(n, m);
+  }
+  foam.instanceMatrix.needsUpdate = true;
+}
+
+// ---------- input: arrows or auto sine ----------
+let heightOnFace = 0.5, keyUp = false, keyDn = false, lastKey = -1e9;
+addEventListener('keydown', e => { if (e.key === 'ArrowUp') keyUp = true; if (e.key === 'ArrowDown') keyDn = true; lastKey = performance.now(); });
+addEventListener('keyup', e => { if (e.key === 'ArrowUp') keyUp = false; if (e.key === 'ArrowDown') keyDn = false; });
+
+// ---------- post: normal+depth edges with jittered ink, paper grain, hatch ----------
+const RS = 0.5, IW = Math.round(W * RS), IH = Math.round(H * RS);   // render 3D at half res; halftone hides it
+const rtColor = new THREE.WebGLRenderTarget(IW, IH, { depthTexture: new THREE.DepthTexture(IW, IH) });
+const rtNormal = new THREE.WebGLRenderTarget(IW, IH);
+const normalMat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+const post = new THREE.ShaderMaterial({
+  uniforms: { tC: { value: rtColor.texture }, tD: { value: rtColor.depthTexture }, tN: { value: rtNormal.texture },
+    uRes: { value: new THREE.Vector2(IW, IH) }, uOut: { value: new THREE.Vector2(W, H) }, uTime: { value: 0 }, uScroll: uniforms.uScroll, near: { value: camera.near }, far: { value: camera.far } },
+  vertexShader: `varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,
+  fragmentShader: `
+    uniform sampler2D tC,tD,tN; uniform vec2 uRes; uniform float uTime,uScroll,near,far; varying vec2 vUv; ${NOISE}
+    float lin(float d){ float z=d*2.-1.; return 2.*near*far/(far+near-z*(far-near)); }
+    uniform vec2 uOut;
+    vec3 sky(vec2 uv){
+      vec3 c=mix(vec3(0.10,0.05,0.20),vec3(0.40,0.18,0.57),smoothstep(1.0,0.4,uv.y));
+      return c;
+    }
+    float halftone(vec2 fc, float dark, float cell){
+      // 45deg Ben-Day dot grid, radius from darkness
+      vec2 r = mat2(0.7071,-0.7071,0.7071,0.7071)*fc/cell;
+      vec2 f = fract(r)-0.5;
+      return step(length(f), sqrt(dark)*0.62);
+    }
+    void main(){
+      float boil=floor(uTime*6.);
+      vec2 px=2.2/uRes;
+      vec2 uv=vUv;
+      float d0=lin(texture2D(tD,uv).r);
+      vec3 n0=texture2D(tN,uv).xyz*2.-1.;
+      float ed=0., en=0.;
+      for(int i=0;i<4;i++){
+        vec2 o = i==0?vec2(px.x,0.):i==1?vec2(-px.x,0.):i==2?vec2(0.,px.y):vec2(0.,-px.y);
+        float d=lin(texture2D(tD,uv+o).r); vec3 n=texture2D(tN,uv+o).xyz*2.-1.;
+        ed=max(ed,abs(d-d0)/min(d,d0)); en=max(en,1.-dot(n,n0));
+      }
+      float ink=max(smoothstep(0.04,0.08,ed), smoothstep(0.3,0.45,en));
+      vec2 fc=gl_FragCoord.xy;
+      vec3 col;
+      float raw=texture2D(tD,vUv).r;
+      if(raw>0.9999){ col=sky(vUv);
+        col=mix(col, vec3(0.91,0.0,0.65), halftone(fc, 0.30*smoothstep(0.3,0.9,vUv.y), 16.)); }
+      else {
+        col=texture2D(tC,vUv).rgb;
+        float lum=dot(col,vec3(0.3,0.59,0.11));
+        // posterize then Ben-Day dots in the mid/dark tones
+        vec3 dotC = col*0.45 + vec3(0.03,0.0,0.06);
+        float dark = smoothstep(0.62, 0.15, lum);
+        col = mix(col, dotC, halftone(fc, dark*0.75, 15.));
+      }
+      col=mix(col,vec3(0.05,0.02,0.08),ink);
+      // speed lines: streaks racing right-to-left (we are moving right)
+      float row=floor(fc.y/7.);
+      float rr=h21(vec2(row,7.));
+      float sx=fract(fc.x/uOut.x*0.6 + uTime*(1.2+rr*1.5) + rr*10.);
+      float edge = smoothstep(0.30,0.0,vUv.y) + smoothstep(0.75,1.0,vUv.y);
+      float sl = step(0.93, rr)*step(sx,0.18)*edge*step(abs(fract(fc.y/7.)-0.5),0.3);
+      col = mix(col, vec3(0.95,1.0,0.9), sl);
+      // print paper + misregistration feel
+      col *= 0.95 + 0.07*h21(fc+boil);
+      gl_FragColor=vec4(col,1.);
+    }`,
+  depthTest: false, depthWrite: false
+});
+const postScene = new THREE.Scene(); const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), post));
+
+const gl = renderer.getContext(); const px1 = new Uint8Array(4);
+let t0 = performance.now(), prev = t0;
+let tAcc = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
+  if (window.__paused) { requestAnimationFrame(frame); return; }
+  tAcc += dt; const t = tAcc;
+  if (now - lastKey < 2000 || keyUp || keyDn) heightOnFace = THREE.MathUtils.clamp(heightOnFace + ((keyUp ? 1 : 0) - (keyDn ? 1 : 0)) * dt * 1.2, 0, 1);
+  else heightOnFace = 0.5 + 0.5 * Math.sin(t * 0.9);
+  if (window.__H !== undefined) heightOnFace = window.__H;
+  uniforms.uTime.value = t; uniforms.uScroll.value = t * 9; post.uniforms.uTime.value = t;
+  const w0 = performance.now();
+  updateWave(t);
+  { const v = rider.position.clone().project(camera); window.__riderScreen = { x: (v.x + 1) / 2 * W, y: (1 - v.y) / 2 * H }; } updateBuildings(uniforms.uScroll.value);
+  renderer.setRenderTarget(rtColor); renderer.render(scene, camera);
+  scene.overrideMaterial = normalMat; renderer.setRenderTarget(rtNormal); renderer.render(scene, camera); scene.overrideMaterial = null;
+  renderer.setRenderTarget(null); renderer.render(postScene, postCam);
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px1);
+  window.__work && window.__work(performance.now() - w0);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>
