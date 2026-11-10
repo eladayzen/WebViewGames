@@ -21,5 +21,12 @@ headless, muted screenshots into `shots/`; `shoot-all.sh` also expects a
 reference frame at `ref/frame_005.jpg` sampled from the WaveSurf video
 (`tools/pipeline/sample_frames.py`), not committed.
 
+Speed pass (2026-11-10): right-to-left flow now grows with depth. Level 2,
+measured from frames with `measure-speed.sh` (screen-widths/s): crest 0.02,
+upper face 0.48, mid 0.80, lower 1.04, trough 1.32 (was ~0.26 everywhere;
+the reference game is ~0.45 at rider height). Plus a board wake, foam flecks
+and faint speed lines. `shots/speed-strip-2.png` is four frames 0.25 s apart.
+
 Known gaps (2026-11-10): level 2's tube still reads as a dark porthole; levels
-1 and 3 have a flat-sheet lip with no barrel; motion was tuned from stills.
+1 and 3 have a flat-sheet lip with no barrel; motion was tuned from stills; the wake reads
+as a string of blobs rather than a spray fan; speed lines are faint.

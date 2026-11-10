@@ -63,6 +63,9 @@ function placeCam(dx, ly, fov) { camera.fov = fov; camera.updateProjectionMatrix
     bs(() => sx(mid) - 0.24, -60, 60, m => { dx = m; placeCam(dx, ly, fov); }, false);
   }
   window.__cam = { dx, ly, fov, crestY: sy(crest), troughY: sy(trough), x: sx(trough) };
+  // speed report: screen-widths/s for 1 world unit/s of x-scroll, at several depths
+  const wps = v => Math.abs(sx(v.clone().add(new THREE.Vector3(1, 0, 0))) - sx(v));
+  window.__speedProbe = { crest: wps(crest), mid: wps(mid), trough: wps(trough), sea12: wps(new THREE.Vector3(RX, 0, 12)), sea22: wps(new THREE.Vector3(RX, 0, 22)), crestSY: sy(crest), midSY: sy(mid), troughSY: sy(trough), sea12SY: sy(new THREE.Vector3(RX, 0, 12)), sea22SY: sy(new THREE.Vector3(RX, 0, 22)) };
 }
 function makeGrid(nx, nt) {
   const g = new THREE.BufferGeometry();
@@ -110,10 +113,22 @@ const waterMat = new THREE.ShaderMaterial({
       base = mix(base, lite, step(0.62,t)*0.6);
       vec3 col = band>1.5? mix(base,lite,0.45) : band>0.5? base : mix(base,shade,0.55);
       if(!gl_FrontFacing) col = mix(col, shade, 0.35);
-      float u = vW.x + uScroll;
+      // right-to-left flow: slow at the crest, fast at the trough (multiplier on the base scroll)
+      float u = vW.x + uScroll*1.1;
+      float row = floor(t*38.), tq = (row+0.5)/38.;
+      float uq = vW.x + uScroll*mix(4.6, 1.1, pow(smoothstep(0.03, 0.85, tq), 1.5));
       // horizontal streaks that scroll (sells speed)
-      float st = vn(vec2(u*0.35, t*38.));
+      float st = vn(vec2(uq*mix(0.18,0.35,tq), t*38.));
       col = mix(col, lite, step(0.83, st)*step(t,0.6)*0.7);
+      // thin speed streaks on the lower face
+      float srow = floor(t*120.); float sr = fract(sin(srow*12.9898)*43758.5453);
+      float uqs = vW.x + uScroll*mix(5.0, 1.2, pow(smoothstep(0.03, 0.85, srow/120.), 1.5));
+      float sxx = fract(uqs*0.045 + sr*13.);
+      col = mix(col, mix(lite, vec3(1.), 0.4), step(0.78, sr)*step(sxx, 0.25)*smoothstep(0.5, 0.1, t)*step(0.02,t));
+      // foam flecks whipping past
+      vec2 fg = vec2(uqs*0.9, t*55.); vec2 fcell = floor(fg), ff = fract(fg)-0.5;
+      float fleck = step(length(ff*vec2(0.5,2.2)), 0.3)*step(0.88, h21(fcell+17.))*smoothstep(0.45,0.08,t);
+      col = mix(col, vec3(0.95,0.99,0.96), fleck);
       // lip foam: noise threshold, grows with stage
       float fz = fbm(vec2(u*0.8 + uTime*0.3, t*9.0 - uTime*1.0));
       float lipF = smoothstep(0.80,1.0,t) * (0.25+0.75*min(s,1.));
@@ -133,9 +148,9 @@ const backMesh = new THREE.Mesh(backGeo, waterMat); scene.add(backMesh);
 const seaGeo = new THREE.PlaneGeometry(140, 60, 1, 1); seaGeo.rotateX(-Math.PI / 2);
 const seaMat = new THREE.ShaderMaterial({ uniforms, vertexShader: `varying vec3 vW; void main(){vec4 w=modelMatrix*vec4(position,1.);vW=w.xyz;gl_Position=projectionMatrix*viewMatrix*w;}`,
   fragmentShader: `uniform float uTime,uScroll; varying vec3 vW; ${NOISE}
-    void main(){ float u=vW.x+uScroll; vec3 c=vec3(0.16,0.12,0.22);
+    void main(){ float zl = floor(vW.z/1.5); float u=vW.x+uScroll*(4.2 + 0.25*mod(zl,3.)); vec3 c=vec3(0.16,0.12,0.22);
       // ooze sheet near the wave, asphalt further out
-      float f=fbm(vec2(u*0.25, vW.z*0.9 - uTime*0.3));
+      float f=fbm(vec2(u*0.25, vW.z*0.9));
       float ooze = step(vW.z, 14.0 + 6.0*f);
       c = mix(c, mix(vec3(0.02,0.30,0.08), vec3(0.0,0.72,0.10), step(0.6,f)), ooze);
       // yellow dashed lane line
@@ -339,7 +354,7 @@ let tAcc = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
   if (window.__paused) { requestAnimationFrame(frame); return; }
-  tAcc += dt; const t = tAcc;
+  tAcc += dt; const t = (window.__fixedT !== undefined) ? window.__fixedT : tAcc;   // __fixedT: deterministic stills for speed measurement
   if (now - lastKey < 2000 || keyUp || keyDn) heightOnFace = THREE.MathUtils.clamp(heightOnFace + ((keyUp ? 1 : 0) - (keyDn ? 1 : 0)) * dt * 1.2, 0, 1);
   else heightOnFace = 0.5 + 0.5 * Math.sin(t * 0.9);
   if (window.__H !== undefined) heightOnFace = window.__H;
