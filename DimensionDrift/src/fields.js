@@ -38,13 +38,14 @@ import { meshHeight } from './mountain.js';
 /**
  * How many quads the whole system may draw.
  *
- * A triangle costs four (the floor polygon plus a beam to each corner), a
- * liner two, a fence panel one. 104 is 26 pods in the most expensive style.
+ * A bar costs up to seven (two floor segments plus up to five beams), a
+ * triangle four, a liner two, a fence panel one. 176 is 25 pods at the worst
+ * case of the most expensive style.
  * The combat ring keeps a handful of squads of at most four pods near the
  * rider, so no style comes close; the cap is a guard against a pathological
  * frame, not a budget anyone will meet.
  */
-const MAX_QUADS = 104;
+const MAX_QUADS = 176;
 
 /**
  * FENCE: the panel hangs from the pods DOWN TO THE SNOW.
@@ -129,6 +130,40 @@ const TRI_REACH = 2.6;
 const TRI_COLOR = 0x1fe85c;
 
 /**
+ * ── BARS: HOW FAR FROM THE POD THE LINE LANDS ─────────────────────────────
+ *
+ * A multiple of the pod's height, and deliberately the SMALLEST of the three
+ * reaches this file has used -- the liner threw 1.62 and the polygon 2.6, and
+ * the ask was for the pod's mark to sit closer to it. At 1.05 a pod at 4.5 m
+ * drops its line about 4.7 m out: still clearly cast rather than worn, but
+ * near enough that the pod and the thing it is doing are one object in the
+ * frame instead of two.
+ */
+const BAR_REACH = 1.05;
+
+/**
+ * ── BARS: WHY THE LINE LIES ACROSS THE LANE ───────────────────────────────
+ *
+ * "so it will look good and clear like the wall does" -- and that is exactly
+ * the right instinct, because the barriers already taught the player this
+ * shape. A line drawn ACROSS the direction of travel is the one orientation a
+ * rider can read instantly at speed: it has a length they must get past and
+ * two ends they can get round, and they have met it before.
+ *
+ * A line lying ALONG the fall line would be the opposite -- it would be the
+ * length of the course and no width at all, so it would never look like
+ * something to be got past, only like something being ridden beside.
+ *
+ * The u axis IS world x (see `xAt`: centre line plus u), so across the lane is
+ * along world x. `BAR_JITTER` leans each one a little off square, because a
+ * field of perfectly parallel bars reads as printed-on rather than as cast by
+ * the pods standing over them.
+ */
+const BAR_JITTER = 0.2;                // radians, scaled by the pod's own spin
+/** Half the width of a bar, drawn and collided. */
+const BAR_HALF = 1.15;
+
+/**
  * What riding into one costs.
  *
  * Under a barrier's 12, and the reason is the number of them: a barrier is one
@@ -182,7 +217,37 @@ void main() {
   float a;
   vec3 col = uColor;
 
-  if (vKind > 2.5) {
+  if (vKind > 3.5) {
+    // ── THE BAR ON THE SNOW ──────────────────────────────────────────────
+    //
+    // vAlong runs its length, vUp across its width. Burning along the spine
+    // and falling off to the edges, so it reads as a drawn LINE rather than
+    // as a thin rectangle -- the same reason the barriers put their light at
+    // the gap posts: an edge states where a thing stops, a line states that
+    // the thing is a line.
+    float across = abs(vUp * 2.0 - 1.0);
+    float spine = 1.0 - smoothstep(0.0, 0.8, across);
+    // Capped at both ends rather than cut, so the ends read as deliberate.
+    float ends = smoothstep(0.0, 0.05, vAlong) * (1.0 - smoothstep(0.95, 1.0, vAlong));
+    float stripe = sin(vAlong * 46.0 - uTime * 2.6);
+    float hazard = 0.7 + 0.3 * smoothstep(-0.35, 0.35, stripe);
+    float pulse = 0.9 + 0.1 * sin(uTime * 4.2);
+
+    // ── DARK AT THE CORE, BRIGHT AT THE RIM ──────────────────────────────
+    //
+    // The first cut lit the spine brightest and vanished. On this slope that
+    // is the third time the same mistake has been made: the ground is near
+    // white under an exposure that runs past 2.5, so ANY light colour at
+    // partial alpha washes into it, and a thin mark washes out fastest of all.
+    //
+    // The only direction that reads here is DOWN. So the body of the bar is a
+    // deep green that darkens the snow, and the bright green is spent on a
+    // thin rim either side -- which also gives the line two visible edges
+    // instead of one soft smear, and edges are what a rider steers against.
+    float rim = smoothstep(0.55, 0.95, across) * (1.0 - smoothstep(0.95, 1.0, across));
+    a = near * ends * pulse * hazard * (0.42 + 0.46 * spine + 0.5 * rim);
+    col = mix(uColor * 0.32, uColor * 1.35, rim);
+  } else if (vKind > 2.5) {
     // ── THE FLOOR POLYGON ────────────────────────────────────────────────
     //
     // vAlong and vUp carry two of the three barycentric coordinates, so the
@@ -285,8 +350,8 @@ export class Fields {
     this.terrain = terrain;
     this.scene = scene;
     this.enabled = false;
-    /** 'triangle', 'liner' or 'fence'. See the header. */
-    this.style = 'triangle';
+    /** 'bars', 'triangle', 'liner' or 'fence'. See the header. */
+    this.style = 'bars';
 
     this.geo = new THREE.BufferGeometry();
     this.geo.setAttribute('position',
@@ -328,6 +393,7 @@ export class Fields {
     this.liners = [];
     this.links = [];
     this.tris = [];
+    this.bars = [];
     this.quads = 0;
     this.t = 0;
     this.stats = { clipped: 0 };
@@ -343,15 +409,17 @@ export class Fields {
    * @param {'liner'|'fence'} style
    */
   setStyle(style) {
-    this.style = (style === 'fence' || style === 'liner') ? style : 'triangle';
+    this.style = (style === 'fence' || style === 'liner' || style === 'triangle')
+      ? style : 'bars';
     // The colour belongs to the style, not to the file: the triangles were
     // asked for in green and the red is the barriers' vocabulary, so a build
     // that switches style and keeps the hue would be saying two things.
     this.mat.uniforms.uColor.value.setHex(
-      this.style === 'triangle' ? TRI_COLOR : COLOR);
+      (this.style === 'triangle' || this.style === 'bars') ? TRI_COLOR : COLOR);
     this.liners.length = 0;
     this.links.length = 0;
     this.tris.length = 0;
+    this.bars.length = 0;
   }
 
   /** Every living pod the combat ring is holding near the rider. */
@@ -400,6 +468,47 @@ export class Fields {
         lz: d.z + (gz - d.z) * t0,
       });
       if (out.length * 2 >= MAX_QUADS) return;
+    }
+  }
+
+  /**
+   * One BAR per pod: a line on the snow, lying across the lane, with two to
+   * five beams raking down onto it from the pod that is drawing it.
+   *
+   * The beams are what make it legible as something being DONE to the ground
+   * rather than something painted on it -- and how many there are is also how
+   * long the line is, so a pod throwing five beams is visibly committing more
+   * than one throwing two. The count is the only size cue the player needs.
+   */
+  _gatherBars(combat) {
+    const out = this.bars;
+    out.length = 0;
+    for (const d of this._pods(combat)) {
+      const podY = d.drawnY ?? d.y;
+      const h = podY - meshHeight(this.terrain, d.x, d.z);
+      if (!(h > 0.5)) continue;
+      const sz = d.size ?? 1.2;
+      const sp = d.spin ?? 1;
+      // 2..5, from the pod's own fixed size. Deterministic per drone, so a
+      // squad draws the same bars every time anyone rides this stretch.
+      const n = 2 + (Math.floor((sz - 1.0) * 11.3) & 3);
+      // Each beam claims about 2.6 m of line, plus a margin at the ends.
+      const len = 2.6 * (n - 1) + 1.8;
+      const ang = d.phase ?? 0;
+      const reach = h * BAR_REACH;
+      const bx = d.x + Math.cos(ang) * reach;
+      const bz = d.z + Math.sin(ang) * reach;
+      // ACROSS THE LANE: the u axis is world x. Leaned off square by the
+      // pod's own spin so a field of them is not a set of parallel rules.
+      const jit = sp * BAR_JITTER;
+      const dx = Math.cos(jit);
+      const dz = Math.sin(jit);
+      const ax = bx - dx * len * 0.5;
+      const az = bz - dz * len * 0.5;
+      const cx = bx + dx * len * 0.5;
+      const cz = bz + dz * len * 0.5;
+      out.push({ d, podY, n, len, ax, az, cx, cz, dx, dz });
+      if (out.length * (2 + 5) >= MAX_QUADS) return;
     }
   }
 
@@ -489,7 +598,47 @@ export class Fields {
 
   _draw() {
     let q = 0;
-    if (this.style === 'triangle') {
+    if (this.style === 'bars') {
+      for (const B of this.bars) {
+        if (q + 2 + B.n > MAX_QUADS) break;
+        // THE LINE, in two segments. One quad over 13 m would bridge straight
+        // across every convex rise between its ends and hover; two halves
+        // sample the middle and sit down on the hill. The same finding the
+        // trees, the drones, the medkits and the boons each paid for once.
+        const px = -B.dz * BAR_HALF;
+        const pz = B.dx * BAR_HALF;
+        const mx = (B.ax + B.cx) * 0.5;
+        const mz = (B.az + B.cz) * 0.5;
+        const halves = [[B.ax, B.az, mx, mz, 0, 0.5], [mx, mz, B.cx, B.cz, 0.5, 1]];
+        for (const [sx, sz2, ex, ez, u0, u1] of halves) {
+          this._quad(q++, [
+            [sx + px, meshHeight(this.terrain, sx + px, sz2 + pz) + 0.15, sz2 + pz],
+            [sx - px, meshHeight(this.terrain, sx - px, sz2 - pz) + 0.15, sz2 - pz],
+            [ex - px, meshHeight(this.terrain, ex - px, ez - pz) + 0.15, ez - pz],
+            [ex + px, meshHeight(this.terrain, ex + px, ez + pz) + 0.15, ez + pz],
+          ], [u0, u0, u1, u1], [0, 1, 1, 0], 4);
+        }
+        // The rakes, landing evenly along the line.
+        const d = B.d;
+        for (let i = 0; i < B.n && q < MAX_QUADS; i++) {
+          const t = B.n === 1 ? 0.5 : i / (B.n - 1);
+          const tx = B.ax + (B.cx - B.ax) * t;
+          const tz = B.az + (B.cz - B.az) * t;
+          const ty = meshHeight(this.terrain, tx, tz) + 0.18;
+          const vx = tx - d.x;
+          const vz = tz - d.z;
+          const m = Math.hypot(vx, vz) || 1;
+          const qx = (-vz / m) * 0.24;
+          const qz = (vx / m) * 0.24;
+          this._quad(q++, [
+            [d.x + qx, B.podY, d.z + qz],
+            [d.x - qx, B.podY, d.z - qz],
+            [tx - qx, ty, tz - qz],
+            [tx + qx, ty, tz + qz],
+          ], [0, 0, 1, 1], [0, 1, 1, 0], 1);
+        }
+      }
+    } else if (this.style === 'triangle') {
       for (const T of this.tris) {
         if (q + 4 > MAX_QUADS) break;
         const [A, B, C] = T.pts;
@@ -586,7 +735,17 @@ export class Fields {
       // A jump this large is a seek or a respawn, not a ride.
       if (dx * dx + dz * dz > 40000) continue;
       let bit = false;
-      if (this.style === 'triangle') {
+      if (this.style === 'bars') {
+        for (const B of this.bars) {
+          // Crossed it between frames, or standing on it now. The first is
+          // what catches a rider at speed, the second a rider who stopped.
+          if (segCross(prev.x, prev.z, f.x, f.z, B.ax, B.az, B.cx, B.cz)
+            || segDist2(B.ax, B.az, B.cx, B.cz, f.x, f.z) <= BAR_HALF * BAR_HALF) {
+            bit = true;
+            break;
+          }
+        }
+      } else if (this.style === 'triangle') {
         for (const T of this.tris) {
           const [A, B, C] = T.pts;
           // INSIDE IT, OR ACROSS ANY EDGE OF IT. The containment test alone
@@ -636,13 +795,15 @@ export class Fields {
       this.liners.length = 0;
       this.links.length = 0;
       this.tris.length = 0;
+      this.bars.length = 0;
     }
   }
 
   update(dt, combat, roster, live = true) {
     if (!this.enabled) return [];
     this.t += dt;
-    if (this.style === 'triangle') this._gatherTris(combat);
+    if (this.style === 'bars') this._gatherBars(combat);
+    else if (this.style === 'triangle') this._gatherTris(combat);
     else if (this.style === 'liner') this._gatherLiners(combat);
     else this._gatherLinks(combat);
     const events = live ? this._hit(roster) : [];
@@ -655,6 +816,7 @@ export class Fields {
     this.liners.length = 0;
     this.links.length = 0;
     this.tris.length = 0;
+    this.bars.length = 0;
     this.t = 0;
     this.stats = { clipped: 0 };
   }

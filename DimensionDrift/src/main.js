@@ -1020,6 +1020,7 @@ class Game {
         style: this.fields.style,
         liners: this.fields.liners.length,
         tris: this.fields.tris.length,
+        bars: this.fields.bars.length,
         links: this.fields.links.length / 2,
         clipped: this.fields.stats.clipped,
       },
@@ -4314,7 +4315,8 @@ class Game {
       this.audio.crash();
       this.hud.callout('LASER', {
         big: true,
-        color: this.fields.style === 'triangle' ? '#1fe85c' : '#ff2436',
+        color: (this.fields.style === 'triangle' || this.fields.style === 'bars')
+          ? '#1fe85c' : '#ff2436',
         slot: ev.slot ?? 0,
       });
       this.post.hurt(0.55);
