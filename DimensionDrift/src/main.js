@@ -18,7 +18,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createMenuNav } from './shared/bobo-ui/menunav.js';
 import { installGbSdk } from './systems/gbSdk.js';
 import { analytics } from './systems/analytics.js';
-import { Terrain, MountainMesh, HALF, CHUNK, meshHeight, setValleyScale } from './mountain.js';
+import { Terrain, MountainMesh, HALF, CHUNK, meshHeight, setValleyScale, setPipeScale } from './mountain.js';
 import { Sky } from './sky.js';
 import { FarRange } from './range.js';
 import { Scatter, BAND } from './scatter.js';
@@ -36,6 +36,8 @@ import { Pickups } from './pickups.js';
 import { Combat } from './combat.js';
 import { Islands } from './islands.js';
 import { Medkits } from './medkits.js';
+import { Boons } from './boons.js';
+import { Beams } from './beams.js';
 import { Roster, Fighter, TEAM } from './fighters.js';
 import { WEAPONS, GIFT, rollGift, MOTE_HEAL, CHAIN_HEAL } from './weapons.js';
 import { createFinishLine } from './finishLine.js';
@@ -56,6 +58,7 @@ import { listModes, getMode, defaultModeId } from './modes/mode.js';
 import './modes/chillVibe.js';
 import './modes/skirmish.js';
 import './modes/shoulder.js';
+import './modes/tunnel.js';
 import { RACE_LENGTH } from './modes/race.js';
 import { Input } from './input.js';
 import { clamp } from './rng.js';
@@ -847,6 +850,18 @@ class Game {
     // Live foot tuning on the deck plane -- CARVE.footYaw('Right', -10) turns
     // the boot by eye and logs the stance numbers to bake. Ends the round-trip
     // of guessing yaw signs over screenshots.
+    /**
+     * THE WEAPON TABLE, LIVE. Every row in `weapons.js` by id, so a number can
+     * be changed and felt in the same run instead of across a rebuild.
+     *
+     * It is here for the same reason `footYaw` is: the alternative is editing
+     * a constant, rebuilding, re-entering the mode and trying to remember what
+     * the last one felt like. It is also what lets a harness A/B two tunings
+     * inside ONE browser session against the SAME stretch of hill, which is
+     * the only way a hit-rate comparison is worth anything -- across two runs
+     * the squads differ and the difference swamps the effect.
+     */
+    window.CARVE.weapons = WEAPONS;
     window.CARVE.footYaw = (side, deg) => this.rider?.yawFootOnDeck?.(side, deg);
     window.CARVE.footPitch = (side, deg) => this.rider?.pitchFootOnDeck?.(side, deg);
     window.CARVE.footSlide = (side, m) => this.rider?.slideFootOnDeck?.(side, m);
@@ -999,6 +1014,19 @@ class Game {
       // The kits have exactly one visible state — standing, or gone — and a
       // run that never met one looks identical to a run where every kit was
       // ridden past at full health. The harness needs the counters.
+      beams: {
+        enabled: this.beams.enabled,
+        standing: this.beams.beams.filter((b) => b && !b.dead).length,
+        crossed: this.beams.stats.crossed,
+        clipped: this.beams.stats.clipped,
+      },
+      boons: {
+        enabled: this.boons.enabled,
+        taken: this.boons.stats.taken,
+        byKind: this.boons.stats.byKind,
+        standing: this.boons.boons.filter((b) => b && !b.taken).length,
+        shieldLeft: Math.round((this.roster.fighters[0]?.shieldLeft ?? 0) * 100) / 100,
+      },
       medkits: {
         enabled: this.medkits.enabled,
         taken: this.medkits.stats.taken,
@@ -1185,6 +1213,11 @@ class Game {
       // because its hooks are wired below once there is something to emit.
       this.combat = new Combat(this.terrain, this.scene, this.mood, SEED);
       /**
+       * THE LOCK TICK. See `audio.lockOn` for why the third piece of the
+       * targeting readout is a sound and not a flash on the board.
+       */
+      this.combat.onLock = () => this.audio.lockOn();
+      /**
        * WHO IS IN THE FIGHT. See `fighters.js` for why this is a list and not
        * a `rider` argument: it is the seam the AI competitors and PVP arrive
        * through, and it is cheaper to build now than to retrofit through a
@@ -1197,6 +1230,62 @@ class Game {
       // Off until a mode turns them on — chill vibe and the race have no
       // health, and a pickup that does nothing is worse than no pickup.
       this.medkits = new Medkits(this.terrain, this.scene, this.mood, SEED);
+      /**
+       * ABILITIES, IN THE AIR. See `boons.js` for why they are not gates.
+       *
+       * It borrows the course's own sigil cache rather than building its own:
+       * the gates already paid for those canvases and a boon wearing a
+       * different glyph for the same gift would be a second vocabulary for one
+       * set of facts. `this.course` is built above, so the binding is live by
+       * the time the first band is placed.
+       */
+      this.boons = new Boons(this.terrain, this.scene, this.mood,
+        (kind) => this.course._sigil(kind), SEED);
+      /**
+       * BEAM CURTAINS. The hazard that does not chase, and the answer to the
+       * mode's oldest complaint -- see the header of `beams.js` for the
+       * measurements that made it necessary.
+       *
+       * Its own seed stream, so adding or removing curtains never reshuffles
+       * the boons, the drones or the gates: a course that rearranges itself
+       * when a hazard is tuned cannot be compared against itself between two
+       * runs, and every tuning pass in this project depends on being able to.
+       */
+      this.beams = new Beams(this.terrain, this.scene, SEED);
+      /**
+       * THE BARRIER, DRAWN. One per rider, because two players each get their
+       * own and a single bubble would follow the wrong one.
+       *
+       * ADDITIVE AND FAINT, and the number is small for the reason the
+       * hologram's note records at length: an additive surface is added to the
+       * frame and the frame then goes through bloom, so its budget is well
+       * under 1 rather than of 1. 0.16 at the base reads as a skin of light at
+       * every stop on the arc; the first cut at 0.5 was a solid gold ball with
+       * a rider somewhere inside it.
+       *
+       * BACK FACES ONLY. Drawing both gives a bright rim AND a wash across the
+       * rider's own body, and the wash is the half that hides the character the
+       * whole barrier is protecting. With the front faces dropped it is a shell
+       * seen from inside: bright where it turns away, clear where you are
+       * looking through it.
+       */
+      const bubbleGeo = new THREE.SphereGeometry(1.75, 20, 14);
+      this.bubbles = [0, 1].map(() => {
+        const m = new THREE.Mesh(bubbleGeo, new THREE.MeshBasicMaterial({
+          color: 0xffd98a,
+          transparent: true,
+          opacity: 0.16,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.BackSide,
+        }));
+        m.frustumCulled = false;
+        m.visible = false;
+        this.scene.add(m);
+        return m;
+      });
+      /** Seconds left of the white flare a blocked bolt leaves on the shell. */
+      this._shieldHit = 0;
       this.particles = new Particles(this.scene, 900);
       this.snowfall = new Snowfall(this.scene, 800, 64);
       // The gun's feedback, wired here rather than inside `combat.js`, which
@@ -1311,6 +1400,7 @@ class Game {
         ...this.rider.materials, ...this.scatter.materials, ...this.course.materials,
         ...this.pickups.materials, ...this.combat.materials, ...this.islands.materials,
         ...this.medkits.materials,
+        ...this.boons.materials,
         // Player two's rider is lit like every other object. Left out of this
         // list it never got uFogBase/uCamPos and rode as a pale fog ghost --
         // the same failure the rivals' jerseys had (see the frame loop).
@@ -1353,10 +1443,23 @@ class Game {
       // people sharing one clock is not a contest -- whoever runs it down
       // ends the other's run too. Offering it would be offering a mode that
       // cannot be played, so the list simply does not carry it. Elad's call.
+      /**
+       * `?all=1` PUTS THE PARKED MODES AND PLACES BACK ON THE LOBBY.
+       *
+       * Most of the lobby is parked while the shards are the level being
+       * worked on -- see `hidden` on each one -- and the two screens offer one
+       * button each. That is what was asked for, and it is also a trap for
+       * everything that drives this game from outside: every QA harness in
+       * this repo boots by CLICKING a lobby button, so parking a mode makes
+       * those scripts fail to find their target rather than fail a check.
+       *
+       * One flag, read once, honoured by both lists.
+       */
+      const showAll = new URLSearchParams(location.search).get('all') === '1';
       this.hud.setModes(TWO_PLAYER
-        ? listModes().filter((m) => m.id !== 'chill')
-        : listModes());
-      this.hud.setPlaces(listPlaces());
+        ? listModes(showAll).filter((m) => m.id !== 'chill')
+        : listModes(showAll));
+      this.hud.setPlaces(listPlaces(showAll));
       this.hud.setBest(best, best > 0 ? rankFor(best, this.par) : null);
       this.hud.setSensorState(this.input.connected);
 
@@ -1491,6 +1594,8 @@ class Game {
     this.combat.reset(p);
     this.islands.reset(p);
     this.medkits.reset(p);
+    this.boons.reset(p);
+    this.beams.reset(p);
     // Fast-forward the plan so gates are not spawned for beats already past.
     while (this.course.planIdx < this.gatePlan.length
       && this.gatePlan[this.course.planIdx].t < t) this.course.planIdx++;
@@ -1543,6 +1648,10 @@ class Game {
     // How close the valley sides come. See `setValleyScale` in mountain.js --
     // this changes what the mountain looks like, never how wide it is.
     setValleyScale(place.valley ?? 0);
+    // THE CORRIDOR'S CROSS-SECTION. 0 is the open bowl every other place is;
+    // 1 is the inside of a pipe. It changes the height at a given `u` and
+    // never what `u` means, so nothing placed against HALF has to know.
+    setPipeScale(place.pipe ?? 0);
     // ── LAYOUT, not density. See the note in `scatter.js`. ────────────────
     this.scatter.treeClump = place.treeClump ?? 0;
     this.scatter.treeReach = place.treeReach ?? 1;
@@ -3005,6 +3114,13 @@ class Game {
         },
         isAutopilotOn: () => !!this._autopilot,
         setAutopilotOn: (v) => { this._autopilot = v; },
+        // THE TWO RIGS, SIDE BY SIDE, WITHOUT LEAVING THE RUN. `rider.js`
+        // carries a long note arguing for the fall-line camera and
+        // `modes/shoulder.js` carries one deliberately reversing it; the only
+        // way to settle that is to flip between them on the same stretch of
+        // hill rather than on two different runs.
+        isChaseCam: () => this._camMode === CAM_MODE.CHASE,
+        setChaseCam: (v) => this._setCamOverride(!!v),
         capture: () => this._captureDiag(),
         // ── the live numbers ────────────────────────────────────────────
         // Framing is the thing that cannot be judged from a still: how big the
@@ -3558,6 +3674,17 @@ class Game {
     const id = ev.power ?? ev.gate?.powerKind ?? rollGift(Math.random());
     const gift = GIFT[id];
     if (!gift) return;
+    /**
+     * WHERE THE BURST GOES. A gate grants from the surface it is planted on; a
+     * boon grants in mid-air and hands over the point it was floating at. The
+     * gate branch is kept EXACTLY as it was -- the terrain lookup is what puts
+     * the sparks on the snow rather than inside it -- and the airborne case is
+     * a fallback rather than a replacement.
+     */
+    const at = ev.gate
+      ? { x: ev.gate.x, y: this.terrain.height(ev.gate.x, ev.gate.z) + 1.4, z: ev.gate.z }
+      : (ev.world ?? { x: f.x, y: f.y + 1.4, z: f.z });
+
     if (gift.kind === 'heal') {
       const before = f.hp;
       f.heal(gift.amount);
@@ -3567,15 +3694,36 @@ class Game {
       this.hud.callout(got > 0 ? `+${got} health` : 'full health',
         { big: true, color: '#a8ffd0', slot });
       this._gateBurst.set(0xa8ffd0);
-      this.particles.emit(
-        { x: ev.gate.x, y: this.terrain.height(ev.gate.x, ev.gate.z) + 1.4, z: ev.gate.z },
-        this._gateBurst,
-        { count: 36, speed: 11, size: 1.8, life: 0.8, up: 5, spread: 1 },
-      );
+      this.particles.emit(at, this._gateBurst,
+        { count: 36, speed: 11, size: 1.8, life: 0.8, up: 5, spread: 1 });
       this.post.punch(0.24, this._gateBurst);
       this.host.haptic('success');
       return;
     }
+
+    /**
+     * THE BARRIER, and it gets the loudest feedback of the three gifts.
+     *
+     * A weapon announces itself the next time you fire, which is at most a
+     * third of a second away and is unmissable. A barrier announces itself by
+     * NOT happening -- the next bolt does nothing -- and a player who misses
+     * the moment it went up has no way to find out they have it except by
+     * being shot at and surviving. So it is said twice here, in the callout
+     * and in the burst, and a third time by the bubble `_shieldOn` raises.
+     */
+    if (gift.kind === 'shield') {
+      f.giveShield(gift.seconds);
+      this.audio.shield();
+      this.hud.callout(`${gift.label} ${gift.seconds}s`,
+        { big: true, color: '#ffd98a', slot });
+      this._gateBurst.set(0xffd98a);
+      this.particles.emit(at, this._gateBurst,
+        { count: 42, speed: 13, size: 1.9, life: 0.9, up: 6, spread: 1 });
+      this.post.punch(0.26, this._gateBurst);
+      this.host.haptic('success');
+      return;
+    }
+
     f.givePower(id);
   }
 
@@ -3613,7 +3761,13 @@ class Game {
 
   _makeFighter(rider, slot, id) {
     const f = new Fighter(rider, { id, slot, team: TEAM.CREW, maxHp: PLAYER_HP });
-    f.onDamage = (amount) => {
+    f.onDamage = (amount, from) => {
+      /**
+       * REMEMBER WHAT IT WAS. `onDown` fires immediately after the hit that
+       * takes the last of the health, so the label the player needs at the
+       * moment the run ends is the one from the hit that ended it.
+       */
+      this._lastHit = from?.hitLabel ?? null;
       this.audio.playerHit(f.health);
       // THE RIDER FLINCHES, because a health bar in the corner is not where
       // the player is looking at ninety kilometres an hour. `hurt` is read by
@@ -3621,9 +3775,26 @@ class Game {
       rider.hurt = 0.6;
       this.hud.damageFlash(slot, f.health);
     };
-    f.onDown = () => {
+    f.onBlocked = () => {
+      // NO FLINCH AND NO DAMAGE FLASH. Both of those mean "you are losing",
+      // and this is the opposite event -- a player who sees the hurt vignette
+      // while shielded learns that the barrier does not work.
+      this.audio.shieldBlock();
+      this._shieldHit = 0.18;
+    };
+    f.onShield = () => {
+      // Nothing to say here. `_takeGift` does the callout, the burst and the
+      // sound, because a barrier can also arrive from a gate and both routes
+      // have to sound the same.
+    };
+    f.onDown = (from) => {
       this.audio.playerDown();
-      this.hud.callout('down', { big: true, color: '#ff4d4d', slot });
+      // NAMED. "down" alone is the report Elad got, and it answers the one
+      // question nobody was asking -- he knew he was dead. What killed him
+      // was the part the game would not say.
+      const what = from?.hitLabel ?? this._lastHit;
+      this.hud.callout(what ? `DOWN — ${what}` : 'down',
+        { big: true, color: '#ff4d4d', slot });
     };
     f.onPower = (weaponId) => {
       const w = WEAPONS[weaponId];
@@ -3704,7 +3875,27 @@ class Game {
     this.scatter?.setVisible(show);
     this.scatter2?.setVisible(show);
     this.course?.setGroundMarks(show);
-    this.course?.setGatesVisible(show);
+    /**
+     * THE GATES COME BACK ON THE HOLOGRAM, and the reason is that the finding
+     * recorded above was about a DIFFERENT EXPERIMENT and got applied to both.
+     *
+     * "A row of poles draws a dead-level line of little flags at exactly the
+     * height the floor used to be" is a complaint about announcing a floor
+     * that is not being drawn. On the holographic level the floor IS drawn --
+     * that is the whole level -- so planting a gate on it announces nothing
+     * the surface underneath has not already said, and the picture gets back
+     * the one object in this game whose job is to say where to go.
+     *
+     * It also returns the mode's reward channel, which the POC had to give up:
+     * no gates meant no weapon and no heal from a gate, on a level that had
+     * nothing else asking the player to steer. Half of "it is not clear what I
+     * should do" was that there was nothing to do.
+     *
+     * THE PAINTED MARKS STAY OFF on both. They are shaded as grooves worn into
+     * a surface, and the holographic surface is an additive grid with no
+     * albedo to wear -- a mark on it reads as a dark patch, not as a path.
+     */
+    this.course?.setGatesVisible(style !== 'hidden');
     this.trail?.setVisible(show);
     this.trail2?.setVisible(show);
     // Rebuilt rather than just re-ranged: the rise is baked into a band when
@@ -3716,11 +3907,77 @@ class Game {
     }
   }
 
+  /**
+   * Put each barrier where its rider is, and fade it out as the clock runs
+   * down.
+   *
+   * THE LAST TWO SECONDS ARE THE MESSAGE. A barrier that held full strength
+   * and then simply stopped would put the player in the worst position this
+   * mode can produce -- deep in a squad they only closed on because they were
+   * shielded, with no warning that the reason has gone. So the shell thins and
+   * its pulse quickens over the final stretch, which is a countdown the player
+   * reads without looking away from the fight.
+   */
+  _updateBubbles(dt) {
+    if (!this.bubbles) return;
+    if (this._shieldHit > 0) this._shieldHit = Math.max(0, this._shieldHit - dt);
+    const riders = [this.rider, this.rider2];
+    for (let i = 0; i < this.bubbles.length; i++) {
+      const m = this.bubbles[i];
+      const f = this.roster.fighters.find((x) => x.slot === i);
+      const rider = riders[i];
+      const left = f?.shieldLeft ?? 0;
+      if (!m) continue;
+      if (!rider || left <= 0) { m.visible = false; continue; }
+      m.visible = true;
+      m.position.set(rider.x, rider.y + 0.95, rider.z);
+      // Faster as it expires: 2.2 Hz with time in hand, 7 Hz in the last
+      // second, which is the difference between "this is on" and "this is
+      // going".
+      const urgency = 1 - Math.min(1, left / 2.0);
+      const hz = 2.2 + urgency * 4.8;
+      const pulse = 0.5 + 0.5 * Math.sin(this.time * Math.PI * 2 * hz);
+      const fade = Math.min(1, left / 1.2);
+      m.material.opacity = (0.11 + pulse * 0.07) * fade + this._shieldHit * 1.1;
+      m.scale.setScalar(1 + pulse * 0.035 + this._shieldHit * 0.5);
+    }
+  }
+
   _setCameraFollow(def) {
-    const m = def?.cameraFollow === 'chase' ? CAM_MODE.CHASE : CAM_MODE.FALL_LINE;
+    const m = def?.cameraFollow === 'tunnel' ? CAM_MODE.TUNNEL
+      : def?.cameraFollow === 'chase' ? CAM_MODE.CHASE : CAM_MODE.FALL_LINE;
+    this._camMode = m;
     this.cameraRig?.setMode(m);
     this.cameraRig2?.setMode(m);
     this._applyGroundStyle();
+  }
+
+  /**
+   * Swap rigs mid-run, from the dev panel.
+   *
+   * ── IT MOVES THE NUMBERS TOO, AND IT HAS TO ──────────────────────────────
+   *
+   * `cameraFollow` picks the RIG and `camera` tunes the FRAMING, and the two
+   * were chosen together: the chase rig sits at 6.2 m back and 2.5 up because
+   * it is framing a character, where the fall-line rig's own defaults frame a
+   * route. Flipping only the rig would put the fall-line camera at the chase
+   * camera's distance, which is neither of the two things being compared --
+   * and the comparison is the entire point of the toggle.
+   *
+   * So "original" means the boot table, exactly as `rider.js` authored it, and
+   * "over the shoulder" means that table with this mode's `camera` over the
+   * top -- which is the same pair `resetNumbers` restores.
+   *
+   * IT IS NOT PERSISTED. The next run re-reads the mode, so a camera left on
+   * the wrong rig cannot follow anyone home.
+   */
+  _setCamOverride(chase) {
+    const def = getMode(this._modeId);
+    const m = chase ? CAM_MODE.CHASE : CAM_MODE.FALL_LINE;
+    this._camMode = m;
+    Object.assign(TUNE, this._tuneDefaults, chase ? (def.camera ?? {}) : {});
+    this.cameraRig?.setMode(m);
+    this.cameraRig2?.setMode(m);
   }
 
   /**
@@ -3992,6 +4249,41 @@ class Game {
     // Scenery, so it scrolls whatever the state is -- the results screen and
     // the crash camera both still look at the sky.
     this.islands.update(this.rider.p);
+    /**
+     * THE ABILITIES, taken the same way and in the same place as the kits.
+     *
+     * Routed through `_takeGift` rather than applied here, so that a boon and a
+     * power gate granting the same thing are literally the same code path --
+     * the callout, the burst, the haptic and the shield clock all come from one
+     * place, and a fourth gift added to `weapons.js` arrives in both at once.
+     */
+    for (const ev of this.boons.update(dt, this.roster, this.state === 'play')) {
+      this._takeGift(ev.slot ?? 0, { power: ev.gift, world: ev.world });
+    }
+    /**
+     * Curtains BEFORE the bubbles update, so a barrier that eats a curtain
+     * this frame is drawn already spending itself rather than a frame late.
+     * `damage` is called from inside, so the shield, the iframes and the death
+     * check are all the fighter's own and none of it is special-cased here.
+     */
+    for (const ev of this.beams.update(dt, this.roster, this.state === 'play')) {
+      /**
+       * A CRASH, NOT A HIT, and the distinction is the whole point.
+       *
+       * The first cut called `audio.hurt()` and `shake()`. NEITHER EXISTS --
+       * both were written with optional chaining, so both silently did
+       * nothing, and a curtain taking 18 of 100 health announced itself with
+       * the same generic flash a 6-damage bolt makes. Six of those is a dead
+       * run that the player cannot account for.
+       *
+       * `crash` is the sound this already has for riding into something solid,
+       * which is exactly what happened, and it is nothing like `playerHit`.
+       */
+      this.audio.crash();
+      this.hud.callout('BARRIER', { big: true, color: '#ff2436', slot: ev.slot ?? 0 });
+      this.post.hurt(0.7);
+    }
+    this._updateBubbles(dt);
     for (const ev of this.medkits.update(dt, this.roster, this.state === 'play')) {
       this.healedTotal = (this.healedTotal ?? 0) + ev.healed;
       this.audio.heal();

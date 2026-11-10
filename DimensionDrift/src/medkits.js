@@ -377,8 +377,14 @@ export class Medkits {
   }
 }
 
-/** Squared distance from point (px,pz) to the segment (ax,az)-(bx,bz). */
-function segDist2(ax, az, bx, bz, px, pz) {
+/**
+ * Squared distance from point (px,pz) to the segment (ax,az)-(bx,bz).
+ *
+ * EXPORTED, because `boons.js` does the same swept grab against the same
+ * stalled-frame problem and a second copy of this would be a second thing to
+ * get subtly wrong.
+ */
+export function segDist2(ax, az, bx, bz, px, pz) {
   const vx = bx - ax;
   const vz = bz - az;
   const wx = px - ax;

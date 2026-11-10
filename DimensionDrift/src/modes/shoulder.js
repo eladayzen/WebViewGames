@@ -114,7 +114,7 @@ export default registerMode({
    */
   camera: { camBack: 6.2, camUp: 2.5, camLookAhead: 16, camLookUp: 1.6 },
 
-  music: ['carve_theme', 'sunrise_ascent'],
+  music: ['sewer_steel_a', 'foot_clan_a', 'sewer_steel_b', 'foot_clan_b'],
 
   /**
    * THE SKIRT STAYS AT THE CLOSE-CAMERA VALUE. It is tuned against how much of
@@ -125,6 +125,40 @@ export default registerMode({
   skirt: 0.22,
 
   showsStartLine: false,
+
+  /**
+   * ── NO CLOCK, AND ITS ABSENCE WAS A SECOND, INVISIBLE DEATH ─────────────
+   *
+   * This line was simply missing. `skirmish` declares `usesClock: false` and
+   * this mode takes skirmish's RULES (`create: skirmishRules`) -- but rules
+   * and flags are different things: `create` is a function this file borrows,
+   * while the flags above are read off the DEFINITION by main.js and are not
+   * inherited from anywhere. So the clock ran.
+   *
+   * AND IT COULD ONLY EVER DRAIN. `timeGates: false` and `pickupsPay:
+   * 'health'` between them mean nothing in this mode pays a single second
+   * back -- the gates give weapons and health, the motes give health. A timer
+   * that counts down with no way to extend it is a hard run limit that is
+   * never explained, and `main.js` ends the run on it:
+   *
+   *     if (this._mode?.usesClock !== false && this.timer.expired)
+   *       this._endRun('timeup');
+   *
+   * Reported as "something else is still killing me or eliminating my run,
+   * other than reducing HP", which is exactly what it would feel like: the
+   * health bar is the thing the mode teaches you to watch, and then the run
+   * ends with the bar half full.
+   *
+   * It also put a TIME readout on a HUD whose whole left column is supposed to
+   * be health in this mode -- visible in every capture taken of this level and
+   * not noticed, because a clock in the corner of a snowboarding game looks
+   * like it belongs there.
+   *
+   * THE GENERAL LESSON, since this is the third time this contract has bitten:
+   * a mode that borrows another mode's `create` inherits none of its flags.
+   */
+  usesClock: false,
+
   timeGates: false,
   pickupsPay: 'health',
 

@@ -77,6 +77,9 @@ import { WEAPONS, TEAM } from './weapons.js';
 //
 // So the hostile half is OFF by default. A file that ships a new capability
 // switched off is a file that cannot break the mode that was already working.
+/** Shared empty list, so a frame with no foes allocates nothing. */
+const EMPTY_PAIRS = [];
+
 const DEFAULT_RULES = {
   /** Do the drones shoot back? */
   hostile: false,
@@ -167,6 +170,67 @@ const AIM_FAR = 15.0;
 // drift line whole rather than clipping its tail.
 const FIRE_CD = 0.36;
 const BOLTS_CAP = 24;
+
+/**
+ * ── HOW LONG A DRONE SHOWS YOU ITS SHOT BEFORE TAKING IT ──────────────────
+ *
+ * Seconds. The gun commits its aim point this far ahead of firing and draws
+ * the laser to it, frozen, for the whole window. See the commit note in
+ * `_droneFire`.
+ *
+ * The number is the reaction budget, so it is set from what the board can
+ * actually do rather than from feel. A full-lean carve reversal is ~0.72 s
+ * from input to the rider's lateral velocity changing sign (measured). Below
+ * that the telegraph is a formality -- the player sees the line, moves, and is
+ * hit anyway, which is worse than no telegraph because it teaches that
+ * reacting does not work. 0.95 leaves a usable margin on top of the reversal
+ * without the window growing long enough that the lines become scenery.
+ */
+const TELEGRAPH = 0.95;
+
+/**
+ * The targeting frame: eight bars, two per corner, forming four brackets.
+ */
+const FRAME_BARS = 8;
+/**
+ * Where down the gun's range the frame stands, as a fraction of `rangeMax`.
+ *
+ * Further out is SMALLER on screen, which is the opposite of the intuition and
+ * is why this is 0.8 rather than something central. The cone widens with
+ * distance more slowly than the distance grows, so the angle it subtends keeps
+ * shrinking: at 0.55 of a 40 m range the box covers 51 degrees of view, and at
+ * 0.8 it covers 44 and sits out among the pods it is describing instead of
+ * being draped over the handlebars.
+ */
+const FRAME_AT = 0.8;
+/** Bar thickness and the length of each bracket arm, in metres. */
+const FRAME_T = 0.34;
+const FRAME_ARM = 0.34;
+/**
+ * The frame's half-height, as a fraction of its half-width, and how far its
+ * bottom edge floats above the snow.
+ *
+ * ── WHY A SQUARE IS NOT A LIE HERE ────────────────────────────────────────
+ *
+ * The cone is wide and flat -- 26 m across and nothing at all vertically,
+ * because `acquire` tests NO height whatsoever. A pod directly overhead is in
+ * range if it is within the cone across.
+ *
+ * So the height is free: it cannot overstate the gun's reach upward, because
+ * the real reach upward is unlimited. All it is doing is saying "and also up
+ * here", which leaves the SHAPE free to be whatever reads best.
+ *
+ * 16:9, which is Elad's call and the right one. The first cut was near enough
+ * to square (0.78) and a square frame in the middle of the view reads as a
+ * window you are about to fly through -- the same silhouette as the beam
+ * curtains' gap, which is the one shape in this mode that means "go here".
+ * A targeting boundary must not look like a doorway. The screen's own
+ * proportion reads as a viewfinder instead, which is exactly what it is.
+ */
+const FRAME_ASPECT = 9 / 16;
+const FRAME_FLOOR = 1.4;
+const FRAME_IDLE = 0x18596b;
+const FRAME_LOCKED = 0xff8a3d;
 const BOLT_SPEED = 135;           // m/s — 0.6 s from muzzle to the far end of range
 const BOLT_LIFE = 1.6;
 // Radians per second of guidance. Enough that a bolt fired at something you
@@ -485,12 +549,140 @@ export class Combat {
     // Unlit, like the eye and the bolt: the one element whose whole job is to
     // say WHERE THE GUN IS POINTED must not be allowed to fade into the fog at
     // the ranges where that information is worth most.
-    this.lock = new THREE.Mesh(this.lockGeo, new THREE.MeshBasicMaterial({ color: 0xff8a3d }));
+    this.lock = new THREE.Mesh(this.lockGeo, new THREE.MeshBasicMaterial({
+      color: 0xff8a3d, transparent: true, opacity: 1,
+    }));
     this.lock.frustumCulled = false;
     this.lock.visible = false;
     scene.add(this.lock);
+
+    /**
+     * ── THE AIM CONE, DRAWN ───────────────────────────────────────────────
+     *
+     * `acquire` refuses any target outside a cone that opens from `aimNear` to
+     * `aimFar` along the heading. That rule decides every shot the player
+     * takes, and until now NOTHING ON SCREEN SAID IT EXISTED -- the gun simply
+     * declined to fire at things that were plainly right there, which reads as
+     * a broken gun rather than as a rule.
+     *
+     * Two lines on the snow, exactly the boundary `acquire` tests against.
+     * Drawn from the same numbers, so it cannot drift out of agreement with
+     * the rule the way a hand-placed overlay would. It is faint on purpose:
+     * it is a thing you learn from in the first thirty seconds and then stop
+     * consciously seeing.
+     */
+    /**
+     * ── THE TARGETING FRAME: A BOUNDARY BOX, IN THE AIR ───────────────────
+     *
+     * Four corner brackets standing in space ahead of the board, marking the
+     * width the gun will acquire across. Anything inside it gets shot at;
+     * anything outside does not.
+     *
+     * It was drawn on the SNOW first, as two ribbons tracing the cone's edges,
+     * and Elad called it: markings on the floor look wrong and read worse. The
+     * reason is that the thing being described is not on the floor. Drones
+     * hover three to six metres up, the player is looking out at them, and a
+     * boundary painted under their feet has to be mentally lifted into the air
+     * before it means anything. A frame in the air needs no translation -- the
+     * pod is inside it or it is not.
+     *
+     * CORNER BRACKETS RATHER THAN A CLOSED RECTANGLE. A full outline is a
+     * window frame across the one part of the screen the player is reading,
+     * and at this speed it crosses everything. Four corners state the same
+     * rectangle and leave the middle empty, which is the whole trick every
+     * targeting reticle ever drawn has used.
+     *
+     * NOT BILLBOARDED. It stands square to the direction of travel, like a
+     * gate -- which is also what the split-screen renderer requires, since a
+     * quad that turns to face one camera is turned away from the other. The
+     * course's own sigils made this choice first; this follows it.
+     */
+    this.coneGeo = new THREE.BufferGeometry();
+    this.coneGeo.setAttribute('position',
+      new THREE.BufferAttribute(new Float32Array(FRAME_BARS * 4 * 3), 3));
+    {
+      const ci = [];
+      for (let b = 0; b < FRAME_BARS; b++) {
+        const a = b * 4;
+        ci.push(a, a + 1, a + 2, a, a + 2, a + 3);
+      }
+      this.coneGeo.setIndex(ci);
+    }
+    this.cone = new THREE.Mesh(this.coneGeo, new THREE.MeshBasicMaterial({
+      color: FRAME_IDLE, transparent: true, opacity: 0.82,
+      side: THREE.DoubleSide, depthWrite: false,
+    }));
+    this.cone.frustumCulled = false;
+    this.cone.visible = false;
+    scene.add(this.cone);
+
+    /** 1 on the frame a NEW target is acquired, decaying — the reticle's snap. */
+    this.lockSnap = 0;
+    /** The target the reticle was on last frame, so a change can be detected. */
+    this._lockWas = null;
+    /** Where the reticle is being drawn, which chases where it wants to be. */
+    this._lockAt = new THREE.Vector3();
+    /** () => void, fired when the gun takes a NEW target. Main plays the tick. */
+    this.onLock = null;
     /** 1 on the frame a bolt leaves, decaying — the lock's recoil. */
     this.lockFlash = 0;
+
+    /**
+     * ── THE AIMING LASERS ─────────────────────────────────────────────────
+     *
+     * One line per drone that currently has a fighter in its sights, drawn
+     * from the pod to the point it would shoot at RIGHT NOW -- the led point,
+     * not the target. That distinction is the entire value of the thing: the
+     * gap between the dot and you is a live readout of how much your own
+     * movement is already throwing its aim off.
+     *
+     * IT IS NOT A REACTION CUE, AND MUST NOT BE SOLD AS ONE. Measured on this
+     * rider, reversing a carve moves you 0.33 m inside one bolt flight,
+     * against a 1.9 m hit radius -- nobody can see a laser and swerve out of
+     * the way, and a telegraph that implied they could would read as the game
+     * cheating. What it actually says is "you are predictable right now",
+     * which is a thing the player CAN act on, by not riding in a straight line
+     * in the first place.
+     *
+     * ONE LineSegments FOR ALL OF THEM. A line per drone would be a draw call
+     * per drone and an object to create and destroy as squads recycle; this is
+     * one buffer whose used length changes, with the unused tail collapsed to
+     * a degenerate point at the origin.
+     *
+     * ADDITIVE AND THIN, with the budget the hologram's note argues for: the
+     * frame goes through bloom afterwards, so a bright red line at full value
+     * becomes a fat glowing rod. 0.5 opacity on a mid red, and the brightness
+     * carried by COUNT rather than by intensity -- three drones aiming at you
+     * should look like three drones aiming at you.
+     */
+    this.laserCap = 24;
+    this.laserGeo = new THREE.BufferGeometry();
+    this.laserGeo.setAttribute('position',
+      new THREE.BufferAttribute(new Float32Array(this.laserCap * 6), 3));
+    this.lasers = new THREE.LineSegments(this.laserGeo, new THREE.LineBasicMaterial({
+      color: 0xff3b30,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }));
+    this.lasers.frustumCulled = false;
+    this.lasers.visible = false;
+    scene.add(this.lasers);
+    /** The little dot at the end of each laser: where the shot is actually going. */
+    this.aimDots = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(0.42, 8, 6),
+      new THREE.MeshBasicMaterial({
+        color: 0xff3b30, transparent: true, opacity: 0.75,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      }),
+      this.laserCap,
+    );
+    this.aimDots.frustumCulled = false;
+    this.aimDots.visible = false;
+    scene.add(this.aimDots);
+    this._laserM = new THREE.Matrix4();
+    this._laserV = new THREE.Vector3();
 
     /** One squad (or null) per band slot, indexed by `bandIdx % bands`. */
     this.squads = new Array(this.bands).fill(null);
@@ -521,6 +713,8 @@ export class Combat {
     this._foes = [];
     /** Scratch for the live-drone list the gun walks. */
     this._cand = [];
+    /** Per-fighter smoothed velocity, for a leading shot. See `update`. */
+    this._vel = new Map();
     this._col = new THREE.Color();
     this._spinQ = new THREE.Quaternion();
     this._muzzle = new THREE.Vector3();
@@ -609,11 +803,31 @@ export class Combat {
         // the same four shots into a rhythm you can ride through.
         hp: this.rules.droneHp,
         maxHp: this.rules.droneHp,
+        /**
+         * WHAT TO CALL THIS WHEN IT KILLS SOMEONE, read by the fighter's
+         * `onDamage` in main.js. A bolt hands `b.from` -- this record -- to
+         * `damage`, and the first attempt at naming the source sniffed for a
+         * `.w` on it, which a DRONE does not carry; only the bolt does. So
+         * every death by drone fire reported itself as a bare "down" while
+         * barriers named themselves correctly, which is worse than neither
+         * being named: it implies the barrier is the only thing that kills.
+         */
+        hitLabel: 'DRONE FIRE',
         hurt: 0,
         squad: null,
         cd: rand() * WEAPONS.blaster.cooldown,
         /** Which fighter this one is shooting at, or null. */
         aggro: null,
+        /**
+         * THE COMMITTED AIM POINT, and the reason this mode has a mechanic.
+         *
+         * Null until the gun enters its telegraph window; then it is a FIXED
+         * point in the world, and the laser is drawn to it and the bolt is
+         * fired through it. See `_droneFire`.
+         */
+        aim: null,
+        /** The fighter the commit was taken against, so a lost target clears it. */
+        aimAt: null,
       });
       // Brighter down the formation, because the formation is worth more down
       // it. The same one-attribute readout the drift lines use, and the only
@@ -724,6 +938,24 @@ export class Combat {
   static acquire(shooter, candidates, w) {
     const min2 = w.rangeMin * w.rangeMin;
     const max2 = w.rangeMax * w.rangeMax;
+    /**
+     * THE CORRIDOR, WHEN THE WEAPON ASKS FOR ONE. See `aimNear` on `star`.
+     *
+     * A weapon with `cone: false` (the drones') keeps pure nearest-wins; one
+     * with a cone must also have the target inside a wedge that opens along
+     * the shooter's heading. The heading is FLATTENED first, for the chase
+     * camera's reason in rider.js: `heading` carries the slope in y, and a
+     * cone built on the full vector would tip with every roller and drop
+     * targets on a convex rise.
+     */
+    const cone = w.cone !== false && w.aimNear > 0 && w.aimFar > 0;
+    let hx = 0;
+    let hz = 0;
+    if (cone) {
+      const h = shooter.heading;
+      const m = h ? Math.hypot(h.x, h.z) : 0;
+      if (m > 1e-4) { hx = h.x / m; hz = h.z / m; }
+    }
     let best = null;
     let bestScore = Infinity;
     for (const c of candidates) {
@@ -737,6 +969,17 @@ export class Combat {
       // everything else on the mountain and keeps firing straight up.
       const d2 = dx * dx + dy * dy + dz * dz;
       if (d2 < min2 || d2 > max2) continue;
+      if (cone && (hx !== 0 || hz !== 0)) {
+        // Distance ALONG the heading, and distance ACROSS it. A target behind
+        // the shooter has a negative along and is never eligible, however near.
+        const along = dx * hx + dz * hz;
+        if (along <= 0) continue;
+        const across = Math.abs(dx * hz - dz * hx);
+        // The wedge widens linearly with range, so `aimNear` is the slack at
+        // the muzzle and `aimFar` the slack at the edge of reach.
+        const t = Math.min(1, along / Math.max(1e-3, w.rangeMax));
+        if (across > w.aimNear + (w.aimFar - w.aimNear) * t) continue;
+      }
       const need = c.hp !== undefined && w.damage ? Math.ceil(c.hp / w.damage) : 1;
       // Already-covered targets take a full range's penalty rather than being
       // excluded, so a gun with nothing else to shoot at still shoots.
@@ -860,26 +1103,165 @@ export class Combat {
   }
 
   /** Every drone in reach, deciding whether to shoot and at whom. */
+  /**
+   * Where `from` would send a shot at `at` right now, including the lead.
+   *
+   * SHARED BY THE LASER AND BY `_launch`, deliberately. A telegraph drawn from
+   * one calculation and a bolt fired from another is a telegraph that lies the
+   * first time either is touched, and it would lie subtly -- a few degrees --
+   * which is the hardest kind of wrong to notice.
+   */
+  _aimPoint(from, at, w, out, wait = 0) {
+    const up = from.muzzleUp ?? MUZZLE_UP;
+    let ax = at.x;
+    let az = at.z;
+    if (w.lead) {
+      const v = this._vel.get(at.id);
+      if (v) {
+        const range = Math.hypot(at.x - from.x, at.z - from.z);
+        /**
+         * ── `wait` IS THE HALF OF THIS THAT IS EASY TO LEAVE OUT ───────────
+         *
+         * The flight time is how long the bolt is in the air. `wait` is how
+         * long it has not been fired yet -- the rest of the telegraph. A
+         * committed shot is taken NOW and fired LATER, so the point it is
+         * committed to has to be where the target will be at IMPACT, which is
+         * both of those away, not one.
+         *
+         * Leaving it out was measured and it inverted the whole mode. The
+         * rider covers ~30 m of hill during a 0.95 s telegraph, so every
+         * frozen point landed a good thirty metres up the slope behind them;
+         * shots missed almost everyone, and the ones that connected connected
+         * with whoever was going SLOWEST -- which is a hard-carving rider.
+         * Reacting came out twice as dangerous as holding the fall line, for
+         * the second time, from the opposite cause.
+         *
+         * Zero for an uncommitted shot, which is every other weapon: they are
+         * fired on the frame they are solved.
+         */
+        const tof = range / Math.max(1e-3, w.speed) + wait;
+        ax += v.vx * tof * w.lead;
+        az += v.vz * tof * w.lead;
+      }
+    }
+    return out.set(ax, (at.drawnY ?? at.y) + (from === at ? up : 0), az);
+  }
+
+  /** Draw one laser per aiming drone. See the lasers' note in the constructor. */
+  _drawLasers(pairs) {
+    const pos = this.laserGeo.attributes.position.array;
+    const n = Math.min(pairs.length, this.laserCap);
+    for (let i = 0; i < n; i++) {
+      const { from, to, k = 1 } = pairs[i];
+      const o = i * 6;
+      pos[o] = from.x; pos[o + 1] = from.y; pos[o + 2] = from.z;
+      pos[o + 3] = to.x; pos[o + 4] = to.y; pos[o + 5] = to.z;
+      /**
+       * THE DOT IS THE CLOCK. The line says where; how long is carried by the
+       * dot swelling at the far end of it, which is the one place the player
+       * is already looking because it is the place they have to not be. A
+       * brightening line would have wanted vertex colours and would have put
+       * the information along the whole beam, most of which is behind them.
+       *
+       * Cubed so the growth is slow, slow, then sudden -- a ramp that reads as
+       * a countdown rather than as a drift.
+       */
+      const sc = 0.55 + 1.5 * k * k * k;
+      this._laserM.makeScale(sc, sc, sc);
+      this._laserM.setPosition(to.x, to.y, to.z);
+      this.aimDots.setMatrixAt(i, this._laserM);
+    }
+    // The unused tail collapses to a degenerate segment at the origin rather
+    // than being deleted: resizing the buffer every frame as squads recycle
+    // would be a reallocation per frame for a cosmetic.
+    for (let i = n; i < this.laserCap; i++) {
+      const o = i * 6;
+      for (let k = 0; k < 6; k++) pos[o + k] = 0;
+      this._laserM.makeScale(0, 0, 0);
+      this.aimDots.setMatrixAt(i, this._laserM);
+    }
+    this.laserGeo.attributes.position.needsUpdate = true;
+    this.aimDots.instanceMatrix.needsUpdate = true;
+    const on = n > 0 && this.enabled;
+    this.lasers.visible = on;
+    this.aimDots.visible = on;
+  }
+
   _droneFire(dt, roster) {
     if (!this.rules.hostile) return;
     const w = WEAPONS.blaster;
     const foes = roster.foesOf(TEAM.DRONE, this._foes);
-    if (!foes.length) return;
+    if (!foes.length) { this._drawLasers(EMPTY_PAIRS); return; }
+    const pairs = [];
     // Bands BEHIND as well as ahead: a drone the rider has already passed is
     // still a drone, and a fight you can ride out of by simply not looking
     // back is not a fight. `_near` is cheap — five slots off an array.
     for (const squad of this._near(roster.lead?.p ?? foes[0].p, 2, 2)) {
       for (const d of squad.drones) {
-        if (d.dead) continue;
+        if (d.dead) { d.aim = null; d.aimAt = null; continue; }
         d.cd -= dt;
         const target = this._droneAcquire(d, foes);
-        if (!target || d.cd > 0) continue;
+        if (!target) { d.aim = null; d.aimAt = null; continue; }
+
+        /**
+         * ── THE COMMIT, AND WHY THE WHOLE MODE TURNS ON IT ─────────────────
+         *
+         * This used to recompute the aim point every frame and draw the laser
+         * to it. Measured, that line re-pointed at the rider at 21 m/s while
+         * the rider's own best lateral speed is 6.2 m/s -- the telegraph
+         * tracked three and a half times faster than the thing it was warning
+         * about, so it could never be stepped off. The bolt then snapped to
+         * wherever the rider was on the frame of the shot and arrived 0.43 s
+         * later. Nothing the player did changed anything; damage was a drip
+         * with no input, which is exactly how it played.
+         *
+         * Now the gun COMMITS. `TELEGRAPH` seconds before it fires it takes
+         * one aim point -- leading the target's velocity at that instant --
+         * and freezes it. The laser is drawn to the frozen point, the bolt is
+         * fired through the frozen point, and between the two the rider has a
+         * real window in which the prediction can be made wrong.
+         *
+         * The dodge is NOT "travel 1.9 m sideways", which the board cannot do
+         * from a standstill in the time available. It is "stop doing what you
+         * were doing": the commit banks the rider's velocity, so straightening
+         * out of a carve, or reversing it, throws the shot off by the whole
+         * lead distance without needing much travel at all. Predictable gets
+         * hit; reactive does not. That is the mechanic, and it teaches itself
+         * because the line is visible for the whole window.
+         */
+        if (d.cd <= TELEGRAPH) {
+          if (!d.aim || d.aimAt !== target) {
+            d.aim = this._aimPoint(d, target, w, d.aim ?? new THREE.Vector3(),
+              Math.max(0, d.cd));
+            d.aimAt = target;
+          }
+          // THE LASER IS THE WARNING, so it exists only while there is
+          // something to warn about. Drawn outside the window it would be an
+          // ambient "I see you" -- always on, carrying no timing, and the
+          // player learns to ignore it.
+          if (pairs.length < this.laserCap) {
+            // 0 on the frame of the commit, 1 on the frame of the shot.
+            const k = 1 - Math.max(0, d.cd) / TELEGRAPH;
+            pairs.push({ from: { x: d.x, y: (d.drawnY ?? d.y), z: d.z }, to: d.aim, k });
+          }
+        } else if (d.aim) {
+          d.aim = null;
+          d.aimAt = null;
+        }
+
+        if (d.cd > 0) continue;
         d.cd = w.cooldown;
-        if (!this._launch(d, target, w, 0, null, false)) continue;
+        // THROUGH the frozen point, not at the target. A bolt that re-aimed on
+        // the frame of the shot would make the whole telegraph a decoration.
+        const ok = this._launch(d, target, w, 0, null, false, d.aim);
+        d.aim = null;
+        d.aimAt = null;
+        if (!ok) continue;
         this.stats.enemyShots++;
         if (this.onEnemyShot) this.onEnemyShot(this._muzzle, d, target);
       }
     }
+    this._drawLasers(pairs);
   }
 
   /**
@@ -891,8 +1273,11 @@ export class Combat {
    * @param {number} yawOff radians of lateral offset on the launch bearing
    * @param {object|null} squad the kill's squad, when the target is a drone
    * @param {boolean} atDrone which kind of thing `at` is
+   * @param {THREE.Vector3|null} [fixed] a COMMITTED aim point to fire through,
+   *   in place of solving the intercept now. See the commit note in
+   *   `_droneFire` -- this is what makes the drones' telegraph honest.
    */
-  _launch(from, at, w, yawOff, squad, atDrone) {
+  _launch(from, at, w, yawOff, squad, atDrone, fixed = null) {
     const b = this.bolts.find((x) => !x.live);
     if (!b) return false;             // 24 in the air at once is already absurd
     b.live = true;
@@ -913,7 +1298,31 @@ export class Combat {
     // and then turned would read as a correction — as the gun having missed and
     // recovered. Guidance is here for the target's own movement and the
     // shooter's, not to cover an aiming error the gun did not make.
-    b.dir.set(at.x - b.pos.x, (at.drawnY ?? at.y) - b.pos.y, at.z - b.pos.z).normalize();
+    /**
+     * ── WHERE THE SHOT IS AIMED ───────────────────────────────────────────
+     *
+     * A guided weapon aims at the target and lets guidance do the rest. A
+     * STRAIGHT one (`turn: 0`) has no second chance, so if it is to hit a
+     * moving target at all it has to be aimed where the target is GOING.
+     *
+     * Solved as one step rather than iterated: take the present range, divide
+     * by the projectile's speed for a flight time, and offset by the target's
+     * measured velocity over that time. It is approximate -- the true
+     * intercept is a quadratic, and leading changes the range which changes
+     * the flight time -- but the error is second order and the lead is
+     * deliberately scaled below 1 anyway, so solving it exactly would be
+     * precision applied to a number that was chosen for feel.
+     *
+     * `lead` absent means aim at the target, which is every weapon but the
+     * drones'. See `lead` on `blaster` for why it is 0.7 and not 1.
+     */
+    // THROUGH `_aimPoint`, which is also what the laser is drawn to. Two
+    // copies of this arithmetic would be a telegraph that lies by a few
+    // degrees the first time either is touched.
+    if (fixed) this._laserV.copy(fixed);
+    else this._aimPoint(from, at, w, this._laserV);
+    b.dir.set(this._laserV.x - b.pos.x, this._laserV.y - b.pos.y,
+      this._laserV.z - b.pos.z).normalize();
     if (yawOff !== 0) {
       const c = Math.cos(yawOff);
       const sn = Math.sin(yawOff);
@@ -1119,7 +1528,8 @@ export class Combat {
     this.eyes.visible = v;
     this.starMesh.visible = v;
     this.boltMesh.visible = v;
-    if (!v) this.lock.visible = false;
+    if (!v) { this.lasers.visible = false; this.aimDots.visible = false; }
+    if (!v) { this.lock.visible = false; this.cone.visible = false; }
   }
 
   /**
@@ -1153,6 +1563,35 @@ export class Combat {
     this.lead = lead;
     if (!lead) return [];
     this._ring(lead.p);
+    /**
+     * EVERY FIGHTER'S VELOCITY, measured here rather than asked for.
+     *
+     * A leading shot needs to know how fast its target is travelling, and
+     * nothing in `fighters.js` exposes that -- a Fighter is an adapter over
+     * "anything with x/y/z and a heading", deliberately, so that a rival or a
+     * drone or a second player all fit it. Adding a velocity field would mean
+     * every one of those had to supply one honestly.
+     *
+     * Differencing positions here costs one Map and works for anything the
+     * roster can hold, including things that have no idea they are being shot
+     * at. It is also the only velocity that is true by construction: it is
+     * where the thing actually went, not where it meant to go.
+     */
+    if (dt > 1e-4) {
+      for (const f of roster.fighters) {
+        const prev = this._vel.get(f.id);
+        if (prev) {
+          // Smoothed, because a single frame's difference on a stalled frame
+          // is a velocity of nonsense and would throw the lead wildly.
+          const k = 1 - Math.exp(-9 * dt);
+          prev.vx += ((f.x - prev.x) / dt - prev.vx) * k;
+          prev.vz += ((f.z - prev.z) / dt - prev.vz) * k;
+          prev.x = f.x; prev.z = f.z;
+        } else {
+          this._vel.set(f.id, { x: f.x, z: f.z, vx: 0, vz: 0 });
+        }
+      }
+    }
     let events = [];
     if (live) {
       this.target = null;
@@ -1231,18 +1670,157 @@ export class Combat {
 
     // ── the lock ───────────────────────────────────────────────────────────
     this.lockFlash = Math.max(0, this.lockFlash - dt * 4.5);
+    this.lockSnap = Math.max(0, this.lockSnap - dt * 3.2);
     const t = this.target;
-    this.lock.visible = !!t && !t.dead && this.enabled;
-    if (this.lock.visible) {
-      this.lock.position.set(t.x, t.drawnY ?? t.y, t.z);
-      // Spinning on two axes at incommensurate rates, so it never presents the
-      // same silhouette twice and never stalls into a static shape.
-      this.lock.rotation.set(this.t * 1.3, this.t * 2.1, 0);
-      // Recoil: it snaps out on the shot and settles back. A gun that fires
-      // with nothing moving on screen reads as a gun that did not fire.
-      const k = t.size * (1 + this.lockFlash * 0.42);
-      this.lock.scale.set(k, k, k);
+    const live = !!t && !t.dead;
+
+    // THE SNAP, on the rising edge of a NEW target. Movement is what the eye
+    // catches; a reticle that jumps onto a pod is read instantly where a
+    // colour change is not, and it also answers "which of these four am I
+    // shooting at" without anyone having to be told.
+    if (live && t !== this._lockWas) {
+      this.lockSnap = 1;
+      if (this.onLock) this.onLock(t);
     }
+    this._lockWas = live ? t : null;
+
+    this.lock.visible = this.enabled && !!this.lead;
+    if (this.lock.visible) {
+      const lead = this.lead;
+      let wantX; let wantY; let wantZ; let size;
+      if (live) {
+        wantX = t.x; wantY = t.drawnY ?? t.y; wantZ = t.z; size = t.size;
+      } else {
+        /**
+         * ── THE IDLE RETICLE, WHICH IS HALF THE POINT ────────────────────
+         *
+         * With no target the reticle used to vanish, so "gun ready, nothing in
+         * reach" and "gun broken" looked identical -- and the player has no
+         * other way to tell those apart, because the gun is automatic.
+         *
+         * Now it parks on the centre line at the middle of the cone, small and
+         * faint and NOT spinning. A dead reticle that is still present says
+         * the system is alive and looking, which is exactly the state it is in.
+         */
+        const w = lead.gun ?? WEAPONS.star;
+        const h = lead.heading;
+        const m = Math.hypot(h.x, h.z) || 1;
+        const d = (w.rangeMax ?? 40) * 0.5;
+        wantX = lead.x + (h.x / m) * d;
+        wantZ = lead.z + (h.z / m) * d;
+        wantY = meshHeight(this.terrain, wantX, wantZ) + 1.6;
+        size = 0.85;
+      }
+      // Chased rather than set, so the move to a new target is a visible
+      // flight across the screen instead of a teleport nobody registers.
+      if (this._lockAt.lengthSq() === 0) this._lockAt.set(wantX, wantY, wantZ);
+      const chase = 1 - Math.exp(-26 * dt);
+      this._lockAt.x += (wantX - this._lockAt.x) * chase;
+      this._lockAt.y += (wantY - this._lockAt.y) * chase;
+      this._lockAt.z += (wantZ - this._lockAt.z) * chase;
+      this.lock.position.copy(this._lockAt);
+
+      // Spinning on two axes at incommensurate rates, so it never presents the
+      // same silhouette twice and never stalls into a static shape. The idle
+      // ring barely turns -- the spin is what "locked" looks like.
+      const spin = live ? 1 : 0.12;
+      this.lock.rotation.set(this.t * 1.3 * spin, this.t * 2.1 * spin, 0);
+
+      // Recoil on the shot, overshoot on the snap. A gun that fires with
+      // nothing moving on screen reads as a gun that did not fire.
+      const k = size * (1 + this.lockFlash * 0.42 + this.lockSnap * this.lockSnap * 1.1);
+      this.lock.scale.set(k, k, k);
+      // The idle ring is DARKER than the snow rather than fainter than it.
+      // Dimming something on a white slope removes it; darkening it is what
+      // leaves it legible while still reading as "off".
+      this.lock.material.opacity = live ? 1 : 0.62;
+      this.lock.material.color.setHex(live ? 0xff8a3d : 0x18596b);
+    }
+
+    this._drawCone();
+  }
+
+  /**
+   * The targeting frame, stood in the air ahead of the lead fighter.
+   *
+   * Its WIDTH is the acquisition cone's own width at the depth it stands at,
+   * taken from the weapon's `aimNear`/`aimFar` -- the same numbers `acquire`
+   * tests -- so the box cannot drift out of agreement with the rule it is
+   * describing. Rebuilt in world space each frame rather than placed with a
+   * transform: thirty-two vertices is cheaper than the non-uniform scale that
+   * would otherwise squash the bar thickness as the cone widens.
+   */
+  _drawCone() {
+    const lead = this.lead;
+    const w = lead?.gun;
+    const on = this.enabled && !!lead && !!w && w.cone !== false
+      && w.aimNear > 0 && w.aimFar > 0;
+    this.cone.visible = on;
+    if (!on) return;
+
+    const h = lead.heading;
+    const m = Math.hypot(h.x, h.z) || 1;
+    const hx = h.x / m;
+    const hz = h.z / m;
+    const px = -hz;             // across the direction of travel
+    const pz = hx;
+
+    const far = w.rangeMax ?? 40;
+    const along = far * FRAME_AT;
+    const halfW = w.aimNear + (w.aimFar - w.aimNear) * FRAME_AT;
+    const halfH = halfW * FRAME_ASPECT;
+    const cx = lead.x + hx * along;
+    const cz = lead.z + hz * along;
+    // Hung so its BOTTOM edge clears the snow by a fixed margin, rather than
+    // centred on a fixed height -- otherwise the box grows downward into the
+    // ground as the cone widens, and the lower brackets disappear exactly when
+    // there is most to look at.
+    const cy = meshHeight(this.terrain, cx, cz) + FRAME_FLOOR + halfH;
+
+    const pos = this.coneGeo.attributes.position.array;
+    let o = 0;
+    /**
+     * One bar, given its two ends in (across, up) frame coordinates and the
+     * direction it is thick in. Written out in world space because the frame
+     * is square to the heading and the heading turns every frame.
+     */
+    const bar = (a0, y0, a1, y1, acrossThick) => {
+      const tA = acrossThick ? FRAME_T * 0.5 : 0;
+      const tY = acrossThick ? 0 : FRAME_T * 0.5;
+      const corners = [
+        [a0 - tA, y0 - tY], [a1 - tA, y1 - tY],
+        [a1 + tA, y1 + tY], [a0 + tA, y0 + tY],
+      ];
+      for (const [a, y] of corners) {
+        pos[o] = cx + px * a;
+        pos[o + 1] = cy + y;
+        pos[o + 2] = cz + pz * a;
+        o += 3;
+      }
+    };
+
+    // Four corners, two bars each: one reaching in across, one reaching down
+    // or up. The arms are a fixed length, so the brackets stay the same size
+    // as the box grows -- a bracket that scaled with the frame would stop
+    // reading as a corner and start reading as a rectangle with gaps.
+    const armA = Math.min(FRAME_ARM + halfW * 0.22, halfW * 0.8);
+    const armY = Math.min(FRAME_ARM + halfH * 0.22, halfH * 0.8);
+    for (let sx = -1; sx <= 1; sx += 2) {
+      for (let sy = -1; sy <= 1; sy += 2) {
+        const a = sx * halfW;
+        const y = sy * halfH;
+        bar(a, y, a - sx * armA, y, false);
+        bar(a, y, a, y - sy * armY, true);
+      }
+    }
+    this.coneGeo.attributes.position.needsUpdate = true;
+
+    // THE FRAME ANSWERS TOO. The reticle flying onto a pod says which one; the
+    // frame going hot says that the system has something at all, and it is in
+    // the periphery where a change of colour is still noticed.
+    const live = !!this.target && !this.target.dead;
+    this.cone.material.color.setHex(live ? FRAME_LOCKED : FRAME_IDLE);
+    this.cone.material.opacity = (live ? 0.95 : 0.72) + this.lockSnap * 0.05;
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -1265,7 +1843,11 @@ export class Combat {
     this.cooldown = 0;
     this.target = null;
     this.lockFlash = 0;
+    this.lockSnap = 0;
+    this._lockWas = null;
+    this._lockAt.set(0, 0, 0);
     this.lock.visible = false;
+    this.cone.visible = false;
     this.t = 0;
     this.stats = { shots: 0, kills: 0, sweeps: 0, escaped: 0, points: 0,
       enemyShots: 0, enemyHits: 0, damage: 0 };
@@ -1276,6 +1858,9 @@ export class Combat {
     this.scene.remove(this.eyes);
     this.scene.remove(this.starMesh);
     this.scene.remove(this.boltMesh);
+    this.scene.remove(this.cone);
+    this.coneGeo.dispose();
+    this.cone.material.dispose();
     this.scene.remove(this.lock);
     this.lockGeo.dispose();
     this.lock.material.dispose();

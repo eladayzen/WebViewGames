@@ -609,6 +609,11 @@ function makeSigilTexture(kind) {
   const tint = {
     boost: '#c4b5fd', time: '#d6ff5a', keen: '#2ee6d6', storm: '#7df9ff',
     mend: '#a8ffd0',
+    // GOLD, and it is the last hue the course had left. Lime is a mote, violet
+    // a boost, cyan a power, mint a heal, orange hostile, pink and navy the
+    // slalom's two sides. Gold is also the one colour in that set that nobody
+    // has to be taught means "defence" -- it is what armour is.
+    shield: '#ffd98a',
   }[kind] ?? '#ffffff';
 
   g.fillStyle = 'rgba(8, 10, 24, 0.72)';
@@ -647,6 +652,29 @@ function makeSigilTexture(kind) {
     const b = C * 0.19;
     g.fillRect(C - a, C - b, a * 2, b * 2);
     g.fillRect(C - b, C - a, b * 2, a * 2);
+  } else if (kind === 'shield') {
+    // A HEATER SHIELD, drawn as an outline rather than filled.
+    //
+    // Filled, it is a blob -- at the size this is actually read, a solid
+    // five-sided shape and a solid circle are the same object, and the disc
+    // behind every sigil is already a circle. The outline keeps the two
+    // straight shoulders and the point, which is the whole of what makes the
+    // silhouette a shield, and it survives being small in a way the fill does
+    // not.
+    const w = C * 0.46;
+    const top = C * 0.46;
+    const bot = C * 1.56;
+    g.lineWidth = 16;
+    g.lineJoin = 'round';
+    g.beginPath();
+    g.moveTo(C - w, top);
+    g.lineTo(C + w, top);
+    g.lineTo(C + w, C * 0.98);
+    // The two lower edges curve in to the point, the way a real one does.
+    g.quadraticCurveTo(C + w, C * 1.32, C, bot);
+    g.quadraticCurveTo(C - w, C * 1.32, C - w, C * 0.98);
+    g.closePath();
+    g.stroke();
   } else if (kind === 'time') {
     // A PLUS INSIDE A DIAL. The plus says "more", the dial says "of what".
     g.lineWidth = 14;
@@ -995,6 +1023,17 @@ export class Course {
    * at the horizon one at a time, which is a worse artefact than the one it
    * was meant to remove.
    */
+  /**
+   * Remove gates from this mode entirely. See the note in `_place`.
+   *
+   * Distinct from `setGatesVisible`, which hides gates that still exist, still
+   * score and still say "missed gate" at you from somewhere you cannot see.
+   */
+  setGatesOff(v) {
+    this.gatesOff = !!v;
+    if (v) this.reset(this.lastPlacedP + 1e5);
+  }
+
   setGatesVisible(v) {
     this.gatesOn = v;
     for (const g of this.gates) g.setVisible(v && g.active);
@@ -1067,6 +1106,22 @@ export class Course {
   }
 
   _place(entry, p) {
+    /**
+     * ── THE HARD OFF SWITCH ───────────────────────────────────────────────
+     *
+     * A mode that wants no gates at all sets this. It is checked at the one
+     * choke point every gate in the game passes through, so nothing downstream
+     * has to be disabled separately: no gate becomes active, therefore none is
+     * drawn, scored, passed or missed, and no gate event ever reaches main.
+     *
+     * IT IS A SWITCH AND NOT AN EMPTY PLAN because emptying the plan does not
+     * survive. The run-reset in main re-plans lap zero and hands the new array
+     * over (`course.plan = this.gatePlan`), and it does that around the same
+     * time a mode starts -- so a mode that cleared the plan in `start` found 45
+     * entries back in it afterwards. Measured, twice. A flag the re-plan does
+     * not touch is the only version of this that cannot be raced.
+     */
+    if (this.gatesOff) return;
     const g = this._free();
     if (!g) return;
     const boost = entry.kind === 'boost';
@@ -1136,9 +1191,10 @@ export class Course {
     // of the pair had to be the loudest thing in the frame for that to work.
     g.line.material.uniforms.uColor.value.set(
       mend ? 0xa8ffd0
-        : powerKind === 'storm' ? 0x7df9ff
-          : power ? 0x2ee6d6
-            : boost ? 0xa78bfa : (red ? 0xff9db4 : 0xd6a6dc));
+        : powerKind === 'shield' ? 0xffd98a
+          : powerKind === 'storm' ? 0x7df9ff
+            : power ? 0x2ee6d6
+              : boost ? 0xa78bfa : (red ? 0xff9db4 : 0xd6a6dc));
     // AND THE LEGEND. Built once per kind and shared across every gate in the
     // ring — thirty gates with their own 256px canvas would be two megabytes
     // of texture to say four things.

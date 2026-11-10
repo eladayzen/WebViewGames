@@ -97,7 +97,7 @@ try {
   };
 
   await page.setViewport({ width: 1320, height: 800, deviceScaleFactor: 1 });
-  await page.goto(`${base}/index.html`, { waitUntil: 'load', timeout: 60000 });
+  await page.goto(`${base}/index.html?all=1`, { waitUntil: 'load', timeout: 60000 });
   await page.waitForFunction(() => document.body.dataset.state === 'title',
     { timeout: 60000, polling: 100 });
   await page.click('[data-act="start"][data-mode="chill"]');

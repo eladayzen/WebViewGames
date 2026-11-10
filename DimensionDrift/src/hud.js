@@ -71,6 +71,8 @@ export class Hud {
       healthFills: [$('healthFill1'), $('healthFill2')],
       healthNames: [$('healthName1'), $('healthName2')],
       powerChip: $('powerChip'),
+      shieldChip: $('shieldChip'),
+      shieldFill: $('shieldFill'),
       powerLabel: $('powerLabel'),
       powerFill: $('powerFill'),
       hurtFlash: $('hurtFlash'),
@@ -842,7 +844,10 @@ export class Hud {
    * SCALE, NOT WIDTH. A width write is a layout write, and this runs on frames
    * that are already drawing a mountain, a forest and a squad of drones.
    */
-  health(slot, frac, { weapon = null, powerLeft = 0, powerFull = 1 } = {}) {
+  health(slot, frac, {
+    weapon = null, powerLeft = 0, powerFull = 1,
+    shieldLeft = 0, shieldFull = 1,
+  } = {}) {
     const fill = this.el.healthFills[slot];
     const box = this.el.healthSlots[slot];
     if (!fill || !box) return;
@@ -863,6 +868,19 @@ export class Hud {
         this.el.powerLabel.textContent = weapon;
         this.el.powerFill.style.transform =
           `scaleX(${Math.max(0, Math.min(1, powerLeft / Math.max(0.001, powerFull)))})`;
+      }
+    }
+    // The barrier, on its own clock. Player one only, for the chip's reason.
+    if (slot === 0 && this.el.shieldChip) {
+      const on = shieldLeft > 0;
+      this.el.shieldChip.hidden = !on;
+      if (on) {
+        this.el.shieldFill.style.transform =
+          `scaleX(${Math.max(0, Math.min(1, shieldLeft / Math.max(0.001, shieldFull)))})`;
+        // Under two seconds it blinks, which is the bubble's own quickening
+        // pulse said a second time where the player's eye already goes for
+        // numbers.
+        this.el.shieldChip.classList.toggle('low', shieldLeft <= 2);
       }
     }
   }

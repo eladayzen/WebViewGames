@@ -191,6 +191,14 @@
         <span id="powerLabel">keen stars</span>
         <i class="power-bar"><b id="powerFill"></b></i>
       </div>
+      <!-- The barrier, and it is its OWN chip rather than sharing the one
+           above. A shield and a weapon run on independent clocks and you can
+           hold both at once, so a single chip would have to pick one to lie
+           about. Gold, matching the sigil, the gate mark and the bubble. -->
+      <div class="power-chip shield-chip" id="shieldChip" hidden>
+        <span>barrier</span>
+        <i class="power-bar"><b id="shieldFill"></b></i>
+      </div>
     </div>
 
     <!-- The red at the edges when you are hit. Transparent until it fires,

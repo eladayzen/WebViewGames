@@ -21,6 +21,16 @@ import { CLOCK } from '../timer.js';
 
 export default registerMode({
   id: 'chill',
+  /**
+   * PARKED WHILE THE SHARDS ARE BEING BUILT. "Remove all of the buttons not
+   * leading anywhere -- leave only over the shoulder, shards, for now."
+   *
+   * `hidden` is the right switch and not a deletion: the mode is still
+   * registered, still reachable by id, and still has every number in it that
+   * was measured. Deleting it to tidy a lobby would throw away the baseline
+   * the combat work is kept honest against. Drop this line to offer it again.
+   */
+  hidden: true,
   name: 'chill vibe',
   tagline: 'endless descent · beat the clock',
   /** No race, so no race route -- just the ground you will ride. */
@@ -42,7 +52,7 @@ export default registerMode({
   camera: { camBack: 4.0, camUp: 1.9, camLookAhead: 36, camLookUp: 13 },
 
   /** Both tracks, in order — the 1-2-1-2 playlist an endless descent needs. */
-  music: ['carve_theme', 'sunrise_ascent'],
+  music: ['sewer_steel_a', 'foot_clan_a', 'sewer_steel_b', 'foot_clan_b'],
 
   /**
    * A QUARTER OF THE SIZE. The skirt is tuned for the race's four-metre camera;

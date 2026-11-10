@@ -81,7 +81,7 @@ try {
   page.on('requestfailed', (r) => missing.push(`${r.url()} ${r.failure()?.errorText ?? ''}`));
   page.on('response', (r) => { if (r.status() >= 400) missing.push(`${r.status()} ${r.url()}`); });
 
-  await page.goto(`${base}/index.html`, { waitUntil: 'load', timeout: 30000 });
+  await page.goto(`${base}/index.html?all=1`, { waitUntil: 'load', timeout: 30000 });
 
   // The title screen is the proof: reaching it means the bundle ran, the
   // renderer came up, the rig and the track loaded and the menu built.
@@ -173,7 +173,7 @@ try {
     tab.on('pageerror', (e) => boom.push(`pageerror: ${e.message}`));
     let why = '';
     try {
-      await tab.goto(`${base}/index.html`, { waitUntil: 'load', timeout: 30000 });
+      await tab.goto(`${base}/index.html?all=1`, { waitUntil: 'load', timeout: 30000 });
       await tab.waitForFunction(() => document.body.dataset.state === 'title',
         { timeout: 30000, polling: 100 });
       await tab.click(`[data-act="start"][data-mode="${mode}"]`);

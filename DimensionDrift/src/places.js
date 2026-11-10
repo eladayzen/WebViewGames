@@ -102,9 +102,10 @@ export function registerPlace(def) {
 }
 
 /** What the second lobby screen offers, in the order it should read. */
-export function listPlaces() {
+export function listPlaces(all = false) {
   return [...registry.values()]
-    .filter((p) => !p.hidden)
+    /** `all` is `?all=1`. See the same argument on `listModes`. */
+    .filter((p) => all || !p.hidden)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
@@ -180,6 +181,12 @@ export function pickHour(place) {
 
 registerPlace({
   id: 'bowl',
+  /**
+   * PARKED WITH THE OTHER TWO. Only the shards are offered while they are the
+   * level being worked on; `hidden` keeps the place registered and reachable
+   * by id, so the harnesses and `?place=` still find it.
+   */
+  hidden: true,
   name: 'THE BASIN',
   tagline: 'the home ground',
   order: 0,
@@ -226,6 +233,65 @@ registerPlace({
    * exactly as they always have.
    */
   skyStyle: 'hidden',
+});
+
+/**
+ * ── THE DRAIN ───────────────────────────────────────────────────────────────
+ *
+ * A sewer main, ridden from the inside. The only place in the game whose
+ * corridor is a TUBE rather than an open face -- see `setPipeScale` in
+ * mountain.js for what that does and, more importantly, for what it leaves
+ * alone.
+ *
+ * NO TREES AND NO POLES. The scatter's three props are a conifer, a boulder
+ * and a slalom marker, and two of those are absurd underground. The boulders
+ * stay, as fallen masonry and debris washed down the pipe, and they stay at a
+ * density well above any other place because in this mode they are not scenery
+ * -- THEY ARE THE ENTIRE GAME. `obstacles` plants them on the ridden line
+ * rather than beside it, which is the race's own mechanism reused rather than
+ * a second one invented.
+ *
+ * THE ART IS PLACEHOLDER AND IS NOT PRETENDING OTHERWISE. A sewer wants ring
+ * seams, grates, pipe mouths and standing water, and it has a rock. The SHAPE
+ * is the thing being tried here; the dressing is the next piece of work.
+ *
+ * Fog is pulled in hard. A tunnel that can be seen to the horizon is not a
+ * tunnel -- the whole tension of the mode is an obstacle arriving out of the
+ * dark with just enough time to pick a side.
+ */
+registerPlace({
+  id: 'drain',
+  name: 'THE DRAIN',
+  tagline: 'skate the storm main',
+  order: 4,
+  /** Parked with the pipe-skate mode it exists for. See the note on 'bowl'. */
+  hidden: true,
+  /** 1 is a full tube. See `setPipeScale`. */
+  pipe: 1,
+  /** No valley. A pipe has no distant sides; the wall term is faded out with it. */
+  valley: 0,
+  trees: 0,
+  /**
+   * DENSE, and set against the fact that nothing else in this mode can hurt
+   * you. Every other place carries drones, a clock or a rival to supply the
+   * pressure; here the rubble is the only thing between the player and a ride
+   * with no decisions in it.
+   */
+  obstacles: 7,
+  /** Across the whole floor and well up both transitions. */
+  obstacleU: 0.74,
+  /**
+   * AND A GAP DOWN THE MIDDLE IS EXACTLY WHAT THIS MODE MUST NOT HAVE.
+   * `obstacleGap` exists so a forest reads as two flanks with a road between
+   * them; a road through the obstacles is a line the player can hold without
+   * steering, which is the one outcome that makes a dodging game boring.
+   */
+  obstacleGap: 0,
+  fog: 2.1,
+  hours: [0.08, 0.22],
+  offset: [1200, 5200],
+  gateAmp: 0.6,
+  skyStyle: 'solid',
 });
 
 registerPlace({
@@ -295,6 +361,8 @@ registerPlace({
   // a stand of near-black pine until the forest became crystal. It stays `blackpine`
   // because analytics has been counting runs under that key for months.
   id: 'blackpine',
+  /** Parked. See the note on the basin's `hidden`. */
+  hidden: true,
   name: 'GLASSWOOD',
   tagline: 'a gorge packed with crystal',
   order: 2,
@@ -336,6 +404,8 @@ registerPlace({
 
 registerPlace({
   id: 'hollow',
+  /** Parked. See the note on the basin's `hidden`. */
+  hidden: true,
   name: 'THE HOLLOW',
   tagline: 'no horizon at all',
   order: 1,

@@ -351,6 +351,23 @@ export class Scatter {
 
     /** Race-only: trees planted ON the racing line. See OBSTACLES_PER_BAND. */
     this.obstacles = false;
+    /**
+     * IS THE FOREST PART OF THE WORLD, or only part of the picture?
+     *
+     * It tracks `setVisible` and it is not an independent switch, because the
+     * rule it enforces is that THE TWO CANNOT DISAGREE. An obstacle that is
+     * not drawn but still stops you is the worst object a game can contain:
+     * the player loses a run to a thing that was never on screen, learns
+     * nothing from it, and has no way to play around it next time.
+     *
+     * It became reachable the moment a mode stopped drawing the ground. The
+     * experimental grounds hide the forest for a drawing reason — the trees
+     * would trace out the invisible surface — and for a while the colliders
+     * stayed behind in mid-air, so the holographic level was full of crashes
+     * into nothing. One flag, checked in the three places that ask the world
+     * whether something is in the way.
+     */
+    this.solid = true;
     /** No obstacle tree before this p — the start line stays clear. */
     this.obstacleFromP = -Infinity;
     /** Per-band collider lists, indexed by band slot. */
@@ -633,6 +650,7 @@ export class Scatter {
    * @param {(c:object, dp:number) => boolean} fn return true to stop.
    */
   eachObstacle(p, span, fn) {
+    if (!this.solid) return false;
     const first = Math.floor((p - span) / BAND) - 1;
     const last = Math.floor((p + span) / BAND) + 1;
     for (let b = first; b <= last; b++) {
@@ -708,6 +726,7 @@ export class Scatter {
    * are tested, so this stays a few dozen distance checks whatever the pool size.
    */
   hitTest(x, z) {
+    if (!this.solid) return null;
     const band = Math.floor(-z / BAND);
     for (let b = band - 1; b <= band + 1; b++) {
       const slot = ((b % this.bands) + this.bands) % this.bands;
@@ -734,6 +753,10 @@ export class Scatter {
     this.trees.mesh.visible = v;
     this.rocks.mesh.visible = v;
     this.poles.mesh.visible = v;
+    // AND THEY STOP BEING THERE AT ALL. See `solid`: drawn and solid are one
+    // decision, deliberately, so that it is not possible to ship a level where
+    // they differ.
+    this.solid = v;
   }
 
   dispose() {

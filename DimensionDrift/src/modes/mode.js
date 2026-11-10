@@ -69,13 +69,17 @@ export function registerMode(def) {
  * `rivals` mode is the case in point: it was replaced rather than deleted, and
  * its scoring model is still the obvious basis for a future best-run mode.
  */
-export function listModes() {
+export function listModes(all = false) {
   // SORTED BY `order`, NOT BY IMPORT ORDER. The lobby's sequence is a design
   // decision and registration order is an accident of which import line comes
   // first in main.js — a file nobody edits thinking about what the front screen
   // looks like. Ties keep registration order, which is a stable sort.
   return [...registry.values()]
-    .filter((m) => !m.hidden)
+    // `all` is the harnesses' and the dev build's way back in -- see `?all=1`
+    // in main.js. A parked mode is parked from the LOBBY, not from the game,
+    // and a QA script that can no longer reach the mode it was written to
+    // measure is a QA script that silently stops measuring anything.
+    .filter((m) => all || !m.hidden)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 

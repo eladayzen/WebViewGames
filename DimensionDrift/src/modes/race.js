@@ -262,6 +262,8 @@ const ORDINALS = ['', '1st', '2nd', '3rd', '4th', '5th'];
 
 export default registerMode({
   id: 'race',
+  /** Parked. See the note on chill vibe's `hidden`. */
+  hidden: true,
   name: 'race',
   tagline: 'four rivals · first to the line',
   /** What the route screen calls what it is choosing. See `setPlaceFor`. */
@@ -300,7 +302,14 @@ export default registerMode({
    * NOT here: it is chill vibe's, and a race that played it half the time would
    * not sound like its own mode.
    */
-  music: ['sunrise_ascent'],
+  /**
+   * ONE TRACK, and it is now `sewer_steel_a` because `sunrise_ascent` is gone.
+   * The argument in the note above is "the better grid leads", and of the four
+   * that replaced it this is the one with the better grid -- 1.861 at the
+   * eighth against 1.109 to 1.223 for the other three. Same reasoning, new
+   * list.
+   */
+  music: ['sewer_steel_a'],
 
   /**
    * Seconds into the track the run begins. "i want to start where the bit

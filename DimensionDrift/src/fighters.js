@@ -83,6 +83,17 @@ export class Fighter {
      * hits — and the player cannot learn what hurt them from it.
      */
     this.iframes = 0;
+    /**
+     * Seconds of barrier remaining. See SHIELD_SECONDS in `weapons.js` for why
+     * this is a clock and not a pool of absorbed damage.
+     *
+     * IT IS NOT MORE IFRAMES, and the difference matters to everything that
+     * reads it. Grace is involuntary, invisible and half a second long; a
+     * barrier is chosen, drawn around the rider, and lasts long enough to plan
+     * a run with. They are kept apart so that the hit feedback can stay silent
+     * for one and loud for the other.
+     */
+    this.shieldLeft = 0;
 
     this.shots = 0;
     this.hits = 0;
@@ -95,6 +106,10 @@ export class Fighter {
     this.onDown = null;
     /** (weaponId) => void */
     this.onPower = null;
+    /** (seconds) => void — a barrier was raised or refreshed. */
+    this.onShield = null;
+    /** (amount, from) => void — a hit that the barrier ate. */
+    this.onBlocked = null;
   }
 
   get x() { return this.entity.x; }
@@ -114,6 +129,9 @@ export class Fighter {
   /** Health as a fraction, for a bar that should not have to know the scale. */
   get health() { return Math.max(0, this.hp / this.maxHp); }
 
+  /** Is a barrier up right now? */
+  get shielded() { return this.shieldLeft > 0; }
+
   /**
    * Take a hit.
    *
@@ -123,6 +141,24 @@ export class Fighter {
    */
   damage(amount, from = null) {
     if (!this.alive || this.iframes > 0) return false;
+    /**
+     * THE BARRIER EATS IT WHOLE, AND THE SHOT STILL DIES.
+     *
+     * Returning true is the important half. The contract above is "did this
+     * projectile land", not "did it hurt" -- a blocked bolt that answered
+     * false would hang in the air and be retested every frame until it
+     * expired, so one drone's single shot would spend two seconds spraying
+     * block effects off the shield. It landed; it did nothing.
+     *
+     * NO GRACE WINDOW IS SPENT either. Iframes exist so a squad's simultaneous
+     * hits read as one event, and a barrier that burned them would leave the
+     * rider briefly naked the instant it expired -- the exact moment they are
+     * standing somewhere they only went because they were shielded.
+     */
+    if (this.shieldLeft > 0) {
+      this.onBlocked?.(amount, from);
+      return true;
+    }
     this.hp = Math.max(0, this.hp - amount);
     this.taken += amount;
     this.iframes = IFRAMES;
@@ -155,6 +191,19 @@ export class Fighter {
     return w;
   }
 
+  /**
+   * Raise a barrier, or restart the one already up.
+   *
+   * REFRESHING RATHER THAN STACKING, for `givePower`'s reason: two gifts found
+   * close together should not bank half a minute of invulnerability.
+   */
+  giveShield(seconds) {
+    if (!this.alive) return 0;
+    this.shieldLeft = Math.max(this.shieldLeft, seconds);
+    this.onShield?.(this.shieldLeft);
+    return this.shieldLeft;
+  }
+
   /** Back to the default weapon, whatever was running. */
   clearPower() {
     this.weapon = DEFAULT_WEAPON;
@@ -165,6 +214,7 @@ export class Fighter {
   step(dt) {
     if (this.cd > 0) this.cd -= dt;
     if (this.iframes > 0) this.iframes -= dt;
+    if (this.shieldLeft > 0) this.shieldLeft = Math.max(0, this.shieldLeft - dt);
     if (this.powerLeft > 0) {
       this.powerLeft -= dt;
       if (this.powerLeft <= 0) this.clearPower();
@@ -175,6 +225,7 @@ export class Fighter {
     this.hp = this.maxHp;
     this.cd = 0;
     this.iframes = 0;
+    this.shieldLeft = 0;
     this.inbound = 0;
     this.target = null;
     this.shots = 0;

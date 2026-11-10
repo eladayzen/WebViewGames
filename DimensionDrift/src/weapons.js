@@ -174,8 +174,58 @@ export const WEAPONS = {
     // target that is carving and their bolts are slow.
     rangeMin: 6,
     rangeMax: 52,
-    aimNear: 5.0,
-    aimFar: 15.0,
+
+    /**
+     * ── THE CORRIDOR IS BACK, AND IT IS THE PLAYER'S ONLY INPUT TO THE GUN ──
+     *
+     * These two fields have been in this table the whole time, marked
+     * vestigial, from before nearest-wins. They are read again now.
+     *
+     * A target must be inside a cone that opens from `aimNear` metres at the
+     * muzzle to `aimFar` at `rangeMax` -- so 6.2 m of slack right in front of
+     * you, widening to 18.5 m at the far end. That cone is DRAWN, as the
+     * targeting frame in combat.js, from these same two numbers: change them
+     * and the box on screen changes with them.
+     *
+     * WHY BRING IT BACK AT ALL, having taken it out on purpose. Nearest-wins
+     * made the gun automatic: it fired at whatever happened to be closest and
+     * the player had no say, so the only decision left was how close to get.
+     * A cone puts the decision back without adding a trigger -- you choose
+     * what to shoot by choosing where to point.
+     *
+     * AND IT IS THE OTHER HALF OF THE DRONES' CHANGE. To hold a drone in the
+     * cone you have to point at it, which means travelling toward it on a
+     * steady line -- which is exactly the state a straight, leading bolt
+     * punishes (see `turn` and `lead` on `blaster`). AIMING MAKES YOU A
+     * TARGET. The two mechanics are not independent; they are a trade, and
+     * neither is interesting without the other.
+     *
+     * NEAREST STILL BREAKS THE TIE. The cone decides what is ELIGIBLE and
+     * distance still decides which of the eligible ones is taken, so the
+     * change is a filter rather than a new rule.
+     *
+     * IT IS MEASURED AGAINST THE BOARD'S HEADING, NOT THE CAMERA'S. `combat.js`
+     * deliberately never sees a Rider or a camera -- that is what makes an AI
+     * rival and PVP a one-liner -- and in this mode the chase camera follows
+     * the board anyway, so the two nearly coincide. The reticle is drawn from
+     * the camera; the RULE stays camera-free.
+     */
+    /**
+     * ── WIDENED WITH THE FRAME, SO THE PICTURE STAYS TRUE ─────────────────
+     *
+     * 5.0 / 15.0 before. "Make the area wider" is a request about the BOX, and
+     * the box is drawn from these two numbers -- so widening it without
+     * widening them would have meant drawing a boundary the gun does not
+     * honour, which is the precise failure the frame was built to end.
+     *
+     * The gain is modest, about a quarter, and it cuts the same way for the
+     * player every time: more pods inside the cone means the gun fires more
+     * often and spends less of the run declining to shoot at things that are
+     * plainly right there. REVERT THESE TWO NUMBERS and the frame narrows with
+     * them, automatically.
+     */
+    aimNear: 6.2,
+    aimFar: 18.5,
     turn: 11.0,
     hitR: 1.6,
     life: 2.4,
@@ -185,7 +235,21 @@ export const WEAPONS = {
     // or orange: those three already mean reward, boost and hostile, and a
     // projectile that shares a hue with any of them is a projectile that has to
     // be read twice.
-    color: 0xcfe3f5,
+    //
+    // ── AND IT IS DARKER THAN IT LOOKS, FOR A REASON WORTH WRITING DOWN ────
+    //
+    // This is an UNLIT material, so the number here is the colour that reaches
+    // the tone mapper directly -- and the tone mapper is fed `mood.exposure`,
+    // which runs from 0.81 up to 2.6 across the day. The first cut was 0.96 of
+    // full value, which at the bright end arrives as 2.5 and maps to flat
+    // white: the stars stopped being steel discs and became paper holes in the
+    // frame, bright enough to pull the eye off the drones they were aimed at.
+    //
+    // 0.66 of value keeps it a metal highlight at the bright stops and still
+    // separates cleanly from the ground at the dark ones. IT IS THE RIGHT
+    // NUMBER TO MOVE if the stars get hard to follow -- raise the value, not
+    // the saturation, or it stops reading as steel.
+    color: 0x7e95a9,
     scale: 1.0,
     spin: 26,
     shape: 'star',
@@ -211,14 +275,21 @@ export const WEAPONS = {
     // fight ends; one that also starts it sooner changes whether the fight
     // happens at all, which is a bigger feeling for the same arithmetic.
     rangeMax: 62,
-    aimNear: 6.0,
-    aimFar: 17.0,
+    // WIDENED WITH `star`, by the same quarter. These were 6.0/17.0, set as a
+    // step up from the base gun's 5.0/15.0 -- when the base widened to
+    // 6.2/18.5 this became a power-up that aimed NARROWER than the thing it
+    // replaced, which is a downgrade wearing an upgrade's label.
+    aimNear: 7.4,
+    aimFar: 21.0,
     turn: 13.0,
     hitR: 2.0,
     life: 2.6,
     burst: 1,
     spreadDeg: 0,
-    color: 0x2ee6d6,
+    // Dimmed with the default, and by less. A power weapon is allowed to be
+    // the brightest thing leaving your hand -- that is most of what sells it --
+    // it just may not be white.
+    color: 0x23b8a9,
     scale: 1.35,
     spin: 32,
     shape: 'star',
@@ -243,14 +314,15 @@ export const WEAPONS = {
     speed: 88,
     rangeMin: 6,
     rangeMax: 62,
-    aimNear: 7.0,
-    aimFar: 20.0,
+    // Widened with the rest of the ladder. See the note on `keen`.
+    aimNear: 8.7,
+    aimFar: 24.8,
     turn: 13.0,
     hitR: 2.0,
     life: 2.6,
     burst: 3,
     spreadDeg: 9,
-    color: 0x7df9ff,
+    color: 0x5fcdd4,
     scale: 1.35,
     spin: 34,
     shape: 'star',
@@ -276,18 +348,125 @@ export const WEAPONS = {
     id: 'blaster',
     label: 'drone bolt',
     damage: 6,
-    cooldown: 1.15,
+    /**
+     * ── SLOWER THAN IT WAS, BECAUSE EACH SHOT IS NOW AN EVENT ─────────────
+     *
+     * 1.15 s. Measured, roughly 2.45 drones held a lock on the rider at any
+     * moment, so bolts arrived about twice a second from an average of two and
+     * a half directions, every one of them unavoidable. That is not difficulty,
+     * it is weather.
+     *
+     * The gun now spends `TELEGRAPH` (0.95 s, combat.js) of every cycle
+     * showing the player the shot it is about to take, so the cycle has to be
+     * long enough that the warning is a warning and not a permanent state:
+     * 0.95 of 1.8 is a little over half, which leaves every drone visibly
+     * between shots for the rest of it. It also halves the incoming rate,
+     * which is the other half of the complaint.
+     */
+    cooldown: 1.8,
     speed: 62,
     rangeMin: 12,
     rangeMax: 44,
-    // VESTIGIAL. Both sides now acquire by distance alone, so nothing reads
-    // these — they are kept because a weapon row with holes in it is a row
-    // that crashes the first time something iterates it, and because the
-    // corridor is one `acquire` away from coming back if the nearest-wins
-    // rule does not survive play.
+    // NO LONGER VESTIGIAL ON THE PLAYER'S SIDE -- see `aimNear` on `star`.
+    // Still unread here: a drone does not have to point at you to shoot, it
+    // just has to be in range. Asking a hovering pod to line up a heading
+    // would be asking it to do the one thing the player's weapon is supposed
+    // to be about.
     aimNear: 10.0,
     aimFar: 26.0,
-    turn: 2.6,
+
+    /**
+     * ── ZERO. THE BOLT FLIES STRAIGHT, AND THAT IS THE WHOLE MECHANIC ──────
+     *
+     * It was 2.6 rad/s, which is gentle guidance -- enough that a bolt fired
+     * at where you were could still curve into where you went. The brief is
+     * the opposite: "the projectile is shooting straight at me, and the
+     * projectile is not following the player as it's moving."
+     *
+     * THE NUMBERS SAY THIS ONLY WORKS ONE WAY ROUND, and it is worth writing
+     * down because the obvious reading of it is wrong. Measured on this
+     * rider:
+     *
+     *     lateral speed, full lean          6.21 m/s sustained
+     *     REVERSING a carve, in 0.72 s      0.33 m of displacement
+     *     bolt flight at max range          0.72 s  (44 m at 62 m/s)
+     *     bolt hit radius                   1.9 m
+     *
+     * So a player who SEES a shot coming and tries to swerve moves 0.33 m
+     * against a 1.9 m hit radius -- they cannot dodge, because reversing a
+     * carve means coming through neutral and building the opposite edge. A
+     * telegraph sold as a reaction cue would be a promise the controls cannot
+     * keep.
+     *
+     * But a player ALREADY carving at 6.2 m/s is 4.5 m from where the bolt is
+     * going, which is two hit radii clear. So the mechanic is not "dodge the
+     * shot" -- it is BEING IN MOTION MAKES YOU HARD TO HIT, AND BEING
+     * PREDICTABLE MAKES YOU A TARGET. Straight-lining is what gets punished.
+     */
+    turn: 0,
+
+    /**
+     * How far ahead the drone aims, as a fraction of a perfect intercept.
+     *
+     * 0 would be shooting at where you are now, which any carve beats and
+     * which makes the mode free. 1 is a perfect lead on constant velocity,
+     * which only a CHANGE of carve beats -- the right skill, but unforgiving
+     * while the player is still learning that the laser means anything.
+     *
+     * ── 0.35, AND IT WAS SWEPT RATHER THAN CHOSEN ─────────────────────────
+     *
+     * The first cut was 0.7 and it INVERTED the whole design. Measured over
+     * 600 m per phase, hit rate against a rider riding straight versus one
+     * carving continuously:
+     *
+     *     lead 0.7     22% straight   35% carving    -13 points
+     *     lead 0.35    34% straight   16% carving    +18 points
+     *     lead 0       30% straight   36% carving     -6 points
+     *
+     * At 0.7 the lead is simply good enough that weaving does not break it,
+     * and weaving CARRIES A COST the design did not account for: crossing the
+     * corridor takes you nearer more drones, and at short range the flight
+     * time is too brief for any amount of lateral speed to matter. So moving
+     * made you a target, which is the opposite of the intent.
+     *
+     * At 0.35 the predicted point sits far enough ahead to miss a rider who
+     * changes velocity, and near enough that a rider who does not is still
+     * caught. That is the mechanic working: 34% against 16% is a difference a
+     * player can feel and play toward.
+     *
+     * ZERO IS NOT THE ANSWER EITHER, which is the part worth keeping. Aiming
+     * at where you are RIGHT NOW sounds like the maximally dodgeable option
+     * and measured worse than 0.35 -- because a shot with no lead at a rider
+     * travelling 30 m/s downhill is aimed behind them whatever they do
+     * laterally, so it misses the straight-liner too and stops discriminating.
+     * The mechanic needs the drones to be COMPETENT against a predictable
+     * target for being unpredictable to be worth anything.
+     *
+     * It is on the weapon rather than on the drone so that a rival or a second
+     * player picking up a blaster inherits the same behaviour.
+     */
+    /**
+     * ── FULL LEAD, WHICH IS ONLY HONEST BECAUSE THE AIM IS NOW FROZEN ──────
+     *
+     * It was 0.35, chosen when the gun re-solved its aim every frame and fired
+     * at wherever the rider was on the frame of the shot. Under-leading was
+     * the only thing making anything miss, and it had a perverse consequence
+     * that eight separate measurements agreed on: carving SLOWED the rider,
+     * and a slower target is what an under-led shot fits, so moving made the
+     * player easier to hit than riding straight. The dodge the design promised
+     * was costing the player health.
+     *
+     * With the commit in `_droneFire` the aim point is taken once and frozen,
+     * so the lead is a PREDICTION the player is being shown and invited to
+     * falsify. At 1 it is the honest intercept: hold your line and it is
+     * correct and you are hit; change what you are doing inside the window and
+     * it is wrong by the whole lead distance -- roughly 2.7 m at a carve's
+     * 6.2 m/s over a mid-range flight, against a 1.9 m hit radius, and double
+     * that for a reversal. The dodge finally pays, and it pays for REACTING
+     * rather than for travelling, which is the only one of the two this board
+     * can actually do.
+     */
+    lead: 1.0,
     hitR: 1.9,
     life: 2.4,
     burst: 1,
@@ -325,18 +504,59 @@ export const DEFAULT_WEAPON = 'star';
 // `Fighter.givePower`, which knows about durations; a heal through
 // `Fighter.heal`, which does not. Nothing downstream needs to know more than
 // that, which is what lets a fourth kind be added here and nowhere else.
+/**
+ * HOW LONG A BARRIER LASTS.
+ *
+ * Nine seconds, and it is a duration rather than a pool of absorbed damage on
+ * purpose. A shield measured in hit points is a second health bar, which is
+ * one more number on screen and -- worse -- it makes the right play "hide
+ * behind it", because the resource drains only when you are being shot.
+ *
+ * A CLOCK MAKES IT THE OPPOSITE. It is draining whether or not anyone is
+ * firing at you, so the only way to get value out of it is to spend it
+ * somewhere dangerous: you take the barrier and you go straight at the squad
+ * you would otherwise have ridden around. That is the decision this mode wants
+ * and it is the one the health economy on its own never asks for.
+ *
+ * Nine is roughly two squads at the measured density, so it is worth one
+ * commitment and not a whole stretch of course.
+ */
+export const SHIELD_SECONDS = 9;
+
 export const GIFTS = [
   {
     id: 'mend',
     kind: 'heal',
     label: 'repair',
-    amount: 45,
-    weight: 4,
+    /**
+     * FIVE, UP FROM FOUR, so that adding a fourth gift did not quietly halve
+     * the health economy. The note above sets the heal at 4 of 10 -- 40% --
+     * because health is what ends a run; with `shield` in the pool at 3 the
+     * same 4 would have been 4 of 13, and 31% of the gates paying health is a
+     * different mode from 40%. At 5 of 14 it is 36%, which is the nearest this
+     * can get without making the barrier rare enough to be forgettable.
+     */
+    weight: 5,
     /** The legend drawn on the gate — see `makeSigilTexture` in course.js. */
     sigil: 'mend',
   },
   { id: 'keen', kind: 'weapon', label: WEAPONS.keen.label, weight: 4, sigil: 'keen' },
   { id: 'storm', kind: 'weapon', label: WEAPONS.storm.label, weight: 2, sigil: 'storm' },
+  /**
+   * THE ONLY GIFT THAT IS NOT A WEAPON AND NOT A HEAL, which is exactly why it
+   * is here: the other three all answer "how do I win the next fight" and this
+   * one answers "how do I survive the one I am already in". `kind` is what the
+   * receiver switches on, so it costs one branch in `_takeGift` and nothing
+   * else anywhere.
+   */
+  {
+    id: 'shield',
+    kind: 'shield',
+    label: 'barrier',
+    seconds: SHIELD_SECONDS,
+    weight: 3,
+    sigil: 'shield',
+  },
 ];
 
 /** @type {Record<string, typeof GIFTS[number]>} */

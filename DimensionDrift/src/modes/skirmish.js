@@ -73,9 +73,10 @@
 // `ended()` (whose health ends the run) and `results()` (what the card says).
 // Both are already written against the roster rather than against a player.
 
+import { setChannel } from '../mountain.js';
 import { registerMode } from './mode.js';
 import { TEAM } from '../fighters.js';
-import { rollGift } from '../weapons.js';
+import { rollGift, SHIELD_SECONDS } from '../weapons.js';
 
 /**
  * ONE GATE IN FIVE, where chill vibe promotes one in seven to a boost.
@@ -122,6 +123,13 @@ export function skirmishRules(game) {
 
 export default registerMode({
   id: 'skirmish',
+  /**
+   * Parked, and this is the one worth being careful about: `shoulder` IMPORTS
+   * this mode's rules rather than copying them, so hiding it from the lobby
+   * does not take it out of the game -- it is still what the shards are
+   * played by. See `skirmishRules`.
+   */
+  hidden: true,
   name: 'skirmish',
   tagline: 'they shoot back · stay alive',
   routeName: 'Route',
@@ -131,7 +139,7 @@ export default registerMode({
   /** The race's close chase, which is what both other modes settled on. */
   camera: { camBack: 4.0, camUp: 1.9, camLookAhead: 36, camLookUp: 13 },
 
-  music: ['carve_theme', 'sunrise_ascent'],
+  music: ['sewer_steel_a', 'foot_clan_a', 'sewer_steel_b', 'foot_clan_b'],
 
   skirt: 0.22,
 
@@ -188,8 +196,35 @@ function BASE_CREATE(game) {
         // the rider's p: `droneHp` and `density` are both baked into a band at
         // build time, so a mode that set them without replacing what is
         // already on the hill would get one stretch of the previous mode's.
+        /**
+         * ── THE DRONES NO LONGER SHOOT BACK ───────────────────────────────
+         *
+         * `hostile: false`. Asked for directly, and it is the end of a line of
+         * evidence rather than a whim, so it is worth recording why the half
+         * of this mode that fired bolts is being switched off rather than
+         * tuned again.
+         *
+         * It was measured eight ways. Guided bolts made movement pointless;
+         * straight bolts with a lead made movement actively WORSE than holding
+         * the fall line, because carving costs speed and a slower target is
+         * what an imperfect lead fits. A committed telegraph -- the gun freezing
+         * its aim a second ahead and drawing the line it will fire down -- was
+         * built to make the dodge real, and the dodge still lost. The board
+         * reverses a carve in 0.72 s and crosses at 6.2 m/s; against a bolt
+         * with a 1.9 m hit radius there was never enough room.
+         *
+         * So incoming fire in this mode was damage with no answer. The
+         * BARRIERS are the answer -- a hazard that does not chase, that you
+         * beat outright by reading it, which is the thing the mode never had.
+         * The drones stay: they are targets, and shooting them is the other
+         * half of the loop. They simply stop being weather.
+         *
+         * NOTHING IS DELETED. `hostile` is the flag the whole firing path
+         * already hangs on, the telegraph and the aim-commit live on in
+         * combat.js, and turning this back to `true` restores all of it.
+         */
         game.combat.setRules(
-          { hostile: true, droneHp: DRONE_HP, density: DENSITY },
+          { hostile: false, droneHp: DRONE_HP, density: DENSITY },
           game.rider.p,
         );
         // THE ONLY WAY HEALTH COMES BACK. Dead is dead and nothing
@@ -198,6 +233,77 @@ function BASE_CREATE(game) {
         // whatever the player does. See `medkits.js`.
         game.medkits.setEnabled(true);
         game.medkits.reset(game.rider.p);
+        /**
+         * AND THE ABILITIES, which on a level with gates are a second way to
+         * get one and on a level without them are the only way. See
+         * `boons.js`: they hang in open air, so they work identically whether
+         * the ground under them is drawn, hidden or holographic.
+         *
+         * ON IN BOTH MODES rather than only in the experimental one. A boon is
+         * not a workaround for a missing gate -- it is a pickup you have to
+         * actually go to, where a gate is a line you ride, and the mode is
+         * better for having both asks in it.
+         */
+        game.boons.setEnabled(true);
+        game.boons.reset(game.rider.p);
+        /**
+         * BEAM CURTAINS, and they are the point of the fight now rather than
+         * decoration on it. See `beams.js`: the drones chase, and a threat
+         * that chases a board this slow laterally cannot be dodged, so the
+         * mode had pressure with no answer. A curtain with a hole in it is the
+         * answer, and it is the only hazard here the player can beat outright.
+         */
+        /**
+         * NARROW THE WORLD FIRST, then place the curtains in it -- `beams.js`
+         * spans every curtain to `channelHalf()`, so the channel has to be set
+         * before the first band is built or the opening curtains are the width
+         * of the old corridor.
+         *
+         * 20 m each side. The gap is 9 m wide and the board crosses at
+         * 6.2 m/s, so the worst case -- hole hard against one wall, rider hard
+         * against the other -- is about six seconds of travel, against a
+         * curtain that is visible from 170 m out. Wide enough to have to
+         * commit, narrow enough that committing is always possible.
+         */
+        /**
+         * ── THE GATES, CLEARED FOR REAL ───────────────────────────────────
+         *
+         * `shapePlan` below is the designed seam and it is kept, but on its
+         * own it does NOT empty this run: main re-plans and shapes the course
+         * in its run-reset, which plays out before the mode object exists, so
+         * `this._mode?.shapePlan` is read off a mode that is not there yet and
+         * the full 93-gate plan survives into the first descent. Measured --
+         * gates were still spawning with `shapePlan` returning [].
+         *
+         * So the plan is emptied HERE, where the mode is demonstrably alive,
+         * and `course.reset` retires everything already standing on the hill.
+         * Both are needed: the empty plan stops new gates, the reset removes
+         * the ones placed before this ran.
+         */
+        /**
+         * ── NO GATES IN THIS MODE ─────────────────────────────────────────
+         *
+         * Asked for: "remove all those legacy gates". See `_place` in
+         * course.js for why this is a switch rather than an empty plan.
+         *
+         * WHY THEY HAD TO GO, beyond being asked. They were inherited
+         * furniture from a timed descent -- they pay a clock this mode does
+         * not run, and their slalom is placed to a beat grid for a game about
+         * rhythm. Worse, a gate is a DOORWAY: two uprights with a space
+         * between them, which is now exactly the shape of a BARRIER, the one
+         * thing here you must not ride through. Two doorways meaning opposite
+         * things is not difficulty, it is a contradiction, and it was already
+         * costing runs -- it is what "there are some gates, when I pass
+         * through them the run ends" turned out to be.
+         *
+         * The power gates went with them. Abilities come from boons now, which
+         * are flown to rather than lined up with, and that is the better ask.
+         */
+        game.course.setGatesOff(true);
+
+        setChannel(20);
+        game.beams.setEnabled(true);
+        game.beams.reset(game.rider.p);
         game.hud.showHealth(true, game.roster.length);
         game.hud.healthNames(game._playerNames?.() ?? ['Player 1', 'Player 2']);
       },
@@ -275,6 +381,8 @@ function BASE_CREATE(game) {
             weapon: f.powerLeft > 0 ? w.label : null,
             powerLeft: f.powerLeft,
             powerFull: w.duration ?? 1,
+            shieldLeft: f.shieldLeft,
+            shieldFull: SHIELD_SECONDS,
           });
         }
       },
@@ -324,7 +432,17 @@ function BASE_CREATE(game) {
         // shoots back and takes three hits is a balance change nobody asked
         // for. This is the one hook `mode.js` says is not optional.
         game.combat.setRules({ hostile: false, droneHp: 1, density: 1 });
+        // GIVEN BACK, like the channel below -- the course is shared, and a
+        // mode that left gates off would hand the next run a silent hill.
+        game.course.setGatesOff(false);
         game.medkits.setEnabled(false);
+        game.boons.setEnabled(false);
+        game.beams.setEnabled(false);
+        // THE CLAMP IS GLOBAL, so it has to be given back. A mode that left it
+        // narrowed would hand the next run a 40 m corridor with nothing drawn
+        // at the edges of it -- an invisible wall, which is the exact thing
+        // the walls were added to stop existing.
+        setChannel(Infinity);
         game.hud.showHealth(false);
         game.roster.reset();
       },

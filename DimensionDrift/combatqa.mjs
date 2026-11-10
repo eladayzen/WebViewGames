@@ -103,7 +103,7 @@ try {
   const ev = (fn, ...a) => page.evaluate(fn, ...a);
 
   await page.setViewport({ width: 1320, height: 800, deviceScaleFactor: 1 });
-  await page.goto(`${base}/index.html`, { waitUntil: 'load', timeout: 60000 });
+  await page.goto(`${base}/index.html?all=1`, { waitUntil: 'load', timeout: 60000 });
   await page.waitForFunction(() => document.body.dataset.state === 'title',
     { timeout: 60000, polling: 100 });
   // Chill vibe and the basin: chill returns `place.offset[0]` — 0 m — so the

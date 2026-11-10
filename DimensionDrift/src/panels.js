@@ -421,6 +421,10 @@ export function createDevPanel(doc, actions) {
   // while riding. See `_perfText` in main.js for what the numbers mean.
   toggle('perf readout', actions.isPerfOn, actions.setPerfOn);
   toggle('autopilot', actions.isAutopilotOn, actions.setAutopilotOn);
+  // Off = the original fall-line rig, at its own framing. See `_setCamOverride`.
+  if (actions.isChaseCam) {
+    toggle('over-the-shoulder camera', actions.isChaseCam, actions.setChaseCam);
+  }
 
   // ── live numbers ────────────────────────────────────────────────────────
   // The reason this panel is worth having open mid-run. Every one of these is

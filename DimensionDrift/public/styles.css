@@ -2424,6 +2424,19 @@ body.has-sb:not(.is-2p) .clock { left: calc(50% + var(--sb-total) / 2); }
   transform-origin: 0 50%;
 }
 
+/* The barrier's chip wears the gift's own gold, so the thing you rode through,
+ * the shell around you and the readout are one colour and need no legend. */
+.shield-chip {
+  box-shadow: inset 0 0 0 1px rgba(255, 217, 138, 0.6);
+  color: #ffd98a;
+}
+.shield-chip .power-bar { background: rgba(255, 217, 138, 0.28); }
+.shield-chip .power-bar b { background: #ffd98a; }
+/* The last two seconds blink, matching the bubble's own quickening pulse --
+ * the same countdown said in the corner and around the rider. */
+.shield-chip.low { animation: shieldLow 420ms steps(1, end) infinite; }
+@keyframes shieldLow { 50% { opacity: 0.35; } }
+
 /* ── BEING HIT, AT THE EDGES ─────────────────────────────────────────────── */
 .hurt-flash {
   position: absolute;

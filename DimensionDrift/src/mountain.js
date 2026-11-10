@@ -33,6 +33,34 @@ export const HALF = 32;
  */
 export const EDGE_MAX = HALF * 1.4;
 
+/**
+ * ── THE CHANNEL: A NARROWER, VISIBLE BOUNDARY A MODE CAN ASK FOR ──────────
+ *
+ * EDGE_MAX is where the WORLD ends, at 44.8 m out, and it is invisible on
+ * purpose -- it exists so a rider holding a full edge cannot leave the
+ * mountain, and in the modes it was written for it is never reached.
+ *
+ * A mode built around curtains with a hole in them needs something else: a
+ * boundary the player can SEE, narrow enough that the hole is always reachable
+ * and the curtain can be drawn from one side of it to the other. An
+ * 89-metre-wide course with a 9 m gap in it is not a gate, it is an errand.
+ *
+ * So a mode may set a channel. The rider's clamp takes the tighter of the two,
+ * so this can only ever narrow the world, never widen it past the edge that
+ * exists to stop riders ending up on featureless flats.
+ */
+let CHANNEL = Infinity;
+
+/** Narrow the rideable corridor. Infinity (the default) means EDGE_MAX alone. */
+export function setChannel(halfWidth) {
+  CHANNEL = halfWidth > 0 ? halfWidth : Infinity;
+}
+
+/** The effective half-width of the rideable corridor, in metres. */
+export function channelHalf() {
+  return Math.min(EDGE_MAX, CHANNEL);
+}
+
 /** How far ahead terrain exists. Beyond this the height fog has closed anyway. */
 export const VIEW = 560;
 
@@ -118,6 +146,52 @@ const MEANDER_TIGHT = 1.45;
 export let VALLEY_SCALE = 0;
 export function setValleyScale(v) { VALLEY_SCALE = v; }
 
+/**
+ * ── THE PIPE ────────────────────────────────────────────────────────────────
+ *
+ * 0 is the mountain this game has always been. 1 is a sewer main: the corridor
+ * stops being a shallow bowl on an open face and becomes the inside of a tube.
+ *
+ * IT IS THE SAME CORRIDOR, AND THAT IS THE ENTIRE REASON IT IS CHEAP.
+ * Everything in this game is placed in `u`, the offset from the centre line,
+ * as a fraction of `HALF` -- the gates, the trees, the drones, the motes, the
+ * medkits, the boons, the rivals, the camera's framing. The pipe changes the
+ * HEIGHT at a given `u` and changes nothing about what `u` means, so not one
+ * of those systems needs to know it happened. The radius is HALF itself, so
+ * the rim of the pipe is exactly the rim of the bowl.
+ *
+ * WHAT CHANGES IS THE SHAPE OF THE FLOOR UNDER IT. A parabola at t=1 has a
+ * gradient of 2*BOWL/HALF -- about 0.56, a slope you can stand on. A circle at
+ * t=1 is VERTICAL. That single difference is the whole feel of a pipe: the
+ * middle is flatter than the bowl ever was, so the centre reads as a floor
+ * rather than as the bottom of a dish, and the sides steepen into a transition
+ * that throws you back rather than leaning you back.
+ *
+ * AND THE VALLEY GOES. A pipe is a hole in the ground; it does not have
+ * distant sides. The wall term is faded out with the same scalar, so at 1 the
+ * only thing outside the rim is the lip and whatever stands on it.
+ */
+let PIPE = 0;
+export function setPipeScale(v) { PIPE = Math.max(0, Math.min(1, v || 0)); }
+export function pipeScale() { return PIPE; }
+
+/**
+ * How far up the circle the drawn surface actually goes.
+ *
+ * NOT 1.0, AND THIS IS THE NUMBER THAT MAKES IT RIDEABLE RATHER THAN A WELL.
+ * A true circle is vertical at the rim and the mesh cannot represent that --
+ * `meshHeight` samples columns metres apart, so a vertical face between two
+ * columns comes out as a single enormous triangle, and `height` and the drawn
+ * surface stop agreeing, which is the one thing every pickup in this game
+ * depends on.
+ *
+ * 0.93 of the radius tops the transition out near 70 degrees. Steep enough
+ * that riding up it is a commitment and gravity genuinely throws you back,
+ * shallow enough that the mesh still describes it and a rider who overcooks it
+ * comes down rather than sticking.
+ */
+const PIPE_TOP = 0.93;
+
 /** 0 open, 1 closed in, at distance p. */
 function gorgeAt(p) {
   if (VALLEY_SCALE <= 0) return 0;
@@ -172,6 +246,27 @@ export class Terrain {
    */
   crossSection(u, p) {
     const t = Math.abs(u) / HALF;
+    // The tube, mixed in over the bowl rather than branching. A branch would
+    // mean two cross-sections to keep honest against `meshHeight`, and a place
+    // halfway between the two -- which is where this will be tuned from -- is
+    // then not expressible at all.
+    if (PIPE > 0) {
+      const tc = Math.min(t, PIPE_TOP);
+      // h = R - sqrt(R^2 - u^2), the inside of a cylinder of radius HALF.
+      let hp = HALF * (1 - Math.sqrt(Math.max(0, 1 - tc * tc)));
+      // Past the lip it keeps climbing at the gradient it had, so a rider who
+      // carries over the top is on a slope and not on a ceiling. du/dt of the
+      // circle at PIPE_TOP, which is 0.93/sqrt(1-0.93^2) = 2.53 -- taken from
+      // the curve rather than chosen, so there is no crease at the join.
+      if (t > PIPE_TOP) hp += HALF * 2.53 * (t - PIPE_TOP);
+      if (PIPE >= 1) return hp;
+      return hp * PIPE + this._bowlSection(t, p) * (1 - PIPE);
+    }
+    return this._bowlSection(t, p);
+  }
+
+  /** The original open-face bowl, unchanged. See `crossSection`. */
+  _bowlSection(t, p) {
     // The parabola must STOP AT THE RIM. Uncapped it kept growing as u² all the
     // way to the mesh edge — at 260 m lateral that is six hundred metres of
     // snow either side of the course, a canyon whose far face filled the sky.
@@ -214,6 +309,18 @@ export class Terrain {
    * player is not riding on should look like an actual mountain.
    */
   relief(x, z, u) {
+    /**
+     * A PIPE HAS NO RELIEF. Measured on the first build of the drain: 3.6 m of
+     * rolling noise at u = 8, on a cross-section that rises 1.0 m there. The
+     * terrain's own chop was three times the shape it was supposed to be
+     * expressing, so the "pipe" was a noisy trough with a pipe mixed faintly
+     * into it -- and a dodging mode whose floor bucks is a mode where a crash
+     * cannot be told from a bump.
+     *
+     * Faded with the same scalar rather than switched, so a half-pipe place
+     * gets half the chop and there is no cliff between the two.
+     */
+    if (PIPE >= 1) return 0;
     const t = Math.abs(u) / HALF;
     const off = smoothstep(0.78, 1.7, t);
     let h = fbm(x * 0.0072, z * 0.0072, 3, this.seed) * (2.0 + 17 * off);
@@ -223,7 +330,7 @@ export class Terrain {
     // course has not placed anything.
     const p = -z;
     h += Math.sin(p * 0.052) * Math.cos(u * 0.019) * 1.0 * (1 - off);
-    return h;
+    return h * (1 - PIPE);
   }
 
   /**
@@ -547,6 +654,9 @@ uniform float uFogDensity;
 uniform float uFogFalloff;
 uniform float uFogBase;
 uniform float uSparkle;
+uniform float uWater;
+uniform float uTimeW;
+uniform vec3  uWaterColor;
 uniform float uHalf;
 uniform vec3  uCamPos;
 // Metres above the fall line at which the sun clears the range that rings this
@@ -1255,6 +1365,56 @@ void main() {
   // row down to zero and averaged out to a tint too faint to notice.
   col = mix(col, vec3(0.42, 0.56, 0.88) * dyeLum, smoothstep(0.10, 0.50, vLip) * 0.28);
 
+  /* ── THE WATER IN THE INVERT ───────────────────────────────────────────
+   *
+   * A green band lying in the bottom of the pipe, and it is COSMETIC: nothing
+   * reads it, nothing is placed against it, riding in it costs and pays
+   * nothing. "Just water on the floor of the sewer - just for looks and
+   * feedback - does not change gameplay."
+   *
+   * AND THE FEEDBACK IS THE BETTER HALF OF THAT. It is pinned to the invert,
+   * so it never moves in the world -- what moves is the CAMERA, which rolls
+   * with the rider's position around the tube (see _updateTunnel in
+   * rider.js). The band therefore swings up the side of the frame exactly as
+   * far as the rider has climbed, which makes it a permanent, glanceable
+   * readout of which way is down. In a tube with no horizon that is the only
+   * orientation cue there is, and it costs one term in a shader that was
+   * already running.
+   *
+   * IT IS NOT A ROUTE. It was briefly mistaken for one -- in the reference the
+   * green appears to wind around the bore, which reads as a path that spirals.
+   * It does not spiral; the camera rolls. A band drawn along a spiral would
+   * have been a whole system, and wrong.
+   *
+   * DRAWN AS DARK WATER WITH A SHEEN, not as a glowing strip. It is a liquid
+   * lying in a trough, so most of what the eye gets is a DARKENING plus a
+   * moving specular, with only a little emission to carry it through the fog.
+   * A fully emissive band reads as a neon runway, which is the "route" reading
+   * this is not.
+   */
+  if (uWater > 0.0) {
+    float w = uHalf * 0.30;
+    // Soft shoulders: real water has a waterline that creeps up the curve,
+    // and a hard edge would read as painted tape.
+    float wet = 1.0 - smoothstep(w * 0.62, w, abs(vU));
+    wet *= uWater;
+    if (wet > 0.0) {
+      // Flow. Two slow scrolls at different rates down the pipe so the surface
+      // never repeats on a period the eye can catch, plus a lateral ripple.
+      float flow = sin(vWorld.z * 0.42 + uTimeW * 2.6) * 0.5
+                 + sin(vWorld.z * 0.17 - uTimeW * 1.3 + vU * 0.22) * 0.5;
+      // Darken first -- water in a drain is darker than the metal it lies on.
+      col = mix(col, uWaterColor * 0.30, wet * 0.82);
+      // Then the sheen, which is where nearly all of the read comes from: a
+      // grazing-angle specular that slides as you move.
+      vec3 vdir = normalize(uCamPos - vWorld);
+      float graze = pow(1.0 - clamp(abs(dot(vdir, normalize(vNormal))), 0.0, 1.0), 3.0);
+      col += uWaterColor * wet * (0.06 + 0.10 * graze) * (0.55 + 0.45 * flow);
+      // And a little emission so it survives the fog this place is drowned in.
+      col += uWaterColor * wet * 0.045;
+    }
+  }
+
   // ── height fog ──────────────────────────────────────────────────────────
   // Closed form of the integral of an exponentially height-decaying density
   // along the view ray, so haze pools correctly in the valley instead of being
@@ -1535,6 +1695,10 @@ export class MountainMesh {
         uFogFalloff: { value: 0.012 },
         uFogBase: { value: 0 },
         uSparkle: { value: 1.0 },
+        /** 0 on every place but a pipe. See the band's note in SNOW_FRAG. */
+        uWater: { value: 0 },
+        uTimeW: { value: 0 },
+        uWaterColor: { value: new THREE.Color(0x4fd98a) },
         uHalf: { value: HALF },
         uCamPos: { value: new THREE.Vector3() },
         // Both derived from uSunDir every frame by _syncSun(), so mood.js needs
@@ -1846,6 +2010,11 @@ export class MountainMesh {
     }
     this.material.uniforms.uCamPos.value.copy(camPos);
     this.material.uniforms.uFogBase.value = this.terrain.baseHeight(p) - 40;
+    // The water only exists where there is an invert for it to lie in, so it
+    // tracks the pipe rather than being a second switch somebody has to
+    // remember to set. A half-pipe gets half a stream.
+    this.material.uniforms.uWater.value = pipeScale();
+    if (pipeScale() > 0) this.material.uniforms.uTimeW.value += dt;
     this._syncSun();
 
     const want = Math.floor(p / CHUNK) - 1;

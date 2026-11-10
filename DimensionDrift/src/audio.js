@@ -67,9 +67,49 @@
  * "a fixed beat count gives a comfortable slalom at 112 BPM and an unridable
  * one at 172" — so this list can take anything the beatgrid tool will track.
  */
+/**
+ * ── FOUR NOW, NOT TWO, AND THEY ROTATE 1-2-3-4 ─────────────────────────────
+ *
+ * Elad picked two directions out of four auditioned and kept BOTH takes of
+ * each -- "3 3 and 4 4 are good for now, you can rotate them or something."
+ * The scheduler walks this list and wraps, so the only thing a longer list
+ * changes is how far into a run you are before you hear a repeat: two 169 s
+ * tracks repeat at 5m38s, four at 11m17s.
+ *
+ * THE TWO TAKES OF A TRACK ARE NOT INTERCHANGEABLE and are deliberately not
+ * adjacent. Suno returns two takes per call from one prompt; they share an
+ * arrangement and a palette but not their phrases, so back to back they read
+ * as the same track played twice slightly wrong. Interleaved -- steel, clan,
+ * steel, clan -- each one is followed by a genuine change of instrument.
+ *
+ * ── AND THE GRID QUALITIES ARE NOT EQUAL, WHICH IS WORTH KNOWING ───────────
+ *
+ * The course is BUILT from the grid (see the note below), so a loose grid is a
+ * slalom that sits loosely against what you can hear. Measured by
+ * `newtrack.py`, contrast at the eighth:
+ *
+ *     sewer_steel_a   110.05 BPM   1.861     <- the strongest of the four
+ *     sewer_steel_b   109.74 BPM   1.223
+ *     foot_clan_a     113.74 BPM   1.139     <- see below
+ *     foot_clan_b     109.90 BPM   1.109
+ *
+ * For scale: carve's own shipped grid is 1.696 and sunrise_ascent's is 4.128.
+ * So one of these beats what this game shipped with and three are below it.
+ * That is the taiko-and-breakbeat direction being heavily syncopated rather
+ * than the tracker failing -- the tool's own note says a beat-level figure
+ * near 1.0 means syncopation, and these read 0.84 to 1.34 there.
+ *
+ * `foot_clan_a` IS THE ONE TO DISTRUST. Every track here was asked for at 110
+ * BPM and the other three came back inside 0.3 of it; this one tracked at
+ * 113.74, which is 3.4 BPM out and the classic shape of a slightly mis-fitted
+ * period rather than a track that is genuinely faster. If the slalom drifts
+ * against the music on one track in four, this is that track.
+ */
 const TRACKS = [
-  { id: 'carve_theme', music: '/audio/theme.mp3', grid: '/tracks/drift.json' },
-  { id: 'sunrise_ascent', music: '/audio/sunrise_ascent.mp3', grid: '/tracks/sunrise_ascent.json' },
+  { id: 'sewer_steel_a', music: '/audio/sewer_steel_a.mp3', grid: '/tracks/sewer_steel_a.json' },
+  { id: 'foot_clan_a', music: '/audio/foot_clan_a.mp3', grid: '/tracks/foot_clan_a.json' },
+  { id: 'sewer_steel_b', music: '/audio/sewer_steel_b.mp3', grid: '/tracks/sewer_steel_b.json' },
+  { id: 'foot_clan_b', music: '/audio/foot_clan_b.mp3', grid: '/tracks/foot_clan_b.json' },
 ];
 
 /** How far ahead sources are scheduled, seconds. */
@@ -1161,6 +1201,59 @@ export class Audio {
     this._tone(392, 392, { type: 'triangle', attack: 0.006, decay: 0.26, gain: 0.16 });
     this._tone(588, 588, { type: 'triangle', attack: 0.006, decay: 0.34, gain: 0.14, delay: 0.09 });
     this._tone(784, 784, { type: 'sine', attack: 0.01, decay: 0.5, gain: 0.1, delay: 0.19 });
+  }
+
+  /**
+   * A barrier going up.
+   *
+   * THE ONLY SUSTAINED SOUND IN THIS GAME, and that is deliberate. Every other
+   * reward here is an EVENT -- a mote, a kill, a gate -- and it is over in a
+   * third of a second, because the thing it is reporting is over too. A
+   * barrier is a STATE that then lasts nine seconds, and a state announced by
+   * a click is a state the player has no reason to believe is still running.
+   *
+   * So the root is held long and the fifth swells in underneath it rather than
+   * arriving after it: it reads as something closing around you instead of
+   * something landing on you. The low octave is what makes it feel like cover
+   * rather than another power-up -- `power()` resolves upward and this one
+   * settles.
+   */
+  shield() {
+    this._tone(294, 294, { type: 'sine', attack: 0.05, decay: 0.95, gain: 0.15 });
+    this._tone(441, 441, { type: 'sine', attack: 0.12, decay: 0.85, gain: 0.11, delay: 0.04 });
+    this._tone(147, 147, { type: 'triangle', attack: 0.03, decay: 1.1, gain: 0.1, delay: 0.02 });
+  }
+
+  /**
+   * A bolt dying on the barrier.
+   *
+   * SHORT, DULL AND PITCHLESS, which is the opposite of `playerHit`. The whole
+   * message is "that one did not count", and a hit that did not count must not
+   * share a voice with one that did -- a player sorting their own damage by
+   * ear is the reason `playerHit` is pitched by remaining health at all.
+   */
+  shieldBlock() {
+    this._tone(196, 150, { type: 'triangle', attack: 0.002, decay: 0.13, gain: 0.1 });
+  }
+
+  /**
+   * The gun has taken a new target.
+   *
+   * ── THE THIRD PIECE OF THE TARGETING READOUT, AND IT IS A SOUND ──────────
+   *
+   * The brief asked for the BOARD to light up on a lock, so the player knows
+   * without looking at the reticle. The rider's draw has no channel for that
+   * -- `hurt` is set on it and read by the HUD and the post pass, not by the
+   * mesh -- so adding one is a change to the rider's whole material path for a
+   * quarter-second flash.
+   *
+   * A tick does the same job better. Peripheral confirmation is exactly what
+   * ears are for, it arrives whatever the player is looking at, and it costs
+   * four lines. VERY short and VERY quiet: this fires every time the gun
+   * changes target, which in a squad is often.
+   */
+  lockOn() {
+    this._tone(1320, 1760, { type: 'square', attack: 0.001, decay: 0.055, gain: 0.035 });
   }
 
   /**

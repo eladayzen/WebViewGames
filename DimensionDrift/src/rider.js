@@ -20,7 +20,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeLitMaterial } from './lit.js';
-import { meshHeight, EDGE_MAX } from './mountain.js';
+import { meshHeight, EDGE_MAX, channelHalf } from './mountain.js';
 import { clamp, mulberry32, smoothstep } from './rng.js';
 
 /**
@@ -2023,9 +2023,13 @@ export class Rider {
     // rider grinds along forever. Speed scrubs only while still pointed out.
     const cxB = this.terrain.centerX(this.z);
     const uB = this.x - cxB;
-    if (Math.abs(uB) > EDGE_MAX) {
+    // THROUGH `channelHalf`, which is EDGE_MAX unless a mode has asked for a
+    // narrower corridor. The clamp itself is unchanged -- what moves is where
+    // it sits, and in the curtain mode it sits somewhere the player can see.
+    const edge = channelHalf();
+    if (Math.abs(uB) > edge) {
       const sB = Math.sign(uB);
-      this.x = cxB + sB * EDGE_MAX;
+      this.x = cxB + sB * edge;
       if (hx * sB > 0) {
         this.yaw *= Math.max(0, 1 - 4.5 * dt);
         this.vh *= Math.max(0, 1 - Math.abs(hx) * 1.1 * dt);
@@ -2307,7 +2311,7 @@ export class Rider {
  * which is the thing that argument rejected. Both ship because the second is
  * being tried, and the first is the one every existing mode was tuned on.
  */
-export const CAM_MODE = { FALL_LINE: 'fallLine', CHASE: 'chase' };
+export const CAM_MODE = { FALL_LINE: 'fallLine', CHASE: 'chase', TUNNEL: 'tunnel' };
 
 export class CameraRig {
   constructor(camera, terrain) {
@@ -2347,7 +2351,9 @@ export class CameraRig {
   /** Called by `main.js` from the mode definition's `cameraFollow`. */
   setMode(mode) {
     if (mode === this.mode) return;
-    this.mode = mode === CAM_MODE.CHASE ? CAM_MODE.CHASE : CAM_MODE.FALL_LINE;
+    this.mode = mode === CAM_MODE.CHASE ? CAM_MODE.CHASE
+      : mode === CAM_MODE.TUNNEL ? CAM_MODE.TUNNEL
+        : CAM_MODE.FALL_LINE;
     // A rig that changed shape mid-run would interpolate between two framings
     // that have nothing to do with each other, so it starts clean.
     this.ready = false;
@@ -2371,6 +2377,7 @@ export class CameraRig {
 
   update(dt, rider, speedNorm) {
     const T = TUNE;
+    if (this.mode === CAM_MODE.TUNNEL) return this._updateTunnel(dt, rider, speedNorm);
     if (this.mode === CAM_MODE.CHASE) return this._updateChase(dt, rider, speedNorm);
     return this._updateFallLine(dt, rider, speedNorm);
   }
@@ -2399,6 +2406,91 @@ export class CameraRig {
    * frame guarantee, which is expressed as an angle between two directions and
    * so does not care which way either of them points.
    */
+  /**
+   * ── THE TUNNEL RIG ────────────────────────────────────────────────────────
+   *
+   * The third camera in this file, and the only one that does not follow the
+   * rider at all. It is pinned to the PIPE.
+   *
+   * THE SIGNATURE IS THE ROLL, not the position. In the game this is lifted
+   * from, the craft sits dead centre at the bottom of the frame and never
+   * leaves it -- what moves is the TUNNEL, rotating around it as you climb the
+   * wall. That reads as the player staying upright while the world turns, and
+   * it is a completely different sensation from the two rigs above, both of
+   * which keep the horizon level and move the rider instead.
+   *
+   * It falls out of one line. The rider's position around the tube is an angle
+   * -- `theta = asin(u / HALF)` -- and the camera is rolled BY that angle. At
+   * u = 0 the roll is zero and the pipe floor is the bottom of the frame; a
+   * rider a third of the way up the transition rolls the whole tube 20 degrees
+   * the other way, and the rider's own feet stay pointing at the bottom edge.
+   *
+   * THERE IS NO YAW AND NO SMOOTHING ON IT. `_updateChase` spends most of its
+   * length on following the board's heading through the short way round, and
+   * `_updateFallLine` on the mountain's own direction. This one looks straight
+   * down the axis, always, because the axis is where the obstacles come from
+   * and a camera that yawed would swing them off the screen edge exactly when
+   * they matter. "The camera is still" was the brief, and still is literal:
+   * the only thing the camera does is roll.
+   *
+   * WHAT IT DOES NOT DO, so that it is not mistaken for finished: it does not
+   * know the pipe is a pipe. `HALF` is the radius by construction (see
+   * `setPipeScale` in mountain.js) and this reads `rider.u` against it, so on a
+   * place that is NOT a pipe this rig still works -- it just rolls against a
+   * bowl, which is a gentler version of the same idea rather than a bug.
+   */
+  _updateTunnel(dt, rider, speedNorm) {
+    const T = TUNE;
+    // Where the rider is around the tube, as an angle. Clamped inside the
+    // transition's own top (mountain.js's PIPE_TOP) so a rider who carries
+    // over the lip does not roll the camera past vertical and invert the
+    // frame -- which is the one failure mode that makes a tunnel unplayable.
+    const t = Math.max(-0.93, Math.min(0.93, rider.u / 32));
+    const theta = Math.asin(t);
+    const sn = Math.sin(theta);
+    const cs = Math.cos(theta);
+
+    // Behind along the AXIS, lifted along the tube's own inward normal. Using
+    // world up instead would bury the camera in the wall as soon as the rider
+    // left the floor, because "up" on the side of a pipe points sideways.
+    const back = T.camBack * (0.86 + 0.3 * speedNorm);
+    this.pos.set(
+      rider.x - sn * T.camUp,
+      rider.y + cs * T.camUp,
+      rider.z + back,
+    );
+    // Straight down the pipe. The look target keeps the rider's own x so they
+    // stay dead centre horizontally; the height follows the same normal, so
+    // the view runs along the tube rather than into its floor.
+    this.look.set(
+      rider.x - sn * T.camLookUp,
+      rider.y + cs * T.camLookUp,
+      rider.z - T.camLookAhead,
+    );
+    this._keepRiderInFrame(rider);
+
+    // AND THE ROLL IS SET DIRECTLY, bypassing `_finish`'s edge-based roll.
+    // `_finish` rolls the camera by how hard the rider is carving, which is a
+    // garnish on a level horizon; here the roll IS the horizon, and adding a
+    // lean term on top would tilt a frame that is already tilted for a reason.
+    //
+    // Eased rather than snapped: the angle comes straight off `u`, which the
+    // carve model moves in steps, and an unsmoothed roll reads as the tunnel
+    // juddering. Fast enough (9 /s) that it never feels like lag.
+    this.roll += (theta - this.roll) * (1 - Math.exp(-9.0 * dt));
+    this._finishTunnel(dt, rider);
+  }
+
+  /** `_finish` without its own roll term. See `_updateTunnel`. */
+  _finishTunnel(dt, rider) {
+    const keep = this.roll;
+    this._finish(dt, rider, 0);
+    this.roll = keep;
+    this._up.set(Math.sin(this.roll), Math.cos(this.roll), 0);
+    this.camera.up.copy(this._up);
+    this.camera.lookAt(this.look);
+  }
+
   _updateChase(dt, rider, speedNorm) {
     const T = TUNE;
 
