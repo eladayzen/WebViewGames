@@ -84,7 +84,34 @@ export function channelHalf() {
  * repose reads as a gentle hill.
  */
 let CUT = 0;
-const CUT_RISE = 3.4;          // metres of climb per metre outside the channel
+
+/**
+ * ── THE FACE HAS TO BE UP BEFORE THE CLAMP IS, AND IT HAS TO STOP ─────────
+ *
+ * The first cut climbed LINEARLY and was eased in over two metres, which made
+ * it wrong at both ends. Measured across the channel then:
+ *
+ *     u = 14   15 (clamp) | 16    18    21    25
+ *     h = 1.5  1.8        | 3.6  12.8  24.1  39.3
+ *
+ * At the boundary itself the ground had barely moved, so the player was
+ * stopped by the clamp with nothing beside them to explain it -- an invisible
+ * wall, which is the exact thing drawing a bank was meant to end. The easing
+ * put the whole visible rise OUTSIDE the reachable world. And having started
+ * late it then never stopped, reaching forty metres by u = 25: a canyon, not a
+ * cut.
+ *
+ * So: climb immediately, and SATURATE. `h = MAX * (1 - exp(-over / SOFT))` is
+ * up at three metres within half a metre of the edge and flat at nine, so the
+ * face is unmistakable from inside the channel and never becomes a cliff.
+ *
+ * The foot stays exactly ON the clamp rather than inside it. Moving it inward
+ * would put the rider on the face -- riding permanently up a 70-degree slope
+ * at the edge of the course -- and the ask was to SEE the wall, not to climb
+ * it.
+ */
+const CUT_MAX = 9.0;           // metres; the face stops climbing here
+const CUT_SOFT = 1.0;          // metres; how fast it gets there
 
 /** Turn the cut bank on for this mode. 0 leaves the bowl exactly as it was. */
 export function setCut(v) { CUT = Math.max(0, v || 0); }
@@ -305,11 +332,13 @@ export class Terrain {
    */
   _cutSection(u) {
     if (CUT <= 0) return 0;
-    const edge = channelHalf();
-    const over = Math.abs(u) - edge;
+    const over = Math.abs(u) - channelHalf();
     if (over <= 0) return 0;
-    const knee = Math.min(1, over / 2.2);
-    return CUT * CUT_RISE * over * knee;
+    // A SHORT knee only -- 0.6 m, against the two metres the first cut used.
+    // Enough that flat shading gets a lit edge rather than a torn one, far too
+    // little to hide the face the way the old easing did.
+    const knee = Math.min(1, over / 0.6);
+    return CUT * CUT_MAX * (1 - Math.exp(-over / CUT_SOFT)) * knee;
   }
 
   /** The original open-face bowl, unchanged. See `crossSection`. */
