@@ -357,9 +357,57 @@ registerPlace({
   rock: 0.85,
   snowLine: 150,
   obstacleU: 22,
-  kickerGap: 62,
-  kickerEnergy: 0.22,
-  kickerBars: 0.5,
+/**
+   * ── MORE RAMPS, BECAUSE A SITE IS MADE OF THEM ────────────────────────
+   *
+   * "we can have more jumps and natural ramps in there."
+   *
+   * `kickerGap` is the metres of clear run the planner must leave BETWEEN
+   * jumps, so lower is more airtime -- 62 down to 34 roughly doubles how often
+   * one can be placed. `kickerEnergy` is how hard the track has to be leaning
+   * on a beat before a ramp is allowed there at all, so lowering that opens up
+   * the quieter stretches too.
+   *
+   * These are the right knobs rather than new geometry: a kicker in this game
+   * is a shape in the TERRAIN, so more of them is literally a lumpier site --
+   * spoil heaps and cut banks you launch off -- rather than props scattered on
+   * a smooth floor. That is what makes them read as natural ramps.
+   */
+  kickerGap: 34,
+  /**
+   * 0.22 -> 0.04, and the GAP was not the binding constraint.
+   *
+   * Measured: at a gap of 34 m the planner still produced 71 kickers over
+   * 23 km -- one every 326 m, ten times the gap it was given. So almost every
+   * beat was being rejected before the spacing rule was ever consulted, and
+   * halving the gap on its own bought nothing. Energy is the real gate: it is
+   * how hard the track has to be leaning on a beat before a ramp is allowed
+   * there, and at 0.22 that was only the loudest moments of the music.
+   */
+  kickerEnergy: 0.04,
+  /**
+   * ── AND THE RAMPS ARE STILL CAPPED, WHICH IS A REAL FINDING ───────────
+   *
+   * Measured end to end, because none of the three knobs did what the docs
+   * imply:
+   *
+   *     gap 62, energy 0.22, bars 0.50  ->  71 kickers over 23 km
+   *     gap 34, energy 0.14, bars 0.50  ->  71
+   *     gap 34, energy 0.04, bars 0.50  ->  71
+   *     gap 34, energy 0.04, bars 0.25  ->  75
+   *
+   * The options DO reach the planner -- confirmed by reading `_kickerGap` and
+   * `_kickerEnergy` back off a live run. So one every ~310 m is a structural
+   * ceiling in `planKickers` against this track's 308-beat grid, not a
+   * threshold anyone can tune past from here.
+   *
+   * These values are kept because they are the right INTENT and they cost
+   * nothing. But "more jumps and natural ramps" is not finished: it needs
+   * terrain lumps placed in `p` independently of the beat grid, the way the
+   * barriers and the scatter already are. Noted so the next person does not
+   * spend the afternoon turning these three dials again.
+   */
+  kickerBars: 0.25,
   /**
    * AND THE NEEDLES ARE THE HOLOGRAM. "Use the geometry of the plain close to
    * me — not the one in the distance — but as a holographic energy field I can
@@ -427,6 +475,27 @@ registerPlace({
    * one descent was washed out on the next and the tuning could never
    * converge. Several rounds were lost to that before it was named.
    */
+/**
+   * ── THE PROPS, RE-SKINNED ─────────────────────────────────────────────
+   *
+   * The scatter's "trees" are emissive violet crystal at 0.9 -- which is a
+   * light source standing in the scenery, not a prop. On a building site they
+   * are scaffold and rebar, so the emissive goes to ZERO first and the colour
+   * second; leaving it lit would give glowing scrap whatever colour it wore.
+   */
+  scenery: {
+    tree: 0x7b5f45,            // rusted steel, scaffold and rebar
+    treeEmissive: 0.0,         // the important one. See above.
+    rock: 0x6d665c,            // broken concrete and spoil
+    pole: 0x5c6168,            // galvanised posts and site fence
+  },
+
+  /**
+   * NO FLOATING ISLANDS. They are a statement about what world this is, and
+   * this one has the ground firmly attached.
+   */
+  islands: false,
+
   lockHour: 0.20,
 
   /**

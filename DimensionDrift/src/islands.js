@@ -509,6 +509,7 @@ export class Islands {
 
   /** One band check per pool, and an early return on every frame but the few. */
   update(p) {
+    if (this.enabled === false) return;
     if (!this.enabled) return;
     this._ring(this.slabs, 'slabBase', p,
       { band: SLAB_BAND, size: SLAB_SIZE, out: SLAB_OUT,
@@ -534,6 +535,23 @@ export class Islands {
    * built, so the stretch already on the hill keeps the old spread until it
    * recycles — which is a hundred metres of the player's first impression.
    */
+  /**
+   * Floating islands are a statement about what world this is, so a place that
+   * is a different world has to be able to say no.
+   *
+   * They are not merely hidden: `update` returns early as well, so a place
+   * without them pays nothing for the ring it is not drawing.
+   */
+  setEnabled(v) {
+    this.enabled = v !== false;
+    // The three instanced meshes this file owns. `deep` keeps its own `below`
+    // rule on top, so switching islands back on does not resurrect a layer the
+    // mode had hidden for its own reasons.
+    this.slabs.mesh.visible = this.enabled;
+    this.chunks.mesh.visible = this.enabled;
+    this.deep.mesh.visible = this.enabled && this.below;
+  }
+
   setBelow(v) {
     this.below = !!v;
     this.deep.mesh.visible = this.enabled && this.below;

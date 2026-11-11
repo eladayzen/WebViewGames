@@ -749,6 +749,30 @@ export class Scatter {
    * read as scenery, they would read as a contour map of the invisible
    * surface — which is worse than either having them or not.
    */
+  /**
+   * Re-skin the props for a place that is somewhere else entirely.
+   *
+   * The materials are authored for an alien mountain -- the "trees" are
+   * emissive violet crystal at 0.9, which is a light source, not a prop. On a
+   * building site that has to become steel and rubble, and emissive has to go
+   * to zero or the scrap glows. Anything a place leaves out keeps its author's
+   * value, so this is an override and not a second palette to maintain.
+   *
+   * @param {{tree?:number, rock?:number, pole?:number,
+   *          treeEmissive?:number}} c
+   */
+  setColors(c) {
+    if (!c) return;
+    const put = (m, hex, em) => {
+      if (!m) return;
+      if (hex != null) m.uniforms.uBase.value.setHex(hex);
+      if (em != null && m.uniforms.uEmissive) m.uniforms.uEmissive.value = em;
+    };
+    put(this.matTree, c.tree, c.treeEmissive);
+    put(this.matRock, c.rock, null);
+    put(this.matPole, c.pole, null);
+  }
+
   setVisible(v) {
     this.trees.mesh.visible = v;
     this.rocks.mesh.visible = v;

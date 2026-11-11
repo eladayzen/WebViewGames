@@ -1698,6 +1698,15 @@ class Game {
      * entirely. Null puts the hour's own colours back for every other place.
      */
     this.mood.setOverride(place.palette ?? null);
+    /**
+     * AND THE PROPS. A palette recolours the light and the ground; these are
+     * objects with their own authored materials, and on a level that is a
+     * different world they have to be re-skinned or switched off. See
+     * `setColors` in scatter.js and `setEnabled` in islands.js.
+     */
+    this.scatter?.setColors(place.scenery ?? null);
+    this.scatter2?.setColors(place.scenery ?? null);
+    this.islands?.setEnabled(place.islands !== false);
     analytics.runStarted(this._modeId);
     analytics.levelStarted(this._placeId, place.order ?? 0);
     // APPLIED NOW, NOT AT THE FIRST PLAY FRAME. The race pins its own light in
