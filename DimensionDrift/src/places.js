@@ -539,7 +539,7 @@ registerPlace({
     // city: a night sky that is evenly dark reads as wilderness, and the
     // skyline has to be silhouetted against something.
     uSunColor: 0x8fa6c8,        // thin cold moonlight, barely a key
-    uSkyColor: 0x47536e,        // the fill, and the bigger half of the light
+    uSkyColor: 0x39435c,        // the fill, and the bigger half of the light
     uGroundColor: 0x241f1b,     // next to nothing comes back off wet dirt
     /**
      * THE ROUTE, and it was 0x4a4034 for one render before this.
@@ -551,12 +551,12 @@ registerPlace({
      * banks -- so lifting it is more honest than the first number was, as well
      * as more usable.
      */
-    uSnowColor: 0x5c5042,
+    uSnowColor: 0x4e4336,
     uRockColor: 0x272521,
-    uFogColor: 0x394257,        // night haze lit from below by the city
+    uFogColor: 0x2f3647,        // night haze lit from below by the city
     uFogSunColor: 0x59617a,
-    uZenith: 0x0c111d,
-    uHorizon: 0x55608a,         // the glow the towers stand against
+    uZenith: 0x070a12,
+    uHorizon: 0x414b6e,         // the glow the towers stand against
     uSparkle: 0.0,
     uCloud: 0.38,
     /**
@@ -568,7 +568,7 @@ registerPlace({
      */
     bloom: 0.44,
     // 1.05 -> 1.18. The last stop between "dark" and "cannot see the route".
-    exposure: 1.10,
+    exposure: 0.98,
 
     /**
      * ── THE LAMP ──────────────────────────────────────────────────────────
@@ -585,18 +585,35 @@ registerPlace({
      * more of the sky.
      */
     uLampColor: 0xffd9a8,
-    // 1.45 -> 0.80. At 1.45 the lamp was not lighting the rider, it was
-    // bleaching the ground around them, and a night scene with a white pool
-    // under the board reads as daylight through a dark filter.
-    uLampStrength: 0.80,
-    uLampRange: 38,
+    /**
+     * ── TIGHT, NOT DIM ────────────────────────────────────────────────────
+     *
+     * "it was good before - with more of a dark sneaking feel."
+     *
+     * The first night had that and no lamp; adding one to make the rider
+     * visible took the mood with it. The mistake was treating this as a
+     * BRIGHTNESS problem and turning the lamp down, which only made a large
+     * soft wash slightly less bright -- everything stayed evenly, mildly lit,
+     * which is the opposite of sneaking.
+     *
+     * What carries a dark scene is FALLOFF. A short range puts a real pool of
+     * light around the board and lets everything past it go properly black, so
+     * the player reads their own patch of ground clearly and the rest of the
+     * site is a shape in the dark. 38 m of reach was lighting half the frame;
+     * at 21 it is a lamp on a machine.
+     *
+     * Strength goes UP as the range comes in. Those two pull against each
+     * other -- the pool has to stay as bright as it was or the rider sinks
+     * back into the dark, which is the thing this exists to prevent.
+     */
+    uLampStrength: 1.05,
+    uLampRange: 21,
 
     /** Lit windows on the far skyline too. See the window block in range.js. */
     uWindowColor: 0xffd79a,
-    // 0.85 -> 0.46. The far range is most of the buildings in the frame, so
-    // its windows set the overall brightness of the night more than anything
-    // else does.
-    uWindowStrength: 0.46,
+    // 0.46 -> 0.30. Still every pane lit, as asked -- but a city seen from a
+    // dark lot should be a silhouette holding lights, not a lit wall.
+    uWindowStrength: 0.30,
   },});
 
 registerPlace({
