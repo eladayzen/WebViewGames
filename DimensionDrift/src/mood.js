@@ -222,6 +222,23 @@ export class Mood {
   constructor() {
     /** Multiplier on every fog uniform, owned by the place. 1 is the hour's own. */
     this.fogScale = 1;
+    /**
+     * ── A PLACE MAY OVERRIDE THE PALETTE OUTRIGHT ─────────────────────────
+     *
+     * `MOODS` is one arc of light shared by every level, and that is right for
+     * levels that are the same world at different hours. It is wrong for a
+     * level that is a DIFFERENT WORLD: a construction site under a city sky
+     * has no hour of an alien mountain that it is a version of, and bending
+     * the shared table toward it would drag every other place with it.
+     *
+     * So a place may hand over a flat set of replacements, applied after the
+     * hour is mixed. Anything it names it owns; anything it leaves out still
+     * comes from the arc, so a place can take the ground and the fog and keep
+     * the sun's own movement.
+     *
+     * @type {Record<string, number|THREE.Color>|null}
+     */
+    this.override = null;
     this.uSunDir = new THREE.Vector3();
     for (const k of COLOR_KEYS) this[k] = new THREE.Color();
     for (const k of NUM_KEYS) this[k] = 0;
@@ -230,6 +247,22 @@ export class Mood {
     this.label = MOODS[0].label;
     this._bound = [];
     this.setProgress(0);
+  }
+
+  /**
+   * Replace part of the palette for as long as this place is loaded.
+   *
+   * Pass null to go back to the hour's own colours. Colours may be given as
+   * hex numbers; they are converted once here rather than per frame.
+   */
+  setOverride(spec) {
+    if (!spec) { this.override = null; this.setProgress(this._t ?? 0); return; }
+    const out = {};
+    for (const [k, v] of Object.entries(spec)) {
+      out[k] = COLOR_KEYS.includes(k) ? new THREE.Color(v) : v;
+    }
+    this.override = out;
+    this.setProgress(this._t ?? 0);
   }
 
   /** Register a uniform object; matching keys are refreshed every frame. */
@@ -269,6 +302,7 @@ export class Mood {
    * needs a sixth stop between them.
    */
   setProgress(t) {
+    this._t = t;
     const p = ((t % 1) + 1) % 1;
     const last = MOODS.length - 1;
     let a;
@@ -295,6 +329,17 @@ export class Mood {
     this.bloom = a.bloom + (b.bloom - a.bloom) * k;
     this.exposure = a.exposure + (b.exposure - a.exposure) * k;
     this.label = k < 0.5 ? a.label : b.label;
+
+    // THE PLACE WINS, and it is applied after the mix rather than blended into
+    // it: a level that owns its light owns it at every hour, not more of it at
+    // noon. `fogScale` still multiplies on top in `_push`, so a place can
+    // state its haze colour here and its density there.
+    if (this.override) {
+      for (const [key, v] of Object.entries(this.override)) {
+        if (this[key] instanceof THREE.Color) this[key].copy(v);
+        else if (key in this) this[key] = v;
+      }
+    }
 
     for (const u of this._bound) this._push(u);
   }

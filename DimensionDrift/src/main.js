@@ -1691,6 +1691,13 @@ class Game {
      * reading. See `pickHour` in places.js.
      */
     this._moodLock = place.lockHour ?? null;
+    /**
+     * A LEVEL THAT IS A DIFFERENT WORLD OWNS ITS PALETTE. See `setOverride` in
+     * mood.js -- the shared arc of light is right for levels that are one
+     * world at different hours and wrong for one that is somewhere else
+     * entirely. Null puts the hour's own colours back for every other place.
+     */
+    this.mood.setOverride(place.palette ?? null);
     analytics.runStarted(this._modeId);
     analytics.levelStarted(this._placeId, place.order ?? 0);
     // APPLIED NOW, NOT AT THE FIRST PLAY FRAME. The race pins its own light in

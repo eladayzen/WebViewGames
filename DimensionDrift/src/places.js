@@ -304,7 +304,11 @@ registerPlace({
    * steering, which is the one outcome that makes a dodging game boring.
    */
   obstacleGap: 0,
-  fog: 2.1,
+  /**
+   * DOWN FROM 2.1. That number was tuned for a mountain whose distance was
+   * meant to dissolve; this level's whole point is a skyline you can see.
+   */
+  fog: 0.95,
   hours: [0.08, 0.22],
   offset: [1200, 5200],
   gateAmp: 0.6,
@@ -370,7 +374,22 @@ registerPlace({
    * place's ground exactly as they always have, which is the only reason it is
    * safe to hang an experiment on a place three shipped modes also use.
    */
-  skyStyle: 'holo',
+  /**
+   * ── SOLID GROUND. THE HOLOGRAM IS WHAT WAS WRONG ──────────────────────
+   *
+   * This level was a holographic field you ride on -- the ground drawn as a
+   * glowing white lattice rather than as a surface. It is a striking effect
+   * and it is the single thing most responsible for the look being rejected:
+   * a lattice has no material, so the dirt palette above had nowhere to land
+   * (the mountain's uniforms were correctly brown and the floor still came out
+   * white), and every hazard drawn ON the ground was competing with a ground
+   * made of light.
+   *
+   * 'solid' puts the lit surface back, which is what the palette above is
+   * written for. The holo path is untouched in main.js and mountain.js, and
+   * the whole previous look is parked on `claude/dimension-drift-holo-look`.
+   */
+  skyStyle: 'solid',
   /**
    * ── LOCKED, AND THE NUMBER WAS MEASURED TWICE ─────────────────────────
    *
@@ -403,6 +422,45 @@ registerPlace({
    * converge. Several rounds were lost to that before it was named.
    */
   lockHour: 0.20,
+
+  /**
+   * ── THE SITE: A CONSTRUCTION LOT UNDER A CITY SKY ─────────────────────
+   *
+   * "the style and look of the surrounding is so wrong ... go all in changing
+   * the surrounding to more realistic vibe -- not photorealistic, just high
+   * New York buildings far in the distance and in the sides around me, while
+   * the route itself is a kind of construction site/area with dirt."
+   *
+   * The previous look -- alien violet ice under a portal sky -- is parked
+   * whole on the branch `claude/dimension-drift-holo-look`, not deleted.
+   *
+   * Everything here is stated rather than mixed from the day arc, because
+   * there is no hour of that alien mountain which is this. The notes that
+   * matter:
+   *
+   * `uSnowColor` IS THE ROUTE. It is the surface the mountain shader reads,
+   *   and the file's own warning applies -- the colour you see is this times
+   *   the light, so it is authored a stop darker than dirt looks in the hand.
+   * `uSparkle` GOES TO ZERO. It is snow glitter. Left on, the dirt twinkles.
+   * `exposure` AND `bloom` BOTH COME DOWN hard. The old look earned its glow;
+   *   a building site does not glow, and every hazard on this level is a mark
+   *   on the ground that bloom was eating.
+   */
+  palette: {
+    uSunColor: 0xffeedd,        // plain high daylight, barely warm
+    uSkyColor: 0x8fa6bd,        // the fill, off a pale city sky
+    uGroundColor: 0x6b5a46,     // bounce back up off churned earth
+    uSnowColor: 0x7d6a53,       // THE DIRT. See the note above about light.
+    uRockColor: 0x4c453d,       // wet clay and concrete in the cuts
+    uFogColor: 0xb4bfc9,        // city haze, grey-blue, not white
+    uFogSunColor: 0xd8d2c4,     // its lit side, dusty rather than golden
+    uZenith: 0x5f7ea3,
+    uHorizon: 0xc2cdd7,
+    uSparkle: 0.0,
+    uCloud: 0.42,
+    bloom: 0.34,
+    exposure: 1.12,
+  },
 });
 
 registerPlace({
