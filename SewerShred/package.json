@@ -1,0 +1,20 @@
+{
+  "name": "sewer-shred",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clips": "node tools/extract-clips.mjs"
+  },
+  "devDependencies": {
+    "meshoptimizer": "^1.3.0",
+    "puppeteer-core": "^25.5.0",
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  }
+}
