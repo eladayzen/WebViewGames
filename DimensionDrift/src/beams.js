@@ -657,6 +657,18 @@ export class Beams {
    * deletion. Both styles write the same strips; only the material and the
    * lean differ.
    */
+  /**
+   * Hide the drawn boundary entirely.
+   *
+   * For a mode whose edge is cut into the TERRAIN (see `setCut` in
+   * mountain.js): the ground already states where the course ends, and a rail
+   * drawn on top of it is a second boundary saying the same thing.
+   */
+  setWallsVisible(v) {
+    this.wallsOn = v !== false;
+    if (!this.wallsOn) for (const w of this.walls) w.visible = false;
+  }
+
   setWallStyle(style) {
     this.wallStyle = style === 'energy' ? 'energy' : 'bank';
     for (let i = 0; i < this.walls.length; i++) {
@@ -708,7 +720,7 @@ export class Beams {
       mesh.geometry.attributes.position.needsUpdate = true;
       mesh.geometry.attributes.uv.needsUpdate = true;
       mesh.material.uniforms.uTime.value = this.t;
-      mesh.visible = this.enabled;
+      mesh.visible = this.enabled && this.wallsOn !== false;
     }
   }
 

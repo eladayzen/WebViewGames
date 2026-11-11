@@ -73,7 +73,7 @@
 // `ended()` (whose health ends the run) and `results()` (what the card says).
 // Both are already written against the roster rather than against a player.
 
-import { setChannel } from '../mountain.js';
+import { setChannel, setCut } from '../mountain.js';
 import { registerMode } from './mode.js';
 import { TEAM } from '../fighters.js';
 import { rollGift, SHIELD_SECONDS } from '../weapons.js';
@@ -318,28 +318,19 @@ function BASE_CREATE(game) {
          * want it back.
          */
         /**
-         * ── STILL 'energy', AND THAT IS NOT THE INTENT ────────────────────
+         * ── THE BOUNDARY IS EARTH, AND IT IS TERRAIN RATHER THAN A MESH ───
          *
-         * The dirt bank is built (see `setWallStyle` in beams.js) and it is
-         * NOT working: with it on, the whole 3D frame renders black while the
-         * HUD keeps drawing. What is known, measured rather than guessed:
+         * `setCut` makes the ground climb hard past `channelHalf()`, so the
+         * course runs between two cut banks. The drawn energy wall is switched
+         * OFF here: with a real bank there, a glowing rail on top of it is two
+         * boundaries saying the same thing.
          *
-         *   - the scene is healthy -- 137 children, 44 visible meshes, camera
-         *     where it should be, no console errors of any kind
-         *   - switching back to 'energy' restores the frame instantly, same
-         *     geometry, same frame
-         *   - a KNOWN-GOOD opaque lit material borrowed from the scatter is
-         *     black too, so it is not `makeLitMaterial`
-         *   - the vertices are clean: no NaN, nothing above 1e6
-         *
-         * So: any OPAQUE, depth-writing material on these strips blacks the
-         * frame, and the transparent one does not. That points at the wall
-         * covering the camera or breaking the post chain's depth, and it is
-         * the next thing to look at -- not at the material.
-         *
-         * Left on the working boundary rather than shipping a black screen.
+         * The mesh version of this bank is still in beams.js behind
+         * `setWallStyle`, and so is the energy wall -- both kept, because a
+         * level that is not a building site will want the glow back.
          */
-        game.beams.setWallStyle('energy');
+        setCut(1);
+        game.beams.setWallsVisible(false);
         game.beams.setEnabled(true);
         game.beams.reset(game.rider.p);
         /**
@@ -503,6 +494,8 @@ function BASE_CREATE(game) {
         // at the edges of it -- an invisible wall, which is the exact thing
         // the walls were added to stop existing.
         setChannel(Infinity);
+        setCut(0);
+        game.beams.setWallsVisible(true);
         game.hud.showHealth(false);
         game.roster.reset();
       },

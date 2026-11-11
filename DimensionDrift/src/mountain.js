@@ -61,6 +61,35 @@ export function channelHalf() {
   return Math.min(EDGE_MAX, CHANNEL);
 }
 
+/**
+ * ── THE CUT: A STEEP BANK OF EARTH WHERE THE CHANNEL ENDS ─────────────────
+ *
+ * Metres of rise, and how fast it gets there.
+ *
+ * The boundary was drawn as a MESH first -- a strip following the clamp -- and
+ * it is the wrong tool twice over. It cost a material, normals, a style
+ * switch and a per-frame rebuild, and with an opaque material it blacked the
+ * entire frame for reasons that never surfaced in an error.
+ *
+ * This is the same thing expressed where it belongs: in the TERRAIN. Past the
+ * channel the ground simply climbs, hard, so the edge of the course is a cut
+ * bank you are riding between rather than a wall standing on a floor. Nothing
+ * is drawn that was not already being drawn, it shades and fogs with the
+ * ground because it IS the ground, the rider's clamp still stops anyone
+ * reaching it, and the whole category of depth and material problems the mesh
+ * had cannot arise.
+ *
+ * CUT_RISE is deliberately far steeper than earth stands in life. It has to
+ * read as a cut face at a glance from fifty metres, and a realistic angle of
+ * repose reads as a gentle hill.
+ */
+let CUT = 0;
+const CUT_RISE = 3.4;          // metres of climb per metre outside the channel
+
+/** Turn the cut bank on for this mode. 0 leaves the bowl exactly as it was. */
+export function setCut(v) { CUT = Math.max(0, v || 0); }
+export function cutScale() { return CUT; }
+
 /** How far ahead terrain exists. Beyond this the height fog has closed anyway. */
 export const VIEW = 560;
 
@@ -262,7 +291,25 @@ export class Terrain {
       if (PIPE >= 1) return hp;
       return hp * PIPE + this._bowlSection(t, p) * (1 - PIPE);
     }
-    return this._bowlSection(t, p);
+    return this._bowlSection(t, p) + this._cutSection(u);
+  }
+
+  /**
+   * How much the ground has climbed because it is outside the channel.
+   *
+   * Zero inside, so the rideable width is untouched and every placement that
+   * was solved against the bowl still lands where it did. The knee is rounded
+   * over a couple of metres rather than being a corner: a hard crease in a
+   * height field is a line of flipped normals under the flat shading this game
+   * uses, which reads as a tear rather than as an edge.
+   */
+  _cutSection(u) {
+    if (CUT <= 0) return 0;
+    const edge = channelHalf();
+    const over = Math.abs(u) - edge;
+    if (over <= 0) return 0;
+    const knee = Math.min(1, over / 2.2);
+    return CUT * CUT_RISE * over * knee;
   }
 
   /** The original open-face bowl, unchanged. See `crossSection`. */
