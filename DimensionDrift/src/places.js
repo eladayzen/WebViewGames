@@ -522,21 +522,49 @@ registerPlace({
    *   on the ground that bloom was eating.
    */
   palette: {
-    uSunColor: 0xffeedd,        // plain high daylight, barely warm
-    uSkyColor: 0x8fa6bd,        // the fill, off a pale city sky
-    uGroundColor: 0x6b5a46,     // bounce back up off churned earth
-    uSnowColor: 0x7d6a53,       // THE DIRT. See the note above about light.
-    uRockColor: 0x4c453d,       // wet clay and concrete in the cuts
-    uFogColor: 0xb4bfc9,        // city haze, grey-blue, not white
-    uFogSunColor: 0xd8d2c4,     // its lit side, dusty rather than golden
-    uZenith: 0x5f7ea3,
-    uHorizon: 0xc2cdd7,
+    // ── NIGHT ────────────────────────────────────────────────────────────
+    //
+    // "we should go darker - night lighting and dark buildings with lights in
+    // the windows."
+    //
+    // The daylight version of this level is in the history; this is the same
+    // site after dark. Two things change that are not just numbers going down:
+    //
+    // THE KEY IS COLD AND WEAK and the FILL carries the city. At night on a
+    // lot like this the moon does almost nothing and the real light is sodium
+    // and window-glow bouncing off low cloud, so the sky term is doing most of
+    // the work and it is warm-grey rather than blue.
+    //
+    // THE HORIZON IS BRIGHTER THAN THE ZENITH BY A LOT. That gradient IS the
+    // city: a night sky that is evenly dark reads as wilderness, and the
+    // skyline has to be silhouetted against something.
+    uSunColor: 0x8fa6c8,        // thin cold moonlight, barely a key
+    uSkyColor: 0x47536e,        // the fill, and the bigger half of the light
+    uGroundColor: 0x241f1b,     // next to nothing comes back off wet dirt
+    /**
+     * THE ROUTE, and it was 0x4a4034 for one render before this.
+     *
+     * At that value the night was right and the game was unplayable: the track
+     * went to near-black and the dirt lost its texture entirely, so there was
+     * nothing underfoot to read speed or line against. The floor of a lit
+     * trench in a city is not black -- it is catching window-glow off both
+     * banks -- so lifting it is more honest than the first number was, as well
+     * as more usable.
+     */
+    uSnowColor: 0x5c5042,
+    uRockColor: 0x272521,
+    uFogColor: 0x394257,        // night haze lit from below by the city
+    uFogSunColor: 0x59617a,
+    uZenith: 0x0c111d,
+    uHorizon: 0x55608a,         // the glow the towers stand against
     uSparkle: 0.0,
-    uCloud: 0.42,
-    bloom: 0.34,
-    exposure: 1.12,
-  },
-});
+    uCloud: 0.38,
+    // UP, not down. Bloom is what makes a lit window look like a light rather
+    // than a bright square, and it is the one effect a night scene earns.
+    bloom: 0.62,
+    // 1.05 -> 1.18. The last stop between "dark" and "cannot see the route".
+    exposure: 1.18,
+  },});
 
 registerPlace({
   // The id outlived the thing it was named after by one commit: this place was

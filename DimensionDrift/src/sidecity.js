@@ -32,24 +32,44 @@ import { makeLitMaterial } from './lit.js';
 import { VIEW, meshHeight, channelHalf } from './mountain.js';
 import { mulberry32, range } from './rng.js';
 
-const BAND = 90;
-/** Per band per side, so a block roughly every 110 m of kerb. */
-const CHANCE = 0.82;
+const BAND = 62;
+/**
+ * Per band per side. Raised with the push outwards: a tower 200 m away covers
+ * a fraction of the view that one on the rim did, so the same count reads as a
+ * scatter of lonely slabs rather than as a city.
+ */
+const CHANCE = 0.94;
 
 /**
  * How far out they stand, as metres beyond the top of the cut bank.
  *
  * NOT an absolute `u`, because the channel is a mode's to set and the bank
- * moves with it. Tying this to `channelHalf()` means narrowing the course
- * brings the city in with it rather than leaving a widening strip of bare
- * hillside between the route and the buildings -- which is exactly what
- * happened the first time the channel was narrowed with a fixed number here.
+ * moves with it. Tying this to `channelHalf()` keeps the city at a constant
+ * remove from the trench however wide the trench is.
  */
-const OUT = [11, 34];
+const OUT = [62, 215];
 
-const H = [26, 96];
-const W = [11, 27];
-const D = [13, 32];
+/**
+ * ── THEY STAND WELL BACK FROM THE CUT NOW ─────────────────────────────────
+ *
+ * Was [11, 34], which put towers right on the lip of the bank. "the buildings
+ * should not be close to the tunnel -- lets invest more in the far away
+ * buildings."
+ *
+ * He is right, and the reason is the cut itself. Once the banks are up the
+ * route reads as a TUNNEL, and the whole value of that is being enclosed. A
+ * tower standing on the rim is in the same glance as the wall it stands on, so
+ * it argues with the enclosure instead of being the city beyond it. Pushed
+ * back past sixty metres they sit above and behind the bank where they belong:
+ * you see the skyline over the edge of the trench, which is what you see from
+ * the bottom of a real one.
+ *
+ * Far things have to be BIG or they read as near things that are small, so
+ * every dimension grows with the distance.
+ */
+const H = [70, 260];
+const W = [20, 52];
+const D = [24, 64];
 
 /**
  * ── THEY ARE SUNK INTO THE HILL ON PURPOSE ────────────────────────────────
@@ -73,11 +93,71 @@ const D = [13, 32];
  */
 const SINK = 14.0;
 
+/**
+ * ── WINDOWS ───────────────────────────────────────────────────────────────
+ *
+ * "dark buildings with lights in the windows."
+ *
+ * One canvas, shared by every block, read as the lit material's `map`. The
+ * trick that makes it work is in lit.js: the fragment is
+ *
+ *     col = albedo * (direct + ambient) + albedo * uEmissive
+ *
+ * and `albedo` has already been multiplied by the texture. So a texture whose
+ * walls are near-black and whose windows are warm, driven with a high
+ * `emissive`, gives GLOWING WINDOWS AND DARK WALLS from one map -- the walls
+ * have nothing for the emissive term to multiply. No second material, no
+ * second pass, and the result still hazes with distance because it is still
+ * the lit shader.
+ *
+ * It is one texture for boxes of every size, so the grid stretches on the big
+ * ones. At sixty to two hundred metres that is invisible, and it is the whole
+ * reason this is acceptable here when it would not have been on the rim.
+ */
+function makeWindowTexture() {
+  const px = 256;
+  const c = document.createElement('canvas');
+  c.width = px;
+  c.height = px;
+  const g = c.getContext('2d');
+  g.fillStyle = '#0b0d12';
+  g.fillRect(0, 0, px, px);
+  const cols = 8;
+  const rows = 14;
+  const wW = px / cols;
+  const wH = px / rows;
+  const rand = mulberry32(0x9e3a71);
+  for (let r = 0; r < rows; r++) {
+    for (let k = 0; k < cols; k++) {
+      const lit = rand() < 0.38;
+      // Unlit panes are not black: glass at night still catches the sky, and a
+      // building of pure black holes reads as damage rather than as vacancy.
+      if (lit) {
+        const warm = rand();
+        g.fillStyle = warm < 0.72 ? '#ffd79a' : (warm < 0.9 ? '#fff3cf' : '#bfe0ff');
+      } else {
+        g.fillStyle = rand() < 0.5 ? '#1b202b' : '#141922';
+      }
+      g.fillRect(k * wW + wW * 0.22, r * wH + wH * 0.24, wW * 0.56, wH * 0.48);
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(2, 5);
+  t.anisotropy = 4;
+  return t;
+}
+
+/**
+ * Dark at night, and only just different from each other. The map carries all
+ * the detail now; these only stop every tower being cut from one cloth.
+ */
 const TINTS = [
-  [0.52, 0.52, 0.55],   // concrete
-  [0.46, 0.44, 0.44],   // soot-dark brick
-  [0.58, 0.56, 0.52],   // pale stone
-  [0.40, 0.43, 0.47],   // glass curtain wall, read cold
+  [0.62, 0.62, 0.68],
+  [0.52, 0.50, 0.52],
+  [0.70, 0.66, 0.60],
+  [0.48, 0.54, 0.64],
 ];
 
 export class SideCity {
@@ -97,7 +177,13 @@ export class SideCity {
     this.capacity = this.bands * 2;
 
     this.mat = makeLitMaterial(mood, {
-      color: 0xffffff, wrap: 0.30, gloss: 14, specular: 0.10, snowCap: 0,
+      color: 0xffffff, wrap: 0.30, gloss: 8, specular: 0.05, snowCap: 0,
+      map: makeWindowTexture(),
+      mapTint: 1,
+      // High, and it is the windows that spend it -- see makeWindowTexture.
+      // The walls are near-black in the map, so there is nothing there for
+      // this to light up.
+      emissive: 1.25,
     });
     /** Appended to main's `litMaterials`, so the shared sun and fog reach it. */
     this.materials = [this.mat];
