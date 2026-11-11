@@ -559,11 +559,16 @@ registerPlace({
     uHorizon: 0x55608a,         // the glow the towers stand against
     uSparkle: 0.0,
     uCloud: 0.38,
-    // UP, not down. Bloom is what makes a lit window look like a light rather
-    // than a bright square, and it is the one effect a night scene earns.
-    bloom: 0.62,
+    /**
+     * 0.62 -> 0.44. Bloom is still what makes a lit window read as a light
+     * rather than a bright square, so it stays above the daylight value -- but
+     * at 0.62 every window was bleeding into its neighbours and the whole
+     * skyline fused into one glowing mass. Bloom multiplies what is already
+     * bright, so it was the loudest of the three knobs turned down here.
+     */
+    bloom: 0.44,
     // 1.05 -> 1.18. The last stop between "dark" and "cannot see the route".
-    exposure: 1.18,
+    exposure: 1.10,
 
     /**
      * ── THE LAMP ──────────────────────────────────────────────────────────
@@ -580,12 +585,18 @@ registerPlace({
      * more of the sky.
      */
     uLampColor: 0xffd9a8,
-    uLampStrength: 1.45,
+    // 1.45 -> 0.80. At 1.45 the lamp was not lighting the rider, it was
+    // bleaching the ground around them, and a night scene with a white pool
+    // under the board reads as daylight through a dark filter.
+    uLampStrength: 0.80,
     uLampRange: 38,
 
     /** Lit windows on the far skyline too. See the window block in range.js. */
     uWindowColor: 0xffd79a,
-    uWindowStrength: 0.85,
+    // 0.85 -> 0.46. The far range is most of the buildings in the frame, so
+    // its windows set the overall brightness of the night more than anything
+    // else does.
+    uWindowStrength: 0.46,
   },});
 
 registerPlace({

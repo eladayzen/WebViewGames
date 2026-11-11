@@ -193,7 +193,9 @@ export class SideCity {
       // High, and it is the windows that spend it -- see makeWindowTexture.
       // The walls are near-black in the map, so there is nothing there for
       // this to light up.
-      emissive: 1.25,
+      // 1.25 -> 0.78. These are the nearest lit thing in the frame, so they
+      // set how bright the night feels more than the skyline does.
+      emissive: 0.78,
     });
     /** Appended to main's `litMaterials`, so the shared sun and fog reach it. */
     this.materials = [this.mat];
