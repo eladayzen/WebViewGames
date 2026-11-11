@@ -616,7 +616,10 @@ function makeSigilTexture(kind) {
     shield: '#ffd98a',
   }[kind] ?? '#ffffff';
 
-  g.fillStyle = 'rgba(8, 10, 24, 0.72)';
+  // 0.72 -> 0.86. The backing is what makes a glyph legible whatever it is
+  // floating over, and the ground it floats over is no longer a dark lattice
+  // but pale churned dirt. The darker the disc, the harder the glyph reads.
+  g.fillStyle = 'rgba(8, 10, 24, 0.86)';
   g.beginPath();
   g.arc(C, C, C * 0.92, 0, Math.PI * 2);
   g.fill();

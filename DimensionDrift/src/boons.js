@@ -119,7 +119,11 @@ const U_LIMIT = HALF * 0.38;      // 12.2 m
  * height I am flying", which is the only place a flying level can put a pickup
  * and have it look deliberate.
  */
-const HOVER = 2.0;
+/**
+ * Lifted from 2.0. A bigger face hanging at the old height has its lower edge
+ * in the dirt, and the route is lumpier than the slope it was tuned on.
+ */
+const HOVER = 2.7;
 const BOB = 0.26;
 const ROLL = 0.55;                // radians per second, about the view axis
 
@@ -152,7 +156,7 @@ const ROLL = 0.55;                // radians per second, about the view axis
  * the player cannot steer in at all. At 2.0 m inside a 4.5 m window there is
  * two and a half metres either side of a perfect line.
  */
-const GRAB_R = 4.5;
+const GRAB_R = 5.4;
 const GRAB_UP = 4.5;
 const GRAB_DOWN = 3.0;
 
@@ -160,9 +164,23 @@ const POP_TIME = 0.32;
 const POP_RISE = 2.4;
 
 /** The face the glyph is drawn on, in metres. */
-const DISC_R = 1.30;
+/**
+ * ── BIGGER, AND THE NUMBER IS NOT A TASTE CALL ────────────────────────────
+ *
+ * 1.30 -> 2.40, so the face is nearly twice as wide and about three times the
+ * area. Asked for directly ("shield pickups should be bigger and clearer"),
+ * and the old number was decided when the ground under it was a holographic
+ * lattice -- a near-black field that a gold glyph sat on top of. On churned
+ * dirt at the same size it is one more lump among many.
+ *
+ * It is also sized against the GRAB now. The pickup radius is 5.4 m and the
+ * face was 1.3: a target you have to fly at that draws itself at a quarter of
+ * the size of the thing it actually is teaches the player to misjudge it.
+ */
+const DISC_R = 2.40;
 /** The dark heart behind it, which is what gives the disc an edge in the air. */
-const CORE_R = 0.52;
+/** The octahedron behind the face, grown with it so it still reads as one object. */
+const CORE_R = 0.95;
 
 /**
  * WHAT A BOON MAY BE, and the weights are not the gates' weights.
