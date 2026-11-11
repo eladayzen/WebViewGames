@@ -338,7 +338,13 @@ registerPlace({
    * the same valley again, higher up. Nearly full presence, because the whole
    * point of this skyline is that you can see it.
    */
-  rangeProfile: 'spires',
+  /**
+   * MANHATTAN ON THE HORIZON, where this was 'spires' -- a range of alien
+   * needles, which is the other half of what made the old look. See
+   * `RANGE_PROFILES.city` in range.js: no massifs and no summits at all, so
+   * the whole silhouette is flat-topped towers.
+   */
+  rangeProfile: 'city',
   range: 0.88,
   /**
    * BARE ROCK ON THE LOWER SHARDS. `snowLine` keeps its name because it is a

@@ -156,6 +156,51 @@ const RANGE_PROFILES = {
   ridges: LAYERS,
 
   /**
+   * ── MANHATTAN FROM A BUILDING SITE ────────────────────────────────────
+   *
+   * No massifs and no summits at all -- every peak count is zero, so the whole
+   * silhouette is towers. See `makeTower`.
+   *
+   * The two numbers that decide whether this reads as a city rather than as a
+   * crate yard:
+   *
+   *   tH SPREAD WIDE, and much wider than any ridge profile dares. The file's
+   *     own note says a narrow spread makes summits agree and read as one
+   *     massif; a skyline is the opposite -- it is a few towers much taller
+   *     than their neighbours with a low mass between them, and the gaps are
+   *     as much of the shape as the peaks.
+   *   tW NARROW RELATIVE TO HEIGHT. A block as wide as it is tall is a
+   *     warehouse. Three to six times taller than wide is a tower, and that
+   *     ratio is doing more work here than any count.
+   *
+   * The floor is kept LOW and quiet. Between the towers should be the haze of
+   * everything too small to resolve, not a ridge line -- a city has no crest.
+   */
+  city: [
+    { // far: the distant midtown wall, tallest and most spread out
+      r0: 1000, r1: 1300, rows: 6, baseY: -45, apron: 0,
+      massifs: 0, mH: [0, 0], mG: [1, 1],
+      summits: 0, sH: [1, 240], sG: [1, 1],
+      towers: 34, tH: [95, 310], tW: [34, 86], tD: [40, 130],
+      floor: [10, 34], floorP: 22, detail: 0.004, rowPow: 1.0, pkU: [0.30, 0.82],
+    },
+    { // mid
+      r0: 830, r1: 1110, rows: 6, baseY: -30, apron: 0,
+      massifs: 0, mH: [0, 0], mG: [1, 1],
+      summits: 0, sH: [1, 180], sG: [1, 1],
+      towers: 40, tH: [70, 225], tW: [30, 74], tD: [36, 110],
+      floor: [8, 26], floorP: 26, detail: 0.004, rowPow: 1.0, pkU: [0.30, 0.82],
+    },
+    { // near: the blocks across the lot fence, lower and denser
+      r0: 720, r1: 1010, rows: 12, baseY: -52, apron: 165, apronP: 9,
+      massifs: 0, mH: [0, 0], mG: [1, 1],
+      summits: 0, sH: [1, 130], sG: [1, 1],
+      towers: 46, tH: [48, 150], tW: [26, 62], tD: [30, 92],
+      floor: [6, 20], floorP: 34, detail: 0.004, rowPow: 1.5, pkU: [0.54, 0.80],
+    },
+  ],
+
+  /**
    * SHATTERED. The default's massifs are the alpine shape in this file -- broad
    * domes at gradients of half, with crests sitting on them, which is what a
    * range of granite looks like after ice has been over it for a million years.
@@ -292,6 +337,29 @@ function makePeak(rand, th, r, h, g) {
   return { th, r, h, cs, sn, k, reach: h / gMin };
 }
 
+/**
+ * ── A TOWER, WHICH IS WHAT A CITY IS MADE OF ──────────────────────────────
+ *
+ * The whole file is built on a MAX OF PYRAMIDS, and the reason is written at
+ * the top: a max of linear functions is piecewise planar, so it has real flat
+ * faces and real aretes where value noise could only give domes.
+ *
+ * A box is the same argument with the linear functions removed. `h = H inside
+ * the footprint, 0 outside` is still a max, so towers compose with each other
+ * and with the peaks exactly as the peaks compose among themselves -- the
+ * taller one wins where they overlap, which is precisely what you see looking
+ * down an avenue. Flat tops and vertical sides come out for free, and they are
+ * the only two properties that make a silhouette read as built rather than
+ * grown.
+ *
+ * Widths are given in METRES and converted to an angle here using the tower's
+ * own radius, so a block at 1300 m and a block at 740 m are the same size as
+ * each other rather than the same number of degrees.
+ */
+function makeTower(rand, th, r, h, wMetres, dMetres) {
+  return { th, r, h, aw: wMetres / (2 * r), rd: dMetres / 2 };
+}
+
 /** Signed angular difference, folded into (-pi, pi]. */
 function dth(a, b) {
   let d = a - b;
@@ -337,6 +405,27 @@ function buildLayer(cfg, seed) {
   // lesson is that below the crest only SILHOUETTES read. Depth there is carried
   // by the crest lines of the rings in front and by haze, and by nothing else.
 
+  /**
+   * The city, if this layer asks for one. Built after the peaks and evaluated
+   * in the same max, so a profile may have both -- a ridge line with towers
+   * standing on it is a legal skyline here, even if the one shipped is not.
+   */
+  const towers = [];
+  if (cfg.towers) {
+    for (let i = 0; i < cfg.towers; i++) {
+      // Jittered off a regular ring by most of a sector. A city is not a grid
+      // from a kilometre away, but it is not a scatter either -- blocks line
+      // up because streets do, and the residue of the ring is what carries
+      // that without anyone drawing a street.
+      const th = (i + rr(rand, -0.42, 0.42)) * TAU / cfg.towers;
+      const r = cfg.r0 + span * rr(rand, cfg.pkU[0], cfg.pkU[1] - 0.02);
+      towers.push(makeTower(rand, th, r,
+        rr(rand, cfg.tH[0], cfg.tH[1]),
+        rr(rand, cfg.tW[0], cfg.tW[1]),
+        rr(rand, cfg.tD[0], cfg.tD[1])));
+    }
+  }
+
   const nseed = (seed * 7919) & 0x7fffffff;
   const dseed = (seed * 104729) & 0x7fffffff;
   const detail = cfg.detail * cfg.sH[1];
@@ -369,6 +458,18 @@ function buildLayer(cfg, seed) {
       }
       const v = p.h - m;
       if (v > h) h = v;
+    }
+
+    // THE TOWERS, in the same max. Inside the footprint the height is the
+    // tower's own and nothing else is consulted, which is what gives a flat
+    // roof; outside it the tower contributes nothing at all, which is what
+    // gives a vertical wall.
+    for (let i = 0; i < towers.length; i++) {
+      const t2 = towers[i];
+      if (t2.h <= h) continue;                   // cannot win: skip the tests
+      if (Math.abs(r - t2.r) > t2.rd) continue;
+      if (Math.abs(dth(th, t2.th)) > t2.aw) continue;
+      h = t2.h;
     }
 
     const u = (r - cfg.r0) / span;
