@@ -42,6 +42,7 @@
 // shot and delete it. See `attach` and `update`.
 import * as THREE from 'three';
 import { HALF, VIEW, meshHeight, channelHalf } from './mountain.js';
+import { makeLitMaterial } from './lit.js';
 import { mulberry32, range, clamp } from './rng.js';
 
 const BAND = 110;
@@ -284,9 +285,26 @@ const WALL_H = 22.0;
  * than the rider plus whatever the camera swings through on a hard lean.
  */
 const WALL_OUT = 3.0;
+
+/**
+ * ── THE BANK: HOW FAR THE TOP LEANS OUT FROM THE FOOT ─────────────────────
+ *
+ * Metres. The drawn boundary is no longer a sheet of light but a CUT BANK --
+ * the side of an excavation, which is what a site road actually runs between.
+ *
+ * It leans rather than standing vertical, and the amount is small on purpose.
+ * A vertical face is read as a wall whatever it is made of, and this has to be
+ * read as EARTH: earth cannot stand at ninety degrees, so a face that does
+ * tells the eye it is looking at concrete or at a texture. Four metres of lean
+ * over seventeen of rise is about seventy-six degrees -- steeper than any real
+ * spoil heap, which is the point, but visibly not plumb.
+ */
+const BANK_OUT = 4.0;
 const WALL_BACK = 70;                 // metres of wall kept behind the rider
 const WSEG = 64;                      // samples along the course, per wall
 const WALL_COLOR = 0x1b2c52;
+/** Churned earth, a shade off the route's own so the edge separates. */
+const BANK_COLOR = 0x6b5944;
 
 const WALL_VERT = `
 varying float vV;
@@ -337,7 +355,7 @@ export class Beams {
    * @param {THREE.Scene} scene
    * @param {number} seed
    */
-  constructor(terrain, scene, seed = 1) {
+  constructor(terrain, scene, mood, seed = 1) {
     this.terrain = terrain;
     this.scene = scene;
     this.seed = (seed ^ 0x2b91f7) >>> 0;
@@ -403,6 +421,9 @@ export class Beams {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((WSEG + 1) * 2 * 3), 3));
       geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array((WSEG + 1) * 2 * 2), 2));
+      // NORMALS, which the energy shader never needed and a lit one cannot do
+      // without. They are written by `_walls` along with the positions.
+      geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array((WSEG + 1) * 2 * 3), 3));
       const widx = [];
       for (let k = 0; k < WSEG; k++) {
         const a = k * 2;
@@ -422,6 +443,26 @@ export class Beams {
       scene.add(mesh);
       this.walls.push(mesh);
     }
+
+    /**
+     * ── TWO BOUNDARIES, ONE GEOMETRY ──────────────────────────────────────
+     *
+     * The energy wall above is KEPT WHOLE and is one call to `setWallStyle`
+     * away -- asked for explicitly, because it may be the right boundary for a
+     * level that is not a building site.
+     *
+     * Both styles write into the same strips; only the material and the lean
+     * differ, so there is one piece of geometry code and no second ring to
+     * keep in step. The lit one is registered in `materials` so main's shared
+     * sun and fog reach it, the way the boons do it.
+     */
+    this.matBank = makeLitMaterial(mood, {
+      color: BANK_COLOR, wrap: 0.42, gloss: 10, specular: 0.06, snowCap: 0,
+    });
+    this.materials = [this.matBank];
+    /** @type {THREE.Material[]} the glow, kept so a swap back costs nothing. */
+    this._matEnergy = this.walls.map((m) => m.material);
+    this.wallStyle = 'bank';
 
     this.baseBand = NaN;
     this.t = 0;
@@ -607,6 +648,23 @@ export class Beams {
    * writing them. It also means the wall is always exactly on the clamp, so a
    * mode that changes the channel mid-run cannot leave a visible lie behind.
    */
+  /**
+   * 'bank' for a cut face of earth, 'energy' for the glowing rail.
+   *
+   * The energy wall is NOT dead code. It is the boundary this mode shipped
+   * with, it reads unmistakably as a limit, and a level that is not made of
+   * dirt will want it back -- which is why it is a switch rather than a
+   * deletion. Both styles write the same strips; only the material and the
+   * lean differ.
+   */
+  setWallStyle(style) {
+    this.wallStyle = style === 'energy' ? 'energy' : 'bank';
+    for (let i = 0; i < this.walls.length; i++) {
+      this.walls[i].material = this.wallStyle === 'energy'
+        ? this._matEnergy[i] : this.matBank;
+    }
+  }
+
   _walls(p) {
     const sp = span() + WALL_OUT;
     for (let w = 0; w < 2; w++) {
@@ -614,18 +672,39 @@ export class Beams {
       const mesh = this.walls[w];
       const pos = mesh.geometry.attributes.position.array;
       const uvs = mesh.geometry.attributes.uv.array;
+      const nrm = mesh.geometry.attributes.normal.array;
+      const bank = this.wallStyle === 'bank';
+      // The top of a bank sits FURTHER OUT than its foot. The face therefore
+      // leans away from the rider, which is the one thing that makes it read
+      // as a cut in the ground rather than as a board stood on edge.
+      const lean = bank ? BANK_OUT : 0;
+      // Face normal for the lit material: horizontal component pointing back
+      // in at the rider, vertical component from the lean. Constant along the
+      // strip, which is correct -- the face is a ruled surface and its normal
+      // only turns with the lean, not with the ground under it.
+      const nLen = Math.hypot(WALL_H, lean) || 1;
+      const nx = -sgn * (WALL_H / nLen);
+      const ny = lean / nLen;
       for (let k = 0; k <= WSEG; k++) {
         const pp = p - WALL_BACK + ((VIEW + WALL_BACK) * k) / WSEG;
         const z = -pp;
-        const x = this.terrain.xAt(sgn * sp, z);
-        const y0 = meshHeight(this.terrain, x, z);
+        const xFoot = this.terrain.xAt(sgn * sp, z);
+        const xTop = this.terrain.xAt(sgn * (sp + lean), z);
+        // The foot is BURIED a little, so no sliver of daylight shows under a
+        // bank standing on ground that is never quite where the strip samples.
+        const y0 = meshHeight(this.terrain, xFoot, z) - 1.0;
+        const yTop = meshHeight(this.terrain, xTop, z) + WALL_H;
         const o = k * 6;
-        pos[o] = x; pos[o + 1] = y0 - 1.0; pos[o + 2] = z;
-        pos[o + 3] = x; pos[o + 4] = y0 + WALL_H; pos[o + 5] = z;
+        pos[o] = xFoot; pos[o + 1] = y0; pos[o + 2] = z;
+        pos[o + 3] = xTop; pos[o + 4] = yTop; pos[o + 5] = z;
         const q = k * 4;
         uvs[q] = k / WSEG; uvs[q + 1] = 0;
         uvs[q + 2] = k / WSEG; uvs[q + 3] = 1;
+        const n = k * 6;
+        nrm[n] = nx; nrm[n + 1] = ny; nrm[n + 2] = 0;
+        nrm[n + 3] = nx; nrm[n + 4] = ny; nrm[n + 5] = 0;
       }
+      mesh.geometry.attributes.normal.needsUpdate = true;
       mesh.geometry.attributes.position.needsUpdate = true;
       mesh.geometry.attributes.uv.needsUpdate = true;
       mesh.material.uniforms.uTime.value = this.t;

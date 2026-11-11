@@ -301,7 +301,45 @@ function BASE_CREATE(game) {
          */
         game.course.setGatesOff(true);
 
-        setChannel(20);
+/**
+         * NARROWED 25%, from 20 m each side to 15.
+         *
+         * Asked for, and the curtains follow it automatically: `beams.js`
+         * spans every barrier to `channelHalf()`, so the gap stays the same
+         * 9 m while the walls close in -- which makes the hole a larger share
+         * of the course and the course a tighter thing to read. The worst-case
+         * travel to a gap drops from about six seconds to four and a half.
+         */
+        setChannel(15);
+        /**
+         * AND THE BOUNDARY IS EARTH NOW. See `setWallStyle` in beams.js: the
+         * glowing rail is kept whole and is one word away, because it reads
+         * unmistakably as a limit and a level that is not a building site will
+         * want it back.
+         */
+        /**
+         * ── STILL 'energy', AND THAT IS NOT THE INTENT ────────────────────
+         *
+         * The dirt bank is built (see `setWallStyle` in beams.js) and it is
+         * NOT working: with it on, the whole 3D frame renders black while the
+         * HUD keeps drawing. What is known, measured rather than guessed:
+         *
+         *   - the scene is healthy -- 137 children, 44 visible meshes, camera
+         *     where it should be, no console errors of any kind
+         *   - switching back to 'energy' restores the frame instantly, same
+         *     geometry, same frame
+         *   - a KNOWN-GOOD opaque lit material borrowed from the scatter is
+         *     black too, so it is not `makeLitMaterial`
+         *   - the vertices are clean: no NaN, nothing above 1e6
+         *
+         * So: any OPAQUE, depth-writing material on these strips blacks the
+         * frame, and the transparent one does not. That points at the wall
+         * covering the camera or breaking the post chain's depth, and it is
+         * the next thing to look at -- not at the material.
+         *
+         * Left on the working boundary rather than shipping a black screen.
+         */
+        game.beams.setWallStyle('energy');
         game.beams.setEnabled(true);
         game.beams.reset(game.rider.p);
         /**

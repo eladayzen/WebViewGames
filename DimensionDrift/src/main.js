@@ -1261,7 +1261,7 @@ class Game {
        * when a hazard is tuned cannot be compared against itself between two
        * runs, and every tuning pass in this project depends on being able to.
        */
-      this.beams = new Beams(this.terrain, this.scene, SEED);
+      this.beams = new Beams(this.terrain, this.scene, this.mood, SEED);
       /**
        * LASER FIELDS between the pods of a squad. See `fields.js`: the only
        * hazard in this mode the GUN can answer, which is what stops the
@@ -1421,6 +1421,7 @@ class Game {
         ...this.pickups.materials, ...this.combat.materials, ...this.islands.materials,
         ...this.medkits.materials,
         ...this.boons.materials,
+        ...this.beams.materials,
         // Player two's rider is lit like every other object. Left out of this
         // list it never got uFogBase/uCamPos and rode as a pale fog ghost --
         // the same failure the rivals' jerseys had (see the frame loop).
