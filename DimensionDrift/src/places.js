@@ -564,6 +564,28 @@ registerPlace({
     bloom: 0.62,
     // 1.05 -> 1.18. The last stop between "dark" and "cannot see the route".
     exposure: 1.18,
+
+    /**
+     * ── THE LAMP ──────────────────────────────────────────────────────────
+     *
+     * "we need to see the character - spot lights and stuff."
+     *
+     * A light that travels with the camera (see `uLampColor` in mood.js and
+     * the lamp block in lit.js and the snow shader). At night the sun term is
+     * nearly off, so without it the rider is a silhouette on a dark floor --
+     * the one thing the player must see is the one thing they cannot.
+     *
+     * Warm and slightly over-bright, because it is standing in for work lamps
+     * on a site rather than for moonlight, and a cold one would just look like
+     * more of the sky.
+     */
+    uLampColor: 0xffd9a8,
+    uLampStrength: 1.45,
+    uLampRange: 38,
+
+    /** Lit windows on the far skyline too. See the window block in range.js. */
+    uWindowColor: 0xffd79a,
+    uWindowStrength: 0.85,
   },});
 
 registerPlace({

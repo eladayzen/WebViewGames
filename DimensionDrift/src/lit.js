@@ -89,6 +89,9 @@ uniform float uWrap;
 uniform float uGloss;
 uniform float uSpecular;
 uniform float uEmissive;
+uniform vec3  uLampColor;
+uniform float uLampStrength;
+uniform float uLampRange;
 uniform float uSnowCap;
 uniform float uSunFloor;
 uniform float uSunFlat;
@@ -169,6 +172,29 @@ void main() {
 
   vec3 col = albedo * (direct + ambient) + uSunColor * spec + albedo * uEmissive;
 
+  // ── THE LAMP ────────────────────────────────────────────────────────────
+  //
+  // A light at the camera. At night the sun term is nearly off, so without
+  // this the rider is a silhouette on a dark floor and the one thing the
+  // player must see is the one thing they cannot.
+  //
+  // It is at the CAMERA rather than on the board on purpose: a lamp attached
+  // to a rider who leans swings its pool of light across the ground through
+  // every turn, which reads as the world rocking. A camera lamp is steady,
+  // and at this camera distance it still looks like it is coming off the
+  // machine.
+  //
+  // Inverse-square, softened by the range so it does not blow out at contact.
+  if (uLampStrength > 0.0) {
+    vec3 toCam = uCamPos - vWorld;
+    float d = length(toCam);
+    vec3 L = toCam / max(d, 1e-4);
+    float lam = max(0.0, dot(N, L));
+    float q = d / uLampRange;
+    float atten = 1.0 / (1.0 + q * q);
+    col += albedo * uLampColor * (uLampStrength * lam * atten);
+  }
+
   float dist = length(vWorld - uCamPos);
   float dy = vWorld.y - uCamPos.y;
   float t = uFogFalloff * dy;
@@ -233,6 +259,9 @@ export function makeLitMaterial(mood, {
       uGloss: { value: gloss },
       uSpecular: { value: specular },
       uEmissive: { value: emissive },
+      uLampColor: { value: new THREE.Color(0xffffff) },
+      uLampStrength: { value: 0 },
+      uLampRange: { value: 34 },
       uSnowCap: { value: snowCap },
       // Refreshed every frame by updateLitCommon from the mountain's own values,
       // so there is one sun in the scene and not two.

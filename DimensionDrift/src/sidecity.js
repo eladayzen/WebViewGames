@@ -129,15 +129,25 @@ function makeWindowTexture() {
   const rand = mulberry32(0x9e3a71);
   for (let r = 0; r < rows; r++) {
     for (let k = 0; k < cols; k++) {
-      const lit = rand() < 0.38;
-      // Unlit panes are not black: glass at night still catches the sky, and a
-      // building of pure black holes reads as damage rather than as vacancy.
-      if (lit) {
-        const warm = rand();
-        g.fillStyle = warm < 0.72 ? '#ffd79a' : (warm < 0.9 ? '#fff3cf' : '#bfe0ff');
-      } else {
-        g.fillStyle = rand() < 0.5 ? '#1b202b' : '#141922';
-      }
+      /**
+       * ── EVERY PANE IS LIT ─────────────────────────────────────────────
+       *
+       * Asked for: "make all of the buildings with lighted window all of the
+       * time." It was 38% before, which is what a real tower looks like at
+       * night and is NOT what this needs -- at the distance these now stand,
+       * a third-lit tower is mostly a dark slab with a sprinkle on it, and
+       * reads as derelict rather than as a city working late.
+       *
+       * The variation moves from LIT/UNLIT to brightness and hue instead, so
+       * the grid still has life in it without any pane going dark. A tower of
+       * identical squares reads as a texture; a tower of warm ones at
+       * different strengths reads as windows.
+       */
+      const warm = rand();
+      const dim = 0.55 + rand() * 0.45;
+      const base = warm < 0.70 ? [255, 215, 154]
+        : (warm < 0.89 ? [255, 243, 207] : [191, 224, 255]);
+      g.fillStyle = `rgb(${Math.round(base[0] * dim)},${Math.round(base[1] * dim)},${Math.round(base[2] * dim)})`;
       g.fillRect(k * wW + wW * 0.22, r * wH + wH * 0.24, wW * 0.56, wH * 0.48);
     }
   }

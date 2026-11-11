@@ -637,6 +637,8 @@ uniform float uFogDensity;
 uniform vec3  uRockTint;   // multiplicative and luminance-neutral, so it shifts hue and not exposure
 uniform float uRockAmt;    // 0 is the all-snow range this has always been
 uniform float uSnowLine;   // metres above the eye; above this it is white whatever the face does
+uniform vec3  uWindowColor;
+uniform float uWindowStrength;
 
 varying vec3 vP;
 varying vec3 vN;
@@ -721,6 +723,39 @@ void main() {
   // length(vP) is exact, the compression is then continuous across a layer
   // instead of stepping at its rim, and the whole range thins out on its own
   // when the squall's fog density triples.
+  // ── WINDOWS ON THE SKYLINE ──────────────────────────────────────────────
+  //
+  // "make all of the buildings with lighted window all of the time" -- and
+  // that has to include this range, which is most of the buildings in the
+  // frame and had none.
+  //
+  // Procedural rather than a texture, because this mesh has no UVs at all: it
+  // is a heightfield ring built as a max of pyramids and towers, and giving it
+  // a sane unwrap would be a bigger job than the windows are worth. The grid
+  // is taken from vP, which the vertex shader notes is a STABLE local
+  // coordinate -- the mesh is translated to the camera and never rotated -- so
+  // the pattern sits still on each face instead of swimming as the player
+  // moves.
+  //
+  // WALLS ONLY. 1 - abs(N.y) is zero on a roof and one on a vertical face, and
+  // windows on the roofs would turn the whole skyline into a lit grid seen
+  // from above, which is the one angle a city never reads from.
+  if (uWindowStrength > 0.0) {
+    float wall = 1.0 - abs(N.y);
+    if (wall > 0.45) {
+      // The face's own plane: whichever horizontal axis it mostly faces.
+      vec2 uvw = abs(N.x) > abs(N.z) ? vec2(vP.z, vP.y) : vec2(vP.x, vP.y);
+      vec2 cellSize = vec2(13.0, 10.0);
+      vec2 gcell = floor(uvw / cellSize);
+      vec2 gf = fract(uvw / cellSize);
+      float pane = step(0.20, gf.x) * step(gf.x, 0.80)
+                 * step(0.24, gf.y) * step(gf.y, 0.76);
+      // Per-pane brightness, so the grid has life without any pane going dark.
+      float r = fract(sin(dot(gcell, vec2(12.9898, 78.233))) * 43758.5453);
+      tone += uWindowColor * (uWindowStrength * pane * wall * (0.55 + 0.45 * r));
+    }
+  }
+
   float k = 0.0016 + uFogDensity * 0.35;
   float c = exp(-max(dist - 660.0, 0.0) * k);
   // Haze pools in the valleys: the feet of the range dissolve, the crests stay
@@ -744,6 +779,15 @@ export class FarRange {
       fragmentShader: RANGE_FRAG,
       uniforms: {
         uSunDir: { value: new THREE.Vector3(0.3, 0.2, -0.9) },
+        /**
+         * Lit windows, pushed by `mood._push` and zero for every place that
+         * does not ask. Declaring these in the GLSL and forgetting them here
+         * is a silent no-op -- the shader compiles, the uniform reads zero,
+         * and the skyline simply stays dark. It did exactly that for one
+         * render before this line existed.
+         */
+        uWindowColor: { value: new THREE.Color(0xffd79a) },
+        uWindowStrength: { value: 0 },
         uFogColor: { value: new THREE.Color(0xa8c4e6) },
         uFogSunColor: { value: new THREE.Color(0xffeccd) },
         uFogDensity: { value: 0.005 },

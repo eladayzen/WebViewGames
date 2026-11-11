@@ -724,6 +724,9 @@ uniform vec3  uSkyColor;
 uniform vec3  uGroundColor;
 uniform vec3  uSnowColor;
 uniform vec3  uRockColor;
+uniform vec3  uLampColor;
+uniform float uLampStrength;
+uniform float uLampRange;
 uniform vec3  uFogColor;
 uniform vec3  uFogSunColor;
 uniform float uFogDensity;
@@ -1491,6 +1494,22 @@ void main() {
     }
   }
 
+  // ── the lamp ────────────────────────────────────────────────────────────
+  //
+  // The same camera light lit.js carries, on the GROUND as well. Lighting the
+  // rider alone would put a lit character on a black floor, which reads as a
+  // cut-out rather than as someone standing somewhere -- at night it is the
+  // pool of light AROUND them that says where they are and how fast it is
+  // going past. See the note on the lamp in mood.js.
+  if (uLampStrength > 0.0) {
+    vec3 toCamL = uCamPos - vWorld;
+    float dL = length(toCamL);
+    vec3 LL = toCamL / max(dL, 1e-4);
+    float lamL = max(0.0, dot(normalize(vNormal), LL));
+    float qL = dL / uLampRange;
+    col += col * uLampColor * (uLampStrength * lamL / (1.0 + qL * qL));
+  }
+
   // ── height fog ──────────────────────────────────────────────────────────
   // Closed form of the integral of an exponentially height-decaying density
   // along the view ray, so haze pools correctly in the valley instead of being
@@ -1765,6 +1784,9 @@ export class MountainMesh {
         uGroundColor: { value: new THREE.Color(0.24, 0.30, 0.44) },
         uSnowColor: { value: new THREE.Color(0.90, 0.94, 1.0) },
         uRockColor: { value: new THREE.Color(0.20, 0.20, 0.24) },
+        uLampColor: { value: new THREE.Color(0xffffff) },
+        uLampStrength: { value: 0 },
+        uLampRange: { value: 34 },
         uFogColor: { value: new THREE.Color(0.62, 0.72, 0.88) },
         uFogSunColor: { value: new THREE.Color(1.0, 0.82, 0.62) },
         uFogDensity: { value: 0.0072 },

@@ -239,6 +239,31 @@ export class Mood {
      * @type {Record<string, number|THREE.Color>|null}
      */
     this.override = null;
+
+    /**
+     * ── THE LAMP: A LIGHT THAT TRAVELS WITH THE CAMERA ────────────────────
+     *
+     * Deliberately NOT part of the `MOODS` arc and not in COLOR_KEYS/NUM_KEYS,
+     * so it is not interpolated between stops and every existing place keeps
+     * it at strength zero without a line changing.
+     *
+     * It exists because a night level has a problem a palette cannot solve:
+     * the sun term is the only thing lighting anything, and at night it is
+     * nearly off, so the rider is a silhouette on a dark floor. Real light in
+     * a scene like this comes from the machine you are on and the plant around
+     * you, and both of those are near the camera. See `lit.js` and the snow
+     * shader for the term itself.
+     */
+    this.uLampColor = new THREE.Color(0xffffff);
+    this.uLampStrength = 0;
+    this.uLampRange = 34;
+    /**
+     * Windows on the FAR range. Same arrangement as the lamp and for the same
+     * reason: not part of the day arc, zero by default, so every other place
+     * keeps the range it has always had.
+     */
+    this.uWindowColor = new THREE.Color(0xffd79a);
+    this.uWindowStrength = 0;
     this.uSunDir = new THREE.Vector3();
     for (const k of COLOR_KEYS) this[k] = new THREE.Color();
     for (const k of NUM_KEYS) this[k] = 0;
@@ -259,7 +284,17 @@ export class Mood {
     if (!spec) { this.override = null; this.setProgress(this._t ?? 0); return; }
     const out = {};
     for (const [k, v] of Object.entries(spec)) {
-      out[k] = COLOR_KEYS.includes(k) ? new THREE.Color(v) : v;
+      /**
+       * WHAT THIS IS ON THE MOOD DECIDES, not a list.
+       *
+       * It asked COLOR_KEYS before, which silently did the wrong thing for
+       * any colour that is not part of the day arc: `uLampColor` lives on the
+       * Mood but not in that table, so a place passing a hex for it stored a
+       * NUMBER, and the apply loop then did `Color.copy(0xffd9a8)` and left
+       * the lamp at NaN. It rendered as a black light -- present, costing
+       * shader time, lighting nothing.
+       */
+      out[k] = (this[k] instanceof THREE.Color) ? new THREE.Color(v) : v;
     }
     this.override = out;
     this.setProgress(this._t ?? 0);
@@ -281,6 +316,13 @@ export class Mood {
     // can be read, which is a different game at speed rather than a different
     // palette. See `places.js`.
     if (u.uFogDensity) u.uFogDensity.value = this.uFogDensity * this.fogScale;
+    // The lamp, pushed by name rather than through the key tables -- see the
+    // note on it in the constructor.
+    if (u.uLampColor) u.uLampColor.value.copy(this.uLampColor);
+    if (u.uLampStrength) u.uLampStrength.value = this.uLampStrength;
+    if (u.uLampRange) u.uLampRange.value = this.uLampRange;
+    if (u.uWindowColor) u.uWindowColor.value.copy(this.uWindowColor);
+    if (u.uWindowStrength) u.uWindowStrength.value = this.uWindowStrength;
   }
 
   /**
