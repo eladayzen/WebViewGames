@@ -39,6 +39,7 @@ import { Medkits } from './medkits.js';
 import { Boons } from './boons.js';
 import { Beams } from './beams.js';
 import { Fields } from './fields.js';
+import { SideCity } from './sidecity.js';
 import { Roster, Fighter, TEAM } from './fighters.js';
 import { WEAPONS, GIFT, rollGift, MOTE_HEAL, CHAIN_HEAL } from './weapons.js';
 import { createFinishLine } from './finishLine.js';
@@ -1273,6 +1274,13 @@ class Game {
        */
       this.fields = new Fields(this.terrain, this.scene);
       /**
+       * THE BLOCKS EITHER SIDE OF THE LOT. See `sidecity.js` for why this is
+       * neither the range (which is a silhouette that never passes you) nor
+       * the scatter (whose whole placement model is about staying off the
+       * racing line).
+       */
+      this.sideCity = new SideCity(this.terrain, this.scene, this.mood, SEED);
+      /**
        * THE BARRIER, DRAWN. One per rider, because two players each get their
        * own and a single bubble would follow the wrong one.
        *
@@ -1422,6 +1430,7 @@ class Game {
         ...this.medkits.materials,
         ...this.boons.materials,
         ...this.beams.materials,
+        ...this.sideCity.materials,
         // Player two's rider is lit like every other object. Left out of this
         // list it never got uFogBase/uCamPos and rode as a pale fog ghost --
         // the same failure the rivals' jerseys had (see the frame loop).
@@ -1617,6 +1626,7 @@ class Game {
     this.medkits.reset(p);
     this.boons.reset(p);
     this.beams.reset(p);
+    this.sideCity.reset(p);
     this.fields.reset();
     // Fast-forward the plan so gates are not spawned for beats already past.
     while (this.course.planIdx < this.gatePlan.length
@@ -4310,6 +4320,7 @@ class Game {
     // Scenery, so it scrolls whatever the state is -- the results screen and
     // the crash camera both still look at the sky.
     this.islands.update(this.rider.p);
+    this.sideCity.update(this.rider.p);
     /**
      * THE ABILITIES, taken the same way and in the same place as the kits.
      *

@@ -330,6 +330,14 @@ function BASE_CREATE(game) {
          * level that is not a building site will want the glow back.
          */
         setCut(1);
+        /**
+         * AND THE CITY COMES RIGHT UP TO THE KERB. Enabled after `setCut`
+         * and `setChannel`, because `sidecity.js` places against
+         * `channelHalf()` -- built before them, the first bands would stand
+         * out where the old wider channel was.
+         */
+        game.sideCity.setEnabled(true);
+        game.sideCity.reset(game.rider.p);
         game.beams.setWallsVisible(false);
         game.beams.setEnabled(true);
         game.beams.reset(game.rider.p);
@@ -495,6 +503,7 @@ function BASE_CREATE(game) {
         // the walls were added to stop existing.
         setChannel(Infinity);
         setCut(0);
+        game.sideCity.setEnabled(false);
         game.beams.setWallsVisible(true);
         game.hud.showHealth(false);
         game.roster.reset();

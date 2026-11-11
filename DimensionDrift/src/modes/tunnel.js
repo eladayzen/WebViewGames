@@ -111,6 +111,7 @@ export default registerMode({
         game.boons.setEnabled(false);
         game.beams.setEnabled(false);
         game.fields.setEnabled(false);
+        game.sideCity.setEnabled(false);
         game.hud.showHealth(false);
         game.roster.reset();
 
