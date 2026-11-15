@@ -1513,7 +1513,20 @@ void main() {
     vec3 Lp = dP * inversesqrt(max(dist2, 1e-6));
     float lam = max(0.0, (dot(normalize(vNormal), Lp) + 0.25) / 1.25);
     float fall = (1.0 - q) * (1.0 - q);
-    col += col * uPtCol[i] * (lam * fall);
+    /**
+     * ── AGAINST albedo, NOT AGAINST col ──────────────────────────────
+     *
+     * This read col += col * light, which multiplies the lamp by how bright
+     * the ground ALREADY is. On a night level the ground is near-black, so the
+     * product was near-black whatever the lamp did: the masts lit nothing and
+     * read as glowing props standing over an unlit road. That is the whole of
+     * "the poles are not casting any spot lights down into the level".
+     *
+     * Diffuse light is the surface's own colour times what falls on it --
+     * albedo, which is the dirt before any lighting. A dark surface then
+     * lights up exactly as a dark surface should, instead of being unable to.
+     */
+    col += albedo * uPtCol[i] * (lam * fall);
   }
 
   // ── the lamp ────────────────────────────────────────────────────────────
@@ -1531,7 +1544,9 @@ void main() {
     vec3 LL = toCamL / max(dL, 1e-4);
     float lamL = max(0.0, dot(normalize(vNormal), LL));
     float qL = dL / uLampRange;
-    col += col * uLampColor * (uLampStrength * lamL / (1.0 + qL * qL));
+    // Against albedo for the reason written on the site lights above: the
+    // camera lamp had the same fault and was fighting the same darkness.
+    col += albedo * uLampColor * (uLampStrength * lamL / (1.0 + qL * qL));
   }
 
   // ── height fog ──────────────────────────────────────────────────────────

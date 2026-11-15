@@ -38,6 +38,25 @@ const START_JITTER = 40;
 /** How far outside the channel a mast stands, so it is up the bank behind you. */
 const OUT = 4.5;
 
+/**
+ * ── THE BOOM, AND WHY THE POOLS WERE NOT LANDING ON THE ROAD ──────────────
+ *
+ * Metres the head hangs INWARD from the top of its pole.
+ *
+ * Without it the light sat directly above the pole: 19.5 m out laterally, on a
+ * bank that is already eight metres up by then, with another ten metres of
+ * mast above that. The head was therefore about twenty-nine metres from the
+ * middle of the course -- essentially all of its range -- so by the time its
+ * falloff reached the floor there was nothing left, and the masts lit the bank
+ * they stood on and nothing else. They read as glowing props, which is exactly
+ * what Elad saw.
+ *
+ * A real site floodlight is on an arm leaning out over the work. The head now
+ * does the same: the pole stays on the bank, the lamp hangs over the road, and
+ * the pool lands where the player actually rides.
+ */
+const BOOM = 8.5;
+
 const MAST_H = [9.5, 13.5];
 const MAST_R = 0.34;
 const HEAD_R = 1.05;
@@ -51,10 +70,13 @@ const HEAD_R = 1.05;
  * a lamp whose pool reaches the next lamp's pool just raises the floor
  * everywhere and gives back the evenly-dim room this file exists to fix.
  *
- * 26 m is about a third of the gap between pairs, so the course alternates
- * between lit and dark as you ride it, which is the thing that reads.
+ * It still has to stop well short of the next pair, which is what keeps the
+ * alternation between lit and dark that the whole arrangement is for. 46 m
+ * against 74 m between pairs does that -- and it is bigger than the first
+ * number because the lamp now has to reach DOWN as well as across: the head
+ * hangs eighteen-odd metres above the road even with the boom.
  */
-const RANGE = 30;
+const RANGE = 46;
 const COLOR = 0xffd9a0;
 /** What the shaders multiply by. See the four-light loop in lit.js. */
 const STRENGTH = 1.05;
@@ -129,7 +151,9 @@ export class Floods {
       const u = sgn * (channelHalf() + OUT);
       const x = this.terrain.xAt(u, z);
       const foot = meshHeight(this.terrain, x, z);
-      this.masts[slot] = { x, z, foot, h, p };
+      // The head leans in over the course on its boom. See BOOM.
+      const headX = this.terrain.xAt(u - sgn * BOOM, z);
+      this.masts[slot] = { x, headX, z, foot, h, p };
       this._write(slot);
     }
   }
@@ -149,7 +173,7 @@ export class Floods {
       this._s.set(1, m.h, 1);
       this._m.compose(this._p, this._q, this._s);
       this.poles.setMatrixAt(slot, this._m);
-      this._p.set(m.x, m.foot + m.h, m.z);
+      this._p.set(m.headX, m.foot + m.h, m.z);
       this._s.set(1, 1, 1);
       this._m.compose(this._p, this._q, this._s);
       this.heads.setMatrixAt(slot, this._m);
@@ -185,7 +209,7 @@ export class Floods {
       if (!m) continue;
       const d = Math.abs(m.p - p);
       if (d > RANGE + 30) continue;
-      out.push({ x: m.x, y: m.foot + m.h, z: m.z, range: RANGE, color: this._col, d });
+      out.push({ x: m.headX, y: m.foot + m.h, z: m.z, range: RANGE, color: this._col, d });
     }
     out.sort((a, b) => a.d - b.d);
     out.length = Math.min(out.length, 4);
