@@ -80,6 +80,17 @@ if (script === 'default') {
   await wait(500); await snap('in-water');
   await page.waitForFunction(() => window.__game.G.slimeOn, { timeout: 40000 }).catch(() => {});
   await wait(300); await snap('slime');
+} else if (script === 'sewage') {
+  // BAL-646: ride into the sewage, then hold a line up on the right wall so the
+  // river is in view beside the rider. Immune to obstacles.
+  await page.evaluate(() => { setInterval(() => { const g = window.__game; g.player.invuln = 5; g.player.shield.visible = false; g.G.lives = 99; }, 100); });
+  await lean(0);
+  await page.waitForFunction(() => window.__game.G.slimeOn, { timeout: 40000 });
+  await wait(80); await snap('sewage-splash');
+  await wait(700); await snap('in-sewage');
+  await page.evaluate(() => { window.__hold = setInterval(() => { const { player } = window.__game; window.__leanOverride = Math.max(-1, Math.min(1, (1.25 - player.theta) * 1.6 - player.omega * 0.4)); }, 30); });
+  await wait(2500);
+  for (let i = 0; i < 5; i++) { await snap(`beside-${i}`); await wait(350); }
 } else if (script === 'kick') {
   // autopilot: steer at the nearest Foot Soldier ahead; immune to obstacles
   await page.evaluate(() => {

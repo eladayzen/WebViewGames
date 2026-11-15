@@ -6,7 +6,8 @@ import { makeGlowTexture } from './track.js';
 const MAX = 900;
 
 export class Particles {
-  constructor(scene) {
+  /** additive: glowing sparks/spray. false = normal blending, for dark matter (sewage) that additive would erase. */
+  constructor(scene, { additive = true } = {}) {
     const geo = new THREE.BufferGeometry();
     this.pos = new Float32Array(MAX * 3);
     this.col = new Float32Array(MAX * 3);
@@ -24,7 +25,7 @@ export class Particles {
     this.s0 = new Float32Array(MAX);
     this.cursor = 0;
     const mat = new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       uniforms: { map: { value: makeGlowTexture() }, uScale: { value: 400 } },
       vertexShader: /* glsl */`
         attribute float size; attribute float alpha; attribute vec3 color;
@@ -178,7 +179,8 @@ export class BoardTrail {
 
   /** wheels: [left, right] world points; up: toward the pipe axis; side: board-lateral world dir */
   update(dt, wheels, up, side, speed, active, hot) {
-    this.mat.uniforms.uColor.value.setRGB(hot ? 1.0 : 0.6, hot ? 0.62 : 0.92, hot ? 0.3 : 1.0);
+    // dry = orange spark ribbons; wet = a pale scum wake in the sewage (was cyan water)
+    this.mat.uniforms.uColor.value.setRGB(hot ? 1.0 : 0.42, hot ? 0.62 : 0.48, hot ? 0.3 : 0.36);
     const w = 0.05 + Math.min(1, speed / 30) * 0.05;   // ribbon half-width
     for (let k = 0; k < 2; k++) {
       const tr = this.tracks[k];
@@ -202,7 +204,7 @@ export class BoardTrail {
     this.glow.visible = active;
     if (active) {
       this.glow.position.copy(wheels[0]).add(wheels[1]).multiplyScalar(0.5).addScaledVector(up, 0.12);
-      this.glow.material.color.set(hot ? 0xffa050 : 0x9fe8ff);
+      this.glow.material.color.set(hot ? 0xffa050 : 0x6f7a5c);
       this.glow.material.opacity = 0.35 + Math.min(1, speed / 30) * 0.3;
     }
   }
@@ -240,3 +242,4 @@ export class Streaks {
     this.mat.opacity = intensity;
   }
 }
+

@@ -68,8 +68,9 @@ export function slimeAngle(s) {
   return 0.18 * Math.sin(s * 0.019) + 0.08 * Math.sin(s * 0.051 + 2.0);
 }
 export function slimeHalfWidth(s) {
-  // ×3 wider (Elad, 2026-11-11) — the river is now the main floor feature
-  return 3 * (0.27 + 0.07 * Math.sin(s * 0.047 + 1.1));
+  // ×3 wider (Elad, 2026-11-11) — the river is now the main floor feature;
+  // then 20% narrower (Elad, 2026-11-15). Rendering and the "in sewage" check both read this.
+  return 0.8 * 3 * (0.27 + 0.07 * Math.sin(s * 0.047 + 1.1));
 }
 // ── floor water ──────────────────────────────────────────────────────────────
 // Pools of runoff lying in the very bottom of the pipe (gravity puts water at
@@ -207,6 +208,70 @@ function waterMaterial(map, wallMap, { under = new THREE.Vector3(0.42, 0.62, 0.6
   });
 }
 
+// ── sewage: thick, opaque sludge ─────────────────────────────────────────────
+// BAL-646 (team playtest): the river must read as sewage at a glance - opaque,
+// thick. Kolbo sludge painted as an edit of the patina wall texture, so it shares
+// the walls' brushwork (tex/sewage.jpg, scum streaks run along the flow) scrolls slowly, heaves a little, a second
+// coarse sample breaks the tiling, the brightest scum catches a greasy sheen and
+// the banks darken into a wet crust. Alpha is 1 everywhere but a thin feathered
+// edge. Its colour is calmed to one murky hue (uBase/uSat/uContrast).
+function sewageMaterial(map, { tint = new THREE.Vector3(1.0, 1.0, 1.0) } = {}) {
+  return new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    uniforms: {
+      map: { value: map }, uScroll: { value: 0 }, uTime: { value: 0 }, uEdge: { value: 0.05 }, uTint: { value: tint },
+      // the painted art (same brushwork as the walls) is already calm, so keep most of
+      // its own colour and contrast; uBase only pulls it a little toward one olive hue
+      uBase: { value: new THREE.Vector3(0.21, 0.26, 0.16) }, uSat: { value: 0.65 }, uContrast: { value: 1.0 },
+      // linear mean luminance of tex/sewage.jpg (measured: 0.0661)
+      uMid: { value: 0.0661 },
+      // Elad: "a bit less opacity" - the plates just show through
+      uAlpha: { value: 0.8 },
+      fogColor: { value: new THREE.Color() }, fogNear: { value: 1 }, fogFar: { value: 100 },
+    },
+    vertexShader: /* glsl */`
+      attribute float across;
+      varying vec2 vUv; varying float vAcross; varying float vDepth;
+      void main(){
+        vUv = uv; vAcross = across;
+        vec4 mv = modelViewMatrix * vec4(position,1.0);
+        vDepth = -mv.z;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */`
+      uniform sampler2D map; uniform float uScroll; uniform float uTime; uniform float uEdge; uniform vec3 uTint;
+      uniform vec3 uBase; uniform float uSat; uniform float uContrast; uniform float uAlpha; uniform float uMid;
+      uniform vec3 fogColor; uniform float fogNear; uniform float fogFar;
+      varying vec2 vUv; varying float vAcross; varying float vDepth;
+      void main(){
+        vec2 p = vUv;
+        // thick fluid: a slow, heavy heave, nothing like the water ripple
+        vec2 heave = vec2(sin(p.y * 3.0 + uTime * 0.6), cos(p.x * 4.0 + p.y * 1.3 - uTime * 0.45)) * 0.005;
+        vec3 c = texture2D(map, p * vec2(1.0, 0.75) + vec2(0.0, uScroll) + heave).rgb * uTint;
+        // Normalise around the texture's own average (uMid: its LINEAR mean luminance,
+        // since sRGB maps are sampled linear) so uBase alone sets the brightness, then
+        // keep uContrast of its light-dark and uSat of its own colour on top of the
+        // one sludge hue. Swapping the texture only means re-measuring uMid.
+        float l = dot(c, vec3(0.3, 0.59, 0.11)) / uMid;
+        // froth can be 4x the average; cap it so the streaks stay paint, not glare
+        float lc = min(mix(1.0, l, uContrast), 1.9);
+        vec3 art = c / uMid * dot(uBase, vec3(0.3, 0.59, 0.11)) * (lc / max(l, 0.05));
+        c = mix(uBase * lc, art, uSat);
+        // coarse second sample, slower, so the tile never lines up (gentle)
+        vec3 c2 = texture2D(map, p * vec2(0.31, 0.21) + vec2(0.37, uScroll * 0.55)).rgb;
+        c *= 0.9 + 0.2 * dot(c2, vec3(0.333));
+        // a faint greasy sheen on the brightest scum
+        c += vec3(0.7, 0.76, 0.62) * pow(max(lc - 1.0, 0.0), 2.0) * 0.05;
+        // banks: a dark wet crust, then a short feather into the plates
+        float d = min(vAcross, 1.0 - vAcross);
+        c *= mix(0.45, 1.0, smoothstep(uEdge * 0.6, uEdge * 3.0, d));
+        float a = smoothstep(0.0, uEdge, d) * uAlpha;
+        float f = smoothstep(fogNear, fogFar, vDepth);
+        gl_FragColor = vec4(mix(c, fogColor, f), a);
+      }`,
+  });
+}
+
 // ── environment zones ────────────────────────────────────────────────────────
 // The pipe changes character every ZONE_LEN metres so it never reads as one
 // texture tiled forever. Each zone: its wall art, how many tiles around the
@@ -272,9 +337,14 @@ export class Track {
     // translucent green current — with the slime texture as its surface
     // river = the pool water shader, as is (Elad: "less disgusting"). The
     // slime look is kept in git history / the slime texture if we want it back.
-    this.slimeMat = waterMaterial(tex.water, tex.wall);
-    // one river material per zone so the plates it refracts are that zone's wall
-    this.riverMats = ZONES.map((z) => waterMaterial(tex.water, tex[z.key]));
+    // BAL-646 reverses that: the river is now opaque sewage (sewageMaterial). The
+    // refracting water look is still in waterMaterial if we ever want it back.
+    tex.sewage.wrapS = tex.sewage.wrapT = THREE.RepeatWrapping;
+    tex.sewage.colorSpace = THREE.SRGBColorSpace;
+    tex.sewage.anisotropy = 4;
+    this.slimeMat = sewageMaterial(tex.sewage);
+    // opaque, so nothing to refract: every zone shares the one material
+    this.riverMats = ZONES.map(() => this.slimeMat);
     this.grafMat = patchMaterial(tex.graffiti, { tint: new THREE.Color(0.85, 0.85, 0.85), alpha: 0.9, edge: 0.3 });
     this.waterMat = waterMaterial(tex.water, tex.wall);
     this.patchMats = [...new Set([this.slimeMat, ...this.riverMats, this.grafMat, this.waterMat])];
@@ -435,7 +505,8 @@ export class Track {
       this.nextLampS += this.lampSpacing;
     }
     const sc = dt * (0.25 + speed * 0.008);
-    for (const m of this.riverMats) m.uniforms.uScroll.value -= sc;
+    // thick sludge drifts; it doesn't race (one shared material, so scroll it once)
+    this.slimeMat.uniforms.uScroll.value -= sc * 0.6;
     this.waterMat.uniforms.uScroll.value -= dt * 0.55;
     for (const m of this.patchMats) m.uniforms.uTime.value = time;
   }

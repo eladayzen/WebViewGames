@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Sewer Shred</title>
+  <!-- No favicon in the WebView; an empty data: icon stops the browser asking for /favicon.ico (404). -->
+  <link rel="icon" href="data:," />
+  <link rel="preload" href="/fonts/bangers-latin.woff2" as="font" type="font/woff2" crossorigin />
   <script>
     // GoBalance SDK integration — see GOBALANCE_SDK.md for the full contract this depends
     // on. Everything below is a no-op outside the Unity WebView (guarded by

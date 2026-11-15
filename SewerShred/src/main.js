@@ -34,7 +34,7 @@ const hemi = new THREE.HemisphereLight(0xcfeee0, 0x4a5a50, 3.2);
 scene.add(hemi);
 const headLamp = new THREE.PointLight(0xffe0a8, 160, 45, 1.2);   // follows the rider
 scene.add(headLamp);
-const slimeLight = new THREE.PointLight(0x5fd8e8, 45, 22, 1.5); // the river's glow
+const slimeLight = new THREE.PointLight(0x8fb070, 18, 22, 1.5); // a murky bounce off the sewage (was a cyan water glow)
 scene.add(slimeLight);
 const flashLight = new THREE.PointLight(0xffffff, 0, 16, 1.5);  // pickups / hits
 scene.add(flashLight);
@@ -57,7 +57,7 @@ const audio = new Audio();
 audio.loadMusic('/audio/music.mp3');
 const input = new Input(canvas);
 
-let track, player, obstacles, particles, debris, streaks, boardTrail;
+let track, player, obstacles, particles, debris, streaks, boardTrail, sludge;
 const tex = {};
 
 // ── HUD ──────────────────────────────────────────────────────────────────────
@@ -120,6 +120,8 @@ const C_SLIME = new THREE.Color(0.45, 1.0, 0.3), C_SPARK = new THREE.Color(1.0, 
   C_DUST = new THREE.Color(0.45, 0.5, 0.45), C_WHITE = new THREE.Color(1, 1, 1),
   C_WATER = new THREE.Color(0.55, 0.85, 1.0), C_FOAM = new THREE.Color(0.85, 0.97, 1.0),
   C_SLIME_FOAM = new THREE.Color(0.8, 1.0, 0.6),
+  // BAL-646 sewage: muddy body + paler scum, drawn with normal blending (sludge system)
+  C_SEWAGE = new THREE.Color(0.3, 0.33, 0.27), C_SCUM = new THREE.Color(0.56, 0.6, 0.48),
   C_KICK = new THREE.Color(1.0, 0.8, 0.35), C_FOOT = new THREE.Color(0.75, 0.35, 1.0);
 
 function difficulty() { return THREE.MathUtils.clamp(player.s / RAMP_DIST, 0, 1); }
@@ -134,7 +136,7 @@ function startRun() {
   player.speed = 8;
   track.reset();
   obstacles.reset();
-  particles.clear(); debris.clear(); boardTrail.clear();
+  particles.clear(); sludge.clear(); debris.clear(); boardTrail.clear();
   renderLives(G.lives);
   hud.popups.innerHTML = '';
   $('gameover-overlay').classList.add('hidden');
@@ -239,12 +241,12 @@ function award(pts, worldPos = null, cls = 'pts') {
 }
 
 // ── water: a big splash on the way in ────────────────────────────────────────
-function splashIn(cMain = C_WATER, cFoam = C_FOAM) {
+function splashIn(cMain = C_WATER, cFoam = C_FOAM, sys = particles) {
   const f = frameAt(player.s);
   const up = wallDir(f, player.theta, new THREE.Vector3()).negate();
   const p = player.boardWorld(new THREE.Vector3());
-  particles.burst(p, up, 34, cMain, { speed: 9, spread: 0.9, size: 0.38, life: 0.75, grav: up.clone().multiplyScalar(-18), drag: 0.7 });
-  particles.burst(p, up, 16, cFoam, { speed: 5, spread: 1.4, size: 0.7, life: 0.45, drag: 2.5 });
+  sys.burst(p, up, 34, cMain, { speed: 9, spread: 0.9, size: 0.38, life: 0.75, grav: up.clone().multiplyScalar(-18), drag: 0.7 });
+  sys.burst(p, up, 16, cFoam, { speed: 5, spread: 1.4, size: 0.7, life: 0.45, drag: 2.5 });
   audio.splash(); audio.noiseHit({ dur: 0.25, vol: 0.3, freq: 1800, q: 1.2, sweep: 0.5 });
   G.shake = Math.max(G.shake, 0.18);
   G.fovKick = Math.max(G.fovKick, 3);
@@ -418,7 +420,7 @@ function frame(now) {
       G.slimeOn = inSlime;
       // the river is the floor now: a brief tag on the way in, not a constant banner
       if (inSlime) { hud.slime.classList.add('on'); clearTimeout(G.slimeTagT); G.slimeTagT = setTimeout(() => hud.slime.classList.remove('on'), 900); }
-      if (inSlime) splashIn(C_WATER, C_FOAM);
+      if (inSlime) splashIn(C_SEWAGE, C_SCUM, sludge);
     }
     // river is cosmetic (splash + spray) — no speed or score modifier, since
     // gravity keeps you in it whenever you're not leaning
@@ -495,16 +497,18 @@ function frame(now) {
   if (G.state === 'play') {
     const back = tmpC.copy(f.T).multiplyScalar(-1);
     if (G.waterOn || G.slimeOn) {
-      const cA = C_WATER, cB = C_FOAM;
+      // sewage throws dark gunk (normal blend); clean water keeps the bright additive spray
+      const cA = G.slimeOn ? C_SEWAGE : C_WATER, cB = G.slimeOn ? C_SCUM : C_FOAM;
+      const sys = G.slimeOn ? sludge : particles;
       // twin spray sheets peeling off both rails + droplets kicked up behind
       const n = 2 + Math.floor(player.speed / 14);
       for (let i = 0; i < n; i++) {
         const side = i % 2 ? 1 : -1;
-        particles.emit(boardP.clone().addScaledVector(f.Rt, side * 0.25),
+        sys.emit(boardP.clone().addScaledVector(f.Rt, side * 0.25),
           f.Rt.clone().multiplyScalar(side * (3 + Math.random() * 3)).addScaledVector(wallUp, 3 + Math.random() * 3.5).addScaledVector(back, 2 + Math.random() * 3),
           Math.random() < 0.35 ? cB : cA, { size: 0.22 + Math.random() * 0.22, life: 0.55, grav: wallUp.clone().multiplyScalar(-16), drag: 0.8 });
       }
-      particles.emit(boardP.clone().addScaledVector(f.T, -0.5), back.clone().multiplyScalar(2).addScaledVector(wallUp, 1 + Math.random()), cB, { size: 0.55, life: 0.4, drag: 3 });
+      sys.emit(boardP.clone().addScaledVector(f.T, -0.5), back.clone().multiplyScalar(2).addScaledVector(wallUp, 1 + Math.random()), cB, { size: 0.55, life: 0.4, drag: 3 });
     } else if (G.slimeOn) {
       // slime rooster-tail off the tail of the board
       for (let i = 0; i < 3; i++) {
@@ -537,13 +541,14 @@ function frame(now) {
             C_SPARK, { size: 0.12 + Math.random() * 0.1, life: 0.3, grav: wallUp.clone().multiplyScalar(-18), drag: 0.6 });
         } else if (!dry && Math.random() < 0.6) {
           // little rooster tails off each wheel in the water
-          particles.emit(w, back.clone().multiplyScalar(2 + Math.random() * 2).addScaledVector(wallUp, 1.5 + Math.random() * 2).addScaledVector(side, (Math.random() - 0.5) * 2),
-            C_FOAM, { size: 0.16 + Math.random() * 0.12, life: 0.4, grav: wallUp.clone().multiplyScalar(-16), drag: 0.8 });
+          (G.slimeOn ? sludge : particles).emit(w, back.clone().multiplyScalar(2 + Math.random() * 2).addScaledVector(wallUp, 1.5 + Math.random() * 2).addScaledVector(side, (Math.random() - 0.5) * 2),
+            G.slimeOn ? C_SCUM : C_FOAM, { size: 0.16 + Math.random() * 0.12, life: 0.4, grav: wallUp.clone().multiplyScalar(-16), drag: 0.8 });
         }
       }
     }
   }
   particles.update(dt);
+  sludge.update(dt);
   debris.update(simDt);
   const speedN = THREE.MathUtils.clamp((player.speed - BASE_SPEED) / (TOP_SPEED - BASE_SPEED), 0, 1);
   streaks.update(player.s, player.speed, frameAt, pointAt, R, G.state === 'play' ? 0.08 + speedN * 0.25 : 0);
@@ -566,7 +571,7 @@ function frame(now) {
   // lights ride with the rider
   pointAt(player.s + 6, player.theta, R - 3.2, headLamp.position);
   pointAt(player.s + 10, slimeAngle(player.s + 10), R - 0.8, slimeLight.position);
-  slimeLight.intensity = 35 + Math.sin(time * 3) * 8 + (G.slimeOn ? 25 : 0);
+  slimeLight.intensity = 16 + Math.sin(time * 1.5) * 3;
   flashLight.intensity *= Math.pow(0.004, dt);
 
   // ── camera ──
@@ -621,7 +626,7 @@ async function loadFootGeo(url) {
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 (async function boot() {
-  const names = ['wall', 'slime', 'graffiti', 'crate', 'pipe', 'water', 'wall_rust_patina', 'wall_pat_a', 'wall_rust_hazard', 'wall_pat_c'];
+  const names = ['wall', 'slime', 'graffiti', 'crate', 'pipe', 'water', 'sewage', 'wall_rust_patina', 'wall_pat_a', 'wall_rust_hazard', 'wall_pat_c'];
   const loaded = await Promise.all(names.map((n) => loadTex(`/tex/${n}.jpg`)));
   names.forEach((n, i) => (tex[n.replace('wall_', '')] = loaded[i]));
   tex.footGeo = await loadFootGeo('/models/foot.bin');
@@ -629,6 +634,7 @@ async function loadFootGeo(url) {
   track.syncFog(scene.fog);
   obstacles = new Obstacles(scene, tex);
   particles = new Particles(scene);
+  sludge = new Particles(scene, { additive: false });
   debris = new Debris(scene, tex);
   streaks = new Streaks(scene);
   boardTrail = new BoardTrail(scene, makeGlowTexture());
