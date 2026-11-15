@@ -93,6 +93,57 @@ import { BoboHost } from './shared/bobo-host/index.js';
 const RIDER_URL = '/models/raphael.glb';
 
 /**
+ * ── THE FOOT SOLDIER ──────────────────────────────────────────────────────
+ *
+ * A static humanoid, borrowed read-only from the SewerShred prototype, which
+ * built it from the licensee maquette STL.
+ *
+ * A RAW BINARY RATHER THAN A GLB, because it is nothing but a position buffer
+ * and an index buffer: u32 vertCount, u32 indexCount, then the floats, then
+ * the indices. 3702 verts and 7000 triangles in 126 KB, against the hundreds
+ * a glTF container would add for a file with no materials, no UVs and no
+ * skeleton to describe. Verified against its own header before use.
+ *
+ * NO NORMALS IN THE FILE -- computeVertexNormals after load, which is also
+ * what SewerShred does. Winding is consistent and outward (signed volume
+ * positive, no boundary edges), so Three's default FrontSide is correct.
+ *
+ * It is ONE HELD POSE and cannot animate. That is fine for what it is here --
+ * a figure standing in the course to be ridden past or shot -- and it is why
+ * it is not the rider.
+ */
+const FOOT_URL = '/models/foot.bin';
+
+/**
+ * Read `foot.bin` into a geometry.
+ *
+ * The scale is the only number here. The mesh ships exactly one unit tall and
+ * the drone ring scales every enemy by its own `size` (1.05-1.40), so 2.1
+ * lands the finished figure between about 2.2 m and 2.9 m.
+ *
+ * THAT IS DELIBERATELY BIGGER THAN A MAN. At 1.45 they were correctly human
+ * -- and next to a nine-metre barrier, at the distance you first see them,
+ * they were a smudge. The things around them set the scale a figure has to
+ * compete at, not anatomy.
+ */
+async function loadFootGeometry(url) {
+  const buf = await (await fetch(url)).arrayBuffer();
+  const head = new DataView(buf);
+  const vc = head.getUint32(0, true);
+  const ic = head.getUint32(4, true);
+  if (8 + vc * 12 + ic * 4 !== buf.byteLength) {
+    throw new Error(`foot.bin size mismatch: header says ${vc}/${ic}`);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position',
+    new THREE.BufferAttribute(new Float32Array(buf, 8, vc * 3), 3));
+  geo.setIndex(new THREE.BufferAttribute(new Uint32Array(buf, 8 + vc * 12, ic), 1));
+  geo.computeVertexNormals();
+  geo.scale(2.1, 2.1, 2.1);
+  return geo;
+}
+
+/**
  * Seconds to bring the music up over at the start of a run.
  *
  * Sized against the countdown rather than picked: the numbers run for three
@@ -1174,6 +1225,16 @@ class Game {
       } catch (e) {
         console.warn('[carve] rider model unavailable, using the primitive rider', e);
       }
+
+      // Same rule as the rider: not fatal. Without it the enemies stay the
+      // pods they have always been rather than the game refusing to boot.
+      let footGeo = null;
+      try {
+        footGeo = await loadFootGeometry(FOOT_URL);
+      } catch (e) {
+        console.warn('[carve] foot soldier unavailable, enemies stay as pods', e);
+      }
+      this._footGeo = footGeo;
 
       this.hud.setLoadText('grooming the piste…');
       this.sky = new Sky(this.scene, this.mood);

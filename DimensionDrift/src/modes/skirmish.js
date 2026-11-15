@@ -223,6 +223,17 @@ function BASE_CREATE(game) {
          * already hangs on, the telegraph and the aim-commit live on in
          * combat.js, and turning this back to `true` restores all of it.
          */
+        /**
+         * HUMANOID ENEMIES. Called BEFORE `setRules`, because the hover is
+         * baked into each drone when its band is built and `setRules` is what
+         * rebuilds the ring -- set after it, the first stretch of hill would
+         * still be full of pods floating at head height.
+         *
+         * Falls back silently to the pods if the mesh did not load. See
+         * `loadFootGeometry` in main.js.
+         */
+        game.combat.setFigure(game._footGeo);
+
         game.combat.setRules(
           { hostile: false, droneHp: DRONE_HP, density: DENSITY },
           game.rider.p,

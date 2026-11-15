@@ -523,6 +523,18 @@ export class Combat {
     this.matStar = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
     this.podGeo = buildPodGeometry();
+    /**
+     * ── POD OR FIGURE ─────────────────────────────────────────────────────
+     *
+     * False is the hovering pod this file was written for. True swaps the
+     * geometry for a standing humanoid and plants it on the ground.
+     *
+     * It is a flag rather than a second enemy class because everything that
+     * makes an enemy an enemy here -- the ring, the health, the squads, the
+     * acquisition, the laser bars they project -- is identical either way.
+     * Only where it stands and how it is drawn differ.
+     */
+    this.standing = false;
     this.pods = new THREE.InstancedMesh(this.podGeo, this.matPod, this.capacity);
     this.pods.frustumCulled = false;
     this.pods.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -808,7 +820,11 @@ export class Combat {
       // a hover measured off the analytic height floats higher than it says
       // over every convex rise — the finding that already cost this project a
       // round on its trees.
-      const y = meshHeight(this.terrain, x, z) + range(rand, HOVER[0], HOVER[1]);
+      // A FIGURE STANDS ON THE SNOW; a pod hovers. `drawnY` carries the
+      // difference for everything that aims: a standing enemy is aimed at
+      // around the chest, not at its feet, and `_aimPoint` reads `drawnY`.
+      const ground = meshHeight(this.terrain, x, z);
+      const y = this.standing ? ground : ground + range(rand, HOVER[0], HOVER[1]);
       drones.push({
         x, y, z, p, u, k, gi: base + k,
         size: range(rand, SIZE[0], SIZE[1]),
@@ -1561,6 +1577,29 @@ export class Combat {
    * bands at build time and a mode that changed them without replacing what is
    * already on the hill would get one stretch of the old rules.
    */
+  /**
+   * Make the enemies standing figures instead of hovering pods.
+   *
+   * Call BEFORE `setRules`, because the hover is baked into each drone when
+   * its band is built and `setRules` is what rebuilds the ring.
+   *
+   * @param {THREE.BufferGeometry|null} geo null leaves the pods alone
+   */
+  setFigure(geo) {
+    if (!geo) return false;
+    this.standing = true;
+    // `aTint` is a REQUIRED instanced attribute under USE_INSTANCING, and it
+    // lives on the GEOMETRY -- swapping the geometry without carrying it over
+    // is a black hole where the enemies were.
+    geo.setAttribute('aTint', this.tint);
+    this.pods.geometry = geo;
+    // The eye shares the pods' instance matrix and is placed by its own
+    // geometry at the front of a pod. On a humanoid that is somewhere inside
+    // the chest, so it goes.
+    this.eyes.visible = false;
+    return true;
+  }
+
   setRules(rules, p = null) {
     Object.assign(this.rules, rules);
     if (p !== null) this.reset(p);
@@ -1675,13 +1714,21 @@ export class Combat {
           scale *= 1 + d.hurt * 1.6;
         }
 
-        const bob = Math.sin(this.t * 1.6 + d.phase) * BOB;
-        const roll = Math.sin(this.t * 2.3 + d.phase) * 0.12;
+        // A STANDING FIGURE DOES NONE OF THIS. The bob, the roll and the slow
+        // tumble are what sell a machine holding station in the air; on a man
+        // they read as a body floating and swaying, which is worse than no
+        // motion at all. He keeps the yaw, so he still turns to face you.
+        const bob = this.standing ? 0 : Math.sin(this.t * 1.6 + d.phase) * BOB;
+        const roll = this.standing ? 0 : Math.sin(this.t * 2.3 + d.phase) * 0.12;
+        const tumble = this.standing ? 0 : this.t * d.spin * 0.35;
         // The DRAWN height, kept so the lock can sit on the pod rather than on
-        // the arithmetic mean of where it bobs.
-        d.drawnY = d.y + bob + lift;
-        this._v.set(d.x, d.drawnY, d.z);
-        this._e.set(roll, yaw, this.t * d.spin * 0.35);
+        // the arithmetic mean of where it bobs. For a figure it is the CHEST,
+        // which is what the gun and the lock ring should be pointing at --
+        // while the mesh itself is placed at the feet.
+        // 0.62 of the figure's own height: chest on a 2.2-2.9 m soldier.
+        d.drawnY = this.standing ? d.y + 1.35 * scale : d.y + bob + lift;
+        this._v.set(d.x, this.standing ? d.y + lift : d.drawnY, d.z);
+        this._e.set(roll, yaw, tumble);
         this._q.setFromEuler(this._e);
         this._s.set(scale, scale, scale);
         this._m.compose(this._v, this._q, this._s);
