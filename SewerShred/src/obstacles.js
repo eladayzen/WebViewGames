@@ -28,13 +28,25 @@ export class Obstacles {
     this.footMat = makeFootMaterial();
     this.footOutlineMat = makeOutlineMaterial(0xff3fd0, 0.028);
     this.footAuraMat = new THREE.SpriteMaterial({ map: this.glowTex, color: 0xb03cff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.55 });
-    this.poleMat = new THREE.MeshBasicMaterial({ map: makeStripeTexture() });
+    const pipeTex = tex.pipe.clone();
+    pipeTex.wrapS = pipeTex.wrapT = THREE.RepeatWrapping;
+    pipeTex.repeat.set(2, 6);
+    pipeTex.needsUpdate = true;
+    this.poleMat = new THREE.MeshLambertMaterial({ map: pipeTex, color: 0x4f5e57, emissive: 0x050807 });
+    this.poleGeo = new THREE.CylinderGeometry(POLE_R, POLE_R, R * 2 - 0.4, 16, 1, true);
+    this.flangeMat = new THREE.MeshLambertMaterial({ map: tex.pipe, color: 0x3e4843, emissive: 0x050605 });
+    this.flangeGeo = new THREE.CylinderGeometry(POLE_R * 2.4, POLE_R * 2.6, 0.3, 18);
+    this.collarGeo = new THREE.CylinderGeometry(POLE_R * 1.3, POLE_R * 1.3, 0.35, 16);
+    this.boltGeo = new THREE.SphereGeometry(0.08, 6, 4);
+    this.boltMat = new THREE.MeshLambertMaterial({ color: 0xa8b2ae, emissive: 0x141614 });
+    this.lampGeo = new THREE.SphereGeometry(0.17, 10, 8);
+    this.lampMat = new THREE.MeshBasicMaterial({ color: 0xffb347 });
     this.sawGeo = makeSawGeometry(SAW_R, 22);
     // dark steel body; the teeth get a hot red edge from the rim shader below
     this.sawMat = makeSawMaterial();
     this.slotMat = new THREE.MeshBasicMaterial({ map: makeStripeTexture('#ffc21e', '#141414', 4) });
     this.capMat = new THREE.MeshBasicMaterial({ color: 0xff3b2a });
-    this.capGlow = new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff4a30, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.9 });
+    this.capGlow = new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffa040, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.9 });
 
     this.mk = {
       crate: () => {
@@ -79,24 +91,39 @@ export class Obstacles {
         return g;
       },
       pole: () => {
-        // A pole straight through the pipe's axis: it blocks exactly two spots
-        // on the wall (its two ends), and you pass on either side of each.
-        // Red/white hazard stripes + glowing end caps make the blocked spots
-        // unmistakable from far away.
+        // A sewer pipe straight through the pipe's axis: blocks exactly its two
+        // ends on the wall; pass on either side. Painted-steel pipe (the same
+        // Kolbo art as the rest of the props, lit like the world), heavy bolted
+        // iron flanges where it's mounted, and a caged amber warning lamp at
+        // each mount so the blocked spots read from far away.
         const g = new THREE.Group();
         const bars = [];
         for (let i = 0; i < 2; i++) {
           const bar = new THREE.Group();
-          const shaft = new THREE.Mesh(new THREE.CylinderGeometry(POLE_R, POLE_R, R * 2 - 0.1, 14, 1, true), this.poleMat);
-          bar.add(shaft);
+          bar.add(new THREE.Mesh(this.poleGeo, this.poleMat));
           for (const sgn of [-1, 1]) {
-            const cap = new THREE.Mesh(new THREE.CylinderGeometry(POLE_R * 1.9, POLE_R * 2.3, 0.35, 16), this.capMat);
-            cap.position.y = sgn * (R - 0.2);
-            bar.add(cap);
+            const mount = new THREE.Group();
+            mount.position.y = sgn * (R - 0.25);
+            if (sgn < 0) mount.rotation.z = Math.PI;
+            const flange = new THREE.Mesh(this.flangeGeo, this.flangeMat);
+            mount.add(flange);
+            const collar = new THREE.Mesh(this.collarGeo, this.flangeMat);
+            collar.position.y = -0.55;
+            mount.add(collar);
+            for (let k = 0; k < 8; k++) {
+              const b = new THREE.Mesh(this.boltGeo, this.boltMat);
+              const a = (k / 8) * Math.PI * 2;
+              b.position.set(Math.cos(a) * POLE_R * 2.05, -0.12, Math.sin(a) * POLE_R * 2.05);
+              mount.add(b);
+            }
+            const lamp = new THREE.Mesh(this.lampGeo, this.lampMat);
+            lamp.position.set(0, -0.95, POLE_R + 0.18);
+            mount.add(lamp);
             const glow = new THREE.Sprite(this.capGlow);
-            glow.scale.set(3.2, 3.2, 1);
-            glow.position.y = sgn * (R - 0.45);
-            bar.add(glow);
+            glow.scale.set(1.7, 1.7, 1);
+            glow.position.copy(lamp.position);
+            mount.add(glow);
+            bar.add(mount);
           }
           g.add(bar);
           bars.push(bar);

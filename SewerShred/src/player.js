@@ -24,7 +24,13 @@ const SEAT_BACK = 0.14;  // shift toward the tail
 // Enter the Spin Flip Kick just before the strike (foot peaks at 2.13 s),
 // blend in, reach the kick quickly, then play EVERYTHING after it at the
 // original speed to the clip's end (Elad: the cut-short version looked lame).
-const KICK = { start: 1.72, peak: 2.13, fast: 1.7, slow: 1.0, blendIn: 0.12, blendOut: 0.3 };   // metres, feet to head
+const KICK = { start: 1.72, peak: 2.13, fast: 1.7, slow: 1.0, blendIn: 0.12, landed: 2.7, blendOut: 0.24 };
+// The flip is nearly upright by ~2.7 s (handing off there, Elad: "sooner and faster") but turned ~270° (tools/clip-pose.mjs:
+// hips yaw runs 22° → −268°). Blending straight back to the ride pose would
+// unwind him the short way. Instead: at 2.9 s hand off to the ride loop and
+// keep spinning the SAME way one full extra turn (−2π on the bank), so the
+// blend's −90° plus the spin lands him square on the board, facing forward.
+const LAND_SPIN = -Math.PI * 2;   // metres, feet to head
 
 export class Player {
   constructor(scene) {
@@ -133,6 +139,7 @@ export class Player {
     this.shieldOn = false;
     this.hop = 0; this.hopV = 0;
     this.trickSpin = 0;
+    this.spinY = 0;
     this.kicking = false;
     this.bank.rotation.set(0, 0, 0);
     this.shield.visible = false;
@@ -157,7 +164,8 @@ export class Player {
    * before the foot peaks (measured: tools/kick-timing.mjs → left foot highest
    * at t=2.13 s of 3.70 s). So: jump in just before the strike, race to the
    * peak, ease through the follow-through, then hand back to the ride loop.
-   * Contact-to-kick ≈ 0.24 s; then the original follow-through, ~1.6 s.
+   * Contact-to-kick ≈ 0.24 s; the original flip to its landing (2.9 s), then
+   * a spin back into the ride stance.
    */
   playKick() {
     const a = this.actions.flip;
@@ -216,22 +224,25 @@ export class Player {
     // bank into the carve (around the board's forward axis) and lean the body
     const targetBank = -this.omega * 0.16;
     this.bank.rotation.z += (targetBank - this.bank.rotation.z) * Math.min(1, dt * 10);
-    // trick spin decays to zero (full 360 around the pipe axis when triggered)
+    // trick spins turn the RIDER only — the board stays planted under him
+    // (Elad: "does the board have to spin with the character?" — no).
     if (this.trickSpin !== 0) {
-      const step = Math.sign(this.trickSpin) * Math.min(Math.abs(this.trickSpin), dt * 16);
+      const step = Math.sign(this.trickSpin) * Math.min(Math.abs(this.trickSpin), dt * 24);
       this.trickSpin -= step;
-      this.bank.rotation.y += step;
+      this.spinY += step;
     } else {
-      this.bank.rotation.y += (0 - wrapPI(this.bank.rotation.y)) * Math.min(1, dt * 8);
+      this.spinY += (0 - wrapPI(this.spinY)) * Math.min(1, dt * 8);
     }
+    if (this.model) this.model.rotation.y = Math.PI + this.spinY;
     if (this.mixer) this.mixer.update(dt);
     if (this.kicking) {
       const a = this.actions.flip;
       if (a.time >= KICK.peak) a.timeScale = KICK.slow;
-      if (a.time >= a.getClip().duration - KICK.blendOut || !a.isRunning()) {
+      if (a.time >= KICK.landed || !a.isRunning()) {
         this.kicking = false;
         a.fadeOut(KICK.blendOut);
         this.actions.ride.reset().fadeIn(KICK.blendOut).play();
+        this.trickSpin += LAND_SPIN;
       }
     }
     // shield bubble shimmer

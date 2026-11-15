@@ -141,6 +141,75 @@ export class Debris {
   clear() { for (const it of this.items) it.life = 0; }
 }
 
+/**
+ * The board against the floor: two glowing wheel tracks laid on the wall
+ * behind the rear wheels (fading ribbons), and a contact glow under the deck.
+ * Cool cyan on water, hot orange on dry plates.
+ */
+export class BoardTrail {
+  constructor(scene, glowTex) {
+    this.N = 48;                         // points per track
+    this.mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      uniforms: { uColor: { value: new THREE.Color(0.7, 0.95, 1.0) } },
+      vertexShader: 'attribute float alpha; varying float vA; void main(){ vA = alpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 uColor; varying float vA; void main(){ gl_FragColor = vec4(uColor * (0.6 + vA), vA); }',
+    });
+    this.tracks = [0, 1].map(() => {
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(this.N * 2 * 3);
+      const alpha = new Float32Array(this.N * 2);
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('alpha', new THREE.BufferAttribute(alpha, 1));
+      const idx = [];
+      for (let i = 0; i < this.N - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      geo.setIndex(idx);
+      const mesh = new THREE.Mesh(geo, this.mat);
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 4;
+      scene.add(mesh);
+      return { pts: [], pos, alpha, geo };
+    });
+    this.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0x9fe8ff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.5 }));
+    this.glow.scale.set(2.4, 2.4, 1);
+    scene.add(this.glow);
+    this._v = new THREE.Vector3();
+  }
+
+  /** wheels: [left, right] world points; up: toward the pipe axis; side: board-lateral world dir */
+  update(dt, wheels, up, side, speed, active, hot) {
+    this.mat.uniforms.uColor.value.setRGB(hot ? 1.0 : 0.6, hot ? 0.62 : 0.92, hot ? 0.3 : 1.0);
+    const w = 0.05 + Math.min(1, speed / 30) * 0.05;   // ribbon half-width
+    for (let k = 0; k < 2; k++) {
+      const tr = this.tracks[k];
+      if (active) {
+        tr.pts.unshift({ p: wheels[k].clone().addScaledVector(up, 0.03), s: side.clone(), age: 0 });
+        if (tr.pts.length > this.N) tr.pts.length = this.N;
+      }
+      for (const pt of tr.pts) pt.age += dt;
+      while (tr.pts.length && tr.pts[tr.pts.length - 1].age > 0.6) tr.pts.pop();
+      for (let i = 0; i < this.N; i++) {
+        const pt = tr.pts[Math.min(i, tr.pts.length - 1)];
+        if (!pt) { tr.alpha[i * 2] = tr.alpha[i * 2 + 1] = 0; continue; }
+        const a = i < tr.pts.length ? Math.max(0, 1 - pt.age / 0.6) * (1 - i / this.N) : 0;
+        this._v.copy(pt.p).addScaledVector(pt.s, -w); tr.pos[i * 6] = this._v.x; tr.pos[i * 6 + 1] = this._v.y; tr.pos[i * 6 + 2] = this._v.z;
+        this._v.copy(pt.p).addScaledVector(pt.s, w); tr.pos[i * 6 + 3] = this._v.x; tr.pos[i * 6 + 4] = this._v.y; tr.pos[i * 6 + 5] = this._v.z;
+        tr.alpha[i * 2] = tr.alpha[i * 2 + 1] = a * 0.85;
+      }
+      tr.geo.attributes.position.needsUpdate = tr.geo.attributes.alpha.needsUpdate = true;
+    }
+    // contact glow on the wall right under the deck
+    this.glow.visible = active;
+    if (active) {
+      this.glow.position.copy(wheels[0]).add(wheels[1]).multiplyScalar(0.5).addScaledVector(up, 0.12);
+      this.glow.material.color.set(hot ? 0xffa050 : 0x9fe8ff);
+      this.glow.material.opacity = 0.35 + Math.min(1, speed / 30) * 0.3;
+    }
+  }
+
+  clear() { for (const tr of this.tracks) tr.pts.length = 0; }
+}
+
 /** Speed streaks: thin additive lines hugging the wall, rushing past. */
 export class Streaks {
   constructor(scene) {

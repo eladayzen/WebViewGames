@@ -5,10 +5,10 @@
 // points; chain pizza and near-misses into a combo; swing all the way around
 // the pipe for a LOOP. Three hits and you wipe out.
 import * as THREE from 'three';
-import { R, Track, ZONES, zoneIndex, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
+import { R, Track, ZONES, zoneIndex, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
 import { Player, PHYS } from './player.js';
 import { Obstacles } from './obstacles.js';
-import { Particles, Debris, Streaks } from './fx.js';
+import { Particles, Debris, Streaks, BoardTrail } from './fx.js';
 import { Audio } from './audio.js';
 import { Input } from './input.js';
 
@@ -57,7 +57,7 @@ const audio = new Audio();
 audio.loadMusic('/audio/music.mp3');
 const input = new Input(canvas);
 
-let track, player, obstacles, particles, debris, streaks;
+let track, player, obstacles, particles, debris, streaks, boardTrail;
 const tex = {};
 
 // ── HUD ──────────────────────────────────────────────────────────────────────
@@ -113,6 +113,7 @@ const G = {
 };
 const camF = frameAt(0), lookF = frameAt(0);
 const _zc = new THREE.Color();
+const _wl = new THREE.Vector3(), _wr = new THREE.Vector3(), _ws = new THREE.Vector3(), _wb = new THREE.Vector3();
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3();
 const C_SLIME = new THREE.Color(0.45, 1.0, 0.3), C_SPARK = new THREE.Color(1.0, 0.65, 0.25),
   C_PIZZA = new THREE.Color(1.0, 0.75, 0.2), C_HIT = new THREE.Color(1.0, 0.3, 0.2), C_SHIELD = new THREE.Color(0.4, 0.8, 1.0),
@@ -133,7 +134,7 @@ function startRun() {
   player.speed = 8;
   track.reset();
   obstacles.reset();
-  particles.clear(); debris.clear();
+  particles.clear(); debris.clear(); boardTrail.clear();
   renderLives(G.lives);
   hud.popups.innerHTML = '';
   $('gameover-overlay').classList.add('hidden');
@@ -517,6 +518,31 @@ function frame(now) {
       particles.emit(boardP, back.clone().multiplyScalar(5).addScaledVector(side, 3).addScaledVector(wallUp, 2 + Math.random() * 2), C_SPARK, { size: 0.16, life: 0.35, grav: wallUp.clone().multiplyScalar(-18), drag: 0.5 });
     }
   }
+  // ── the board against the floor: wheel tracks, contact glow, wheel sparks ──
+  {
+    const b = player.board;
+    b.updateMatrixWorld(true);
+    const wl = b.localToWorld(_wl.set(-0.17, 0.0, 0.34));
+    const wr = b.localToWorld(_wr.set(0.17, 0.0, 0.34));
+    const side = _ws.subVectors(wr, wl).normalize();
+    const onFloor = (G.state === 'play' || G.state === 'countdown') && player.hop < 0.05;
+    const dry = !G.waterOn && !G.slimeOn;
+    boardTrail.update(simDt, [wl, wr], wallUp, side, player.speed, onFloor, dry);
+    if (onFloor && G.state === 'play') {
+      const back = _wb.copy(f.T).multiplyScalar(-1);
+      for (const w of [wl, wr]) {
+        if (dry && Math.random() < 0.25 + Math.min(0.5, Math.abs(player.omega) * 0.2)) {
+          // grinding sparks off the wheels
+          particles.emit(w, back.clone().multiplyScalar(3 + Math.random() * 4).addScaledVector(wallUp, 1 + Math.random() * 2.5).addScaledVector(side, (Math.random() - 0.5) * 3),
+            C_SPARK, { size: 0.12 + Math.random() * 0.1, life: 0.3, grav: wallUp.clone().multiplyScalar(-18), drag: 0.6 });
+        } else if (!dry && Math.random() < 0.6) {
+          // little rooster tails off each wheel in the water
+          particles.emit(w, back.clone().multiplyScalar(2 + Math.random() * 2).addScaledVector(wallUp, 1.5 + Math.random() * 2).addScaledVector(side, (Math.random() - 0.5) * 2),
+            C_FOAM, { size: 0.16 + Math.random() * 0.12, life: 0.4, grav: wallUp.clone().multiplyScalar(-16), drag: 0.8 });
+        }
+      }
+    }
+  }
   particles.update(dt);
   debris.update(simDt);
   const speedN = THREE.MathUtils.clamp((player.speed - BASE_SPEED) / (TOP_SPEED - BASE_SPEED), 0, 1);
@@ -605,6 +631,7 @@ async function loadFootGeo(url) {
   particles = new Particles(scene);
   debris = new Debris(scene, tex);
   streaks = new Streaks(scene);
+  boardTrail = new BoardTrail(scene, makeGlowTexture());
   player = new Player(scene);
   await player.load('/models/raphael.glb', '/models/clips.json');
   renderLives(LIVES);

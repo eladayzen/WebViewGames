@@ -96,6 +96,10 @@ if (script === 'default') {
   for (let k = 1; k <= 2; k++) {
     await page.waitForFunction((n) => (window.__game.G.kicks || 0) >= n, { timeout: 60000 }, k);
     for (let i = 0; i < 6; i++) { await snap(`kick${k}-${i}`); await wait(60); }
+    for (let i = 0; i < 8; i++) {
+      await wait(120);
+      console.log('spin', JSON.stringify(await page.evaluate(() => { const p = window.__game.player; return { boardYaw: +p.bank.rotation.y.toFixed(2), riderYaw: +(p.model.rotation.y - Math.PI).toFixed(2), pending: +p.trickSpin.toFixed(2) }; })));
+    }
   }
   console.log('kicks', await page.evaluate(() => window.__game.G.kicks));
 } else if (script === 'pole') {
