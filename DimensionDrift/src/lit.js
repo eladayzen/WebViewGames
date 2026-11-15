@@ -92,6 +92,9 @@ uniform float uEmissive;
 uniform vec3  uLampColor;
 uniform float uLampStrength;
 uniform float uLampRange;
+uniform vec3  uLampAim;
+uniform float uLampLead;
+uniform float uRimStrength;
 /**
  * ── STATIC LIGHTS ────────────────────────────────────────────────────────
  * xyz is the position, w is the range. w == 0 means the slot is empty, which
@@ -219,13 +222,38 @@ void main() {
   //
   // Inverse-square, softened by the range so it does not blow out at contact.
   if (uLampStrength > 0.0) {
-    vec3 toCam = uCamPos - vWorld;
-    float d = length(toCam);
-    vec3 L = toCam / max(d, 1e-4);
+    // ── THE LAMP LEADS, IT DOES NOT SIT ON YOU ────────────────────────────
+    //
+    // Centred on the camera, half the pool was spent on ground that is already
+    // BEHIND the player -- which they will never look at and cannot act on.
+    // Pushing the source forward along the view direction puts the same light
+    // where the rider is going, so the pool leads them down the course and a
+    // hazard is lit a beat before it is reached.
+    vec3 src = uCamPos + uLampAim * uLampLead;
+    vec3 toL = src - vWorld;
+    float d = length(toL);
+    vec3 L = toL / max(d, 1e-4);
     float lam = max(0.0, dot(N, L));
     float q = d / uLampRange;
     float atten = 1.0 / (1.0 + q * q);
     col += albedo * uLampColor * (uLampStrength * lam * atten);
+  }
+
+  // ── RIM ─────────────────────────────────────────────────────────────────
+  //
+  // A cold edge where a surface turns away from the camera, tinted with the
+  // sky. On a dark level the shapes that matter -- the rider, a soldier, a pod
+  // -- are dark objects in front of dark ground, and the only thing separating
+  // them is the hazard colours they happen to be standing near. A rim gives
+  // every one of them an outline for free, which is what a backlight does on a
+  // real set and is why night photography uses one.
+  //
+  // Squared, so it is an EDGE and not a wash: a linear fresnel lifts the whole
+  // object and just makes the dark scene brighter again.
+  if (uRimStrength > 0.0) {
+    vec3 Vr = normalize(uCamPos - vWorld);
+    float rim = 1.0 - max(0.0, dot(N, Vr));
+    col += uSkyColor * (uRimStrength * rim * rim);
   }
 
   float dist = length(vWorld - uCamPos);
@@ -295,6 +323,9 @@ export function makeLitMaterial(mood, {
       uLampColor: { value: new THREE.Color(0xffffff) },
       uLampStrength: { value: 0 },
       uLampRange: { value: 34 },
+      uLampAim: { value: new THREE.Vector3(0, 0, -1) },
+      uLampLead: { value: 0 },
+      uRimStrength: { value: 0 },
       uPtPos: { value: [new THREE.Vector4(), new THREE.Vector4(),
         new THREE.Vector4(), new THREE.Vector4()] },
       uPtCol: { value: [new THREE.Color(), new THREE.Color(),
@@ -315,7 +346,7 @@ export function makeLitMaterial(mood, {
 
 /** Every lit material shares these two per-frame values. */
 export function updateLitCommon(materials, camPos, fogBase, sunFloor = 0, sunFlat = 1,
-  lights = null) {
+  lights = null, aim = null) {
   for (const m of materials) {
     if (!m) continue;
     m.uniforms.uCamPos.value.copy(camPos);
@@ -323,6 +354,9 @@ export function updateLitCommon(materials, camPos, fogBase, sunFloor = 0, sunFla
     m.uniforms.uSunFloor.value = sunFloor;
     m.uniforms.uSunFlat.value = sunFlat;
     if (lights && m.uniforms.uPtPos) writePointLights(m.uniforms, lights);
+    // Where the lamp is pointed: the camera's own forward, handed in rather
+    // than derived, so the ground shader and every lit material agree.
+    if (aim && m.uniforms.uLampAim) m.uniforms.uLampAim.value.copy(aim);
   }
 }
 

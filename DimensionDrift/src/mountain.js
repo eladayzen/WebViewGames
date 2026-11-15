@@ -727,6 +727,8 @@ uniform vec3  uRockColor;
 uniform vec3  uLampColor;
 uniform float uLampStrength;
 uniform float uLampRange;
+uniform vec3  uLampAim;
+uniform float uLampLead;
 uniform vec4  uPtPos[4];
 uniform vec3  uPtCol[4];
 uniform vec3  uFogColor;
@@ -1522,7 +1524,9 @@ void main() {
   // pool of light AROUND them that says where they are and how fast it is
   // going past. See the note on the lamp in mood.js.
   if (uLampStrength > 0.0) {
-    vec3 toCamL = uCamPos - vWorld;
+    // Led forward, exactly as in lit.js -- the ground is the surface that
+    // benefits most, since it is what the player reads the course from.
+    vec3 toCamL = (uCamPos + uLampAim * uLampLead) - vWorld;
     float dL = length(toCamL);
     vec3 LL = toCamL / max(dL, 1e-4);
     float lamL = max(0.0, dot(normalize(vNormal), LL));
@@ -1807,6 +1811,8 @@ export class MountainMesh {
         uLampColor: { value: new THREE.Color(0xffffff) },
         uLampStrength: { value: 0 },
         uLampRange: { value: 34 },
+        uLampAim: { value: new THREE.Vector3(0, 0, -1) },
+        uLampLead: { value: 0 },
         uPtPos: { value: [new THREE.Vector4(), new THREE.Vector4(),
           new THREE.Vector4(), new THREE.Vector4()] },
         uPtCol: { value: [new THREE.Color(), new THREE.Color(),

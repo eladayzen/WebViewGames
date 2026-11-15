@@ -4489,8 +4489,19 @@ class Game {
      * four slots at their constructor defaults, which is w = 1: a light of
      * range one metre at the world origin, present and lighting nothing.
      */
+    /**
+     * The camera's own forward, so the lamp can lead the rider instead of
+     * sitting on them. Derived once here and handed to everything, rather
+     * than recomputed per shader where the ground and the objects on it could
+     * end up disagreeing about which way the light points.
+     */
+    this._lampAim = this._lampAim || new THREE.Vector3();
+    this.camera.getWorldDirection(this._lampAim);
     updateLitCommon(this.litMaterials, this.camera.position, fogBase,
-      mu.uSunFloor.value, mu.uSunFlat.value, this._siteLights);
+      mu.uSunFloor.value, mu.uSunFlat.value, this._siteLights, this._lampAim);
+    if (mu.uLampAim) mu.uLampAim.value.copy(this._lampAim);
+    const m2a = this.mountain2?.material?.uniforms;
+    if (m2a?.uLampAim) m2a.uLampAim.value.copy(this._lampAim);
     // The ground carries its own shader rather than a lit material, so it is
     // fed from the same list directly -- a mast that lit the objects near it
     // and not the dirt under it would read as a glowing prop, not a light.

@@ -112,7 +112,22 @@ export default registerMode({
    * ahead, this one adds it to the RIDER's own height. 1.6 m is a little over
    * head height, which is where a shooter's camera looks.
    */
-  camera: { camBack: 6.2, camUp: 2.5, camLookAhead: 16, camLookUp: 1.6 },
+  /**
+   * ── IN CLOSE ──────────────────────────────────────────────────────────
+   *
+   * 6.2 back / 2.5 up becomes 4.1 / 1.85. Asked for, and the night is what
+   * makes it the right call rather than a preference: the lamp lights a pool
+   * around the board and everything past it is dark, so a camera sitting six
+   * metres back spends most of the frame on ground the player cannot read.
+   * Closer puts the lit pool, the rider and the hazard he is about to meet in
+   * the same picture.
+   *
+   * `camLookAhead` comes DOWN with it, from 16 to 13. The look-at point is a
+   * distance in front of the rider; leaving it long while pulling the camera
+   * in tips the whole frame toward the horizon and gives back the ground the
+   * move was meant to buy.
+   */
+  camera: { camBack: 4.1, camUp: 1.85, camLookAhead: 13, camLookUp: 1.5 },
 
   music: ['sewer_steel_a', 'foot_clan_a', 'sewer_steel_b', 'foot_clan_b'],
 

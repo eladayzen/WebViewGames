@@ -25,7 +25,14 @@ import { VIEW, meshHeight, channelHalf } from './mountain.js';
 import { mulberry32, range } from './rng.js';
 
 /** Metres between pairs. Sparse on purpose -- see the note on darkness below. */
-const BAND = 115;
+/**
+ * 115 -> 74. With the camera in close and the lamp leading, the stretch a
+ * player can actually read is short, and masts a hundred metres apart meant
+ * long runs with nothing in them -- the alternation the small pool was chosen
+ * for needs something to alternate WITH. Closer together, the course now
+ * passes through a lit patch often enough to feel lit at all.
+ */
+const BAND = 74;
 const START_JITTER = 40;
 
 /** How far outside the channel a mast stands, so it is up the bank behind you. */
@@ -47,10 +54,10 @@ const HEAD_R = 1.05;
  * 26 m is about a third of the gap between pairs, so the course alternates
  * between lit and dark as you ride it, which is the thing that reads.
  */
-const RANGE = 26;
+const RANGE = 30;
 const COLOR = 0xffd9a0;
 /** What the shaders multiply by. See the four-light loop in lit.js. */
-const STRENGTH = 0.85;
+const STRENGTH = 1.05;
 
 export class Floods {
   /**

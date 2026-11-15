@@ -606,8 +606,29 @@ registerPlace({
      * other -- the pool has to stay as bright as it was or the rider sinks
      * back into the dark, which is the thing this exists to prevent.
      */
-    uLampStrength: 1.05,
-    uLampRange: 21,
+    uLampStrength: 1.45,
+    uLampRange: 27,
+/**
+     * ── HOW FAR AHEAD THE POOL SITS, AND 19 WAS TOO FAR ───────────────────
+     *
+     * The first number was a range's worth, reasoned as "the rider sits at the
+     * near edge of their own light, which is where a headlight puts you".
+     * Rendered, it put them OUTSIDE it: the pool had moved far enough down the
+     * course that the one thing the lamp exists to light was in its shadow,
+     * and the route read near-black.
+     *
+     * 9 keeps the bias -- the brightest ground is still in front of the board,
+     * which is what the player needs to read -- while leaving the rider inside
+     * the lit patch rather than trailing behind it. Range and strength both go
+     * up with it, because a pool that has to cover the rider AND lead them is
+     * a bigger pool than one that only does the second.
+     */
+    uLampLead: 9,
+    /**
+     * The rim. Small, because it is an EDGE: enough to find the outline of a
+     * soldier or a pod against dark ground, nowhere near enough to light them.
+     */
+    uRimStrength: 0.55,
 
     /** Lit windows on the far skyline too. See the window block in range.js. */
     uWindowColor: 0xffd79a,

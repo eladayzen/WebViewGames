@@ -257,6 +257,10 @@ export class Mood {
     this.uLampColor = new THREE.Color(0xffffff);
     this.uLampStrength = 0;
     this.uLampRange = 34;
+    /** How far in front of the camera the lamp hangs. See the note in lit.js. */
+    this.uLampLead = 0;
+    /** Cold edge light on everything, tinted with the sky. Zero by default. */
+    this.uRimStrength = 0;
     /**
      * Windows on the FAR range. Same arrangement as the lamp and for the same
      * reason: not part of the day arc, zero by default, so every other place
@@ -321,6 +325,8 @@ export class Mood {
     if (u.uLampColor) u.uLampColor.value.copy(this.uLampColor);
     if (u.uLampStrength) u.uLampStrength.value = this.uLampStrength;
     if (u.uLampRange) u.uLampRange.value = this.uLampRange;
+    if (u.uLampLead) u.uLampLead.value = this.uLampLead;
+    if (u.uRimStrength) u.uRimStrength.value = this.uRimStrength;
     if (u.uWindowColor) u.uWindowColor.value.copy(this.uWindowColor);
     if (u.uWindowStrength) u.uWindowStrength.value = this.uWindowStrength;
   }
