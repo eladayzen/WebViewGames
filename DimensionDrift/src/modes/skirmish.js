@@ -233,6 +233,10 @@ function BASE_CREATE(game) {
          * `loadFootGeometry` in main.js.
          */
         game.combat.setFigure(game._footGeo);
+        // Half and half. Rolled per drone rather than per squad, so a chevron
+        // of pods with a soldier under it is a legal formation and the player
+        // meets both kinds inside the first few seconds.
+        game.combat.rules.footShare = 0.5;
 
         game.combat.setRules(
           { hostile: false, droneHp: DRONE_HP, density: DENSITY },

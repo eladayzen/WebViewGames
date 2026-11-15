@@ -83,6 +83,11 @@ const EMPTY_PAIRS = [];
 const DEFAULT_RULES = {
   /** Do the drones shoot back? */
   hostile: false,
+  /**
+   * What fraction of enemies are standing humanoids rather than hovering
+   * pods. Zero until a mode both asks for figures and loads the mesh.
+   */
+  footShare: 0.5,
   /** How many hits a drone takes. 1 is the game chill vibe was measured on. */
   droneHp: 1,
   /** A multiplier on SQUAD_CHANCE, so a mode can thin or thicken the hill. */
@@ -523,18 +528,9 @@ export class Combat {
     this.matStar = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
     this.podGeo = buildPodGeometry();
-    /**
-     * ── POD OR FIGURE ─────────────────────────────────────────────────────
-     *
-     * False is the hovering pod this file was written for. True swaps the
-     * geometry for a standing humanoid and plants it on the ground.
-     *
-     * It is a flag rather than a second enemy class because everything that
-     * makes an enemy an enemy here -- the ring, the health, the squads, the
-     * acquisition, the laser bars they project -- is identical either way.
-     * Only where it stands and how it is drawn differ.
-     */
-    this.standing = false;
+    /** The humanoid mesh, once a mode has asked for it. See `setFigure`. */
+    this.figures = null;
+    this.hasFigures = false;
     this.pods = new THREE.InstancedMesh(this.podGeo, this.matPod, this.capacity);
     this.pods.frustumCulled = false;
     this.pods.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -769,6 +765,8 @@ export class Combat {
       enemyShots: 0, enemyHits: 0, damage: 0 };
 
     this._m = new THREE.Matrix4();
+    /** Scratch for collapsing the slot a drone is NOT drawn in. */
+    this._zero = new THREE.Matrix4();
     this._q = new THREE.Quaternion();
     this._v = new THREE.Vector3();
     this._s = new THREE.Vector3();
@@ -820,11 +818,18 @@ export class Combat {
       // a hover measured off the analytic height floats higher than it says
       // over every convex rise — the finding that already cost this project a
       // round on its trees.
+      /**
+       * WHICH KIND THIS ONE IS, rolled per drone rather than per squad: a
+       * chevron of pods with one soldier walking under it is a better picture
+       * than alternating all-pod and all-soldier formations, and it means the
+       * player meets both inside the first few seconds.
+       */
+      const foot = this.hasFigures && rand() < this.rules.footShare;
       // A FIGURE STANDS ON THE SNOW; a pod hovers. `drawnY` carries the
       // difference for everything that aims: a standing enemy is aimed at
       // around the chest, not at its feet, and `_aimPoint` reads `drawnY`.
       const ground = meshHeight(this.terrain, x, z);
-      const y = this.standing ? ground : ground + range(rand, HOVER[0], HOVER[1]);
+      const y = foot ? ground : ground + range(rand, HOVER[0], HOVER[1]);
       drones.push({
         x, y, z, p, u, k, gi: base + k,
         size: range(rand, SIZE[0], SIZE[1]),
@@ -851,6 +856,7 @@ export class Combat {
          * being named: it implies the barrier is the only thing that kills.
          */
         hitLabel: 'DRONE FIRE',
+        foot,
         hurt: 0,
         squad: null,
         cd: rand() * WEAPONS.blaster.cooldown,
@@ -1578,25 +1584,42 @@ export class Combat {
    * already on the hill would get one stretch of the old rules.
    */
   /**
-   * Make the enemies standing figures instead of hovering pods.
+   * Add standing humanoids alongside the hovering pods.
    *
-   * Call BEFORE `setRules`, because the hover is baked into each drone when
-   * its band is built and `setRules` is what rebuilds the ring.
+   * ── TWO MESHES, ONE RING ──────────────────────────────────────────────
    *
-   * @param {THREE.BufferGeometry|null} geo null leaves the pods alone
+   * The first cut of this SWAPPED the pod geometry, which turned every enemy
+   * in the game into a man. Both belong: a pod and a soldier are the same
+   * enemy to the ring, the health, the squads and the gun, and differ only in
+   * where they stand and how they are drawn -- so a squad can hold either
+   * without a line of logic caring which.
+   *
+   * They are two InstancedMeshes of the SAME capacity sharing one index: a
+   * drone writes its matrix into whichever mesh it belongs to and a
+   * zero-scale matrix into the other. That costs one dead instance per enemy
+   * and buys a single `gi` that means the same thing everywhere.
+   *
+   * The eyes fall out of it for free. They share the PODS' instance matrix,
+   * so a soldier -- whose pod slot is zero-scaled -- has no eye without
+   * anything being said about it.
+   *
+   * Call BEFORE `setRules`: which one a drone is, and therefore whether it
+   * hovers, is decided when its band is built, and `setRules` is what rebuilds
+   * the ring.
+   *
+   * @param {THREE.BufferGeometry|null} geo null leaves the enemies as pods
    */
   setFigure(geo) {
-    if (!geo) return false;
-    this.standing = true;
-    // `aTint` is a REQUIRED instanced attribute under USE_INSTANCING, and it
-    // lives on the GEOMETRY -- swapping the geometry without carrying it over
-    // is a black hole where the enemies were.
+    if (!geo || this.figures) return !!this.figures;
+    // `aTint` is REQUIRED under USE_INSTANCING and lives on the GEOMETRY.
+    // Shared with the pods deliberately: the two meshes are indexed alike, so
+    // one tint buffer is one fact rather than two that can disagree.
     geo.setAttribute('aTint', this.tint);
-    this.pods.geometry = geo;
-    // The eye shares the pods' instance matrix and is placed by its own
-    // geometry at the front of a pod. On a humanoid that is somewhere inside
-    // the chest, so it goes.
-    this.eyes.visible = false;
+    this.figures = new THREE.InstancedMesh(geo, this.matPod, this.capacity);
+    this.figures.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.figures.frustumCulled = false;
+    this.scene.add(this.figures);
+    this.hasFigures = true;
     return true;
   }
 
@@ -1718,24 +1741,40 @@ export class Combat {
         // tumble are what sell a machine holding station in the air; on a man
         // they read as a body floating and swaying, which is worse than no
         // motion at all. He keeps the yaw, so he still turns to face you.
-        const bob = this.standing ? 0 : Math.sin(this.t * 1.6 + d.phase) * BOB;
-        const roll = this.standing ? 0 : Math.sin(this.t * 2.3 + d.phase) * 0.12;
-        const tumble = this.standing ? 0 : this.t * d.spin * 0.35;
+        const bob = d.foot ? 0 : Math.sin(this.t * 1.6 + d.phase) * BOB;
+        const roll = d.foot ? 0 : Math.sin(this.t * 2.3 + d.phase) * 0.12;
+        const tumble = d.foot ? 0 : this.t * d.spin * 0.35;
         // The DRAWN height, kept so the lock can sit on the pod rather than on
-        // the arithmetic mean of where it bobs. For a figure it is the CHEST,
-        // which is what the gun and the lock ring should be pointing at --
-        // while the mesh itself is placed at the feet.
-        // 0.62 of the figure's own height: chest on a 2.2-2.9 m soldier.
-        d.drawnY = this.standing ? d.y + 1.35 * scale : d.y + bob + lift;
-        this._v.set(d.x, this.standing ? d.y + lift : d.drawnY, d.z);
+        // the arithmetic mean of where it bobs. For a figure it is the CHEST
+        // -- 0.62 of its own height -- which is what the gun and the lock ring
+        // should point at, while the mesh itself is placed at the feet.
+        d.drawnY = d.foot ? d.y + 1.35 * scale : d.y + bob + lift;
+        this._v.set(d.x, d.foot ? d.y + lift : d.drawnY, d.z);
         this._e.set(roll, yaw, tumble);
         this._q.setFromEuler(this._e);
         this._s.set(scale, scale, scale);
         this._m.compose(this._v, this._q, this._s);
-        this.pods.setMatrixAt(d.gi, this._m);
+        /**
+         * ONE INDEX, TWO MESHES. The drone writes itself into the mesh it
+         * belongs to and collapses its slot in the other, so `gi` means the
+         * same thing in both and the eyes -- which share the pods' matrix --
+         * disappear on a soldier without being told to.
+         */
+        if (d.foot && this.figures) {
+          this.figures.setMatrixAt(d.gi, this._m);
+          this._zero.makeScale(0, 0, 0);
+          this.pods.setMatrixAt(d.gi, this._zero);
+        } else {
+          this.pods.setMatrixAt(d.gi, this._m);
+          if (this.figures) {
+            this._zero.makeScale(0, 0, 0);
+            this.figures.setMatrixAt(d.gi, this._zero);
+          }
+        }
       }
     }
     this.pods.instanceMatrix.needsUpdate = true;
+    if (this.figures) this.figures.instanceMatrix.needsUpdate = true;
 
     // ── the lock ───────────────────────────────────────────────────────────
     this.lockFlash = Math.max(0, this.lockFlash - dt * 4.5);
