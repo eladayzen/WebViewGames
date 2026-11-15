@@ -92,6 +92,13 @@ uniform float uEmissive;
 uniform vec3  uLampColor;
 uniform float uLampStrength;
 uniform float uLampRange;
+/**
+ * ── STATIC LIGHTS ────────────────────────────────────────────────────────
+ * xyz is the position, w is the range. w == 0 means the slot is empty, which
+ * is how a scene with fewer than four lights costs nothing but the branch.
+ */
+uniform vec4  uPtPos[4];
+uniform vec3  uPtCol[4];
 uniform float uSnowCap;
 uniform float uSunFloor;
 uniform float uSunFlat;
@@ -171,6 +178,32 @@ void main() {
   float spec = pow(max(dot(N, H), 0.0), uGloss) * uSpecular;
 
   vec3 col = albedo * (direct + ambient) + uSunColor * spec + albedo * uEmissive;
+
+  // ── SITE LIGHTS ─────────────────────────────────────────────────────────
+  //
+  // Four point lights, fed each frame with the nearest floodlight masts. This
+  // renderer has no light list of its own -- everything is lit by one sun
+  // direction -- so a dark level has exactly one thing lighting it and nothing
+  // in the world can cast a pool of its own. These are that.
+  //
+  // Four is the whole budget, and it is chosen rather than guessed: the masts
+  // stand in pairs along the banks, so four covers the pair you are passing
+  // and the pair ahead, which is every mast that can measurably reach you.
+  for (int i = 0; i < 4; i++) {
+    float rng = uPtPos[i].w;
+    if (rng <= 0.0) continue;
+    vec3 d = uPtPos[i].xyz - vWorld;
+    float dist2 = dot(d, d);
+    float q = dist2 / (rng * rng);
+    if (q > 1.0) continue;                    // outside its reach
+    vec3 Lp = d * inversesqrt(max(dist2, 1e-6));
+    // Wrapped like the sun term, so a mast lights the side of something and
+    // not just the face pointing straight at it.
+    float lam = max(0.0, (dot(N, Lp) + 0.25) / 1.25);
+    // Smooth to zero at the edge of the range, or masts pop as they recycle.
+    float fall = (1.0 - q) * (1.0 - q);
+    col += albedo * uPtCol[i] * (lam * fall);
+  }
 
   // ── THE LAMP ────────────────────────────────────────────────────────────
   //
@@ -262,6 +295,10 @@ export function makeLitMaterial(mood, {
       uLampColor: { value: new THREE.Color(0xffffff) },
       uLampStrength: { value: 0 },
       uLampRange: { value: 34 },
+      uPtPos: { value: [new THREE.Vector4(), new THREE.Vector4(),
+        new THREE.Vector4(), new THREE.Vector4()] },
+      uPtCol: { value: [new THREE.Color(), new THREE.Color(),
+        new THREE.Color(), new THREE.Color()] },
       uSnowCap: { value: snowCap },
       // Refreshed every frame by updateLitCommon from the mountain's own values,
       // so there is one sun in the scene and not two.
@@ -277,12 +314,38 @@ export function makeLitMaterial(mood, {
 }
 
 /** Every lit material shares these two per-frame values. */
-export function updateLitCommon(materials, camPos, fogBase, sunFloor = 0, sunFlat = 1) {
+export function updateLitCommon(materials, camPos, fogBase, sunFloor = 0, sunFlat = 1,
+  lights = null) {
   for (const m of materials) {
     if (!m) continue;
     m.uniforms.uCamPos.value.copy(camPos);
     m.uniforms.uFogBase.value = fogBase;
     m.uniforms.uSunFloor.value = sunFloor;
     m.uniforms.uSunFlat.value = sunFlat;
+    if (lights && m.uniforms.uPtPos) writePointLights(m.uniforms, lights);
+  }
+}
+
+/**
+ * Copy up to four site lights into a material's uniforms.
+ *
+ * Shared so the snow shader and every lit material are fed from one place --
+ * two copies of this would be two ways for the ground and the things standing
+ * on it to disagree about where the light is.
+ *
+ * @param {object} uniforms
+ * @param {Array<{x:number,y:number,z:number,range:number,color:THREE.Color}>} lights
+ */
+export function writePointLights(uniforms, lights) {
+  const pos = uniforms.uPtPos.value;
+  const col = uniforms.uPtCol.value;
+  for (let i = 0; i < 4; i++) {
+    const l = lights[i];
+    if (l) {
+      pos[i].set(l.x, l.y, l.z, l.range);
+      col[i].copy(l.color);
+    } else {
+      pos[i].w = 0;                            // empty slot; the shader skips it
+    }
   }
 }

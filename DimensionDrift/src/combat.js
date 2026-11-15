@@ -475,8 +475,24 @@ export class Combat {
     // snowCap 0, because `uSnowCap` mixes upward faces toward the GROUND colour
     // and would frost a machine exactly the way it frosted a conifer — which is
     // half of why the forest read alpine whatever shape it was (see scatter.js).
+    /**
+     * ── BRIGHTER, BECAUSE THE WORLD WENT DARK UNDER THEM ──────────────────
+     *
+     * 0x271b3f at 0.12 emissive was a near-black hull, and it was right while
+     * this level was a pale ice field: a dark machine against bright snow is
+     * the most legible thing on the hill.
+     *
+     * The level is now a construction site at NIGHT and the ground sits at a
+     * tenth of the luminance it used to. A dark hull on a dark lot is a
+     * silhouette with nothing to be a silhouette against, which is how the
+     * drones stopped reading at all.
+     *
+     * So the hull goes up and, more importantly, its emissive goes up with it:
+     * emissive is the only term that survives a scene with almost no key
+     * light, which is the whole reason the windows in sidecity.js work.
+     */
     this.matPod = makeLitMaterial(mood, {
-      color: 0x271b3f, wrap: 0.22, gloss: 46, specular: 0.55, emissive: 0.12, snowCap: 0,
+      color: 0x6b5aa8, wrap: 0.22, gloss: 46, specular: 0.55, emissive: 0.55, snowCap: 0,
     });
     /** Append to main's `litMaterials` so the shared sun/fog reaches them. */
     this.materials = [this.matPod];
@@ -488,7 +504,13 @@ export class Combat {
     // hot hue nothing in this game has claimed, and it is the furthest from the
     // violet-green axis the whole re-theme runs along, so it separates at every
     // stop in `mood.js` instead of only at the convenient ones.
-    this.matEye = new THREE.MeshBasicMaterial({ color: 0xff6a1f });
+    /**
+     * The eye is the thing the player actually tracks, so at night it carries
+     * the whole read. Pushed well past the hull: MeshBasic is unlit, so this
+     * colour IS what reaches the screen, and it is the one element in the
+     * frame allowed to clip.
+     */
+    this.matEye = new THREE.MeshBasicMaterial({ color: 0xffb04a });
     this.matBolt = new THREE.MeshBasicMaterial({ color: 0xff9a4d });
     // WHITE, and the colour arrives per instance. MeshBasicMaterial multiplies
     // its own colour by the instance colour, so a white base lets a star be

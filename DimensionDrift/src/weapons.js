@@ -249,7 +249,18 @@ export const WEAPONS = {
     // separates cleanly from the ground at the dark ones. IT IS THE RIGHT
     // NUMBER TO MOVE if the stars get hard to follow -- raise the value, not
     // the saturation, or it stops reading as steel.
-    color: 0x7e95a9,
+    /**
+     * ── BRIGHT AGAIN, AND THE REASON IS THE LEVEL, NOT A CHANGE OF MIND ───
+     *
+     * This was 0xcfe3f5, dimmed to 0x7e95a9 when the shots were blowing out
+     * against a white holographic field. The field is now a building site at
+     * night at a tenth of that luminance, and the same colour that was too
+     * loud there is invisible here.
+     *
+     * Pushed past the original rather than back to it: a thrown star is small,
+     * fast and the one thing the player needs to follow across a dark frame.
+     */
+    color: 0xe8f4ff,
     scale: 1.0,
     spin: 26,
     shape: 'star',
@@ -289,7 +300,7 @@ export const WEAPONS = {
     // Dimmed with the default, and by less. A power weapon is allowed to be
     // the brightest thing leaving your hand -- that is most of what sells it --
     // it just may not be white.
-    color: 0x23b8a9,
+    color: 0x3dffea,
     scale: 1.35,
     spin: 32,
     shape: 'star',
@@ -322,7 +333,7 @@ export const WEAPONS = {
     life: 2.6,
     burst: 3,
     spreadDeg: 9,
-    color: 0x5fcdd4,
+    color: 0x9df6ff,
     scale: 1.35,
     spin: 34,
     shape: 'star',

@@ -40,6 +40,7 @@ import { Boons } from './boons.js';
 import { Beams } from './beams.js';
 import { Fields } from './fields.js';
 import { SideCity } from './sidecity.js';
+import { Floods } from './floods.js';
 import { Roster, Fighter, TEAM } from './fighters.js';
 import { WEAPONS, GIFT, rollGift, MOTE_HEAL, CHAIN_HEAL } from './weapons.js';
 import { createFinishLine } from './finishLine.js';
@@ -50,7 +51,7 @@ import { Timer, CLOCK } from './timer.js';
 import { Post, Particles, Snowfall } from './fx.js';
 import { Audio, BeatPulse } from './audio.js';
 import { Mood } from './mood.js';
-import { updateLitCommon } from './lit.js';
+import { updateLitCommon, writePointLights } from './lit.js';
 import { Hud } from './hud.js';
 import { installDevUnlock } from './devUnlock.js';
 import { createSettingsPanel, createDevPanel } from './panels.js';
@@ -1281,6 +1282,13 @@ class Game {
        */
       this.sideCity = new SideCity(this.terrain, this.scene, this.mood, SEED);
       /**
+       * FLOODLIGHT MASTS, and the four point lights they feed. See
+       * `floods.js`: this renderer lights everything from one sun direction,
+       * so until these existed nothing in the world could light anything else
+       * and a night level was evenly dim everywhere.
+       */
+      this.floods = new Floods(this.terrain, this.scene, this.mood, SEED);
+      /**
        * THE BARRIER, DRAWN. One per rider, because two players each get their
        * own and a single bubble would follow the wrong one.
        *
@@ -1431,6 +1439,7 @@ class Game {
         ...this.boons.materials,
         ...this.beams.materials,
         ...this.sideCity.materials,
+        ...this.floods.materials,
         // Player two's rider is lit like every other object. Left out of this
         // list it never got uFogBase/uCamPos and rode as a pale fog ghost --
         // the same failure the rivals' jerseys had (see the frame loop).
@@ -1627,6 +1636,7 @@ class Game {
     this.boons.reset(p);
     this.beams.reset(p);
     this.sideCity.reset(p);
+    this.floods.reset(p);
     this.fields.reset();
     // Fast-forward the plan so gates are not spawned for beats already past.
     while (this.course.planIdx < this.gatePlan.length
@@ -2055,7 +2065,8 @@ class Game {
       m2.uCamPos.value.copy(cam.position);
       m2.uFogBase.value = fogBase;
     }
-    updateLitCommon(this.litMaterials, cam.position, fogBase, mu.uSunFloor.value, mu.uSunFlat.value);
+    updateLitCommon(this.litMaterials, cam.position, fogBase, mu.uSunFloor.value,
+      mu.uSunFlat.value, this._siteLights);
     updateLitCommon(this.rivals.materials, cam.position, fogBase, mu.uSunFloor.value, mu.uSunFlat.value);
     for (const t of [this.trail, this.trail2]) {
       if (!t) continue;
@@ -4321,6 +4332,10 @@ class Game {
     // the crash camera both still look at the sky.
     this.islands.update(this.rider.p);
     this.sideCity.update(this.rider.p);
+    // BEFORE `updateLitCommon` below, which hands the chosen lights to every
+    // lit material in the frame. Picked here rather than inside the updater so
+    // the snow shader -- which is not a lit material -- is fed the same four.
+    this._siteLights = this.floods.update(this.rider.p);
     /**
      * THE ABILITIES, taken the same way and in the same place as the kits.
      *
@@ -4405,8 +4420,24 @@ class Game {
     // elevation every frame — and every other lit object borrows it, so trees,
     // rocks and gates catch the sunrise at the same moment the snow does.
     const mu = this.mountain.material.uniforms;
+    /**
+     * THE SITE LIGHTS GO IN HERE, which is the frame loop. There are TWO
+     * `updateLitCommon(this.litMaterials, ...)` calls in this file -- this one
+     * and the per-half one in `_aimWorldAt`'s neighbourhood, which only runs
+     * in split screen. Feeding the lights to that one alone left the ground's
+     * four slots at their constructor defaults, which is w = 1: a light of
+     * range one metre at the world origin, present and lighting nothing.
+     */
     updateLitCommon(this.litMaterials, this.camera.position, fogBase,
-      mu.uSunFloor.value, mu.uSunFlat.value);
+      mu.uSunFloor.value, mu.uSunFlat.value, this._siteLights);
+    // The ground carries its own shader rather than a lit material, so it is
+    // fed from the same list directly -- a mast that lit the objects near it
+    // and not the dirt under it would read as a glowing prop, not a light.
+    if (this._siteLights && mu.uPtPos) {
+      writePointLights(mu, this._siteLights);
+      const m2 = this.mountain2?.material?.uniforms;
+      if (m2?.uPtPos) writePointLights(m2, this._siteLights);
+    }
     // The rivals' jersey materials are built lazily and live outside
     // `litMaterials`; without this they never get uFogBase/uCamPos and render
     // as pale fog-coloured ghosts whatever colour the jersey is set to.

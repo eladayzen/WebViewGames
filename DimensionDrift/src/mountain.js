@@ -727,6 +727,8 @@ uniform vec3  uRockColor;
 uniform vec3  uLampColor;
 uniform float uLampStrength;
 uniform float uLampRange;
+uniform vec4  uPtPos[4];
+uniform vec3  uPtCol[4];
 uniform vec3  uFogColor;
 uniform vec3  uFogSunColor;
 uniform float uFogDensity;
@@ -1494,6 +1496,24 @@ void main() {
     }
   }
 
+  // ── site lights ─────────────────────────────────────────────────────────
+  //
+  // The same four masts lit.js carries, on the ground. The ground is where a
+  // floodlight is actually seen: a mast that lit only the objects near it and
+  // not the dirt under it reads as a glowing prop rather than as a light.
+  for (int i = 0; i < 4; i++) {
+    float rng = uPtPos[i].w;
+    if (rng <= 0.0) continue;
+    vec3 dP = uPtPos[i].xyz - vWorld;
+    float dist2 = dot(dP, dP);
+    float q = dist2 / (rng * rng);
+    if (q > 1.0) continue;
+    vec3 Lp = dP * inversesqrt(max(dist2, 1e-6));
+    float lam = max(0.0, (dot(normalize(vNormal), Lp) + 0.25) / 1.25);
+    float fall = (1.0 - q) * (1.0 - q);
+    col += col * uPtCol[i] * (lam * fall);
+  }
+
   // ── the lamp ────────────────────────────────────────────────────────────
   //
   // The same camera light lit.js carries, on the GROUND as well. Lighting the
@@ -1787,6 +1807,10 @@ export class MountainMesh {
         uLampColor: { value: new THREE.Color(0xffffff) },
         uLampStrength: { value: 0 },
         uLampRange: { value: 34 },
+        uPtPos: { value: [new THREE.Vector4(), new THREE.Vector4(),
+          new THREE.Vector4(), new THREE.Vector4()] },
+        uPtCol: { value: [new THREE.Color(), new THREE.Color(),
+          new THREE.Color(), new THREE.Color()] },
         uFogColor: { value: new THREE.Color(0.62, 0.72, 0.88) },
         uFogSunColor: { value: new THREE.Color(1.0, 0.82, 0.62) },
         uFogDensity: { value: 0.0072 },

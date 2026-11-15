@@ -112,6 +112,7 @@ export default registerMode({
         game.beams.setEnabled(false);
         game.fields.setEnabled(false);
         game.sideCity.setEnabled(false);
+        game.floods.setEnabled(false);
         game.hud.showHealth(false);
         game.roster.reset();
 

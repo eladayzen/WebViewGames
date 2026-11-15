@@ -338,6 +338,9 @@ function BASE_CREATE(game) {
          */
         game.sideCity.setEnabled(true);
         game.sideCity.reset(game.rider.p);
+        /** Site lighting. See `floods.js`. After setChannel, like the city. */
+        game.floods.setEnabled(true);
+        game.floods.reset(game.rider.p);
         game.beams.setWallsVisible(false);
         game.beams.setEnabled(true);
         game.beams.reset(game.rider.p);
@@ -504,6 +507,7 @@ function BASE_CREATE(game) {
         setChannel(Infinity);
         setCut(0);
         game.sideCity.setEnabled(false);
+        game.floods.setEnabled(false);
         game.beams.setWallsVisible(true);
         game.hud.showHealth(false);
         game.roster.reset();
