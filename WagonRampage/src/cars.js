@@ -241,6 +241,7 @@ export class Car {
     this.alive = true; this.active = false;
     this.flash = 0; this.charge = 0; this.tilt = 0; this.roll = 0; this.bounce = 0;
     this.rollV = 0; this.hold = 0; this.rollPush = 0;
+    this.tether = false; this.emp = 0;
     this.wreck = null; this.ai = null; this.lastHitBy = 0;
     this.group.visible = false;
     if (this.glow) this.glow.visible = true;

@@ -39,7 +39,7 @@ export function buildDevPanel(look, presets, apply, G) {
     write(KEY + '_preset', name); on();
   };
 
-  const game = gui.addFolder('Game  ·  keys Z Leo  X Raph  C Mikey  V Donnie  B Saws');
+  const game = gui.addFolder('Game  ·  Z Leo X Raph C Mikey V Donnie · B Saws G Shield N Nitro H Harpoon');
   const acts = {
     god: () => { G.god = !G.god; godBtn.name(G.god ? 'God mode: ON' : 'God mode: off'); },
     // Default is read-only: saving while on it makes a new preset instead

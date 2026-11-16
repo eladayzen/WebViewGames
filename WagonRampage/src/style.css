@@ -131,3 +131,21 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1622; col
 }
 .big-btn { font-family: var(--display); font-size: 30px; letter-spacing: 2px; padding: 10px 36px; border-radius: 999px; border: 3px solid #000;
   background: var(--green); color: var(--ink); cursor: pointer; box-shadow: 0 5px 0 #000; }
+
+/* the gadget slot's ring sits to the right of the turtle one, same look */
+#gadget { position: absolute; left: 290px; bottom: 14px; width: 84px; height: 84px; transform: scale(.6); opacity: 0; transition: opacity .2s, transform .2s; }
+#gadget.on { opacity: 1; transform: scale(1); }
+#gadget svg { position: absolute; inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px); transform: rotate(-90deg); }
+#gadget circle { fill: none; stroke-width: 7; }
+#gadget .bg { stroke: rgba(0,0,0,.6); }
+#gadget .fg { stroke: #ffb42e; stroke-dasharray: 289; stroke-linecap: round; filter: drop-shadow(0 0 6px #ffb42e); }
+#gadget img { position: absolute; inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); border-radius: 50%; }
+#gadget b { position: absolute; left: 0; bottom: 100%; transform: translate(0, -10px); white-space: nowrap; font-family: var(--display);
+  font-size: 16px; letter-spacing: 1px; color: #fff; text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,.6); }
+#gadget i { position: absolute; left: 100%; top: 50%; transform: translate(10px, -50%); font: 900 18px var(--ui); font-style: normal;
+  color: #fff; text-shadow: 0 2px 0 #000; }
+
+#gadget[data-t="shield"] .fg { stroke: #6fc8ff; filter: drop-shadow(0 0 6px #6fc8ff); }
+#gadget[data-t="nitro"] .fg { stroke: #4f9cff; filter: drop-shadow(0 0 6px #4f9cff); }
+#gadget[data-t="harpoon"] .fg { stroke: #3fe0c0; filter: drop-shadow(0 0 6px #3fe0c0); }
+#banner.shield { color: #6fc8ff; font-size: 64px; } #banner.nitro { color: #4f9cff; font-size: 64px; } #banner.harpoon { color: #3fe0c0; font-size: 64px; }

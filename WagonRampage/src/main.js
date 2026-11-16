@@ -262,7 +262,7 @@ const input = new Input(canvas);
     tex[n] = await tl.loadAsync(`/tex/${n}.jpg`);
     tex[n].colorSpace = THREE.SRGBColorSpace;
   }));
-  for (const k of ['raph', 'leo', 'mike', 'donnie', 'saws']) { headTex[k] = await tl.loadAsync(`/ui/${k}.png`); headTex[k].colorSpace = THREE.SRGBColorSpace; }
+  for (const k of ['raph', 'leo', 'mike', 'donnie', 'saws', 'shield', 'nitro', 'harpoon']) { headTex[k] = await tl.loadAsync(`/ui/${k}.png`); headTex[k].colorSpace = THREE.SRGBColorSpace; }
   world = new World(stage, tex);
   fx = new FX(stage);
   models = await loadCarModels();
@@ -514,6 +514,7 @@ function startRun() {
     timeScale: 1, hitStop: 0, shake: 0, orbT: 4, power: null, strike: null, knockT: 0, cleared: false, countT: 3.2, spawnT: 0, hp: SHELL_MAX, hurtV: 0, slowT: 0 });
   for (const list of [shots, waves, bolts, zaps]) { for (const x of list) stage.remove(x.m || x.mesh); list.length = 0; }
   endBuff();
+  endGadget();
   resetHatch();
   world.reset();
   player.reset();
@@ -682,7 +683,7 @@ function onSideHit(a, b, n, vc, dt) {
   contactPoint(player, e, _p);
   if (vc > 1.5) {
     if (pPush >= ePush * 0.7) {
-      hitEnemy(e, (RAM.base + vc * RAM.perSpeed) * (G.strike ? 1 : 1), _p, toE);
+      hitEnemy(e, (RAM.base + vc * RAM.perSpeed) * (gadgetOn('nitro') ? NITRO.ram : 1), _p, toE, gadgetOn('nitro') ? 'NITRO RAM!' : undefined);
       G.shake = Math.max(G.shake, Math.min(0.22, vc * 0.015));
       e.ai.mode = 'cruise'; e.ai.t = rand(0.8, 1.6);
     } else {
@@ -706,13 +707,13 @@ function onRearHit(a, b, n, vc) {
   const wagonBehind = (a === player && n > 0) || (b === player && n < 0);
   contactPoint(player, e, _p);
   if (wagonBehind && vc > 1) {
-    hitEnemy(e, RAM.base + vc * RAM.rearPerSpeed, _p, 0);
+    hitEnemy(e, (RAM.base + vc * RAM.rearPerSpeed) * (gadgetOn('nitro') ? NITRO.ram : 1), _p, 0, gadgetOn('nitro') ? 'NITRO RAM!' : undefined);
     G.shake = Math.max(G.shake, 0.12);
   } else if (!wagonBehind && vc > 2) knocked(vc * 0.7);
 }
 
 function knocked(vc) {
-  if (G.knockT > 0) return;
+  if (G.knockT > 0 || gadgetOn('shield') || gadgetOn('nitro')) return;
   G.knockT = 0.6;
   player.vs = Math.max(SPEED.start * 0.7, player.vs - vc * 0.8);
   player.flash = 0.6; player.bounce = 0.5;
@@ -814,6 +815,9 @@ const TURTLES = {
   mike: { name: 'MIKEY', color: 0xff9a1e, hdr: [4.5, 1.9, 0.3] },
   donnie: { name: 'DONNIE', color: 0xa45cff, hdr: [2.6, 0.9, 4.5] },
   saws: { name: 'SAWS', color: 0xffa21e, hdr: [4.2, 2.4, 0.6] },
+  shield: { name: 'SHIELD', color: 0x4fb6ff, hdr: [0.8, 2.4, 4.4] },
+  nitro: { name: 'NITRO', color: 0x3f8cff, hdr: [0.6, 1.6, 4.6] },
+  harpoon: { name: 'HARPOON', color: 0x2fd6b4, hdr: [0.5, 3.6, 2.8] },
 };
 const orbGeo = new THREE.IcosahedronGeometry(0.9, 1);
 const orbMats = Object.fromEntries(Object.entries(TURTLES).map(([k, t]) => [k, new THREE.MeshBasicMaterial({ color: new THREE.Color(...t.hdr) })]));
@@ -848,7 +852,8 @@ function updateOrbs(dt) {
       G.orbsTaken = (G.orbsTaken || 0) + 1;
       fx.pickupBurst(o.mesh.position, TURTLES[o.kind].color);
       audio.pickup();
-      if (BUFFS[o.kind]) startBuff(o.kind);
+      if (GADGETS[o.kind]) startGadget(o.kind);
+      else if (BUFFS[o.kind]) startBuff(o.kind);
       else { G.power = o.kind; G.powerAt = G.time; popupAt(o.mesh.position, `${TURTLES[o.kind].name} READY!`, 'big'); }
       stage.remove(o.mesh); orbs.splice(i, 1);
     } else if (o.s < player.s - 20) { stage.remove(o.mesh); orbs.splice(i, 1); G.orbT = 3; }
@@ -916,13 +921,15 @@ function updateWaves(dt) {
 // These switch on the moment they're picked up and run for a few seconds, with the turtle's
 // head and a draining ring on screen and on the wagon's back doors (the TDCars2 CombatBuffHUD /
 // rear-icon pattern).
-const BUFFS = { raph: { name: 'SAI STORM', dur: 8 }, mike: { name: 'PIZZA CANNON', dur: 8 }, donnie: { name: 'EMP PULSE', dur: 7 }, saws: { name: 'SAW BLADES', dur: 8 } };
-const BUFF_RING = { raph: new THREE.Color(1, 0.12, 0.08), mike: new THREE.Color(1, 0.42, 0.05), donnie: new THREE.Color(0.48, 0.24, 1), saws: new THREE.Color(1, 0.62, 0.1) };   // drawn unlit to the screen, so 0..1
+const BUFFS = { raph: { name: 'SAI STORM', dur: 8 }, mike: { name: 'PIZZA CANNON', dur: 8 }, donnie: { name: 'EMP PULSE', dur: 7 } };
+// the gadget slot: van add-ons that run alongside a turtle's power, not instead of it
+const GADGETS = { saws: { name: 'SAW BLADES', dur: 8 }, shield: { name: 'RIOT SHIELD', dur: 8 }, nitro: { name: 'NITRO', dur: 5 }, harpoon: { name: 'HARPOON', dur: 9 } };
+const BUFF_RING = { raph: new THREE.Color(1, 0.12, 0.08), mike: new THREE.Color(1, 0.42, 0.05), donnie: new THREE.Color(0.48, 0.24, 1), saws: new THREE.Color(1, 0.62, 0.1), shield: new THREE.Color(0.3, 0.7, 1), nitro: new THREE.Color(0.25, 0.55, 1), harpoon: new THREE.Color(0.2, 0.85, 0.7) };   // drawn unlit to the screen, so 0..1
 const FIELD_R = 12;
 const EMP_R = 26, EMP_T = 3.5;   // pulse reach (m) and how long a hit car can't shoot (s)
 const bolts = [];   // pizzas in flight
 const zaps = [];    // lightning arcs, a frame or two each
-let buffIcon = null;
+let buffIcon = null, gadgetIcon = null;
 function pizzaTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const x = c.getContext('2d');
@@ -957,7 +964,9 @@ void main(){
   buffIcon.position.set(0, player.H * 0.46, player.L / 2 + 0.06);
   iconOnly(buffIcon);   // always on the doors: empty until a power is running
   player.body.add(buffIcon);
-  buildSaws();
+  gadgetIcon = buffIcon.clone(); gadgetIcon.material = buffIcon.material.clone();
+  iconOnly(gadgetIcon); gadgetIcon.visible = false; player.body.add(gadgetIcon);
+  buildSaws(); buildShield(); buildNitro(); buildHarpoon();
   pizzaMat = new THREE.MeshBasicMaterial({ map: pizzaTexture(), color: new THREE.Color(1.5, 1.4, 1.3) });
   pizzaGeo = new THREE.CylinderGeometry(0.75, 0.75, 0.14, 18);
   zapMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.8, 0.6, 1.7), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
@@ -971,14 +980,51 @@ function startBuff(kind) {
   buffIcon.material.uniforms.map.value = headTex[kind];
   buffIcon.material.uniforms.uCol.value.copy(BUFF_RING[kind]);
   buffIcon.material.uniforms.uOn.value = 1;
-  banner({ raph: 'SAI STORM!', mike: 'PIZZA TIME!', donnie: 'EMP PULSE!', saws: 'SAW BLADES!' }[kind], kind);
+  banner({ raph: 'SAI STORM!', mike: 'PIZZA TIME!', donnie: 'EMP PULSE!' }[kind], kind);
   audio.raph();
   G.powersUsed = (G.powersUsed || 0) + 1;
 }
-// SAW BLADES: two big circular saws swing out on arms from the van's sides, spinning, and cut
-// whatever they touch (SAW.dps, far above the plain grind). They glow hot while cutting.
-const SAW = { r: 0.85, out: 1.15, y: 0.95, dps: 150, push: 9, spin: 38 };
-const saws = { root: [], spin: [], rim: [], ext: 0, cut: [0, 0] };
+// ── Gadget slot ─────────────────────────────────────────────────────────────
+function startGadget(kind) {
+  const d = GADGETS[kind];
+  G.gadget = { kind, t: d.dur, dur: d.dur };
+  gadgetIcon.material.uniforms.map.value = headTex[kind];
+  gadgetIcon.material.uniforms.uCol.value.copy(BUFF_RING[kind]);
+  gadgetIcon.material.uniforms.uOn.value = 1;
+  banner(d.name + '!', kind);
+  audio.raph();
+  G.powersUsed = (G.powersUsed || 0) + 1;
+}
+function endGadget() {
+  if (harp.target) releaseHarpoon();
+  G.gadget = null;
+  if (gadgetIcon) { gadgetIcon.material.uniforms.uOn.value = 0; gadgetIcon.material.uniforms.uP.value = 0; }
+}
+function updateGadget(dt) {
+  const D = G.gadget;
+  if (!D) return;
+  D.t -= dt;
+  gadgetIcon.material.uniforms.uP.value = clamp(D.t / D.dur, 0, 1);
+  if (D.kind === 'saws' && saws.ext > 0.97) sawCut(dt);
+  if (D.kind === 'nitro') nitroBurn(dt);
+  if (D.t <= 0) endGadget();
+}
+// the back-door roundel splits in two while a gadget runs: turtle left, gadget right
+let iconSplit = 0;
+function updateIcons(dt) {
+  if (!buffIcon) return;
+  iconSplit = clamp(iconSplit + (G.gadget ? dt : -dt) * 5, 0, 1);
+  const k = iconSplit * iconSplit * (3 - 2 * iconSplit);
+  buffIcon.position.x = -0.46 * k; buffIcon.scale.setScalar(1 - 0.24 * k);
+  gadgetIcon.visible = k > 0.01;
+  gadgetIcon.position.x = 0.46 * k; gadgetIcon.scale.setScalar(Math.max(0.01, 0.76 * k));
+}
+
+// SAW BLADES: on each side a steel deck slides out from under the chassis (bolted to the van's
+// underside), then the blade swings up from lying flat on it and spins up; the blades cut
+// whatever is alongside (SAW.dps) and glow hot while they do. Going away is the same, reversed.
+const SAW = { r: 0.85, out: 1.15, y: 0.95, deckY: 0.32, dps: 150, push: 9, spin: 38 };
+const saws = { side: [], ext: 0, lastExt: 0, cut: [0, 0], spinV: 0 };
 function buildSaws() {
   const teeth = 20, R0 = SAW.r * 0.86, R1 = SAW.r;
   const sh = new THREE.Shape();
@@ -991,49 +1037,332 @@ function buildSaws() {
   const hole = new THREE.Path(); hole.absarc(0, 0, 0.12, 0, Math.PI * 2, true); sh.holes.push(hole);
   const bladeGeo = new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: false }); bladeGeo.translate(0, 0, -0.02);
   const steel = new THREE.MeshStandardMaterial({ color: 0xd8dde6, metalness: 0.35, roughness: 0.35, emissive: 0x2a2d34 });   // full metal went black at night (nothing to reflect)
-  const dark = new THREE.MeshLambertMaterial({ color: 0x2c2f38 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x34373f, metalness: 0.4, roughness: 0.55 });
+  const hazard = (() => {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 16;
+    const x = c.getContext('2d'); x.fillStyle = '#1c1c20'; x.fillRect(0, 0, 128, 16); x.fillStyle = '#e0a21a';
+    for (let i = -16; i < 144; i += 16) { x.beginPath(); x.moveTo(i, 16); x.lineTo(i + 8, 0); x.lineTo(i + 14, 0); x.lineTo(i + 6, 16); x.fill(); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return new THREE.MeshLambertMaterial({ map: t });
+  })();
+  const reach = player.W / 2 + SAW.out;
   for (const side of [-1, 1]) {
-    const root = new THREE.Group(); player.body.add(root);
-    // the arm reaches from the body out to the hub; the blade sits in the plane of the van's side
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(1, 0.16, 0.22), dark); arm.position.x = -side * 0.5; root.add(arm);
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.2, 12), dark); hub.rotation.z = Math.PI / 2; root.add(hub);
-    const spin = new THREE.Group(); spin.rotation.y = Math.PI / 2; root.add(spin);
+    const root = new THREE.Group(); root.position.z = 0.2; player.body.add(root);
+    // the deck: a plate whose inner end stays bolted under the chassis; it slides out along x
+    const deck = new THREE.Group(); deck.position.y = SAW.deckY; root.add(deck);
+    const plateGeo = new THREE.BoxGeometry(reach + 0.3, 0.09, 0.95); plateGeo.translate((reach + 0.3) / 2 - 0.3, 0, 0);
+    const plate = new THREE.Mesh(plateGeo, dark); plate.scale.x = side; deck.add(plate);
+    const edgeGeo = new THREE.BoxGeometry(0.06, 0.12, 0.97); edgeGeo.translate(reach - 0.03, 0, 0);
+    const edge = new THREE.Mesh(edgeGeo, hazard); edge.scale.x = side; deck.add(edge);
+    for (const z of [-0.36, 0.36]) {   // rails under the van that the deck runs on
+      const railGeo = new THREE.BoxGeometry(reach, 0.06, 0.08); railGeo.translate(reach / 2 - 0.4, -0.07, z);
+      const rail = new THREE.Mesh(railGeo, dark); rail.scale.x = side; deck.add(rail);
+    }
+    // the blade mount at the deck's outer end: a pivot that swings the blade up from flat
+    const pivot = new THREE.Group(); pivot.position.set(side * (reach - 0.25), 0.05, 0); deck.add(pivot);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1, 0.22), dark); post.geometry.translate(0, 0.5, 0); pivot.add(post);
+    const head = new THREE.Group(); pivot.add(head);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.22, 12), dark); hub.rotation.z = Math.PI / 2; head.add(hub);
+    const tilt = new THREE.Group(); tilt.rotation.y = side * 0.45; head.add(tilt);   // angled so the chase camera sees the blade's face
+    const spin = new THREE.Group(); spin.rotation.y = Math.PI / 2; tilt.add(spin);
     const blade = new THREE.Mesh(bladeGeo, steel); blade.castShadow = true; spin.add(blade);
     for (let k = 0; k < 6; k++) {   // slots, so the spin reads
       const slot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.05), dark);
       const a = k / 6 * Math.PI * 2; slot.position.set(Math.cos(a) * 0.42, Math.sin(a) * 0.42, 0); slot.rotation.z = a; spin.add(slot);
     }
     const rimMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 0, 0), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(SAW.r * 0.93, 0.07, 6, 40), rimMat); spin.add(rim);
+    spin.add(new THREE.Mesh(new THREE.TorusGeometry(SAW.r * 0.93, 0.07, 6, 40), rimMat));
+    root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     root.visible = false;
-    saws.root.push(root); saws.spin.push(spin); saws.rim.push(rimMat);
+    saws.side.push({ s: side, root, deck, pivot, post, head, spin, rimMat });
   }
 }
 const SAW_HOT = new THREE.Color(3.2, 1.7, 0.5), SAW_WHITE = new THREE.Color(3, 2.6, 1.8);
-function sawSparks(at, side) {
+function sawSparks(at, side, n = 4) {
   frameAt(player.s, _T, _R);
-  for (let k = 0; k < 4; k++) {
+  for (let k = 0; k < n; k++) {
     _n.copy(_T).multiplyScalar(player.vs - (6 + Math.random() * 12)).addScaledVector(_R, side * (1 + Math.random() * 4)); _n.y = 2 + Math.random() * 6;
     fx.add.emit(at, _n, k % 2 ? SAW_HOT : SAW_WHITE, 0.25 + Math.random() * 0.25, 0.3 + Math.random() * 0.3, { drag: 1.2, grav: 14 });
   }
 }
-// blades swing out at the start, back in at the end; spin and heat every frame
+// deploy: 0..0.45 the deck slides out, 0.45..0.85 the blade swings up, 0.85..1 it locks and spins
+// up (spark burst on lock). Retract runs the same timeline backwards.
+const SAW_TIME = 0.75;
+const ease = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+const backOut = (x) => { x = clamp(x, 0, 1); const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
 function updateSaws(dt) {
-  if (!saws.root.length) return;
-  const on = G.buff && G.buff.kind === 'saws';
-  saws.ext = clamp(saws.ext + (on ? dt : -dt) * 4, 0, 1);
-  const e = saws.ext * saws.ext * (3 - 2 * saws.ext);
+  if (!saws.side.length) return;
+  const on = !!(G.gadget && G.gadget.kind === 'saws');
+  saws.lastExt = saws.ext;
+  saws.ext = clamp(saws.ext + (on ? dt : -dt) / SAW_TIME, 0, 1);
+  const x = saws.ext;
+  const slide = ease(x / 0.45), swing = backOut((x - 0.45) / 0.4), lock = ease((x - 0.85) / 0.15);
+  saws.spinV += ((on ? SAW.spin * lock : 0) - saws.spinV) * Math.min(1, dt * (on ? 5 : 2));
+  const reach = player.W / 2 + SAW.out;
   for (let i = 0; i < 2; i++) {
-    const side = i ? 1 : -1, R = saws.root[i];
-    R.visible = saws.ext > 0.01;
-    R.position.set(side * (player.W / 2 - 0.4 + e * (SAW.out + 0.4)), SAW.y, 0.2);
-    R.rotation.y = side * 0.45;   // angled so the chase camera sees the blade's face, not its edge
-    R.scale.setScalar(0.4 + e * 0.6);
-    saws.spin[i].rotation.z -= dt * SAW.spin * side * (0.3 + e * 0.7);
+    const S = saws.side[i];
+    S.root.visible = x > 0.001;
+    // from fully under the chassis to fully out
+    S.deck.position.x = -S.s * (1 - slide) * (reach - 0.35);
+    // the blade lies flat on the deck, then swings up past vertical and settles (backOut)
+    S.pivot.rotation.z = -S.s * (1 - swing) * Math.PI / 2;
+    S.post.scale.y = Math.max(0.01, SAW.y - SAW.deckY - 0.05);
+    S.head.position.y = SAW.y - SAW.deckY - 0.05;
+    S.spin.rotation.z -= dt * saws.spinV * S.s;
     saws.cut[i] = Math.max(0, saws.cut[i] - dt);
     const h = Math.min(1, saws.cut[i] * 4);
-    saws.rim[i].color.setRGB(2.6 * h + 0.25 * e, 1.1 * h + 0.12 * e, 0.25 * h);
+    S.rimMat.color.setRGB(2.6 * h + 0.3 * lock, 1.1 * h + 0.14 * lock, 0.25 * h);
   }
+  // sparks from under the van while the decks run on their rails, a burst as the blades lock
+  if (x > 0 && x < 0.45 && x !== saws.lastExt && Math.random() < dt * 40)
+    for (const S of saws.side) { pointAt(player.s, player.u + S.s * player.W * 0.45, _p).setY(0.25); sawSparks(_p, S.s, 2); }
+  if (saws.lastExt < 0.85 && x >= 0.85) {
+    for (const S of saws.side) { pointAt(player.s, player.u + S.s * reach, _p).setY(SAW.y); sawSparks(_p, S.s, 14); }
+    audio.scrape(); G.shake = Math.max(G.shake, 0.12);
+  }
+}
+// side-swipe and grind: anything alongside inside the blades' reach is cut hard
+function sawCut(dt) {
+  const reach = player.W / 2 + SAW.out + SAW.r * 0.6;
+  for (const e of liveFoot()) {
+    const ds = e.s - player.s, du = e.u - player.u;
+    if (Math.abs(ds) > e.L / 2 + SAW.r || Math.abs(du) > reach + e.W / 2 || Math.abs(du) < 0.5) continue;
+    const side = Math.sign(du);
+    e.hp -= SAW.dps * dt; e.flash = Math.max(e.flash, 0.6);
+    e.vu += side * SAW.push * dt;
+    saws.cut[side > 0 ? 1 : 0] = 0.25;
+    if (Math.random() < dt * 40) {
+      pointAt(player.s + clamp(ds, -SAW.r, SAW.r), player.u + side * (player.W / 2 + SAW.out), _p).setY(SAW.y);
+      sawSparks(_p, side);
+    }
+    if (Math.random() < dt * 6) audio.scrape();
+    if (e.hp <= 0) wreckEnemy(e, side, 'SAWED!');
+  }
+  // dragged along the buildings: a shower of sparks off that blade
+  const wallSide = Math.sign(player.u);
+  if (Math.abs(player.u) > FAC - player.W / 2 - WALK_GAP - 0.1 && Math.random() < dt * 50) {
+    pointAt(player.s, player.u + wallSide * (player.W / 2 + SAW.out), _p).setY(SAW.y);
+    sawSparks(_p, wallSide); saws.cut[wallSide > 0 ? 1 : 0] = 0.25;
+  }
+}
+
+const gadgetOn = (k) => !!(G.gadget && G.gadget.kind === k);
+
+// RIOT SHIELD: eight armour plates rise out of the road around the van, one after another;
+// while they're up the wagon takes no damage and Foot shells bounce back at whoever fired.
+const shield = { plates: [], ext: 0, glow: null };
+function buildShield() {
+  const steel = new THREE.MeshStandardMaterial({ color: 0x6a7488, metalness: 0.5, roughness: 0.4, emissive: 0x0c1c34 });
+  shield.glow = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.9, 2.2), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const ax = player.W / 2 + 0.45, az = player.L / 2 + 0.5;
+  for (let i = 0; i < 8; i++) {
+    const a = (i + 0.5) / 8 * Math.PI * 2;
+    const g = new THREE.Group();
+    g.position.set(Math.sin(a) * ax, 0, Math.cos(a) * az);
+    g.rotation.y = a;
+    const tilt = new THREE.Group(); tilt.rotation.x = -0.22; g.add(tilt);   // leaning in at the top
+    // a low armour skirt (tall slabs hid the whole van from the chase camera), glowing top edge
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(i % 2 ? 1.5 : 1.9, 1.2, 0.1), steel); plate.position.y = 0.6; tilt.add(plate);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(i % 2 ? 1.5 : 1.9, 0.12, 0.14), shield.glow); edge.position.y = 1.24; tilt.add(edge);
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.05, 0.14), steel); rib.position.set(0, 0.6, 0.04); tilt.add(rib);
+    g.traverse((o) => { if (o.isMesh && o.material === steel) o.castShadow = true; });
+    g.visible = false;
+    player.group.add(g);   // on the group, not the rolling body: the plates stand on the road
+    shield.plates.push(g);
+  }
+}
+function updateShield(dt) {
+  if (!shield.plates.length) return;
+  const on = gadgetOn('shield');
+  shield.ext = clamp(shield.ext + (on ? dt : -dt) * 2.2, 0, 1);
+  shield.plates.forEach((g, i) => {
+    const k = backOut((shield.ext * 1.6 - i * 0.075));   // one after another, each overshooting a touch
+    g.visible = shield.ext > 0.001 && k > 0.001;
+    g.position.y = -1.9 * (1 - k);
+  });
+  shield.flash = Math.max(0, (shield.flash || 0) - dt * 4);
+  const f = 0.6 + Math.sin(G.time * 6) * 0.15 + shield.flash * 2;
+  shield.glow.color.setRGB(0.3 * f, 0.9 * f, 2.2 * f);
+}
+// a Foot shell meets the shield: it turns round and flies back at the car that fired it
+function bounceShot(b) {
+  const tgt = b.from && b.from.alive && b.from.active ? b.from : liveFoot().sort((x, y) => Math.abs(x.s - player.s) - Math.abs(y.s - player.s))[0];
+  shield.flash = 1;
+  fx.add.emit(b.m.position, _n.set(0, 0, 0), new THREE.Color(0.8, 1.8, 3.2), 2.2, 0.12, { grow: 1 });
+  fx.sparks(b.m.position, _n.set(0, 0, 0), 10, 0.8);
+  audio.scrape();
+  if (!tgt) { stage.remove(b.m); return; }
+  G.bounced = (G.bounced || 0) + 1;
+  bolts.push({ m: b.m, v: new THREE.Vector3(), target: tgt, t: 0, dmg: 45, splash: 10, label: 'BOUNCED!', trail: 0x6fc8ff, spin: 'sai', straight: true });
+}
+
+// NITRO: two exhaust pipes slide out of the back with blue flames; the wagon surges, its rams
+// hit NITRO.ram times as hard, shunts can't knock it back, and the flames torch anything close behind.
+const NITRO = { boost: 16, ram: 3, burnDps: 70 };
+const nitro = { ext: 0, pipes: [], flames: [], flameMat: null };
+function buildNitro() {
+  const chrome = new THREE.MeshStandardMaterial({ color: 0xc8ccd6, metalness: 0.7, roughness: 0.25, emissive: 0x202228 });
+  nitro.flameMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.7, 1.4, 3.6), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const core = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 2.8, 3.6), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  for (const x of [-0.55, 0.55]) {
+    const g = new THREE.Group(); g.position.set(x, 0.42, player.L / 2 - 0.3); player.body.add(g);
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.9, 12), chrome); pipe.rotation.x = Math.PI / 2; pipe.position.z = 0.15; g.add(pipe);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.035, 6, 14), chrome); lip.position.z = 0.6; g.add(lip);
+    const flame = new THREE.Group(); flame.position.z = 0.62; g.add(flame);
+    const outer = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.6, 12, 1, true), nitro.flameMat); outer.rotation.x = Math.PI / 2; outer.position.z = 0.8; flame.add(outer);
+    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.8, 10, 1, true), core); inner.rotation.x = Math.PI / 2; inner.position.z = 0.4; flame.add(inner);
+    g.visible = false;
+    nitro.pipes.push(g); nitro.flames.push(flame);
+  }
+}
+function updateNitro(dt) {
+  if (!nitro.pipes.length) return;
+  const on = gadgetOn('nitro');
+  nitro.ext = clamp(nitro.ext + (on ? dt * 3 : -dt * 1.5), 0, 1);
+  const out = ease(nitro.ext * 2), fire = ease(nitro.ext * 2 - 1);
+  nitro.pipes.forEach((g, i) => {
+    g.visible = nitro.ext > 0.001;
+    g.position.z = player.L / 2 - 0.75 + out * 0.45;
+    const fl = nitro.flames[i];
+    fl.visible = fire > 0.02;
+    fl.scale.set(0.8 + Math.random() * 0.4, 0.8 + Math.random() * 0.4, fire * (0.75 + Math.random() * 0.5));
+    if (fire > 0.3 && Math.random() < dt * 60) {
+      fl.getWorldPosition(_p);
+      frameAt(player.s, _T, _R);
+      fx.add.emit(_p, _n.copy(_T).multiplyScalar(player.vs - 25 - Math.random() * 10).add(_v3s.set((Math.random() - 0.5) * 2, Math.random() * 2, (Math.random() - 0.5) * 2)),
+        Math.random() < 0.5 ? new THREE.Color(0.6, 1.3, 3.4) : new THREE.Color(2, 2.4, 3.4), 0.3 + Math.random() * 0.3, 0.18, { grow: -0.5, drag: 2 });
+    }
+  });
+  if (on && fire > 0.5) G.shake = Math.max(G.shake, 0.05);
+}
+// the flames torch anything close behind the van
+function nitroBurn(dt) {
+  if (nitro.ext < 0.6) return;
+  for (const e of liveFoot()) {
+    const ds = e.s - player.s, du = e.u - player.u;
+    if (ds > -player.L / 2 || ds < -player.L / 2 - 4 - e.L / 2 || Math.abs(du) > 2.4) continue;
+    e.hp -= NITRO.burnDps * dt; e.flash = Math.max(e.flash, 0.5);
+    if (Math.random() < dt * 20) fx.fire(_p.copy(e.group.position).setY(1.2));
+    if (e.hp <= 0) wreckEnemy(e, Math.sign(du) || 1, 'TORCHED!');
+  }
+}
+
+// HARPOON: a launcher rises on the front of the roof, fires a harpoon at a Foot car ahead and
+// reels it onto a cable. The hooked car swings like a pendulum behind the van's lateral moves —
+// lean and it flails into other cars and the buildings. When it wrecks the harpoon re-fires.
+const HARP = { range: 45, speed: 80, rope: 7.5, k: 5, damp: 1.4, fling: 2.6, dps: 10, hit: 32, slam: 30 };
+const harp = { ext: 0, mode: 'idle', target: null, t: 0, theta: 0, omega: 0, len: 0, cool: 0 };
+function buildHarpoon() {
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2c3038, metalness: 0.5, roughness: 0.5 });
+  const teal = new THREE.MeshStandardMaterial({ color: 0x23a88e, metalness: 0.3, roughness: 0.5, emissive: 0x05221c });
+  const steel = new THREE.MeshStandardMaterial({ color: 0xd8dde6, metalness: 0.6, roughness: 0.3, emissive: 0x22252a });
+  const mount = new THREE.Group(); mount.position.set(0.55, models.wagon.roofY - 0.05, -player.L * 0.32); player.body.add(mount);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.16, 12), dark); base.position.y = 0.08; mount.add(base);
+  const yaw = new THREE.Group(); yaw.position.y = 0.2; mount.add(yaw);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.26, 0.6), teal); body.position.y = 0.15; yaw.add(body);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.9, 10), dark); tube.rotation.x = Math.PI / 2; tube.position.set(0, 0.2, -0.45); yaw.add(tube);
+  const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.18, 14), steel); reel.rotation.z = Math.PI / 2; reel.position.set(0, 0.18, 0.22); yaw.add(reel);
+  const tip = new THREE.Object3D(); tip.position.set(0, 0.2, -0.95); yaw.add(tip);
+  // the harpoon itself (flies, then sits in the hooked car) and its cable
+  const head = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.9, 6), steel); shaft.rotation.x = Math.PI / 2; head.add(shaft);
+  const point = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 8), steel); point.rotation.x = -Math.PI / 2; point.position.z = -0.55; head.add(point);
+  head.visible = false; stage.add(head);
+  const cableGeo = new THREE.CylinderGeometry(0.035, 0.035, 1, 6); cableGeo.translate(0, 0.5, 0); cableGeo.rotateX(Math.PI / 2);
+  const cable = new THREE.Mesh(cableGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 1.6, 1.3) }));
+  cable.visible = false; cable.frustumCulled = false; stage.add(cable);
+  mount.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  mount.visible = false;
+  Object.assign(harp, { mount, yaw, tip, head, cable, reel });
+}
+function releaseHarpoon() {
+  const e = harp.target;
+  if (e) { e.tether = false; if (e.ai) { e.ai.mode = 'cruise'; e.ai.t = 1; } }
+  harp.target = null; harp.mode = 'idle'; harp.head.visible = false; harp.cable.visible = false; harp.cool = 0.35;
+}
+const _hA = new THREE.Vector3(), _hB = new THREE.Vector3();
+function updateHarpoon(dt) {
+  if (!harp.mount) return;
+  const on = gadgetOn('harpoon');
+  harp.ext = clamp(harp.ext + (on ? dt : -dt) * 3, 0, 1);
+  harp.mount.visible = harp.ext > 0.001;
+  harp.mount.scale.setScalar(Math.max(0.01, backOut(harp.ext)));
+  if (!on && harp.target) releaseHarpoon();
+  harp.cool = Math.max(0, harp.cool - dt);
+  if (harp.target && (!harp.target.alive || !harp.target.active)) releaseHarpoon();
+  // aim: at the hooked car, or the next one in range
+  let aim = harp.target;
+  if (!aim && on) aim = liveFoot().filter((e) => e.s - player.s > 4 && e.s - player.s < HARP.range).sort((a, b) => (a.s - player.s) - (b.s - player.s))[0];
+  if (aim) {
+    const lp = harp.yaw.parent.worldToLocal(_c.copy(aim.group.position));
+    let dy = Math.atan2(-lp.x, -lp.z) - harp.yaw.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    harp.yaw.rotation.y += dy * Math.min(1, dt * 12);
+  }
+  harp.tip.getWorldPosition(_hA);
+  if (harp.mode === 'idle' && on && harp.ext > 0.95 && aim && harp.cool <= 0) {
+    harp.mode = 'fly'; harp.target = aim; harp.t = 0;
+    harp.head.position.copy(_hA); harp.head.visible = true; harp.cable.visible = true;
+    fx.add.emit(_hA, _n.set(0, 0, 0), new THREE.Color(0.6, 2.6, 2.2), 1.2, 0.1, { grow: 0.8 });
+    audio.scrape();
+  }
+  if (harp.mode === 'fly') {
+    const e = harp.target;
+    _hB.copy(e.group.position).setY(1.2);
+    const to = _c.copy(_hB).sub(harp.head.position), d = to.length();
+    harp.head.lookAt(_l.copy(harp.head.position).sub(to));
+    harp.head.position.addScaledVector(to.normalize(), Math.min(d, (HARP.speed + player.vs) * dt));
+    if (d < 0.6) {
+      // hooked: the car is taken off its AI and hung on the cable where it is
+      harp.mode = 'hold'; e.tether = true;
+      const ds = e.s - player.s, du = e.u - player.u;
+      harp.len = Math.hypot(ds, du); harp.theta = Math.atan2(du, ds); harp.omega = 0;
+      popupAt(_hB, 'HOOKED!', 'big'); fx.sparks(_hB, _n.set(0, 0, 0), 14, 1);
+      G.hooks = (G.hooks || 0) + 1;
+    }
+  }
+  if (harp.mode === 'hold') {
+    _hB.copy(harp.target.group.position).setY(1.2);
+    harp.head.position.copy(_hB);
+  }
+  if (harp.cable.visible) {
+    harp.cable.position.copy(_hA);
+    const len = _hA.distanceTo(harp.head.position);
+    harp.cable.lookAt(harp.head.position); harp.cable.scale.set(1, 1, len);
+  }
+  harp.reel.rotation.x += dt * (harp.mode === 'hold' ? 6 : harp.mode === 'fly' ? -25 : 0);
+}
+// the hooked car on its cable: a pendulum hung ahead of the van that swings opposite to the
+// van's sideways motion (lean right, it swings left), reeled in to HARP.rope. It smashes into
+// whatever it meets — other Foot cars and the road edge.
+function tetherStep(e, dt) {
+  harp.len += (HARP.rope - harp.len) * Math.min(1, dt * 2);
+  const alpha = -HARP.k * Math.sin(harp.theta) - HARP.damp * harp.omega - (player.vu / harp.len) * HARP.fling;
+  harp.omega += alpha * dt;
+  harp.theta = clamp(harp.theta + harp.omega * dt, -1.5, 1.5);
+  const u0 = e.u;
+  e.s = player.s + Math.cos(harp.theta) * harp.len;
+  e.u = player.u + Math.sin(harp.theta) * harp.len;
+  e.vs = player.vs; e.vu = (e.u - u0) / Math.max(dt, 1e-4);
+  e.charge = 0; if (e.turret) e.turret.laser.visible = false;   // a hooked car can't aim
+  e.hp -= HARP.dps * dt; e.flash = Math.max(e.flash, 0.2);
+  e.flailT = Math.max(0, (e.flailT || 0) - dt);
+  if (e.flailT <= 0) {
+    for (const o of liveFoot()) {
+      if (o === e || Math.abs(o.s - e.s) > (o.L + e.L) / 2 + 0.3 || Math.abs(o.u - e.u) > (o.W + e.W) / 2 + 0.3) continue;
+      contactPoint(e, o, _p);
+      hitEnemy(o, HARP.hit + Math.abs(e.vu) * 3, _p, Math.sign(o.u - e.u) || 1, 'FLAILED!');
+      hitEnemy(e, HARP.hit * 0.5, _p, 0, 'FLAILED!');
+      fx.sparks(_p, _n.set(0, 0, 0), 18, 1.2); G.shake = Math.max(G.shake, 0.2);
+      e.flailT = 0.35; harp.omega *= -0.4;
+      break;
+    }
+    if (e.flailT <= 0 && Math.abs(e.u) > HW - e.W / 2 - 0.05) {
+      pointAt(e.s, Math.sign(e.u) * HW, _p).setY(0.8);
+      hitEnemy(e, HARP.slam, _p, -Math.sign(e.u), 'SLAMMED!');
+      fx.sparks(_p, _n.set(0, 0, 0), 18, 1.2); G.shake = Math.max(G.shake, 0.2);
+      e.flailT = 0.35; harp.omega *= -0.5;
+    }
+  }
+  if (e.hp <= 0) wreckEnemy(e, Math.sign(e.u - player.u) || 1, 'FLAILED!');
 }
 
 // the hatch: lid slides open, the turtle rises out of the van; when the power ends he sinks back
@@ -1146,29 +1475,6 @@ function updateBuff(dt) {
       bolts.push({ m, v, target: tgt, t: 0, dmg: 20, splash: 8, label: "PIZZA'D!", trail: 0xff9a2a, spin: 'flat' });
       fx.add.emit(m.position, _n.set(0, 0, 0), new THREE.Color(0xffb040), 1.6, 0.1, { grow: 0.5 });
       audio.scrape();
-    }
-  } else if (B.kind === 'saws') {
-    // side-swipe and grind: anything alongside inside the blades' reach is cut hard
-    const reach = player.W / 2 + SAW.out + SAW.r * 0.6;
-    for (const e of foot) {
-      const ds = e.s - player.s, du = e.u - player.u;
-      if (Math.abs(ds) > e.L / 2 + SAW.r || Math.abs(du) > reach + e.W / 2 || Math.abs(du) < 0.5) continue;
-      const side = Math.sign(du);
-      e.hp -= SAW.dps * dt; e.flash = Math.max(e.flash, 0.6);
-      e.vu += side * SAW.push * dt;
-      saws.cut[side > 0 ? 1 : 0] = 0.25;
-      if (Math.random() < dt * 40) {
-        pointAt(player.s + clamp(ds, -SAW.r, SAW.r), player.u + side * (player.W / 2 + SAW.out), _p).setY(SAW.y);
-        sawSparks(_p, side);
-      }
-      if (Math.random() < dt * 6) audio.scrape();
-      if (e.hp <= 0) wreckEnemy(e, side, 'SAWED!');
-    }
-    // dragged along the buildings: a shower of sparks off that blade
-    const wallSide = Math.sign(player.u);
-    if (Math.abs(player.u) > FAC - player.W / 2 - WALK_GAP - 0.1 && Math.random() < dt * 50) {
-      pointAt(player.s, player.u + wallSide * (player.W / 2 + SAW.out), _p).setY(SAW.y);
-      sawSparks(_p, wallSide); saws.cut[wallSide > 0 ? 1 : 0] = 0.25;
     }
   } else if (B.kind === 'donnie') {
     const D = donTop;
@@ -1345,6 +1651,9 @@ function updateShots(dt) {
     if (b.life > dt) b.m.lookAt(_sv.subVectors(b.m.position, _sv).add(b.m.position));   // nose along its motion
     if (Math.random() < dt * 60) fx.add.emit(b.m.position, _n.set(0, 0, 0), new THREE.Color(0xff4ad2), 0.4, 0.18, { grow: -0.5 });
     let gone = false;
+    if (gadgetOn('shield') && shield.ext > 0.8 && Math.abs(b.s - player.s) < player.L / 2 + 1.2 && Math.abs(b.u - player.u) < player.W / 2 + 1.2) {
+      bounceShot(b); shots.splice(i, 1); continue;
+    }
     if (Math.abs(b.s - player.s) < player.L / 2 + 0.4 && Math.abs(b.u - player.u) < player.W / 2 + 0.4 && G.state === 'play') {
       fx.add.emit(b.m.position, _n.set(0, 0, 0), new THREE.Color(2.6, 0.6, 2), 3, 0.18, { grow: 1 });
       G.shotsHit = (G.shotsHit || 0) + 1;
@@ -1359,7 +1668,7 @@ function updateShots(dt) {
   }
 }
 function hurt(dmg, at) {
-  if (G.state !== 'play' || G.god) return;
+  if (G.state !== 'play' || G.god || gadgetOn('shield')) return;
   G.hp = Math.max(0, G.hp - dmg);
   player.flash = 1; player.bounce = 0.5;
   G.shake = Math.max(G.shake, 0.35);
@@ -1563,6 +1872,15 @@ function updateHud() {
   slot.dataset.t = G.power || '';
   slot.lastElementChild.textContent = G.power ? TURTLES[G.power].name : 'POWER';
   // timed power: head + a ring that drains with the time left
+  const gf = $('gadget');
+  gf.classList.toggle('on', !!G.gadget);
+  if (G.gadget) {
+    gf.dataset.t = G.gadget.kind;
+    gf.querySelector('img').src = `/ui/${G.gadget.kind}.png`;
+    gf.querySelector('.fg').style.strokeDashoffset = (289 * (1 - G.gadget.t / G.gadget.dur)).toFixed(1);
+    gf.querySelector('b').textContent = GADGETS[G.gadget.kind].name;
+    gf.querySelector('i').textContent = Math.max(0, G.gadget.t).toFixed(1) + 's';
+  }
   const bf = $('buff');
   bf.classList.toggle('on', !!G.buff);
   if (G.buff) {
@@ -1613,7 +1931,7 @@ function step(dt, realDt) {
   }
 
   // wagon: auto-throttle along the street, lean steers across it
-  const cruise = SPEED.start + (SPEED.top - SPEED.start) * clamp(G.time / SPEED.rampTime, 0, 1);
+  const cruise = SPEED.start + (SPEED.top - SPEED.start) * clamp(G.time / SPEED.rampTime, 0, 1) + NITRO.boost * nitro.ext;
   player.vs += (cruise - player.vs) * Math.min(1, dt * 1.2);
   const wantVu = lean * LAT.max;
   player.vu += clamp(wantVu - player.vu, -LAT.accel * dt, LAT.accel * dt);
@@ -1627,8 +1945,8 @@ function step(dt, realDt) {
     for (const e of enemies) {
       if (!e.active) continue;
       if (e.alive) {
-        enemyAI(e, dt);
-        e.s += e.vs * dt; e.u += e.vu * dt;
+        if (e.tether) tetherStep(e, dt);
+        else { enemyAI(e, dt); e.s += e.vs * dt; e.u += e.vu * dt; }
       }
     }
   }
@@ -1661,7 +1979,7 @@ function step(dt, realDt) {
   if (Math.abs(player.vu) > 4 && Math.random() < dt * 20) fx.dust(pointAt(player.s - player.L / 2, player.u - Math.sign(player.vu) * player.W / 2, _p).setY(0.2));
 
   if (G.state === 'play') { updateOrbs(dt); tryPower(); }
-  updateShots(dt); updateWaves(dt); updateBuff(dt); updateHatch(realDt); updateSlashes(realDt); updateSaws(dt);
+  updateShots(dt); updateWaves(dt); updateBuff(dt); updateHatch(realDt); updateSlashes(realDt); updateSaws(dt); updateShield(dt); updateNitro(dt); updateHarpoon(dt); updateGadget(dt); updateIcons(realDt);
   if (G.hp < 40 && G.state === 'play' && Math.random() < dt * 18) fx.smoke(_p.copy(player.group.position).setY(player.H), 0.15);
   if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 1; }
 
@@ -1732,8 +2050,9 @@ window.addEventListener('keydown', (e) => {
   // dev hotkeys: summon a power without its pickup. Leo is back-dated past his 6 s wait so he
   // goes as soon as there's any car in reach.
   if (DEV && G.state === 'play') {
-    const kind = { KeyZ: 'leo', KeyX: 'raph', KeyC: 'mike', KeyV: 'donnie', KeyB: 'saws' }[e.code];
+    const kind = { KeyZ: 'leo', KeyX: 'raph', KeyC: 'mike', KeyV: 'donnie', KeyB: 'saws', KeyG: 'shield', KeyN: 'nitro', KeyH: 'harpoon' }[e.code];
     if (kind === 'leo') { G.power = 'leo'; G.powerAt = G.time - 10; popupAt(player.group.position.clone().setY(2.5), 'LEO READY!', 'big'); }
+    else if (kind && GADGETS[kind]) startGadget(kind);
     else if (kind) startBuff(kind);
   }
 });
@@ -1758,4 +2077,4 @@ function autoLean() {
   const du = best.u - player.u;
   return Math.abs(best.s - player.s) < 6 ? Math.sign(du) : clamp(du * 0.5, -1, 1);
 }
-window.__game = { G, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, hatchS, get fx() { return fx; }, get mikeTop() { return mikeTop; }, get donTop() { return donTop; }, sky, scene, stage, renderer, composer, get world() { return world; } };
+window.__game = { G, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, hatchS, get fx() { return fx; }, saws, updateSaws, startGadget, get mikeTop() { return mikeTop; }, get donTop() { return donTop; }, sky, scene, stage, renderer, composer, get world() { return world; } };
