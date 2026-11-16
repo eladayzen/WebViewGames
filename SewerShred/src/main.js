@@ -6,6 +6,7 @@
 // the pipe for a LOOP. Three hits and you wipe out.
 import * as THREE from 'three';
 import { R, Track, ZONES, zoneIndex, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
+import { Junctions } from './junctions.js';
 import { Player, PHYS } from './player.js';
 import { Obstacles } from './obstacles.js';
 import { Particles, Debris, Streaks, BoardTrail } from './fx.js';
@@ -57,7 +58,7 @@ const audio = new Audio();
 audio.loadMusic('/audio/music.mp3');
 const input = new Input(canvas);
 
-let track, player, obstacles, particles, debris, streaks, boardTrail, sludge;
+let track, junctions, player, obstacles, particles, debris, streaks, boardTrail, sludge;
 const tex = {};
 
 // ── HUD ──────────────────────────────────────────────────────────────────────
@@ -114,7 +115,7 @@ const G = {
 const camF = frameAt(0), lookF = frameAt(0);
 const _zc = new THREE.Color();
 const _wl = new THREE.Vector3(), _wr = new THREE.Vector3(), _ws = new THREE.Vector3(), _wb = new THREE.Vector3();
-const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3();
+const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3(), tmpD = new THREE.Vector3(), tmpE = new THREE.Vector3();
 const C_SLIME = new THREE.Color(0.45, 1.0, 0.3), C_SPARK = new THREE.Color(1.0, 0.65, 0.25),
   C_PIZZA = new THREE.Color(1.0, 0.75, 0.2), C_HIT = new THREE.Color(1.0, 0.3, 0.2), C_SHIELD = new THREE.Color(0.4, 0.8, 1.0),
   C_DUST = new THREE.Color(0.45, 0.5, 0.45), C_WHITE = new THREE.Color(1, 1, 1),
@@ -126,12 +127,14 @@ const C_SLIME = new THREE.Color(0.45, 1.0, 0.3), C_SPARK = new THREE.Color(1.0, 
 
 function difficulty() { return THREE.MathUtils.clamp(player.s / RAMP_DIST, 0, 1); }
 
+const C_JFOAM = new THREE.Color(0.5, 0.55, 0.42), C_JSPRAY = new THREE.Color(0.2, 0.23, 0.16);
 function startRun() {
+  junctions?.reset();
   G.state = 'countdown';
   G.countdown = 3.2; G.lastBeep = -1;
   G.score = 0; G.lives = LIVES; G.combo = 1; G.comboFill = 0; G.bestCombo = 1; G.pizza = 0;
   G.shake = 0; G.hitStop = 0; G.fovKick = 0; G.camTheta = 0; G.camRoll = 0; G.loopAnchor = 0; G.wallT = 0;
-  G.overT = 0; G.restartHold = 0; G.zone = undefined; G.dirTarget = 0; G.waterOn = false; G.slimeOn = false;
+  G.overT = 0; G.restartHold = 0; G.zone = undefined; G.dirTarget = 0; G.dirOff = 0; G.waterOn = false; G.slimeOn = false;
   player.reset();
   player.speed = 8;
   track.reset();
@@ -165,35 +168,138 @@ $('restart-button').addEventListener('click', () => { if (G.state === 'over') st
 
 // ── movement modes ───────────────────────────────────────────────────────────
 // SWING: lean is a force, gravity pulls you back to the floor (half-pipe feel).
-// DIRECT: no gravity. On the board, lean angle = position on the wall
-//   (lean right 50% → halfway up the right wall; stand straight → floor).
-//   On keys / drag there's no absolute lean to read, so holding a direction
-//   moves you around the pipe and letting go leaves you where you are.
-const DIRECT_RANGE = 2.5;     // radians of wall reachable at full board lean
+// DIRECT 360 / 220 / 180 (Elad 2026-11-16 — DIRECT is the default): no
+//   physics. Position is an OFFSET from the base — the floor, in the centre of
+//   the water (slimeAngle(s)), so the base sways with the river. The number is
+//   the total arc you may reach: 180 = ±90° (up to each wall's middle),
+//   220 = ±110°, 360 = all the way round (no boundary at all).
+//   On the board, lean = position: full lean reaches the boundary (360: the
+//   ceiling, ±180°). On keys / drag there's no absolute lean, so holding a
+//   direction moves you and letting go leaves you where you are — clamped
+//   at the boundary.
+// …and each Direct mode has a FIXED-CAMERA twin ('f' suffix, Elad 2026-11-16):
+//   the camera never spins or rolls — upright, pulled back toward the pipe's
+//   axis so the whole ring stays in view and the rider moves around the screen.
+const MODES = ['d360', 'd360f', 'd220', 'd220f', 'd180', 'd180f', 'swing'];
+const MODE_HALF = { d360: Math.PI, d220: (220 / 2) * Math.PI / 180, d180: Math.PI / 2 };
+for (const k of Object.keys(MODE_HALF)) MODE_HALF[k + 'f'] = MODE_HALF[k];
+const fixedCam = () => G.moveMode.endsWith('f');
+const loops = () => G.moveMode.startsWith('d360');
+// fixed camera: distance behind, offset from the axis toward the floor, look target
+// Presets (third button, fixed modes only — Elad 2026-11-16: the low angle
+// brings energy but the rider blocks the view when he's in the centre).
+//   back: m behind the rider · r: m from the axis toward the floor (negative =
+//   toward the ceiling) · side: constant shift to the right · slide: m toward
+//   the rider's side of the ring · aim: 0 = look down the pipe, 1 = at him ·
+//   lift: raise the look target (m) so he sits lower in frame · fov: extra °
+const FIXCAMS = {
+  low:  { back: 4.6, r: 2.6, side: 0, ahead: 11, lookR: 1.8, slide: 2.6, aim: 0.9, lift: 0, fov: 6 },
+  high: { back: 5.2, r: -1.6, side: 0, ahead: 12, lookR: 2.2, slide: 1.2, aim: 0.55, lift: 0, fov: 6 },
+  side: { back: 4.6, r: 2.4, side: 2.2, ahead: 11, lookR: 1.8, slide: 2.0, aim: 0.45, lift: 0.6, fov: 6 },
+  wide: { back: 6.4, r: 2.8, side: 0, ahead: 13, lookR: 1.8, slide: 2.0, aim: 0.6, lift: 2.6, fov: 10 },
+};
+// AUTO (Elad 2026-11-16): dynamic — LOW while the rider is up a wall (he's
+// already out of the middle), easing into SIDE as he comes back to the
+// centre, shifted to the side opposite his drift so he slides off-centre
+// the way he's heading instead of sitting in front of the view.
+FIXCAMS.auto = { ...FIXCAMS.low };
+// AUTO 2 SIDES (Elad 2026-11-16): always the side angle, on the side
+// OPPOSITE the rider — he's on the left, the camera swings to the right, and
+// vice versa — so it looks across him at the pipe ahead.
+FIXCAMS.auto2 = { ...FIXCAMS.side };
+const FIXCAM_ORDER = ['auto', 'auto2', 'low', 'high', 'side', 'wide'];
+G.autoW = 0; G.autoSign = 1; G.autoSignS = 1;
+const AUTO_SIDE = 3.4;   // m — further than the SIDE preset, so a centred rider clears the middle
+function updateAuto2Cam(dt) {
+  const off = angleDiff(player.theta, slimeAngle(player.s));
+  // rider left (off < 0) → camera right (+), and vice versa; sticky dead zone
+  if (Math.abs(off) > 0.15) G.autoSign = -Math.sign(off);
+  G.autoSignS += (G.autoSign - G.autoSignS) * Math.min(1, dt * 2.2);
+  FIXCAMS.auto2.side = AUTO_SIDE * G.autoSignS;
+}
+function updateAutoCam(dt) {
+  const off = angleDiff(player.theta, slimeAngle(player.s));
+  // weight of SIDE: 1 at the centre, gone by ~60° up the wall
+  const t = THREE.MathUtils.smoothstep(Math.abs(off), 0.35, 1.05);
+  G.autoW += ((1 - t) - G.autoW) * Math.min(1, dt * 3);
+  // which side: away from his drift, sticky inside a dead zone so it never flickers
+  if (Math.abs(off) > 0.15) G.autoSign = -Math.sign(off);
+  G.autoSignS += (G.autoSign - G.autoSignS) * Math.min(1, dt * 1.8);
+  const A = FIXCAMS.low, B = FIXCAMS.side, w = G.autoW, o = FIXCAMS.auto;
+  for (const k of Object.keys(A)) o[k] = A[k] + (B[k] - A[k]) * w;
+  o.side = AUTO_SIDE * w * G.autoSignS;
+}
+G.fixCam = 'low';
+let FIXCAM = FIXCAMS.low;
 const DIRECT_RATE = 2.6;      // rad/s around the pipe while a key is held
-G.moveMode = 'swing';
+G.moveMode = 'd220';
+G.dirOff = 0;
 function steer(dt, lean) {
   if (G.moveMode === 'swing') { player.step(dt, lean); return; }
+  const half = MODE_HALF[G.moveMode], base = slimeAngle(player.s);
   if (window.__gbSensor && typeof window.__leanOverride !== 'number') {
-    G.dirTarget = Math.round(player.theta / TAU) * TAU + lean * DIRECT_RANGE;
+    G.dirOff = lean * half;
   } else {
-    G.dirTarget += lean * DIRECT_RATE * dt;
+    G.dirOff += lean * DIRECT_RATE * dt;
+    if (!loops()) G.dirOff = THREE.MathUtils.clamp(G.dirOff, -half, half);
   }
+  // unwrap: keep the target on the same lap as the rider so a 360 loop
+  // never spins him back the long way
+  const tgt = base + G.dirOff;
+  G.dirTarget = tgt + Math.round((player.theta - tgt) / TAU) * TAU;
+  if (loops() && Math.abs(G.dirOff) > Math.PI) G.dirOff -= Math.sign(G.dirOff) * TAU;
   player.stepDirect(dt, G.dirTarget);
 }
+// TWO buttons (Elad 2026-11-16): one picks DIRECT vs SWING (physics), the
+// other picks the Direct variant — 220 / 220 FIXED / 180 / 180 FIXED.
+// (360 / 360 FIXED stay reachable via ?move=d360 or d360f, off the buttons.)
+const VARIANTS = ['d220', 'd220f', 'd180', 'd180f'];
+const VAR_LABEL = { d220: '220', d220f: '220 FIXED', d180: '180', d180f: '180 FIXED', d360: '360', d360f: '360 FIXED' };
+G.variant = 'd220';
 function setMoveMode(m) {
+  if (!MODES.includes(m)) m = 'd220';
+  if (m !== 'swing') G.variant = m;
   G.moveMode = m;
-  G.dirTarget = player ? player.theta : 0;
+  // keep the rider where he is: start the offset from his current spot
+  const off = player ? angleDiff(player.theta, slimeAngle(player.s)) : 0;
+  G.dirOff = m.startsWith('d360') || m === 'swing' ? off : THREE.MathUtils.clamp(off, -MODE_HALF[m], MODE_HALF[m]);
   $('mode-btn').textContent = m === 'swing' ? 'SWING' : 'DIRECT';
-  $('mode-btn').classList.toggle('direct', m === 'direct');
-  try { localStorage.setItem('sewershred.move', m); } catch { /* private mode */ }
+  $('mode-btn').classList.toggle('direct', m !== 'swing');
+  $('var-btn').textContent = VAR_LABEL[G.variant];
+  $('var-btn').classList.toggle('inactive', m === 'swing');
+  $('cam-btn').style.display = m.endsWith('f') ? '' : 'none';
+  try { localStorage.setItem('sewershred.move3', m); localStorage.setItem('sewershred.var3', G.variant); } catch { /* private mode */ }
 }
-$('mode-btn').addEventListener('click', (e) => { e.stopPropagation(); setMoveMode(G.moveMode === 'swing' ? 'direct' : 'swing'); });
-window.addEventListener('keydown', (e) => { if (e.code === 'KeyG') setMoveMode(G.moveMode === 'swing' ? 'direct' : 'swing'); });
+const togglePhysics = () => setMoveMode(G.moveMode === 'swing' ? G.variant : 'swing');
+// picking a variant also switches you to DIRECT — that's the only place it applies
+const nextVariant = () => setMoveMode(VARIANTS[(VARIANTS.indexOf(G.variant) + 1) % VARIANTS.length]);
+$('mode-btn').addEventListener('click', (e) => { e.stopPropagation(); togglePhysics(); });
+$('var-btn').addEventListener('click', (e) => { e.stopPropagation(); nextVariant(); });
+function setFixCam(c) {
+  if (!FIXCAMS[c]) c = 'auto';
+  G.fixCam = c; FIXCAM = FIXCAMS[c];
+  $('cam-btn').textContent = 'CAM ' + (c === 'auto2' ? 'AUTO 2 SIDES' : c.toUpperCase());
+  try { localStorage.setItem('sewershred.cam', c); } catch { /* private mode */ }
+}
+const nextFixCam = () => setFixCam(FIXCAM_ORDER[(FIXCAM_ORDER.indexOf(G.fixCam) + 1) % FIXCAM_ORDER.length]);
+$('cam-btn').addEventListener('click', (e) => { e.stopPropagation(); nextFixCam(); });
+try { setFixCam(new URLSearchParams(location.search).get('cam') || localStorage.getItem('sewershred.cam') || 'auto'); } catch { setFixCam('auto'); }
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyC' && fixedCam()) nextFixCam();
+  if (e.code === 'KeyG') togglePhysics();
+  if (e.code === 'KeyV') nextVariant();
+});
 {
+  // ?move=d220|d220f|d180|d180f|d360|d360f|swing (old ?move=direct → d220).
   let m = new URLSearchParams(location.search).get('move');
-  if (!m) { try { m = localStorage.getItem('sewershred.move'); } catch { /* private mode */ } }
-  setMoveMode(m === 'direct' ? 'direct' : 'swing');
+  if (m === 'direct') m = 'd220';
+  try {
+    const v = localStorage.getItem('sewershred.var3');
+    if (MODES.includes(v) && v !== 'swing') G.variant = v;
+    if (!m) m = localStorage.getItem('sewershred.move3');
+  } catch { /* private mode */ }
+  setMoveMode(m === 'swing' ? 'swing' : (m || G.variant));
+  if (m === 'swing') $('var-btn').textContent = VAR_LABEL[G.variant];
 }
 
 // ── pause / mute ─────────────────────────────────────────────────────────────
@@ -303,7 +409,8 @@ function onEvent(e) {
 // riding into one IS the attack.
 const KICK_WORDS = ['HI-YAH!', 'COWABUNGA!', 'BOOYAKASHA!', 'KICK!', 'SHELL SHOCK!'];
 function onKick(o, up, wp) {
-  player.playKick();
+  const atk = player.playNextAttack();
+  if (atk) devAttackTag(atk);
   obstacles.launch(o, player.speed);
   G.kicks = (G.kicks || 0) + 1;
   award(150, wp, 'pts');
@@ -317,6 +424,18 @@ function onKick(o, up, wp) {
   // impact star: hot core + purple shards
   particles.burst(wp.clone().addScaledVector(up, 1.0), up, 26, C_KICK, { speed: 12, spread: 1.6, size: 0.45, life: 0.4, drag: 3 });
   particles.burst(wp.clone().addScaledVector(up, 1.0), up, 18, C_FOOT, { speed: 9, spread: 1.2, size: 0.3, life: 0.7, drag: 1.5 });
+}
+
+// DEV ONLY: which audition attack just played (1–10). Remove with the audition.
+let devTagEl = null;
+function devAttackTag({ n, label }) {
+  if (!devTagEl) {
+    devTagEl = document.createElement('div');
+    devTagEl.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:999;' +
+      'font:700 22px/1.2 monospace;color:#0f0;background:rgba(0,0,0,.75);padding:6px 14px;border-radius:6px;pointer-events:none';
+    document.body.appendChild(devTagEl);
+  }
+  devTagEl.textContent = `ATTACK #${n} · ${label}`;
 }
 
 function onHit(o, up, wp) {
@@ -553,6 +672,12 @@ function frame(now) {
   const speedN = THREE.MathUtils.clamp((player.speed - BASE_SPEED) / (TOP_SPEED - BASE_SPEED), 0, 1);
   streaks.update(player.s, player.speed, frameAt, pointAt, R, G.state === 'play' ? 0.08 + speedN * 0.25 : 0);
   track.update(player.s, simDt, time, player.speed);
+  // side junctions pouring in: foam + spray where each stream lands
+  for (const j of junctions.update(simDt, player.s)) {
+    if (j.ds > 90 || j.ds < -20) continue;
+    particles.burst(j.land, j.landUp, 2, C_JFOAM, { speed: 5, spread: 1.3, size: 0.35, life: 0.55, drag: 2.5 });
+    if (Math.random() < 0.5) particles.burst(j.land, j.landUp, 1, C_JSPRAY, { speed: 2, spread: 0.6, size: 0.9, life: 0.8, drag: 3 });
+  }
 
   // ── zones: banner on entry, fog + ambient ease to the zone's palette ──
   const zi = zoneIndex(player.s);
@@ -578,16 +703,34 @@ function frame(now) {
   // Rolls with the rider so "down" is always under his feet (he stays at the
   // bottom of the screen and the sewer spins around him), lagging just enough
   // that you feel the swing.
-  G.camTheta += angleDiff(player.theta, G.camTheta) * Math.min(1, dt * 7);
-  const camS = player.s - 4.8;
+  // FIXED-CAM modes: the camera stays at the floor angle, never rolls, and
+  // sits back near the axis so the rider is in view anywhere on the ring.
+  const fixed = fixedCam();
+  if (fixed && G.fixCam === 'auto') updateAutoCam(dt);
+  if (fixed && G.fixCam === 'auto2') updateAuto2Cam(dt);
+  G.camTheta += angleDiff(fixed ? 0 : player.theta, G.camTheta) * Math.min(1, dt * 7);
+  const camS = player.s - (fixed ? FIXCAM.back : 4.8);
   frameAt(camS, camF);
   const camDir = wallDir(camF, G.camTheta, tmpA);
-  camera.position.copy(camF.C).addScaledVector(camDir, R - 3.15);
-  frameAt(player.s + 10, lookF);
+  camera.position.copy(camF.C).addScaledVector(camDir, fixed ? FIXCAM.r : R - 3.15);
+  if (fixed) camera.position.addScaledVector(camF.Rt, FIXCAM.side);
+  frameAt(player.s + (fixed ? FIXCAM.ahead : 10), lookF);
   const lookDir = wallDir(lookF, G.camTheta, tmpB);
-  const look = tmpC.copy(lookF.C).addScaledVector(lookDir, R - 1.9);
-  // dutch tilt with the carve
-  G.camRoll += (-player.omega * 0.045 - G.camRoll) * Math.min(1, dt * 5);
+  const look = tmpC.copy(lookF.C).addScaledVector(lookDir, fixed ? FIXCAM.lookR : R - 1.9);
+  if (fixed) {
+    // Never rolls, but it isn't nailed down: it slides a little toward the
+    // rider's side of the ring and turns its gaze toward him, so he stays big
+    // in frame and the walls rush past close to the lens (speed feel).
+    G.fixAim = G.fixAim || new THREE.Vector3();
+    const rDir = wallDir(camF, player.theta, tmpD);
+    camera.position.addScaledVector(rDir, FIXCAM.slide);
+    const riderAhead = pointAt(player.s + FIXCAM.ahead * 0.4, player.theta, R - 2.4, tmpE);
+    G.fixAim.lerp(riderAhead, Math.min(1, dt * 8));
+    look.lerp(G.fixAim, FIXCAM.aim);
+    look.addScaledVector(camF.U, FIXCAM.lift);
+  }
+  // dutch tilt with the carve (none when the camera is fixed)
+  G.camRoll += ((fixed ? 0 : -player.omega * 0.045) - G.camRoll) * Math.min(1, dt * 5);
   const upV = wallDir(camF, G.camTheta + G.camRoll, new THREE.Vector3()).negate();
   camera.up.copy(upV);
   if (G.shake > 0) {
@@ -597,7 +740,7 @@ function frame(now) {
   }
   camera.lookAt(look);
   G.fovKick *= Math.pow(0.05, dt);
-  const fov = camera.userData.baseFov + speedN * 8 + G.fovKick;
+  const fov = camera.userData.baseFov + speedN * (fixedCam() ? 14 : 8) + G.fovKick + (fixedCam() ? FIXCAM.fov : 0);
   if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 6); camera.updateProjectionMatrix(); }
 
   audio.ride(player.speed, G.slimeOn, G.state === 'play' || G.state === 'countdown', G.waterOn && G.state === 'play');
@@ -633,6 +776,7 @@ async function loadFootGeo(url) {
   track = new Track(scene, tex);
   track.syncFog(scene.fog);
   obstacles = new Obstacles(scene, tex);
+  junctions = new Junctions(scene, tex);
   particles = new Particles(scene);
   sludge = new Particles(scene, { additive: false });
   debris = new Debris(scene, tex);
@@ -640,10 +784,11 @@ async function loadFootGeo(url) {
   boardTrail = new BoardTrail(scene, makeGlowTexture());
   player = new Player(scene);
   await player.load('/models/raphael.glb', '/models/clips.json');
+  await player.loadAttacks('/models/attacks.json');
   renderLives(LIVES);
   $('loading').classList.add('gone');
   startRun();
   requestAnimationFrame(frame);
   // test hooks for the headless drive script
-  window.__game = { G, player, obstacles, PHYS, camera, startRun };
+  window.__game = { G, player, obstacles, PHYS, camera, startRun, setMoveMode, setFixCam, slimeAngle, junctions };
 })();

@@ -113,6 +113,114 @@ if (script === 'default') {
     }
   }
   console.log('kicks', await page.evaluate(() => window.__game.G.kicks));
+} else if (script === 'attacks') {
+  // DEV audition: ride into 10 Foot Soldiers, snap each attack mid-swing
+  await page.evaluate(() => {
+    setInterval(() => {
+      const { player, obstacles } = window.__game;
+      window.__game.G.lives = 99;
+      const foes = obstacles.list.filter((o) => o.type === 'foot' && !o.flying && o.s - player.s > 1 && o.s - player.s < 45).sort((a, b) => a.s - b.s);
+      if (!foes.length) { window.__leanOverride = -player.theta * 0.8; return; }
+      let d = (foes[0].theta - player.theta) % (Math.PI * 2);
+      if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2;
+      window.__leanOverride = Math.max(-1, Math.min(1, d * 2.2 - player.omega * 0.5));
+    }, 30);
+  });
+  for (let k = 1; k <= 11; k++) {
+    await page.waitForFunction((n) => (window.__game.G.kicks || 0) >= n, { timeout: 90000 }, k);
+    await wait(350);
+    const info = await page.evaluate(() => {
+      const p = window.__game.player;
+      const run = p.attacks.map((a) => a.action.isRunning() ? `${a.n}@${a.action.time.toFixed(2)}` : null).filter(Boolean);
+      return { tag: document.body.lastElementChild?.textContent, running: run };
+    });
+    console.log('attack', k, JSON.stringify(info));
+    await snap(`attack${k}`);
+  }
+} else if (script === 'shield') {
+  // give a shield, ride straight into whatever comes, log state around hits
+  await wait(3500);
+  await page.evaluate(() => { const p = window.__game.player; p.shieldOn = true; window.__game.G.lives = 99; window.__leanOverride = 0; });
+  const st = () => page.evaluate(() => { const p = window.__game.player, G = window.__game.G; return { shieldOn: p.shieldOn, bubble: p.shield.visible, invuln: +p.invuln.toFixed(2), lives: G.lives }; });
+  let prev = await st(); console.log('start', JSON.stringify(prev));
+  for (let i = 0; i < 400; i++) {
+    await wait(100);
+    const now = await st();
+    if (now.shieldOn !== prev.shieldOn || now.lives !== prev.lives || now.bubble !== prev.bubble) console.log((i / 10).toFixed(1) + 's', JSON.stringify(now));
+    prev = now;
+    if (now.lives <= 97) break;
+  }
+} else if (script === 'modes') {
+  // each Direct mode: hold full right lean, then full left; log angle from the water's centre
+  await page.evaluate(() => { window.__game.G.lives = 99; });
+  await wait(3500);
+  for (const m of (args.modes || 'd180,d220,d360').split(',')) {
+    await page.evaluate((mm) => { window.__game.setMoveMode(mm); window.__game.player.invuln = 99; }, m);
+    for (const [l, ms] of [[1, 2500], [-1, 2500], [0, 800]]) {
+      await lean(l); await wait(ms);
+      const r = await page.evaluate(() => { const { player, slimeAngle, G, camera } = window.__game;
+        // rider's on-screen height (px) and where his middle is (0..1)
+        const feet = player.root.position.clone(), head = player.root.localToWorld(new (feet.constructor)(0, 2.0, 0));
+        const a = feet.clone().project(camera), b = head.clone().project(camera);
+        const px = Math.round(Math.hypot((a.x - b.x) * innerWidth / 2, (a.y - b.y) * innerHeight / 2));
+        const mid = { x: +((a.x + b.x) / 4 + 0.5).toFixed(2), y: +(0.5 - (a.y + b.y) / 4).toFixed(2) };
+        return { px, mid, mode: G.moveMode, offDeg: Math.round((player.theta - slimeAngle(player.s)) * 180 / Math.PI), label: document.getElementById('mode-btn').textContent }; });
+      console.log('mode', JSON.stringify({ lean: l, ...r }));
+      if (args.snapEach) await snap(`mode-${m}-lean${l}`);
+    }
+    if (!args.snapEach) await snap('mode-' + m);
+  }
+} else if (script === 'junction') {
+  // ride to the first junction (spawns at 120 m) and snap the approach
+  await page.evaluate(() => { window.__game.G.lives = 99; window.__game.player.invuln = 999; });
+  const near = () => page.evaluate(() => { const j = window.__game.junctions.items.filter((i) => i.on).map((i) => +(i.s - window.__game.player.s).toFixed(0)); return j; });
+  await page.waitForFunction(() => window.__game.junctions.items.some((i) => i.on && i.s - window.__game.player.s < 60), { timeout: 60000 });
+  for (const d of [45, 25, 12, 4]) {
+    await page.waitForFunction((dd) => window.__game.junctions.items.some((i) => i.on && i.s - window.__game.player.s < dd), { timeout: 30000 }, d);
+    console.log('junction ahead', JSON.stringify(await near()));
+    await snap('junction-' + d);
+  }
+} else if (script === 'buttons') {
+  const st = () => page.evaluate(() => ({ mode: window.__game.G.moveMode, b1: document.getElementById('mode-btn').textContent, b2: document.getElementById('var-btn').textContent, b2dim: document.getElementById('var-btn').classList.contains('inactive') }));
+  console.log('boot', JSON.stringify(await st()));
+  for (let i = 0; i < 4; i++) { await page.click('#var-btn'); console.log('var', JSON.stringify(await st())); }
+  await page.click('#mode-btn'); console.log('phys', JSON.stringify(await st()));
+  await page.click('#mode-btn'); console.log('phys', JSON.stringify(await st()));
+  await snap('buttons');
+} else if (script === 'cams') {
+  // each fixed-cam preset: rider centred on the floor, then at the 220 limit
+  await page.evaluate(() => { window.__game.G.lives = 99; window.__game.setMoveMode('d220f'); });
+  await wait(3500);
+  for (const c of (args.cams || 'low,high,side,wide').split(',')) {
+    await page.evaluate((cc) => { window.__game.setFixCam(cc); window.__game.player.invuln = 99; }, c);
+    for (const [l, ms, tag] of (args.sweep ? [[0, 1, 'centre'], [1, 2200, 'wall'], [-0.35, 900, 'drift-left'], [0, 1500, 'back-centre'], [-1, 2200, 'left-wall']] : [[0, 1, 'centre'], [1, 2200, 'wall']])) {
+      if (tag === 'centre') await page.evaluate(() => { window.__game.G.dirOff = 0; });
+      await lean(l); await wait(ms === 1 ? 1500 : ms);
+      if (tag === 'wall') await lean(0);
+      const r = await page.evaluate(() => { const { player, camera } = window.__game;
+        const feet = player.root.position.clone(), head = player.root.localToWorld(new (feet.constructor)(0, 2.0, 0));
+        const a = feet.clone().project(camera), b = head.clone().project(camera);
+        return { side: +window.__game.G.autoSignS.toFixed(2), w: +window.__game.G.autoW.toFixed(2), px: Math.round(Math.hypot((a.x - b.x) * innerWidth / 2, (a.y - b.y) * innerHeight / 2)), x: +((a.x + b.x) / 4 + 0.5).toFixed(2), y: +(0.5 - (a.y + b.y) / 4).toFixed(2), fps: window.__fps }; });
+      console.log('cam', c, tag, JSON.stringify(r));
+      await snap(`cam-${c}-${tag}`);
+    }
+  }
+} else if (script === 'autocam') {
+  await page.evaluate((c) => { window.__cam = c; }, args.cam || 'auto');
+  // place the rider at fixed offsets from the water's centre; measure framing
+  await page.evaluate(() => { window.__game.G.lives = 99; window.__game.setMoveMode('d220f'); window.__game.setFixCam(window.__cam); });
+  await wait(3500);
+  await lean(0);
+  for (const deg of [0, 20, 45, 80, 110, 30, 0, -20, -45, -110, -10]) {
+    await page.evaluate((d) => { window.__game.G.dirOff = d * Math.PI / 180; window.__game.player.invuln = 0; }, deg);
+    await wait(1400);
+    const r = await page.evaluate(() => { const { player, camera, G } = window.__game;
+      const feet = player.root.position.clone(), head = player.root.localToWorld(new (feet.constructor)(0, 2.0, 0));
+      const a = feet.clone().project(camera), b = head.clone().project(camera);
+      return { sideW: +G.autoW.toFixed(2), sign: +G.autoSignS.toFixed(2), px: Math.round(Math.hypot((a.x - b.x) * innerWidth / 2, (a.y - b.y) * innerHeight / 2)), x: +((a.x + b.x) / 4 + 0.5).toFixed(2), y: +(0.5 - (a.y + b.y) / 4).toFixed(2), fps: window.__fps }; });
+    console.log('auto', String(deg).padStart(4) + '°', JSON.stringify(r));
+    await snap(`auto${deg}`);
+  }
 } else if (script === 'pole') {
   // park on the floor, immortal; photograph the first poles as they come up
   await page.evaluate(() => { setInterval(() => { window.__game.G.lives = 99; }, 100); });

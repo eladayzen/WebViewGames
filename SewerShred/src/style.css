@@ -129,4 +129,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1c16; col
 .bigtext.zone { color: #fff; font-size: clamp(36px, 8vmin, 72px); letter-spacing: 6px; text-shadow: 0 5px 0 var(--ink), 0 0 26px rgba(255,210,140,0.6); }
 .pill-btn { height: 40px; padding: 0 14px; border-radius: 20px; border: 2px solid rgba(0,0,0,0.5); background: rgba(20,20,40,0.72); color: #eafcff; font-family: var(--font); font-size: 18px; letter-spacing: 2px; cursor: pointer; -webkit-tap-highlight-color: transparent; order: 3; }
 .pill-btn.direct { background: rgba(30,90,140,0.85); }
+#var-btn { order: 3; background: rgba(90,50,140,0.85); }
+#var-btn.inactive { opacity: 0.45; }
+#cam-btn { order: 3; background: rgba(140,80,30,0.85); }
 #mute-btn { order: 2; }

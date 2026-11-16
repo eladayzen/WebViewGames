@@ -30,7 +30,21 @@ const KICK = { start: 1.72, peak: 2.13, fast: 1.7, slow: 1.0, blendIn: 0.12, lan
 // unwind him the short way. Instead: at 2.9 s hand off to the ride loop and
 // keep spinning the SAME way one full extra turn (−2π on the bank), so the
 // blend's −90° plus the spin lands him square on the board, facing forward.
-const LAND_SPIN = -Math.PI * 2;   // metres, feet to head
+const LAND_SPIN = -Math.PI * 2;
+// DEV attack audition (Elad 2026-11-15), keyed by the clip's number 1–10.
+// Times are in clip seconds; foot peaks measured with tools/kick-timing.mjs.
+const ATTACK_CUTS = {
+  1: { start: 0.4 },                         // Kicking: drop the 0.4 s windup (kick lands 0.60 s) — Elad: perfect
+  2: { start: 0.6, end: 1.5, speed: 2.4 },   // Hurricane Kick: ×2 faster, the half around the 1.13 s spin — keep
+  3: {},                                     // Armada — keep
+  4: { skip: true },                         // Sword Inward Slash: THROW — not for this game
+  5: { start: 0.15, speed: 1.5 },            // Flying Kick: −10% start (of 1.50 s), faster
+  6: { start: 0.13, speed: 1.5 },            // Martelo 2: −10% start (of 1.30 s), faster
+  7: { skip: true },                         // Melee Downward: THROW — not relevant here
+  8: {},                                     // Melee Horizontal: THROW-style, but relevant — keep
+  9: { start: 0.4, speed: 2.2 },             // Macaco Side: much faster, windup trimmed (foot peaks 0.60 s)
+  10: { skip: true },                        // Mutant Punch: not for this game
+};   // metres, feet to head
 
 export class Player {
   constructor(scene) {
@@ -179,6 +193,47 @@ export class Player {
     this.kicking = true;
   }
 
+  /**
+   * DEV (Elad 2026-11-15): audition the 10 Mixamo fight clips from
+   * ~/Documents/3d/fightAnimations as the attack, one after the other, so we
+   * can see which ones work. Animation only — extracted by
+   * tools/extract-attacks.mjs into attacks.json.
+   */
+  async loadAttacks(url) {
+    const list = await (await fetch(url)).json();
+    this.attacks = [];
+    list.forEach((json, i) => {
+      const cut = ATTACK_CUTS[i + 1] || {};
+      if (cut.skip) return;
+      const a = this.mixer.clipAction(THREE.AnimationClip.parse(json));
+      a.setLoop(THREE.LoopOnce, 1);
+      a.clampWhenFinished = true;
+      const start = cut.start ?? 0, end = cut.end ?? json.duration;
+      this.attacks.push({ action: a, label: json.label, n: i + 1, start, end, speed: cut.speed ?? 1.2 });
+    });
+    this.attackIdx = 0;
+  }
+
+  /** Play the next attack in the rotation; returns {n, label} for the dev tag. */
+  playNextAttack() {
+    if (!this.attacks?.length) return null;
+    // a squad kicked in quick succession must not cut the current clip short
+    // — let each audition clip mostly play out before the next one starts
+    if (this.attacks.some((at) => at.action.isRunning() && at.action.time < at.start + (at.end - at.start) * 0.6)) return null;
+    const at = this.attacks[this.attackIdx % this.attacks.length];
+    this.attackIdx++;
+    for (const o of this.attacks) if (o.action.isRunning()) o.action.fadeOut(0.08);
+    const a = at.action;
+    a.reset();
+    a.time = at.start;
+    a.timeScale = at.speed;
+    a.setEffectiveWeight(1);
+    a.fadeIn(0.1).play();
+    this.actions.ride?.fadeOut(0.1);
+    this.attackOn = at;
+    return { n: at.n, label: at.label };
+  }
+
   /** Physics step. `lean` in [-1, 1], positive = right. */
   step(dt, lean) {
     const a = lean * PHYS.leanAccel - PHYS.gravity * Math.sin(this.theta) - PHYS.damping * this.omega;
@@ -235,6 +290,13 @@ export class Player {
     }
     if (this.model) this.model.rotation.y = Math.PI + this.spinY;
     if (this.mixer) this.mixer.update(dt);
+    // an audition attack with a trimmed end hands back to the ride loop there
+    const at = this.attackOn;
+    if (at && at.end < at.action.getClip().duration - 1e-3 && at.action.isRunning() && at.action.time >= at.end) {
+      at.action.fadeOut(0.15);
+      this.actions.ride.reset().fadeIn(0.15).play();
+      this.attackOn = null;
+    }
     if (this.kicking) {
       const a = this.actions.flip;
       if (a.time >= KICK.peak) a.timeScale = KICK.slow;
@@ -245,6 +307,10 @@ export class Player {
         this.trickSpin += LAND_SPIN;
       }
     }
+    // The bubble shows ONLY while a shield is held or during the post-hit stun.
+    // (Bug: it used to be switched on and never off, so after the first pop or
+    // hit it hung around looking like protection that wasn't there.)
+    this.shield.visible = this.shieldOn || this.invuln > 0;
     // shield bubble shimmer
     if (this.shield.visible) {
       this.shield.rotation.y += dt * 1.7;

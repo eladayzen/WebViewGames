@@ -7,6 +7,9 @@
 import * as THREE from 'three';
 import { R, frameAt, pointAt, wallQuat, wallDir, slimeAngle, angleDiff, makeGlowTexture } from './track.js';
 
+// Foot Soldier kick trigger — enemies ONLY. Was ds<1.5 ahead, 1.05 m sideways.
+const FOOT_REACH_AHEAD = 4.0, FOOT_REACH_SIDE = 1.4;
+
 const TAU = Math.PI * 2;
 const BODY = 1.7 * 1.3;      // rider height (30% bigger) for chord-pipe clearance
 const CRATE = 1.5;
@@ -507,7 +510,7 @@ export class Obstacles {
       }
 
       // ── collision ──
-      if (!o.hit && !o.collected && Math.abs(ds) < 2.2) {
+      if (!o.hit && !o.collected && Math.abs(ds) < (o.type === 'foot' ? FOOT_REACH_AHEAD : 2.2)) {
         const r = this._collide(o, ds, pt);
         if (r === 'hit' && player.hop < 0.5) { o.hit = true; events.push({ type: 'hit', o }); }
         else if (r === 'enemy') { o.hit = true; events.push({ type: 'enemy', o }); }
@@ -572,7 +575,9 @@ export class Obstacles {
       }
       case 'foot':
         if (o.flying) return null;
-        if (Math.abs(ds) < 1.5 && Math.abs(angleDiff(pt, o.theta)) < 1.05 / R) return 'enemy';
+        // Bigger than the body on purpose (Elad 2026-11-15): the kick triggers
+        // earlier so the attack animation is already swinging on contact.
+        if (ds > -1.5 && ds < FOOT_REACH_AHEAD && Math.abs(angleDiff(pt, o.theta)) < FOOT_REACH_SIDE / R) return 'enemy';
         return null;
       case 'pizza':
         if (Math.abs(ds) < 1.3 && Math.abs(angleDiff(pt, o.theta)) < 0.27) return 'pickup';
