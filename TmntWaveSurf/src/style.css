@@ -1,0 +1,501 @@
+/* TMNT Wave Surf. Layout, the player HUD, and the prototype's dev-panel look.
+   The board / confirm / settings / dev-code rules further down are lifted from
+   NovaVanguard/src/style.css (the shared GoBalance template), with TMNT accents
+   at the very end. No backdrop-filter anywhere (WEBVIEW_RENDERING.md). */
+:root { --cyan: #6fe8ff; --ink: #120a1e; --yellow: #ffd400; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden; background: #000;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.hidden { display: none !important; }
+#stage { position: fixed; inset: 0; overflow: hidden; }
+#wave, #fx { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#wave { pointer-events: none; }
+#fx { touch-action: none; }
+
+/* ---- player HUD, top-left: shells, then score ---- */
+#hud-left {
+  position: absolute; top: 12px; left: 14px; z-index: 20;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  pointer-events: none;
+}
+#lives {
+  display: flex; gap: 6px; padding: 6px 10px; border-radius: 12px;
+  background: rgba(18, 10, 30, 0.72); pointer-events: auto;
+}
+#lives .shell { width: clamp(30px, 4.2vmin, 46px); height: auto; aspect-ratio: 44 / 36; transition: opacity 160ms linear, filter 160ms linear; }
+#lives .shell.lost { opacity: 0.25; filter: grayscale(1); }
+#score {
+  min-width: 2ch; padding: 4px 12px; border-radius: 10px; background: rgba(18, 10, 30, 0.72);
+  color: var(--yellow); font: 900 clamp(20px, 3.6vmin, 38px)/1.1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+  text-shadow: 2px 2px 0 var(--ink);
+}
+#score:empty { display: none; }
+
+/* ---- countdown ---- */
+#countdown {
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 30;
+  color: var(--yellow); font: 900 clamp(40px, 14vmin, 150px)/1 system-ui, sans-serif; text-align: center;
+  -webkit-text-stroke: clamp(2px, 0.5vmin, 6px) var(--ink); paint-order: stroke fill;
+  text-shadow: 0.6vmin 0.6vmin 0 var(--ink); pointer-events: none; white-space: nowrap;
+}
+#countdown.go { color: #00ff1e; }
+
+/* ---- debug text HUD (dev tools only) ---- */
+#dbg {
+  position: absolute; left: 14px; bottom: 12px; z-index: 21; color: #fff;
+  font: 700 13px ui-monospace, Menlo, monospace; background: rgba(18, 10, 30, 0.72);
+  padding: 6px 10px; border-radius: 8px; pointer-events: none; white-space: pre;
+}
+
+/* ---- dev panel (the prototype's DEV · physics panel) ---- */
+#dev {
+  position: absolute; top: 76px; right: 12px; z-index: 9998; width: 280px; max-height: calc(100% - 90px); overflow: auto;
+  background: rgba(18, 10, 30, 0.88); color: #fff; font: 12px ui-monospace, Menlo, monospace;
+  border: 2px solid var(--ink); border-radius: 10px; padding: 8px 10px; box-shadow: 3px 3px 0 var(--ink);
+}
+#dev.min #devbody, #dev.min #devsw { display: none; }
+#dev .hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+#dev button { font: 700 11px system-ui; border: 2px solid var(--ink); border-radius: 6px; background: var(--yellow); color: var(--ink); padding: 3px 7px; margin: 2px 2px 2px 0; cursor: pointer; }
+#dev button.on { background: #00ff1e; }
+#dev button.mode { background: #00c9ff; }
+#dev .devrow { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.15); }
+#dev label { display: grid; grid-template-columns: 96px 1fr 44px; gap: 4px; align-items: center; margin: 2px 0; }
+#dev input[type=range] { width: 100%; }
+#dev .meas { margin-top: 6px; color: #9fe; line-height: 1.5; }
+
+.board-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(31, 58, 96, 0.92) 0%, rgba(5, 8, 18, 0.97) 62%),
+    #04060e;
+}
+
+.board-screen.hidden { display: none; }
+
+/* SIZED FOR A PLAYER STANDING ON A BOARD, roughly 1.5-2 m from the screen, not
+   for someone at a desk (Amit, on the start screen: "the first UI you see is
+   very small... we can increase it a lot").
+
+   THEN CUT 20% AFTER A TABLET (Amit again: "the opening screens were too big --
+   much too big"). The cause was the unit, not the numbers. vmin is a percentage
+   of the SHORT edge, and on a 4:3 tablet the short edge is a far larger
+   fraction of the width than it is on 16:9 -- so a card tuned on a widescreen
+   display rendered about a third bigger on the tablet without a single value
+   changing.
+
+   Every size below is therefore `min(Xvmin, Yvw)` with Y ~= X * 9/16. On 16:9
+   the two terms are equal and the vmin term governs, exactly as before; on
+   anything squarer the vw term binds first and holds the card to the same
+   share of the WIDTH. The screen shape stops being able to resize the UI.
+
+   The three board screens -- start, result, quit -- deliberately share this
+   card, so growing it grows all three. That is the point: they are meant to
+   read as one screen showing the same table at different moments, and a start
+   screen that was legible while the result screen was not would read as two
+   different features. */
+.board-card {
+  text-align: center;
+  min-width: 62%;
+  max-width: 82%;
+  padding: min(3.7vmin, 2.1vw) min(4.3vmin, 2.4vw);
+  border-radius: 1.6vmin;
+  background: rgba(9, 14, 28, 0.72);
+  border: 0.18vmin solid rgba(111, 232, 255, 0.22);
+  box-shadow: 0 1.4vmin 5vmin rgba(0, 0, 0, 0.55);
+}
+
+#restart-button {
+  font: 700 2vmin/1 system-ui, sans-serif;
+  letter-spacing: 0.24em;
+  padding: 1.4vmin 4vmin;
+  border-radius: 1vmin;
+  border: 0.22vmin solid var(--cyan);
+  background: rgba(20, 70, 92, 0.9);
+  color: #eafcff;
+  cursor: pointer;
+}
+
+#restart-button:hover {
+  background: rgba(30, 100, 128, 0.95);
+}
+
+/* ---- the account scoreboard (NovaVanguard) ---- */
+#scoreboard,
+#start-scoreboard,
+#quit-scoreboard {
+  margin: 2.2vmin 0 0.6vmin;
+  width: 100%;
+  text-align: left;
+}
+
+#scoreboard.hidden,
+#start-scoreboard.hidden,
+#quit-scoreboard.hidden { display: none; }
+
+#scoreboard-title,
+#start-scoreboard-title,
+#quit-scoreboard-title {
+  font: 700 min(1.85vmin, 1.05vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.3vmin;
+  color: rgba(111, 232, 255, 0.75);
+  margin-bottom: 1.5vmin;
+  text-align: center;
+}
+
+#scoreboard-rows,
+#start-scoreboard-rows,
+#quit-scoreboard-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8vmin;
+}
+
+/* The row is the thing that actually gets READ, so it takes the largest jump.
+   A name and a score at 1.5vmin is about 16px on a 1080-high display -- fine on
+   a laptop, unreadable from where this game is played. */
+.sb-row {
+  display: grid;
+  grid-template-columns: 4.4vmin 4.8vmin 1fr auto;
+  align-items: baseline;
+  gap: 1.4vmin;
+  padding: 1.1vmin 1.6vmin;
+  border-radius: 1vmin;
+  background: rgba(20, 34, 54, 0.55);
+  font: 600 min(2.2vmin, 1.25vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  color: #cfe9f5;
+}
+
+/* The player's own row. Brighter and outlined rather than merely tinted --
+   "where am I" is the only question this board has to answer at a glance, and
+   it is being read by someone who has just died and is about to press
+   restart. */
+.sb-row.sb-you {
+  background: rgba(55, 200, 230, 0.20);
+  outline: 0.22vmin solid rgba(111, 232, 255, 0.8);
+  color: #eafcff;
+}
+
+.sb-rank { color: rgba(207, 233, 245, 0.55); text-align: right; }
+/* LEFT, explicitly. The card is `text-align: center` for its heading, and a
+   grid cell inherits that -- so the name floated in the middle of its column
+   while the rank and score sat at the edges, which read as a broken table. */
+.sb-name {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-score { font-variant-numeric: tabular-nums; letter-spacing: 0.06vmin; }
+.sb-avatar {
+  width: min(3.5vmin, 2vw);
+  height: min(3.5vmin, 2vw);
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(111, 232, 255, 0.18);
+}
+
+/* Dark text on the light wheel colours, which is legible on every one of them
+   and needs no per-colour contrast decision. */
+.sb-avatar {
+  font: 700 min(1.7vmin, 0.95vw)/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  color: #06121c;
+}
+
+/* A player's OTHER runs: marked, but quietly. Only the run just played gets
+   the strong highlight (.sb-you) -- lighting up every row a player owns would
+   stop the screen answering "which one was this run". */
+.sb-row.sb-mine {
+  background: rgba(55, 200, 230, 0.10);
+}
+
+/* The break between the leaders and the window around your run. Without it,
+   rows #5 and #34 sitting flush read as consecutive places. */
+.sb-gap {
+  text-align: center;
+  letter-spacing: 0.6vmin;
+  color: rgba(207, 233, 245, 0.35);
+  font-size: 1.2vmin;
+  padding: 0.2vmin 0;
+}
+
+/* --- the confirm prompt and the quit screen ------------------------------- */
+
+/* The confirm modal. Sits OVER the paused playfield rather than replacing it:
+   just enough scrim to lift the card off the action and make the text legible
+   over whatever happens to be behind it, and no more. The player must be able
+   to see the run they are deciding about. */
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.42);
+}
+
+.modal-overlay.hidden { display: none; }
+
+#confirm-card {
+  min-width: 34%;
+  max-width: 46%;
+}
+
+#confirm-sub {
+  margin: 0 0 0.6vmin;
+  font-size: 1.5vmin;
+  color: rgba(207, 233, 245, 0.75);
+}
+
+.board-buttons {
+  display: flex;
+  gap: 1.2vmin;
+  justify-content: center;
+  margin-top: 2.4vmin;
+}
+
+.board-buttons button {
+  flex: 1 1 0;
+  max-width: 22vmin;
+  padding: 1.5vmin 2vmin;
+  border-radius: 1vmin;
+  border: 0.22vmin solid rgba(111, 232, 255, 0.55);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 1.7vmin/1 var(--hud-font, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  letter-spacing: 0.18vmin;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.board-buttons button:hover {
+  background: rgba(45, 60, 100, 0.95);
+}
+
+/* The continuing action is the lit one on both screens. Leaving is always
+   available and never the thing the eye lands on first. */
+#confirm-stay,
+#quit-again {
+  background: rgba(55, 200, 230, 0.22);
+  border-color: rgba(111, 232, 255, 0.9);
+}
+
+#quit-stats {
+  margin: 0 0 0.4vmin;
+  font-size: 1.6vmin;
+  color: rgba(207, 233, 245, 0.85);
+}
+
+
+/* ---------------------------------------------------------------------------
+   Player settings (gear) and the dev-tools unlock.
+   ---------------------------------------------------------------------------
+   TEMPLATE. The same two controls, in the same places, should appear in every
+   GoBalance web game: a gear the player is meant to press, and a wrench that
+   only exists once unlocked.
+--------------------------------------------------------------------------- */
+
+#settings-button {
+  position: absolute;
+  top: 12px;
+  /* Matched to the X and pause beside it: a dark circle on a dark screen is
+     technically visible and practically missable, which is how the X on the
+     board screens went unnoticed even once it was on top. */
+  border: 0.2vmin solid rgba(150, 215, 240, 0.55);
+  box-shadow: 0 0 1.4vmin rgba(0, 0, 0, 0.5);
+  /* THIRD IN THE ROW, hard against pause. The row runs on a 58px pitch from the
+     right edge -- 12 (quit), 70 (pause), 128, 186 -- and the speaker that used
+     to hold the third slot is gone, so the gear moves into it rather than
+     leaving a hole the eye reads as a missing button. */
+  right: 128px;
+  z-index: 9999;
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(20, 20, 40, 0.72);
+  color: #eafcff;
+  font: 600 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Paused, shown on the button itself. Deliberately NOT a glyph swap -- see the
+   note in index.html about the pause icon and the colour-emoji font. */
+#pause-button.on {
+  background: rgba(55, 200, 230, 0.85) !important;
+  color: #04121a !important;
+  border-color: rgba(234, 252, 255, 0.9) !important;
+}
+
+#settings-button.on {
+  background: rgba(55, 200, 230, 0.85);
+  color: #04121a;
+}
+
+#settings-panel {
+  position: absolute;
+  top: 68px;
+  /* Hangs under the gear. Stage-relative like the button it belongs to. */
+  right: 72px;
+  z-index: 9999;
+  width: 230px;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: rgba(10, 12, 26, 0.94);
+  border: 1px solid rgba(111, 232, 255, 0.30);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  color: #cfe9f5;
+}
+
+#settings-panel.hidden { display: none; }
+
+.settings-section {
+  font: 700 10px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 0.14em;
+  color: rgba(111, 232, 255, 0.75);
+}
+
+.settings-note {
+  margin: 4px 0 10px;
+  font: 500 11.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: rgba(207, 233, 245, 0.6);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Big steppers rather than a slider: this is set standing on a board, often by
+   a parent, and a coarse control you can hit beats a precise one you cannot. */
+.settings-step {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.35);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.settings-value {
+  flex: 1;
+  text-align: center;
+  font: 700 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #eafcff;
+}
+
+/* The gauge being held, so a seven-second press gives some sign it is doing
+   something -- without hinting at it to anyone not already holding. */
+.devhold { opacity: 0.72; }
+
+#devcode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+}
+
+#devcode-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(111, 232, 255, 0.35);
+}
+
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+#devcode-dots {
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 8px;
+  color: #6fe8ff;
+}
+
+#devcode-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(30, 40, 70, 0.9);
+  color: #eafcff;
+  font: 600 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  gap: 8px;
+}
+
+.devcode-key {
+  height: 62px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 90ms linear;
+}
+
+/* Every key answers a press the same way. A key that looked inert while another
+   lit up was what gave the code away one digit at a time. */
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+
+/* A wrong code, shown for a moment before the row clears. Amber rather than red:
+   this is a mistyped code, not an alarm. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
+}
+
+
+/* ---- this game's chrome row: X at 12px, the gear next to it (no pause button) ---- */
+#settings-button { right: 70px; }
+#settings-panel { right: 12px; }
+
+/* ---- TMNT accents on the shared cards ---- */
+.board-screen { background: radial-gradient(120% 90% at 50% 0%, rgba(60, 24, 90, 0.92) 0%, rgba(10, 5, 20, 0.97) 62%), #07040e; }
+#gameover-card h1, #quit-card h1, #confirm-card h1 {
+  margin: 0 0 1.6vmin; font: 900 min(6vmin, 3.4vw)/1 system-ui, sans-serif; letter-spacing: 0.3vmin;
+  color: var(--yellow); -webkit-text-stroke: 0.3vmin var(--ink); paint-order: stroke fill; text-shadow: 0.5vmin 0.5vmin 0 var(--ink);
+}
+#gameover-stats, #quit-stats { margin: 0 0 1vmin; font-size: min(2.2vmin, 1.25vw); color: rgba(234, 252, 255, 0.85); letter-spacing: 0.06em; }
+#restart-button { margin-top: 2.4vmin; font-size: min(2.4vmin, 1.4vw); }
+#gameover-countdown { margin: 1.6vmin 0 0; font: 700 min(2.6vmin, 1.5vw)/1 system-ui, sans-serif; color: var(--cyan); min-height: 1em; }

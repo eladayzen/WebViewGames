@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script>
+      // GoBalance SDK integration — see ../GOBALANCE_SDK.md for the full contract this depends
+      // on. Everything below is a no-op outside the Unity WebView (guarded by
+      // `if (window.Unity)` / feature checks), so it's always safe to ship, including when
+      // testing in a normal browser.
+
+      // The only channel for JS errors on-device — there's no devtools console inside the
+      // WebView, so surface them through the native bridge instead.
+      window.addEventListener('error', function (e) {
+        if (window.Unity) window.Unity.call('JS ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        if (window.Unity) window.Unity.call('JS UNHANDLED REJECTION: ' + e.reason);
+      });
+
+      // rAF shim: WKWebView treats the occluded Unity overlay as a background tab and
+      // suspends requestAnimationFrame entirely. Queue callbacks instead of scheduling them
+      // natively; Unity's WebGameController flushes the queue via window.__pumpFrames() every
+      // frame (~60Hz) regardless of tab visibility. A real native rAF loop keeps running
+      // underneath too, so a normal browser (testing outside Unity) behaves exactly as before.
+      (function () {
+        var nativeRAF = window.requestAnimationFrame.bind(window);
+        window.__rafQueue = [];
+        window.requestAnimationFrame = function (cb) { window.__rafQueue.push(cb); return window.__rafQueue.length; };
+        window.cancelAnimationFrame = function () {};
+        window.__pumpFrames = function () {
+          var q = window.__rafQueue;
+          if (!q.length) return;
+          window.__rafQueue = [];
+          var t = performance.now();
+          for (var i = 0; i < q.length; i++) {
+            try { q[i](t); }
+            catch (e) {
+              // ON-DEVICE this is the only channel there is: no console exists
+              // inside the WebView, so the native bridge is it.
+              if (window.Unity) window.Unity.call('RAF CB ERROR: ' + e.message);
+              // IN A BROWSER, `window.Unity` is undefined, so this catch used to
+              // discard the exception entirely -- every frame, forever. A typo in
+              // the frame callback then presented as a game that simply stopped
+              // advancing with a clean console, which is indistinguishable from a
+              // design problem and is exactly how a broken build gets waved
+              // through on a dev server. Re-raising is not an option (it would
+              // break the pump), so it is logged instead.
+              else if (typeof console !== 'undefined' && console.error) {
+                console.error('RAF CB ERROR:', e);
+              }
+            }
+          }
+        };
+        (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+      })();
+    </script>
+    <title>TMNT Wave Surf</title>
+  </head>
+  <body>
+    <div id="stage">
+      <!-- The wave (Three.js) renders underneath; all gameplay draws on #fx on
+           top. One document, one loop: the host injects its SDK only into
+           index.html and pumps rAF only in the top document, so there are no
+           iframes. Pressing #fx is the "hold" input. -->
+      <canvas id="wave"></canvas>
+      <canvas id="fx"></canvas>
+
+      <!-- Shell icon, drawn once and reused. SVG, not a glyph: a mobile WebView
+           may serve a character from the colour-emoji font. -->
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <symbol id="shell-icon" viewBox="0 0 44 36">
+          <ellipse cx="22" cy="19" rx="20" ry="15.5" fill="#2d7a2a" stroke="#120a1e" stroke-width="2.6"/>
+          <ellipse cx="22" cy="18" rx="15" ry="11" fill="#7cc443" stroke="#120a1e" stroke-width="1.8"/>
+          <path d="M22 11.5 L27 14.5 L27 20 L22 23 L17 20 L17 14.5 Z" fill="#5aa834" stroke="#120a1e" stroke-width="1.6"/>
+          <path d="M22 7 V11.5 M27 14.5 L34 11.5 M27 20 L34 23.5 M22 23 V29 M17 20 L10 23.5 M17 14.5 L10 11.5" stroke="#120a1e" stroke-width="1.6" fill="none"/>
+          <ellipse cx="15" cy="12" rx="4" ry="2" fill="#c8f08a" opacity="0.7"/>
+        </symbol>
+      </svg>
+
+      <!-- Player HUD, top-left: lives as shells, then the score. Holding the
+           shells for seven seconds is also the (unlabelled) dev-tools unlock. -->
+      <div id="hud-left">
+        <div id="lives"><svg class="shell" viewBox="0 0 44 36" aria-hidden="true" focusable="false"><use href="#shell-icon"/></svg><svg class="shell" viewBox="0 0 44 36" aria-hidden="true" focusable="false"><use href="#shell-icon"/></svg><svg class="shell" viewBox="0 0 44 36" aria-hidden="true" focusable="false"><use href="#shell-icon"/></svg></div>
+        <div id="score"></div>
+      </div>
+      <!-- Debug text HUD: dev tools only, revealed by the unlock. -->
+      <div id="dbg" class="hidden"></div>
+
+      <!-- Pre-JS text is on screen before the bundle runs: no numbers in it. -->
+      <div id="countdown">Get ready to ride</div>
+
+      <button id="gb-back"
+        onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
+        style="position:absolute;top:12px;right:12px;z-index:10001;width:52px;height:52px;
+               border:2px solid rgba(150,215,240,0.75);
+               border-radius:999px;background:rgba(16,24,44,0.92);color:#eafcff;
+               font:600 26px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
+               line-height:1;display:flex;align-items:center;justify-content:center;
+               box-shadow:0 0 14px rgba(0,0,0,0.55);
+               -webkit-tap-highlight-color:transparent;">&times;</button>
+
+      <!-- "QUIT?" -- a modal over the paused run, not a screen. -->
+      <div id="confirm-overlay" class="modal-overlay hidden">
+        <div id="confirm-card" class="board-card">
+          <h1>QUIT?</h1>
+          <p id="confirm-sub">Your score will still be counted.</p>
+          <div class="board-buttons">
+            <button id="confirm-stay" type="button">KEEP SURFING</button>
+            <button id="confirm-quit" type="button">QUIT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- THE QUIT BOARD. Its own id and NO timer: the player chose to stop.
+           NOT #gameover-overlay -- the host synth-clicks #restart-button
+           whenever that overlay is visible, and this screen has its own buttons. -->
+      <div id="quit-overlay" class="board-screen hidden">
+        <div id="quit-card" class="board-card">
+          <h1 id="quit-title">RUN ENDED</h1>
+          <p id="quit-stats"></p>
+          <div id="quit-scoreboard" class="hidden">
+            <div id="quit-scoreboard-title">BEST ON THIS ACCOUNT</div>
+            <ol id="quit-scoreboard-rows"></ol>
+          </div>
+          <div class="board-buttons">
+            <button id="quit-again" type="button">PLAY AGAIN</button>
+            <button id="quit-leave" type="button">QUIT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- THE DEATH RESULT SCREEN -- the only use of #gameover-overlay. The host
+           checks the literal class `hidden` and synth-clicks #restart-button on
+           Space/Enter while it is visible. It restarts itself on a clock. -->
+      <div id="gameover-overlay" class="board-screen hidden">
+        <div id="gameover-card" class="board-card">
+          <h1>WIPEOUT!</h1>
+          <p id="gameover-stats"></p>
+          <div id="scoreboard" class="hidden">
+            <div id="scoreboard-title">BEST ON THIS ACCOUNT</div>
+            <ol id="scoreboard-rows"></ol>
+          </div>
+          <button id="restart-button" type="button">SURF AGAIN</button>
+          <p id="gameover-countdown"></p>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

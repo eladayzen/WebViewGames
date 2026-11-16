@@ -447,8 +447,7 @@ const post = new THREE.ShaderMaterial({
         float al = aU>=0. ? aS*1.9 : aU*0.25;                       // ~arc length from the apex (height units)
         float pc = al*(1. + 0.18*max(al,0.)) - uTime*0.42;          // flows DOWN the arc; the static warp makes it pour a bit faster lower (no time-growing term -> shape stays stable)
         float cell = floor(pc*15.), fr = fract(pc*15.);
-        float saw = fr<0.72 ? fr/0.72 : (1.-fr)/0.28;               // leaning spikes, like spray being torn off the lip
-        float spike = (0.010 + 0.022*h21(vec2(cell,1.7))) * saw * (1.-0.75*aS) * step(-0.75,aU) * step(0.25, h21(vec2(cell,4.1)));
+        float spike = (0.0025 + 0.0035*vn(vec2(pc*3.0, 1.3))) * (1.-0.75*aS) * step(-0.75,aU);   // smooth, rounded foam wobble on the outer edge (the old sawtooth teeth read as a dragon's tail)
         float outer = th + spike*step(0.001,th);
         float lw = 2.4/uRes.y;
         if(aD >= -lw*0.5 && aD < outer){

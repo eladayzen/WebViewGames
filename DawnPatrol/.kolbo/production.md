@@ -23,3 +23,5 @@ nano-banana-pro, 4 variations, 1:1, DNAs @tales_mikey + @tales_tmnt_style, 72.8 
 - Cut out with a border flood-fill (keeps the boss's white eyes), not the global white key.
 
 - 2026-11-10 jetski water boss: generate_image nano-banana-pro, DNA @tales_tmnt_style, session 6af32208ce7f92989466d361, 18.2 credits, id 6af3220ae7877679bbe98c5f (flood-fill cut-out -> jetski_boss.png). Two earlier shuriken/nunchaku attempts timed out (no charge).
+
+- 2026-11-10 lobby thumbnail: generate_image_edit gpt-image-2 3:4 2K medium, session 6af3269ece7f92989466d4b8, 12 credits, id 6af3269fd64da20ef742d95b. Finalized to 200x226 / 400x452 / 600x680, square corners.

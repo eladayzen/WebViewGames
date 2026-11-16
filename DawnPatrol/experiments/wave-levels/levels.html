@@ -20,10 +20,11 @@
   #hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);color:#fff;font:600 14px system-ui;
     text-shadow:0 1px 2px #000;z-index:5;opacity:.8}
 </style></head><body>
-<iframe id="L1" src="level-1.html"></iframe>
-<iframe id="L2" src="level-1.html?theme=ooze"></iframe>   <!-- Ooze Street = level 1 wave, ooze palette (double-energy mode candidate) -->
+<iframe id="L1" src="level-1.html?v=2"></iframe>
+<iframe id="L2" src="level-1.html?theme=ooze&v=2"></iframe>   <!-- Ooze Street = level 1 wave, ooze palette (double-energy mode candidate) -->
 <canvas id="fx"></canvas>
-<div id="bar"><button data-l="1">1 3D Toon</button><button data-l="2">2 Ooze Street</button><button id="ctl" class="mode">C · Physics</button></div>
+<div id="bar"><button data-l="1">1 3D Toon</button><button data-l="2">2 Ooze Street</button><button id="ctl" class="mode">C · Physics</button><button id="pauseBtn">❚❚ Pause (P)</button></div>
+<div id="pausedOv" style="display:none;position:fixed;inset:0;z-index:50;background:rgba(10,14,30,.45);color:#fff;font:900 64px system-ui,sans-serif;letter-spacing:4px;align-items:center;justify-content:center;flex-direction:column;text-shadow:0 4px 0 #120a1e">PAUSED<div style="font:600 18px system-ui;letter-spacing:1px;margin-top:10px">P / Esc / click to resume</div></div>
 <div id="hint"></div>
 <div id="dev"><div class="hd"><b>DEV · physics</b><button id="devx" title="hide (`)">–</button></div><div id="devbody"></div></div>
 <div id="hud"></div>
@@ -50,13 +51,13 @@ const PHYS = {
 };
 // ---- saved physics presets (dev panel) ----
 const PHYS_PRESETS = {
-  'A · Current': { GRAVITY: 5.88, THRUST: 8.23, DAMP: 4.2, RAMP: 0, RAMP_T: 1.6, AIR_PEAK_Y: 0.165, AIR_TIME: 1.35 },
+  'A · Current': { GRAVITY: 5.88, THRUST: 8.23, DAMP: 4.2, RAMP: 0, RAMP_T: 1.6, AIR_PEAK_Y: 0.165, AIR_TIME: 1.35 , AIR_LAND_TILT: 0.40 },
   // drop 20% slower (terminal fall 1.12 vs 1.40 rail/s, release->trough 1.13 s vs 0.95 s);
   // climb takes the same 2.03 s trough->lip but starts gentler and accelerates the longer you hold
-  'B · Soft drop + ramp': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.165, AIR_TIME: 1.35 },
+  'B · Soft drop + ramp': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.165, AIR_TIME: 1.35 , AIR_LAND_TILT: 0.40 },
   // the user's saved Custom (B physics). Their AIR_PEAK_Y 0.40 sat below the lip (crest at the rider = 0.327), so every jump
   // fell back to the 60 px minimum hop -> board peak ~0.27. That observed peak is what is locked here, now exact on every jump.
-  'C · Saved, locked jump': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35 },
+  'C · Saved, locked jump': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35 , AIR_LAND_TILT: 0.40 },
 };
 const DEFAULT_PRESET = 'C · Saved, locked jump';
 const DIRECT_RATE = 1.68;   // Direct mode: face-heights per second (x1.4)
@@ -483,11 +484,20 @@ function setLevel(n) {
   cur = n;
   for (let i = 1; i <= NLEV; i++) {
     frames[i].classList.toggle('on', i === n);
-    try { frames[i].contentWindow.__paused = i !== n; } catch {}
+    try { frames[i].contentWindow.__paused = paused || i !== n; } catch {}
   }
   document.querySelectorAll('#bar button[data-l]').forEach(b => b.classList.toggle('on', +b.dataset.l === n));
   wake.length = 0; trailPrev = null;
 }
+let paused = false;
+function setPaused(v) {
+  paused = v;
+  for (let i = 1; i <= NLEV; i++) { try { frames[i].contentWindow.__paused = paused || i !== cur; } catch {} }
+  document.getElementById('pausedOv').style.display = paused ? 'flex' : 'none';
+  document.getElementById('pauseBtn').textContent = paused ? '▶ Resume (P)' : '❚❚ Pause (P)';
+  holdKey = holdPtr = up = dn = false;
+}
+window.__setPaused = setPaused;
 function setMode(m) {
   mode = m; ctlBtn.textContent = 'C · ' + m;
   hint.textContent = (m === 'Physics'
@@ -497,6 +507,8 @@ function setMode(m) {
 }
 const ctlBtn = document.getElementById('ctl'), hint = document.getElementById('hint'), hud = document.getElementById('hud');
 document.querySelectorAll('#bar button[data-l]').forEach(b => b.onclick = e => { e.stopPropagation(); setLevel(+b.dataset.l); });
+document.getElementById('pauseBtn').onclick = e => { e.stopPropagation(); setPaused(!paused); };
+document.getElementById('pausedOv').addEventListener('pointerdown', e => { e.stopPropagation(); setPaused(false); });
 ctlBtn.onclick = e => { e.stopPropagation(); setMode(mode === 'Physics' ? 'Direct' : 'Physics'); };
 document.getElementById('bar').addEventListener('pointerdown', e => e.stopPropagation());
 for (let i = 1; i <= NLEV; i++) frames[i].addEventListener('load', () => setLevel(cur));
@@ -505,6 +517,8 @@ for (let i = 1; i <= NLEV; i++) frames[i].addEventListener('load', () => setLeve
 let up = false, dn = false, lastKey = -1e9, holdKey = false, holdPtr = false;
 window.__hold = undefined;   // scripted override for tests
 addEventListener('keydown', e => {
+  if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { if (!e.repeat) setPaused(!paused); return; }
+  if (paused) return;
   if (e.key >= '1' && e.key <= String(NLEV)) setLevel(+e.key);
   if (e.key === 'b' || e.key === 'B') window.__summonBoss();
   if (e.key === 'n' || e.key === 'N') window.__summonJet();
@@ -582,6 +596,7 @@ function stepPhysics(dt, W, H) {
 }
 
 function frame(now) {
+  if (paused) { prev = now; requestAnimationFrame(frame); return; }   // freeze: keep the last drawn frame
   const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
   const W = fx.width = innerWidth, H = fx.height = innerHeight;
   stepPhysics(dt, W, H);
@@ -690,7 +705,7 @@ function speedLines(dt, W, H) {
   ctx.restore();
 }
 // ===================== dev panel: physics presets + live sliders =====================
-const DEV_KEYS = [['GRAVITY', 1, 12, 0.01], ['THRUST', 1, 16, 0.01], ['DAMP', 0.5, 10, 0.05], ['RAMP', 0, 1.5, 0.05], ['RAMP_T', 0.2, 4, 0.1], ['AIR_PEAK_Y', 0.05, 0.4, 0.005], ['AIR_TIME', 0.6, 2.5, 0.05]];
+const DEV_KEYS = [['GRAVITY', 1, 12, 0.01], ['THRUST', 1, 16, 0.01], ['DAMP', 0.5, 10, 0.05], ['RAMP', 0, 1.5, 0.05], ['RAMP_T', 0.2, 4, 0.1], ['AIR_PEAK_Y', 0.05, 0.4, 0.005], ['AIR_TIME', 0.6, 2.5, 0.05], ['AIR_LAND_TILT', 0, 0.8, 0.01]];
 let devPreset = null;
 function simFace(P, hold) {   // same integrator as stepPhysics: hold from trough / release at lip, both from rest
   let s0 = hold ? 0 : 1, v = 0, t = 0, th = 0; const dt = 1 / 240;

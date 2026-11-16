@@ -28,7 +28,7 @@ The old SDF-ink and separate ooze-street levels were retired on 2026-11-10.
 
 Hold Space / ↑ / mouse / touch to push up the face, release to drop, launch off
 the lip. `C` toggles the Direct controller, `1`/`2` switch level, `B` summons the
-boss, `` ` `` hides the dev panel.
+boss, `P` or `Esc` (or the Pause button) pauses, `` ` `` hides the dev panel.
 
 ## Gameplay (all in `levels.html`, tuning in `PHYS` and `GAME`)
 

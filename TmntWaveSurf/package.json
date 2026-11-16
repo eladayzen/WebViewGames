@@ -1,0 +1,20 @@
+{
+  "name": "tmnt-wave-surf",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "three": "0.160.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  }
+}
