@@ -20,6 +20,7 @@ export const PHYS = {
 const RIDER_H = 1.55;
 export const SIZE = 1.3;
 const DECK_TOP = 0.175;   // board-local y of the grip tape
+const BOARD_SCALE = 1.2;  // board 20% bigger (Elad 2026-11-16); the rider stands on the scaled deck
 const SEAT_BACK = 0.14;  // shift toward the tail
 // Enter the Spin Flip Kick just before the strike (foot peaks at 2.13 s),
 // blend in, reach the kick quickly, then play EVERYTHING after it at the
@@ -57,6 +58,7 @@ export class Player {
     scene.add(this.root);
 
     this.board = makeBoard();
+    this.board.scale.setScalar(BOARD_SCALE);
     this.bank.add(this.board);
 
     this.shield = makeShieldBubble();
@@ -89,7 +91,8 @@ export class Player {
         o.castShadow = false;
         const m = o.material;
         // Toon-ish: lambert with a bump of emissive so he never drops into the sewer's murk.
-        o.material = new THREE.MeshLambertMaterial({ map: m.map, color: 0xffffff, emissive: 0x1a2a1a });
+        // look test: a bit more lit (Elad 2026-11-16) — self-light from his own colours, not a flat green lift
+        o.material = new THREE.MeshLambertMaterial({ map: m.map, color: 0xffffff, emissive: m.map ? 0xffffff : 0x1a2a1a, emissiveMap: m.map || null, emissiveIntensity: m.map ? 0.28 : 1 });
         if (o.material.map) o.material.map.colorSpace = THREE.SRGBColorSpace;
       }
     });
@@ -122,7 +125,7 @@ export class Player {
         for (const b of feet) { this.bank.worldToLocal(b.getWorldPosition(v)); low = Math.min(low, v.y); }
       }
       this.mixer.setTime(0);
-      if (Number.isFinite(low)) this.model.position.y += DECK_TOP - low;
+      if (Number.isFinite(low)) this.model.position.y += DECK_TOP * BOARD_SCALE - low;
     }
     this.model.position.z += SEAT_BACK;
     for (const n of ['flip', 'kick', 'spin', 'push']) {

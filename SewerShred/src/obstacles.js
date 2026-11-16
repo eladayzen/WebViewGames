@@ -8,6 +8,10 @@ import * as THREE from 'three';
 import { R, frameAt, pointAt, wallQuat, wallDir, slimeAngle, angleDiff, makeGlowTexture } from './track.js';
 
 // Foot Soldier kick trigger — enemies ONLY. Was ds<1.5 ahead, 1.05 m sideways.
+const _camL = new THREE.Vector3();
+export const DISSOLVE_AT = 0.12, DISSOLVE_LEN = 0.55;
+const FOOT_SCALE = 2.6;
+const LANE_MIN = 0.75, LANE_PAD = 0.12, LANE_WINDOW = 6;   // bounded modes: one clear lane ≥ 0.75 rad (~2.7 m) within ±6 m
 const FOOT_REACH_AHEAD = 4.0, FOOT_REACH_SIDE = 1.4;
 
 const TAU = Math.PI * 2;
@@ -30,6 +34,20 @@ export class Obstacles {
     this.footGeo = tex.footGeo;
     this.footMat = makeFootMaterial();
     this.footOutlineMat = makeOutlineMaterial(0xff3fd0, 0.028);
+    tex.valve.colorSpace = THREE.SRGBColorSpace;
+    this.valveGeo = new THREE.CylinderGeometry(1.1, 1.18, 0.4, 32);
+    this.valveTopMat = new THREE.MeshLambertMaterial({ map: tex.valve, emissive: 0xffffff, emissiveMap: tex.valve, emissiveIntensity: 0.25 });
+    this.valveSideMat = new THREE.MeshLambertMaterial({ color: 0x3d464c, emissive: 0x0a0c0d });
+    this.inkMat = new THREE.MeshBasicMaterial({ color: 0x14181a, side: THREE.BackSide });
+    // PNG Foot Soldiers (Kolbo, cel art, two takes picked per soldier): a wall-upright card
+    // that turns about the wall normal to face the camera (Elad 2026-11-16: "start with some pngs")
+    this.footSpriteMats = [tex.footA, tex.footB].map((t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      // self-lit (Elad 2026-11-16): skip the scene's exposure-0.85 tone mapping, lift a touch above the art
+      return new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1.15, 1.15, 1.15), toneMapped: false, alphaTest: 0.5, side: THREE.DoubleSide, visible: false });
+    });
+    this.footSpriteGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
+    this.footRingMat = new THREE.MeshBasicMaterial({ color: 0xff4ad2, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
     this.footAuraMat = new THREE.SpriteMaterial({ map: this.glowTex, color: 0xb03cff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.55 });
     const pipeTex = tex.pipe.clone();
     pipeTex.wrapS = pipeTex.wrapT = THREE.RepeatWrapping;
@@ -157,16 +175,16 @@ export class Obstacles {
         return g;
       },
       valve: () => {
+        // look test (ref '55'): an illustrated valve hatch (Kolbo, tex/valve.png)
+        // on a squat iron drum, with a black ink outline like the cartoon art
         const g = new THREE.Group();
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.1, 0.35, 16), new THREE.MeshLambertMaterial({ color: 0x6d777d, emissive: 0x0d0f10 }));
-        base.position.y = 0.17;
-        const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.11, 8, 18), new THREE.MeshLambertMaterial({ color: 0xd8402f, emissive: 0x3a0a05 }));
-        wheel.rotation.x = Math.PI / 2; wheel.position.y = 0.55;
-        const spoke = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.1), wheel.material);
-        spoke.position.y = 0.55;
-        const spoke2 = spoke.clone(); spoke2.rotation.y = Math.PI / 2;
-        g.add(base, wheel, spoke, spoke2);
-        g.userData.spin = [wheel, spoke, spoke2];
+        const side = this.valveSideMat, top = this.valveTopMat;
+        const drum = new THREE.Mesh(this.valveGeo, [side, top, side]);
+        drum.position.y = 0.2;
+        const ink = new THREE.Mesh(this.valveGeo, this.inkMat);
+        ink.position.y = 0.2; ink.scale.set(1.07, 1.25, 1.07);
+        g.add(ink, drum);
+        g.userData.spin = [];
         return g;
       },
       pizza: () => {
@@ -201,20 +219,24 @@ export class Obstacles {
         const mesh = new THREE.Mesh(this.footGeo, this.footMat);
         const outline = new THREE.Mesh(this.footGeo, this.footOutlineMat);
         body.add(outline, mesh);
-        body.scale.setScalar(2.6);   // 30% bigger
+        const k = Math.random() < 0.5 ? 0 : 1, img = this.footSpriteMats[k].map.image;
+        const card = new THREE.Mesh(this.footSpriteGeo, this.footSpriteMats[k]);
+        card.scale.set(1.08 * img.width / img.height, 1.08, 1);   // body units (x2.6 = ~2.8 m tall)
+        body.add(card);
+        body.scale.setScalar(FOOT_SCALE);   // 30% bigger
         g.add(body);
         const aura = new THREE.Sprite(this.footAuraMat);
         aura.scale.set(3.6, 4.4, 1);
         aura.position.y = 1.35;
         aura.renderOrder = -1;
         g.add(aura);
-        const ring = new THREE.Mesh(new THREE.RingGeometry(0.72, 1.0, 28), new THREE.MeshBasicMaterial({ color: 0xff4ad2, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.72, 1.0, 28), this.footRingMat);
         ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05;
         g.add(ring);
         const disc = new THREE.Mesh(new THREE.CircleGeometry(1.0, 24), new THREE.MeshBasicMaterial({ color: 0xff4ad2, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending }));
         disc.rotation.x = -Math.PI / 2; disc.position.y = 0.04;
         g.add(disc);
-        g.userData = { body, ring, aura };
+        g.userData = { body, ring, aura, card };
         return g;
       },
       shield: () => {
@@ -258,7 +280,7 @@ export class Obstacles {
 
   add(type, s, theta, extra = {}) {
     const o = { type, s, theta, hit: false, done: false, near: false, mesh: this._get(type), ...extra };
-    if (type === 'foot') o.mesh.children.forEach((c) => (c.visible = true));  // pooled: undo the launch hiding
+    if (type === 'foot') { o.mesh.children.forEach((c) => (c.visible = true)); o.mesh.userData.body.scale.setScalar(FOOT_SCALE); }  // pooled: undo the launch hiding + dissolve
     this._placeStatic(o);
     this.list.push(o);
     return o;
@@ -294,7 +316,9 @@ export class Obstacles {
       const lift = o.type === 'crate' ? CRATE / 2 + (o.stack || 0) * CRATE : o.type === 'valve' || o.type === 'foot' || o.type === 'saw' ? 0 : 1.0;
       pointAt(o.s, o.theta, R - lift, m.position, f);
       wallQuat(f, o.theta, m.quaternion);
-      if (o.type === 'foot') m.rotateY(Math.PI + (o.yaw || 0)); // face the rider coming up the pipe
+      // the model's face is local +Z and wallQuat already points +Z back down the pipe at the
+      // rider; the old extra π turned them away (hidden by the pink glow) — fixed 2026-11-16
+      if (o.type === 'foot') m.rotateY(o.yaw || 0);
       if (o.type === 'crate') {
         m.rotateY(o.yaw || 0);
         if (o.drop) { o.home = m.position.clone(); o.homeQ = m.quaternion.clone(); }
@@ -326,21 +350,80 @@ export class Obstacles {
       ['crates', 0.35],
       ['pizzaLine', 0.8],
       ['pizzaArc', 0.45],
-      ['pole', 1.3 + diff * 0.4],
+      ['pole', 1.65 + diff * 0.4],   // +0.35: took the valves' share (Elad 2026-11-16)
       ['poleX', diff > 0.25 ? 0.5 + diff * 0.5 : 0],
       ['gate', diff > 0.3 ? 0.15 + diff * 0.2 : 0],
       ['dropper', 0.15 + diff * 0.2],
       ['slalom', diff > 0.2 ? 0.2 : 0],
       ['fan', diff > 0.35 ? 0.2 + diff * 0.5 : 0],
 
-      ['valves', 0.35],
+      ['valves', 0],   // off for now (Elad 2026-11-16: "just don't use it, more poles instead")
       ['foot', 2.6 + diff * 0.6],
       ['footLine', diff > 0.05 ? 1.0 : 0],
     ];
     const tot = deck.reduce((a, d) => a + d[1], 0);
     let pick = r * tot, name = 'crates';
     for (const [n, w] of deck) { pick -= w; if (pick <= 0) { name = n; break; } }
+    const first = this.list.length;
     this[`_p_${name}`](s, diff, sl);
+    if (this.reach) this._fitReach(first, s);
+  }
+
+  // ── bounded modes (220 / 180): the rider only reaches slimeAngle ± reach ──
+  // Elad 2026-11-16: "sometimes the whole half pipe is full of obstacles".
+  // After a pattern is dealt: drop what lands outside the reachable arc (it
+  // only clutters the view), then guarantee one clear lane inside the arc
+  // across everything near that spot — re-rolling a pole/pipe's angle, or
+  // pulling the new saws/crates nearest the middle, until a lane opens.
+  _blocked(o, rel, sl) {
+    // half-width (rad) of the wall o blocks around angle rel (relative to sl), or 0
+    const near = (th, w) => Math.abs(angleDiff(sl + rel, th)) < w;
+    switch (o.type) {
+      case 'saw': return near(o.theta, (SAW_R + 0.4) / R + LANE_PAD);
+      case 'crate': return near(o.theta, (CRATE / 2 + 0.4) / R + LANE_PAD);
+      case 'valve': return near(o.theta, 1.25 / R + LANE_PAD);
+      case 'pipe': return near(o.theta, o.arc + LANE_PAD);
+      case 'pole': {
+        const ends = o.n === 2 ? 4 : 2;
+        for (let k = 0; k < ends; k++) if (near(o.beta + k * Math.PI / (o.n === 2 ? 2 : 1), (POLE_R + 0.45) / R + LANE_PAD)) return true;
+        return false;
+      }
+      default: return false;
+    }
+  }
+
+  _laneOK(s) {
+    const sl = slimeAngle(s), reach = this.reach;
+    const hz = this.list.filter((o) => !o.done && o.type !== 'fan' && this._isHazard(o) && Math.abs(o.s - s) < LANE_WINDOW);
+    let run = 0, best = 0;
+    for (let rel = -reach; rel <= reach + 1e-6; rel += 0.04) {
+      if (hz.some((o) => this._blocked(o, rel, sl))) run = 0;
+      else best = Math.max(best, (run += 0.04));
+    }
+    return best >= LANE_MIN;
+  }
+
+  _fitReach(first, s) {
+    const fresh = this.list.slice(first);
+    for (const o of fresh) {
+      if (o.theta === undefined || o.type === 'pole' || o.type === 'pipe' || o.type === 'fan') continue;
+      if (Math.abs(angleDiff(o.theta, slimeAngle(o.s))) > this.reach + 0.15) o.done = true;
+    }
+    for (let tries = 0; tries < 24 && !this._laneOK(s); tries++) {
+      const live = fresh.filter((o) => !o.done && this._isHazard(o));
+      const roll = live.find((o) => o.type === 'pole' || o.type === 'pipe');
+      if (roll && tries < 12) {
+        if (roll.type === 'pole') roll.beta = Math.random() * Math.PI * 2;
+        else roll.theta = Math.random() * TAU;
+        this._placeStatic(roll);
+        continue;
+      }
+      const loose = live.filter((o) => o.type === 'saw' || o.type === 'crate' || o.type === 'valve');
+      if (!loose.length) { for (const o of live) o.done = true; break; }   // give up: clear the pattern's hazards
+      loose.sort((a, b) => Math.abs(angleDiff(a.theta, slimeAngle(a.s))) - Math.abs(angleDiff(b.theta, slimeAngle(b.s))));
+      loose[0].done = true;
+    }
+    for (const o of fresh) if (o.done) o.mesh.visible = false;
   }
 
   _p_crates(s, diff, sl) {
@@ -388,7 +471,7 @@ export class Obstacles {
   }
 
   _p_gate(s, diff, sl) {
-    const gapAt = Math.random() * TAU;
+    const gapAt = this.reach ? sl + (Math.random() - 0.5) * 2 * Math.max(0, this.reach - 0.6) : Math.random() * TAU;
     const gapHalf = THREE.MathUtils.lerp(0.75, 0.48, diff);
     const step = 0.36;
     for (let a = 0; a < TAU - 0.01; a += step) {
@@ -474,11 +557,20 @@ export class Obstacles {
           o.mesh.rotateX(o.spin.x * dt); o.mesh.rotateZ(o.spin.z * dt);
           o.mesh.userData.ring.visible = false;
           o.mesh.children.forEach((c) => { if (c !== o.mesh.userData.body) c.visible = false; });
-          if (o.t > 1.6) o.done = true;
+          // dissolve into particles (Elad 2026-11-16): hold a beat, then shrink away while main.js
+          // sheds particles off him (o.dissolve 0→1)
+          o.dissolve = THREE.MathUtils.clamp((o.t - DISSOLVE_AT) / DISSOLVE_LEN, 0, 1);
+          o.mesh.userData.body.scale.setScalar(FOOT_SCALE * (1 - o.dissolve * o.dissolve));
+          if (o.dissolve >= 1) o.done = true;
         } else {
           if (o.strafe) { o.theta = o.base + Math.sin(time * 1.6 + o.phase) * o.strafe; this._placeStatic(o); }
           // ready stance bob + target ring pulse
           o.mesh.userData.body.position.y = Math.abs(Math.sin(time * 5 + o.phase)) * 0.12;
+          if (this.camera && o.mesh.userData.card) {
+            // turn the card about the wall normal (group Y) toward the camera
+            const c = o.mesh.worldToLocal(_camL.copy(this.camera.position));
+            o.mesh.userData.card.rotation.y = Math.atan2(c.x, c.z);
+          }
           const r = o.mesh.userData.ring;
           r.scale.setScalar(1 + Math.sin(time * 6 + o.phase) * 0.12);
           o.mesh.userData.aura.material.opacity = 0.45 + Math.sin(time * 4 + o.phase) * 0.12;
@@ -527,6 +619,23 @@ export class Obstacles {
     for (let i = this.list.length - 1; i >= 0; i--) {
       if (this.list[i].done) { this._free(this.list[i]); this.list.splice(i, 1); }
     }
+  }
+
+  // Foot Soldier looks to audition (Elad 2026-11-16: "weird look with glowing pink stroke").
+  setFootStyle(name) {
+    const st = FOOT_STYLES[name] || FOOT_STYLES.purple;
+    const u = this.footMat.uniforms;
+    u.uSuit.value.set(...st.suit); u.uRim.value.set(...st.rim); u.uKeep.value = st.keep;
+    this.footMat.visible = !st.sprite;
+    for (const m of this.footSpriteMats) m.visible = !!st.sprite;
+    this.footOutlineMat.visible = !!st.outline && !st.sprite;
+    if (st.outline) { this.footOutlineMat.uniforms.uColor.value.set(st.outline); this.footOutlineMat.uniforms.uWidth.value = st.width; }
+    this.footAuraMat.visible = !!st.aura;
+    this.footRingMat.color.set(st.ring);
+    this.footRingMat.blending = st.ringAdd ? THREE.AdditiveBlending : THREE.NormalBlending;
+    this.footRingMat.opacity = st.ringAdd ? 0.95 : 0.8;
+    this.footRingMat.needsUpdate = true;
+    return name in FOOT_STYLES ? name : 'purple';
   }
 
   _isHazard(o) { return o.type === 'crate' || o.type === 'saw' || o.type === 'pipe' || o.type === 'fan' || o.type === 'valve' || o.type === 'pole'; }
@@ -614,7 +723,7 @@ export class Obstacles {
 function makeFootMaterial() {
   return new THREE.ShaderMaterial({
     fog: true,
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uFlash: { value: 0 } }]),
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uFlash: { value: 0 }, uSuit: { value: new THREE.Vector3(0.36, 0.31, 0.5) }, uRim: { value: new THREE.Vector3(1.2, 0.36, 1.02) }, uKeep: { value: 1 } }]),
     vertexShader: /* glsl */`
       #include <fog_pars_vertex>
       varying vec3 vN; varying vec3 vV; varying float vH;
@@ -627,29 +736,50 @@ function makeFootMaterial() {
       }`,
     fragmentShader: /* glsl */`
       #include <fog_pars_fragment>
-      uniform float uFlash;
+      uniform float uFlash; uniform vec3 uSuit; uniform vec3 uRim; uniform float uKeep;
       varying vec3 vN; varying vec3 vV; varying float vH;
       void main(){
         vec3 N = normalize(vN);
         vec3 L = normalize(vec3(0.2, 0.7, 0.7));        // key light from the camera side
+        // look test (Elad 2026-11-16: "a bit more 3D, like the turtle"): a real diffuse +
+        // sky/ground fill + a soft spec, with only a hint of the toon bands left
+        float lam = max(dot(N, L), 0.0);
         float d = dot(N, L) * 0.5 + 0.5;
-        float band = d > 0.7 ? 1.0 : d > 0.45 ? 0.72 : 0.48;
-        vec3 base = vec3(0.36, 0.31, 0.5);                // lit purple-grey suit
+        float toon = d > 0.7 ? 1.0 : d > 0.45 ? 0.72 : 0.48;
+        float sky = 0.5 + 0.5 * N.y;
+        float band = mix(0.32 + 0.22 * sky + 0.7 * lam, toon, 0.25);
+        float occ = mix(0.72, 1.0, smoothstep(0.0, 0.35, vH));   // feet/legs a touch darker
+        band *= occ;
+        float spec = pow(max(dot(reflect(-L, N), normalize(vV)), 0.0), 22.0) * 0.28;
+        vec3 base = uSuit;                                // suit colour (style)
         vec3 glow = vec3(0.0);
         if (vH > 0.86 && vH < 0.91) { base = vec3(1.0, 0.18, 0.12); glow = vec3(1.0, 0.25, 0.1) * 0.9; }   // visor
         else if (vH > 0.5 && vH < 0.54) { base = vec3(0.95, 0.2, 0.25); glow = vec3(0.6, 0.05, 0.1); }     // red sash
-        vec3 c = base * band * 1.35;
+        vec3 c = base * band * 1.3 + vec3(spec);
         float rim = pow(1.0 - max(0.0, dot(N, normalize(vV))), 2.0);
-        c += vec3(1.0, 0.3, 0.85) * rim * 1.2;
+        c += uRim * rim;                                   // rim light (style)
         c += glow;
         c = mix(c, vec3(1.0), uFlash);
         gl_FragColor = vec4(c, 1.0);
         #include <fog_fragment>
         // keep the glow parts readable through the fog
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, c, clamp(length(glow) * 0.6 + rim * 0.4, 0.0, 0.6));
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, c, clamp((length(glow) * 0.6 + rim * 0.4) * uKeep, 0.0, 0.6));
       }`,
   });
 }
+
+// Foot Soldier styles: suit rgb, rim colour*strength, how much the glow parts
+// cut through fog, outline colour/width (null = none), aura card, ring colour.
+export const FOOT_STYLES = {
+  // Elad 2026-11-16: "they have to not be grey - to stand out" -> saturated suits on the grey-blue concrete
+  sprite: { label: 'PNG SPRITE', sprite: true, suit: [0.38, 0.26, 0.62], rim: [0, 0, 0], keep: 0.6, outline: null, aura: false, ring: 0xe0302a, ringAdd: false },
+  purple: { label: 'PURPLE NINJA', suit: [0.62, 0.2, 0.95], rim: [0.3, 0.25, 0.35], keep: 0.7, outline: 0x0b0c10, width: 0.022, aura: false, ring: 0xffcf3a, ringAdd: false },
+  red:    { label: 'RED CLAN', suit: [0.95, 0.16, 0.18], rim: [0.35, 0.25, 0.2], keep: 0.7, outline: 0x0b0c10, width: 0.022, aura: false, ring: 0xffcf3a, ringAdd: false },
+  navy:   { label: 'BLUE NINJA', suit: [0.18, 0.32, 0.95], rim: [0.3, 0.32, 0.4], keep: 0.7, outline: 0x0b0c10, width: 0.022, aura: false, ring: 0xe0302a, ringAdd: false },
+  ink:    { label: 'LILAC INK', suit: [0.62, 0.48, 0.92], rim: [0.0, 0.0, 0.0], keep: 0.6, outline: 0x0b0c10, width: 0.022, aura: false, ring: 0xe0302a, ringAdd: false },
+  glow:   { label: 'PINK GLOW (old)', suit: [0.36, 0.31, 0.5], rim: [1.2, 0.36, 1.02], keep: 1, outline: 0xff3fd0, width: 0.028, aura: true, ring: 0xff4ad2, ringAdd: true },
+};
+export const FOOT_STYLE_ORDER = ['sprite', 'purple', 'red', 'navy', 'ink', 'glow'];
 
 // Inverted-hull outline: the same mesh pushed out along its normals, drawn
 // back-faces only, flat bright colour. Reads as a glowing cartoon outline.

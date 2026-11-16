@@ -137,6 +137,28 @@ if (script === 'default') {
     console.log('attack', k, JSON.stringify(info));
     await snap(`attack${k}`);
   }
+} else if (script === 'dissolve') {
+  // ride into Foot Soldiers; snap each kicked one mid-flight as he dissolves
+  await page.evaluate(() => {
+    setInterval(() => {
+      const { player, obstacles } = window.__game;
+      window.__game.G.lives = 99;
+      const foes = obstacles.list.filter((o) => o.type === 'foot' && !o.flying && o.s - player.s > 1 && o.s - player.s < 45).sort((a, b) => a.s - b.s);
+      if (!foes.length) { window.__leanOverride = -player.theta * 0.8; return; }
+      let d = (foes[0].theta - player.theta) % (Math.PI * 2);
+      if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2;
+      window.__leanOverride = Math.max(-1, Math.min(1, d * 2.2 - player.omega * 0.5));
+    }, 30);
+  });
+  for (let k = 1; k <= 3; k++) {
+    await page.waitForFunction((n) => (window.__game.G.kicks || 0) >= n, { timeout: 90000 }, k);
+    for (const ms of [120, 220, 220]) {
+      await wait(ms);
+      const d = await page.evaluate(() => window.__game.obstacles.list.filter((o) => o.flying).map((o) => +(o.dissolve || 0).toFixed(2)));
+      console.log('kick', k, 'dissolve', JSON.stringify(d), 'fps', await page.evaluate(() => window.__fps));
+      await snap(`kick${k}-${ms}`);
+    }
+  }
 } else if (script === 'shield') {
   // give a shield, ride straight into whatever comes, log state around hits
   await wait(3500);
@@ -238,14 +260,67 @@ if (script === 'default') {
   // photograph Foot Soldiers as they approach, in two different zones
   await page.evaluate(() => { setInterval(() => { window.__game.G.lives = 99; }, 100); });
   await lean(0);
-  await page.evaluate((w) => { window.__want = w; }, args.type || 'foot');
+  await page.evaluate((w, n) => { window.__want = w; window.__near = n; }, args.type || 'foot', +(args.near || 10));
   for (const at of [0, 330]) {
     await page.waitForFunction((a) => window.__game.player.s > a, { timeout: 60000 }, at);
     await page.waitForFunction(() => {
       const { player, obstacles } = window.__game;
-      return obstacles.list.some((o) => o.type === window.__want && !o.flying && o.s - player.s > 10 && o.s - player.s < 16);
+      const lo = window.__near || 10;
+      return obstacles.list.some((o) => o.type === window.__want && !o.flying && o.s - player.s > lo && o.s - player.s < lo + 6);
     }, { timeout: 60000 });
     await snap('foes-at-' + at);
+  }
+} else if (script === 'foestyles') {
+  // one close shot of approaching Foot Soldiers per style
+  await page.evaluate(() => { setInterval(() => { window.__game.G.lives = 99; }, 100); });
+  await lean(0);
+  for (const st of (args.styles || 'sprite,purple').split(',')) {
+    await page.evaluate((x) => window.__game.setFootStyle(x), st);
+    await page.waitForFunction(() => {
+      const { player, obstacles } = window.__game;
+      return obstacles.list.some((o) => o.type === 'foot' && !o.flying && !o.hit && o.s - player.s > 7 && o.s - player.s < 11);
+    }, { timeout: 60000 });
+    await snap('foe-' + st);
+    await wait(1500);
+  }
+} else if (script === 'lanes') {
+  // bounded-mode lane audit: every 2 m of spawned track, is there a clear lane >= LANE_MIN
+  // inside slimeAngle ± 110°? --mode=d220 (fixed) vs d360 (old dealing, judged at the same reach)
+  const mode = args.mode || 'd220';
+  await page.evaluate((m) => { setInterval(() => { window.__game.G.lives = 99; window.__game.player.invuln = 5; }, 100); window.__game.setMoveMode(m); }, mode);
+  await lean(0);
+  const seen = new Set(); let tot = 0, bad = 0;
+  for (let k = 0; k < 40; k++) {
+    await wait(1500);
+    const r = await page.evaluate(() => {
+      const { obstacles, player } = window.__game; const keep = obstacles.reach; obstacles.reach = 110 * Math.PI / 180;
+      const out = [];
+      for (let s = Math.ceil(player.s / 2) * 2 + 20; s < player.s + 190; s += 2) out.push([s, obstacles._laneOK(s)]);
+      obstacles.reach = keep; return { out, s: player.s, fps: window.__fps };
+    });
+    for (const [s, ok] of r.out) if (!seen.has(s)) { seen.add(s); tot++; if (!ok) bad++; }
+  }
+  console.log('lanes', mode, JSON.stringify({ samples: tot, blocked: bad, pct: +(100 * bad / tot).toFixed(1) }));
+} else if (script === 'lanes2') {
+  // deal 400 patterns offline at high difficulty, judge each for a clear lane within ±110°
+  await wait(3500);
+  for (const fit of [false, true]) {
+    const r = await page.evaluate((fit) => {
+      const { obstacles } = window.__game; const H = 110 * Math.PI / 180;
+      let bad = 0, n = 0; const byName = {};
+      const orig = obstacles._fitReach.bind(obstacles);
+      for (let i = 0; i < 400; i++) {
+        const s = 20000 + i * 60, first = obstacles.list.length;
+        obstacles.reach = fit ? H : null;
+        obstacles._pattern(s, 0.9, 0);
+        obstacles.reach = H;
+        n++; if (!obstacles._laneOK(s)) bad++;
+        for (const o of obstacles.list.slice(first)) { o.done = true; o.mesh.visible = false; }
+      }
+      obstacles.reach = null;
+      return { fit, patterns: n, blocked: bad };
+    }, fit);
+    console.log('lanes2', JSON.stringify(r));
   }
 } else if (script === 'direct') {
   await page.evaluate(() => document.getElementById('mode-btn').click());

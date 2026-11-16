@@ -132,4 +132,5 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1c16; col
 #var-btn { order: 3; background: rgba(90,50,140,0.85); }
 #var-btn.inactive { opacity: 0.45; }
 #cam-btn { order: 3; background: rgba(140,80,30,0.85); }
+#foe-btn { order: 3; background: rgba(150,30,40,0.85); }
 #mute-btn { order: 2; }

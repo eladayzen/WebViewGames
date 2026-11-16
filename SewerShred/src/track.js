@@ -222,11 +222,13 @@ function sewageMaterial(map, { tint = new THREE.Vector3(1.0, 1.0, 1.0) } = {}) {
       map: { value: map }, uScroll: { value: 0 }, uTime: { value: 0 }, uEdge: { value: 0.05 }, uTint: { value: tint },
       // the painted art (same brushwork as the walls) is already calm, so keep most of
       // its own colour and contrast; uBase only pulls it a little toward one olive hue
-      uBase: { value: new THREE.Vector3(0.21, 0.26, 0.16) }, uSat: { value: 0.65 }, uContrast: { value: 1.0 },
+      // look test: lighter olive-brown, mostly one flat cartoon hue (ref '55')
+      // the Kolbo toon tile (tex/sewage_toon.jpg) is the look: keep its own colour 1:1
+      uBase: { value: new THREE.Vector3(0.2717, 0.2465, 0.0892) }, uSat: { value: 1.0 }, uContrast: { value: 1.0 },
       // linear mean luminance of tex/sewage.jpg (measured: 0.0661)
-      uMid: { value: 0.0661 },
+      uMid: { value: 0.2368 },   // linear mean luminance of tex/sewage_toon.jpg (measured)
       // Elad: "a bit less opacity" - the plates just show through
-      uAlpha: { value: 0.8 },
+      uAlpha: { value: 0.72 },   // look test: a bit see-through (Elad 2026-11-16)
       fogColor: { value: new THREE.Color() }, fogNear: { value: 1 }, fogFar: { value: 100 },
     },
     vertexShader: /* glsl */`
@@ -246,8 +248,8 @@ function sewageMaterial(map, { tint = new THREE.Vector3(1.0, 1.0, 1.0) } = {}) {
       void main(){
         vec2 p = vUv;
         // thick fluid: a slow, heavy heave, nothing like the water ripple
-        vec2 heave = vec2(sin(p.y * 3.0 + uTime * 0.6), cos(p.x * 4.0 + p.y * 1.3 - uTime * 0.45)) * 0.005;
-        vec3 c = texture2D(map, p * vec2(1.0, 0.75) + vec2(0.0, uScroll) + heave).rgb * uTint;
+        vec2 heave = vec2(sin(p.y * 3.0 + uTime * 1.1), cos(p.x * 4.0 + p.y * 1.3 - uTime * 0.9)) * 0.012;   // look test: livelier
+        vec3 c = texture2D(map, p * vec2(0.55, 0.42) + vec2(0.0, uScroll * 0.56) + heave)   /* look test: bigger ripples */.rgb * uTint;
         // Normalise around the texture's own average (uMid: its LINEAR mean luminance,
         // since sRGB maps are sampled linear) so uBase alone sets the brightness, then
         // keep uContrast of its light-dark and uSat of its own colour on top of the
@@ -264,7 +266,7 @@ function sewageMaterial(map, { tint = new THREE.Vector3(1.0, 1.0, 1.0) } = {}) {
         c += vec3(0.7, 0.76, 0.62) * pow(max(lc - 1.0, 0.0), 2.0) * 0.05;
         // banks: a dark wet crust, then a short feather into the plates
         float d = min(vAcross, 1.0 - vAcross);
-        c *= mix(0.45, 1.0, smoothstep(uEdge * 0.6, uEdge * 3.0, d));
+        c *= mix(0.7, 1.0, smoothstep(uEdge * 0.6, uEdge * 3.0, d));
         float a = smoothstep(0.0, uEdge, d) * uAlpha;
         float f = smoothstep(fogNear, fogFar, vDepth);
         gl_FragColor = vec4(mix(c, fogColor, f), a);
@@ -283,13 +285,13 @@ export const ZONE_LEN = 300;
 // cave / subway / original-iron zones are parked in ZONES_PARKED.
 // Patina family (Elad: "the dark one with green — start with that"; its
 // saturation/grade is the target). Every zone shares Copper Deep's teal grade.
-const PATINA_GRADE = { tint: 0xc8d4cc, fog: 0x0c1a18, hemi: [0xbff5e6, 0x22302c] };
+const PATINA_GRADE = { tint: 0xffffff, fog: 0x4a5860, hemi: [0xf2f6f6, 0x6e7876] };   // look test: light grade
 export const ZONES = [
-  { key: 'rust_patina', name: 'COPPER DEEP',   around: 3, ...PATINA_GRADE },
-  { key: 'pat_a',       name: 'VERDIGRIS RUN', around: 3, ...PATINA_GRADE },
-  { key: 'rust_hazard', name: 'HAZARD LINE',   around: 3, ...PATINA_GRADE, tint: 0xc4cac0 },
-  { key: 'pat_c',       name: 'THE HONEYCOMB', around: 4, ...PATINA_GRADE },
+  // look test (2026-11-16, ref "55"): clean cel concrete panels, ink seams, one panel per tile
+  { key: 'concrete_grey', name: 'STORM DRAIN',  around: 8, tint: 0xffffff, fog: 0x4a5860, hemi: [0xf2f6f6, 0x6e7876] },
+  { key: 'concrete_warm', name: 'OLD MAINLINE', around: 8, tint: 0xf4f0ea, fog: 0x544f48, hemi: [0xfaf4ea, 0x777068] },
 ];
+// look test parked the patina zones (rust_patina, pat_a, rust_hazard, pat_c — PATINA_GRADE)
 // parked: too red / lava-like (Elad) and the small-tile first pass
 export const ZONES_PARKED = ['rust', 'rust_red', 'rust_ember', 'brick', 'cave', 'wall', 'tile'];
 export function zoneIndex(s) {
@@ -304,7 +306,7 @@ function antiRepeat(mat) {
       #ifdef USE_MAP
         float macro = texture2D(map, vMapUv * 0.143 + vec2(0.37, 0.11)).g;
         float macro2 = texture2D(map, vMapUv.yx * 0.071 + vec2(0.7, 0.2)).r;
-        diffuseColor.rgb *= 0.62 + 0.55 * macro + 0.25 * (macro2 - 0.5);
+        diffuseColor.rgb *= 0.94 + 0.1 * macro + 0.08 * (macro2 - 0.5);   // look test: gentle, the art is flat on purpose
       #endif`);
   };
   return mat;
@@ -421,6 +423,7 @@ export class Track {
 
     const graf = bandMesh(8, 8, this.grafMat);
     graf.renderOrder = 1;
+    graf.visible = false;   // look test: the dark-ground graffiti reads as a black blotch on light concrete
     this.scene.add(graf);
 
     // floor water sits just above the plates, under the slime where they cross
@@ -471,7 +474,7 @@ export class Track {
       const side = rnd < 0.35 ? 1 : -1;
       const th = side * (1.3 + rnd * 0.8);
       const gs = s0 + 4 + rnd * 14;
-      seg.graf.visible = true;
+      seg.graf.visible = false;   // look test (was true)
       fillBand(seg.graf, gs, 9, R - 0.02, () => th, () => 0.75, 9 / 1.0, f, true, rnd);
     } else seg.graf.visible = false;
   }
@@ -506,7 +509,7 @@ export class Track {
     }
     const sc = dt * (0.25 + speed * 0.008);
     // thick sludge drifts; it doesn't race (one shared material, so scroll it once)
-    this.slimeMat.uniforms.uScroll.value -= sc * 0.6;
+    this.slimeMat.uniforms.uScroll.value -= sc * 1.1;   // look test: moves more (was 0.6)
     this.waterMat.uniforms.uScroll.value -= dt * 0.55;
     for (const m of this.patchMats) m.uniforms.uTime.value = time;
   }

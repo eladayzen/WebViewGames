@@ -67,8 +67,8 @@ export class Junctions {
       g.add(stub, rim, hole);
       g.visible = false;
       scene.add(g);
-      const pool = new THREE.Mesh(this.poolGeo, this.poolMat); pool.visible = false; scene.add(pool);
-      const mist = new THREE.Sprite(this.mistMat); mist.scale.setScalar(4.5); mist.visible = false; scene.add(mist);
+      const pool = new THREE.Mesh(this.poolGeo, this.poolMat); pool.visible = false; pool.renderOrder = 5; scene.add(pool);
+      const mist = new THREE.Sprite(this.mistMat); mist.scale.setScalar(4.5); mist.visible = false; mist.renderOrder = 5; scene.add(mist);
       this.items.push({ pool, mist, group: g, stream: null, core: null, s: -1e9, theta: 0, land: new THREE.Vector3(), landUp: new THREE.Vector3(), on: false });
     }
     this.nextS = FIRST;
@@ -148,6 +148,8 @@ export class Junctions {
     const core = new THREE.TubeGeometry(curve, n, 0.32, 10, false);
     it.core = new THREE.Mesh(core, this.coreMat);
     it.stream.frustumCulled = it.core.frustumCulled = false;
+    // always over the river band (renderOrder 2): Elad 2026-11-16
+    it.stream.renderOrder = 3; it.core.renderOrder = 4;
     this.scene.add(it.stream, it.core);
   }
 

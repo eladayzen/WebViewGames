@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { R, Track, ZONES, zoneIndex, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
 import { Junctions } from './junctions.js';
 import { Player, PHYS } from './player.js';
-import { Obstacles } from './obstacles.js';
+import { Obstacles, FOOT_STYLES, FOOT_STYLE_ORDER } from './obstacles.js';
 import { Particles, Debris, Streaks, BoardTrail } from './fx.js';
 import { Audio } from './audio.js';
 import { Input } from './input.js';
@@ -17,25 +17,25 @@ const TAU = Math.PI * 2;
 const LIVES = 3;
 // slowed twice on Elad's play (2026-11-11): 21→17→13.5, 44→35→28
 const BASE_SPEED = 13.5, TOP_SPEED = 28, RAMP_DIST = 2800;
-const FOG = { color: 0x0d1c16, near: 18, far: 150 };
+const FOG = { color: 0x4a5860, near: 30, far: 200 };   // look test: blue-grey, not black
 
 // ── renderer / scene ─────────────────────────────────────────────────────────
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.5;
+renderer.toneMapping = THREE.NeutralToneMapping;   // look test: flats stay flat
+renderer.toneMappingExposure = 0.85;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(FOG.color);
 scene.fog = new THREE.Fog(FOG.color, FOG.near, FOG.far);
 const camera = new THREE.PerspectiveCamera(72, 1, 0.1, 400);
 
-const hemi = new THREE.HemisphereLight(0xcfeee0, 0x4a5a50, 3.2);
+const hemi = new THREE.HemisphereLight(0xf2f6f6, 0x6e7876, 3.0);
 scene.add(hemi);
-const headLamp = new THREE.PointLight(0xffe0a8, 160, 45, 1.2);   // follows the rider
+const headLamp = new THREE.PointLight(0xfff2dc, 70, 60, 1.0);   // follows the rider
 scene.add(headLamp);
-const slimeLight = new THREE.PointLight(0x8fb070, 18, 22, 1.5); // a murky bounce off the sewage (was a cyan water glow)
+const slimeLight = new THREE.PointLight(0xa8c080, 6, 22, 1.5); // a murky bounce off the sewage (was a cyan water glow)
 scene.add(slimeLight);
 const flashLight = new THREE.PointLight(0xffffff, 0, 16, 1.5);  // pickups / hits
 scene.add(flashLight);
@@ -86,6 +86,18 @@ function popup(text, cls = '', worldPos = null, dy = 0) {
     x = (_proj.x * 0.5 + 0.5) * window.innerWidth;
     y = (-_proj.y * 0.5 + 0.5) * window.innerHeight;
   }
+  // keep words off the rider (Elad 2026-11-16: "the texts are hiding the actual animation"):
+  // anything that would land on his column of the screen is pushed out to the side
+  if (player) {
+    _proj.copy(player.root.position).project(camera);
+    const rx = (_proj.x * 0.5 + 0.5) * window.innerWidth, W = window.innerWidth;
+    const clearW = Math.max(150, W * 0.17);
+    if (Math.abs(x - rx) < clearW) {
+      const side = x !== rx ? Math.sign(x - rx) : ((G.popSide = -(G.popSide || 1)));
+      x = rx + side * clearW * 1.25;
+    }
+    x = Math.min(W - 90, Math.max(90, x));
+  }
   el.style.left = x + 'px';
   el.style.top = y + dy + 'px';
   hud.popups.appendChild(el);
@@ -122,12 +134,14 @@ const C_SLIME = new THREE.Color(0.45, 1.0, 0.3), C_SPARK = new THREE.Color(1.0, 
   C_WATER = new THREE.Color(0.55, 0.85, 1.0), C_FOAM = new THREE.Color(0.85, 0.97, 1.0),
   C_SLIME_FOAM = new THREE.Color(0.8, 1.0, 0.6),
   // BAL-646 sewage: muddy body + paler scum, drawn with normal blending (sludge system)
-  C_SEWAGE = new THREE.Color(0.3, 0.33, 0.27), C_SCUM = new THREE.Color(0.56, 0.6, 0.48),
+  // look test: the river throws white/cyan cartoon splash (ref '55'), not dark gunk
+  C_SEWAGE = new THREE.Color(0.72, 0.9, 1.0), C_SCUM = new THREE.Color(1.0, 1.0, 1.0),
   C_KICK = new THREE.Color(1.0, 0.8, 0.35), C_FOOT = new THREE.Color(0.75, 0.35, 1.0);
 
 function difficulty() { return THREE.MathUtils.clamp(player.s / RAMP_DIST, 0, 1); }
 
-const C_JFOAM = new THREE.Color(0.5, 0.55, 0.42), C_JSPRAY = new THREE.Color(0.2, 0.23, 0.16);
+const _foeCol = new THREE.Color();
+const C_JFOAM = new THREE.Color(0.8, 0.92, 1.0), C_JSPRAY = new THREE.Color(0.45, 0.6, 0.7);   // look test: light splash
 function startRun() {
   junctions?.reset();
   G.state = 'countdown';
@@ -196,6 +210,8 @@ const FIXCAMS = {
   low:  { back: 4.6, r: 2.6, side: 0, ahead: 11, lookR: 1.8, slide: 2.6, aim: 0.9, lift: 0, fov: 6 },
   high: { back: 5.2, r: -1.6, side: 0, ahead: 12, lookR: 2.2, slide: 1.2, aim: 0.55, lift: 0, fov: 6 },
   side: { back: 4.6, r: 2.4, side: 2.2, ahead: 11, lookR: 1.8, slide: 2.0, aim: 0.45, lift: 0.6, fov: 6 },
+  // CENTER (Elad 2026-11-16): like LOW but raised ~1.3 m so it looks over his head
+  center: { back: 5.0, r: 1.3, side: 0, ahead: 12, lookR: 1.6, slide: 2.2, aim: 0.6, lift: 0.8, fov: 6 },
   wide: { back: 6.4, r: 2.8, side: 0, ahead: 13, lookR: 1.8, slide: 2.0, aim: 0.6, lift: 2.6, fov: 10 },
 };
 // AUTO (Elad 2026-11-16): dynamic — LOW while the rider is up a wall (he's
@@ -207,7 +223,7 @@ FIXCAMS.auto = { ...FIXCAMS.low };
 // OPPOSITE the rider — he's on the left, the camera swings to the right, and
 // vice versa — so it looks across him at the pipe ahead.
 FIXCAMS.auto2 = { ...FIXCAMS.side };
-const FIXCAM_ORDER = ['auto', 'auto2', 'low', 'high', 'side', 'wide'];
+const FIXCAM_ORDER = ['auto', 'auto2', 'center', 'low', 'high', 'side', 'wide'];
 G.autoW = 0; G.autoSign = 1; G.autoSignS = 1;
 const AUTO_SIDE = 3.4;   // m — further than the SIDE preset, so a centred rider clears the middle
 function updateAuto2Cam(dt) {
@@ -253,7 +269,7 @@ function steer(dt, lean) {
 // TWO buttons (Elad 2026-11-16): one picks DIRECT vs SWING (physics), the
 // other picks the Direct variant — 220 / 220 FIXED / 180 / 180 FIXED.
 // (360 / 360 FIXED stay reachable via ?move=d360 or d360f, off the buttons.)
-const VARIANTS = ['d220', 'd220f', 'd180', 'd180f'];
+const VARIANTS = ['d220', 'd220f', 'd180', 'd180f', 'd360', 'd360f'];   // 360s added to the button (Elad 2026-11-16)
 const VAR_LABEL = { d220: '220', d220f: '220 FIXED', d180: '180', d180f: '180 FIXED', d360: '360', d360f: '360 FIXED' };
 G.variant = 'd220';
 function setMoveMode(m) {
@@ -283,9 +299,19 @@ function setFixCam(c) {
 }
 const nextFixCam = () => setFixCam(FIXCAM_ORDER[(FIXCAM_ORDER.indexOf(G.fixCam) + 1) % FIXCAM_ORDER.length]);
 $('cam-btn').addEventListener('click', (e) => { e.stopPropagation(); nextFixCam(); });
+// FOE look audition (dev, Elad 2026-11-16): button + F key cycle the Foot Soldier styles
+function setFootStyle(n) {
+  if (!obstacles) { G.footStyle = n; return; }
+  G.footStyle = obstacles.setFootStyle(n);
+  $('foe-btn').textContent = 'FOE ' + FOOT_STYLES[G.footStyle].label;
+  try { localStorage.setItem('sewershred.foe', G.footStyle); } catch { /* private mode */ }
+}
+const nextFootStyle = () => setFootStyle(FOOT_STYLE_ORDER[(FOOT_STYLE_ORDER.indexOf(G.footStyle) + 1) % FOOT_STYLE_ORDER.length]);
+$('foe-btn').addEventListener('click', (e) => { e.stopPropagation(); nextFootStyle(); });
 try { setFixCam(new URLSearchParams(location.search).get('cam') || localStorage.getItem('sewershred.cam') || 'auto'); } catch { setFixCam('auto'); }
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyC' && fixedCam()) nextFixCam();
+  if (e.code === 'KeyF') nextFootStyle();
   if (e.code === 'KeyG') togglePhysics();
   if (e.code === 'KeyV') nextVariant();
 });
@@ -583,6 +609,8 @@ function frame(now) {
       if (G.comboDecay < 0) { G.comboFill -= simDt * 0.35; if (G.comboFill < 0) { G.combo--; G.comboFill = 0.95; G.comboDecay = 1.2; } }
     }
 
+    // bounded modes keep a clear lane inside the reachable arc (360 / swing: whole ring)
+    obstacles.reach = (G.moveMode.startsWith('d360') || G.moveMode === 'swing') ? null : MODE_HALF[G.moveMode];
     obstacles.spawn(player.s, diff, player.theta);
   } else if (G.state === 'dying') {
     G.overT += dt;
@@ -673,6 +701,14 @@ function frame(now) {
   streaks.update(player.s, player.speed, frameAt, pointAt, R, G.state === 'play' ? 0.08 + speedN * 0.25 : 0);
   track.update(player.s, simDt, time, player.speed);
   // side junctions pouring in: foam + spray where each stream lands
+  // kicked Foot Soldiers dissolve into particles in their suit colour
+  for (const o of obstacles.list) {
+    if (o.type !== 'foot' || !o.flying || !(o.dissolve > 0) || o.done) continue;
+    const wp = o.mesh.localToWorld(tmpE.set(0, 1.3 * (1 - o.dissolve * 0.6), 0));
+    const k = 1 - o.dissolve;
+    particles.burst(wp, tmpD.copy(o.vel).normalize().multiplyScalar(0.6), 6, _foeCol.setRGB(...FOOT_STYLES[G.footStyle].suit).multiplyScalar(1.5), { speed: 6, spread: 3.4, size: 0.32 + k * 0.3, life: 0.55, drag: 2.2, jitter: 0.9 * k + 0.3 });
+    if (Math.random() < 0.6) particles.burst(wp, tmpD, 2, C_WHITE, { speed: 5, spread: 3.6, size: 0.22, life: 0.4, drag: 2.5, jitter: 0.6 });
+  }
   for (const j of junctions.update(simDt, player.s)) {
     if (j.ds > 90 || j.ds < -20) continue;
     particles.burst(j.land, j.landUp, 2, C_JFOAM, { speed: 5, spread: 1.3, size: 0.35, life: 0.55, drag: 2.5 });
@@ -696,7 +732,7 @@ function frame(now) {
   // lights ride with the rider
   pointAt(player.s + 6, player.theta, R - 3.2, headLamp.position);
   pointAt(player.s + 10, slimeAngle(player.s + 10), R - 0.8, slimeLight.position);
-  slimeLight.intensity = 16 + Math.sin(time * 1.5) * 3;
+  slimeLight.intensity = 6 + Math.sin(time * 1.5) * 1.5;
   flashLight.intensity *= Math.pow(0.004, dt);
 
   // ── camera ──
@@ -769,14 +805,19 @@ async function loadFootGeo(url) {
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 (async function boot() {
-  const names = ['wall', 'slime', 'graffiti', 'crate', 'pipe', 'water', 'sewage', 'wall_rust_patina', 'wall_pat_a', 'wall_rust_hazard', 'wall_pat_c'];
+  const names = ['wall', 'slime', 'graffiti', 'crate', 'pipe', 'water', 'sewage_toon', 'concrete_grey', 'concrete_warm'];
   const loaded = await Promise.all(names.map((n) => loadTex(`/tex/${n}.jpg`)));
   names.forEach((n, i) => (tex[n.replace('wall_', '')] = loaded[i]));
+  tex.sewage = tex.sewage_toon;                 // look test: flat cartoon water (Kolbo, ref '55')
+  tex.valve = await loadTex('/tex/valve.png');
+  [tex.footA, tex.footB] = await Promise.all([loadTex('/tex/foot_sprite_a.png'), loadTex('/tex/foot_sprite_b.png')]);  // look test: illustrated valve hatch
   tex.footGeo = await loadFootGeo('/models/foot.bin');
   track = new Track(scene, tex);
   track.syncFog(scene.fog);
   obstacles = new Obstacles(scene, tex);
   junctions = new Junctions(scene, tex);
+  obstacles.camera = camera;
+  { let f = 'sprite'; try { f = new URLSearchParams(location.search).get('foe') || localStorage.getItem('sewershred.foe') || 'sprite'; } catch { /* private */ } setFootStyle(f); }
   particles = new Particles(scene);
   sludge = new Particles(scene, { additive: false });
   debris = new Debris(scene, tex);
@@ -790,5 +831,5 @@ async function loadFootGeo(url) {
   startRun();
   requestAnimationFrame(frame);
   // test hooks for the headless drive script
-  window.__game = { G, player, obstacles, PHYS, camera, startRun, setMoveMode, setFixCam, slimeAngle, junctions };
+  window.__game = { G, player, obstacles, PHYS, camera, startRun, setMoveMode, setFixCam, slimeAngle, junctions, setFootStyle };
 })();
