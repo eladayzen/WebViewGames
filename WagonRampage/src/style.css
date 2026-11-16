@@ -63,6 +63,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1622; col
 #buff .bg { stroke: rgba(0,0,0,.6); }
 #buff .fg { stroke: #ff9a1e; stroke-dasharray: 289; stroke-linecap: round; filter: drop-shadow(0 0 6px #ff9a1e); }
 #buff[data-t="donnie"] .fg { stroke: #b06cff; filter: drop-shadow(0 0 6px #b06cff); }
+#buff[data-t="saws"] .fg { stroke: #ffb42e; filter: drop-shadow(0 0 6px #ffb42e); }
+#banner.saws { color: #ffb42e; font-size: 64px; }
 #buff img { position: absolute; inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); border-radius: 50%; }
 #buff b { position: absolute; left: 0; bottom: 100%; transform: translate(0, -10px); white-space: nowrap; font-family: var(--display);
   font-size: 16px; letter-spacing: 1px; color: #fff; text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,.6); }

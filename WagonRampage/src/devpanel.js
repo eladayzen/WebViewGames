@@ -39,7 +39,7 @@ export function buildDevPanel(look, presets, apply, G) {
     write(KEY + '_preset', name); on();
   };
 
-  const game = gui.addFolder('Game  ·  keys Z Leo  X Raph  C Mikey  V Donnie');
+  const game = gui.addFolder('Game  ·  keys Z Leo  X Raph  C Mikey  V Donnie  B Saws');
   const acts = {
     god: () => { G.god = !G.god; godBtn.name(G.god ? 'God mode: ON' : 'God mode: off'); },
     // Default is read-only: saving while on it makes a new preset instead
@@ -111,6 +111,11 @@ export function buildDevPanel(look, presets, apply, G) {
   add(road, 'fresnelEdge', 0, 1.2, 0.01);
   add(road, 'dampSheen', 0, 1, 0.01);
   add(road, 'walkWet', 0, 1, 0.01);
+
+  const foot = gui.addFolder('Foot cars');
+  col(foot, 'footRacer'); col(foot, 'footTruck');
+  add(foot, 'footRough', 0, 1, 0.01); add(foot, 'footMetal', 0, 1, 0.01);
+  col(foot, 'footGlow'); add(foot, 'footStripes', 0, 3, 0.01);
 
   const heroes = gui.addFolder('Heroes');
   add(heroes, 'raphHeight', 1.5, 4, 0.01);

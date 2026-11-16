@@ -10,7 +10,7 @@ export const HW = 10.8;         // half-width of the drivable road: 6 lanes of 3
 export const WALK = 6;          // sidewalk width
 export const CURB = 0.16;
 export const LANES = [-9, -5.4, -1.8, 1.8, 5.4, 9];
-const FAC = HW + WALK;          // building fronts
+export const FAC = HW + WALK;   // building fronts
 const DEPTH = 16;               // building depth
 const RF = 150, FORK_ANG = 0.5; // Y-fork: each branch bends ~29° away on a 150 m radius
 const FORK_ARC = RF * FORK_ANG;
@@ -463,12 +463,8 @@ export class World {
     const base = lpt(p, d, side * (HW + 0.9));
     g.position.set(base.x, CURB, base.z);
     g.rotation.y = -lh(p, d);
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 7.5, 8), this.mat.pole);
-    pole.position.y = 3.75; pole.castShadow = true; g.add(pole);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.14, 0.14), this.mat.pole);
-    arm.position.set(-side * 1.1, 7.4, 0); g.add(arm);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.18, 0.45), this.mat.lamp);
-    head.position.set(-side * 2.2, 7.22, 0); g.add(head);
+    // (the pole, arm and lamp head were removed so the wagon can use the sidewalk; the light
+    // and its pool on the road stay)
     const pool = new THREE.Mesh(new THREE.PlaneGeometry(24, 24), this.mat.pool);
     pool.rotation.x = -Math.PI / 2; pool.position.set(-side * 4.5, 0.03 - CURB, 0);
     g.add(pool); this.ground.push(pool);

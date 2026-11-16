@@ -7,8 +7,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { World, HW, LANES, DECIDE_AT, path, pointAt, frameAt, yawAt, refl } from './world.js';
-import { Car, KINDS, loadCarModels } from './cars.js';
+import { World, HW, FAC, LANES, DECIDE_AT, path, pointAt, frameAt, yawAt, refl } from './world.js';
+import { Car, KINDS, FOOT_LOOK, loadCarModels } from './cars.js';
 import { FX } from './fx.js';
 import { Audio } from './audio.js';
 import { Input } from './input.js';
@@ -34,6 +34,7 @@ const LOOK_DEFAULTS = {
   roadWet: 0.8, roadDark: 0.34, fresnelBase: 0.05, fresnelEdge: 0.5, dampSheen: 0.28, walkWet: 0.2,
   raphHeight: 2.64, hatchRadius: 0.8, hatchZ: 0.5,
   shake: 1, hitStop: 1,
+  footRacer: '#7a4fd0', footTruck: '#5b4a78', footRough: 0.6, footMetal: 0, footGlow: '#000000', footStripes: 1,
 };
 // named looks the dev panel can flip between; Custom 1 = Elad's tuning, 2026-11-16
 const LOOK_PRESETS = {
@@ -224,6 +225,9 @@ function applyLook() {
     world.setGlow(L.windows, L.neonSigns);
   }
   if (player) for (const c of [player, ...enemies]) c.glow.material.opacity = (c === player ? 0.5 : 0.75) * L.underglow;
+  FOOT_LOOK.tint.racer.set(L.footRacer); FOOT_LOOK.tint.truck.set(L.footTruck);
+  FOOT_LOOK.rough = L.footRough; FOOT_LOOK.metal = L.footMetal; FOOT_LOOK.glow.set(L.footGlow); FOOT_LOOK.stripe = L.footStripes;
+  for (const e of enemies) e.applyLook();
   if (raphTop) {
     raphTop.model.scale.setScalar(L.raphHeight / raphTop.tall);
     raphTop.hatch.scale.set(L.hatchRadius, 1, L.hatchRadius);
@@ -258,7 +262,7 @@ const input = new Input(canvas);
     tex[n] = await tl.loadAsync(`/tex/${n}.jpg`);
     tex[n].colorSpace = THREE.SRGBColorSpace;
   }));
-  for (const k of ['raph', 'leo', 'mike', 'donnie']) { headTex[k] = await tl.loadAsync(`/ui/${k}.png`); headTex[k].colorSpace = THREE.SRGBColorSpace; }
+  for (const k of ['raph', 'leo', 'mike', 'donnie', 'saws']) { headTex[k] = await tl.loadAsync(`/ui/${k}.png`); headTex[k].colorSpace = THREE.SRGBColorSpace; }
   world = new World(stage, tex);
   fx = new FX(stage);
   models = await loadCarModels();
@@ -305,6 +309,7 @@ async function loadHeroes() {
   // leaves the fist on the thumb side: thumb direction with the finger direction taken out.
   L.holder.updateMatrixWorld(true);
   const V3 = THREE.Vector3;
+  L.tips = [];
   for (const side of ['Left', 'Right']) {
     const hand = L.model.getObjectByName(`mixamorig${side}Hand`);
     const f = L.model.getObjectByName(`mixamorig${side}HandMiddle1`).position.clone().normalize();
@@ -316,6 +321,7 @@ async function loadHeroes() {
     k.quaternion.setFromUnitVectors(new V3(0, 1, 0), axis);
     k.position.copy(L.model.getObjectByName(`mixamorig${side}HandMiddle1`).position).multiplyScalar(0.55);
     hand.add(k);
+    const tip = new THREE.Object3D(); tip.position.y = 1.3; k.add(tip); L.tips.push(tip);
   }
   // Raph: a touch smaller so he fits on the roof; the three clips Elad tagged THROW
   // (Sewer Shred attacks #4, #7, #8). [start, release, end] in clip seconds — release is the
@@ -353,7 +359,7 @@ async function loadHeroes() {
   const deck = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.06, 0.22, 24), [green, new THREE.MeshBasicMaterial({ color: 0x050407 }), green]); deck.position.y = 0.11; hatch.add(deck);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.07, 8, 32), rim); ring.rotation.x = Math.PI / 2; ring.position.y = 0.22; hatch.add(ring);
   // yellow lid in two halves that slide apart when a turtle comes up
-  const yellow = new THREE.MeshLambertMaterial({ color: 0xf2c21a, emissive: 0x2a1e00 });
+  const yellow = new THREE.MeshLambertMaterial({ color: 0xc99a12, emissive: 0x140e00 });   // toned down from 0xf2c21a
   hatch.userData.lid = [0, 1].map((i) => {
     const half = new THREE.Mesh(new THREE.CylinderGeometry(0.94, 0.94, 0.07, 24, 1, false, i * Math.PI, Math.PI), yellow);
     half.position.y = 0.27;
@@ -384,8 +390,10 @@ async function loadHeroes() {
   };
   const M = posed(mikeTex, MIKE_POSE);
   M.cannon = buildPizzaCannon();
-  M.cannon.scale.setScalar(M.unit);
-  M.cannon.position.copy(M.at('LeftHand').add(M.at('RightHand')).multiplyScalar(0.5));
+  // bazooka-style on his right shoulder: from the chase camera his shell hid it in his hands
+  M.cannon.scale.setScalar(M.unit * 1.25);
+  const sh = M.at('RightShoulder'), out = sh.clone().sub(M.at('LeftShoulder')).setY(0).normalize();
+  M.cannon.position.copy(sh).addScaledVector(out, 0.22 * M.unit).add(new V(0, 0.32 * M.unit, 0));
   M.cannon.rotation.y = M.face;
   M.model.add(M.cannon);
   const D = posed(donTex, DON_POSE);
@@ -420,7 +428,7 @@ function buildKatana() {
   return g;
 }
 // Mikey's pose holds both hands in front of his chest; Donnie's raises one hand overhead
-const MIKE_POSE = ['kick', 1.07];
+const MIKE_POSE = ['spin', 7.0];
 const DON_POSE = ['a7', 0.7, 'RightHand'];
 function pizzaBoxTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 128;
@@ -431,24 +439,50 @@ function pizzaBoxTexture() {
   x.fillText('PIZZA', 64, 64);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-// a shoulder-fired pizza launcher: orange tube, pizza-box magazine on top, glowing muzzle (+z)
+// Mikey's pizza gatling (+z forward): spinning three-barrel cluster with a flared muzzle, a
+// side magazine of stacked pizza boxes feeding a chute, glowing stripe, top sight with a red
+// dot and a green shell-style back cap. userData.spin is the barrel cluster (spun while firing).
 function buildPizzaCannon() {
   const g = new THREE.Group();
-  const dark = new THREE.MeshLambertMaterial({ color: 0x33363f });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x2c2f38 });
+  const steel = new THREE.MeshLambertMaterial({ color: 0x8e95a3 });
   const orange = new THREE.MeshLambertMaterial({ color: 0xff8a1e, emissive: 0x3a1600 });
-  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 1.5, 14), orange);
-  tube.rotation.x = Math.PI / 2; tube.position.z = 0.2; g.add(tube);
-  for (const z of [-0.4, 0.15, 0.85]) {
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.09, 14), dark);
-    band.rotation.x = Math.PI / 2; band.position.z = z; g.add(band);
+  const green = new THREE.MeshLambertMaterial({ color: 0x3f7a2a, emissive: 0x0a1a05 });
+  const hot = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.1, 0.2) });
+  const cyl = (r0, r1, h, m, seg = 14) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, seg), m); o.rotation.x = Math.PI / 2; return o; };
+  // receiver body
+  const body = cyl(0.24, 0.27, 0.8, orange, 8); body.position.z = -0.05; g.add(body);
+  const stripe = cyl(0.275, 0.275, 0.06, hot, 8); stripe.position.z = 0.12; g.add(stripe);
+  const stripe2 = stripe.clone(); stripe2.position.z = -0.25; g.add(stripe2);
+  // green shell cap on the back
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), green);
+  cap.rotation.x = -Math.PI / 2; cap.position.z = -0.45; g.add(cap);
+  // spinning barrel cluster
+  const spin = new THREE.Group(); spin.position.z = 0.35; g.add(spin);
+  for (let i = 0; i < 3; i++) {
+    const a = i / 3 * Math.PI * 2;
+    const tube = cyl(0.065, 0.065, 0.85, steel, 10); tube.position.set(Math.cos(a) * 0.13, Math.sin(a) * 0.13, 0.42); spin.add(tube);
+    const bore = cyl(0.045, 0.045, 0.02, hot, 10); bore.position.set(Math.cos(a) * 0.13, Math.sin(a) * 0.13, 0.86); spin.add(bore);
   }
-  const box = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.1, 0.62), [dark, dark, new THREE.MeshLambertMaterial({ map: pizzaBoxTexture() }), dark, dark, dark]);
-  box.position.set(0, 0.3, -0.05); g.add(box);
-  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.14), dark); grip.position.set(0, -0.25, -0.05); g.add(grip);
-  const muzzle = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.06, 8, 18), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.5, 0.3) }));
-  muzzle.position.z = 0.96; g.add(muzzle);
-  const tip = new THREE.Object3D(); tip.position.z = 1.15; g.add(tip);
-  g.userData.tip = tip;
+  for (const z of [0.12, 0.62]) { const clamp = cyl(0.23, 0.23, 0.07, dark, 12); clamp.position.z = z; spin.add(clamp); }
+  const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.22, 0.18, 16, 1, true), dark);
+  bell.material = new THREE.MeshLambertMaterial({ color: 0x2c2f38, side: THREE.DoubleSide });
+  bell.rotation.x = Math.PI / 2; bell.position.z = 0.83; spin.add(bell);
+  // side magazine: three pizza boxes and a chute into the receiver
+  const boxTex = new THREE.MeshLambertMaterial({ map: pizzaBoxTexture() });
+  const boxMats = [dark, dark, boxTex, dark, dark, dark];
+  for (let i = 0; i < 3; i++) {
+    const bx = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), boxMats);
+    bx.position.set(0.48, -0.12 + i * 0.09, -0.05); bx.rotation.y = (i - 1) * 0.08; g.add(bx);
+  }
+  const chute = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.3), dark); chute.position.set(0.27, 0, -0.05); g.add(chute);
+  // top sight with a red dot, and a grip
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.45), dark); rail.position.set(0, 0.29, 0); g.add(rail);
+  const sight = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.1), dark); sight.position.set(0, 0.37, 0.1); g.add(sight);
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 0.2, 0.15) })); dot.position.set(0, 0.37, 0.16); g.add(dot);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.14), dark); grip.position.set(0, -0.3, -0.1); grip.rotation.x = 0.25; g.add(grip);
+  const tip = new THREE.Object3D(); tip.position.z = 1.3; g.add(tip);
+  g.userData.tip = tip; g.userData.spin = spin; g.userData.hot = hot;
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -722,10 +756,40 @@ function wreckEnemy(e, dir, label = 'WRECKED!', big = false) {
   if (!G.cleared && G.wrecks >= MISSION.target) { G.cleared = true; banner('TARGET SMASHED!'); }
 }
 
+// The wagon may drive up onto the sidewalks, to just short of the building fronts; Foot cars
+// stay on the road. Pressing into the buildings scrapes: sparks and concrete dust at the
+// contact point, a scrape sound, and some lost speed.
+const WALK_GAP = 0.45;
+const SCRAPE_HOT = new THREE.Color(3, 2.2, 1.1), SCRAPE_WARM = new THREE.Color(2.6, 1.2, 0.3), _v3s = new THREE.Vector3();   // how close the wagon's side gets to the building line
+function scrape(c, side, dt) {
+  G.scrapeT = (G.scrapeT || 0) - dt;
+  if (G.scrapeT > 0) return;
+  G.scrapeT = 0.02; G.scrapes = (G.scrapes || 0) + 1;
+  // from the rear corner on the wall side: the chase camera sits behind and inboard of the
+  // wagon, so anything in the gap along its flank is hidden by the van itself
+  const along = -c.L / 2 + Math.random() * c.L * 0.35;
+  // just outside the van's flank, in the gap before the wall (inside the body they were hidden)
+  pointAt(c.s + along, c.u + side * (c.W / 2 + 0.15), _p).setY(0.5 + Math.random() * 1.5);
+  frameAt(c.s, _T, _R);
+  // sparks carry the wagon's speed, minus a little, so they stream back along its flank on screen
+  _n.copy(_T).multiplyScalar(c.vs - (6 + Math.random() * 10)).addScaledVector(_R, -side * (1 + Math.random() * 3)); _n.y = 2 + Math.random() * 4;
+  for (let k = 0; k < 5; k++) fx.add.emit(_p, _v3s.copy(_n).multiplyScalar(0.7 + Math.random() * 0.6), Math.random() < 0.5 ? SCRAPE_HOT : SCRAPE_WARM, 0.3 + Math.random() * 0.25, 0.35 + Math.random() * 0.3, { drag: 1.2, grav: 12 });
+  if (Math.random() < 0.35) fx.alpha.emit(_p.setY(0.6 + Math.random()), _n.copy(_T).multiplyScalar(c.vs - 3).setY(0.8), new THREE.Color(0x8c8478), 0.6, 0.6, { grow: 2.2, drag: 2, alpha: 0.3 });
+  if (Math.random() < 0.3) audio.scrape();
+}
 function walls(c, dt) {
-  const lim = HW - c.W / 2 - 0.1;
-  if (Math.abs(c.u) <= lim) return;
+  const isP = c === player;
+  const lim = isP ? FAC - c.W / 2 - WALK_GAP : HW - c.W / 2 - 0.1;
+  if (isP) {
+    // up and over the curb: lift the body by the curb height across the car's width, bump on the edge
+    const over = clamp((Math.abs(c.u) - (HW - c.W / 2)) / c.W, 0, 1);
+    if ((over > 0.5) !== !!c.onWalk) { c.onWalk = over > 0.5; c.bounce = Math.max(c.bounce, 0.35); fx.dust(pointAt(c.s - c.L / 2, Math.sign(c.u) * HW, _p).setY(0.2)); }
+    c.curbLift = over * 0.16;
+  }
+  if (Math.abs(c.u) < lim - 0.05) return;
   const side = Math.sign(c.u);
+  if (isP && G.leanNow * side > 0.2) { scrape(c, side, dt); c.vs = Math.max(SPEED.start * 0.8, c.vs - dt * 6); }
+  if (Math.abs(c.u) <= lim) return;
   c.u = side * lim;
   const into = c.vu * side;
   if (into > 0) {
@@ -749,6 +813,7 @@ const TURTLES = {
   leo: { name: 'LEO', color: 0x3b8bff, hdr: [0.5, 1.5, 4.5] },
   mike: { name: 'MIKEY', color: 0xff9a1e, hdr: [4.5, 1.9, 0.3] },
   donnie: { name: 'DONNIE', color: 0xa45cff, hdr: [2.6, 0.9, 4.5] },
+  saws: { name: 'SAWS', color: 0xffa21e, hdr: [4.2, 2.4, 0.6] },
 };
 const orbGeo = new THREE.IcosahedronGeometry(0.9, 1);
 const orbMats = Object.fromEntries(Object.entries(TURTLES).map(([k, t]) => [k, new THREE.MeshBasicMaterial({ color: new THREE.Color(...t.hdr) })]));
@@ -851,8 +916,8 @@ function updateWaves(dt) {
 // These switch on the moment they're picked up and run for a few seconds, with the turtle's
 // head and a draining ring on screen and on the wagon's back doors (the TDCars2 CombatBuffHUD /
 // rear-icon pattern).
-const BUFFS = { raph: { name: 'SAI STORM', dur: 8 }, mike: { name: 'PIZZA CANNON', dur: 8 }, donnie: { name: 'EMP PULSE', dur: 7 } };
-const BUFF_RING = { raph: new THREE.Color(1, 0.12, 0.08), mike: new THREE.Color(1, 0.42, 0.05), donnie: new THREE.Color(0.48, 0.24, 1) };   // drawn unlit to the screen, so 0..1
+const BUFFS = { raph: { name: 'SAI STORM', dur: 8 }, mike: { name: 'PIZZA CANNON', dur: 8 }, donnie: { name: 'EMP PULSE', dur: 7 }, saws: { name: 'SAW BLADES', dur: 8 } };
+const BUFF_RING = { raph: new THREE.Color(1, 0.12, 0.08), mike: new THREE.Color(1, 0.42, 0.05), donnie: new THREE.Color(0.48, 0.24, 1), saws: new THREE.Color(1, 0.62, 0.1) };   // drawn unlit to the screen, so 0..1
 const FIELD_R = 12;
 const EMP_R = 26, EMP_T = 3.5;   // pulse reach (m) and how long a hit car can't shoot (s)
 const bolts = [];   // pizzas in flight
@@ -873,26 +938,26 @@ function buildBuffProps() {
   // on the back doors: the turtle's head inside a ring that drains with the time left
   buffIcon = new THREE.Mesh(new THREE.PlaneGeometry(1.35, 1.35), new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
-    uniforms: { map: { value: headTex.mike }, uP: { value: 1 }, uCol: { value: new THREE.Color() } },
+    uniforms: { map: { value: headTex.mike }, uP: { value: 0 }, uCol: { value: new THREE.Color() }, uOn: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `uniform sampler2D map; uniform float uP; uniform vec3 uCol; varying vec2 vUv;
+    fragmentShader: `uniform sampler2D map; uniform float uP; uniform vec3 uCol; uniform float uOn; varying vec2 vUv;
 void main(){
   vec2 d = vUv - 0.5; float r = length(d);
   vec4 c = vec4(0.0);
-  if (r < 0.37) { c = texture2D(map, (d / 0.74) + 0.5); }
+  if (r < 0.37) { c = uOn > 0.5 ? texture2D(map, (d / 0.74) + 0.5) : vec4(0.02, 0.02, 0.03, smoothstep(0.37, 0.355, r)); }
   else if (r < 0.49) {
     float a = fract(atan(d.x, d.y) / 6.2831853 + 1.0);
     float on = step(a, uP);
-    c = vec4(mix(vec3(0.03, 0.03, 0.05), uCol, on), 0.9);
+    c = vec4(mix(vec3(0.03, 0.03, 0.05), uCol, on), 0.9);   // idle: the same dark track as the drained part
     c.a *= smoothstep(0.49, 0.475, r) * smoothstep(0.37, 0.385, r);
   }
   gl_FragColor = linearToOutputTexel(c);
 }`,
   }));
-  buffIcon.position.set(0, player.H * 0.58, player.L / 2 + 0.06);
-  iconOnly(buffIcon);
-  buffIcon.visible = false;
+  buffIcon.position.set(0, player.H * 0.46, player.L / 2 + 0.06);
+  iconOnly(buffIcon);   // always on the doors: empty until a power is running
   player.body.add(buffIcon);
+  buildSaws();
   pizzaMat = new THREE.MeshBasicMaterial({ map: pizzaTexture(), color: new THREE.Color(1.5, 1.4, 1.3) });
   pizzaGeo = new THREE.CylinderGeometry(0.75, 0.75, 0.14, 18);
   zapMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.8, 0.6, 1.7), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
@@ -905,11 +970,72 @@ function startBuff(kind) {
   if (kind === 'raph') { raphTop.cur = -1; raphTop.next = 0; raphTop.ride.reset().play(); }
   buffIcon.material.uniforms.map.value = headTex[kind];
   buffIcon.material.uniforms.uCol.value.copy(BUFF_RING[kind]);
-  buffIcon.visible = true;
-  banner({ raph: 'SAI STORM!', mike: 'PIZZA TIME!', donnie: 'EMP PULSE!' }[kind], kind);
+  buffIcon.material.uniforms.uOn.value = 1;
+  banner({ raph: 'SAI STORM!', mike: 'PIZZA TIME!', donnie: 'EMP PULSE!', saws: 'SAW BLADES!' }[kind], kind);
   audio.raph();
   G.powersUsed = (G.powersUsed || 0) + 1;
 }
+// SAW BLADES: two big circular saws swing out on arms from the van's sides, spinning, and cut
+// whatever they touch (SAW.dps, far above the plain grind). They glow hot while cutting.
+const SAW = { r: 0.85, out: 1.15, y: 0.95, dps: 150, push: 9, spin: 38 };
+const saws = { root: [], spin: [], rim: [], ext: 0, cut: [0, 0] };
+function buildSaws() {
+  const teeth = 20, R0 = SAW.r * 0.86, R1 = SAW.r;
+  const sh = new THREE.Shape();
+  for (let i = 0; i < teeth; i++) {
+    const a0 = i / teeth * Math.PI * 2, a1 = (i + 0.62) / teeth * Math.PI * 2;
+    if (i === 0) sh.moveTo(Math.cos(a0) * R0, Math.sin(a0) * R0); else sh.lineTo(Math.cos(a0) * R0, Math.sin(a0) * R0);
+    sh.lineTo(Math.cos(a1) * R1, Math.sin(a1) * R1);
+  }
+  sh.closePath();
+  const hole = new THREE.Path(); hole.absarc(0, 0, 0.12, 0, Math.PI * 2, true); sh.holes.push(hole);
+  const bladeGeo = new THREE.ExtrudeGeometry(sh, { depth: 0.04, bevelEnabled: false }); bladeGeo.translate(0, 0, -0.02);
+  const steel = new THREE.MeshStandardMaterial({ color: 0xd8dde6, metalness: 0.35, roughness: 0.35, emissive: 0x2a2d34 });   // full metal went black at night (nothing to reflect)
+  const dark = new THREE.MeshLambertMaterial({ color: 0x2c2f38 });
+  for (const side of [-1, 1]) {
+    const root = new THREE.Group(); player.body.add(root);
+    // the arm reaches from the body out to the hub; the blade sits in the plane of the van's side
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(1, 0.16, 0.22), dark); arm.position.x = -side * 0.5; root.add(arm);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.2, 12), dark); hub.rotation.z = Math.PI / 2; root.add(hub);
+    const spin = new THREE.Group(); spin.rotation.y = Math.PI / 2; root.add(spin);
+    const blade = new THREE.Mesh(bladeGeo, steel); blade.castShadow = true; spin.add(blade);
+    for (let k = 0; k < 6; k++) {   // slots, so the spin reads
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.05), dark);
+      const a = k / 6 * Math.PI * 2; slot.position.set(Math.cos(a) * 0.42, Math.sin(a) * 0.42, 0); slot.rotation.z = a; spin.add(slot);
+    }
+    const rimMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0, 0, 0), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(SAW.r * 0.93, 0.07, 6, 40), rimMat); spin.add(rim);
+    root.visible = false;
+    saws.root.push(root); saws.spin.push(spin); saws.rim.push(rimMat);
+  }
+}
+const SAW_HOT = new THREE.Color(3.2, 1.7, 0.5), SAW_WHITE = new THREE.Color(3, 2.6, 1.8);
+function sawSparks(at, side) {
+  frameAt(player.s, _T, _R);
+  for (let k = 0; k < 4; k++) {
+    _n.copy(_T).multiplyScalar(player.vs - (6 + Math.random() * 12)).addScaledVector(_R, side * (1 + Math.random() * 4)); _n.y = 2 + Math.random() * 6;
+    fx.add.emit(at, _n, k % 2 ? SAW_HOT : SAW_WHITE, 0.25 + Math.random() * 0.25, 0.3 + Math.random() * 0.3, { drag: 1.2, grav: 14 });
+  }
+}
+// blades swing out at the start, back in at the end; spin and heat every frame
+function updateSaws(dt) {
+  if (!saws.root.length) return;
+  const on = G.buff && G.buff.kind === 'saws';
+  saws.ext = clamp(saws.ext + (on ? dt : -dt) * 4, 0, 1);
+  const e = saws.ext * saws.ext * (3 - 2 * saws.ext);
+  for (let i = 0; i < 2; i++) {
+    const side = i ? 1 : -1, R = saws.root[i];
+    R.visible = saws.ext > 0.01;
+    R.position.set(side * (player.W / 2 - 0.4 + e * (SAW.out + 0.4)), SAW.y, 0.2);
+    R.rotation.y = side * 0.45;   // angled so the chase camera sees the blade's face, not its edge
+    R.scale.setScalar(0.4 + e * 0.6);
+    saws.spin[i].rotation.z -= dt * SAW.spin * side * (0.3 + e * 0.7);
+    saws.cut[i] = Math.max(0, saws.cut[i] - dt);
+    const h = Math.min(1, saws.cut[i] * 4);
+    saws.rim[i].color.setRGB(2.6 * h + 0.25 * e, 1.1 * h + 0.12 * e, 0.25 * h);
+  }
+}
+
 // the hatch: lid slides open, the turtle rises out of the van; when the power ends he sinks back
 // and the lid closes. A new power while someone's up swaps them through the hatch.
 const HATCH = { slide: 0.8, sink: 2.4, openRate: 5, riseRate: 3.5 };
@@ -927,7 +1053,9 @@ function updateHatch(dt) {
     h.rise = Math.max(0, h.rise - dt * HATCH.riseRate);
     if (h.rise === 0) { h.who.holder.visible = false; if (h.who === raphTop) raphTop.mixer.stopAllAction(); h.who = null; }
   } else if (!h.who && want) h.who = want;
-  if (h.who && h.who === want) {
+  const leoOut = !!G.strike;
+  if (leoOut && !h.who) h.open = Math.min(1, h.open + dt * HATCH.openRate * 1.6);
+  else if (h.who && h.who === want) {
     h.open = Math.min(1, h.open + dt * HATCH.openRate);
     if (h.open > 0.8) h.rise = Math.min(1, h.rise + dt * HATCH.riseRate);
   } else if (!h.who) h.open = Math.max(0, h.open - dt * HATCH.openRate);
@@ -942,7 +1070,7 @@ function updateHatch(dt) {
 }
 function endBuff() {
   G.buff = null;
-  if (buffIcon) buffIcon.visible = false;
+  if (buffIcon) { buffIcon.material.uniforms.uOn.value = 0; buffIcon.material.uniforms.uP.value = 0; }
 }
 
 // one lightning arc: a jagged cross-shaped ribbon (two strips) so it reads from any angle
@@ -1001,6 +1129,11 @@ function updateBuff(dt) {
     if (tgt) aimHero(M, tgt, M.face, dt, 14);
     // recoil: he rocks back along the barrel after each shot
     const kick = Math.max(0, B.fireT - 0.3) * 0.9;
+    // barrels spin up while there's something to shoot, and the stripes run hot after each shot
+    M.spinV = (M.spinV || 0) + ((tgt ? 26 : 4) - (M.spinV || 0)) * Math.min(1, dt * 3);
+    M.cannon.userData.spin.rotation.z += M.spinV * dt;
+    const heat = 1 + Math.max(0, B.fireT - 0.2) * 3;
+    M.cannon.userData.hot.color.setRGB(2.4 * heat, 1.1 * heat, 0.2 * heat);
     M.model.position.set(-Math.sin(M.face) * kick, Math.sin(G.time * 6) * 0.02, -Math.cos(M.face) * kick);
     if (tgt && B.fireT <= 0) {
       B.fireT = 0.42;
@@ -1013,6 +1146,29 @@ function updateBuff(dt) {
       bolts.push({ m, v, target: tgt, t: 0, dmg: 20, splash: 8, label: "PIZZA'D!", trail: 0xff9a2a, spin: 'flat' });
       fx.add.emit(m.position, _n.set(0, 0, 0), new THREE.Color(0xffb040), 1.6, 0.1, { grow: 0.5 });
       audio.scrape();
+    }
+  } else if (B.kind === 'saws') {
+    // side-swipe and grind: anything alongside inside the blades' reach is cut hard
+    const reach = player.W / 2 + SAW.out + SAW.r * 0.6;
+    for (const e of foot) {
+      const ds = e.s - player.s, du = e.u - player.u;
+      if (Math.abs(ds) > e.L / 2 + SAW.r || Math.abs(du) > reach + e.W / 2 || Math.abs(du) < 0.5) continue;
+      const side = Math.sign(du);
+      e.hp -= SAW.dps * dt; e.flash = Math.max(e.flash, 0.6);
+      e.vu += side * SAW.push * dt;
+      saws.cut[side > 0 ? 1 : 0] = 0.25;
+      if (Math.random() < dt * 40) {
+        pointAt(player.s + clamp(ds, -SAW.r, SAW.r), player.u + side * (player.W / 2 + SAW.out), _p).setY(SAW.y);
+        sawSparks(_p, side);
+      }
+      if (Math.random() < dt * 6) audio.scrape();
+      if (e.hp <= 0) wreckEnemy(e, side, 'SAWED!');
+    }
+    // dragged along the buildings: a shower of sparks off that blade
+    const wallSide = Math.sign(player.u);
+    if (Math.abs(player.u) > FAC - player.W / 2 - WALK_GAP - 0.1 && Math.random() < dt * 50) {
+      pointAt(player.s, player.u + wallSide * (player.W / 2 + SAW.out), _p).setY(SAW.y);
+      sawSparks(_p, wallSide); saws.cut[wallSide > 0 ? 1 : 0] = 0.25;
     }
   } else if (B.kind === 'donnie') {
     const D = donTop;
@@ -1083,7 +1239,7 @@ function throwSai(from, tgt) {
   stage.add(m);
   frameAt(player.s, _T, _R);
   const v = new THREE.Vector3().copy(_T).multiplyScalar(player.vs + 25); v.y = 5;
-  bolts.push({ m, v, target: tgt, t: 0, dmg: 28, splash: 12, label: 'SAI!', trail: 0xff3b2e, spin: 'sai' });
+  bolts.push({ m, v, target: tgt, t: 0, dmg: 28, splash: 12, label: 'SAI!', trail: 0xff3b2e, spin: 'sai', straight: true });
   audio.scrape();
 }
 
@@ -1098,11 +1254,13 @@ function updateBolts(dt) {
     }
     const to = _c.copy(d.target.group.position).setY(1).sub(d.m.position);
     const dist = to.length();
-    d.v.lerp(to.normalize().multiplyScalar(Math.max(65, player.vs + 30)), Math.min(1, dt * (2.5 + d.t * 10)));
+    if (d.straight) d.v.copy(to.normalize()).multiplyScalar(Math.max(80, player.vs + 35));   // sai: a straight line (130 was too fast to see)
+    else d.v.lerp(to.normalize().multiplyScalar(Math.max(65, player.vs + 30)), Math.min(1, dt * (2.5 + d.t * 10)));
     d.m.position.addScaledVector(d.v, dt);
     if (d.spin === 'flat') { d.m.rotation.y += dt * 20; d.m.rotation.z = 0.35; }
     else { d.m.lookAt(_l.copy(d.m.position).add(d.v)); d.m.rotateX(d.t * 40); }
-    if (Math.random() < dt * 50) fx.add.emit(d.m.position, _n.set(0, 0, 0), new THREE.Color(d.trail), 0.5, 0.22, { grow: -0.6 });
+    if (d.straight) for (let k = 0; k < 3; k++) fx.add.emit(_c.copy(d.m.position).addScaledVector(d.v, -dt * k / 3), _n.set(0, 0, 0), new THREE.Color(d.trail), 0.55, 0.3, { grow: -0.7 });
+    else if (Math.random() < dt * 50) fx.add.emit(d.m.position, _n.set(0, 0, 0), new THREE.Color(d.trail), 0.5, 0.22, { grow: -0.6 });
     if (dist < 1.9 || d.t > 3) {
       _p.copy(d.m.position);
       fx.sparks(_p, _n.set(0, 0, 0), 18, 1.2);
@@ -1124,10 +1282,18 @@ const shots = [];
 // Each Foot car has a roof cannon. It tracks the wagon all the time; for the last SHOT.charge
 // seconds before a shot the muzzle heats up and a laser sight locks on, then a glowing shell
 // flies through the air at where the wagon WAS when it fired — lean out of the line to dodge.
-const SHOT = { charge: 0.9, closing: 48, minRel: 14, hitY: 1.5, arc: 0.8 };
-const shotGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 8); shotGeo.rotateX(Math.PI / 2);
+const SHOT = { charge: 0.9, closing: 64, minRel: 14, hitY: 1.5, arc: 0.8 };
+// a shell is a pair of small glowing balls, one from each barrel, each in a soft round glow
+const shotGeo = new THREE.SphereGeometry(0.1, 10, 8);
+const roundGlow = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
 const shotMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4.5, 0.7, 3.4) });
-const haloMat = new THREE.SpriteMaterial({ color: new THREE.Color(2.2, 0.25, 1.6), transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending });
+const haloMat = new THREE.SpriteMaterial({ map: roundGlow, color: new THREE.Color(2.2, 0.25, 1.6), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending });
 function aimTurret(e, dt) {
   const T = e.turret;
   if (!T || !e.alive) return;
@@ -1148,8 +1314,11 @@ function aimTurret(e, dt) {
 }
 function fireShot(e) {
   const T = e.turret;
-  const m = new THREE.Mesh(shotGeo, shotMat);
-  const halo = new THREE.Sprite(haloMat); halo.scale.setScalar(0.8); m.add(halo);
+  const m = new THREE.Group();
+  for (const x of [-0.13, 0.13]) {
+    const ball = new THREE.Mesh(shotGeo, shotMat); ball.position.x = x; m.add(ball);
+    const halo = new THREE.Sprite(haloMat); halo.scale.setScalar(0.7); ball.add(halo);
+  }
   stage.add(m);
   T.tip.getWorldPosition(m.position);
   const y0 = m.position.y;
@@ -1207,6 +1376,64 @@ function hurt(dmg, at) {
 }
 
 const STRIKE = { fly: 0.5, back: 0.6 };
+// Leo's flight: blue light streams off both katana tips, and a few motes shed off his body.
+// Lifetimes are in game time, which crawls at 0.12x while he's out, so they linger as trails.
+const _lt = new THREE.Vector3();
+const LEO_BLUE = new THREE.Color(0.35, 0.8, 1.7), LEO_WHITE = new THREE.Color(0.9, 1.1, 1.5);
+function leoTrail(realDt) {
+  const n = Math.max(1, Math.round(realDt * 120));
+  for (const tip of leo.tips) {
+    tip.getWorldPosition(_lt);
+    for (let i = 0; i < n; i++) fx.add.emit(_lt, _n.set(0, 0, 0), i % 3 ? LEO_BLUE : LEO_WHITE, 0.14, 0.045, { grow: -0.8 });
+  }
+  if (Math.random() < realDt * 40) {
+    leo.model.getObjectByName('mixamorigSpine2').getWorldPosition(_lt);
+    _lt.add(_n.set((Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 1.2));
+    fx.add.emit(_lt, _n.set((Math.random() - 0.5) * 3, Math.random() * 2, (Math.random() - 0.5) * 3), LEO_BLUE, 0.08 + Math.random() * 0.08, 0.07, { drag: 2 });
+  }
+}
+// the cut: two crossed crescents of light facing the camera that snap open and fade, a hard
+// white streak through them, and a spray of blue sparks. Real time, so it reads in the slow-mo.
+const slashes = [];
+let slashGeo = null, streakGeo = null;
+function slashAt(pos, n) {
+  if (!slashGeo) {
+    slashGeo = new THREE.RingGeometry(0.82, 1, 40, 1, Math.PI * 0.1, Math.PI * 0.8);
+    streakGeo = new THREE.PlaneGeometry(1, 0.06);
+  }
+  const base = (n % 2 ? -1 : 1) * 0.6 + (Math.random() - 0.5) * 0.4;
+  const parts = [
+    { geo: slashGeo, rot: base, col: new THREE.Color(0.55, 1.1, 2.2), s0: 1.0, s1: 3.0 },
+    { geo: slashGeo, rot: base + Math.PI * 0.55, col: new THREE.Color(0.4, 0.85, 1.9), s0: 0.8, s1: 2.5 },
+    { geo: streakGeo, rot: base + Math.PI * 0.27, col: new THREE.Color(1.3, 1.5, 1.9), s0: 2.5, s1: 6.5, thin: true },
+  ];
+  for (const P of parts) {
+    const m = new THREE.Mesh(P.geo, new THREE.MeshBasicMaterial({ color: P.col, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    m.position.copy(pos); m.renderOrder = 5;
+    stage.add(m);
+    slashes.push({ m, t: 0, life: P.thin ? 0.16 : 0.3, ...P });
+  }
+  for (let i = 0; i < 26; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 6 + Math.random() * 10;
+    fx.add.emit(pos, _n.set(Math.cos(a) * sp, Math.random() * 6, Math.sin(a) * sp), i % 3 ? LEO_BLUE : LEO_WHITE, 0.1 + Math.random() * 0.1, 0.06 + Math.random() * 0.05, { drag: 3 });
+  }
+  fx.add.emit(pos, _n.set(0, 0, 0), LEO_WHITE, 1.0, 0.025, { grow: 1.2 });
+}
+function updateSlashes(realDt) {
+  for (let i = slashes.length - 1; i >= 0; i--) {
+    const S = slashes[i];
+    S.t += realDt;
+    const k = S.t / S.life;
+    if (k >= 1) { stage.remove(S.m); S.m.material.dispose(); slashes.splice(i, 1); continue; }
+    const e = 1 - Math.pow(1 - Math.min(1, k * 2.2), 3);   // snaps open, then holds while it fades
+    S.m.quaternion.copy(camera.quaternion);
+    S.m.rotateZ(S.rot);
+    const near = clamp(S.m.getWorldPosition(_lt).distanceTo(camera.position) / 12, 0.35, 1);
+    if (S.thin) S.m.scale.set((S.s0 + (S.s1 - S.s0) * e) * near, 1 + k * 2, 1);
+    else S.m.scale.setScalar((S.s0 + (S.s1 - S.s0) * e) * near);
+    S.m.material.opacity = 1 - k * k;
+  }
+}
 function updateStrike(realDt) {
   const st = G.strike;
   st.t += realDt; st.total += realDt;
@@ -1224,9 +1451,10 @@ function updateStrike(realDt) {
     leo.holder.position.lerpVectors(st.from, to, k).setY(THREE.MathUtils.lerp(st.from.y, to.y, k) + Math.sin(k * Math.PI) * 3);
     leo.holder.lookAt(to.x, leo.holder.position.y, to.z);
     leo.holder.rotateY(Math.PI);
+    leoTrail(realDt);
     if (k >= 1) {
+      slashAt(to.clone().setY(to.y + 0.6), st.i);
       if (e.alive) wreckEnemy(e, st.side, st.i === 0 ? 'KATANA!' : st.i === 1 ? 'DOUBLE CUT!' : 'TRIPLE CUT!', true);
-      flash(0.3);
       fx.pickupBurst(to, TURTLES.leo.color);
       st.i++; st.t = 0; st.from = to.clone();
       if (st.i >= st.hops.length) st.back = true;
@@ -1237,6 +1465,7 @@ function updateStrike(realDt) {
     const k = clamp(st.t / STRIKE.back, 0, 1);
     const home = player.group.position.clone().setY(player.H + 0.2);
     leo.holder.position.lerpVectors(st.from, home, k).setY(THREE.MathUtils.lerp(st.from.y, home.y, k) + Math.sin(k * Math.PI) * 2);
+    leoTrail(realDt);
     if (k >= 1) { G.strike = null; G.timeScale = 1; leo.holder.visible = false; fx.pickupBurst(player.group.position.clone().setY(2), 0x5aa8ff); }
   }
 }
@@ -1413,7 +1642,7 @@ function step(dt, realDt) {
   player.vs = clamp(player.vs, cruise * 0.72, cruise * 1.08);
 
   // place everything
-  if (player.wreck) player.stepWreck(dt); else player.place(dt);
+  if (player.wreck) player.stepWreck(dt); else { player.place(dt); player.group.position.y += player.curbLift || 0; }
   for (const e of enemies) {
     if (!e.active) continue;
     if (e.alive) {
@@ -1432,7 +1661,7 @@ function step(dt, realDt) {
   if (Math.abs(player.vu) > 4 && Math.random() < dt * 20) fx.dust(pointAt(player.s - player.L / 2, player.u - Math.sign(player.vu) * player.W / 2, _p).setY(0.2));
 
   if (G.state === 'play') { updateOrbs(dt); tryPower(); }
-  updateShots(dt); updateWaves(dt); updateBuff(dt); updateHatch(dt);
+  updateShots(dt); updateWaves(dt); updateBuff(dt); updateHatch(realDt); updateSlashes(realDt); updateSaws(dt);
   if (G.hp < 40 && G.state === 'play' && Math.random() < dt * 18) fx.smoke(_p.copy(player.group.position).setY(player.H), 0.15);
   if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 1; }
 
@@ -1503,7 +1732,7 @@ window.addEventListener('keydown', (e) => {
   // dev hotkeys: summon a power without its pickup. Leo is back-dated past his 6 s wait so he
   // goes as soon as there's any car in reach.
   if (DEV && G.state === 'play') {
-    const kind = { KeyZ: 'leo', KeyX: 'raph', KeyC: 'mike', KeyV: 'donnie' }[e.code];
+    const kind = { KeyZ: 'leo', KeyX: 'raph', KeyC: 'mike', KeyV: 'donnie', KeyB: 'saws' }[e.code];
     if (kind === 'leo') { G.power = 'leo'; G.powerAt = G.time - 10; popupAt(player.group.position.clone().setY(2.5), 'LEO READY!', 'big'); }
     else if (kind) startBuff(kind);
   }
@@ -1529,4 +1758,4 @@ function autoLean() {
   const du = best.u - player.u;
   return Math.abs(best.s - player.s) < 6 ? Math.sign(du) : clamp(du * 0.5, -1, 1);
 }
-window.__game = { G, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, get mikeTop() { return mikeTop; }, get donTop() { return donTop; }, sky, scene, stage, renderer, composer, get world() { return world; } };
+window.__game = { G, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, hatchS, get fx() { return fx; }, get mikeTop() { return mikeTop; }, get donTop() { return donTop; }, sky, scene, stage, renderer, composer, get world() { return world; } };
