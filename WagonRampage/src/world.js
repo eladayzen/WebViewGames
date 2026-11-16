@@ -85,17 +85,22 @@ function tiledBox(w, h, d, tileW, tileH, uOff = 0) {
 }
 
 // ── Wet street: puddles carry a screen-space planar reflection rendered by main.js ──
-export const refl = { tRefl: { value: null }, uRes: { value: new THREE.Vector2(1, 1) } };
+export const refl = { tRefl: { value: null }, uRes: { value: new THREE.Vector2(1, 1) },
+  uF0: { value: 0.06 }, uF1: { value: 0.5 }, uSheen: { value: 0.3 } };
+// returns the material; its own wet/dark uniforms are on mat.userData.wet for the dev panel
 function makeWet(mat, wet, dark) {
+  const U = { uWet: { value: wet }, uDark: { value: dark } };
+  mat.userData.wet = U;
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.tRefl = refl.tRefl; sh.uniforms.uRes = refl.uRes;
-    sh.uniforms.uWet = { value: wet }; sh.uniforms.uDark = { value: dark };
+    sh.uniforms.uWet = U.uWet; sh.uniforms.uDark = U.uDark;
+    sh.uniforms.uF0 = refl.uF0; sh.uniforms.uF1 = refl.uF1; sh.uniforms.uSheen = refl.uSheen;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-varying vec3 vWPos; uniform sampler2D tRefl; uniform vec2 uRes; uniform float uWet; uniform float uDark;
+varying vec3 vWPos; uniform sampler2D tRefl; uniform vec2 uRes; uniform float uWet; uniform float uDark; uniform float uF0; uniform float uF1; uniform float uSheen;
 float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
   return mix(mix(h21(i), h21(i+vec2(1,0)), f.x), mix(h21(i+vec2(0,1)), h21(i+vec2(1,1)), f.x), f.y); }`)
@@ -103,7 +108,7 @@ float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
 {
   float pud = smoothstep(0.5, 0.72, vn(vWPos.xz * 0.11) * 0.65 + vn(vWPos.xz * 0.43) * 0.35);
   vec3 vd = normalize(vViewPosition);
-  float fres = 0.14 + 0.7 * pow(1.0 - clamp(dot(normal, vd), 0.0, 1.0), 3.0);
+  float fres = uF0 + uF1 * pow(1.0 - clamp(dot(normal, vd), 0.0, 1.0), 4.0);
   vec2 jit = vec2((vn(vWPos.xz * 3.1) - 0.5) * mix(0.012, 0.004, pud), 0.0);
   vec2 uv0 = gl_FragCoord.xy / uRes + jit;
   float st = mix(0.05, 0.018, pud);
@@ -111,7 +116,7 @@ float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
   float dz = h21(gl_FragCoord.xy);
   for (int i = 0; i < 8; i++) { float t = (float(i) + dz) / 8.0; float wt = 1.0 - t * 0.75; rc += texture2D(tRefl, uv0 + vec2((dz - 0.5) * 0.004, t * st)).rgb * wt; ws += wt; }
   rc /= ws;
-  float w = uWet * mix(0.5, 1.0, pud) * fres;
+  float w = uWet * mix(uSheen, 1.0, pud) * fres;
   gl_FragColor.rgb = gl_FragColor.rgb * (1.0 - uDark * mix(0.55, 1.0, pud)) + rc * w;
 }`);
   };
@@ -145,8 +150,8 @@ export class World {
     GLOW.warm = glowTex('rgba(255,196,120,1)'); GLOW.purple = glowTex('rgba(170,90,255,1)'); GLOW.green = glowTex('rgba(120,255,110,1)');
     const facade = (map, glow, em, tint = 0xffffff) => new THREE.MeshLambertMaterial({ map: rep(map), emissiveMap: rep(glow), emissive: em, color: tint });
     this.mat = {
-      road: makeWet(new THREE.MeshLambertMaterial({ map: rep(tex.asphalt), color: 0x8a8ca8 }), 1.0, 0.42),
-      walk: makeWet(new THREE.MeshLambertMaterial({ map: rep(tex.sidewalk), color: 0x9a96b0 }), 0.45, 0.25),
+      road: makeWet(new THREE.MeshLambertMaterial({ map: rep(tex.asphalt), color: 0x8a8ca8 }), 0.6, 0.3),
+      walk: makeWet(new THREE.MeshLambertMaterial({ map: rep(tex.sidewalk), color: 0x9a96b0 }), 0.15, 0.12),
       curb: new THREE.MeshLambertMaterial({ color: 0x5a5666 }),
       white: new THREE.MeshLambertMaterial({ color: 0xe8e6de, emissive: 0x2a2a30 }),
       yellow: new THREE.MeshLambertMaterial({ color: 0xffc42e, emissive: 0x3a2a00 }),
@@ -158,11 +163,11 @@ export class World {
       pole: new THREE.MeshLambertMaterial({ color: 0x1f2a26 }),
       lamp: new THREE.MeshBasicMaterial({ color: hdr(1.25, 1.05, 0.75) }),   // soft bulb: the light is the pool, not the glare
       manhole: new THREE.MeshLambertMaterial({ color: 0x2a2833 }),
-      pool: new THREE.MeshBasicMaterial({ map: GLOW.warm, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.5, polygonOffset: true, polygonOffsetFactor: -2 }),
+      pool: new THREE.MeshBasicMaterial({ map: GLOW.warm, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.3, polygonOffset: true, polygonOffsetFactor: -2 }),
       arrow: new THREE.MeshBasicMaterial({ map: arrowTex(), transparent: true, depthWrite: false, color: hdr(0.85, 0.75, 0.22), polygonOffset: true, polygonOffsetFactor: -3 }),
     };
     // upper floors: four facades × colour casts, so neighbours rarely match
-    const W = hdr(1.3, 1.1, 0.85), Wo = hdr(1.1, 1.08, 1.05), W2 = hdr(1.4, 1.2, 0.95), Wo2 = hdr(1.25, 1.2, 1.12);
+    const W = hdr(0.95, 0.85, 0.68), Wo = hdr(0.85, 0.85, 0.85), W2 = hdr(1.0, 0.9, 0.72), Wo2 = hdr(0.92, 0.9, 0.86);
     this.uppers = [
       { m: facade(tex.brick_n, tex.brick_glow, W), tw: 9, brick: true },
       { m: facade(tex.brick_n, tex.brick_glow, W, 0xc8b8ff), tw: 9, brick: true },
@@ -181,7 +186,7 @@ export class World {
     this.neonMats = [0, 1, 2, 3].map((i) => {
       const t = tex.neon.clone(); t.needsUpdate = true;
       t.repeat.set(0.5, 0.5); t.offset.set((i % 2) * 0.5, i < 2 ? 0.5 : 0);
-      return new THREE.MeshBasicMaterial({ map: t, color: hdr(1.7, 1.7, 1.7), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      return new THREE.MeshBasicMaterial({ map: t, color: hdr(1.05, 1.05, 1.05), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     });
     this.base = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), new THREE.MeshLambertMaterial({ color: 0x17141f }));
     this.base.rotation.x = -Math.PI / 2;
@@ -211,6 +216,14 @@ export class World {
     this.vents = this.vents.filter((l) => !inside(l.g));
   }
   setGroundVisible(v) { for (const m of this.ground) m.visible = v; }
+  // dev-panel knobs: window glow and neon-sign brightness as multipliers on the authored values
+  setGlow(windows, signs) {
+    for (const m of [...this.uppers.map((u) => u.m), ...this.grounds, this.mat.tower]) {
+      m.userData.em0 ??= m.emissive.clone();
+      m.emissive.copy(m.userData.em0).multiplyScalar(windows);
+    }
+    for (const m of this.neonMats) m.color.setScalar(signs);
+  }
   routeLamps() { return this.lamps.filter((l) => path.pieces.includes(l.p)); }
   routeVents() { return this.vents.filter((l) => path.pieces.includes(l.p)); }
 

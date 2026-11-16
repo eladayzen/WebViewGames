@@ -12,6 +12,7 @@ import { Car, KINDS, loadCarModels } from './cars.js';
 import { FX } from './fx.js';
 import { Audio } from './audio.js';
 import { Input } from './input.js';
+import { devPanelWanted, loadSavedLook, buildDevPanel } from './devpanel.js';
 
 // ── Tuning ───────────────────────────────────────────────────────────────────
 const MISSION = { time: 90, target: 12, stars: [12, 20, 28] };
@@ -22,6 +23,34 @@ const COMBO_WINDOW = 4.5;
 const ORB_EVERY = 11;                         // seconds between Raph pickups
 
 const $ = (id) => document.getElementById(id);
+
+// ── Look: every tunable render value in one place (the dev panel edits these live) ────
+const LOOK_DEFAULTS = {
+  exposure: 1.2, saturation: 1.1, contrast: 1.05, vignette: 0.35, speedBlur: 1,
+  bloomStrength: 0.6, bloomRadius: 0.55, bloomThreshold: 0.92,
+  sunIntensity: 2.4, sunColor: '#aab8ff', sunAzimuth: -60, sunElevation: 50,
+  hemiIntensity: 0.9, hemiSky: '#8890d0', hemiGround: '#241a2c',
+  lampLight: 34, lampPool: 0.38, neonLight: 44, windows: 1.15, neonSigns: 1.3, underglow: 0.7, fogDensity: 0.0052,
+  roadWet: 0.8, roadDark: 0.34, fresnelBase: 0.05, fresnelEdge: 0.5, dampSheen: 0.28, walkWet: 0.2,
+  raphHeight: 2.64, hatchRadius: 0.8, hatchZ: 0.5,
+  shake: 1, hitStop: 1,
+};
+// named looks the dev panel can flip between; Custom 1 = Elad's tuning, 2026-11-16
+const LOOK_PRESETS = {
+  Default: LOOK_DEFAULTS,
+  'Custom 1': {
+    exposure: 2.12, saturation: 1.08, contrast: 0.96, vignette: 0.8, speedBlur: 1,
+    bloomStrength: 1, bloomRadius: 1, bloomThreshold: 1.23,
+    sunIntensity: 3.95, sunColor: '#000000', sunAzimuth: -60, sunElevation: 50,
+    hemiIntensity: 0.9, hemiSky: '#ffffff', hemiGround: '#755e87',
+    lampLight: 57, lampPool: 0.44, neonLight: 44, windows: 0.37, neonSigns: 0.33, underglow: 0.49, fogDensity: 0.0036,
+    roadWet: 1.14, roadDark: 0.14, fresnelBase: 0.165, fresnelEdge: 0.93, dampSheen: 0.22, walkWet: 0.16,
+    raphHeight: 2.64, hatchRadius: 0.8, hatchZ: 0.5,
+  },
+};
+const LOOK = { ...LOOK_DEFAULTS };
+const DEV = devPanelWanted();
+if (DEV) loadSavedLook(LOOK);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -32,7 +61,7 @@ const DPR = Math.min(1.5, window.devicePixelRatio || 1);
 renderer.setPixelRatio(DPR);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.3;
+renderer.toneMappingExposure = LOOK.exposure;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
@@ -42,12 +71,12 @@ scene.add(stage);
 
 // Night sky: deep blue overhead, a sodium-purple city glow at the horizon. Symmetric in |y|
 // so its reflection in the wet road matches.
-const HORIZON = new THREE.Color(0x4a58c8), ZENITH = new THREE.Color(0x070b30), BAND = new THREE.Color(0xd060d8);
+const HORIZON = new THREE.Color(0x3a4580), ZENITH = new THREE.Color(0x080b22), BAND = new THREE.Color(0x9a5aa8);
 const sky = new THREE.Mesh(new THREE.SphereGeometry(500, 24, 12), new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false, fog: false,
   uniforms: { cH: { value: HORIZON }, cZ: { value: ZENITH }, cB: { value: BAND } },
   vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; }',
-  fragmentShader: 'uniform vec3 cH; uniform vec3 cZ; uniform vec3 cB; varying vec3 vD; void main(){ float y = abs(vD.y); float h = pow(clamp(y*1.8, 0.0, 1.0), 0.55); vec3 c = mix(cH, cZ, h) + cB * exp(-y * 14.0) * 0.55; gl_FragColor = vec4(c, 1.0); }',
+  fragmentShader: 'uniform vec3 cH; uniform vec3 cZ; uniform vec3 cB; varying vec3 vD; void main(){ float y = abs(vD.y); float h = pow(clamp(y*1.8, 0.0, 1.0), 0.55); vec3 c = mix(cH, cZ, h) + cB * exp(-y * 14.0) * 0.3; gl_FragColor = vec4(c, 1.0); }',
 }));
 sky.renderOrder = -1;
 scene.add(sky);
@@ -62,11 +91,12 @@ const camera = new THREE.PerspectiveCamera(52, 1, 0.5, 1100);
   THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
 float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
 float fy = abs(normalize(vFogDir).y);
-vec3 skyC = mix(${v3(HORIZON)}, ${v3(ZENITH)}, pow(clamp(fy * 1.8, 0.0, 1.0), 0.55)) + ${v3(BAND)} * exp(-fy * 14.0) * 0.55;
+vec3 skyC = mix(${v3(HORIZON)}, ${v3(ZENITH)}, pow(clamp(fy * 1.8, 0.0, 1.0), 0.55)) + ${v3(BAND)} * exp(-fy * 14.0) * 0.3;
 gl_FragColor.rgb = mix( gl_FragColor.rgb, skyC, fogFactor );
 #endif`;
 }
-scene.add(new THREE.HemisphereLight(0x8090ff, 0x2a1838, 1.05));
+const hemi = new THREE.HemisphereLight(0x8890d0, 0x241a2c, 0.9);
+scene.add(hemi);
 // moonlight: the one shadow-caster, cool and low so cars sit on the road
 const sun = new THREE.DirectionalLight(0x90a8ff, 1.0);
 sun.castShadow = true;
@@ -75,11 +105,11 @@ Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, n
 sun.shadow.bias = -0.0008;
 scene.add(sun, sun.target);
 // real warm light from the nearest street lamps (pooled, re-hung every frame)
-const lampLights = Array.from({ length: 4 }, () => { const l = new THREE.PointLight(0xffb060, 42, 36, 1.4); scene.add(l); return l; });
+const lampLights = Array.from({ length: 4 }, () => { const l = new THREE.PointLight(0xffb878, 24, 32, 1.5); scene.add(l); return l; });
 // neon spill from the shopfronts: magenta / cyan / amber pools fixed along the street (every
 // 34 m, alternating sides) so the cars and the wet road pick up colour as they pass
-const NEON_COLS = [0xff2fc8, 0x26c4ff, 0xff7a1e, 0x8a4dff];
-const neonLights = Array.from({ length: 3 }, () => { const l = new THREE.PointLight(0xffffff, 70, 30, 1.5); scene.add(l); return l; });
+const NEON_COLS = [0xd860b0, 0x60a8d8, 0xd89050, 0x9070d0];
+const neonLights = Array.from({ length: 3 }, () => { const l = new THREE.PointLight(0xffffff, 26, 26, 1.6); scene.add(l); return l; });
 // the wagon's headlights
 const head = new THREE.SpotLight(0xfff0d8, 160, 55, 0.55, 0.7, 1.3);
 scene.add(head, head.target);
@@ -89,15 +119,15 @@ scene.add(head, head.target);
 // post: bloom on everything bright (windows, neon, lamps, fire), then tone map
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.85, 0.6, 0.85);
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.45, 0.5, 1.0);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 // grade: punchier saturation and contrast, cool shadows, vignette, and a speed blur that
 // streaks only the screen edges (the centre - the wagon and the targets - stays sharp)
 const grade = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, uSpeed: { value: 0 }, uAspect: { value: 1.78 } },
+  uniforms: { tDiffuse: { value: null }, uSpeed: { value: 0 }, uAspect: { value: 1.78 }, uSat: { value: 1 }, uCon: { value: 1 }, uVig: { value: 0.4 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float uSpeed; uniform float uAspect; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uSpeed; uniform float uAspect; uniform float uSat; uniform float uCon; uniform float uVig; varying vec2 vUv;
 void main(){
   vec2 d = vUv - vec2(0.5, 0.42);
   float r = length(d * vec2(uAspect, 1.0)) / uAspect * 1.6;
@@ -105,10 +135,10 @@ void main(){
   float b = uSpeed * smoothstep(0.5, 1.1, r) * 0.025;
   if (b > 0.0005) { for (int i = 1; i <= 5; i++) c += texture2D(tDiffuse, vUv - d * b * float(i)).rgb; c /= 6.0; }
   float l = dot(c, vec3(0.299, 0.587, 0.114));
-  c = mix(vec3(l), c, 1.25);
-  c = (c - 0.5) * 1.07 + 0.5;
-  c += vec3(-0.012, 0.0, 0.035) * (1.0 - l);
-  c *= mix(1.0, 0.6, smoothstep(0.55, 1.25, r));
+  c = mix(vec3(l), c, uSat);
+  c = (c - 0.5) * uCon + 0.5;
+  c += vec3(-0.006, 0.0, 0.015) * (1.0 - l);
+  c *= mix(1.0, 1.0 - uVig, smoothstep(0.55, 1.25, r));
   gl_FragColor = vec4(max(c, 0.0), 1.0);
 }`,
 });
@@ -154,9 +184,57 @@ function renderReflection() {
   world.setGroundVisible(true);
   stage.scale.y = 1;
 }
+// turtle-head icons (pickups, back doors) live on their own layer and are drawn after the whole
+// post chain, straight to the screen: no lights, fog, tone mapping, grade or bloom — the PNG as is
+const ICON_LAYER = 1;
+function iconOnly(o) { o.layers.set(ICON_LAYER); o.renderOrder = 10; o.material.toneMapped = false; o.material.fog = false; return o; }
 function render() {
   if (world && !window.__noRefl) renderReflection();
   composer.render();
+  const bg = scene.background, fog = scene.fog;
+  scene.background = null; scene.fog = null;
+  camera.layers.set(ICON_LAYER);
+  renderer.autoClear = false;
+  renderer.setRenderTarget(null);
+  renderer.clearDepth();
+  renderer.render(scene, camera);
+  renderer.autoClear = true;
+  camera.layers.set(0);
+  scene.background = bg; scene.fog = fog;
+}
+
+const sunOff = new THREE.Vector3(-22, 40, 12);
+function applyLook() {
+  const L = LOOK;
+  renderer.toneMappingExposure = L.exposure;
+  grade.uniforms.uSat.value = L.saturation; grade.uniforms.uCon.value = L.contrast; grade.uniforms.uVig.value = L.vignette;
+  bloom.strength = L.bloomStrength; bloom.radius = L.bloomRadius; bloom.threshold = L.bloomThreshold;
+  sun.intensity = L.sunIntensity; sun.color.set(L.sunColor);
+  const az = THREE.MathUtils.degToRad(L.sunAzimuth), el = THREE.MathUtils.degToRad(L.sunElevation);
+  sunOff.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiplyScalar(48);
+  hemi.intensity = L.hemiIntensity; hemi.color.set(L.hemiSky); hemi.groundColor.set(L.hemiGround);
+  for (const l of lampLights) l.intensity = L.lampLight;
+  for (const l of neonLights) l.intensity = L.neonLight;
+  scene.fog.density = L.fogDensity;
+  refl.uF0.value = L.fresnelBase; refl.uF1.value = L.fresnelEdge; refl.uSheen.value = L.dampSheen;
+  if (world) {
+    world.mat.road.userData.wet.uWet.value = L.roadWet; world.mat.road.userData.wet.uDark.value = L.roadDark;
+    world.mat.walk.userData.wet.uWet.value = L.walkWet;
+    world.mat.pool.opacity = L.lampPool;
+    world.setGlow(L.windows, L.neonSigns);
+  }
+  if (player) for (const c of [player, ...enemies]) c.glow.material.opacity = (c === player ? 0.5 : 0.75) * L.underglow;
+  if (raphTop) {
+    raphTop.model.scale.setScalar(L.raphHeight / raphTop.tall);
+    raphTop.hatch.scale.set(L.hatchRadius, 1, L.hatchRadius);
+    raphTop.hatch.position.set(0, models.wagon.roofY - 0.12, L.hatchZ);
+    for (const H of [raphTop, mikeTop, donTop]) {
+      if (!H) continue;
+      if (H !== raphTop) H.model.scale.setScalar(L.raphHeight / H.tall);
+      H.baseY = models.wagon.roofY + 0.08;
+      H.holder.position.set(0, H.baseY, L.hatchZ);
+    }
+  }
 }
 
 // ── Game state ───────────────────────────────────────────────────────────────
@@ -165,7 +243,7 @@ const G = {
   combo: 1, comboT: 0, bestCombo: 1, paused: false, timeScale: 1, hitStop: 0,
   shake: 0, orbT: 4, power: null, strike: null, knockT: 0, cleared: false, hp: 100, hurtV: 0, slowT: 0,
 };
-let world, fx, player, models, leo, raphTop;
+let world, fx, player, models, leo, raphTop, mikeTop, donTop;
 const enemies = [];
 const orbs = [];
 const headTex = {};
@@ -187,8 +265,10 @@ const input = new Input(canvas);
   player = new Car('wagon', models.wagon, stage);
   for (let i = 0; i < 5; i++) enemies.push(new Car('racer', models.racer, stage));
   for (let i = 0; i < 2; i++) enemies.push(new Car('truck', models.truck, stage));
-  ({ leo, raphTop } = await loadHeroes());
+  ({ leo, raphTop, mikeTop, donTop } = await loadHeroes());
   buildBuffProps();
+  applyLook();
+  if (DEV) buildDevPanel(LOOK, LOOK_PRESETS, applyLook, G);
   $('loading').classList.add('hidden');
   startRun();
   requestAnimationFrame(loop);
@@ -221,12 +301,29 @@ async function loadHeroes() {
   stage.add(L.holder);
   L.flip = L.mixer.clipAction(THREE.AnimationClip.parse(clips.flip));
   L.flip.setLoop(THREE.LoopOnce); L.flip.clampWhenFinished = true;
+  // twin glowing katanas, one per hand bone so they follow every frame of the flip. The blade
+  // leaves the fist on the thumb side: thumb direction with the finger direction taken out.
+  L.holder.updateMatrixWorld(true);
+  const V3 = THREE.Vector3;
+  for (const side of ['Left', 'Right']) {
+    const hand = L.model.getObjectByName(`mixamorig${side}Hand`);
+    const f = L.model.getObjectByName(`mixamorig${side}HandMiddle1`).position.clone().normalize();
+    const t = L.model.getObjectByName(`mixamorig${side}HandThumb1`).position.clone();
+    const axis = t.sub(f.clone().multiplyScalar(t.dot(f))).normalize();
+    const k = buildKatana();
+    const ws = hand.getWorldScale(new V3());
+    k.scale.setScalar(1 / ws.x);
+    k.quaternion.setFromUnitVectors(new V3(0, 1, 0), axis);
+    k.position.copy(L.model.getObjectByName(`mixamorig${side}HandMiddle1`).position).multiplyScalar(0.55);
+    hand.add(k);
+  }
   // Raph: a touch smaller so he fits on the roof; the three clips Elad tagged THROW
   // (Sewer Shred attacks #4, #7, #8). [start, release, end] in clip seconds — release is the
   // forearm's peak speed, measured from the clip data.
-  const R = make(2.2, null);
+  const R = make(1, null);
+  R.tall = tall;
   R.holder.position.set(0, models.wagon.roofY - 0.05, 0.5);
-  player.group.add(R.holder);
+  player.body.add(R.holder);   // on the body, so he rolls with the wagon
   R.hand = R.model.getObjectByName('mixamorigRightHand');
   R.throws = [['a8', 0.0, 0.3, 0.75], ['a7', 0.35, 0.87, 1.35], ['a4', 0.7, 1.22, 1.7]].map(([k, a, rel, b]) => {
     const act = R.mixer.clipAction(THREE.AnimationClip.parse(throws[k]));
@@ -234,7 +331,148 @@ async function loadHeroes() {
     return { act, a, rel, b };
   });
   R.ride = R.mixer.clipAction(THREE.AnimationClip.parse(clips.ride));
-  return { leo: L, raphTop: R };
+  // each throw twists his body: measure where his chest points at the release frame (shoulder
+  // line, in the holder's frame) so he can be turned by target-minus-twist and actually face
+  // the car when the sai leaves his hand (measured 90-170 degrees off without this)
+  const V = THREE.Vector3, Ls = new V(), Rs = new V();
+  const sL = R.model.getObjectByName('mixamorigLeftShoulder'), sR = R.model.getObjectByName('mixamorigRightShoulder');
+  for (const t of R.throws) {
+    R.mixer.stopAllAction();
+    t.act.reset().play(); t.act.time = t.rel; R.mixer.update(0);
+    R.holder.updateMatrixWorld(true);
+    R.holder.worldToLocal(sL.getWorldPosition(Ls)); R.holder.worldToLocal(sR.getWorldPosition(Rs));
+    const f = new V(0, 1, 0).cross(Rs.sub(Ls));
+    t.face = Math.atan2(f.x, f.z);
+  }
+  R.mixer.stopAllAction();
+  // a turret-style hatch ring under his feet hides the open sunroof he's standing in
+  const hatch = new THREE.Group();
+  const green = new THREE.MeshLambertMaterial({ color: 0x46692a });
+  const rim = new THREE.MeshLambertMaterial({ color: 0x2b2f22 });
+  // green sides, a black unlit top: under the lid it reads as a hole into the van
+  const deck = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.06, 0.22, 24), [green, new THREE.MeshBasicMaterial({ color: 0x050407 }), green]); deck.position.y = 0.11; hatch.add(deck);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.07, 8, 32), rim); ring.rotation.x = Math.PI / 2; ring.position.y = 0.22; hatch.add(ring);
+  // yellow lid in two halves that slide apart when a turtle comes up
+  const yellow = new THREE.MeshLambertMaterial({ color: 0xf2c21a, emissive: 0x2a1e00 });
+  hatch.userData.lid = [0, 1].map((i) => {
+    const half = new THREE.Mesh(new THREE.CylinderGeometry(0.94, 0.94, 0.07, 24, 1, false, i * Math.PI, Math.PI), yellow);
+    half.position.y = 0.27;
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 1.88), rim); seam.position.x = 0; half.add(seam);
+    hatch.add(half);
+    return half;
+  });
+  hatch.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  player.body.add(hatch);   // always up: the roof's turret ring, manned during a power
+  R.hatch = hatch;
+  // Mikey and Donnie: the same rig recoloured (tools/recolor-turtle.py), each frozen in one
+  // pose found by tools/pose-probe.mjs, and stood in the hatch like Raph
+  const texOf = async (n) => { const t = await new THREE.TextureLoader().loadAsync(`/models/${n}_tex.jpg`); t.colorSpace = THREE.SRGBColorSpace; t.flipY = false; return t; };
+  const [mikeTex, donTex] = await Promise.all([texOf('mike'), texOf('donnie')]);
+  const all = { ...clips, ...throws };
+  const posed = (tex, [clip, t]) => {
+    const H = make(1, tex); H.tall = tall;
+    player.body.add(H.holder);
+    const act = H.mixer.clipAction(THREE.AnimationClip.parse(all[clip]));
+    act.play(); act.time = t; act.paused = true; H.mixer.update(0);
+    H.model.updateMatrixWorld(true);
+    // bone positions in the model's own (unscaled) frame, so props parented to it stay put at any height
+    H.at = (n) => H.model.worldToLocal(H.model.getObjectByName('mixamorig' + n).getWorldPosition(new V()));
+    const f = new V(0, 1, 0).cross(H.at('RightShoulder').sub(H.at('LeftShoulder')));
+    H.face = Math.atan2(f.x, f.z);
+    H.unit = tall / 2.64;   // one metre (at the default 2.64 m height) in model units
+    return H;
+  };
+  const M = posed(mikeTex, MIKE_POSE);
+  M.cannon = buildPizzaCannon();
+  M.cannon.scale.setScalar(M.unit);
+  M.cannon.position.copy(M.at('LeftHand').add(M.at('RightHand')).multiplyScalar(0.5));
+  M.cannon.rotation.y = M.face;
+  M.model.add(M.cannon);
+  const D = posed(donTex, DON_POSE);
+  D.device = buildEmitter();
+  D.device.scale.setScalar(D.unit);
+  D.device.position.copy(D.at(DON_POSE[2]));
+  D.model.add(D.device);
+  return { leo: L, raphTop: R, mikeTop: M, donTop: D };
+}
+
+// Leo's katana, in metres along +y from the middle of the grip: wrapped hilt, gold guard, and
+// a blade that glows blue (HDR colour, so the bloom picks it up) inside a soft additive halo
+let katanaParts = null;
+function buildKatana() {
+  if (!katanaParts) {
+    const blade = new THREE.BoxGeometry(0.05, 1.05, 0.016); blade.translate(0, 0.72, 0);
+    const tip = new THREE.ConeGeometry(0.035, 0.12, 4); tip.translate(0, 1.3, 0); tip.scale(1, 1, 0.32);
+    const halo = new THREE.BoxGeometry(0.16, 1.2, 0.16); halo.translate(0, 0.75, 0);
+    katanaParts = {
+      hilt: new THREE.CylinderGeometry(0.03, 0.03, 0.34, 8),
+      guard: new THREE.CylinderGeometry(0.08, 0.08, 0.025, 12).translate(0, 0.18, 0),
+      blade: mergeGeometries([blade, tip]), halo,
+      hiltMat: new THREE.MeshLambertMaterial({ color: 0x1d2440 }),
+      guardMat: new THREE.MeshLambertMaterial({ color: 0xc9a23a, emissive: 0x2a1c00 }),
+      bladeMat: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.2, 2.4, 4.2) }),
+      haloMat: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.15, 0.4, 1.0), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }),
+    };
+  }
+  const P = katanaParts, g = new THREE.Group();
+  g.add(new THREE.Mesh(P.hilt, P.hiltMat), new THREE.Mesh(P.guard, P.guardMat), new THREE.Mesh(P.blade, P.bladeMat), new THREE.Mesh(P.halo, P.haloMat));
+  g.traverse((o) => { o.frustumCulled = false; });
+  return g;
+}
+// Mikey's pose holds both hands in front of his chest; Donnie's raises one hand overhead
+const MIKE_POSE = ['kick', 1.07];
+const DON_POSE = ['a7', 0.7, 'RightHand'];
+function pizzaBoxTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  x.fillStyle = '#e9dcc0'; x.fillRect(0, 0, 128, 128);
+  x.strokeStyle = '#b4382a'; x.lineWidth = 6; x.strokeRect(8, 8, 112, 112);
+  x.fillStyle = '#c9281c'; x.font = 'bold 30px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('PIZZA', 64, 64);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+// a shoulder-fired pizza launcher: orange tube, pizza-box magazine on top, glowing muzzle (+z)
+function buildPizzaCannon() {
+  const g = new THREE.Group();
+  const dark = new THREE.MeshLambertMaterial({ color: 0x33363f });
+  const orange = new THREE.MeshLambertMaterial({ color: 0xff8a1e, emissive: 0x3a1600 });
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 1.5, 14), orange);
+  tube.rotation.x = Math.PI / 2; tube.position.z = 0.2; g.add(tube);
+  for (const z of [-0.4, 0.15, 0.85]) {
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.09, 14), dark);
+    band.rotation.x = Math.PI / 2; band.position.z = z; g.add(band);
+  }
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.1, 0.62), [dark, dark, new THREE.MeshLambertMaterial({ map: pizzaBoxTexture() }), dark, dark, dark]);
+  box.position.set(0, 0.3, -0.05); g.add(box);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.14), dark); grip.position.set(0, -0.25, -0.05); g.add(grip);
+  const muzzle = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.06, 8, 18), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.5, 0.3) }));
+  muzzle.position.z = 0.96; g.add(muzzle);
+  const tip = new THREE.Object3D(); tip.position.z = 1.15; g.add(tip);
+  g.userData.tip = tip;
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+// Donnie's EMP emitter: a rod with a coil and a glowing orb on top (+y from the hand)
+function buildEmitter() {
+  const g = new THREE.Group();
+  const metal = new THREE.MeshLambertMaterial({ color: 0x8a8f9c });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x2a2c34 });
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.75, 8), metal); rod.position.y = 0.2; g.add(rod);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.22, 0.16), dark); body.position.y = 0.05; g.add(body);
+  const led = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.02), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 2.2, 0.6) })); led.position.set(0, 0.08, 0.09); g.add(led);
+  for (const y of [0.42, 0.5]) { const coil = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.025, 6, 16), metal); coil.rotation.x = Math.PI / 2; coil.position.y = y; g.add(coil); }
+  const orbMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.1, 0.6, 2.6) });
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 10), orbMat); orb.position.y = 0.68; g.add(orb);
+  g.userData.orb = orb;
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+// turn a roof turtle so his chest (pose twist taken out) points at a car
+function aimHero(H, tgt, face, dt, rate = 20) {
+  const lp = H.holder.parent.worldToLocal(_c.copy(tgt.group.position));
+  const want = Math.atan2(lp.x - H.holder.position.x, lp.z - H.holder.position.z) - face;
+  let dy = want - H.holder.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  H.holder.rotation.y += dy * Math.min(1, dt * rate);
 }
 
 function startRun() {
@@ -242,6 +480,7 @@ function startRun() {
     timeScale: 1, hitStop: 0, shake: 0, orbT: 4, power: null, strike: null, knockT: 0, cleared: false, countT: 3.2, spawnT: 0, hp: SHELL_MAX, hurtV: 0, slowT: 0 });
   for (const list of [shots, waves, bolts, zaps]) { for (const x of list) stage.remove(x.m || x.mesh); list.length = 0; }
   endBuff();
+  resetHatch();
   world.reset();
   player.reset();
   Object.assign(player, { s: 0, u: 0, vs: SPEED.start, alive: true, active: true });
@@ -322,9 +561,18 @@ function enemyAI(e, dt) {
   // shooting: only from ahead, never while pinned against the wagon, glow before each shot
   const touching = Math.abs(rel) < (e.L + player.L) / 2 + 3 && Math.abs(du) < (e.W + player.W) / 2 + 2.5;
   ai.fireT -= dt;
+  if (e.emp > 0) {
+    e.emp -= dt;
+    if (Math.random() < dt * 8) {
+      const a = e.group.position.clone().add(_n.set((Math.random() - 0.5) * e.W, 1.5 + Math.random() * 0.6, (Math.random() - 0.5) * e.L));
+      const b = e.group.position.clone().add(_n.set((Math.random() - 0.5) * e.W, 0.6 + Math.random() * 0.9, (Math.random() - 0.5) * e.L));
+      makeZap(a, b, 0.35, 0.07);
+    }
+  }
   if (touching) ai.fireT = Math.max(ai.fireT, 1.4);
-  const canFire = G.state === 'play' && ai.mode !== 'flee' && rel > 10 && rel < 70;
-  e.charge = canFire && ai.fireT < 0.7 ? 1 - ai.fireT / 0.7 : 0;
+  const canFire = G.state === 'play' && ai.mode !== 'flee' && rel > SHOT.minRel && rel < 70 && !(e.emp > 0);
+  e.charge = canFire && ai.fireT < SHOT.charge ? 1 - ai.fireT / SHOT.charge : 0;
+  aimTurret(e, dt);
   if (ai.fireT <= 0) { if (canFire) fireShot(e); ai.fireT = e.kind === 'truck' ? rand(3.5, 5.5) : rand(2.6, 4.6); }
   ai.lane = clamp(ai.lane, -HW + e.W / 2 + 0.2, HW - e.W / 2 - 0.2);
   // longitudinal: hold a spot relative to the wagon
@@ -401,7 +649,7 @@ function onSideHit(a, b, n, vc, dt) {
   if (vc > 1.5) {
     if (pPush >= ePush * 0.7) {
       hitEnemy(e, (RAM.base + vc * RAM.perSpeed) * (G.strike ? 1 : 1), _p, toE);
-      G.shake = Math.max(G.shake, Math.min(0.6, vc * 0.05));
+      G.shake = Math.max(G.shake, Math.min(0.22, vc * 0.015));
       e.ai.mode = 'cruise'; e.ai.t = rand(0.8, 1.6);
     } else {
       knocked(vc);
@@ -409,6 +657,7 @@ function onSideHit(a, b, n, vc, dt) {
   }
   // grinding: holding the lean into a car keeps tearing it up
   if (G.leanNow * toE > 0.3 && e.alive) {
+    player.rollPush = toE * 0.08;   // shoving a car leans the body over
     e.hp -= RAM.grindDps * dt; e.flash = Math.max(e.flash, 0.35);
     G.grindT = (G.grindT || 0) - dt;
     if (G.grindT <= 0) { G.grindT = 0.07; fx.sparks(_p, _n.set(0, 0, 0), 4, 0.6); audio.scrape(); }
@@ -424,7 +673,7 @@ function onRearHit(a, b, n, vc) {
   contactPoint(player, e, _p);
   if (wagonBehind && vc > 1) {
     hitEnemy(e, RAM.base + vc * RAM.rearPerSpeed, _p, 0);
-    G.shake = Math.max(G.shake, 0.3);
+    G.shake = Math.max(G.shake, 0.12);
   } else if (!wagonBehind && vc > 2) knocked(vc * 0.7);
 }
 
@@ -433,7 +682,7 @@ function knocked(vc) {
   G.knockT = 0.6;
   player.vs = Math.max(SPEED.start * 0.7, player.vs - vc * 0.8);
   player.flash = 0.6; player.bounce = 0.5;
-  G.shake = Math.max(G.shake, 0.55);
+  G.shake = Math.max(G.shake, 0.3);
   if (G.combo > 1 && vc > 4) { G.combo = 1; G.comboT = 0; }
   audio.thud();
   popupAt(player.group.position, 'OOF!', 'bad');
@@ -445,7 +694,6 @@ function hitEnemy(e, dmg, point, dir, label) {
   e.hp -= dmg; e.flash = 1; e.bounce = 0.6;
   fx.sparks(point, _n.set(0, 0, 0), Math.min(30, 8 + dmg * 0.6), 1 + dmg / 40);
   audio.crunch(dmg / 25);
-  if (dmg > 14) G.hitStop = Math.max(G.hitStop, 0.045);
   if (e.hp <= 0) wreckEnemy(e, dir ?? 0, label);
   else if (dmg > 12) popupAt(point, `-${Math.round(dmg)}`, '');
 }
@@ -459,9 +707,9 @@ function wreckEnemy(e, dir, label = 'WRECKED!', big = false) {
   _p.copy(e.group.position).setY(1);
   fx.explode(_p, v, e.k.tint);
   audio.boom();
-  G.hitStop = Math.max(G.hitStop, big ? 0.12 : 0.08);
-  G.shake = Math.max(G.shake, big ? 1 : 0.7);
-  flash(0.35);
+  if (big) G.hitStop = Math.max(G.hitStop, 0.05);
+  G.shake = Math.max(G.shake, big ? 0.45 : 0.25);
+  flash(big ? 0.25 : 0.12);
   // combo: wrecks inside the window stack the multiplier
   G.combo = G.comboT > 0 ? G.combo + 1 : 1;
   G.comboT = COMBO_WINDOW;
@@ -514,7 +762,7 @@ function spawnOrb() {
   const kind = kinds[Math.floor(Math.random() * kinds.length)];
   lastOrb = kind;
   const mesh = new THREE.Group();
-  const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: headTex[kind], color: new THREE.Color(1.25, 1.25, 1.25) }));
+  const core = iconOnly(new THREE.Sprite(new THREE.SpriteMaterial({ map: headTex[kind], transparent: true })));
   core.scale.setScalar(2.6); mesh.add(core);
   mesh.add(new THREE.Mesh(new THREE.SphereGeometry(1.75, 16, 12), haloMats[kind]));
   const ring = new THREE.Mesh(new THREE.RingGeometry(1.5, 1.9, 32), new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
@@ -590,7 +838,8 @@ function updateWaves(dt) {
         w.hit.add(e);
         _p.copy(e.group.position).setY(1);
         if (w.push) e.vu += Math.sign(du || 1) * w.push;
-        fx.sparks(_p, _n.set(0, 0, 0), 24, 1.4);
+        if (w.emp) e.emp = Math.max(e.emp || 0, w.emp);
+        else fx.sparks(_p, _n.set(0, 0, 0), 24, 1.4);
         hitEnemy(e, w.dmg, _p, Math.sign(du || 1), w.label);
       }
     }
@@ -602,12 +851,13 @@ function updateWaves(dt) {
 // These switch on the moment they're picked up and run for a few seconds, with the turtle's
 // head and a draining ring on screen and on the wagon's back doors (the TDCars2 CombatBuffHUD /
 // rear-icon pattern).
-const BUFFS = { raph: { name: 'SAI STORM', dur: 8 }, mike: { name: 'PIZZA CANNON', dur: 8 }, donnie: { name: 'ELECTRO FIELD', dur: 7 } };
-const BUFF_RING = { raph: new THREE.Color(1.6, 0.18, 0.12), mike: new THREE.Color(1.6, 0.6, 0.08), donnie: new THREE.Color(0.8, 0.4, 1.8) };
+const BUFFS = { raph: { name: 'SAI STORM', dur: 8 }, mike: { name: 'PIZZA CANNON', dur: 8 }, donnie: { name: 'EMP PULSE', dur: 7 } };
+const BUFF_RING = { raph: new THREE.Color(1, 0.12, 0.08), mike: new THREE.Color(1, 0.42, 0.05), donnie: new THREE.Color(0.48, 0.24, 1) };   // drawn unlit to the screen, so 0..1
 const FIELD_R = 12;
+const EMP_R = 26, EMP_T = 3.5;   // pulse reach (m) and how long a hit car can't shoot (s)
 const bolts = [];   // pizzas in flight
 const zaps = [];    // lightning arcs, a frame or two each
-let turret = null, field = null, buffIcon = null;
+let buffIcon = null;
 function pizzaTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const x = c.getContext('2d');
@@ -619,37 +869,6 @@ function pizzaTexture() {
 }
 let pizzaMat = null, pizzaGeo = null, zapMat = null;
 function buildBuffProps() {
-  // Mikey's cannon, bolted to the roof
-  turret = new THREE.Group();
-  const dark = new THREE.MeshLambertMaterial({ color: 0x2c2c38 });
-  const orange = new THREE.MeshLambertMaterial({ color: 0xff8a1e, emissive: 0x401a00 });
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.7, 0.3, 14), dark); base.position.y = 0.15; turret.add(base);
-  const head = new THREE.Group(); head.position.y = 0.55; turret.add(head);
-  head.add(new THREE.Mesh(new THREE.BoxGeometry(1, 0.55, 1), orange));
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 1.6, 12), dark);
-  barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.05, -0.95); head.add(barrel);
-  const muzzle = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.08, 8, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.5, 0.3) }));
-  muzzle.position.set(0, 0.05, -1.75); head.add(muzzle);
-  turret.userData.head = head;
-  turret.position.set(0, models.wagon.roofY - 0.05, 0.3);
-  turret.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  turret.visible = false;
-  player.body.add(turret);
-  // Donnie's field: a rim-lit dome around the wagon plus a ring on the road
-  field = new THREE.Group();
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uT: { value: 0 } },
-    vertexShader: 'varying vec3 vN; varying vec3 vV; varying vec3 vP; void main(){ vP = position; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
-    fragmentShader: 'uniform float uT; varying vec3 vN; varying vec3 vV; varying vec3 vP; void main(){ float rim = pow(1.0 - abs(dot(vN, vV)), 2.5); float band = smoothstep(0.92, 1.0, sin(vP.y * 18.0 - uT * 9.0) * 0.5 + 0.5); float a = rim * 0.5 + band * 0.08; gl_FragColor = vec4(vec3(0.75, 0.45, 1.6) * a, a); }',
-  }));
-  // the visible shell sits inside the camera's distance (seen from inside it washed the screen out)
-  dome.scale.set(7, 4.2, 7);
-  field.add(dome); field.userData.dome = dome;
-  const ring = new THREE.Mesh(new THREE.RingGeometry(FIELD_R - 0.35, FIELD_R, 64), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 0.8, 3.2), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06; field.add(ring);
-  field.visible = false;
-  stage.add(field);
   // his head above the tail while it runs
   // on the back doors: the turtle's head inside a ring that drains with the time left
   buffIcon = new THREE.Mesh(new THREE.PlaneGeometry(1.35, 1.35), new THREE.ShaderMaterial({
@@ -667,46 +886,74 @@ void main(){
     c = vec4(mix(vec3(0.03, 0.03, 0.05), uCol, on), 0.9);
     c.a *= smoothstep(0.49, 0.475, r) * smoothstep(0.37, 0.385, r);
   }
-  gl_FragColor = c;
+  gl_FragColor = linearToOutputTexel(c);
 }`,
   }));
   buffIcon.position.set(0, player.H * 0.58, player.L / 2 + 0.06);
-  buffIcon.renderOrder = 2;
+  iconOnly(buffIcon);
   buffIcon.visible = false;
-  player.group.add(buffIcon);
+  player.body.add(buffIcon);
   pizzaMat = new THREE.MeshBasicMaterial({ map: pizzaTexture(), color: new THREE.Color(1.5, 1.4, 1.3) });
   pizzaGeo = new THREE.CylinderGeometry(0.75, 0.75, 0.14, 18);
-  zapMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.1, 0.75, 2.4), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  zapMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.8, 0.6, 1.7), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
 }
 
 function startBuff(kind) {
   const b = BUFFS[kind];
   G.buff = { kind, t: b.dur, dur: b.dur, fireT: 0.15 };
-  turret.visible = kind === 'mike';
-  field.visible = kind === 'donnie';
-  raphTop.holder.visible = kind === 'raph';
+
   if (kind === 'raph') { raphTop.cur = -1; raphTop.next = 0; raphTop.ride.reset().play(); }
   buffIcon.material.uniforms.map.value = headTex[kind];
   buffIcon.material.uniforms.uCol.value.copy(BUFF_RING[kind]);
   buffIcon.visible = true;
-  banner({ raph: 'SAI STORM!', mike: 'PIZZA TIME!', donnie: 'ELECTRO FIELD!' }[kind], kind);
+  banner({ raph: 'SAI STORM!', mike: 'PIZZA TIME!', donnie: 'EMP PULSE!' }[kind], kind);
   audio.raph();
   G.powersUsed = (G.powersUsed || 0) + 1;
 }
+// the hatch: lid slides open, the turtle rises out of the van; when the power ends he sinks back
+// and the lid closes. A new power while someone's up swaps them through the hatch.
+const HATCH = { slide: 0.8, sink: 2.4, openRate: 5, riseRate: 3.5 };
+const hatchS = { open: 0, rise: 0, who: null };
+function resetHatch() {
+  Object.assign(hatchS, { open: 0, rise: 0, who: null });
+  for (const H of [raphTop, mikeTop, donTop]) if (H) H.holder.visible = false;
+  if (raphTop) { raphTop.mixer.stopAllAction(); updateHatch(0); }
+}
+function updateHatch(dt) {
+  if (!raphTop) return;
+  const want = G.buff ? { raph: raphTop, mike: mikeTop, donnie: donTop }[G.buff.kind] : null;
+  const h = hatchS;
+  if (h.who && h.who !== want) {
+    h.rise = Math.max(0, h.rise - dt * HATCH.riseRate);
+    if (h.rise === 0) { h.who.holder.visible = false; if (h.who === raphTop) raphTop.mixer.stopAllAction(); h.who = null; }
+  } else if (!h.who && want) h.who = want;
+  if (h.who && h.who === want) {
+    h.open = Math.min(1, h.open + dt * HATCH.openRate);
+    if (h.open > 0.8) h.rise = Math.min(1, h.rise + dt * HATCH.riseRate);
+  } else if (!h.who) h.open = Math.max(0, h.open - dt * HATCH.openRate);
+  const [a, b] = raphTop.hatch.userData.lid;
+  const e = h.open * h.open * (3 - 2 * h.open);
+  a.position.x = e * HATCH.slide; b.position.x = -e * HATCH.slide;
+  if (h.who) {
+    const r = h.rise * h.rise * (3 - 2 * h.rise);
+    h.who.holder.visible = h.rise > 0.01;
+    h.who.holder.position.y = h.who.baseY - (1 - r) * HATCH.sink;
+  }
+}
 function endBuff() {
   G.buff = null;
-  if (turret) { turret.visible = false; field.visible = false; buffIcon.visible = false; raphTop.holder.visible = false; raphTop.mixer.stopAllAction(); }
+  if (buffIcon) buffIcon.visible = false;
 }
 
 // one lightning arc: a jagged cross-shaped ribbon (two strips) so it reads from any angle
-function makeZap(a, b) {
+function makeZap(a, b, amp = 1, w = 0.2, life = 0.16) {
   const N = 9, pts = [];
   for (let i = 0; i <= N; i++) {
     const t = i / N, j = i === 0 || i === N ? 0 : 1;
-    pts.push(new THREE.Vector3().lerpVectors(a, b, t).add(_n.set((Math.random() - 0.5) * 1.4 * j, (Math.random() - 0.5) * 1.2 * j, (Math.random() - 0.5) * 1.4 * j)));
+    pts.push(new THREE.Vector3().lerpVectors(a, b, t).add(_n.set((Math.random() - 0.5) * 1.4 * j * amp, (Math.random() - 0.5) * 1.2 * j * amp, (Math.random() - 0.5) * 1.4 * j * amp)));
   }
   const pos = [], idx = [];
-  for (const [ox, oy] of [[0, 0.2], [0.2, 0]]) {
+  for (const [ox, oy] of [[0, w], [w, 0]]) {
     const k0 = pos.length / 3;
     pts.forEach((p) => pos.push(p.x - ox, p.y - oy, p.z, p.x + ox, p.y + oy, p.z));
     for (let i = 0; i < N; i++) { const k = k0 + i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
@@ -715,7 +962,7 @@ function makeZap(a, b) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
   const m = new THREE.Mesh(g, zapMat); m.frustumCulled = false;
   stage.add(m);
-  zaps.push({ m, life: 0.16 });
+  zaps.push({ m, life });
 }
 
 function updateBuff(dt) {
@@ -732,12 +979,7 @@ function updateBuff(dt) {
     const R = raphTop;
     R.mixer.update(dt * 1.5);
     const tgt = foot.filter((e) => rel(e) > -8 && rel(e) < 80).sort((a, b) => Math.hypot(rel(a), a.u - player.u) - Math.hypot(rel(b), b.u - player.u))[0];
-    if (tgt) {
-      const lp = player.group.worldToLocal(_c.copy(tgt.group.position));
-      const want = Math.atan2(lp.x - R.holder.position.x, lp.z - R.holder.position.z) + Math.PI;
-      let dy = want - R.holder.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-      R.holder.rotation.y += dy * Math.min(1, dt * 12);
-    }
+    if (tgt) aimHero(R, tgt, R.cur >= 0 ? R.throws[R.cur].face : R.throws[R.next].face, dt);
     const cur = R.cur >= 0 ? R.throws[R.cur] : null;
     if (cur && !R.released && cur.act.time >= cur.rel) {
       R.released = true;
@@ -755,50 +997,70 @@ function updateBuff(dt) {
   } else if (B.kind === 'mike') {
     // aim at the nearest Foot car ahead and lob a pizza every 0.42 s
     const tgt = foot.filter((e) => rel(e) > -6 && rel(e) < 90).sort((a, b) => Math.abs(rel(a)) + Math.abs(a.u - player.u) * 0.5 - Math.abs(rel(b)) - Math.abs(b.u - player.u) * 0.5)[0];
-    const head = turret.userData.head;
-    let want = 0;
-    if (tgt) {
-      const lp = player.body.worldToLocal(_c.copy(tgt.group.position));
-      want = Math.atan2(-lp.x, -lp.z);
-    }
-    head.rotation.y += (want - head.rotation.y) * Math.min(1, dt * 14);
-    head.position.y = 0.55 + Math.max(0, B.fireT - 0.3) * 0.6;   // recoil kick
+    const M = mikeTop;
+    if (tgt) aimHero(M, tgt, M.face, dt, 14);
+    // recoil: he rocks back along the barrel after each shot
+    const kick = Math.max(0, B.fireT - 0.3) * 0.9;
+    M.model.position.set(-Math.sin(M.face) * kick, Math.sin(G.time * 6) * 0.02, -Math.cos(M.face) * kick);
     if (tgt && B.fireT <= 0) {
       B.fireT = 0.42;
       const m = new THREE.Mesh(pizzaGeo, pizzaMat);
-      head.updateMatrixWorld();
-      m.position.set(0, 0.05, -1.8).applyMatrix4(head.matrixWorld);
+      M.holder.updateMatrixWorld(true);
+      M.cannon.userData.tip.getWorldPosition(m.position);
       stage.add(m);
       frameAt(player.s, _T, _R);
-      const v = new THREE.Vector3().copy(_T).multiplyScalar(player.vs + 20); v.y = 9;
+      const v = new THREE.Vector3().copy(_T).multiplyScalar(player.vs + 20); v.y = 6;
       bolts.push({ m, v, target: tgt, t: 0, dmg: 20, splash: 8, label: "PIZZA'D!", trail: 0xff9a2a, spin: 'flat' });
-      fx.add.emit(m.position, _n.set(0, 0, 0), new THREE.Color(0xffb040), 2.2, 0.1, { grow: 0.5 });
+      fx.add.emit(m.position, _n.set(0, 0, 0), new THREE.Color(0xffb040), 1.6, 0.1, { grow: 0.5 });
       audio.scrape();
     }
   } else if (B.kind === 'donnie') {
-    field.position.copy(player.group.position);
-    field.userData.dome.material.uniforms.uT.value = G.time;
-    field.userData.dome.scale.y = 4.2 + Math.sin(G.time * 30) * 0.15;
-    // zap up to two of the nearest cars inside the field, every 0.2 s
-    if (B.fireT <= 0) {
-      B.fireT = 0.2;
-      const near = foot.filter((e) => Math.hypot(rel(e), e.u - player.u) < FIELD_R + e.L / 2).sort((a, b) => Math.hypot(rel(a), a.u - player.u) - Math.hypot(rel(b), b.u - player.u)).slice(0, 2);
-      for (const e of near) {
-        _p.copy(e.group.position).setY(1.2);
-        makeZap(player.group.position.clone().setY(player.H + 0.6), _p.clone());
-        fx.sparks(_p, _n.set(0, 0, 0), 10, 0.8);
-        hitEnemy(e, 13, _p, Math.sign(e.u - player.u) || 1, 'ZAPPED!');
-        e.vu += Math.sign(e.u - player.u || 1) * 4;
+    const D = donTop;
+    D.model.position.y = Math.sin(G.time * 5) * 0.02;
+    const tgt = foot.filter((e) => rel(e) > -6 && rel(e) < 60).sort((a, b) => Math.abs(rel(a)) - Math.abs(rel(b)))[0];
+    if (tgt) aimHero(D, tgt, D.face, dt, 6);
+    B.pulseT = (B.pulseT ?? 0.2) - dt;
+    const orb = D.device.userData.orb, glow = Math.max(0, B.pulseT - 0.75) * 4;   // flashes as it fires
+    orb.scale.setScalar(1 + glow * 1.4 + Math.sin(G.time * 20) * 0.08);
+    D.holder.updateMatrixWorld(true);
+    const src = orb.getWorldPosition(new THREE.Vector3());
+    if (B.pulseT <= 0) {
+      B.pulseT = 1;
+      // the pulse is lightning: forked bolts from the orb into every car in reach (two strands
+      // each, so it reads as a branching discharge), which stuns them; nothing in reach and it
+      // earths itself into the road around the van
+      const inReach = foot.filter((e) => rel(e) > -1 && Math.hypot(rel(e), e.u - player.u) < EMP_R).sort((a, b) => Math.abs(rel(a)) - Math.abs(rel(b))).slice(0, 4);
+      for (const e of inReach) {
+        _p.copy(e.group.position).setY(1.3);
+        const hitAt = _p.clone();
+        const jag = clamp(src.distanceTo(hitAt) / 14, 0.4, 1.3);   // zigzag scaled to the bolt's length
+        makeZap(src, hitAt, jag, 0.05, 0.2);
+        makeZap(src, hitAt.clone().add(_n.set((Math.random() - 0.5) * e.W, 0.4, (Math.random() - 0.5) * e.L * 0.6)), jag * 0.7, 0.03, 0.16);
+        fx.sparks(hitAt, _n.set(0, 0, 0), 14, 0.9);
+        fx.add.emit(hitAt, _n.set(0, 0, 0), new THREE.Color(1.0, 0.7, 2.6), 1.6, 0.14, { grow: 0.8 });
+        e.emp = Math.max(e.emp || 0, EMP_T);
+        hitEnemy(e, 6, hitAt, Math.sign(e.u - player.u) || 1, 'EMP!');
       }
-      if (near.length) audio.scrape();
+      if (!inReach.length) for (let k = 0; k < 3; k++) {
+        const to = pointAt(player.s + 3 + Math.random() * 5, player.u + (Math.random() - 0.5) * 8, new THREE.Vector3()).setY(0.05);
+        makeZap(src, to, 0.5, 0.035, 0.16);
+        fx.sparks(to, _n.set(0, 0, 0), 5, 0.5);
+      }
+      fx.add.emit(src, _n.set(0, 0, 0), new THREE.Color(1.1, 0.7, 2.6), 1.4, 0.12, { grow: 1 });
+      audio.scrape();
     }
-    // the field fries shuriken before they reach the shell
+    // the device crackles the whole time it's up
+    if (Math.random() < dt * 16) {
+      const to = src.clone().add(_n.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.3) * 1.2, (Math.random() - 0.5) * 1.6));
+      makeZap(src, to, 0.35, 0.025, 0.08);
+    }
+    // the pulse fries shuriken before they reach the shell
     for (let i = shots.length - 1; i >= 0; i--) {
-      const s = shots[i];
-      if (Math.hypot(s.s - player.s, s.u - player.u) < FIELD_R) {
-        makeZap(player.group.position.clone().setY(player.H + 0.6), s.m.position.clone());
-        fx.sparks(s.m.position, _n.set(0, 0, 0), 8, 0.6);
-        stage.remove(s.m); shots.splice(i, 1);
+      const sh = shots[i];
+      if (Math.hypot(sh.s - player.s, sh.u - player.u) < FIELD_R) {
+        makeZap(src, sh.m.position.clone());
+        fx.sparks(sh.m.position, _n.set(0, 0, 0), 8, 0.6);
+        stage.remove(sh.m); shots.splice(i, 1);
       }
     }
   }
@@ -859,27 +1121,64 @@ function updateBolts(dt) {
 // can't aim — staying on them is the safe place. Each shot is telegraphed by a purple glow.
 const SHELL_MAX = 100;
 const shots = [];
-const shotGeo = new THREE.OctahedronGeometry(0.75, 0); shotGeo.scale(1, 0.25, 1);
-const shotMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4.2, 0.5, 3.2) });
+// Each Foot car has a roof cannon. It tracks the wagon all the time; for the last SHOT.charge
+// seconds before a shot the muzzle heats up and a laser sight locks on, then a glowing shell
+// flies through the air at where the wagon WAS when it fired — lean out of the line to dodge.
+const SHOT = { charge: 0.9, closing: 48, minRel: 14, hitY: 1.5, arc: 0.8 };
+const shotGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 8); shotGeo.rotateX(Math.PI / 2);
+const shotMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4.5, 0.7, 3.4) });
+const haloMat = new THREE.SpriteMaterial({ color: new THREE.Color(2.2, 0.25, 1.6), transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending });
+function aimTurret(e, dt) {
+  const T = e.turret;
+  if (!T || !e.alive) return;
+  const to = T.root.worldToLocal(_c.copy(player.group.position).setY(SHOT.hitY));
+  to.y -= T.head.position.y;
+  const yaw = Math.atan2(to.x, to.z), pitch = Math.atan2(-to.y, Math.hypot(to.x, to.z));
+  let dy = yaw - T.head.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  T.head.rotation.y += dy * Math.min(1, dt * 8);
+  T.head.rotation.x += (pitch - T.head.rotation.x) * Math.min(1, dt * 8);
+  // laser sight while charging, reaching the wagon
+  const c = e.charge;
+  T.laser.visible = c > 0.02;
+  if (T.laser.visible) {
+    T.tip.getWorldPosition(_p);
+    T.laser.scale.set(1 + c, 1 + c, _p.distanceTo(player.group.position) / T.sc);
+    T.laser.material.opacity = 0.15 + c * 0.75;
+  }
+}
 function fireShot(e) {
+  const T = e.turret;
   const m = new THREE.Mesh(shotGeo, shotMat);
+  const halo = new THREE.Sprite(haloMat); halo.scale.setScalar(0.8); m.add(halo);
   stage.add(m);
-  const s = e.s - e.L / 2 - 0.5, closing = 24;
-  const t = Math.max(0.4, (s - player.s) / closing);
+  T.tip.getWorldPosition(m.position);
+  const y0 = m.position.y;
+  // flight in road coordinates (so it rides along with the chase), aimed at the wagon's
+  // position at the moment of firing; height goes from the muzzle to hull height with a lift
+  const s = e.s - e.L * 0.18 - 1.4 * T.sc;
+  const t = Math.max(0.25, (s - player.s) / SHOT.closing);
   G.shotsFired = (G.shotsFired || 0) + 1;
-  shots.push({ m, s, u: e.u, vs: player.vs - closing, vu: clamp((player.u - e.u) / t, -9, 9), dmg: e.kind === 'truck' ? 14 : 9, from: e, life: 0 });
+  shots.push({ m, s, u: e.u, vs: player.vs - SHOT.closing, vu: clamp((player.u - e.u) / t, -14, 14), T: t, y0, dmg: e.kind === 'truck' ? 14 : 9, from: e, life: 0 });
+  T.recoil = 1; T.laser.visible = false;
+  fx.add.emit(m.position, _n.set(0, 0, 0), new THREE.Color(2.6, 0.5, 2), 2.2, 0.12, { grow: 0.8 });
+  fx.sparks(m.position, _n.set(0, 0, 0), 8, 0.6);
   audio.scrape();
 }
+const _sv = new THREE.Vector3();
 function updateShots(dt) {
   for (let i = shots.length - 1; i >= 0; i--) {
     const b = shots[i];
     b.life += dt;
     b.s += b.vs * dt; b.u += b.vu * dt;
-    pointAt(b.s, b.u, b.m.position).setY(1.15);
-    b.m.rotation.y += dt * 18;
-    if (Math.random() < dt * 40) fx.add.emit(b.m.position, _n.set(0, 0.5, 0), new THREE.Color(0xff4ad2), 0.5, 0.25, { grow: -0.5 });
+    const k = clamp(b.life / b.T, 0, 1.4);
+    _sv.copy(b.m.position);
+    pointAt(b.s, b.u, b.m.position).setY(b.y0 + (SHOT.hitY - b.y0) * k + Math.sin(Math.min(1, k) * Math.PI) * SHOT.arc);
+    if (b.life > dt) b.m.lookAt(_sv.subVectors(b.m.position, _sv).add(b.m.position));   // nose along its motion
+    if (Math.random() < dt * 60) fx.add.emit(b.m.position, _n.set(0, 0, 0), new THREE.Color(0xff4ad2), 0.4, 0.18, { grow: -0.5 });
     let gone = false;
     if (Math.abs(b.s - player.s) < player.L / 2 + 0.4 && Math.abs(b.u - player.u) < player.W / 2 + 0.4 && G.state === 'play') {
+      fx.add.emit(b.m.position, _n.set(0, 0, 0), new THREE.Color(2.6, 0.6, 2), 3, 0.18, { grow: 1 });
+      G.shotsHit = (G.shotsHit || 0) + 1;
       hurt(b.dmg, b.m.position); gone = true;
     } else {
       // friendly fire: another Foot car in the way takes it
@@ -891,10 +1190,10 @@ function updateShots(dt) {
   }
 }
 function hurt(dmg, at) {
-  if (G.state !== 'play') return;
+  if (G.state !== 'play' || G.god) return;
   G.hp = Math.max(0, G.hp - dmg);
   player.flash = 1; player.bounce = 0.5;
-  G.shake = Math.max(G.shake, 0.6);
+  G.shake = Math.max(G.shake, 0.35);
   G.hurtV = 0.8;
   fx.sparks(_p.copy(at || player.group.position).setY(1.2), _n.set(0, 0, 0), 16, 1);
   popupAt(player.group.position.clone().setY(2.5), `-${dmg}`, 'bad');
@@ -955,11 +1254,10 @@ function updateCamera(dt) {
   // the faster we go, the wider the lens
   const sp = clamp((player.vs - SPEED.start * 0.8) / (SPEED.top - SPEED.start * 0.8), 0, 1);
   const baseFov = portrait ? 74 : 60;
-  grade.uniforms.uSpeed.value = G.state === 'play' ? 0.35 + sp * 0.65 : 0;
+  grade.uniforms.uSpeed.value = G.state === 'play' ? (0.35 + sp * 0.65) * LOOK.speedBlur : 0;
   camera.fov += (baseFov + sp * 12 - camera.fov) * Math.min(1, dt * 3);
   camera.updateProjectionMatrix();
   $('speedlines').style.opacity = G.state === 'play' ? (0.04 + sp * 0.18).toFixed(2) : 0;
-  if (G.state === 'play') G.shake = Math.max(G.shake, 0.05 + sp * 0.05);
   if (G.strike) {
     // cut to a low chase angle that holds both the wagon and Leo's current target —
     // kept inside the street canyon so it never ends up in a shopfront
@@ -982,10 +1280,11 @@ function updateCamera(dt) {
   const f = Math.min(1, dt * (G.strike ? 6 : 16));
   camPos.lerp(_c, f); camLook.lerp(_l, f);
   camera.position.copy(camPos);
-  if (G.shake > 0) camera.position.add(_n.set((Math.random() - 0.5) * G.shake, (Math.random() - 0.5) * G.shake, (Math.random() - 0.5) * G.shake));
+  const sk = G.shake * LOOK.shake;
+  if (sk > 0) camera.position.add(_n.set((Math.random() - 0.5) * sk, (Math.random() - 0.5) * sk, (Math.random() - 0.5) * sk));
   camera.lookAt(camLook);
   // sun and its shadow box ride along with the wagon
-  sun.position.copy(player.group.position).add(_n.set(-22, 40, 12));
+  sun.position.copy(player.group.position).add(sunOff);
   sun.target.position.copy(player.group.position);
   sky.position.copy(camera.position);
   // hang the pooled point lights on the lamps just ahead of the wagon
@@ -1057,7 +1356,8 @@ function loop(now) {
   const realDt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (G.paused || !player) { render(); return; }
-  if (G.hitStop > 0) { G.hitStop -= realDt; updateCamera(realDt); fx.update(realDt * 0.15); render(); return; }
+  if (G.hitStop > 0 && LOOK.hitStop <= 0) G.hitStop = 0;
+  if (G.hitStop > 0) { G.hitStop -= realDt / Math.max(0.05, LOOK.hitStop); updateCamera(realDt); fx.update(realDt * 0.15); render(); return; }
   if (G.strike) updateStrike(realDt);
   else if (G.slowT > 0) { G.slowT -= realDt; G.timeScale = G.slowT > 0.25 ? 0.3 : 0.3 + (0.25 - Math.max(0, G.slowT)) / 0.25 * 0.7; if (G.slowT <= 0) G.timeScale = 1; }
   const dt = realDt * G.timeScale;
@@ -1132,7 +1432,7 @@ function step(dt, realDt) {
   if (Math.abs(player.vu) > 4 && Math.random() < dt * 20) fx.dust(pointAt(player.s - player.L / 2, player.u - Math.sign(player.vu) * player.W / 2, _p).setY(0.2));
 
   if (G.state === 'play') { updateOrbs(dt); tryPower(); }
-  updateShots(dt); updateWaves(dt); updateBuff(dt);
+  updateShots(dt); updateWaves(dt); updateBuff(dt); updateHatch(dt);
   if (G.hp < 40 && G.state === 'play' && Math.random() < dt * 18) fx.smoke(_p.copy(player.group.position).setY(player.H), 0.15);
   if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 1; }
 
@@ -1200,6 +1500,13 @@ muteBtn.addEventListener('click', () => { audio.setMuted(!audio.muted); muteBtn.
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyP') setPaused(!G.paused);
   if (e.code === 'KeyM') { audio.setMuted(!audio.muted); muteBtn.classList.toggle('muted', audio.muted); }
+  // dev hotkeys: summon a power without its pickup. Leo is back-dated past his 6 s wait so he
+  // goes as soon as there's any car in reach.
+  if (DEV && G.state === 'play') {
+    const kind = { KeyZ: 'leo', KeyX: 'raph', KeyC: 'mike', KeyV: 'donnie' }[e.code];
+    if (kind === 'leo') { G.power = 'leo'; G.powerAt = G.time - 10; popupAt(player.group.position.clone().setY(2.5), 'LEO READY!', 'big'); }
+    else if (kind) startBuff(kind);
+  }
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'play') setPaused(true); });
 
@@ -1222,4 +1529,4 @@ function autoLean() {
   const du = best.u - player.u;
   return Math.abs(best.s - player.s) < 6 ? Math.sign(du) : clamp(du * 0.5, -1, 1);
 }
-window.__game = { G, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, sky, scene, stage, renderer, composer, get world() { return world; } };
+window.__game = { G, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, get mikeTop() { return mikeTop; }, get donTop() { return donTop; }, sky, scene, stage, renderer, composer, get world() { return world; } };
