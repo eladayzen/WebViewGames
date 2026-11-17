@@ -20,17 +20,44 @@ import { playScene, say, clearSay, preloadStory } from './story.js';
 // brothers talking (src/story.js, lines from Elad's script in ~/Documents/TMNT/TMNT MM Full
 // body/wagonPrototype/script.rtf) and closes with Raph's verdict.
 //   firstLen: metres of straight before the first fork, so the tutorial has room to happen
+// Five levels, played in order; failing one restarts that same level. Each opens with the
+// brothers talking (src/story.js; levels 1-2 from Elad's script in ~/Documents/TMNT/TMNT MM Full
+// body/wagonPrototype/script.rtf, 3-5 written to match) and closes with Raph's verdict.
+//   kind: 'wreck' (wreck `target` cars) | 'april' (escort) | 'boss' (wreck the boss truck) |
+//         'dist' (reach `dist` metres). firstLen: metres before the first fork.
+//   powers: the pickups that can appear. Each level unlocks one more (`unlock`).
 const LEVELS = [
-  { n: 1, title: 'JOY RIDE', time: 100, target: 10, stars: [10, 14, 18], firstLen: 1400, go: 'WRECK THE FOOT!',
+  { n: 1, kind: 'wreck', title: 'JOY RIDE', time: 100, target: 10, stars: [10, 14, 18], firstLen: 1400, go: 'WRECK THE FOOT!',
+    powers: ['raph', 'mike'], unlock: ['raph', 'mike'],
     objective: 'Wreck 10 Foot Clan cars before the time runs out',
     intro: [{ who: 'mikey', text: 'Today I am taking the car for a ride!' }, { who: 'raph_q', text: 'Do you know how to drive this thing?' }],
     outro: [{ who: 'raph', text: 'Not too bad, Mikey.' }] },
-  { n: 2, title: 'SAVE APRIL', time: 70, april: true, firstLen: 650, go: 'PROTECT APRIL!',
+  { n: 2, kind: 'april', title: 'SAVE APRIL', time: 70, firstLen: 650, go: 'PROTECT APRIL!',
+    powers: ['raph', 'mike', 'leo'], unlock: ['leo'],
     objective: "Keep April's van safe for 70 seconds, and follow her at every fork",
     intro: [{ who: 'leo', text: 'The Clan is chasing April downtown!' }, { who: 'raph_q', text: 'April? What do they want with April?' },
       { who: 'donnie', text: "We're taking the car." }, { who: 'mikey', text: 'I am driving!' }],
     outro: [{ who: 'raph', text: 'COWABUNGA!' }] },
+  { n: 3, kind: 'wreck', chase: true, title: 'ON OUR TAIL', time: 90, target: 12, stars: [12, 16, 20], firstLen: 700, go: 'SHAKE THEM OFF!',
+    powers: ['raph', 'mike', 'leo', 'donnie'], unlock: ['donnie'],
+    objective: "They're chasing us! Wreck 12 Foot cars before they wreck the wagon",
+    intro: [{ who: 'donnie', text: "Guys? The Foot followed us from April's place." }, { who: 'raph_q', text: 'All of them?!' },
+      { who: 'leo', text: 'Then we fight our way out. Mikey, keep us moving!' }, { who: 'donnie', text: 'Good thing I finished my new staff.' }],
+    outro: [{ who: 'raph', text: "Ha! That'll teach them to tailgate." }] },
+  { n: 4, kind: 'boss', title: 'BOSS RUN', time: 100, firstLen: 800, go: 'TAKE HIM DOWN!',
+    powers: ['raph', 'mike', 'leo', 'donnie', 'saws'], unlock: ['saws'],
+    objective: "Chase down the Foot boss's truck and take him out",
+    intro: [{ who: 'leo', text: "See that big red truck? That's the Foot boss running this whole thing." }, { who: 'raph_q', text: 'So... we just crash into him?' },
+      { who: 'mikey', text: 'With SAW BLADES! Donnie bolted them on last night.' }, { who: 'donnie', text: "Please don't scratch the paint." }],
+    outro: [{ who: 'raph', text: "Boss down! Now we're talking." }] },
+  { n: 5, kind: 'dist', title: 'TECHNODROME', time: 95, dist: 3400, firstLen: 700, go: 'BREAK THROUGH!',
+    powers: ['raph', 'mike', 'leo', 'donnie', 'saws', 'nitro'], unlock: ['nitro'],
+    objective: 'Break through the Foot and reach the Technodrome: 3400 m',
+    intro: [{ who: 'donnie', text: 'That signal is coming from the Technodrome!' }, { who: 'leo', text: 'The Foot will do anything to keep us from reaching it.' },
+      { who: 'raph_q', text: 'Anything? Like what?' }, { who: 'mikey', text: "Like... all of them. Good thing we've got NITRO!" }],
+    outro: [{ who: 'raph', text: 'Technodrome, here we come. COWABUNGA!' }] },
 ];
+for (const L of LEVELS) L.april = L.kind === 'april';
 let LV = LEVELS[0];
 const MISSION = LEVELS[0];   // (older code reads MISSION.time)
 const SPEED = { start: 36, top: 47, rampTime: 60 };   // m/s — a chase, not a cruise
@@ -51,7 +78,8 @@ const LOOK_DEFAULTS = {
   roadWet: 0.8, roadDark: 0.34, fresnelBase: 0.05, fresnelEdge: 0.5, dampSheen: 0.28, walkWet: 0.2,
   raphHeight: 2.64, hatchRadius: 0.8, hatchZ: 0.5,
   shake: 1, hitStop: 1,
-  footRacer: '#7a4fd0', footTruck: '#5b4a78', footRough: 0.6, footMetal: 0, footGlow: '#000000', footStripes: 1,
+  footRacer: '#8a5ce8', footTruck: '#6e5a96', footRough: 0.6, footMetal: 0, footGlow: '#1a0a33', footStripes: 1,
+  footRim: 1.6, footRimColor: '#b46cff',   // glowing purple edges so Foot cars read against the night
 };
 // named looks the dev panel can flip between; Custom 1 = Elad's tuning, 2026-11-16
 const LOOK_PRESETS = {
@@ -244,6 +272,7 @@ function applyLook() {
   if (player) for (const c of [player, ...enemies]) c.glow.material.opacity = (c === player ? 0.5 : 0.75) * L.underglow;
   FOOT_LOOK.tint.racer.set(L.footRacer); FOOT_LOOK.tint.truck.set(L.footTruck);
   FOOT_LOOK.rough = L.footRough; FOOT_LOOK.metal = L.footMetal; FOOT_LOOK.glow.set(L.footGlow); FOOT_LOOK.stripe = L.footStripes;
+  FOOT_LOOK.rim.value.set(L.footRimColor).multiplyScalar(L.footRim);
   for (const e of enemies) e.applyLook();
   if (raphTop) {
     raphTop.model.scale.setScalar(L.raphHeight / raphTop.tall);
@@ -279,7 +308,7 @@ const input = new Input(canvas);
     tex[n] = await tl.loadAsync(`/tex/${n}.jpg`);
     tex[n].colorSpace = THREE.SRGBColorSpace;
   }));
-  for (const k of ['raph', 'leo', 'mike', 'donnie', 'saws', 'shield', 'nitro', 'harpoon']) { headTex[k] = await tl.loadAsync(`/ui/${k}.png`); headTex[k].colorSpace = THREE.SRGBColorSpace; }
+  for (const k of ['raph', 'leo', 'mike', 'donnie', 'saws', 'shield', 'nitro', 'harpoon']) { headTex[k] = await tl.loadAsync(`/ui/${k}.webp`); headTex[k].colorSpace = THREE.SRGBColorSpace; }
   world = new World(stage, tex);
   fx = new FX(stage);
   models = await loadCarModels();
@@ -288,6 +317,12 @@ const input = new Input(canvas);
   for (let i = 0; i < 2; i++) enemies.push(new Car('truck', models.truck, stage));
   // April's van: the big Foot truck without its cannon, painted blue
   aprilCar = new Car('truck', models.truck, stage, { friendly: true, paint: 0x3f86ff });
+  // the Foot boss: a bigger, red Foot truck in the enemy list (spawnEnemy never picks it)
+  boss.car = new Car('truck', models.truck, stage, { paint: BOSS.paint });
+  boss.car.boss = true;
+  boss.car.group.scale.setScalar(BOSS.scale);
+  boss.car.L *= BOSS.scale; boss.car.W *= BOSS.scale; boss.car.H *= BOSS.scale; boss.car.mass *= 3;
+  enemies.push(boss.car);
   ({ leo, raphTop, mikeTop, donTop } = await loadHeroes());
   buildBuffProps();
   applyLook();
@@ -586,7 +621,7 @@ async function startLevel(i, intro) {
   const run = ++levelRun;
   startRun();
   if (intro && !AUTO) {
-    await playScene({ lines: LV.intro, title: LV.title, objective: LV.objective, level: `LEVEL ${LV.n}` });
+    await playScene({ lines: LV.intro, title: LV.title, objective: LV.objective, level: `LEVEL ${LV.n}`, unlock: LV.powers.map((k) => ({ img: `/ui/${k}.webp`, name: TURTLES[k].name, isNew: LV.n > 1 && LV.unlock.includes(k) })), unlockFirst: LV.n === 1 });
     if (run !== levelRun) return;
   }
   G.state = 'countdown'; G.countT = 3.2;
@@ -594,9 +629,10 @@ async function startLevel(i, intro) {
 function startRun() {
   Object.assign(G, { state: 'story', time: 0, left: LV.time, score: 0, wrecks: 0, combo: 1, comboT: 0, bestCombo: 1,
     timeScale: 1, hitStop: 0, shake: 0, orbT: LV.n === 1 ? 999 : 6, power: null, strike: null, knockT: 0, cleared: false, countT: 3.2, spawnT: 0, hp: SHELL_MAX, hurtV: 0, slowT: 0,
-    script: {}, lostT: 0, aprilShotT: 0, won: false });
+    script: {}, lostT: 0, aprilShotT: 0, won: false, waveN: 0, took: {}, bag: null, bagFirst: false });
   L1.forkHint = false;
   clearSay(); hint('');
+  $('follow').className = 'hidden'; $('follow-arrow').className = 'hidden';
   $('next-button').classList.add('hidden');
   for (const list of [shots, waves, bolts, zaps]) { for (const x of list) stage.remove(x.m || x.mesh); list.length = 0; }
   endBuff();
@@ -612,15 +648,18 @@ function startRun() {
   leo.holder.visible = false;
   world.update(0);
   resetApril();
+  resetBoss();
+  G.s0 = player.s;
   $('gameover-overlay').classList.add('hidden');
   $('target').textContent = LV.target || '';
   $('goal').classList.toggle('survive', !LV.target);
+  $('goal').querySelector('small').textContent = LV.kind === 'dist' ? 'TO GO' : 'WRECKED';
   updateHud();
 }
 
 // ── Enemies ──────────────────────────────────────────────────────────────────
 function spawnEnemy(kind, rel, lane) {
-  const e = enemies.find((c) => c.kind === kind && !c.active);
+  const e = enemies.find((c) => c.kind === kind && !c.active && !c.boss);
   if (!e) return null;
   e.reset();
   e.active = true; e.alive = true; e.group.visible = true;
@@ -631,22 +670,53 @@ function spawnEnemy(kind, rel, lane) {
   return e;
 }
 
+// A wave: 3 Foot cars at once, either roaring up from behind and past the wagon to sit ahead
+// ('pass'), or already far up the road and slower, so the wagon closes in on them ('ahead').
+// Level 1 runs on waves only (a new one when at most one car is left); level 3 (they're
+// chasing us) only sends them from behind, close and angry.
+function spawnWave(type) {
+  const J = path.junction;
+  if (type === 'ahead' && J && J.s - player.s < 190) type = 'pass';
+  const lanes = [...LANES].sort(() => Math.random() - 0.5).slice(0, 3);
+  G.waveN++;
+  lanes.forEach((lane, i) => {
+    const kind = i === 2 && G.waveN > 2 && Math.random() < 0.5 ? 'truck' : 'racer';
+    if (type === 'pass') {
+      const e = spawnEnemy(kind, -36 - i * 9, lane);
+      if (e) { e.vs = player.vs + 18; Object.assign(e.ai, { pass: true, rel: rand(22, 38), t: rand(3.5, 5) }); }
+    } else {
+      const e = spawnEnemy(kind, 92 + i * 8, lane);
+      if (e) { e.vs = player.vs - 16; Object.assign(e.ai, { rel: rand(8, 20), t: rand(3, 4.5) }); }
+    }
+  });
+}
 function director(dt) {
   G.spawnT -= dt;
-  const live = enemies.filter((e) => e.active && e.alive).length;
+  const live = enemies.filter((e) => e.active && e.alive && !e.boss).length;
+  if (LV.n === 1) {
+    if (G.time > L1.foot && live <= 1 && G.spawnT <= 0) { spawnWave(G.waveN % 2 === 0 ? 'pass' : 'ahead'); G.spawnT = 2.5; }
+    return;
+  }
   // level 1 eases in: an empty street, then two cars, then more; level 2 is a chase from the start
   let want = Math.min(6, 4 + Math.floor(G.time / 20));
   if (LV.n === 1) want = G.time < L1.foot ? 0 : G.time < 30 ? 2 : G.time < 55 ? 3 : 4;
   else if (LV.april) want = G.time < 2 ? 0 : Math.min(5, 3 + Math.floor(G.time / 25));
+  else if (LV.chase) want = Math.min(6, 4 + Math.floor(G.time / 25));
+  else if (LV.kind === 'boss') want = 3;
+  else if (LV.kind === 'dist') want = Math.min(6, 4 + Math.floor(G.time / 30));
+  if (LV.kind === 'dist' && live <= 2 && G.spawnT <= 0) { spawnWave(Math.random() < 0.5 ? 'pass' : 'ahead'); G.spawnT = 2; return; }
   if (live < want && G.spawnT <= 0) {
     const truckLive = enemies.filter((e) => e.active && e.alive && e.kind === 'truck').length;
     const kind = truckLive < 1 + (G.time > 40 ? 1 : 0) && Math.random() < 0.35 ? 'truck' : 'racer';
-    const behind = LV.april || (LV.n === 1 && G.time < 30) ? Math.random() < 0.85 : Math.random() < 0.55;
+    const behind = LV.chase ? true : LV.april ? Math.random() < 0.85 : Math.random() < 0.55;
     // pick a lane that isn't occupied near the spawn point
     const J = path.junction;
     const rel = behind || (J && player.s + 75 > J.s - 12) ? -34 : 75;
     const free = LANES.filter((l) => !enemies.some((o) => o.active && o.alive && Math.abs(o.s - (player.s + rel)) < 12 && Math.abs(o.u - l) < 2.5));
-    if (free.length) spawnEnemy(kind, rel, free[Math.floor(Math.random() * free.length)]);
+    if (free.length) {
+      const e = spawnEnemy(kind, rel, free[Math.floor(Math.random() * free.length)]);
+      if (e && LV.chase) { e.vs = player.vs + 14; Object.assign(e.ai, { aggr: 0.9, rel: rand(-4, 6) }); }
+    }
     G.spawnT = 1.1;
   }
 }
@@ -654,7 +724,8 @@ function director(dt) {
 function enemyAI(e, dt) {
   const ai = e.ai, rel = e.s - player.s, du = player.u - e.u;
   ai.t -= dt;
-  if (e.hp < e.maxHp * 0.3 && ai.mode !== 'flee') { ai.mode = 'flee'; ai.rel = 95; ai.lane = e.u > 0 ? 9 : -9; }
+  if (e.boss) bossAI(e, dt);
+  if (e.hp < e.maxHp * 0.3 && ai.mode !== 'flee' && !e.boss) { ai.mode = 'flee'; ai.rel = 95; ai.lane = e.u > 0 ? 9 : -9; }
   switch (ai.mode) {
     case 'cruise':
       if (ai.t <= 0) {
@@ -698,13 +769,16 @@ function enemyAI(e, dt) {
   const ar = e.aim.s - e.s;
   const inRange = e.aim === player ? rel > SHOT.minRel && rel < 70 : Math.abs(ar) > 10 && Math.abs(ar) < 60;
   const canFire = G.state === 'play' && ai.mode !== 'flee' && inRange && !(e.emp > 0) && !e.lift;
+  if (e.boss && ai.fireT > BOSS.fireEvery) ai.fireT = BOSS.fireEvery;
   e.charge = canFire && ai.fireT < SHOT.charge ? 1 - ai.fireT / SHOT.charge : 0;
   aimTurret(e, dt);
   if (ai.fireT <= 0) { if (canFire) { fireShot(e); if (e.aim === aprilCar) G.aprilShotT = APRIL.shotGap; } ai.fireT = e.kind === 'truck' ? rand(3.5, 5.5) : rand(2.6, 4.6); }
   ai.lane = clamp(ai.lane, -HW + e.W / 2 + 0.2, HW - e.W / 2 - 0.2);
   // longitudinal: hold a spot relative to the wagon
   const heavy = e.kind === 'truck';
-  const wantVs = player.vs + clamp((ai.rel - rel) * (heavy ? 0.8 : 1.3), -9, ai.mode === 'flee' ? 14 : 9);
+  // a passing wave closes fast, then settles; the boss can always run
+  if (ai.pass && rel > ai.rel - 4) ai.pass = false;
+  const wantVs = player.vs + clamp((ai.rel - rel) * (heavy ? 0.8 : 1.3), ai.pass ? -9 : -16, ai.mode === 'flee' ? 14 : ai.pass ? 20 : e.boss ? 12 : 9);
   e.vs += clamp(wantVs - e.vs, -1, 1) * (heavy ? 9 : 16) * dt;
   // lateral: steer toward the chosen line; a ram is a hard swing
   const latMax = ai.mode === 'ram' ? (heavy ? 7 : 9.5) : (heavy ? 4 : 6.5);
@@ -718,8 +792,9 @@ function enemyAI(e, dt) {
   }
   if (ai.mode === 'flee' && rel > 70) retire(e);
   // nobody drives past a junction the wagon hasn't chosen yet
+  if (e.boss) { if (path.junction) e.s = Math.min(e.s, path.junction.s - 8); return; }
   if (path.junction && e.s > path.junction.s - 6) retire(e);
-  if (rel < -70 || rel > 110) retire(e);
+  if (rel < -70 || rel > 115) retire(e);
 }
 
 function retire(e) { e.active = false; e.group.visible = false; }
@@ -847,7 +922,11 @@ function wreckEnemy(e, dir, label = 'WRECKED!', big = false) {
   G.hp = Math.min(SHELL_MAX, G.hp + 4);
   popupAt(_p, `${label} +${pts}`, 'big');
   if (G.combo >= 2) popupAt(_p.clone().setY(4), `x${G.combo} COMBO`, '');
-  if (LV.target && !G.cleared && G.wrecks >= LV.target && G.state === 'play') { G.cleared = true; endLevel(true); }
+  if (LV.target && !G.cleared && G.wrecks >= LV.target && G.state === 'play') {
+    if (l1Done()) { G.cleared = true; endLevel(true); }
+    else if (!G.script.needPick) { G.script.needPick = true; say('raph_q', 'Not done yet, Mikey. Grab those pick-ups!'); }
+  }
+  if (e.boss && G.state === 'play') { G.hitStop = 0.08; flash(0.5); endLevel(true); }
 }
 
 // The wagon may drive up onto the sidewalks, to just short of the building fronts; Foot cars
@@ -922,8 +1001,20 @@ function spawnOrb(force, rel = 140, lane) {
   const s = J ? Math.min(player.s + rel, J.s - 20) : player.s + rel;
   const u = lane ?? LANES[Math.floor(Math.random() * LANES.length)];
   if (s < player.s + 40) return;
-  const kinds = Object.keys(TURTLES).filter((k) => k !== lastOrb);
-  const kind = force || kinds[Math.floor(Math.random() * kinds.length)];
+  let kind = force;
+  if (!kind) {
+    // a shuffled bag of everything this level has (all earlier powers + the new one): each
+    // comes up once per round, the newly unlocked one leads the first round, no repeats in a
+    // row, and never Leo while Leo is already held
+    if (!G.bag || !G.bag.length) {
+      G.bag = [...LV.powers].sort(() => Math.random() - 0.5);
+      if (!G.bagFirst) { G.bagFirst = true; for (const k of [...LV.unlock].reverse()) G.bag = [k, ...G.bag.filter((x) => x !== k)]; }
+      if (G.bag[0] === lastOrb && G.bag.length > 1) G.bag.push(G.bag.shift());
+    }
+    const i = G.bag.findIndex((k) => !(k === 'leo' && G.power === 'leo'));
+    if (i < 0) return;
+    kind = G.bag.splice(i, 1)[0];
+  }
   lastOrb = kind;
   const mesh = new THREE.Group();
   const core = iconOnly(new THREE.Sprite(new THREE.SpriteMaterial({ map: headTex[kind], transparent: true })));
@@ -936,22 +1027,43 @@ function spawnOrb(force, rel = 140, lane) {
   orbs.push({ s, u, mesh, core, kind });
 }
 
+// Level 1 has to teach both starting powers: until Raph's and Mikey's pickups have each been
+// taken, the next pickup is the one still missing, put in the wagon's lane, and a missed one
+// comes straight back (L1.retry s). The level can't end until both are taken (l1Done).
+const L1_NEED = ['raph', 'mike'];
+const l1Missing = () => L1_NEED.filter((k) => !G.took?.[k]);
+const l1Done = () => LV.n !== 1 || !l1Missing().length;
+function laneNear(u) { return LANES.reduce((a, b) => (Math.abs(b - u) < Math.abs(a - u) ? b : a)); }
 function updateOrbs(dt) {
   G.orbT -= dt;
-  if (G.orbT <= 0 && !G.power && !G.strike && orbs.length < 1) { spawnOrb(); G.orbT = ORB_EVERY; }
+  if (G.orbT <= 0 && !G.strike && orbs.length < 1) {
+    const need = LV.n === 1 && G.script.pickup ? l1Missing()[0] : null;
+    if (need) {
+      spawnOrb(need, 110, laneNear(player.u));
+      if (need === 'mike' && !G.script.mikeLine) { G.script.mikeLine = true; say('mikey', 'My turn! Grab my pizza cannon!'); }
+      if (!L1.forkHint) hint(need === 'mike' ? "GRAB MIKEY'S PICKUP" : 'DRIVE THROUGH THE GLOWING ICON');
+    } else spawnOrb();
+    G.orbT = need ? L1.retry : ORB_EVERY;
+  }
   for (let i = orbs.length - 1; i >= 0; i--) {
     const o = orbs[i];
     o.core.scale.setScalar(2.6 + Math.sin(G.time * 6) * 0.15);
     o.mesh.position.y = 1.6 + Math.sin(G.time * 4) * 0.25;
     if (Math.abs(o.s - player.s) < 3 && Math.abs(o.u - player.u) < 2.6) {
       G.orbsTaken = (G.orbsTaken || 0) + 1;
+      (G.took ||= {})[o.kind] = true;
+      if (LV.n === 1) {
+        if (!L1.forkHint) hint('');
+        if (l1Missing().length) G.orbT = 4;                   // the next one soon after
+        else if (G.wrecks >= LV.target && G.state === 'play' && !G.cleared) { G.cleared = true; endLevel(true); }
+      }
       fx.pickupBurst(o.mesh.position, TURTLES[o.kind].color);
       audio.pickup();
       if (GADGETS[o.kind]) startGadget(o.kind);
       else if (BUFFS[o.kind]) startBuff(o.kind);
       else { G.power = o.kind; G.powerAt = G.time; popupAt(o.mesh.position, `${TURTLES[o.kind].name} READY!`, 'big'); }
       stage.remove(o.mesh); orbs.splice(i, 1);
-    } else if (o.s < player.s - 20) { stage.remove(o.mesh); orbs.splice(i, 1); G.orbT = 3; }
+    } else if (o.s < player.s - 20) { stage.remove(o.mesh); orbs.splice(i, 1); G.orbT = LV.n === 1 && l1Missing().length ? L1.retry : 3; }
   }
 }
 
@@ -962,8 +1074,8 @@ function tryPower() {
   if (!G.power || G.strike) return;
   if (G.power !== 'leo') { G.power = null; return; }
   const rel = (e) => e.s - player.s;
-  const reach = liveFoot().filter((e) => rel(e) > -4 && rel(e) < 60).sort((a, b) => b.hp - a.hp);
   const waited = G.time - (G.powerAt || 0) > 6;
+  const reach = liveFoot().filter((e) => rel(e) > (waited ? -30 : -4) && rel(e) < 60).sort((a, b) => b.hp - a.hp);
   if (reach.length < 2 && !(waited && reach.length)) return;
   const hops = reach.slice(0, 3);
   G.strikes = (G.strikes || 0) + 1;
@@ -1576,8 +1688,11 @@ function updateBuff(dt) {
     // Donnie: wind-up, swing the staff down at a Foot car, and at the bottom of the swing a
     // bolt from the staff's tip grabs the car and throws it (startLift / liftStep)
     const D = donTop, sw = D.swing;
-    const busy = liveFoot().some((e) => e.lift);
-    if (!B.tgt || !B.tgt.alive || B.tgt.lift) B.tgt = foot.filter((e) => !e.lift && !e.tether && rel(e) > -2 && rel(e) < DON.reach && Math.abs(e.u - player.u) < 16)
+    const held = lifted();
+    if (held && B.t < 0.2) B.t = 0.2;   // the power lasts until the car he's holding is down
+    if (held) B.swingT = Math.max(B.swingT ?? 0, DON.every);
+    const busy = !!held;
+    if (!B.tgt || !B.tgt.alive || B.tgt.lift) B.tgt = foot.filter((e) => !e.lift && !e.tether && !e.boss && rel(e) > -2 && rel(e) < DON.reach && Math.abs(e.u - player.u) < 16)
       .sort((a, b) => Math.hypot(rel(a), a.u - player.u) - Math.hypot(rel(b), b.u - player.u))[0] || null;
     const tgt = B.tgt;
     B.swingT = (B.swingT ?? 0.35) - dt;
@@ -1603,7 +1718,7 @@ function updateBuff(dt) {
           fx.add.emit(hitAt, _n.set(0, 0, 0), new THREE.Color(1.2, 0.8, 3), 3, 0.18, { grow: 1 });
           fx.add.emit(src, _n.set(0, 0, 0), new THREE.Color(1.2, 0.8, 3), 1.6, 0.14, { grow: 1 });
           hitEnemy(tgt, 10, hitAt, Math.sign(tgt.u - player.u) || 1, 'ZAPPED!');
-          if (tgt.alive) { startLift(tgt); popupAt(hitAt.clone().setY(3), 'ZAPPED!', 'big'); }
+          if (tgt.alive && !tgt.boss) { startLift(tgt); popupAt(hitAt.clone().setY(3), 'ZAPPED!', 'big'); }
           flash(0.12); G.shake = Math.max(G.shake, 0.15);
           audio.crunch(0.6);
         }
@@ -1614,7 +1729,15 @@ function updateBuff(dt) {
       }
     } else {
       D.model.position.y = Math.sin(G.time * 5) * 0.02;
-      if (tgt) aimHero(D, tgt, D.face, dt, 6);
+      if (held) aimHero(D, held, D.face, dt, 10);
+      else if (tgt) aimHero(D, tgt, D.face, dt, 6);
+    }
+    // holding: a live bolt from the staff to the car the whole time it's up
+    if (held && Math.random() < dt * 9) {
+      D.holder.updateMatrixWorld(true);
+      const a = D.device.userData.tip.getWorldPosition(new THREE.Vector3());
+      const b = held.group.position.clone().add(_n.set((Math.random() - 0.5) * held.W, 0.4 + Math.random() * 0.8, (Math.random() - 0.5) * held.L * 0.6));
+      makeZap(a, b, clamp(a.distanceTo(b) / 12, 0.4, 1.2), 0.03, 0.07);
     }
     // the staff head glows up through the swing and crackles the whole time it's out
     const orb = D.device.userData.orb;
@@ -1878,7 +2001,8 @@ function updateStrike(realDt) {
     leoTrail(realDt);
     if (k >= 1) {
       slashAt(to.clone().setY(to.y + 0.6), st.i);
-      if (e.alive) wreckEnemy(e, st.side, st.i === 0 ? 'KATANA!' : st.i === 1 ? 'DOUBLE CUT!' : 'TRIPLE CUT!', true);
+      if (e.alive && e.boss) { hitEnemy(e, 250, to, st.side, 'KATANA!'); popupAt(to, 'KATANA! -250', 'big'); }   // the boss takes a big cut, not a one-shot
+      else if (e.alive) wreckEnemy(e, st.side, st.i === 0 ? 'KATANA!' : st.i === 1 ? 'DOUBLE CUT!' : 'TRIPLE CUT!', true);
       fx.pickupBurst(to, TURTLES.leo.color);
       st.i++; st.t = 0; st.from = to.clone();
       if (st.i >= st.hops.length) st.back = true;
@@ -1975,6 +2099,17 @@ function banner(text, cls = '') {
 let flashV = 0;
 function flash(v) { flashV = Math.max(flashV, v); }
 function updateHud() {
+  const arr = $('orb-arrow'), o = orbs[0];
+  const showArr = LV.n === 1 && o && G.state === 'play';
+  arr.classList.toggle('hidden', !showArr);
+  if (showArr) {
+    _sp.copy(o.mesh.position).setY(o.mesh.position.y + 2.2).project(camera);
+    if (_sp.z > 1) arr.classList.add('hidden');
+    arr.style.left = ((_sp.x + 1) / 2 * window.innerWidth).toFixed(0) + 'px';
+    arr.style.top = ((1 - _sp.y) / 2 * window.innerHeight).toFixed(0) + 'px';
+    const d = Math.max(0, o.s - player.s);
+    arr.style.setProperty('--sc', clamp(2 - d / 110, 1.1, 1.9).toFixed(2));   // grows as you get close
+  }
   const tag = $('april-tag');
   tag.classList.toggle('hidden', !april.on || G.state === 'story');
   if (april.on) {
@@ -1986,9 +2121,19 @@ function updateHud() {
     tag.classList.toggle('low', april.hp < 35);
     tag.classList.toggle('hit', aprilCar.flash > 0.3);
   }
+  const btag = $('boss-tag');
+  btag.classList.toggle('hidden', !boss.on || !boss.car.alive || G.state === 'story');
+  if (boss.on && boss.car.alive) {
+    _sp.copy(boss.car.group.position).setY(boss.car.H * 1.35 + 1.6).project(camera);
+    btag.style.left = ((_sp.x + 1) / 2 * window.innerWidth).toFixed(0) + 'px';
+    btag.style.top = ((1 - _sp.y) / 2 * window.innerHeight).toFixed(0) + 'px';
+    if (_sp.z > 1) btag.classList.add('hidden');
+    btag.querySelector('u').style.transform = `scaleX(${Math.max(0, boss.car.hp / boss.car.maxHp)})`;
+    btag.classList.toggle('hit', boss.car.flash > 0.3);
+  }
   $('timer').textContent = Math.ceil(G.left);
   $('timer').classList.toggle('low', G.left < 10);
-  $('wrecks').textContent = G.wrecks;
+  $('wrecks').textContent = LV.kind === 'dist' ? Math.max(0, Math.ceil(LV.dist - (player.s - G.s0))) + 'm' : G.wrecks;
   $('score').textContent = G.score;
   $('combo-wrap').classList.toggle('on', G.combo > 1 && G.comboT > 0);
   $('combo').textContent = 'x' + G.combo;
@@ -2002,7 +2147,7 @@ function updateHud() {
   gf.classList.toggle('on', !!G.gadget);
   if (G.gadget) {
     gf.dataset.t = G.gadget.kind;
-    gf.querySelector('img').src = `/ui/${G.gadget.kind}.png`;
+    gf.querySelector('img').src = `/ui/${G.gadget.kind}.webp`;
     gf.querySelector('.fg').style.strokeDashoffset = (289 * (1 - G.gadget.t / G.gadget.dur)).toFixed(1);
     gf.querySelector('b').textContent = GADGETS[G.gadget.kind].name;
     gf.querySelector('i').textContent = Math.max(0, G.gadget.t).toFixed(1) + 's';
@@ -2011,7 +2156,7 @@ function updateHud() {
   bf.classList.toggle('on', !!G.buff);
   if (G.buff) {
     bf.dataset.t = G.buff.kind;
-    bf.querySelector('img').src = `/ui/${G.buff.kind}.png`;
+    bf.querySelector('img').src = `/ui/${G.buff.kind}.webp`;
     bf.querySelector('.fg').style.strokeDashoffset = (289 * (1 - G.buff.t / G.buff.dur)).toFixed(1);
     bf.querySelector('b').textContent = BUFFS[G.buff.kind].name;
     bf.querySelector('i').textContent = Math.max(0, G.buff.t).toFixed(1) + 's';
@@ -2024,8 +2169,13 @@ function updateHud() {
 
 // ── Main loop ────────────────────────────────────────────────────────────────
 let last = performance.now();
+const _story = document.getElementById('story'), _over = document.getElementById('gameover-overlay');
+const covered = () => !_story.classList.contains('hidden') || !_over.classList.contains('hidden');
 function loop(now) {
   requestAnimationFrame(loop);
+  const cov = covered();
+  if (cov !== document.body.classList.contains('covered')) document.body.classList.toggle('covered', cov);   // hides pause/mute on comic pages
+  if (cov) { last = now; return; }
   const realDt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (G.paused || !player) { render(); return; }
@@ -2053,7 +2203,14 @@ function step(dt, realDt) {
   }
   if (G.state === 'play') {
     G.left -= dt;
-    if (G.left <= 0) { G.left = 0; if (LV.april) endLevel(true); else endLevel(false, 'TIME UP!', 'The Foot Clan got away.'); }
+    if (G.left <= 0) {
+      G.left = 0;
+      if (LV.april) endLevel(true);
+      else if (LV.kind === 'boss') endLevel(false, 'HE GOT AWAY!', 'Hit the boss truck with everything: rams, saws, and Donnie can drop cars on it.');
+      else if (LV.kind === 'dist') endLevel(false, 'TOO SLOW!', 'Keep the wagon moving: Foot cars that block you slow you down.');
+      else endLevel(false, 'TIME UP!', 'The Foot Clan got away.');
+    }
+    if (LV.kind === 'dist' && player.s - G.s0 >= LV.dist) endLevel(true);
     levelScript(dt);
   }
 
@@ -2136,32 +2293,43 @@ function step(dt, realDt) {
 // Level 1: a quiet ride, then the Foot turn up behind (Donnie, Leo); a pickup is put right in
 // the wagon's path with Donnie's line and a hint; before the first fork, Mikey and a hint about
 // leaning to choose. After the pickup lesson, pickups come on the normal timer.
-const L1 = { foot: 5, pickup: 12.5, forkAt: 300, forkHint: false };
+const L1 = { foot: 5, pickup: 12.5, forkAt: 300, forkHint: false, retry: 1.2 };
 function hint(text) { const h = $('hint'); h.textContent = text; h.classList.toggle('hidden', !text); }
 function levelScript(dt) {
   const S = G.script, J = path.junction;
   if (LV.n === 1) {
     if (!S.foot && G.time > L1.foot) {
       S.foot = true;
-      spawnEnemy('racer', -30, -5.4); spawnEnemy('racer', -38, 5.4);
+      spawnWave('pass');
       say('donnie', 'Foot Clan soldiers? What are they doing here?');
       say('leo', "Never mind what they're doing here. Take them out!");
       G.spawnT = 4;
     }
     if (!S.pickup && G.time > L1.pickup) {
       S.pickup = true;
-      spawnOrb('raph', 110, player.u);
       say('donnie', 'Drive over those special ability pick-ups!');
-      hint('DRIVE THROUGH THE GLOWING ICON');
-      G.orbT = ORB_EVERY;
+      G.orbT = 0;   // updateOrbs puts Raph's in the lane now, and again until it's taken
     }
-    if (S.pickup && !S.pickupDone && (G.orbsTaken || !orbs.length)) { S.pickupDone = true; if (!L1.forkHint) hint(''); }
+    if (S.pickup && !S.pickupDone && G.took?.raph) S.pickupDone = true;
     if (!S.fork && S.pickupDone && J && J.s - player.s < L1.forkAt) {
       S.fork = true;
       say('mikey', 'Select which way to go!');
       hint('LEAN LEFT OR RIGHT TO PICK A ROAD');
       L1.forkHint = true;
     }
+  }
+  if (LV.chase) {
+    if (!S.go && G.time > 1) { S.go = true; spawnWave('pass'); say('raph_q', "Here they come! Right on our bumper!"); }
+  }
+  if (LV.kind === 'boss') {
+    if (!S.go && G.time > 1) { S.go = true; banner('BOSS!', 'raph'); say('leo', 'There he is! Stay on him!'); }
+    if (!S.half && boss.hp < boss.maxHp / 2) { S.half = true; say('donnie', "His armour's cracking. Keep hitting him!"); }
+  }
+  if (LV.kind === 'dist') {
+    const left = LV.dist - (player.s - G.s0);
+    if (!S.go && G.time > 1) { S.go = true; say('donnie', "Technodrome's dead ahead. Don't stop for anything!"); }
+    if (!S.half && left < LV.dist / 2) { S.half = true; say('leo', 'Halfway there!'); }
+    if (!S.near && left < 500) { S.near = true; say('mikey', 'I can see it! Floor it!'); }
   }
   if (LV.april) {
     if (!S.go && G.time > 1.5) { S.go = true; say('leo', "Stay on April's tail. Don't let them hit her!"); }
@@ -2178,7 +2346,9 @@ function levelScript(dt) {
 // fork picks a side: moves over, blinks, and the turn sign says which way she went. Take the
 // other fork and she carries on down hers; a few seconds later it's over. Foot cars shoot at her
 // now and then (one shot every APRIL.shotGap s at most) — the wagon can block them.
-const APRIL = { hp: 100, gap: 24, gapSwing: 6, shotGap: 3.2, shotDmg: 7, lostAfter: 3.5, picksAt: 270 };
+// wrong fork: nothing happens at the lock. Once the roads have pulled her `warnAt` m away a
+// brother says so; once she's `lostAt` m away, or off screen for `offFor` s, it's over (`lostAfter` s later)
+const APRIL = { hp: 100, gap: 24, gapSwing: 6, shotGap: 3.2, shotDmg: 7, picksAt: 270, warnAt: 12, lostAt: 45, offFor: 1, lostAfter: 1.4 };
 const april = { on: false, hp: APRIL.hp, lane: 1.8, laneT: 3, turn: 0, forJ: 0, off: null };
 const _fp = {};
 function resetApril() {
@@ -2242,19 +2412,71 @@ function updateApril(dt) {
     c.place(dt);
     c.group.position.set(_fp.x, 0, _fp.z);
     c.group.rotation.y = -_fp.h;
+    // lost only when the player can see it: far across the gap between the roads, or off screen
+    const far = c.group.position.distanceTo(player.group.position);
+    _sp.copy(c.group.position).setY(1.5).project(camera);
+    const off = _sp.z > 1 || Math.abs(_sp.x) > 1.05 || Math.abs(_sp.y) > 1.05;
+    april.far = far;
+    if (!april.off.warned && far > APRIL.warnAt && G.state === 'play') { april.off.warned = true; say('raph_q', 'Mikey! April went the other way!', 2.4); }
+    april.offT = off && far > 20 ? (april.offT || 0) + dt : 0;
+    if (!G.lostT && (far > APRIL.lostAt || april.offT > APRIL.offFor) && G.state === 'play') {
+      G.lostT = APRIL.lostAfter; G.lostFar = Math.round(far); G.lostOff = off;
+      banner('WE LOST APRIL!', 'raph');
+    }
   } else c.place(dt);
 }
 
-// ── Donnie's staff (EMP PULSE, rebuilt) ────────────────────────────────────
-// Donnie swings his bo staff (a THROW clip from the tagged set), and at the bottom of the swing a
-// bolt of lightning from its tip grabs a Foot car and throws it: up in an arc and down on top of
-// another Foot car (CRUSHED!), or onto the road if there's no other car near. A car in the air
-// can't shoot, and the staff still fries shells that come close.
-const DON = { every: 2.1, swingFrom: 0.42, strikeAt: 0.87, swingTo: 1.35, rate: 1.35, reach: 48, lift: 1.25, height: 7.5, crush: 95, slam: 70 };
+// ── The Foot boss (level 4) ─────────────────────────────────────────────────
+// A Foot truck a third bigger, painted blood red, with 1100 hp and a faster cannon. It never
+// flees or leaves, and alternates: RUN (weaving 22-40 m ahead, shooting) and ATTACK (drops
+// back alongside the wagon and swings into it) — the wagon can't speed up, so the attack is
+// the window to ram and grind it. Donnie can't lift it, but can drop other cars on it.
+const BOSS = { hp: 1100, scale: 1.35, fireEvery: 2.6, paint: 0xb0141e, run: 4.5, attack: 5.5 };
+const boss = { on: false, car: null };
+function resetBoss() {
+  boss.on = LV.kind === 'boss';
+  const c = boss.car;
+  c.reset();
+  c.active = c.alive = boss.on; c.group.visible = boss.on;
+  if (!boss.on) return;
+  c.hp = c.maxHp = BOSS.hp;
+  c.s = player.s + 34; c.u = 1.8; c.vs = player.vs;
+  c.ai = { mode: 'boss', lane: 1.8, rel: 32, t: 2, aggr: 0, fireT: 2.5, phase: 'run', phT: BOSS.run, side: 1 };
+}
+function bossAI(e, dt) {
+  const ai = e.ai;
+  ai.mode = 'boss';
+  ai.phT -= dt; ai.t -= dt;
+  if (ai.phT <= 0) {
+    ai.phase = ai.phase === 'run' ? 'attack' : 'run';
+    ai.phT = ai.phase === 'run' ? BOSS.run : BOSS.attack;
+    ai.side = e.u > player.u ? 1 : -1;
+    if (ai.phase === 'attack' && G.state === 'play') popupAt(e.group.position.clone().setY(e.H + 2), 'HE\'S COMING BACK!', 'bad');
+  }
+  if (ai.phase === 'run') {
+    ai.rel = 31 + Math.sin(G.time * 0.45) * 9;
+    if (ai.t <= 0) { ai.t = rand(1.8, 3); ai.lane = [-7, -3.6, 0, 3.6, 7][Math.floor(Math.random() * 5)]; }
+  } else {
+    // alongside, then a swing into the wagon every 1.6 s
+    ai.rel = 0.5;
+    const gap = (player.W + e.W) / 2 + 1.2;
+    const swing = (ai.phT % 1.6) < 0.5 && Math.abs(e.s - player.s) < 4;
+    ai.lane = swing ? player.u : player.u + ai.side * gap;
+  }
+}
+
+// ── Donnie's staff ─────────────────────────────────────────────────────────
+// He swings his bo staff (a THROW clip from the tagged set), and at the bottom of the swing a
+// bolt from its tip grabs a Foot car. The car rises and comes to hover over the road just in
+// front of the wagon, crackling, with Donnie holding it on the bolt and turning to keep it in
+// front of him. Then it drops: onto a Foot car if there's one under it (CRUSHED!), otherwise
+// onto the road in front of the wagon (SLAMMED!). One car at a time: he doesn't swing again
+// until it's down, and his power doesn't run out while he's holding one.
+const DON = { every: 0.9, swingFrom: 0.42, strikeAt: 0.87, swingTo: 1.35, rate: 1.35, reach: 48,
+  rise: 0.6, hover: 1.3, drop: 0.45, hoverRel: 5, hoverY: 6.2, area: { s: 16, u: 7 }, crush: 95, slam: 90 };
+const lifted = () => liveFoot().find((e) => e.lift);
 function startLift(e) {
-  const others = liveFoot().filter((o) => o !== e && !o.lift && !o.tether && Math.abs(o.s - e.s) < 40);
-  const to = others.sort((a, b) => Math.hypot(a.s - e.s, a.u - e.u) - Math.hypot(b.s - e.s, b.u - e.u))[0] || null;
-  e.lift = { t: 0, rel0: e.s - player.s, u0: e.u, to, toRel: e.s - player.s + 6, toU: e.u, spin: Math.random() < 0.5 ? -1 : 1, y: 0 };
+  e.lift = { ph: 'rise', t: 0, rel0: e.s - player.s, u0: e.u, spin: Math.random() < 0.5 ? -1 : 1, y: 0, rz: 0, rx: 0, to: null };
   e.charge = 0; e.emp = Math.max(e.emp || 0, 2.5);
   if (e.turret) e.turret.laser.visible = false;
   G.lifts = (G.lifts || 0) + 1;
@@ -2262,23 +2484,46 @@ function startLift(e) {
 function liftStep(e, dt) {
   const L = e.lift;
   L.t += dt;
-  const k = clamp(L.t / DON.lift, 0, 1), ek = k * k * (3 - 2 * k);
-  if (L.to && !L.to.alive) L.to = null;
-  if (L.to) { L.toRel = L.to.s - player.s; L.toU = L.to.u; }
+  const hu = clamp(player.u, -HW + e.W, HW - e.W);
   const lastU = e.u;
-  e.s = player.s + L.rel0 + (L.toRel - L.rel0) * ek;
-  e.u = L.u0 + (L.toU - L.u0) * ek;
-  e.vs = player.vs; e.vu = (e.u - lastU) / Math.max(dt, 1e-4) * 0.3;
-  const land = L.to ? L.to.H * 0.85 : 0;
-  L.y = land * k + 4 * DON.height * k * (1 - k);
-  // it crackles all the way
-  if (Math.random() < dt * 30) {
-    const a = e.group.position.clone().add(_n.set((Math.random() - 0.5) * e.W * 1.3, Math.random() * 1.6, (Math.random() - 0.5) * e.L));
-    makeZap(a, a.clone().add(_n.set((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2)), 0.4, 0.05, 0.1);
+  if (L.ph === 'rise') {
+    const k = clamp(L.t / DON.rise, 0, 1), ek = k * k * (3 - 2 * k);
+    e.s = player.s + L.rel0 + (DON.hoverRel - L.rel0) * ek;
+    e.u = L.u0 + (hu - L.u0) * ek;
+    L.y = DON.hoverY * Math.sin(k * Math.PI / 2);
+    L.rz = L.spin * Math.sin(k * Math.PI) * 1.2;   // a roll on the way up
+    L.rx = Math.sin(k * Math.PI) * 0.3;
+    if (k >= 1) { L.ph = 'hover'; L.t = 0; }
+  } else if (L.ph === 'hover') {
+    e.s = player.s + DON.hoverRel;
+    e.u += (hu - e.u) * Math.min(1, dt * 2.5);     // stays in front of the wagon
+    L.y = DON.hoverY + Math.sin(L.t * 6) * 0.25;
+    L.rz = Math.sin(L.t * 3.1) * 0.12; L.rx = Math.sin(L.t * 4.3) * 0.08;
+    if (L.t >= DON.hover) {
+      // anything underneath to drop it on?
+      const under = liveFoot().filter((o) => o !== e && !o.lift && Math.abs(o.s - e.s) < DON.area.s && Math.abs(o.u - e.u) < DON.area.u)
+        .sort((a, b) => Math.hypot(a.s - e.s, a.u - e.u) - Math.hypot(b.s - e.s, b.u - e.u))[0] || null;
+      Object.assign(L, { ph: 'drop', t: 0, to: under, rel1: e.s - player.s, u1: e.u, y1: L.y });
+    }
+  } else {
+    if (L.to && !L.to.alive) L.to = null;
+    const k = clamp(L.t / DON.drop, 0, 1), kk = k * k;
+    const toRel = L.to ? L.to.s - player.s : L.rel1, toU = L.to ? L.to.u : L.u1, land = L.to ? L.to.H * 0.85 : 0;
+    e.s = player.s + L.rel1 + (toRel - L.rel1) * k;
+    e.u = L.u1 + (toU - L.u1) * k;
+    L.y = L.y1 + (land - L.y1) * kk;
+    L.rz *= 0.9; L.rx = -kk * 0.25;                // nose down into the hit
+    if (k >= 1) land_(e, L);
   }
-  if (k < 1) return;
-  // landing
-  pointAt(e.s, e.u, _p).setY(Math.max(0.6, land));
+  e.vs = player.vs; e.vu = (e.u - lastU) / Math.max(dt, 1e-4) * 0.3;
+  // it crackles all the way (sparingly: a lot of arcs bloom into a glare that hides the car)
+  if (Math.random() < dt * 9) {
+    const a = e.group.position.clone().add(_n.set((Math.random() - 0.5) * e.W * 1.3, Math.random() * 1.6, (Math.random() - 0.5) * e.L));
+    makeZap(a, a.clone().add(_n.set((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2)), 0.4, 0.03, 0.08);
+  }
+}
+function land_(e, L) {
+  pointAt(e.s, e.u, _p).setY(Math.max(0.6, L.to ? L.to.H * 0.85 : 0));
   const side = Math.sign(e.u - player.u) || 1;
   e.lift = null;
   G.shake = Math.max(G.shake, 0.4);
@@ -2294,13 +2539,16 @@ function liftStep(e, dt) {
     if (e.alive) { e.bounce = 1; e.vs = player.vs - 8; popupAt(_p.clone().setY(2.5), 'SLAMMED!', 'wall'); }
   }
 }
+const LIFT_GLOW = new THREE.Color(0.9, 0.45, 1.8);
 function placeLift(e) {
   const L = e.lift;
-  const k = clamp(L.t / DON.lift, 0, 1);
+  // charged: the held car glows electric purple, pulsing, so it pops against the sky
+  const k = 0.75 + Math.sin(G.time * 24) * 0.25;
+  for (const m of e.mats) m.emissive.copy(LIFT_GLOW).multiplyScalar(k);
+  if (e.tmats) for (const m of e.tmats) m.emissive.copy(LIFT_GLOW).multiplyScalar(k);
   e.group.position.y += L.y;
-  // a lazy barrel roll on the way up, coming back level to land flat
-  e.group.rotation.z = L.spin * Math.sin(k * Math.PI) * 1.1;
-  e.group.rotation.x = Math.sin(k * Math.PI) * 0.35;
+  e.group.rotation.z = L.rz;
+  e.group.rotation.x = L.rx;
 }
 
 // ── Junctions: pick a side of the road before the T and the wagon takes that turn ──
@@ -2315,18 +2563,28 @@ function junctionChoice() {
     if (L1.forkHint) { L1.forkHint = false; hint(''); }
     if (april.on && april.turn && turn !== april.turn && G.state === 'play') {
       // wrong fork: April carries on down her branch, and the wagon has a few seconds of drama
-      april.off = { J, turn: april.turn };
-      G.lostT = APRIL.lostAfter;
-      banner('WRONG WAY!', 'raph');
-      say('leo', "Wrong way! We're losing April!", 2.6);
+      april.off = { J, turn: april.turn, warned: false };
     }
+    $('follow').className = 'hidden'; $('follow-arrow').className = 'hidden';
     el.className = 'show locked ' + (turn < 0 ? 'l' : 'r');
     setTimeout(() => { el.className = ''; }, 900);
     audio.beep(true);
     return;
   }
-  const ap = april.on && april.turn && april.forJ === J.id ? (april.turn < 0 ? ' ap-l' : ' ap-r') : '';
-  if (!el.classList.contains('locked')) el.className = to < 230 && G.state === 'play' ? 'show ' + (player.u < 0 ? 'l' : 'r') + ap : '';
+  // level 2: April's turn, spelled out
+  const fol = $('follow'), showFol = april.on && april.turn && april.forJ === J.id && !april.off && G.state === 'play';
+  // a big caption, a giant arrow on her side of the screen, and an arrow on her van's tag
+  if (showFol && fol.classList.contains('hidden')) {
+    const L = april.turn < 0;
+    fol.innerHTML = `<small>APRIL IS TURNING</small><strong>${L ? '&#9664; LEFT' : 'RIGHT &#9654;'}</strong><span>FOLLOW HER!</span>`;
+    fol.className = L ? 'l' : 'r';
+    $('follow-arrow').className = L ? 'l' : 'r';
+    $('april-tag').querySelector('b').innerHTML = L ? '&#9664; APRIL' : 'APRIL &#9654;';
+  } else if (!showFol && !fol.classList.contains('hidden')) {
+    fol.className = 'hidden'; $('follow-arrow').className = 'hidden';
+    $('april-tag').querySelector('b').textContent = 'APRIL';
+  }
+  if (!el.classList.contains('locked')) el.className = to < 230 && G.state === 'play' ? 'show ' + (player.u < 0 ? 'l' : 'r') + (showFol ? ' low' : '') : '';
 }
 
 // the wagon wrecked (hurt) lands here; everything else calls endLevel directly
@@ -2338,17 +2596,19 @@ async function endLevel(win, title, why = '') {
   G.state = 'over'; G.won = win;
   const run = levelRun;
   hint(''); clearSay();
-  $('turn').className = '';
+  $('turn').className = ''; $('follow').className = 'hidden'; $('follow-arrow').className = 'hidden';
   const last = LV.n === LEVELS.length;
   if (win) {
     audio.beep(true);
-    banner(LV.april ? 'APRIL IS SAFE!' : 'STREET CLEARED!');
+    banner({ april: 'APRIL IS SAFE!', boss: 'BOSS DOWN!', dist: 'TECHNODROME REACHED!' }[LV.kind] || 'STREET CLEARED!');
     await new Promise((r) => setTimeout(r, 1300));
     if (run !== levelRun) return;
-    if (!AUTO) await playScene({ lines: LV.outro, title: last ? 'COWABUNGA!' : `LEVEL ${LV.n} CLEAR!`, objective: last ? 'You saved April. The wagon is yours, Mikey.' : `Next: ${LEVELS[LV.n].title}`, start: last ? 'THE END' : 'NEXT' });
+    if (!AUTO) await playScene({ bg: 'win', lines: LV.outro, title: last ? 'COWABUNGA!' : `LEVEL ${LV.n} CLEAR!`, objective: last ? 'You made it to the Technodrome. The wagon is yours, Mikey.' : `Next: ${LEVELS[LV.n].title}`, start: last ? 'THE END' : 'NEXT' });
     if (run !== levelRun) return;
   } else audio.over();
-  const stars = LV.april ? [1, 50, 80].filter((h) => win && april.hp >= h).length : (LV.stars || []).filter((s) => G.wrecks >= s).length;
+  const stars = LV.april ? [1, 50, 80].filter((h) => win && april.hp >= h).length
+    : LV.stars ? LV.stars.filter((s) => G.wrecks >= s).length
+    : [1, 40, 75].filter((h) => win && G.hp >= h).length;   // boss / distance: by shell left
   $('over-level').textContent = `LEVEL ${LV.n} - ${LV.title}`;
   $('over-title').textContent = win ? (last ? 'COWABUNGA!' : 'LEVEL CLEAR!') : title;
   $('over-title').classList.toggle('fail', !win);
@@ -2360,7 +2620,9 @@ async function endLevel(win, title, why = '') {
   $('restart-button').textContent = win ? (last ? 'PLAY AGAIN' : 'REPLAY') : 'TRY AGAIN';
   $('restart-button').classList.toggle('hidden', win && !last);
   $('next-button').classList.toggle('hidden', !win || last);
-  setTimeout(() => $('gameover-overlay').classList.remove('hidden'), win ? 0 : 900);
+  const ov = $('gameover-overlay');
+  ov.classList.toggle('win', win); ov.classList.toggle('fail', !win);
+  setTimeout(() => ov.classList.remove('hidden'), win ? 0 : 1100);
 }
 
 // ── Buttons ──────────────────────────────────────────────────────────────────
@@ -2414,9 +2676,10 @@ function autoLean() {
     return clamp((side * 6 - player.u) * 0.5, -1, 1);
   }
   const o = orbs[0];
-  if (o && o.s - player.s < 60 && o.s > player.s) return clamp((o.u - player.u) * 0.6, -1, 1);
+  if (o && !window.__noOrbs && o.s - player.s < 60 && o.s > player.s) return clamp((o.u - player.u) * 0.6, -1, 1);
+  if (boss.on && boss.car.alive && Math.abs(boss.car.s - player.s) < 12) best = boss.car;
   if (!best) return clamp(-player.u * 0.3, -1, 1);
   const du = best.u - player.u;
   return Math.abs(best.s - player.s) < 6 ? Math.sign(du) : clamp(du * 0.5, -1, 1);
 }
-window.__game = { G, april, spawnEnemy, get donTop() { return donTop; }, get aprilCar() { return aprilCar; }, startLevel, endLevel, get LV() { return LV; }, LEVELS, startBuff, liftStep, get world() { return world; }, path, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, hatchS, get fx() { return fx; }, saws, updateSaws, startGadget, get mikeTop() { return mikeTop; }, sky, scene, stage, renderer, composer };
+window.__game = { G, april, boss, spawnEnemy, spawnWave, get donTop() { return donTop; }, get aprilCar() { return aprilCar; }, startLevel, endLevel, get LV() { return LV; }, LEVELS, startBuff, liftStep, get world() { return world; }, path, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, hatchS, get fx() { return fx; }, saws, updateSaws, startGadget, get mikeTop() { return mikeTop; }, sky, scene, stage, renderer, composer };

@@ -24,17 +24,41 @@ npm run build && npx vite preview      # http://127.0.0.1:8155/index.html
 - **Dev panel:** `?dev=1` shows it. It also shows on its own on localhost and 127.0.0.1; see
   [Dev panel](#dev-panel).
 
-## The loop: two levels
+## The loop: five levels
 
 `LEVELS` in `src/main.js`. Each level opens with the brothers talking (full-body art, speech
 bubbles, tap or wait to advance), then a title card with the objective. A win plays Raph's line
 and offers NEXT LEVEL; a fail shows why and TRY AGAIN restarts **that same level**, without the
-talking scene. After level 2, PLAY AGAIN goes back to level 1 with the story.
+talking scene. After level 5, PLAY AGAIN goes back to level 1 with the story.
 
-| Level | Goal | Fails on |
-| --- | --- | --- |
-| **1 JOY RIDE** (100 s) | Wreck 10 Foot cars | Time up, or the wagon's shell runs out |
-| **2 SAVE APRIL** (70 s) | Keep April's van alive until the timer ends, following her at every fork | April's van destroyed, taking the other fork (3.5 s later), or the shell |
+| Level | Goal | Unlocks | Fails on |
+| --- | --- | --- | --- |
+| **1 JOY RIDE** (100 s) | Wreck 10 Foot cars | Starts with Raph and Mikey | Time up, or the wagon's shell runs out |
+| **2 SAVE APRIL** (70 s) | Keep April's van alive until the timer ends, following her at every fork | Leo | April's van destroyed, losing her at a fork, or the shell |
+| **3 ON OUR TAIL** (90 s) | They're chasing us: wreck 12. Every car comes from behind, fast and aggressive | Donnie | Time up, or the shell |
+| **4 BOSS RUN** (100 s) | Wreck the Foot boss (a big red truck, 1100 hp) | Saw blades | He gets away (time), or the shell |
+| **5 TECHNODROME** (95 s) | Reach the Technodrome, 3400 m, through waves of Foot | Nitro | Too slow (time), or the shell |
+
+**Powers by level:** `LEVELS[].powers` is the pickup pool: everything from earlier levels
+plus the one this level unlocks (`unlock`). The title card lists them all and tags the new one
+NEW!. Pickups are dealt from a shuffled bag of the pool, so every power comes up each round,
+with the new one first. Pickups keep coming while Leo is held, and a held Leo also goes for
+cars behind after 6 s. Riot shield and harpoon are built but not in any level.
+
+**Level 1 must teach both starting powers:** until Raph's and Mikey's pickups have each been
+taken, the next pickup is the missing one, placed in the wagon's lane with a bobbing arrow over
+it. A missed one comes back 1.2 s later, and the level can't end until both are taken.
+
+**Waves** (`spawnWave`): level 1 runs on waves only, 3 Foot cars at a time, a new wave when at
+most one is left. They alternate: **pass** (they roar up from behind and past the wagon to
+sit ahead) and **ahead** (already far up the road and slower, so you close in on them).
+Level 5 mixes waves in too. Trucks join from the third wave.
+
+**The boss** (`BOSS`, `bossAI`): a Foot truck scaled 1.35x, painted red, with a FOOT BOSS
+tag and health bar. It alternates **run** (4.5 s, weaving 22-40 m ahead and shooting) and
+**attack** (5.5 s, drops back alongside and swings into the wagon). The wagon can't speed up,
+so the attack is the window to ram and grind it. Leo's katana does 250 to it instead of the
+usual instant wreck, and Donnie can't lift it but can drop cars on it.
 
 **Level 1 is the tutorial** (`levelScript`, `L1`):
 - An empty street first. At 5 s two Foot cars come up from behind, with Donnie's and Leo's lines.
@@ -46,12 +70,24 @@ talking scene. After level 2, PLAY AGAIN goes back to level 1 with the story.
 - Her van is the Foot truck without its cannon, painted blue (`Car` with `friendly`). It drives
   18-30 m ahead of the wagon, always less than the fork lock-in distance, so the player
   chooses before she reaches the fork.
-- 270 m before each fork she picks a side, moves over and blinks, and the turn sign shows
-  "APRIL WENT LEFT/RIGHT". Take the other fork and she drives off down hers
-  (`forkPoint` in `world.js`).
+- 270 m before each fork she picks a side, moves over and blinks. A big caption says
+  "APRIL IS TURNING / RIGHT ▶ / FOLLOW HER!", a giant arrow pulses on that side of the
+  screen, and her van's tag gets the arrow too.
+- Take the other fork and nothing happens at the fork itself: she drives off down hers
+  (`forkPoint` in `world.js`) and you watch her go. At 12 m apart Raph says she went the
+  other way; at 45 m, or after 1 s off screen, it's "WE LOST APRIL!" and the level fails
+  (about 3 s after the fork, measured). Tuning: `APRIL.warnAt / lostAt / offFor`.
 - Foot cars shoot at her now and then: one car lines up on her at a time, at most one shot
   every 3.2 s, 7 damage. The wagon can block them by being in the way.
 - A tag over her van shows her health.
+
+**The look:** the scenes and the end-of-level page are comic pages. They sit on two static
+comic backgrounds made with Kolbo (`public/story/bg_night.webp` for intros and fails,
+`bg_win.webp` for wins), with halftone dots and a panel frame. The 3D view isn't drawn or
+updated while a page covers it. Speakers slam in on a burst of their colour, lines letter
+themselves into ink-outlined bubbles, and the title card sits on a starburst. In-level
+popups, hints and April's caption use the same comic style. The lettering is Impact with ink
+strokes; a real comic font (Bangers, via npm) wasn't installed.
 
 **Story text and art:** the lines are from Elad's script
 (`~/Documents/TMNT/TMNT MM Full body/wagonPrototype/script.rtf`), with typos fixed.
@@ -102,7 +138,7 @@ rises out of the black opening. When the power ends he sinks back down and the l
 | **Leo** | Katana strike. Held until it's worth using | Fires once 2 or more Foot cars are in reach, or 1 after waiting 6 s. Leo jumps from the hatch to the toughest car first and chains through up to 3 cars while the world slows to 0.12×. Blue trails come off his twin katanas, and each cut leaves crossed crescents of light. |
 | **Raph** | SAI STORM, 8 s | Stands in the hatch throwing sais in straight lines. He turns his body to face the car, allowing for how the throw animation twists him. |
 | **Mikey** | PIZZA CANNON, 8 s | Fires homing pizzas from a pizza gatling on his shoulder |
-| **Donnie** | THUNDER STAFF, 7.5 s | He swings his bo staff (Raph's overhead throw clip a7) every 2.1 s. At the bottom of the swing a bolt from the staff's tip grabs the nearest Foot car and throws it in an arc onto another Foot car (**CRUSHED!**: the thrown car is wrecked, the other takes 95), or onto the road (**SLAMMED!**, 70). A car in the air can't shoot. The staff also destroys incoming shells. Tuning: `DON`. |
+| **Donnie** | THUNDER STAFF, 7.5 s | He swings his bo staff (Raph's overhead throw clip a7). At the bottom of the swing a bolt from the staff's tip grabs the nearest Foot car. It rises and **hovers in front of the wagon** for 1.3 s, glowing electric purple, with Donnie holding it on a live bolt and turning to keep it in front of him. Then it drops: onto a Foot car under it (**CRUSHED!**: the thrown car is wrecked, the other takes 95), or onto the road in front of you (**SLAMMED!**, 90). One car at a time: no new swing until it's down, and the power doesn't run out while he holds one. The staff also destroys incoming shells. Tuning: `DON`. |
 
 ### Gadget slot (`GADGETS` in `src/main.js`)
 
@@ -153,7 +189,21 @@ WebView.
 | N | Nitro |
 | H | Harpoon |
 
+## Assets: the quick diet (`tools/optimize-assets.py`)
+
+- `clips.json` keeps only the clips played (ride, flip, one frame of spin): 793 KB to 209 KB.
+- Animation floats rounded to 4 decimals (`throws.json` 271 KB to 236 KB).
+- UI icons are WebP (about 80% smaller).
+- Three unused facade textures removed.
+- **Not done:** mesh quantization of the car GLBs. The first attempt made every car vanish
+  (the meshes weren't drawn at all), so it's disabled in the script. Each car GLB is still
+  ~1.5 MB, mostly 32k-vertex geometry; that's the next real saving.
+
 ## How it's built: the parts that weren't obvious
+
+- **Foot cars glow:** their paint gets a fresnel rim (`addRim` in `cars.js`; `footRim` and
+  `footRimColor` in the dev panel) and a little self-glow, so they read against the night.
+  New panel keys, so older saved looks still get the glow.
 
 - **Wheels:** the Meshy car models are single meshes, so their wheels can't turn. Each car
   gets spinning tyre-and-rim covers over its own wheels.
@@ -183,8 +233,11 @@ port 8155.
 
 | Tool | Checks |
 | --- | --- |
-| `levels.mjs` | The two-level loop: `intro` (level 1 scene and tutorial), `april` (level 2 to the end), `wrong` (takes the other fork, expects YOU LOST APRIL!) |
-| `donnie.mjs` | Frames through Donnie's swings, and the lift / crush counts |
+| `levels.mjs` | The level loop: `intro` (level 1 scene and tutorial), `april` (level 2 to the end), `wrong` (takes the other fork; logs when Raph warns and when she's lost), `level3` / `level4` / `level5` |
+| `l1-pickups.mjs`, `pickup-mix.mjs`, `card.mjs` | Level 1's pickup rule; which pickups a level hands out; a level's title card |
+| `make-mike-icon.py` | Mikey's power icon from the current art, in the medallion format |
+| `donnie.mjs` | Frames through Donnie's swings, the lift / crush counts, then a frozen frame of the held car with its on-screen size |
+| `optimize-assets.py` | The asset diet above |
 | `make-story-art.py` | The story art from Elad's renders |
 | `burst.mjs` | A burst of screenshots after optional setup code |
 | `catch.mjs` | All four turtle powers firing naturally |
@@ -207,6 +260,7 @@ port 8155.
 | `ui/raph`, `leo`, `mike`, `donnie` | Turtle head icons from Elad's TDCars2 project |
 | `ui/foot.png` | The Foot Clan symbol Elad supplied; currently not shown on the cars |
 | `story/*.webp` | Elad's TMNT character renders (`~/Documents/TMNT/TMNT MM Full body`), resized |
+| `story/bg_night.webp`, `bg_win.webp` | Kolbo (nano-banana-2.1), comic backgrounds, no characters |
 | Foot car models | Kolbo and Meshy |
 | Wagon | Elad's CustomCar_01 (Meshy) |
 | Gadget icons | Drawn procedurally by the scripts above |

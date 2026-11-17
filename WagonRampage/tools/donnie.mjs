@@ -25,6 +25,33 @@ for (let i = 0; i < +frames; i++) {
   await new Promise((r) => setTimeout(r, +gap));
   await p.screenshot({ path: `${out}/don_${String(i).padStart(2, '0')}.jpg`, type: 'jpeg', quality: 80 });
 }
-await new Promise((r) => setTimeout(r, 4000));
+// then the next hover: where the held car sits on screen (x,y in -1..1, + is right/up) and a frame
+await p.evaluate(() => { const g = window.__game; if (!g.G.buff) g.startBuff('donnie'); });
+for (let k = 0; k < 80; k++) {
+  await new Promise((r) => setTimeout(r, 60));
+  const h = await p.evaluate(() => {
+    const g = window.__game, e = g.enemies.find((c) => c.lift && c.lift.ph === 'hover' && c.lift.t > 0.5);
+    if (!e) return null;
+    g.G.paused = true;   // frozen: the frame below and these numbers are the same moment
+    g.camera.updateMatrixWorld(true);
+    const v = e.group.position.clone().project(g.camera);
+    const box = new (e.group.position.constructor)(), b = new (Object.getPrototypeOf(g.camera.position).constructor)();
+    const bb = { minX: 1, maxX: -1 };
+    e.group.updateMatrixWorld(true);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const p = e.group.localToWorld(box.set(sx * e.W / 2, 1, sz * e.L / 2)).project(g.camera);
+      bb.minX = Math.min(bb.minX, p.x); bb.maxX = Math.max(bb.maxX, p.x);
+    }
+    const w = g.player.group.position.clone().project(g.camera);
+    const vis = []; let q = e.body; while (q) { vis.push(q.visible ? 1 : 0); q = q.parent; }
+    const meshes = []; e.body.traverse((o) => { if (o.isMesh) meshes.push([o.visible ? 1 : 0, o.material.opacity, o.material.transparent ? 1 : 0, o.frustumCulled ? 1 : 0, +o.getWorldScale(new (e.group.position.constructor)()).x.toFixed(2)]); });
+    window.__dbg = { vis, inStage: e.group.parent === g.stage, meshes: meshes.slice(0, 3), alive: e.alive, active: e.active, wreck: !!e.wreck };
+    console.log('DBG', JSON.stringify(window.__dbg));
+    const px = (q) => [Math.round((q.x + 1) / 2 * innerWidth), Math.round((1 - q.y) / 2 * innerHeight)];
+    return { carPx: px(v), wagonPx: px(w), carWorld: e.group.position.toArray().map((n) => +n.toFixed(1)), wagonWorld: g.player.group.position.toArray().map((n) => +n.toFixed(1)), x: +v.x.toFixed(2), y: +v.y.toFixed(2), widthPx: Math.round((bb.maxX - bb.minX) / 2 * innerWidth), rel: Math.round(e.s - g.player.s), h: +e.group.position.y.toFixed(1), kind: e.kind };
+  });
+  if (h) { await p.screenshot({ path: `${out}/don_hover.jpg`, type: 'jpeg', quality: 85 }); console.log('HOVER', JSON.stringify(h)); console.log('DBG', JSON.stringify(await p.evaluate(() => window.__dbg))); break; }
+}
+await new Promise((r) => setTimeout(r, 2000));
 console.log(JSON.stringify(await p.evaluate(() => ({ lifts: window.__game.G.lifts || 0, wrecks: window.__game.G.wrecks - window.__w0, labels: window.__labels }))), 'errors', errs.slice(0, 3));
 await b.close();

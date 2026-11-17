@@ -9,7 +9,17 @@ import { pointAt, yawAt, frameAt, GLOW } from './world.js';
 export const FOOT_LOOK = {
   tint: { racer: new THREE.Color(0x7a4fd0), truck: new THREE.Color(0x5b4a78) },
   rough: 0.6, metal: 0, glow: new THREE.Color(0x000000), stripe: 1,
+  rim: { value: new THREE.Color(0xb46cff).multiplyScalar(1.6) },   // fresnel edge glow (shared uniform)
 };
+// Foot paint: standard PBR plus a glowing fresnel rim, so the cars' outlines read at night
+function addRim(m) {
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uRim = FOOT_LOOK.rim;
+    sh.fragmentShader = 'uniform vec3 uRim;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>',
+      '#include <emissivemap_fragment>\n  totalEmissiveRadiance += uRim * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 2.2);');
+  };
+  m.customProgramCacheKey = () => 'footRim';
+}
 
 export const KINDS = {
   wagon: { file: 'wagon', length: 4.9, mass: 2.2 },
@@ -107,7 +117,7 @@ export async function loadCarModels() {
 let emblemTex = null;
 function emblemTexture() {
   if (emblemTex) return emblemTex;
-  emblemTex = new THREE.TextureLoader().load('/ui/foot.png');
+  emblemTex = new THREE.TextureLoader().load('/ui/foot.webp');
   emblemTex.colorSpace = THREE.SRGBColorSpace;
   emblemTex.anisotropy = 4;
   return emblemTex;
@@ -136,6 +146,7 @@ export class Car {
       if (this.paint) o.material.color.copy(this.paint);
       else if (this.k.tint) o.material.color.setHex(this.k.tint);
       o.material.emissive = new THREE.Color(0x000000);
+      if (kind !== 'wagon' && !this.friendly) addRim(o.material);
       this.mats.push(o.material);
     });
     this.group.add(this.body);
@@ -206,6 +217,7 @@ export class Car {
     gun.userData.shade = 1; plate.userData.shade = 0.55;
     const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 0.35, 3.4) });
     this.tmats = [gun, plate];
+    addRim(gun); addRim(plate);
     const box = (w, h, d, m, x, y, z, rx = 0, ry = 0) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.rotation.set(rx, ry, 0); return o; };
     // low base with a glowing purple ring
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.48, 0.16, 6), gun); base.position.y = 0.08; T.add(base);
@@ -243,7 +255,7 @@ export class Car {
   applyLook() {
     if (this.kind === 'wagon') { for (const m of this.mats) m.color.setHex(0xffffff); return; }
     if (this.friendly) { for (const m of this.mats) m.color.copy(this.paint).multiplyScalar(this.alive ? 1 : 0.35); return; }
-    const t = FOOT_LOOK.tint[this.kind];
+    const t = this.paint || FOOT_LOOK.tint[this.kind];   // (the level-4 boss has its own paint)
     for (const m of this.mats) {
       if (this.alive) m.color.copy(t); else m.color.copy(t).multiplyScalar(0.35);
       if ('roughness' in m) { m.roughness = FOOT_LOOK.rough; m.metalness = FOOT_LOOK.metal; }

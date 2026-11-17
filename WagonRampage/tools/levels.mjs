@@ -8,6 +8,7 @@
 //            blinker until the timer runs out. Logs April's health, forks, shots at her, result.
 //   wrong  — level 2, autopilot takes the OTHER fork at the first junction. Expects
 //            YOU LOST APRIL! a few seconds after the fork.
+//   level3 / level4 / level5 — that level from the start under autopilot, to its end.
 import puppeteer from 'puppeteer-core';
 const [port = '8155', out = '.', mode = 'intro'] = process.argv.slice(2);
 const b = await puppeteer.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: 'new', args: ['--mute-audio', '--use-angle=metal'] });
@@ -17,13 +18,13 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const shot = (n) => p.screenshot({ path: `${out}/lv_${mode}_${n}.jpg`, type: 'jpeg', quality: 80 });
 const state = () => p.evaluate(() => {
   const g = window.__game, G = g.G;
-  return { state: G.state, level: g.LV.n, t: +G.time.toFixed(1), left: +G.left.toFixed(1), wrecks: G.wrecks, hp: Math.round(G.hp), april: Math.round(g.april.hp), forks: G.forks || 0,
+  return { boss: g.boss.on ? Math.round(g.boss.car.hp) : null, dist: Math.round(g.player.s - (G.s0 || 0)), state: G.state, level: g.LV.n, t: +G.time.toFixed(1), left: +G.left.toFixed(1), wrecks: G.wrecks, hp: Math.round(G.hp), april: Math.round(g.april.hp), forks: G.forks || 0,
     off: !!g.april.off, script: Object.keys(G.script || {}).join(','), over: document.getElementById('over-title').textContent,
     overShown: !document.getElementById('gameover-overlay').classList.contains('hidden'), say: document.getElementById('say').textContent, hint: document.getElementById('hint').textContent };
 });
 
 if (mode === 'intro') {
-  await p.goto(`http://127.0.0.1:${port}/index.html?dev=1`);
+  await p.goto(`http://127.0.0.1:${port}/index.html?dev=1&level=${process.argv[5] || 1}`);
   await p.waitForFunction(() => window.__game && window.__game.G.state === 'story', { timeout: 60000 });
   await p.evaluate(() => document.querySelector('.lil-gui')?.remove());
   await wait(900); await shot('scene1');
@@ -41,7 +42,8 @@ if (mode === 'intro') {
   }
   console.log('marks', JSON.stringify(marks));
 } else {
-  await p.goto(`http://127.0.0.1:${port}/index.html?dev=1&auto=1&level=2`);
+  const lv = mode.startsWith('level') ? mode.slice(5) : '2';
+  await p.goto(`http://127.0.0.1:${port}/index.html?dev=1&auto=1&level=${lv}`);
   await p.waitForFunction(() => window.__game && window.__game.G.state === 'play', { timeout: 60000 });
   await p.evaluate((wrong) => { document.querySelector('.lil-gui')?.remove(); window.__wrongFork = wrong; }, mode === 'wrong');
   let shotTurn = false, shotOff = false;
@@ -51,7 +53,18 @@ if (mode === 'intro') {
     const near = await p.evaluate(() => { const J = window.__game.path.junction; return J ? Math.round(J.s - window.__game.player.s) : null; });
     if (!shotTurn && near !== null && near < 120) { shotTurn = true; await shot('fork'); }
     if (i === 6) await shot('chase');
-    if (s.off && mode === 'wrong' && !shotOff) { shotOff = true; await wait(1800); await shot('wrong'); }
+    if (s.off && mode === 'wrong' && !shotOff) {
+      // from the lock: when Raph warns, when it's called lost (and why), when the page shows
+      shotOff = true;
+      const t0 = Date.now(), log = {};
+      for (let k = 0; k < 60; k++) {
+        await wait(100);
+        const v = await p.evaluate(() => ({ far: Math.round(window.__game.april.far || 0), warned: window.__game.april.off?.warned, lost: window.__game.G.lostT > 0 || window.__game.G.state === 'over', lostFar: window.__game.G.lostFar, lostOff: window.__game.G.lostOff }));
+        if (v.warned && !log.warn) { log.warn = (Date.now() - t0) / 1000; await shot('warn'); }
+        if (v.lost && !log.lost) { log.lost = (Date.now() - t0) / 1000; log.far = v.lostFar; log.offscreen = v.lostOff; await shot('wrong'); break; }
+      }
+      console.log('WRONG FORK (s after lock)', JSON.stringify(log));
+    }
     if (i % 10 === 0) console.log(JSON.stringify(s), 'toFork', near);
     if (s.state === 'over') { await wait(1500); await shot('end'); console.log('END', JSON.stringify(await state())); break; }
   }

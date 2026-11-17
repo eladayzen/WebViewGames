@@ -21,6 +21,7 @@ const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 // presets: { name: values } baked in main.js; custom slots re-saved here override the baked copy
 export function buildDevPanel(look, presets, apply, G) {
   const gui = new GUI({ title: 'DEV — look' });
+  gui.close();   // starts collapsed; click the title to open
   // below the pause/mute corner buttons, scrollable if the window is short
   Object.assign(gui.domElement.style, { zIndex: 60, top: '64px', maxHeight: 'calc(100vh - 80px)', overflowY: 'auto' });
   const baked = new Set(Object.keys(presets));
@@ -116,6 +117,7 @@ export function buildDevPanel(look, presets, apply, G) {
   col(foot, 'footRacer'); col(foot, 'footTruck');
   add(foot, 'footRough', 0, 1, 0.01); add(foot, 'footMetal', 0, 1, 0.01);
   col(foot, 'footGlow'); add(foot, 'footStripes', 0, 3, 0.01);
+  add(foot, 'footRim', 0, 4, 0.01); col(foot, 'footRimColor');
 
   const heroes = gui.addFolder('Heroes');
   add(heroes, 'raphHeight', 1.5, 4, 0.01);
