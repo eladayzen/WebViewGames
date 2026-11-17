@@ -7,15 +7,32 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { World, HW, FAC, LANES, DECIDE_AT, path, pointAt, frameAt, yawAt, refl } from './world.js';
+import { World, HW, FAC, LANES, DECIDE_AT, path, pointAt, frameAt, yawAt, forkPoint, refl } from './world.js';
 import { Car, KINDS, FOOT_LOOK, loadCarModels } from './cars.js';
 import { FX } from './fx.js';
 import { Audio } from './audio.js';
 import { Input } from './input.js';
 import { devPanelWanted, loadSavedLook, buildDevPanel } from './devpanel.js';
+import { playScene, say, clearSay, preloadStory } from './story.js';
 
 // ── Tuning ───────────────────────────────────────────────────────────────────
-const MISSION = { time: 90, target: 12, stars: [12, 20, 28] };
+// Two levels, played in order; failing one restarts that same level. Each opens with the
+// brothers talking (src/story.js, lines from Elad's script in ~/Documents/TMNT/TMNT MM Full
+// body/wagonPrototype/script.rtf) and closes with Raph's verdict.
+//   firstLen: metres of straight before the first fork, so the tutorial has room to happen
+const LEVELS = [
+  { n: 1, title: 'JOY RIDE', time: 100, target: 10, stars: [10, 14, 18], firstLen: 1400, go: 'WRECK THE FOOT!',
+    objective: 'Wreck 10 Foot Clan cars before the time runs out',
+    intro: [{ who: 'mikey', text: 'Today I am taking the car for a ride!' }, { who: 'raph_q', text: 'Do you know how to drive this thing?' }],
+    outro: [{ who: 'raph', text: 'Not too bad, Mikey.' }] },
+  { n: 2, title: 'SAVE APRIL', time: 70, april: true, firstLen: 650, go: 'PROTECT APRIL!',
+    objective: "Keep April's van safe for 70 seconds, and follow her at every fork",
+    intro: [{ who: 'leo', text: 'The Clan is chasing April downtown!' }, { who: 'raph_q', text: 'April? What do they want with April?' },
+      { who: 'donnie', text: "We're taking the car." }, { who: 'mikey', text: 'I am driving!' }],
+    outro: [{ who: 'raph', text: 'COWABUNGA!' }] },
+];
+let LV = LEVELS[0];
+const MISSION = LEVELS[0];   // (older code reads MISSION.time)
 const SPEED = { start: 36, top: 47, rampTime: 60 };   // m/s — a chase, not a cruise
 const LAT = { max: 12.5, accel: 55 };        // player sideways speed (m/s) and response
 const RAM = { base: 6, perSpeed: 5.2, grindDps: 30, wallPerSpeed: 6, rearPerSpeed: 4 };
@@ -247,7 +264,7 @@ const G = {
   combo: 1, comboT: 0, bestCombo: 1, paused: false, timeScale: 1, hitStop: 0,
   shake: 0, orbT: 4, power: null, strike: null, knockT: 0, cleared: false, hp: 100, hurtV: 0, slowT: 0,
 };
-let world, fx, player, models, leo, raphTop, mikeTop, donTop;
+let world, fx, player, models, leo, raphTop, mikeTop, donTop, aprilCar;
 const enemies = [];
 const orbs = [];
 const headTex = {};
@@ -269,13 +286,16 @@ const input = new Input(canvas);
   player = new Car('wagon', models.wagon, stage);
   for (let i = 0; i < 5; i++) enemies.push(new Car('racer', models.racer, stage));
   for (let i = 0; i < 2; i++) enemies.push(new Car('truck', models.truck, stage));
+  // April's van: the big Foot truck without its cannon, painted blue
+  aprilCar = new Car('truck', models.truck, stage, { friendly: true, paint: 0x3f86ff });
   ({ leo, raphTop, mikeTop, donTop } = await loadHeroes());
   buildBuffProps();
   applyLook();
   if (DEV) buildDevPanel(LOOK, LOOK_PRESETS, applyLook, G);
+  await preloadStory();
   $('loading').classList.add('hidden');
-  startRun();
   requestAnimationFrame(loop);
+  startLevel(Math.min(LEVELS.length - 1, (+new URLSearchParams(location.search).get('level') || 1) - 1), true);
 })();
 
 // One turtle model, two instances: Leo (the same mesh, red wraps recoloured blue) who leaps
@@ -397,10 +417,36 @@ async function loadHeroes() {
   M.cannon.rotation.y = M.face;
   M.model.add(M.cannon);
   const D = posed(donTex, DON_POSE);
-  D.device = buildEmitter();
-  D.device.scale.setScalar(D.unit);
-  D.device.position.copy(D.at(DON_POSE[2]));
-  D.model.add(D.device);
+  // his bo staff, held in the right fist along the thumb line (like Leo's katanas), so it
+  // follows the swing; 1 staff unit = 1 m at the default turtle height
+  {
+    const hand = D.model.getObjectByName('mixamorigRightHand');
+    const f = D.model.getObjectByName('mixamorigRightHandMiddle1').position.clone().normalize();
+    const t = D.model.getObjectByName('mixamorigRightHandThumb1').position.clone();
+    const axis = t.sub(f.clone().multiplyScalar(t.dot(f))).normalize();
+    D.holder.updateMatrixWorld(true);
+    const handScale = hand.getWorldScale(new V()).x / D.model.getWorldScale(new V()).x;
+    D.device = buildStaff();
+    D.device.scale.setScalar(D.unit / handScale);
+    D.device.quaternion.setFromUnitVectors(new V(0, 1, 0), axis);
+    D.device.position.copy(D.model.getObjectByName('mixamorigRightHandMiddle1').position).multiplyScalar(0.55);
+    hand.add(D.device);
+  }
+  // the swing: Raph's overhead throw a7, from the wind-up to the follow-through. Between
+  // swings he holds the wind-up frame (staff raised). Facing at the strike frame is measured
+  // like Raph's throws, so the staff comes down toward the car.
+  D.swing = D.mixer.clipAction(THREE.AnimationClip.parse(throws.a7));
+  D.swing.setLoop(THREE.LoopOnce); D.swing.clampWhenFinished = true;
+  D.mixer.stopAllAction();
+  D.swing.play(); D.swing.time = DON.strikeAt; D.mixer.update(0);
+  {
+    D.holder.updateMatrixWorld(true);
+    const Ls = D.holder.worldToLocal(D.model.getObjectByName('mixamorigLeftShoulder').getWorldPosition(new V()));
+    const Rs = D.holder.worldToLocal(D.model.getObjectByName('mixamorigRightShoulder').getWorldPosition(new V()));
+    const f = new V(0, 1, 0).cross(Rs.sub(Ls));
+    D.strikeFace = Math.atan2(f.x, f.z);
+  }
+  D.swing.time = DON.swingFrom; D.swing.paused = true; D.mixer.update(0);
   return { leo: L, raphTop: R, mikeTop: M, donTop: D };
 }
 
@@ -429,7 +475,7 @@ function buildKatana() {
 }
 // Mikey's pose holds both hands in front of his chest; Donnie's raises one hand overhead
 const MIKE_POSE = ['spin', 7.0];
-const DON_POSE = ['a7', 0.7, 'RightHand'];
+const DON_POSE = ['a7', 0.42, 'RightHand'];
 function pizzaBoxTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const x = c.getContext('2d');
@@ -486,7 +532,31 @@ function buildPizzaCannon() {
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
-// Donnie's EMP emitter: a rod with a coil and a glowing orb on top (+y from the hand)
+// Donnie's bo staff (+y from the fist, in metres): a long wooden staff with purple grip wraps,
+// steel caps, and a tech head on the top end — copper coils round a glowing orb that the
+// lightning comes out of. userData.orb is that orb, userData.tip a point just above it.
+function buildStaff() {
+  const g = new THREE.Group();
+  const wood = new THREE.MeshLambertMaterial({ color: 0x8a5a2e, emissive: 0x1a0d04 });
+  const wrap = new THREE.MeshLambertMaterial({ color: 0x7040c0, emissive: 0x1c0838 });
+  const steel = new THREE.MeshLambertMaterial({ color: 0xb8bfcc, emissive: 0x15171c });
+  const copper = new THREE.MeshLambertMaterial({ color: 0xd0803a, emissive: 0x2a1204 });
+  const cyl = (r, h, m, y) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 10), m); o.position.y = y; g.add(o); return o; };
+  cyl(0.04, 2.3, wood, 0.25);                                   // shaft: 0.9 m below the fist, 1.4 above
+  for (const y of [-0.12, 0.12, 0.95, -0.55]) cyl(0.047, 0.16, wrap, y);
+  cyl(0.05, 0.08, steel, -0.86);                                 // bottom cap
+  cyl(0.05, 0.1, steel, 1.32);                                   // top collar
+  for (const y of [1.42, 1.5, 1.58]) { const c = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.022, 6, 16), copper); c.rotation.x = Math.PI / 2; c.position.y = y; g.add(c); }
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.3, 0.8, 3.2) }));
+  orb.position.y = 1.72; g.add(orb);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: roundGlow, color: new THREE.Color(0.9, 0.5, 2.2), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  halo.scale.setScalar(0.7); orb.add(halo);
+  const tip = new THREE.Object3D(); tip.position.y = 1.78; g.add(tip);
+  g.userData.orb = orb; g.userData.halo = halo; g.userData.tip = tip;
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+  return g;
+}
+// (the old EMP emitter, kept for reference; Donnie now holds buildStaff)
 function buildEmitter() {
   const g = new THREE.Group();
   const metal = new THREE.MeshLambertMaterial({ color: 0x8a8f9c });
@@ -509,14 +579,30 @@ function aimHero(H, tgt, face, dt, rate = 20) {
   H.holder.rotation.y += dy * Math.min(1, dt * rate);
 }
 
+// a level: reset the street and the cars, then (first time in) the talking scene, then the countdown
+let levelRun = 0;
+async function startLevel(i, intro) {
+  LV = LEVELS[i];
+  const run = ++levelRun;
+  startRun();
+  if (intro && !AUTO) {
+    await playScene({ lines: LV.intro, title: LV.title, objective: LV.objective, level: `LEVEL ${LV.n}` });
+    if (run !== levelRun) return;
+  }
+  G.state = 'countdown'; G.countT = 3.2;
+}
 function startRun() {
-  Object.assign(G, { state: 'countdown', time: 0, left: MISSION.time, score: 0, wrecks: 0, combo: 1, comboT: 0, bestCombo: 1,
-    timeScale: 1, hitStop: 0, shake: 0, orbT: 4, power: null, strike: null, knockT: 0, cleared: false, countT: 3.2, spawnT: 0, hp: SHELL_MAX, hurtV: 0, slowT: 0 });
+  Object.assign(G, { state: 'story', time: 0, left: LV.time, score: 0, wrecks: 0, combo: 1, comboT: 0, bestCombo: 1,
+    timeScale: 1, hitStop: 0, shake: 0, orbT: LV.n === 1 ? 999 : 6, power: null, strike: null, knockT: 0, cleared: false, countT: 3.2, spawnT: 0, hp: SHELL_MAX, hurtV: 0, slowT: 0,
+    script: {}, lostT: 0, aprilShotT: 0, won: false });
+  L1.forkHint = false;
+  clearSay(); hint('');
+  $('next-button').classList.add('hidden');
   for (const list of [shots, waves, bolts, zaps]) { for (const x of list) stage.remove(x.m || x.mesh); list.length = 0; }
   endBuff();
   endGadget();
   resetHatch();
-  world.reset();
+  world.reset(LV.firstLen);
   player.reset();
   Object.assign(player, { s: 0, u: 0, vs: SPEED.start, alive: true, active: true });
   player.group.visible = true;
@@ -525,10 +611,10 @@ function startRun() {
   orbs.length = 0;
   leo.holder.visible = false;
   world.update(0);
-  // open with three Foot cars already around the wagon — straight into the action
-  spawnEnemy('racer', 18, -1.8); spawnEnemy('racer', 34, 5.4); spawnEnemy('truck', 52, -5.4);
+  resetApril();
   $('gameover-overlay').classList.add('hidden');
-  $('target').textContent = MISSION.target;
+  $('target').textContent = LV.target || '';
+  $('goal').classList.toggle('survive', !LV.target);
   updateHud();
 }
 
@@ -548,11 +634,14 @@ function spawnEnemy(kind, rel, lane) {
 function director(dt) {
   G.spawnT -= dt;
   const live = enemies.filter((e) => e.active && e.alive).length;
-  const want = Math.min(6, 4 + Math.floor(G.time / 20));
+  // level 1 eases in: an empty street, then two cars, then more; level 2 is a chase from the start
+  let want = Math.min(6, 4 + Math.floor(G.time / 20));
+  if (LV.n === 1) want = G.time < L1.foot ? 0 : G.time < 30 ? 2 : G.time < 55 ? 3 : 4;
+  else if (LV.april) want = G.time < 2 ? 0 : Math.min(5, 3 + Math.floor(G.time / 25));
   if (live < want && G.spawnT <= 0) {
     const truckLive = enemies.filter((e) => e.active && e.alive && e.kind === 'truck').length;
     const kind = truckLive < 1 + (G.time > 40 ? 1 : 0) && Math.random() < 0.35 ? 'truck' : 'racer';
-    const behind = Math.random() < 0.55;
+    const behind = LV.april || (LV.n === 1 && G.time < 30) ? Math.random() < 0.85 : Math.random() < 0.55;
     // pick a lane that isn't occupied near the spawn point
     const J = path.junction;
     const rel = behind || (J && player.s + 75 > J.s - 12) ? -34 : 75;
@@ -605,10 +694,13 @@ function enemyAI(e, dt) {
     }
   }
   if (touching) ai.fireT = Math.max(ai.fireT, 1.4);
-  const canFire = G.state === 'play' && ai.mode !== 'flee' && rel > SHOT.minRel && rel < 70 && !(e.emp > 0);
+  e.aim = shotTarget(e);
+  const ar = e.aim.s - e.s;
+  const inRange = e.aim === player ? rel > SHOT.minRel && rel < 70 : Math.abs(ar) > 10 && Math.abs(ar) < 60;
+  const canFire = G.state === 'play' && ai.mode !== 'flee' && inRange && !(e.emp > 0) && !e.lift;
   e.charge = canFire && ai.fireT < SHOT.charge ? 1 - ai.fireT / SHOT.charge : 0;
   aimTurret(e, dt);
-  if (ai.fireT <= 0) { if (canFire) fireShot(e); ai.fireT = e.kind === 'truck' ? rand(3.5, 5.5) : rand(2.6, 4.6); }
+  if (ai.fireT <= 0) { if (canFire) { fireShot(e); if (e.aim === aprilCar) G.aprilShotT = APRIL.shotGap; } ai.fireT = e.kind === 'truck' ? rand(3.5, 5.5) : rand(2.6, 4.6); }
   ai.lane = clamp(ai.lane, -HW + e.W / 2 + 0.2, HW - e.W / 2 - 0.2);
   // longitudinal: hold a spot relative to the wagon
   const heavy = e.kind === 'truck';
@@ -618,8 +710,8 @@ function enemyAI(e, dt) {
   const latMax = ai.mode === 'ram' ? (heavy ? 7 : 9.5) : (heavy ? 4 : 6.5);
   const wantVu = clamp((ai.lane - e.u) * 2.4, -latMax, latMax);
   e.vu += clamp(wantVu - e.vu, -1, 1) * (heavy ? 14 : 26) * dt;
-  // don't drive into each other on purpose
-  for (const o of enemies) {
+  // don't drive into each other on purpose (nor into April)
+  for (const o of LV.april && april.on ? [...enemies, aprilCar] : enemies) {
     if (o === e || !o.active || !o.alive) continue;
     const ds = o.s - e.s, ou = o.u - e.u;
     if (Math.abs(ds) < (e.L + o.L) / 2 + 2 && Math.abs(ou) < (e.W + o.W) / 2 + 0.8) e.vu -= Math.sign(ou || 1) * 10 * dt;
@@ -735,6 +827,7 @@ function hitEnemy(e, dmg, point, dir, label) {
 
 function wreckEnemy(e, dir, label = 'WRECKED!', big = false) {
   if (!e.alive) return;
+  e.lift = null;
   const side = typeof dir === 'number' && dir !== 0 ? dir : (e.u > player.u ? 1 : -1);
   e.startWreck({ u: side * (big ? 14 : 8), up: big ? 17 : 9 + Math.random() * 3, spin: big ? 16 : 9 });
   frameAt(e.s, _T, _R);
@@ -754,7 +847,7 @@ function wreckEnemy(e, dir, label = 'WRECKED!', big = false) {
   G.hp = Math.min(SHELL_MAX, G.hp + 4);
   popupAt(_p, `${label} +${pts}`, 'big');
   if (G.combo >= 2) popupAt(_p.clone().setY(4), `x${G.combo} COMBO`, '');
-  if (!G.cleared && G.wrecks >= MISSION.target) { G.cleared = true; banner('TARGET SMASHED!'); }
+  if (LV.target && !G.cleared && G.wrecks >= LV.target && G.state === 'play') { G.cleared = true; endLevel(true); }
 }
 
 // The wagon may drive up onto the sidewalks, to just short of the building fronts; Foot cars
@@ -823,12 +916,14 @@ const orbGeo = new THREE.IcosahedronGeometry(0.9, 1);
 const orbMats = Object.fromEntries(Object.entries(TURTLES).map(([k, t]) => [k, new THREE.MeshBasicMaterial({ color: new THREE.Color(...t.hdr) })]));
 const haloMats = Object.fromEntries(Object.entries(TURTLES).map(([k, t]) => [k, new THREE.MeshBasicMaterial({ color: t.color, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending })]));
 let lastOrb = 'raph';
-function spawnOrb() {
+// (force / rel / lane: the tutorial puts a chosen pickup right in the wagon's path)
+function spawnOrb(force, rel = 140, lane) {
   const J = path.junction;
-  const s = J ? Math.min(player.s + 140, J.s - 20) : player.s + 140, u = LANES[Math.floor(Math.random() * LANES.length)];
+  const s = J ? Math.min(player.s + rel, J.s - 20) : player.s + rel;
+  const u = lane ?? LANES[Math.floor(Math.random() * LANES.length)];
   if (s < player.s + 40) return;
   const kinds = Object.keys(TURTLES).filter((k) => k !== lastOrb);
-  const kind = kinds[Math.floor(Math.random() * kinds.length)];
+  const kind = force || kinds[Math.floor(Math.random() * kinds.length)];
   lastOrb = kind;
   const mesh = new THREE.Group();
   const core = iconOnly(new THREE.Sprite(new THREE.SpriteMaterial({ map: headTex[kind], transparent: true })));
@@ -921,7 +1016,7 @@ function updateWaves(dt) {
 // These switch on the moment they're picked up and run for a few seconds, with the turtle's
 // head and a draining ring on screen and on the wagon's back doors (the TDCars2 CombatBuffHUD /
 // rear-icon pattern).
-const BUFFS = { raph: { name: 'SAI STORM', dur: 8 }, mike: { name: 'PIZZA CANNON', dur: 8 }, donnie: { name: 'EMP PULSE', dur: 7 } };
+const BUFFS = { raph: { name: 'SAI STORM', dur: 8 }, mike: { name: 'PIZZA CANNON', dur: 8 }, donnie: { name: 'THUNDER STAFF', dur: 7.5 } };
 // the gadget slot: van add-ons that run alongside a turtle's power, not instead of it
 const GADGETS = { saws: { name: 'SAW BLADES', dur: 8 }, shield: { name: 'RIOT SHIELD', dur: 8 }, nitro: { name: 'NITRO', dur: 5 }, harpoon: { name: 'HARPOON', dur: 9 } };
 const BUFF_RING = { raph: new THREE.Color(1, 0.12, 0.08), mike: new THREE.Color(1, 0.42, 0.05), donnie: new THREE.Color(0.48, 0.24, 1), saws: new THREE.Color(1, 0.62, 0.1), shield: new THREE.Color(0.3, 0.7, 1), nitro: new THREE.Color(0.25, 0.55, 1), harpoon: new THREE.Color(0.2, 0.85, 0.7) };   // drawn unlit to the screen, so 0..1
@@ -980,7 +1075,8 @@ function startBuff(kind) {
   buffIcon.material.uniforms.map.value = headTex[kind];
   buffIcon.material.uniforms.uCol.value.copy(BUFF_RING[kind]);
   buffIcon.material.uniforms.uOn.value = 1;
-  banner({ raph: 'SAI STORM!', mike: 'PIZZA TIME!', donnie: 'EMP PULSE!' }[kind], kind);
+  banner({ raph: 'SAI STORM!', mike: 'PIZZA TIME!', donnie: 'THUNDER STAFF!' }[kind], kind);
+  if (kind === 'donnie') { const D = donTop; Object.assign(G.buff, { swingT: 0.6 }); D.swing.time = DON.swingFrom; D.swing.paused = true; D.swing.play(); D.mixer.update(0); }
   audio.raph();
   G.powersUsed = (G.powersUsed || 0) + 1;
 }
@@ -1477,44 +1573,58 @@ function updateBuff(dt) {
       audio.scrape();
     }
   } else if (B.kind === 'donnie') {
-    const D = donTop;
-    D.model.position.y = Math.sin(G.time * 5) * 0.02;
-    const tgt = foot.filter((e) => rel(e) > -6 && rel(e) < 60).sort((a, b) => Math.abs(rel(a)) - Math.abs(rel(b)))[0];
-    if (tgt) aimHero(D, tgt, D.face, dt, 6);
-    B.pulseT = (B.pulseT ?? 0.2) - dt;
-    const orb = D.device.userData.orb, glow = Math.max(0, B.pulseT - 0.75) * 4;   // flashes as it fires
-    orb.scale.setScalar(1 + glow * 1.4 + Math.sin(G.time * 20) * 0.08);
+    // Donnie: wind-up, swing the staff down at a Foot car, and at the bottom of the swing a
+    // bolt from the staff's tip grabs the car and throws it (startLift / liftStep)
+    const D = donTop, sw = D.swing;
+    const busy = liveFoot().some((e) => e.lift);
+    if (!B.tgt || !B.tgt.alive || B.tgt.lift) B.tgt = foot.filter((e) => !e.lift && !e.tether && rel(e) > -2 && rel(e) < DON.reach && Math.abs(e.u - player.u) < 16)
+      .sort((a, b) => Math.hypot(rel(a), a.u - player.u) - Math.hypot(rel(b), b.u - player.u))[0] || null;
+    const tgt = B.tgt;
+    B.swingT = (B.swingT ?? 0.35) - dt;
+    if (!B.swinging && B.swingT <= 0 && tgt && !busy) {
+      B.swinging = true; B.struck = false;
+      sw.paused = false; sw.timeScale = DON.rate; sw.time = DON.swingFrom; sw.play();
+    }
+    if (B.swinging) {
+      D.mixer.update(dt);
+      if (tgt) aimHero(D, tgt, D.strikeFace, dt, 12);
+      if (!B.struck && sw.time >= DON.strikeAt) {
+        B.struck = true;
+        D.holder.updateMatrixWorld(true);
+        const src = D.device.userData.tip.getWorldPosition(new THREE.Vector3());
+        if (tgt && tgt.alive) {
+          // the strike: three thick strands into the car, a flash at both ends, and up it goes
+          const hitAt = tgt.group.position.clone().setY(tgt.H * 0.7);
+          const jag = clamp(src.distanceTo(hitAt) / 12, 0.5, 1.5);
+          makeZap(src, hitAt, jag, 0.09, 0.32);
+          makeZap(src, hitAt, jag * 0.8, 0.05, 0.26);
+          makeZap(src, hitAt.clone().add(_n.set((Math.random() - 0.5) * tgt.W, 0.5, (Math.random() - 0.5) * tgt.L * 0.6)), jag * 0.6, 0.04, 0.22);
+          fx.sparks(hitAt, _n.set(0, 0, 0), 24, 1.2);
+          fx.add.emit(hitAt, _n.set(0, 0, 0), new THREE.Color(1.2, 0.8, 3), 3, 0.18, { grow: 1 });
+          fx.add.emit(src, _n.set(0, 0, 0), new THREE.Color(1.2, 0.8, 3), 1.6, 0.14, { grow: 1 });
+          hitEnemy(tgt, 10, hitAt, Math.sign(tgt.u - player.u) || 1, 'ZAPPED!');
+          if (tgt.alive) { startLift(tgt); popupAt(hitAt.clone().setY(3), 'ZAPPED!', 'big'); }
+          flash(0.12); G.shake = Math.max(G.shake, 0.15);
+          audio.crunch(0.6);
+        }
+      }
+      if (sw.time >= DON.swingTo) {
+        B.swinging = false; B.swingT = DON.every; B.tgt = null;
+        sw.time = DON.swingFrom; sw.paused = true; D.mixer.update(0);
+      }
+    } else {
+      D.model.position.y = Math.sin(G.time * 5) * 0.02;
+      if (tgt) aimHero(D, tgt, D.face, dt, 6);
+    }
+    // the staff head glows up through the swing and crackles the whole time it's out
+    const orb = D.device.userData.orb;
+    const charge = B.swinging ? clamp((sw.time - DON.swingFrom) / (DON.strikeAt - DON.swingFrom), 0, 1) : 0;
+    orb.scale.setScalar(1 + charge * 1.2 + Math.sin(G.time * 20) * 0.08);
     D.holder.updateMatrixWorld(true);
     const src = orb.getWorldPosition(new THREE.Vector3());
-    if (B.pulseT <= 0) {
-      B.pulseT = 1;
-      // the pulse is lightning: forked bolts from the orb into every car in reach (two strands
-      // each, so it reads as a branching discharge), which stuns them; nothing in reach and it
-      // earths itself into the road around the van
-      const inReach = foot.filter((e) => rel(e) > -1 && Math.hypot(rel(e), e.u - player.u) < EMP_R).sort((a, b) => Math.abs(rel(a)) - Math.abs(rel(b))).slice(0, 4);
-      for (const e of inReach) {
-        _p.copy(e.group.position).setY(1.3);
-        const hitAt = _p.clone();
-        const jag = clamp(src.distanceTo(hitAt) / 14, 0.4, 1.3);   // zigzag scaled to the bolt's length
-        makeZap(src, hitAt, jag, 0.05, 0.2);
-        makeZap(src, hitAt.clone().add(_n.set((Math.random() - 0.5) * e.W, 0.4, (Math.random() - 0.5) * e.L * 0.6)), jag * 0.7, 0.03, 0.16);
-        fx.sparks(hitAt, _n.set(0, 0, 0), 14, 0.9);
-        fx.add.emit(hitAt, _n.set(0, 0, 0), new THREE.Color(1.0, 0.7, 2.6), 1.6, 0.14, { grow: 0.8 });
-        e.emp = Math.max(e.emp || 0, EMP_T);
-        hitEnemy(e, 6, hitAt, Math.sign(e.u - player.u) || 1, 'EMP!');
-      }
-      if (!inReach.length) for (let k = 0; k < 3; k++) {
-        const to = pointAt(player.s + 3 + Math.random() * 5, player.u + (Math.random() - 0.5) * 8, new THREE.Vector3()).setY(0.05);
-        makeZap(src, to, 0.5, 0.035, 0.16);
-        fx.sparks(to, _n.set(0, 0, 0), 5, 0.5);
-      }
-      fx.add.emit(src, _n.set(0, 0, 0), new THREE.Color(1.1, 0.7, 2.6), 1.4, 0.12, { grow: 1 });
-      audio.scrape();
-    }
-    // the device crackles the whole time it's up
-    if (Math.random() < dt * 16) {
-      const to = src.clone().add(_n.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.3) * 1.2, (Math.random() - 0.5) * 1.6));
-      makeZap(src, to, 0.35, 0.025, 0.08);
+    if (Math.random() < dt * (10 + charge * 30)) {
+      const to = src.clone().add(_n.set((Math.random() - 0.5) * 1.4, (Math.random() - 0.3) * 1.0, (Math.random() - 0.5) * 1.4));
+      makeZap(src, to, 0.3, 0.022, 0.08);
     }
     // the pulse fries shuriken before they reach the shell
     for (let i = shots.length - 1; i >= 0; i--) {
@@ -1603,7 +1713,8 @@ const haloMat = new THREE.SpriteMaterial({ map: roundGlow, color: new THREE.Colo
 function aimTurret(e, dt) {
   const T = e.turret;
   if (!T || !e.alive) return;
-  const to = T.root.worldToLocal(_c.copy(player.group.position).setY(SHOT.hitY));
+  const aim = e.aim || player;
+  const to = T.root.worldToLocal(_c.copy(aim.group.position).setY(SHOT.hitY));
   to.y -= T.head.position.y;
   const yaw = Math.atan2(to.x, to.z), pitch = Math.atan2(-to.y, Math.hypot(to.x, to.z));
   let dy = yaw - T.head.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
@@ -1614,7 +1725,7 @@ function aimTurret(e, dt) {
   T.laser.visible = c > 0.02;
   if (T.laser.visible) {
     T.tip.getWorldPosition(_p);
-    T.laser.scale.set(1 + c, 1 + c, _p.distanceTo(player.group.position) / T.sc);
+    T.laser.scale.set(1 + c, 1 + c, _p.distanceTo(aim.group.position) / T.sc);
     T.laser.material.opacity = 0.15 + c * 0.75;
   }
 }
@@ -1630,10 +1741,11 @@ function fireShot(e) {
   const y0 = m.position.y;
   // flight in road coordinates (so it rides along with the chase), aimed at the wagon's
   // position at the moment of firing; height goes from the muzzle to hull height with a lift
-  const s = e.s - e.L * 0.18 - 1.4 * T.sc;
-  const t = Math.max(0.25, (s - player.s) / SHOT.closing);
+  const aim = e.aim || player, dir = Math.sign(aim.s - e.s) || -1;
+  const s = e.s + dir * (e.L * 0.18 + 1.4 * T.sc);
+  const t = Math.max(0.25, Math.abs(s - aim.s) / SHOT.closing);
   G.shotsFired = (G.shotsFired || 0) + 1;
-  shots.push({ m, s, u: e.u, vs: player.vs - SHOT.closing, vu: clamp((player.u - e.u) / t, -14, 14), T: t, y0, dmg: e.kind === 'truck' ? 14 : 9, from: e, life: 0 });
+  shots.push({ m, s, u: e.u, vs: aim.vs + dir * SHOT.closing, vu: clamp((aim.u - e.u) / t, -14, 14), T: t, y0, dmg: aim === aprilCar ? APRIL.shotDmg : e.kind === 'truck' ? 14 : 9, from: e, life: 0, aim });
   T.recoil = 1; T.laser.visible = false;
   fx.add.emit(m.position, _n.set(0, 0, 0), new THREE.Color(2.6, 0.5, 2), 2.2, 0.12, { grow: 0.8 });
   fx.sparks(m.position, _n.set(0, 0, 0), 8, 0.6);
@@ -1658,13 +1770,16 @@ function updateShots(dt) {
       fx.add.emit(b.m.position, _n.set(0, 0, 0), new THREE.Color(2.6, 0.6, 2), 3, 0.18, { grow: 1 });
       G.shotsHit = (G.shotsHit || 0) + 1;
       hurt(b.dmg, b.m.position); gone = true;
+    } else if (april.on && !april.off && Math.abs(b.s - aprilCar.s) < aprilCar.L / 2 + 0.3 && Math.abs(b.u - aprilCar.u) < aprilCar.W / 2 + 0.3 && G.state === 'play') {
+      fx.add.emit(b.m.position, _n.set(0, 0, 0), new THREE.Color(2.6, 0.6, 2), 3, 0.18, { grow: 1 });
+      hurtApril(b.dmg, b.m.position); gone = true;
     } else {
       // friendly fire: another Foot car in the way takes it
       for (const e of liveFoot()) if (e !== b.from && Math.abs(b.s - e.s) < e.L / 2 && Math.abs(b.u - e.u) < e.W / 2) {
         hitEnemy(e, 22, b.m.position, 0, 'FRIENDLY FIRE!'); gone = true; break;
       }
     }
-    if (gone || b.s < player.s - 15 || b.life > 4 || Math.abs(b.u) > HW + 2) { stage.remove(b.m); shots.splice(i, 1); }
+    if (gone || b.s < player.s - 25 || b.life > 4 || Math.abs(b.u) > HW + 2) { stage.remove(b.m); shots.splice(i, 1); }
   }
 }
 function hurt(dmg, at) {
@@ -1860,6 +1975,17 @@ function banner(text, cls = '') {
 let flashV = 0;
 function flash(v) { flashV = Math.max(flashV, v); }
 function updateHud() {
+  const tag = $('april-tag');
+  tag.classList.toggle('hidden', !april.on || G.state === 'story');
+  if (april.on) {
+    _sp.copy(aprilCar.group.position).setY(aprilCar.H + 1.3).project(camera);
+    tag.style.left = ((_sp.x + 1) / 2 * window.innerWidth).toFixed(0) + 'px';
+    tag.style.top = ((1 - _sp.y) / 2 * window.innerHeight).toFixed(0) + 'px';
+    if (_sp.z > 1) tag.classList.add('hidden');
+    tag.querySelector('u').style.transform = `scaleX(${april.hp / APRIL.hp})`;
+    tag.classList.toggle('low', april.hp < 35);
+    tag.classList.toggle('hit', aprilCar.flash > 0.3);
+  }
   $('timer').textContent = Math.ceil(G.left);
   $('timer').classList.toggle('low', G.left < 10);
   $('wrecks').textContent = G.wrecks;
@@ -1923,15 +2049,16 @@ function step(dt, realDt) {
     const n = Math.ceil(G.countT);
     if (n !== before && n > 0) audio.beep(false);
     $('countdown').textContent = G.countT > 0 ? n : '';
-    if (G.countT <= 0) { G.state = 'play'; audio.beep(true); banner('WRECK THE FOOT!'); }
+    if (G.countT <= 0) { G.state = 'play'; G.time = 0; audio.beep(true); banner(LV.go); }
   }
   if (G.state === 'play') {
     G.left -= dt;
-    if (G.left <= 0) { G.left = 0; endRun(); }
+    if (G.left <= 0) { G.left = 0; if (LV.april) endLevel(true); else endLevel(false, 'TIME UP!', 'The Foot Clan got away.'); }
+    levelScript(dt);
   }
 
   // wagon: auto-throttle along the street, lean steers across it
-  const cruise = SPEED.start + (SPEED.top - SPEED.start) * clamp(G.time / SPEED.rampTime, 0, 1) + NITRO.boost * nitro.ext;
+  const cruise = G.state === 'story' ? 12 : SPEED.start + (SPEED.top - SPEED.start) * clamp((G.state === 'play' ? G.time : 0) / SPEED.rampTime, 0, 1) + NITRO.boost * nitro.ext;
   player.vs += (cruise - player.vs) * Math.min(1, dt * 1.2);
   const wantVu = lean * LAT.max;
   player.vu += clamp(wantVu - player.vu, -LAT.accel * dt, LAT.accel * dt);
@@ -1945,13 +2072,14 @@ function step(dt, realDt) {
     for (const e of enemies) {
       if (!e.active) continue;
       if (e.alive) {
-        if (e.tether) tetherStep(e, dt);
+        if (e.lift) liftStep(e, dt);
+        else if (e.tether) tetherStep(e, dt);
         else { enemyAI(e, dt); e.s += e.vs * dt; e.u += e.vu * dt; }
       }
     }
   }
   // collisions: wagon vs Foot, Foot vs Foot
-  const live = enemies.filter((e) => e.active && e.alive);
+  const live = enemies.filter((e) => e.active && e.alive && !e.lift);
   for (const e of live) collide(player, e, dt);
   for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) collide(live[i], live[j], dt);
   walls(player, dt);
@@ -1965,6 +2093,7 @@ function step(dt, realDt) {
     if (!e.active) continue;
     if (e.alive) {
       e.place(dt);
+      if (e.lift) placeLift(e);
       // damage tells: smoke under half health, fire under a quarter
       const hpk = e.hp / e.maxHp;
       if (hpk < 0.55 && Math.random() < dt * (hpk < 0.3 ? 30 : 14)) fx.smoke(_p.copy(e.group.position).setY(e.H), hpk < 0.3 ? 0.12 : 0.35);
@@ -1984,6 +2113,7 @@ function step(dt, realDt) {
   if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 1; }
 
   junctionChoice();
+  updateApril(dt);
   world.update(player.s);
   if (G.state === 'play' && Math.random() < dt * 26) {
     const side = Math.random() < 0.5 ? -1 : 1;
@@ -2002,6 +2132,177 @@ function step(dt, realDt) {
   updateHud();
 }
 
+// ── Level script: level 1 is the tutorial ──────────────────────────────────
+// Level 1: a quiet ride, then the Foot turn up behind (Donnie, Leo); a pickup is put right in
+// the wagon's path with Donnie's line and a hint; before the first fork, Mikey and a hint about
+// leaning to choose. After the pickup lesson, pickups come on the normal timer.
+const L1 = { foot: 5, pickup: 12.5, forkAt: 300, forkHint: false };
+function hint(text) { const h = $('hint'); h.textContent = text; h.classList.toggle('hidden', !text); }
+function levelScript(dt) {
+  const S = G.script, J = path.junction;
+  if (LV.n === 1) {
+    if (!S.foot && G.time > L1.foot) {
+      S.foot = true;
+      spawnEnemy('racer', -30, -5.4); spawnEnemy('racer', -38, 5.4);
+      say('donnie', 'Foot Clan soldiers? What are they doing here?');
+      say('leo', "Never mind what they're doing here. Take them out!");
+      G.spawnT = 4;
+    }
+    if (!S.pickup && G.time > L1.pickup) {
+      S.pickup = true;
+      spawnOrb('raph', 110, player.u);
+      say('donnie', 'Drive over those special ability pick-ups!');
+      hint('DRIVE THROUGH THE GLOWING ICON');
+      G.orbT = ORB_EVERY;
+    }
+    if (S.pickup && !S.pickupDone && (G.orbsTaken || !orbs.length)) { S.pickupDone = true; if (!L1.forkHint) hint(''); }
+    if (!S.fork && S.pickupDone && J && J.s - player.s < L1.forkAt) {
+      S.fork = true;
+      say('mikey', 'Select which way to go!');
+      hint('LEAN LEFT OR RIGHT TO PICK A ROAD');
+      L1.forkHint = true;
+    }
+  }
+  if (LV.april) {
+    if (!S.go && G.time > 1.5) { S.go = true; say('leo', "Stay on April's tail. Don't let them hit her!"); }
+    if (!S.chase && G.time > 2.5) { S.chase = true; spawnEnemy('racer', -30, -5.4); spawnEnemy('racer', -36, 5.4); G.spawnT = 3; }
+    if (!S.fork && J && J.s - player.s < 330) { S.fork = true; say('mikey', 'Watch her blinker. Go where April goes!'); }
+    if (!S.half && april.hp < APRIL.hp / 2) { S.half = true; say('donnie', "April's van can't take much more!"); }
+    if (G.lostT > 0) { G.lostT -= dt; if (G.lostT <= 0) endLevel(false, 'YOU LOST APRIL!', 'Follow her blinker: at every fork, take the road April takes.'); }
+  }
+}
+
+// ── April's van (level 2) ───────────────────────────────────────────────────
+// Drives ahead of the wagon (gap 18-30 m, always less than the fork's lock-in distance, so the
+// player decides before she reaches the fork), changes lanes now and then, and well before each
+// fork picks a side: moves over, blinks, and the turn sign says which way she went. Take the
+// other fork and she carries on down hers; a few seconds later it's over. Foot cars shoot at her
+// now and then (one shot every APRIL.shotGap s at most) — the wagon can block them.
+const APRIL = { hp: 100, gap: 24, gapSwing: 6, shotGap: 3.2, shotDmg: 7, lostAfter: 3.5, picksAt: 270 };
+const april = { on: false, hp: APRIL.hp, lane: 1.8, laneT: 3, turn: 0, forJ: 0, off: null };
+const _fp = {};
+function resetApril() {
+  Object.assign(april, { on: !!LV.april, hp: APRIL.hp, lane: 1.8, laneT: 3, turn: 0, forJ: 0, off: null });
+  const c = aprilCar;
+  c.reset();
+  c.active = c.alive = april.on; c.group.visible = april.on;
+  c.s = player.s + APRIL.gap; c.u = 1.8; c.vs = player.vs; c.signal = 0;
+}
+function shotTarget(e) {
+  if (!april.on || april.off || G.aprilShotT > 0 || !aprilCar.alive) return player;
+  if (e.aim === aprilCar) return aprilCar;   // keep the target through a charge
+  if (enemies.some((o) => o !== e && o.aim === aprilCar && o.active && o.alive)) return player;
+  return Math.random() < 0.02 ? aprilCar : player;   // re-rolled every frame: ~1 car in 3 picks her within a second
+}
+function hurtApril(dmg, at) {
+  if (G.god) return;
+  april.hp = Math.max(0, april.hp - dmg);
+  aprilCar.flash = 1; aprilCar.bounce = 0.5;
+  fx.sparks(_p.copy(at).setY(1.2), _n.set(0, 0, 0), 14, 1);
+  popupAt(aprilCar.group.position.clone().setY(3), `APRIL -${dmg}`, 'bad');
+  audio.thud();
+  if (april.hp <= 0) {
+    aprilCar.startWreck({ u: 0, up: 9, spin: 5 });
+    fx.explode(aprilCar.group.position.clone().setY(1), _n.set(0, 0, 0), 0x3f86ff);
+    audio.boom(); flash(0.6);
+    endLevel(false, 'APRIL WAS CAUGHT!', 'Block the shots aimed at her van, and wreck the cars chasing her.');
+  }
+}
+function updateApril(dt) {
+  if (!april.on) return;
+  const c = aprilCar;
+  G.aprilShotT = Math.max(0, (G.aprilShotT || 0) - dt);
+  if (!c.alive) { if (c.wreck) c.stepWreck(dt); return; }
+  // pace: hold a swinging gap ahead of the wagon
+  const want = player.s + APRIL.gap + Math.sin(G.time * 0.35) * APRIL.gapSwing;
+  const lastS = c.s;
+  c.s += (want - c.s) * Math.min(1, dt * 1.4) + player.vs * dt;
+  c.vs = (c.s - lastS) / Math.max(dt, 1e-4);
+  // lanes: drift between the middle lanes; ahead of a fork, pick a side and move over to it
+  const J = path.junction;
+  if (J && J.id !== april.forJ && J.s - c.s < APRIL.picksAt && !april.off) {
+    april.forJ = J.id; april.turn = Math.random() < 0.5 ? -1 : 1;
+    april.lane = april.turn * 5.4; c.signal = april.turn;
+  }
+  if (!J && april.turn && !april.off && c.s > path.find(c.s).s0 + 30) { april.turn = 0; c.signal = 0; }
+  april.laneT -= dt;
+  if (april.laneT <= 0 && !april.turn) { april.laneT = 3 + Math.random() * 3; april.lane = [-5.4, -1.8, 1.8, 5.4][Math.floor(Math.random() * 4)]; }
+  const lastU = c.u;
+  c.u += clamp((april.lane - c.u) * 1.6, -5, 5) * dt;
+  c.vu = (c.u - lastU) / Math.max(dt, 1e-4);
+  // Foot cars that get in her way are nudged aside (she's a heavy van)
+  for (const e of enemies) {
+    if (!e.active || !e.alive || e.lift) continue;
+    const ds = e.s - c.s, du = e.u - c.u;
+    if (Math.abs(ds) < (c.L + e.L) / 2 + 0.5 && Math.abs(du) < (c.W + e.W) / 2 + 0.3) e.u += Math.sign(du || 1) * 6 * dt;
+  }
+  // the wrong fork: she's on the other branch now
+  if (april.off && c.s > april.off.J.s) {
+    forkPoint(april.off.J, april.off.turn, c.s - april.off.J.s, c.u, _fp);
+    c.place(dt);
+    c.group.position.set(_fp.x, 0, _fp.z);
+    c.group.rotation.y = -_fp.h;
+  } else c.place(dt);
+}
+
+// ── Donnie's staff (EMP PULSE, rebuilt) ────────────────────────────────────
+// Donnie swings his bo staff (a THROW clip from the tagged set), and at the bottom of the swing a
+// bolt of lightning from its tip grabs a Foot car and throws it: up in an arc and down on top of
+// another Foot car (CRUSHED!), or onto the road if there's no other car near. A car in the air
+// can't shoot, and the staff still fries shells that come close.
+const DON = { every: 2.1, swingFrom: 0.42, strikeAt: 0.87, swingTo: 1.35, rate: 1.35, reach: 48, lift: 1.25, height: 7.5, crush: 95, slam: 70 };
+function startLift(e) {
+  const others = liveFoot().filter((o) => o !== e && !o.lift && !o.tether && Math.abs(o.s - e.s) < 40);
+  const to = others.sort((a, b) => Math.hypot(a.s - e.s, a.u - e.u) - Math.hypot(b.s - e.s, b.u - e.u))[0] || null;
+  e.lift = { t: 0, rel0: e.s - player.s, u0: e.u, to, toRel: e.s - player.s + 6, toU: e.u, spin: Math.random() < 0.5 ? -1 : 1, y: 0 };
+  e.charge = 0; e.emp = Math.max(e.emp || 0, 2.5);
+  if (e.turret) e.turret.laser.visible = false;
+  G.lifts = (G.lifts || 0) + 1;
+}
+function liftStep(e, dt) {
+  const L = e.lift;
+  L.t += dt;
+  const k = clamp(L.t / DON.lift, 0, 1), ek = k * k * (3 - 2 * k);
+  if (L.to && !L.to.alive) L.to = null;
+  if (L.to) { L.toRel = L.to.s - player.s; L.toU = L.to.u; }
+  const lastU = e.u;
+  e.s = player.s + L.rel0 + (L.toRel - L.rel0) * ek;
+  e.u = L.u0 + (L.toU - L.u0) * ek;
+  e.vs = player.vs; e.vu = (e.u - lastU) / Math.max(dt, 1e-4) * 0.3;
+  const land = L.to ? L.to.H * 0.85 : 0;
+  L.y = land * k + 4 * DON.height * k * (1 - k);
+  // it crackles all the way
+  if (Math.random() < dt * 30) {
+    const a = e.group.position.clone().add(_n.set((Math.random() - 0.5) * e.W * 1.3, Math.random() * 1.6, (Math.random() - 0.5) * e.L));
+    makeZap(a, a.clone().add(_n.set((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2)), 0.4, 0.05, 0.1);
+  }
+  if (k < 1) return;
+  // landing
+  pointAt(e.s, e.u, _p).setY(Math.max(0.6, land));
+  const side = Math.sign(e.u - player.u) || 1;
+  e.lift = null;
+  G.shake = Math.max(G.shake, 0.4);
+  fx.sparks(_p, _n.set(0, 0, 0), 30, 1.6);
+  fx.add.emit(_p, _n.set(0, 0, 0), new THREE.Color(1.6, 1, 3), 3.5, 0.2, { grow: 1.2 });
+  if (L.to) {
+    hitEnemy(L.to, DON.crush, _p, side, 'CRUSHED!');
+    L.to.emp = Math.max(L.to.emp || 0, 3);
+    wreckEnemy(e, side, 'CRUSHED!', true);
+  } else {
+    fx.dust(_p.setY(0.2));
+    hitEnemy(e, DON.slam, _p, side, 'SLAMMED!');
+    if (e.alive) { e.bounce = 1; e.vs = player.vs - 8; popupAt(_p.clone().setY(2.5), 'SLAMMED!', 'wall'); }
+  }
+}
+function placeLift(e) {
+  const L = e.lift;
+  const k = clamp(L.t / DON.lift, 0, 1);
+  e.group.position.y += L.y;
+  // a lazy barrel roll on the way up, coming back level to land flat
+  e.group.rotation.z = L.spin * Math.sin(k * Math.PI) * 1.1;
+  e.group.rotation.x = Math.sin(k * Math.PI) * 0.35;
+}
+
 // ── Junctions: pick a side of the road before the T and the wagon takes that turn ──
 function junctionChoice() {
   const J = path.junction, el = $('turn');
@@ -2010,31 +2311,67 @@ function junctionChoice() {
   if (to < DECIDE_AT) {
     const turn = player.u < 0 ? -1 : 1;
     world.decide(turn);
+    G.forks = (G.forks || 0) + 1;
+    if (L1.forkHint) { L1.forkHint = false; hint(''); }
+    if (april.on && april.turn && turn !== april.turn && G.state === 'play') {
+      // wrong fork: April carries on down her branch, and the wagon has a few seconds of drama
+      april.off = { J, turn: april.turn };
+      G.lostT = APRIL.lostAfter;
+      banner('WRONG WAY!', 'raph');
+      say('leo', "Wrong way! We're losing April!", 2.6);
+    }
     el.className = 'show locked ' + (turn < 0 ? 'l' : 'r');
     setTimeout(() => { el.className = ''; }, 900);
     audio.beep(true);
     return;
   }
-  if (!el.classList.contains('locked')) el.className = to < 230 && G.state === 'play' ? 'show ' + (player.u < 0 ? 'l' : 'r') : '';
+  const ap = april.on && april.turn && april.forJ === J.id ? (april.turn < 0 ? ' ap-l' : ' ap-r') : '';
+  if (!el.classList.contains('locked')) el.className = to < 230 && G.state === 'play' ? 'show ' + (player.u < 0 ? 'l' : 'r') + ap : '';
 }
 
-function endRun(reason) {
+// the wagon wrecked (hurt) lands here; everything else calls endLevel directly
+function endRun(reason) { endLevel(false, reason, 'Your shell ran out. Grab pickups and keep wrecking to heal.'); }
+// win: Raph's line, then the stats with NEXT LEVEL (or PLAY AGAIN after the last). Fail: the
+// reason and TRY AGAIN, which restarts this same level (no talking scene the second time).
+async function endLevel(win, title, why = '') {
   if (G.state === 'over') return;
-  G.state = 'over';
-  audio.over();
-  const stars = MISSION.stars.filter((s) => G.wrecks >= s).length;
-  $('over-title').textContent = reason || (G.wrecks >= MISSION.target ? 'STREET CLEARED!' : 'THEY GOT AWAY…');
+  G.state = 'over'; G.won = win;
+  const run = levelRun;
+  hint(''); clearSay();
+  $('turn').className = '';
+  const last = LV.n === LEVELS.length;
+  if (win) {
+    audio.beep(true);
+    banner(LV.april ? 'APRIL IS SAFE!' : 'STREET CLEARED!');
+    await new Promise((r) => setTimeout(r, 1300));
+    if (run !== levelRun) return;
+    if (!AUTO) await playScene({ lines: LV.outro, title: last ? 'COWABUNGA!' : `LEVEL ${LV.n} CLEAR!`, objective: last ? 'You saved April. The wagon is yours, Mikey.' : `Next: ${LEVELS[LV.n].title}`, start: last ? 'THE END' : 'NEXT' });
+    if (run !== levelRun) return;
+  } else audio.over();
+  const stars = LV.april ? [1, 50, 80].filter((h) => win && april.hp >= h).length : (LV.stars || []).filter((s) => G.wrecks >= s).length;
+  $('over-level').textContent = `LEVEL ${LV.n} - ${LV.title}`;
+  $('over-title').textContent = win ? (last ? 'COWABUNGA!' : 'LEVEL CLEAR!') : title;
+  $('over-title').classList.toggle('fail', !win);
+  $('over-why').textContent = win ? '' : why;
   $('over-stars').innerHTML = [0, 1, 2].map((i) => `<span class="${i < stars ? '' : 'dim'}">★</span>`).join('');
   $('over-wrecks').textContent = G.wrecks;
   $('over-score').textContent = G.score;
   $('over-combo').textContent = 'x' + G.bestCombo;
-  setTimeout(() => $('gameover-overlay').classList.remove('hidden'), 700);
+  $('restart-button').textContent = win ? (last ? 'PLAY AGAIN' : 'REPLAY') : 'TRY AGAIN';
+  $('restart-button').classList.toggle('hidden', win && !last);
+  $('next-button').classList.toggle('hidden', !win || last);
+  setTimeout(() => $('gameover-overlay').classList.remove('hidden'), win ? 0 : 900);
 }
 
 // ── Buttons ──────────────────────────────────────────────────────────────────
-$('restart-button').addEventListener('click', () => { audio.start(); startRun(); });
+$('restart-button').addEventListener('click', () => {
+  audio.start();
+  if (G.won) startLevel(0, true);           // after the last level: from the top, with the story
+  else startLevel(LV.n - 1, false);         // a failed level: straight back into it
+});
+$('next-button').addEventListener('click', () => { audio.start(); startLevel(LV.n, true); });
 function setPaused(p) {
-  if (G.state === 'over' || G.state === 'loading') return;
+  if (G.state === 'over' || G.state === 'loading' || G.state === 'story') return;
   G.paused = p;
   $('pause-overlay').classList.toggle('hidden', !p);
   audio.setPaused(p);
@@ -2071,10 +2408,15 @@ function autoLean() {
     const d = Math.abs(rel) + Math.abs(e.u - player.u) * 0.5;
     if (d < bd) { bd = d; best = e; }
   }
+  const J = path.junction;
+  if (J && J.s - player.s < 200) {
+    const side = april.on && april.turn ? april.turn * (window.__wrongFork ? -1 : 1) : (G.autoFork ??= 1);
+    return clamp((side * 6 - player.u) * 0.5, -1, 1);
+  }
   const o = orbs[0];
   if (o && o.s - player.s < 60 && o.s > player.s) return clamp((o.u - player.u) * 0.6, -1, 1);
   if (!best) return clamp(-player.u * 0.3, -1, 1);
   const du = best.u - player.u;
   return Math.abs(best.s - player.s) < 6 ? Math.sign(du) : clamp(du * 0.5, -1, 1);
 }
-window.__game = { G, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, hatchS, get fx() { return fx; }, saws, updateSaws, startGadget, get mikeTop() { return mikeTop; }, get donTop() { return donTop; }, sky, scene, stage, renderer, composer, get world() { return world; } };
+window.__game = { G, april, spawnEnemy, get donTop() { return donTop; }, get aprilCar() { return aprilCar; }, startLevel, endLevel, get LV() { return LV; }, LEVELS, startBuff, liftStep, get world() { return world; }, path, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, hatchS, get fx() { return fx; }, saws, updateSaws, startGadget, get mikeTop() { return mikeTop; }, sky, scene, stage, renderer, composer };

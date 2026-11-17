@@ -120,21 +120,26 @@ export const ROLL = { max: 0.225, vuFull: 12.5, turn: 0.09, held: 0.08, holdRate
 const _black = new THREE.Color(0, 0, 0);
 
 export class Car {
-  constructor(kind, proto, scene) {
+  // opts.friendly: an ally on the Foot's model (April's van) — its own paint, no roof cannon,
+  // blue underglow, and turn signals (this.signal = -1 / 0 / 1) so the player can follow it
+  constructor(kind, proto, scene, opts = {}) {
     this.kind = kind;
     this.k = KINDS[kind];
+    this.friendly = !!opts.friendly;
+    this.paint = opts.paint ? new THREE.Color(opts.paint) : null;
     this.group = new THREE.Group();     // placed on the street
     this.body = proto.holder.clone(true); // tilts and rolls inside it
     this.mats = [];
     this.body.traverse((o) => {
       if (!o.isMesh) return;
       o.material = o.material.clone();
-      if (this.k.tint) o.material.color.setHex(this.k.tint);
+      if (this.paint) o.material.color.copy(this.paint);
+      else if (this.k.tint) o.material.color.setHex(this.k.tint);
       o.material.emissive = new THREE.Color(0x000000);
       this.mats.push(o.material);
     });
     this.group.add(this.body);
-    if (kind !== 'wagon') {
+    if (kind !== 'wagon' && !this.friendly) {
       // (the roof Foot emblem was taken off on request; emblemTexture() stays for reuse)
       this.buildTurret(proto);
     }
@@ -142,7 +147,7 @@ export class Car {
     // night dressing: underglow (Foot purple / wagon green), headlights, tail lights
     const wagon = kind === 'wagon';
     this.glow = new THREE.Mesh(new THREE.PlaneGeometry(this.W * 2.3, this.L * 1.45), new THREE.MeshBasicMaterial({
-      map: wagon ? GLOW.green : GLOW.purple, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: wagon ? 0.35 : 0.5 }));
+      map: wagon ? GLOW.green : this.friendly ? GLOW.blue : GLOW.purple, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: wagon ? 0.35 : 0.5 }));
     this.glow.rotation.x = -Math.PI / 2; this.glow.position.y = 0.05;
     this.group.add(this.glow);
     const lamp = (x, y, z, col, s) => { const m = new THREE.Mesh(new THREE.SphereGeometry(s, 8, 6), new THREE.MeshBasicMaterial({ color: col })); m.position.set(x, y, z); this.body.add(m); };
@@ -151,6 +156,20 @@ export class Car {
     lamp(-this.W * 0.3, hy, -this.L / 2 + 0.05, new THREE.Color(5, 4.6, 3.6), 0.13);
     lamp(this.W * 0.34, hy, this.L / 2 - 0.05, new THREE.Color(4, 0.25, 0.2), 0.1);
     lamp(-this.W * 0.34, hy, this.L / 2 - 0.05, new THREE.Color(4, 0.25, 0.2), 0.1);
+    if (this.friendly) {
+      // turn signals: big amber blinkers on both rear corners and both front corners
+      this.blink = { [-1]: [], [1]: [] };
+      const amber = () => new THREE.MeshBasicMaterial({ color: new THREE.Color(0.25, 0.12, 0) });
+      for (const side of [-1, 1]) {
+        const mat = amber();
+        for (const z of [-this.L / 2 + 0.1, this.L / 2 - 0.1]) {
+          const m = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), mat);
+          m.position.set(side * this.W * 0.47, hy + 0.25, z); this.body.add(m);
+        }
+        this.blink[side].push(mat);
+      }
+      this.signal = 0;
+    }
     // spinning wheel covers (see findWheels)
     this.wheels = [];
     const T = wheelTextures(), ww = WHEEL_W[kind] || 0.4;
@@ -223,6 +242,7 @@ export class Car {
   // body colour / roughness / metalness from FOOT_LOOK (Foot cars only), and the glow strips
   applyLook() {
     if (this.kind === 'wagon') { for (const m of this.mats) m.color.setHex(0xffffff); return; }
+    if (this.friendly) { for (const m of this.mats) m.color.copy(this.paint).multiplyScalar(this.alive ? 1 : 0.35); return; }
     const t = FOOT_LOOK.tint[this.kind];
     for (const m of this.mats) {
       if (this.alive) m.color.copy(t); else m.color.copy(t).multiplyScalar(0.35);
@@ -280,7 +300,14 @@ export class Car {
     this.flash = Math.max(0, this.flash - dt * 6);
     const f = this.flash;
     // hit flash: a hot glow, not a white-out — the car has to stay readable through it
-    const foot = this.kind !== 'wagon', g = foot ? FOOT_LOOK.glow : _black;
+    const foot = this.kind !== 'wagon' && !this.friendly, g = foot ? FOOT_LOOK.glow : _black;
+    if (this.blink) {
+      const on = Math.floor(performance.now() / 260) % 2 === 0;
+      for (const side of [-1, 1]) for (const m of this.blink[side]) {
+        const lit = this.signal === side && on;
+        m.color.setRGB(lit ? 6 : 0.25, lit ? 3 : 0.12, 0);
+      }
+    }
     for (const m of this.mats) m.emissive.setRGB(g.r + f * 0.42, g.g + f * 0.22, g.b + f * 0.12);
     if (this.tmats) for (const m of this.tmats) m.emissive.setRGB(g.r + f * 0.42, g.g + f * 0.22, g.b + f * 0.12);   // same glow + hit flash as the body
     // the charge reads on the cannon now: muzzle heats up, barrel kicks back on the shot

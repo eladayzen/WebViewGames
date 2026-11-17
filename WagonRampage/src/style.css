@@ -149,3 +149,75 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1622; col
 #gadget[data-t="nitro"] .fg { stroke: #4f9cff; filter: drop-shadow(0 0 6px #4f9cff); }
 #gadget[data-t="harpoon"] .fg { stroke: #3fe0c0; filter: drop-shadow(0 0 6px #3fe0c0); }
 #banner.shield { color: #6fc8ff; font-size: 64px; } #banner.nitro { color: #4f9cff; font-size: 64px; } #banner.harpoon { color: #3fe0c0; font-size: 64px; }
+
+/* ── Story: talking scenes between levels (src/story.js) ─────────────────── */
+#story { position: fixed; inset: 0; z-index: 35; overflow: hidden; cursor: pointer;
+  background: radial-gradient(120% 90% at 50% 100%, rgba(40,26,80,.55), rgba(8,6,20,.88)); }
+#story.hidden { display: none; }
+#story-cast { position: absolute; inset: 0; }
+#story .fig { position: absolute; bottom: -4vh; height: 86vh; max-width: 46vw; object-fit: contain; object-position: bottom;
+  opacity: 0; filter: brightness(.45) saturate(.7); transition: transform .35s cubic-bezier(.2,1.4,.4,1), opacity .25s, filter .25s; }
+#story .fig.left { left: 2vw; transform: translateX(-60%); }
+#story .fig.right { right: 2vw; transform: translateX(60%); }
+#story .fig.left.slot1 { left: 18vw; } #story .fig.right.slot1 { right: 18vw; }
+#story .fig.in { opacity: 1; transform: translateX(0) scale(.9); }
+#story .fig.talk { filter: none; transform: translateX(0) scale(1); z-index: 2; }
+#story.carding .fig { opacity: .25; filter: brightness(.4); }
+.bubble { position: absolute; top: 9vh; max-width: min(46vw, 520px); background: #fff; color: #12101c; border: 4px solid #000;
+  border-radius: 26px; padding: 14px 22px 16px; box-shadow: 0 6px 0 #000; z-index: 3; }
+.bubble.hidden { display: none; }
+.bubble.left { left: 30vw; } .bubble.right { right: 30vw; }
+.bubble b { display: block; font-family: var(--display); font-size: 26px; letter-spacing: 2px; color: var(--col); -webkit-text-stroke: 1px #000; }
+.bubble span { display: block; font: 800 clamp(20px, 3.2vw, 32px)/1.15 var(--ui); }
+.bubble::after { content: ''; position: absolute; bottom: -32px; width: 0; height: 0; border: 14px solid transparent; border-top: 18px solid #000; }
+.bubble.left::after { left: 24px; } .bubble.right::after { right: 24px; }
+.bubble.pop { animation: bubbleIn .28s cubic-bezier(.2,1.6,.4,1); }
+@keyframes bubbleIn { 0% { transform: scale(.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+#story-card { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; z-index: 4; }
+#story-card.hidden { display: none; }
+#story-card h1 { font-family: var(--display); font-size: clamp(48px, 9vw, 96px); letter-spacing: 3px; margin: 0; color: #ffd23a; text-shadow: 0 6px 0 #000;
+  animation: bubbleIn .35s cubic-bezier(.2,1.6,.4,1); }
+#story-card p { font: 800 clamp(18px, 2.8vw, 28px)/1.2 var(--ui); margin: 10px auto 18px; max-width: 70vw; text-shadow: 0 3px 0 #000; }
+#story-card small { font-family: var(--display); letter-spacing: 4px; font-size: 22px; color: var(--green); text-shadow: 0 3px 0 #000; }
+#story-go { display: inline-block; font-family: var(--display); font-size: 34px; letter-spacing: 3px; padding: 8px 34px; border-radius: 999px;
+  border: 3px solid #000; background: var(--green); color: #12101c; box-shadow: 0 5px 0 #000; animation: pulse .7s ease-in-out infinite alternate; }
+#story-skip { position: absolute; right: 14px; top: 12px; z-index: 5; font-family: var(--display); font-size: 18px; letter-spacing: 2px;
+  padding: 8px 16px; border-radius: 999px; border: 2px solid #000; background: rgba(255,255,255,.85); color: #12101c; cursor: pointer; }
+#story-tap { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; font-family: var(--display); letter-spacing: 3px;
+  font-size: 16px; color: rgba(255,255,255,.6); z-index: 5; }
+#story.carding #story-tap { display: none; }
+
+/* in-level speech popup: round head + bubble, top-left under the Back button */
+#say { position: fixed; left: 12px; top: 60px; display: flex; align-items: center; gap: 10px; z-index: 16; pointer-events: none;
+  max-width: min(58vw, 460px); transform: translateX(-120%); transition: transform .3s cubic-bezier(.2,1.3,.4,1); }
+#say.hidden { display: none; }
+#say.on { transform: translateX(0); }
+#say.off { transform: translateX(-120%); transition-duration: .22s; }
+#say img { width: 84px; height: 84px; border-radius: 50%; border: 4px solid var(--col); background: #231c35; box-shadow: 0 4px 0 #000; flex: none; }
+#say div { background: #fff; color: #12101c; border: 3px solid #000; border-radius: 18px; padding: 8px 14px 10px; box-shadow: 0 4px 0 #000; }
+#say b { display: block; font-family: var(--display); font-size: 18px; letter-spacing: 2px; color: var(--col); -webkit-text-stroke: .6px #000; }
+#say span { display: block; font: 800 clamp(15px, 2.2vw, 21px)/1.15 var(--ui); }
+
+/* tutorial hint: a short instruction under the HUD */
+#hint { position: fixed; left: 0; right: 0; top: 30%; text-align: center; font-family: var(--display); font-size: clamp(22px, 4vw, 38px);
+  letter-spacing: 2px; color: #ffd23a; text-shadow: 0 4px 0 #000; pointer-events: none; z-index: 13; }
+#hint.hidden { display: none; }
+
+/* April's van: a tag that follows it on screen, with her health */
+#april-tag { position: fixed; left: 0; top: 0; transform: translate(-50%, -100%); pointer-events: none; z-index: 11; text-align: center; }
+#april-tag.hidden { display: none; }
+#april-tag b { display: block; font-family: var(--display); font-size: 17px; letter-spacing: 2px; color: #ffd23a; text-shadow: 0 2px 0 #000; }
+#april-tag i { display: block; width: 74px; height: 8px; border: 2px solid #000; border-radius: 6px; background: rgba(0,0,0,.6); overflow: hidden; }
+#april-tag u { display: block; height: 100%; background: linear-gradient(#7fc4ff, #2f78e0); transform-origin: left; transition: transform .15s; }
+#april-tag.hit b { color: #ff6a5a; }
+#april-tag.low u { background: linear-gradient(#ff7a5a, #d0281a); }
+#turn small { display: none; font-size: 18px; letter-spacing: 2px; color: #7fc4ff; text-align: center; }
+#turn.ap-l .l small, #turn.ap-r .r small { display: block; }
+#turn span { display: flex; flex-direction: column; align-items: center; }
+
+.panel small#over-level { display: block; font-family: var(--display); letter-spacing: 4px; font-size: 18px; color: #cfc8e8; }
+.panel #over-why { margin: 0 0 10px; font: 700 16px var(--ui); color: #e8e2ff; }
+.panel #over-why:empty { display: none; }
+.panel h2.fail { color: var(--hot); }
+.big-btn.hidden { display: none; }
+#goal.survive .of { display: none; }

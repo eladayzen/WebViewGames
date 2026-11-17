@@ -18,15 +18,50 @@ npm run build && npx vite preview      # http://127.0.0.1:8155/index.html
   click-dragging on the canvas.
 - **On the device:** the game reads the analog `window.__gbSensor.x`, so its Unity
   `WebGameController` needs **forwardSteeringKeys off**.
-- **Autopilot:** `?auto=1` turns on an autopilot that hunts Foot cars. The headless test tools
-  use it.
+- **Autopilot:** `?auto=1` turns on an autopilot that hunts Foot cars and follows April at forks.
+  It also skips the talking scenes. The headless test tools use it.
+- **Level:** `?level=2` starts at level 2.
 - **Dev panel:** `?dev=1` shows it. It also shows on its own on localhost and 127.0.0.1; see
   [Dev panel](#dev-panel).
 
+## The loop: two levels
+
+`LEVELS` in `src/main.js`. Each level opens with the brothers talking (full-body art, speech
+bubbles, tap or wait to advance), then a title card with the objective. A win plays Raph's line
+and offers NEXT LEVEL; a fail shows why and TRY AGAIN restarts **that same level**, without the
+talking scene. After level 2, PLAY AGAIN goes back to level 1 with the story.
+
+| Level | Goal | Fails on |
+| --- | --- | --- |
+| **1 JOY RIDE** (100 s) | Wreck 10 Foot cars | Time up, or the wagon's shell runs out |
+| **2 SAVE APRIL** (70 s) | Keep April's van alive until the timer ends, following her at every fork | April's van destroyed, taking the other fork (3.5 s later), or the shell |
+
+**Level 1 is the tutorial** (`levelScript`, `L1`):
+- An empty street first. At 5 s two Foot cars come up from behind, with Donnie's and Leo's lines.
+- At 12.5 s a Raph pickup is placed in the wagon's lane, with Donnie's line and a hint.
+- 300 m before the first fork, Mikey says to pick a way and a hint says to lean. The first
+  straight is 1400 m long (`firstLen`), so the lessons come one at a time.
+
+**Level 2, April** (`APRIL`, `updateApril`):
+- Her van is the Foot truck without its cannon, painted blue (`Car` with `friendly`). It drives
+  18-30 m ahead of the wagon, always less than the fork lock-in distance, so the player
+  chooses before she reaches the fork.
+- 270 m before each fork she picks a side, moves over and blinks, and the turn sign shows
+  "APRIL WENT LEFT/RIGHT". Take the other fork and she drives off down hers
+  (`forkPoint` in `world.js`).
+- Foot cars shoot at her now and then: one car lines up on her at a time, at most one shot
+  every 3.2 s, 7 damage. The wagon can block them by being in the way.
+- A tag over her van shows her health.
+
+**Story text and art:** the lines are from Elad's script
+(`~/Documents/TMNT/TMNT MM Full body/wagonPrototype/script.rtf`), with typos fixed.
+`tools/make-story-art.py` trims each render, saves a 720 px WebP for the scenes and a 192 px
+head crop for the in-level popups (`public/story/`, about 420 KB in total). `src/story.js`
+plays the scenes and the popups.
+
 ## The run
 
-You have 90 s to wreck 12 Foot cars, with stars at 12, 20 and 28 wrecks (`MISSION` in
-`src/main.js`). The wagon drives itself forward and leaning steers it sideways.
+The wagon drives itself forward and leaning steers it sideways.
 
 | You do | What happens |
 | --- | --- |
@@ -67,7 +102,7 @@ rises out of the black opening. When the power ends he sinks back down and the l
 | **Leo** | Katana strike. Held until it's worth using | Fires once 2 or more Foot cars are in reach, or 1 after waiting 6 s. Leo jumps from the hatch to the toughest car first and chains through up to 3 cars while the world slows to 0.12×. Blue trails come off his twin katanas, and each cut leaves crossed crescents of light. |
 | **Raph** | SAI STORM, 8 s | Stands in the hatch throwing sais in straight lines. He turns his body to face the car, allowing for how the throw animation twists him. |
 | **Mikey** | PIZZA CANNON, 8 s | Fires homing pizzas from a pizza gatling on his shoulder |
-| **Donnie** | EMP PULSE, 7 s | Once a second, forked lightning from his emitter hits up to 4 cars ahead. Hit cars can't shoot for 3.5 s (`EMP_T`) and keep sparking. The pulse also destroys incoming shells. |
+| **Donnie** | THUNDER STAFF, 7.5 s | He swings his bo staff (Raph's overhead throw clip a7) every 2.1 s. At the bottom of the swing a bolt from the staff's tip grabs the nearest Foot car and throws it in an arc onto another Foot car (**CRUSHED!**: the thrown car is wrecked, the other takes 95), or onto the road (**SLAMMED!**, 70). A car in the air can't shoot. The staff also destroys incoming shells. Tuning: `DON`. |
 
 ### Gadget slot (`GADGETS` in `src/main.js`)
 
@@ -148,6 +183,9 @@ port 8155.
 
 | Tool | Checks |
 | --- | --- |
+| `levels.mjs` | The two-level loop: `intro` (level 1 scene and tutorial), `april` (level 2 to the end), `wrong` (takes the other fork, expects YOU LOST APRIL!) |
+| `donnie.mjs` | Frames through Donnie's swings, and the lift / crush counts |
+| `make-story-art.py` | The story art from Elad's renders |
 | `burst.mjs` | A burst of screenshots after optional setup code |
 | `catch.mjs` | All four turtle powers firing naturally |
 | `shot-burst.mjs`, `shot-rate.mjs` | One enemy shot from charge to impact; shots fired versus hits |
@@ -168,6 +206,7 @@ port 8155.
 | `leo_tex`, `mike_tex`, `donnie_tex` | Recolours of the Raph texture |
 | `ui/raph`, `leo`, `mike`, `donnie` | Turtle head icons from Elad's TDCars2 project |
 | `ui/foot.png` | The Foot Clan symbol Elad supplied; currently not shown on the cars |
+| `story/*.webp` | Elad's TMNT character renders (`~/Documents/TMNT/TMNT MM Full body`), resized |
 | Foot car models | Kolbo and Meshy |
 | Wagon | Elad's CustomCar_01 (Meshy) |
 | Gadget icons | Drawn procedurally by the scripts above |

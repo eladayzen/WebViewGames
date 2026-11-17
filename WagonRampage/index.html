@@ -72,7 +72,7 @@
   <div id="hud">
     <div id="hud-top">
       <div id="timer">90</div>
-      <div id="goal"><span id="wrecks">0</span>/<span id="target">12</span><small>WRECKED</small></div>
+      <div id="goal"><span id="wrecks">0</span><span class="of">/<span id="target">12</span></span><small>WRECKED</small></div>
       <div id="score">0</div>
     </div>
     <div id="combo-wrap"><div id="combo">x1</div><div id="combo-bar"><i></i></div></div>
@@ -82,8 +82,11 @@
     <div id="gadget" class="buffring"><svg viewBox="0 0 100 100"><circle class="bg" cx="50" cy="50" r="46"/><circle class="fg" cx="50" cy="50" r="46"/></svg><img alt=""><b></b><i></i></div>
   </div>
   <div id="popups"></div>
+  <div id="april-tag" class="hidden"><b>APRIL</b><i><u></u></i></div>
+  <div id="say" class="hidden"></div>
+  <div id="hint" class="hidden"></div>
   <div id="banner"></div>
-  <div id="turn"><span class="l">&#9664; LEFT</span><span class="r">RIGHT &#9654;</span></div>
+  <div id="turn"><span class="l">&#9664; LEFT<small>APRIL WENT LEFT</small></span><span class="r">RIGHT &#9654;<small>APRIL WENT RIGHT</small></span></div>
   <div id="countdown"></div>
   <div id="loading">LOADING…</div>
 
@@ -91,16 +94,33 @@
     <div class="panel"><h2>PAUSED</h2><button id="resume-button" class="big-btn">RESUME</button></div>
   </div>
 
+  <!-- talking scenes before / after each level (src/story.js) -->
+  <div id="story" class="hidden">
+    <div id="story-cast"></div>
+    <div id="story-bubble" class="bubble hidden"></div>
+    <div id="story-card" class="hidden">
+      <small id="story-level"></small>
+      <h1 id="story-title"></h1>
+      <p id="story-goal"></p>
+      <div id="story-go"></div>
+    </div>
+    <button id="story-skip">SKIP &#9656;&#9656;</button>
+    <div id="story-tap">TAP TO CONTINUE</div>
+  </div>
+
   <div id="gameover-overlay" class="overlay hidden">
     <div class="panel">
+      <small id="over-level"></small>
       <h2 id="over-title">STREET CLEARED!</h2>
+      <p id="over-why"></p>
       <div id="over-stars"></div>
       <div class="stats">
         <div><b id="over-wrecks">0</b><span>FOOT CARS WRECKED</span></div>
         <div><b id="over-score">0</b><span>SCORE</span></div>
         <div><b id="over-combo">x1</b><span>BEST COMBO</span></div>
       </div>
-      <button id="restart-button" class="big-btn">AGAIN!</button>
+      <button id="restart-button" class="big-btn">TRY AGAIN</button>
+      <button id="next-button" class="big-btn hidden">NEXT LEVEL</button>
     </div>
   </div>
 

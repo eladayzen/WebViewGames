@@ -69,6 +69,12 @@ export function frameAt(s, T = new THREE.Vector3(), R = new THREE.Vector3()) {
   R.set(Math.cos(_o.h), 0, Math.sin(_o.h));
   return { T, R };
 }
+// a point on one branch of a fork, `d` metres past the junction — for a car that went the
+// other way from the route (April, when the wagon takes the wrong fork). Returns { x, z, h }.
+export function forkPoint(J, turn, d, u, out = {}) {
+  const [arc, line] = J.branch[turn];
+  return d < arc.len ? pose(arc, d, u, out) : pose(line, d - arc.len, u, out);
+}
 export function yawAt(s) { const p = path.find(s); pose(p, s - p.s0, 0, _o); return -_o.h; }
 const lpt = (p, d, u, out = new THREE.Vector3()) => { pose(p, d, u, _o); return out.set(_o.x, 0, _o.z); };
 const lh = (p, d) => pose(p, d, 0, _o).h;
@@ -139,7 +145,7 @@ function arrowTex() {
   x.beginPath(); x.moveTo(64, 8); x.lineTo(122, 96); x.lineTo(86, 96); x.lineTo(86, 248); x.lineTo(42, 248); x.lineTo(42, 96); x.lineTo(6, 96); x.closePath(); x.fill();
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-export const GLOW = { warm: null, purple: null, green: null };
+export const GLOW = { warm: null, purple: null, green: null, blue: null };
 
 export class World {
   constructor(stage, tex) {
@@ -147,7 +153,7 @@ export class World {
     stage.add(this.root);
     const rep = (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t; };
     const hdr = (r, g, b) => new THREE.Color(r, g, b);
-    GLOW.warm = glowTex('rgba(255,196,120,1)'); GLOW.purple = glowTex('rgba(170,90,255,1)'); GLOW.green = glowTex('rgba(120,255,110,1)');
+    GLOW.warm = glowTex('rgba(255,196,120,1)'); GLOW.purple = glowTex('rgba(170,90,255,1)'); GLOW.green = glowTex('rgba(120,255,110,1)'); GLOW.blue = glowTex('rgba(90,160,255,1)');
     const facade = (map, glow, em, tint = 0xffffff) => new THREE.MeshLambertMaterial({ map: rep(map), emissiveMap: rep(glow), emissive: em, color: tint });
     this.mat = {
       road: makeWet(new THREE.MeshLambertMaterial({ map: rep(tex.asphalt), color: 0x8a8ca8 }), 0.6, 0.3),
@@ -194,7 +200,8 @@ export class World {
     this.reset();
   }
 
-  reset() {
+  // firstLen: metres of straight before the first fork (levels use it to pace their tutorial)
+  reset(firstLen = 360) {
     if (this.chunks) for (const c of this.chunks) this._drop(c.group);
     if (this.previews) for (const pv of this.previews) this._drop(pv.group);
     this.chunks = [];     // { sEnd, group } — built parts of the route
@@ -205,7 +212,7 @@ export class World {
     this.gen = [];        // route generators still running
     this.jcount = 0; this.legs = 0;
     path.reset();
-    this._street(360, 11, { from: -80 });
+    this._street(firstLen, 11, { from: -80 });
   }
   _drop(g) {
     this.root.remove(g);
@@ -264,6 +271,7 @@ export class World {
   _fork() {
     const J = { s: path.end.s, x: path.end.x, z: path.end.z, h: path.end.h, id: ++this.jcount, decided: 0 };
     path.junction = J;
+    J.branch = {};   // turn -> [arc, line]: where a car that takes that branch drives (forkPoint)
     const sep = (k) => RF * Math.acos(1 - k / RF); // arc distance where branches are k apart (each side)
     for (const turn of [-1, 1]) {
       const seed = 1000 + J.id * 4 + (turn > 0 ? 2 : 0);
@@ -271,6 +279,7 @@ export class World {
       const e = pose(arc, FORK_ARC, 0, {});
       const line = { type: 'line', len: ARM, seed: seed + 1, x0: e.x, z0: e.z, h0: e.h, s0: J.s + FORK_ARC };
       const lineInnerB = Math.max(0, ((2 * FAC + DEPTH) / 2 - RF * (1 - Math.cos(FORK_ANG))) / Math.sin(FORK_ANG));
+      J.branch[turn] = [arc, line];
       const sts = [
         this._genState(arc, { preview: true, previewEnd: FORK_ARC, inner: -turn, paintFrom: sep(HW), innerWalkFrom: sep(FAC), innerBFrom: Infinity, roadY: turn > 0 ? 0.004 : 0, noCross: true }),
         this._genState(line, { preview: true, previewEnd: ARM, inner: -turn, innerBFrom: lineInnerB, noCross: true }),
