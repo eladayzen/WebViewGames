@@ -42,7 +42,7 @@ if (mode === 'intro') {
   }
   console.log('marks', JSON.stringify(marks));
 } else {
-  const lv = mode.startsWith('level') ? mode.slice(5) : '2';
+  const lv = mode.startsWith('level') ? mode.slice(5) : '3';
   await p.goto(`http://127.0.0.1:${port}/index.html?dev=1&auto=1&level=${lv}`);
   await p.waitForFunction(() => window.__game && window.__game.G.state === 'play', { timeout: 60000 });
   await p.evaluate((wrong) => { document.querySelector('.lil-gui')?.remove(); window.__wrongFork = wrong; }, mode === 'wrong');

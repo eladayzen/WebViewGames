@@ -4,8 +4,13 @@ A GoBalance web-game prototype. The TMNT Party Wagon chases the Foot Clan throug
 New York and wrecks their cars. The board steers by leaning left and right; there are no
 buttons.
 
-Three.js 0.185 and Vite 6. **It has not shipped**: it isn't in the gobalance StreamingAssets
-and has no `manifest.txt`. To ship it, follow the root `CLAUDE.md`.
+Three.js 0.185 and Vite 6. **Shipping:** landed in gobalance
+`Assets/StreamingAssets/WagonRampage/` (first drop 2026-11-17). The gobalance session
+(eladayzen-04) wires the scene and lobby tile (`lobby/TMNT Wagon Rampage.png`, 600x680) and
+commits. To re-ship: commit and push to all-games, build a clean `git archive` of
+origin/all-games, byte-diff it against your build, then
+`python3 tools/ship-gobalance.py <clean dist> ~/UnityProjects/gobalance/Assets/StreamingAssets/WagonRampage`
+(root `CLAUDE.md` has the why).
 
 ## Run
 
@@ -24,24 +29,29 @@ npm run build && npx vite preview      # http://127.0.0.1:8155/index.html
 - **Dev panel:** `?dev=1` shows it. It also shows on its own on localhost and 127.0.0.1; see
   [Dev panel](#dev-panel).
 
-## The loop: five levels
+## The loop: six levels
 
 `LEVELS` in `src/main.js`. Each level opens with the brothers talking (full-body art, speech
-bubbles, tap or wait to advance), then a title card with the objective. A win plays Raph's line
-and offers NEXT LEVEL; a fail shows why and TRY AGAIN restarts **that same level**, without the
-talking scene. After level 5, PLAY AGAIN goes back to level 1 with the story.
+bubbles, tap or wait to advance), then a title card with the objective. A win plays the
+outro line and offers NEXT LEVEL; a fail shows why and TRY AGAIN restarts **that same level**,
+without the talking scene. After level 6, PLAY AGAIN goes back to level 1 with the story.
 
 | Level | Goal | Unlocks | Fails on |
 | --- | --- | --- | --- |
-| **1 JOY RIDE** (100 s) | Wreck 10 Foot cars | Starts with Raph and Mikey | Time up, or the wagon's shell runs out |
-| **2 SAVE APRIL** (70 s) | Keep April's van alive until the timer ends, following her at every fork | Leo | April's van destroyed, losing her at a fork, or the shell |
-| **3 ON OUR TAIL** (90 s) | They're chasing us: wreck 12. Every car comes from behind, fast and aggressive | Donnie | Time up, or the shell |
-| **4 BOSS RUN** (100 s) | Wreck the Foot boss (a big red truck, 1100 hp) | Saw blades | He gets away (time), or the shell |
-| **5 TECHNODROME** (95 s) | Reach the Technodrome, 3400 m, through waves of Foot | Nitro | Too slow (time), or the shell |
+| **1 JOY RIDE** (100 s) | Wreck 10 Foot cars (the tutorial; waves) | Starts with Raph and Mikey | Time up, or the wagon's shell runs out |
+| **2 PICK UP LEO** (100 s) | Leo heard we're in trouble: wreck 12 on the way to pick him up (waves) | Leo | Time up, or the shell |
+| **3 SAVE APRIL** (70 s) | Keep April's van alive until the timer ends, following her at every fork | Donnie | April's van destroyed, losing her at a fork, or the shell |
+| **4 ON OUR TAIL** (90 s) | They're chasing us: wreck 12. Every car comes from behind, fast and aggressive | Saw blades | Time up, or the shell |
+| **5 BOSS RUN** (100 s) | Wreck the Foot boss (a big red truck, 1100 hp) | Nitro | He gets away (time), or the shell |
+| **6 TECHNODROME** (95 s) | Reach the Technodrome, 3400 m, through waves of Foot | (everything) | Too slow (time), or the shell |
 
 **Powers by level:** `LEVELS[].powers` is the pickup pool: everything from earlier levels
 plus the one this level unlocks (`unlock`). The title card lists them all and tags the new one
-NEW!. Pickups are dealt from a shuffled bag of the pool, so every power comes up each round,
+NEW!. Before the card, a new power gets its own **unlock moment**
+(`unlockMoment` in `story.js`; art and one-liners in `UNLOCK_SHOW` in `main.js`): spinning
+burst in its colour, NEW POWER UNLOCKED!, the brother's full-body art and icon (or just the
+icon for a gadget), its name and what it does; tap or wait, then the icon flies into its
+chip on the card. Pickups are dealt from a shuffled bag of the pool, so every power comes up each round,
 with the new one first. Pickups keep coming while Leo is held, and a held Leo also goes for
 cars behind after 6 s. Riot shield and harpoon are built but not in any level.
 
@@ -49,10 +59,10 @@ cars behind after 6 s. Riot shield and harpoon are built but not in any level.
 taken, the next pickup is the missing one, placed in the wagon's lane with a bobbing arrow over
 it. A missed one comes back 1.2 s later, and the level can't end until both are taken.
 
-**Waves** (`spawnWave`): level 1 runs on waves only, 3 Foot cars at a time, a new wave when at
+**Waves** (`spawnWave`): levels 1 and 2 (`waves: true`) run on waves only, 3 Foot cars at a time, a new wave when at
 most one is left. They alternate: **pass** (they roar up from behind and past the wagon to
 sit ahead) and **ahead** (already far up the road and slower, so you close in on them).
-Level 5 mixes waves in too. Trucks join from the third wave.
+Level 6 mixes waves in too. Trucks join from the third wave.
 
 **The boss** (`BOSS`, `bossAI`): a Foot truck scaled 1.35x, painted red, with a FOOT BOSS
 tag and health bar. It alternates **run** (4.5 s, weaving 22-40 m ahead and shooting) and
@@ -66,7 +76,7 @@ usual instant wreck, and Donnie can't lift it but can drop cars on it.
 - 300 m before the first fork, Mikey says to pick a way and a hint says to lean. The first
   straight is 1400 m long (`firstLen`), so the lessons come one at a time.
 
-**Level 2, April** (`APRIL`, `updateApril`):
+**Level 3, April** (`APRIL`, `updateApril`):
 - Her van is the Foot truck without its cannon, painted blue (`Car` with `friendly`). It drives
   18-30 m ahead of the wagon, always less than the fork lock-in distance, so the player
   chooses before she reaches the fork.
@@ -200,6 +210,12 @@ WebView.
   ~1.5 MB, mostly 32k-vertex geometry; that's the next real saving.
 
 ## How it's built: the parts that weren't obvious
+
+- **The UI scales with the screen:** a `--s` factor (1 on a laptop, down to 0.56 on a short
+  landscape phone, set by media queries at the end of `style.css`) zooms every HUD and overlay
+  element, so phones keep the same proportions and the road stays visible. April's turn
+  banner sits under the speech popup, with a side arrow at the screen edge
+  (`tools/follow-ui.mjs` measures both at a given size).
 
 - **Foot cars glow:** their paint gets a fresnel rim (`addRim` in `cars.js`; `footRim` and
   `footRimColor` in the dev panel) and a little self-glow, so they read against the night.

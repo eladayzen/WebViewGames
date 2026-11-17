@@ -27,38 +27,53 @@ import { playScene, say, clearSay, preloadStory } from './story.js';
 //         'dist' (reach `dist` metres). firstLen: metres before the first fork.
 //   powers: the pickups that can appear. Each level unlocks one more (`unlock`).
 const LEVELS = [
-  { n: 1, kind: 'wreck', title: 'JOY RIDE', time: 100, target: 10, stars: [10, 14, 18], firstLen: 1400, go: 'WRECK THE FOOT!',
+  { n: 1, kind: 'wreck', waves: true, title: 'JOY RIDE', time: 100, target: 10, stars: [10, 14, 18], firstLen: 1400, go: 'WRECK THE FOOT!',
     powers: ['raph', 'mike'], unlock: ['raph', 'mike'],
     objective: 'Wreck 10 Foot Clan cars before the time runs out',
     intro: [{ who: 'mikey', text: 'Today I am taking the car for a ride!' }, { who: 'raph_q', text: 'Do you know how to drive this thing?' }],
     outro: [{ who: 'raph', text: 'Not too bad, Mikey.' }] },
-  { n: 2, kind: 'april', title: 'SAVE APRIL', time: 70, firstLen: 650, go: 'PROTECT APRIL!',
+  { n: 2, kind: 'wreck', waves: true, title: 'PICK UP LEO', time: 100, target: 12, stars: [12, 16, 20], firstLen: 900, go: 'GO GET LEO!',
     powers: ['raph', 'mike', 'leo'], unlock: ['leo'],
+    objective: 'Wreck 12 Foot cars on the way to pick up Leo',
+    intro: [{ who: 'leo', text: "Guys, I heard you're in trouble. Come pick me up!" }, { who: 'raph_q', text: 'Leo? Where are you?' },
+      { who: 'leo', text: 'On a rooftop downtown. Clear the street on your way.' }, { who: 'mikey', text: 'One turtle pick-up, coming right up!' }],
+    outro: [{ who: 'leo', text: "Nice driving, Mikey. Now let's get to work." }] },
+  { n: 3, kind: 'april', title: 'SAVE APRIL', time: 70, firstLen: 650, go: 'PROTECT APRIL!',
+    powers: ['raph', 'mike', 'leo', 'donnie'], unlock: ['donnie'],
     objective: "Keep April's van safe for 70 seconds, and follow her at every fork",
     intro: [{ who: 'leo', text: 'The Clan is chasing April downtown!' }, { who: 'raph_q', text: 'April? What do they want with April?' },
       { who: 'donnie', text: "We're taking the car." }, { who: 'mikey', text: 'I am driving!' }],
     outro: [{ who: 'raph', text: 'COWABUNGA!' }] },
-  { n: 3, kind: 'wreck', chase: true, title: 'ON OUR TAIL', time: 90, target: 12, stars: [12, 16, 20], firstLen: 700, go: 'SHAKE THEM OFF!',
-    powers: ['raph', 'mike', 'leo', 'donnie'], unlock: ['donnie'],
+  { n: 4, kind: 'wreck', chase: true, title: 'ON OUR TAIL', time: 90, target: 12, stars: [12, 16, 20], firstLen: 700, go: 'SHAKE THEM OFF!',
+    powers: ['raph', 'mike', 'leo', 'donnie', 'saws'], unlock: ['saws'],
     objective: "They're chasing us! Wreck 12 Foot cars before they wreck the wagon",
     intro: [{ who: 'donnie', text: "Guys? The Foot followed us from April's place." }, { who: 'raph_q', text: 'All of them?!' },
-      { who: 'leo', text: 'Then we fight our way out. Mikey, keep us moving!' }, { who: 'donnie', text: 'Good thing I finished my new staff.' }],
+      { who: 'leo', text: 'Then we fight our way out. Mikey, keep us moving!' }, { who: 'donnie', text: 'Good thing I bolted saw blades on last night.' }],
     outro: [{ who: 'raph', text: "Ha! That'll teach them to tailgate." }] },
-  { n: 4, kind: 'boss', title: 'BOSS RUN', time: 100, firstLen: 800, go: 'TAKE HIM DOWN!',
-    powers: ['raph', 'mike', 'leo', 'donnie', 'saws'], unlock: ['saws'],
+  { n: 5, kind: 'boss', title: 'BOSS RUN', time: 100, firstLen: 800, go: 'TAKE HIM DOWN!',
+    powers: ['raph', 'mike', 'leo', 'donnie', 'saws', 'nitro'], unlock: ['nitro'],
     objective: "Chase down the Foot boss's truck and take him out",
     intro: [{ who: 'leo', text: "See that big red truck? That's the Foot boss running this whole thing." }, { who: 'raph_q', text: 'So... we just crash into him?' },
-      { who: 'mikey', text: 'With SAW BLADES! Donnie bolted them on last night.' }, { who: 'donnie', text: "Please don't scratch the paint." }],
+      { who: 'mikey', text: 'With NITRO! Donnie hooked up the boosters this morning.' }, { who: 'donnie', text: "Please don't scratch the paint." }],
     outro: [{ who: 'raph', text: "Boss down! Now we're talking." }] },
-  { n: 5, kind: 'dist', title: 'TECHNODROME', time: 95, dist: 3400, firstLen: 700, go: 'BREAK THROUGH!',
-    powers: ['raph', 'mike', 'leo', 'donnie', 'saws', 'nitro'], unlock: ['nitro'],
+  { n: 6, kind: 'dist', title: 'TECHNODROME', time: 95, dist: 3400, firstLen: 700, go: 'BREAK THROUGH!',
+    powers: ['raph', 'mike', 'leo', 'donnie', 'saws', 'nitro'], unlock: [],
     objective: 'Break through the Foot and reach the Technodrome: 3400 m',
     intro: [{ who: 'donnie', text: 'That signal is coming from the Technodrome!' }, { who: 'leo', text: 'The Foot will do anything to keep us from reaching it.' },
-      { who: 'raph_q', text: 'Anything? Like what?' }, { who: 'mikey', text: "Like... all of them. Good thing we've got NITRO!" }],
+      { who: 'raph_q', text: 'Anything? Like what?' }, { who: 'mikey', text: "Like... all of them. Good thing we've got everything!" }],
     outro: [{ who: 'raph', text: 'Technodrome, here we come. COWABUNGA!' }] },
 ];
 for (const L of LEVELS) L.april = L.kind === 'april';
 let LV = LEVELS[0];
+// what the unlock moment shows for each power: full-body art for a brother, a one-line pitch
+const UNLOCK_SHOW = {
+  raph: { col: '#ff3b2e', art: '/story/raph_good.webp', desc: 'Raph throws sais at the Foot from the roof' },
+  mike: { col: '#ff8a1e', art: '/story/mikey.webp', desc: 'Mikey fires homing pizzas from his pizza cannon' },
+  leo: { col: '#2f7fff', art: '/story/leo.webp', desc: 'Leo leaps car to car and cuts through up to three Foot cars' },
+  donnie: { col: '#a45cff', art: '/story/donnie.webp', desc: 'Donnie lifts a Foot car with lightning and drops it on another' },
+  saws: { col: '#ffb42e', desc: 'Spinning saw blades slide out and shred anything alongside' },
+  nitro: { col: '#4f9cff', desc: 'Blue flames, a burst of speed, and rams that hit three times as hard' },
+};
 const MISSION = LEVELS[0];   // (older code reads MISSION.time)
 const SPEED = { start: 36, top: 47, rampTime: 60 };   // m/s — a chase, not a cruise
 const LAT = { max: 12.5, accel: 55 };        // player sideways speed (m/s) and response
@@ -621,14 +636,14 @@ async function startLevel(i, intro) {
   const run = ++levelRun;
   startRun();
   if (intro && !AUTO) {
-    await playScene({ lines: LV.intro, title: LV.title, objective: LV.objective, level: `LEVEL ${LV.n}`, unlock: LV.powers.map((k) => ({ img: `/ui/${k}.webp`, name: TURTLES[k].name, isNew: LV.n > 1 && LV.unlock.includes(k) })), unlockFirst: LV.n === 1 });
+    await playScene({ lines: LV.intro, title: LV.title, objective: LV.objective, level: `LEVEL ${LV.n}`, unlock: LV.powers.map((k) => ({ img: `/ui/${k}.webp`, name: GADGETS[k]?.name || TURTLES[k].name, isNew: LV.n > 1 && LV.unlock.includes(k), ...UNLOCK_SHOW[k] })), unlockFirst: LV.n === 1 });
     if (run !== levelRun) return;
   }
   G.state = 'countdown'; G.countT = 3.2;
 }
 function startRun() {
   Object.assign(G, { state: 'story', time: 0, left: LV.time, score: 0, wrecks: 0, combo: 1, comboT: 0, bestCombo: 1,
-    timeScale: 1, hitStop: 0, shake: 0, orbT: LV.n === 1 ? 999 : 6, power: null, strike: null, knockT: 0, cleared: false, countT: 3.2, spawnT: 0, hp: SHELL_MAX, hurtV: 0, slowT: 0,
+    timeScale: 1, hitStop: 0, shake: 0, orbT: LV.n === 1 ? 999 : NEW_AT + 0.2, power: null, strike: null, knockT: 0, cleared: false, countT: 3.2, spawnT: 0, hp: SHELL_MAX, hurtV: 0, slowT: 0,
     script: {}, lostT: 0, aprilShotT: 0, won: false, waveN: 0, took: {}, bag: null, bagFirst: false });
   L1.forkHint = false;
   clearSay(); hint('');
@@ -693,8 +708,9 @@ function spawnWave(type) {
 function director(dt) {
   G.spawnT -= dt;
   const live = enemies.filter((e) => e.active && e.alive && !e.boss).length;
-  if (LV.n === 1) {
-    if (G.time > L1.foot && live <= 1 && G.spawnT <= 0) { spawnWave(G.waveN % 2 === 0 ? 'pass' : 'ahead'); G.spawnT = 2.5; }
+  if (LV.waves) {
+    const from = LV.n === 1 ? L1.foot : 2;
+    if (G.time > from && live <= 1 && G.spawnT <= 0) { spawnWave(G.waveN % 2 === 0 ? 'pass' : 'ahead'); G.spawnT = LV.n === 1 ? 2.5 : 1.8; }
     return;
   }
   // level 1 eases in: an empty street, then two cars, then more; level 2 is a chase from the start
@@ -1032,26 +1048,50 @@ function spawnOrb(force, rel = 140, lane) {
 // comes straight back (L1.retry s). The level can't end until both are taken (l1Done).
 const L1_NEED = ['raph', 'mike'];
 const l1Missing = () => L1_NEED.filter((k) => !G.took?.[k]);
+// Every later level shows off what it unlocks: NEW_AT s in, the new power's pickup comes in the
+// wagon's lane (bigger, with the arrow and a NEW POWER hint), its brother calls it, a missed one
+// comes straight back, and once it's taken they say how it works. (It doesn't gate the win.)
+const NEW_AT = 3;
+const NEW_SHOW = {
+  leo: { who: 'leo', call: "That's me! Drive through my pickup!", tip: "I'll jump onto the Foot cars myself. Just get me close to them!" },
+  donnie: { who: 'donnie', call: 'My new staff! Grab the pickup!', tip: "Watch this. I'll lift one car and drop it on another!" },
+  saws: { who: 'donnie', call: 'Saw blades are ready. Drive through the pickup!', tip: 'Get right alongside them and let the saws do the work!' },
+  nitro: { who: 'mikey', call: 'NITRO! Grab it, grab it!', tip: 'Full speed! Ram them, nitro hits three times as hard!' },
+};
+const newMissing = () => (LV.n > 1 ? LV.unlock.filter((k) => !G.took?.[k]) : []);
 const l1Done = () => LV.n !== 1 || !l1Missing().length;
 function laneNear(u) { return LANES.reduce((a, b) => (Math.abs(b - u) < Math.abs(a - u) ? b : a)); }
 function updateOrbs(dt) {
   G.orbT -= dt;
   if (G.orbT <= 0 && !G.strike && orbs.length < 1) {
-    const need = LV.n === 1 && G.script.pickup ? l1Missing()[0] : null;
+    const need = LV.n === 1 ? (G.script.pickup ? l1Missing()[0] : null) : (G.time > NEW_AT ? newMissing()[0] : null);
     if (need) {
       spawnOrb(need, 110, laneNear(player.u));
-      if (need === 'mike' && !G.script.mikeLine) { G.script.mikeLine = true; say('mikey', 'My turn! Grab my pizza cannon!'); }
-      if (!L1.forkHint) hint(need === 'mike' ? "GRAB MIKEY'S PICKUP" : 'DRIVE THROUGH THE GLOWING ICON');
-    } else spawnOrb();
+      if (orbs.length) orbs[orbs.length - 1].featured = true;
+      if (LV.n === 1) {
+        if (need === 'mike' && !G.script.mikeLine) { G.script.mikeLine = true; say('mikey', 'My turn! Grab my pizza cannon!'); }
+        if (!L1.forkHint) hint(need === 'mike' ? "GRAB MIKEY'S PICKUP" : 'DRIVE THROUGH THE GLOWING ICON');
+      } else {
+        const N = NEW_SHOW[need];
+        if (N && !G.script['call_' + need]) { G.script['call_' + need] = true; say(N.who, N.call); }
+        hint(`NEW POWER: ${GADGETS[need]?.name || TURTLES[need].name}! DRIVE THROUGH IT`);
+      }
+    } else if (LV.n === 1 || G.time > NEW_AT) spawnOrb();
     G.orbT = need ? L1.retry : ORB_EVERY;
   }
   for (let i = orbs.length - 1; i >= 0; i--) {
     const o = orbs[i];
-    o.core.scale.setScalar(2.6 + Math.sin(G.time * 6) * 0.15);
+    o.core.scale.setScalar((o.featured ? 3.4 : 2.6) + Math.sin(G.time * 6) * 0.15);
     o.mesh.position.y = 1.6 + Math.sin(G.time * 4) * 0.25;
     if (Math.abs(o.s - player.s) < 3 && Math.abs(o.u - player.u) < 2.6) {
       G.orbsTaken = (G.orbsTaken || 0) + 1;
       (G.took ||= {})[o.kind] = true;
+      if (o.featured && LV.n > 1) {
+        hint('');
+        const N = NEW_SHOW[o.kind];
+        if (N) say(N.who, N.tip, 4);
+        G.orbT = 5;
+      }
       if (LV.n === 1) {
         if (!L1.forkHint) hint('');
         if (l1Missing().length) G.orbT = 4;                   // the next one soon after
@@ -1063,7 +1103,7 @@ function updateOrbs(dt) {
       else if (BUFFS[o.kind]) startBuff(o.kind);
       else { G.power = o.kind; G.powerAt = G.time; popupAt(o.mesh.position, `${TURTLES[o.kind].name} READY!`, 'big'); }
       stage.remove(o.mesh); orbs.splice(i, 1);
-    } else if (o.s < player.s - 20) { stage.remove(o.mesh); orbs.splice(i, 1); G.orbT = LV.n === 1 && l1Missing().length ? L1.retry : 3; }
+    } else if (o.s < player.s - 20) { stage.remove(o.mesh); orbs.splice(i, 1); G.orbT = (LV.n === 1 && l1Missing().length) || newMissing().length ? L1.retry : 3; }
   }
 }
 
@@ -2100,7 +2140,7 @@ let flashV = 0;
 function flash(v) { flashV = Math.max(flashV, v); }
 function updateHud() {
   const arr = $('orb-arrow'), o = orbs[0];
-  const showArr = LV.n === 1 && o && G.state === 'play';
+  const showArr = o && (LV.n === 1 || o.featured) && G.state === 'play';
   arr.classList.toggle('hidden', !showArr);
   if (showArr) {
     _sp.copy(o.mesh.position).setY(o.mesh.position.y + 2.2).project(camera);
@@ -2317,6 +2357,10 @@ function levelScript(dt) {
       hint('LEAN LEFT OR RIGHT TO PICK A ROAD');
       L1.forkHint = true;
     }
+  }
+  if (LV.n === 2) {
+    if (!S.go && G.time > 1) { S.go = true; say('leo', "I can see you from up here. Watch out, Foot cars incoming!"); }
+    if (!S.half && G.wrecks >= LV.target / 2) { S.half = true; say('leo', "Halfway! I'm on the next block!"); }
   }
   if (LV.chase) {
     if (!S.go && G.time > 1) { S.go = true; spawnWave('pass'); say('raph_q', "Here they come! Right on our bumper!"); }

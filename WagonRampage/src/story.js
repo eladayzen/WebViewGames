@@ -59,8 +59,10 @@ export function playScene({ lines, title, objective, level = '', start = 'GO!', 
     n++;
   }
   return new Promise((done) => {
-    let i = -1, timer = 0, finishType = null;
+    let i = -1, timer = 0, finishType = null, busy = false, momentDone = false, flyTo = false;
+    const newOnes = unlock.filter((u) => u.isNew);
     const next = () => {
+      if (busy) return;
       // first tap on a line still being lettered just finishes the lettering
       if (finishType) { const f = finishType; finishType = null; if (bubble.dataset.typing === '1') { f(); bubble.dataset.typing = '0'; return; } }
       clearTimeout(timer);
@@ -79,6 +81,12 @@ export function playScene({ lines, title, objective, level = '', start = 'GO!', 
         finishType = typeInto(bubble.querySelector('span'), l.text);
         setTimeout(() => { bubble.dataset.typing = '0'; }, l.text.length / 55 * 1000 + 50);
         timer = setTimeout(next, 1900 + l.text.length * 45);
+      } else if (i === lines.length && newOnes.length && !momentDone) {
+        // the unlock moment first, then come back here for the card
+        momentDone = true; busy = true; i--;
+        root.classList.add('carding');
+        bubble.className = 'bubble hidden';
+        unlockMoment(newOnes[0]).then(() => { busy = false; flyTo = true; next(); });
       } else if (i === lines.length) {
         root.classList.add('carding');
         bubble.className = 'bubble hidden';
@@ -91,6 +99,8 @@ export function playScene({ lines, title, objective, level = '', start = 'GO!', 
         // every power this level hands out; the newly unlocked one is tagged NEW
         un.innerHTML = unlock.length ? `<b>${unlockFirst ? 'YOUR POWERS' : 'POWERS'}</b>` + unlock.map((u) => `<span class="${u.isNew ? 'new' : ''}"><img src="${u.img}" alt="">${u.name}${u.isNew ? '<em>NEW!</em>' : ''}</span>`).join('') : '';
         void card.offsetWidth; card.classList.add('pop');
+        // the big icon from the unlock moment flies down into its chip, which then pops NEW
+        if (flyTo) { flyTo = false; flyIntoChip(un.querySelector('span.new')); }
         timer = setTimeout(next, 4200);
       } else {
         root.removeEventListener('pointerdown', next);
@@ -128,4 +138,48 @@ function pump() {
   void el.offsetWidth; el.className = 'on';
   typeInto(el.querySelector('span'), q.text, 70);
   pumpT = setTimeout(() => { el.className = 'off'; pumpT = setTimeout(pump, 260); }, q.dur * 1000);
+}
+
+// ── The unlock moment ───────────────────────────────────────────────────────
+// Between the talk and the title card: the screen darkens, a comic burst spins up, NEW POWER
+// UNLOCKED! slams down, the power arrives big (the turtle's full-body art if it's a brother,
+// plus the round icon), then its name and what it does. Tap (after a beat) or wait to go on;
+// the icon then flies into its chip on the title card (flyIntoChip).
+let fxIcon = null;
+function unlockMoment(u) {
+  const fx = $('unlockfx');
+  fx.style.setProperty('--col', u.col || '#ffd23a');
+  fx.innerHTML = `<i class="rays"></i><i class="flash"></i>
+    <b class="tag">NEW POWER UNLOCKED!</b>
+    ${u.art ? `<img class="art" src="${u.art}" alt="">` : ''}
+    <img class="icon" src="${u.img}" alt="">
+    <h2>${u.name}</h2><p>${u.desc || ''}</p>`;
+  fx.className = 'on' + (u.art ? ' has-art' : '');
+  fxIcon = fx.querySelector('.icon');
+  return new Promise((done) => {
+    let ok = false;
+    const t0 = performance.now();
+    const finish = () => {
+      if (ok) return; ok = true;
+      fx.removeEventListener('pointerdown', tap);
+      fx.classList.add('out');
+      setTimeout(done, 280);
+    };
+    const tap = (e) => { e.stopPropagation(); if (performance.now() - t0 > 900) finish(); };
+    fx.addEventListener('pointerdown', tap);
+    setTimeout(finish, 3600);
+  });
+}
+function flyIntoChip(chip) {
+  const fx = $('unlockfx'), icon = fxIcon;
+  if (!chip || !icon) { fx.className = ''; return; }
+  const img = chip.querySelector('img');
+  chip.classList.add('waiting');
+  const a = icon.getBoundingClientRect(), b = img.getBoundingClientRect();
+  // pin the big icon where it is, then move/scale it onto the chip's icon
+  Object.assign(icon.style, { position: 'fixed', left: a.left + 'px', top: a.top + 'px', width: a.width + 'px', height: a.height + 'px', margin: 0, transform: 'none', animation: 'none', transition: 'none' });
+  fx.className = 'flying';
+  void icon.offsetWidth;
+  Object.assign(icon.style, { transition: 'left .5s cubic-bezier(.5,0,.3,1), top .5s cubic-bezier(.5,0,.3,1), width .5s, height .5s', left: b.left + 'px', top: b.top + 'px', width: b.width + 'px', height: b.height + 'px' });
+  setTimeout(() => { fx.className = ''; fx.innerHTML = ''; chip.classList.remove('waiting'); chip.classList.add('arrive'); }, 520);
 }
