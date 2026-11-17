@@ -95,7 +95,7 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
   function reset() {
     game = { hits: 0, dodged: 0, obst: [], proj: [], nextObst: 2.0, invuln: 0, flash: 0, knockTilt: 0,
       boss: { state: 'away', t: 0, next: 20 + Math.random() * 10, x: 0, y: 0, tx: 0, shots: [], fired: 0, windup: 0, stay: 10 }, projTimes: [], clock: 0 };
-    game.picks = []; game.clip = []; game.shots = []; game.pops = []; game.nextPick = 1.2; game.nextLife = rand(GAME.LIFE_EVERY); game.lives = 0; game.canFire = false; game.fireCd = 0; game.collected = 0; game.bossHits = 0; game.bossKills = 0;
+    game.picks = []; game.clip = []; game.shots = []; game.pops = []; game.nextPick = 1.2; game.nextLife = rand(GAME.LIFE_EVERY); game.lives = 0; game.ooze = 0; game.oozeSpawned = false; game.canFire = false; game.fireCd = 0; game.collected = 0; game.bossHits = 0; game.bossKills = 0;
     game.boss.hp = GAME.BOSS_HP; game.boss.flash = 0;
     game.jet = { state: 'away', next: 34 + Math.random() * 10, t: 0, x: 0, y: 0, s: 0.3, v: 0, holdT: 0, air: false, airH: 0, airV: 0, airG: 1, airT: 0,
       tgt: 0.4, tgtT: 0, hp: GAME.BOSS_HP, flash: 0, shots: [], fired: 0, windup: 0, stay: 12, tilt: 0, spin: 0, cx: 0, cy: 0 };
@@ -145,6 +145,19 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
       ctx.beginPath(); ctx.roundRect(-Wd / 2, 0, Wd, L, Wd / 2); ctx.stroke(); ctx.restore(); };
     stick(0.55, -r * 0.18); stick(-0.55, r * 0.18);
     ctx.strokeStyle = '#3a3444'; ctx.lineWidth = Math.max(2, r * 0.09); ctx.beginPath(); ctx.moveTo(-r * 0.18, -r * 0.05); ctx.quadraticCurveTo(0, -r * 0.45, r * 0.18, -r * 0.05); ctx.stroke();
+    ctx.restore();
+  }
+  function drawMutagen(x, y, r) {   // the ooze-power pickup: a glowing mutagen canister
+    const p = 0.5 + 0.5 * Math.sin(game.clock * 6);
+    ctx.save(); ctx.translate(x, y);
+    ctx.globalAlpha = 0.25 + 0.25 * p; ctx.fillStyle = '#00ff1e'; ctx.beginPath(); ctx.arc(0, 0, r * (1.7 + 0.3 * p), 0, 7); ctx.fill();
+    ctx.globalAlpha = 1; ctx.rotate(Math.sin(game.clock * 2.5) * 0.2); ctx.lineWidth = Math.max(2, r * 0.12); ctx.strokeStyle = INK;
+    ctx.fillStyle = '#c8ffb0'; ctx.beginPath(); ctx.roundRect(-r * 0.55, -r * 0.8, r * 1.1, r * 1.6, r * 0.25); ctx.fill();   // glass
+    ctx.fillStyle = '#00ff1e'; ctx.beginPath(); ctx.roundRect(-r * 0.55, -r * 0.25, r * 1.1, r * 1.05, r * 0.2); ctx.fill();   // ooze inside
+    ctx.beginPath(); ctx.roundRect(-r * 0.55, -r * 0.8, r * 1.1, r * 1.6, r * 0.25); ctx.stroke();
+    ctx.fillStyle = '#662d91'; ctx.fillRect(-r * 0.65, -r * 1.0, r * 1.3, r * 0.28); ctx.strokeRect(-r * 0.65, -r * 1.0, r * 1.3, r * 0.28);   // caps
+    ctx.fillRect(-r * 0.65, r * 0.72, r * 1.3, r * 0.28); ctx.strokeRect(-r * 0.65, r * 0.72, r * 1.3, r * 0.28);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(-r * 0.38, -r * 0.6, r * 0.14, r * 1.1);   // shine
     ctx.restore();
   }
   function drawShell(x, y, r, rot) {   // the lives icon (#shell-icon in index.html), drawn on the canvas
@@ -246,6 +259,13 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
     if (live) game.nextPick -= dt;
     if (game.nextPick <= 0 && !noSpawn && live) { spawnPicks(); game.nextPick = rand(GAME.PICK_GAP); }
     if (live) game.nextLife -= dt;
+    const Bq = game.boss;
+    if (live && !noSpawn && Bq.state === 'away' && Bq.next < GAME.OOZE_LEAD && !game.oozeSpawned && game.ooze <= 0) {
+      game.picks.push({ air: false, h: 0.30 + Math.random() * 0.35, x: 1.08 * W, type: 'ooze', ph: Math.random() * 6 });
+      game.oozeSpawned = true;
+    }
+    if (Bq.state !== 'away') game.oozeSpawned = false;   // re-arm for the boss's next visit
+    if (game.ooze > 0) { game.ooze -= dt; if (game.ooze <= 0) { game.ooze = 0; if (hooks && hooks.onOoze) hooks.onOoze(false); } }
     if (game.nextLife <= 0 && !noSpawn && live) {   // a single shell (extra life) riding the face
       game.picks.push({ air: false, h: 0.15 + Math.random() * 0.6, x: 1.08 * W, type: 'life', ph: Math.random() * 6 });
       game.nextLife = rand(GAME.LIFE_EVERY);
@@ -264,6 +284,12 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
       q.y += Math.sin(game.clock * 3 + q.ph) * 4 * H / 1080;
       if (Math.hypot(q.x - body.x, q.y - body.y) < body.r + 0.45 * ps) {
         game.pops.push({ x: q.x, y: q.y, t: 0, type: q.type });
+        if (q.type === 'ooze') {
+          game.ooze = GAME.OOZE_DURATION; burst(q.x, q.y, 40, 900, W, H);
+          if (game.boss.state === 'away') game.boss.next = Math.min(game.boss.next, GAME.OOZE_BOSS_IN);   // the boss comes while you are powered
+          if (hooks && hooks.onOoze) hooks.onOoze(true);
+          game.picks.splice(i, 1); continue;
+        }
         if (q.type === 'life') { game.lives++; game.score += GAME.LIFE_PTS; if (hooks && hooks.onLife) hooks.onLife(); game.picks.splice(i, 1); continue; }
         if (game.clip.length < GAME.CLIP_MAX) game.clip.push(q.type);
         game.collected++;
@@ -290,8 +316,9 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
       const tx = tgt ? tgt.x : W * 1.2, ty = tgt ? tgt.y : body.y - 0.2 * H;
       const flat = body.y < GAME.FLAT_ZONE * H && ty < GAME.FLAT_ZONE * H;   // both up high: straight 0 deg, no homing -> time your height
       const d = Math.hypot(tx - body.x, ty - body.y) || 1, sx0 = body.x + 0.2 * sprH, sy0 = body.y - 0.1 * sprH;
-      if (flat) game.shots.push({ type, x: sx0, y: sy0, vx: Math.sign(tx - body.x || 1) * sp, vy: 0, rot: 0, flat: true });
-      else game.shots.push({ type, x: sx0, y: sy0, vx: (tx - body.x) / d * sp, vy: (ty - body.y) / d * sp, rot: 0 });
+      const oz = game.ooze > 0;
+      if (flat) game.shots.push({ type, x: sx0, y: sy0, vx: Math.sign(tx - body.x || 1) * sp, vy: 0, rot: 0, flat: true, ooze: oz });
+      else game.shots.push({ type, x: sx0, y: sy0, vx: (tx - body.x) / d * sp, vy: (ty - body.y) / d * sp, rot: 0, ooze: oz });
       game.fireCd = 1 / GAME.FIRE_RATE;
     }
     const shotR = GAME.PICK_SIZE * sprH / 2 * GAME.SHOT_SIZE;
@@ -303,7 +330,7 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
       }
       sh.x += sh.vx * dt; sh.y += sh.vy * dt; sh.rot += dt * (sh.type === 'special' ? 12 : 18);
       if (tgt && Math.hypot(sh.x - tgt.x, sh.y - tgt.y) < tgt.r + 0.5 * shotR) {
-        tgt.hit(sh.type === 'special' ? GAME.SPECIAL_DMG : 1); game.bossHits++;
+        tgt.hit((sh.type === 'special' ? GAME.SPECIAL_DMG : 1) * (sh.ooze ? GAME.OOZE_DMG : 1)); game.bossHits++;
         burst(sh.x, sh.y, sh.type === 'special' ? 22 : 10, 500, W, H);
         game.shots.splice(i, 1); continue;
       }
@@ -438,13 +465,22 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
     const r = GAME.PICK_SIZE * H / 1080 * 205 / 2;
     for (const q of game.picks) {
       ctx.save(); ctx.globalAlpha = 0.55; ctx.fillStyle = q.type === 'life' ? '#e800a6' : '#ffd400'; ctx.beginPath(); ctx.arc(q.x, q.y, r * 1.18, 0, 7); ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();   // yellow token disc
+      if (q.type === 'ooze') { drawMutagen(q.x, q.y, r * 1.3); continue; }
       if (q.type === 'life') { drawShell(q.x, q.y, r * 1.05, Math.sin(game.clock * 2.5 + q.ph) * 0.15); continue; }
       drawAmmo(q.type, q.x, q.y, q.type === 'special' ? r * 1.15 : r, q.type === 'special' ? Math.sin(game.clock * 3 + q.ph) * 0.5 : game.clock * 2.2 + q.ph);
     }
   }
   function drawShotsAndPops(H) {
     const r = GAME.PICK_SIZE * H / 1080 * 205 / 2;
-    for (const sh of game.shots) drawAmmo(sh.type, sh.x, sh.y, r * GAME.SHOT_SIZE, sh.rot);
+    for (const sh of game.shots) {
+      if (sh.ooze) {   // ooze power: a pulsing green glow and a short trail
+        const gr = r * GAME.SHOT_SIZE * (1.9 + 0.25 * Math.sin(game.clock * 30));
+        ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#00ff1e'; ctx.beginPath(); ctx.arc(sh.x, sh.y, gr, 0, 7); ctx.fill();
+        ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.arc(sh.x, sh.y, gr * 0.62, 0, 7); ctx.fill();
+        ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.arc(sh.x - sh.vx * 0.05, sh.y - sh.vy * 0.05, gr * 0.7, 0, 7); ctx.fill(); ctx.restore();
+      }
+      drawAmmo(sh.type, sh.x, sh.y, r * GAME.SHOT_SIZE, sh.rot);
+    }
     for (const p of game.pops) {   // collect pop: ring
       const k = p.t / 0.45; ctx.save(); ctx.globalAlpha = 1 - k; ctx.strokeStyle = '#ffd400'; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.arc(p.x, p.y, r * (1 + 1.4 * k), 0, 7); ctx.stroke(); ctx.restore();
@@ -646,6 +682,7 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
       bossKind = kind; const B = game.boss;
       B.state = 'away'; B.hp = GAME.BOSS_HP; B.next = firstS; B.flash = 0; B.windup = 0; B.sink = 0; B.rot = 0; B.spin = 0;
       game.proj.length = 0; game.obst.length = 0; game.shots.length = 0; game.nextObst = 2.0;
+      game.ooze = 0; game.oozeSpawned = false; game.picks = game.picks.filter((q) => q.type !== 'ooze');
     },
     get bossKind() { return bossKind; },
     // dev tools only

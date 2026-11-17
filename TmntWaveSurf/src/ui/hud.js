@@ -8,12 +8,12 @@
 import { identityFor } from '../data/avatars.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
-export function createHud(doc, livesMax = 3) {
+export function createHud(doc, livesMax = 3, bonusMax = 0) {
   const $ = (id) => doc.getElementById(id);
   const livesEl = $('lives');
   livesEl.textContent = '';
-  for (let i = 0; i < livesMax; i++) {   // one shell per life, reusing the #shell-icon symbol
-    const svg = doc.createElementNS(SVG, 'svg'); svg.setAttribute('class', 'shell'); svg.setAttribute('viewBox', '0 0 44 36');
+  for (let i = 0; i < livesMax + bonusMax; i++) {   // one shell per life (+ glowing ooze-bonus slots), reusing #shell-icon
+    const svg = doc.createElementNS(SVG, 'svg'); svg.setAttribute('class', i < livesMax ? 'shell' : 'shell bonus'); svg.setAttribute('viewBox', '0 0 44 36');
     svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
     const use = doc.createElementNS(SVG, 'use'); use.setAttribute('href', '#shell-icon'); svg.appendChild(use); livesEl.appendChild(svg);
   }
@@ -27,12 +27,12 @@ export function createHud(doc, livesMax = 3) {
     quit: $('quit-overlay'), quitStats: $('quit-stats'),
     quitScoreboard: $('quit-scoreboard'), quitScoreboardTitle: $('quit-scoreboard-title'), quitScoreboardRows: $('quit-scoreboard-rows'),
   };
-  let shownScore = -1, shownLives = -1, shownCount = null;
+  let shownScore = -1, shownLives = -1, shownCount;   // undefined: the first setCountdown(null) must hide the pre-JS text
 
   return {
     setLives(n) {
       if (n === shownLives) return; shownLives = n;
-      el.shells.forEach((s, i) => s.classList.toggle('lost', i >= n));
+      el.shells.forEach((s, i) => s.classList.toggle(i < livesMax ? 'lost' : 'gone', i >= n));   // bonus shells vanish rather than dim
     },
     setScore(n) {
       if (n === shownScore) return; shownScore = n;
@@ -45,6 +45,9 @@ export function createHud(doc, livesMax = 3) {
       el.countdown.classList.toggle('hidden', !text);
       el.countdown.classList.toggle('go', text === 'GO!');
     },
+
+    /** Ooze power meter under the shells: 0..1 of the time left, 0 hides it. */
+    setOoze(f) { const m = $('ooze-meter'); m.classList.toggle('hidden', !(f > 0)); if (f > 0) m.firstElementChild.style.width = (f * 100).toFixed(1) + '%'; },
 
     showGameOver(statsText) {
       el.gameoverStats.textContent = statsText;

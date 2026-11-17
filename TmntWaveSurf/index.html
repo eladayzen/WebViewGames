@@ -85,6 +85,7 @@
       <!-- Lives (shells), top centre under the ammo clip. hud.js fills in one shell
            per RUN.LIVES. Holding it for seven seconds is the (unlabelled) dev-tools unlock. -->
       <div id="lives"></div>
+      <div id="ooze-meter" class="hidden"><i></i><span>OOZE POWER!</span></div>
       <!-- Debug text HUD: dev tools only, revealed by the unlock. -->
       <div id="dbg" class="hidden"></div>
 
@@ -100,6 +101,14 @@
                line-height:1;display:flex;align-items:center;justify-content:center;
                box-shadow:0 0 14px rgba(0,0,0,0.55);
                -webkit-tap-highlight-color:transparent;">&times;</button>
+
+      <!-- STORY COMIC: plays before a mission card / after a boss KO (src/ui/comic.js). -->
+      <div id="comic" class="hidden">
+        <div class="fig left"><i class="burst"></i><img alt="" /></div>
+        <div class="fig right"><i class="burst"></i><img alt="" /></div>
+        <div id="comic-bubble" class="bubble"><b></b><span></span></div>
+        <button id="comic-skip" type="button">SKIP &#9656;</button>
+      </div>
 
       <!-- MISSION CARD: the brief before each mission. Translucent, so the wave keeps
            rolling behind it. LET'S GO, a 1 s hold (board lean / Space / press), or the

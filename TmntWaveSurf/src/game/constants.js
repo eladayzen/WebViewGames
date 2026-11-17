@@ -61,13 +61,21 @@ export const GAME = {
   PICK_SIZE: 0.30,          // pickup size as a fraction of Mikey's height
   LIFE_EVERY: [16, 26],     // s between shell (extra life) pickups on the face
   LIFE_PTS: 20,             // points for a shell pickup
+  // OOZE POWER: a mutagen pickup timed to the boss. While it lasts: ooze-green world, +3 lives,
+  // glowing stars that hit harder. It shows up shortly before the boss, and picking it up calls
+  // the boss in, so the boss is always on screen before the power runs out.
+  OOZE_DURATION: 14,        // s
+  OOZE_LIVES: 3,            // extra lives on pickup (may go past RUN.LIVES)
+  OOZE_DMG: 3,              // damage multiplier for thrown stars / nunchaku
+  OOZE_LEAD: 7,             // spawn the pickup when the boss is this many s from arriving
+  OOZE_BOSS_IN: 2.5,        // after pickup, the boss arrives within this many s
   CLIP_MAX: 12,             // ammo clip capacity
   FIRE_RATE: 4,             // shots per second while level with the boss
   FIRE_BAND: 0.75,          // 'level with the boss' = rider body within this many Mikey-heights of the boss's centre, vertically
   FIRE_NEEDS_BOSS: true,    // only fire when the boss is on screen (otherwise ammo is kept)
   SHOT_SPEED: 0.55,         // screen widths / s (stars); specials fly at 0.75x and spin
   SHOT_SIZE: 1.3,           // thrown star radius vs a pickup's
-  BOSS_HP: 14,              // star = 1 damage, special = 3 (kept between a boss's visits within a mission)
+  BOSS_HP: 56,              // (x4 from 14, Elad 2026-11-17) star = 1 damage, special = 3 (kept between a boss's visits within a mission)
   YACHT_SIZE: 0.95,         // yacht sprite height as a fraction of Mikey's height (it is ~2.3x as wide)
   YACHT_X: [0.66, 0.80],    // where the yacht holds station (screen width fraction)
   YACHT_H: 0.06,            // its waterline on the face (0 = trough, 1 = crest)
@@ -87,10 +95,19 @@ export const GAME = {
 export const MISSIONS = [
   { boss: 'yacht', sky: 1, tag: 'MISSION 1', title: 'YACHT ATTACK',
     brief: 'A mutant crook is dumping ooze into the bay from his yacht! Ride the wave, grab ninja stars, and drop down to his level to throw them until his yacht goes down.',
-    tip: 'Your stars fly when you are level with him. Grab shells for extra lives!' },
+    tip: 'Your stars fly when you are level with him. Grab shells for extra lives!',
+    intro: [{ who: 'mikey', text: "Whoa! Who's dumping ooze in our bay?!" },
+            { who: 'yacht', text: "Me! And no surfing turtle can stop me!" },
+            { who: 'mikey', text: 'Wanna bet? Cowabunga!' }],
+    outro: [{ who: 'yacht', text: 'My yacht! You sank my YACHT!' },
+            { who: 'mikey', text: 'Booyah! Ooze-free waves, dude!' }] },
   { boss: 'fly', sky: 0, tag: 'MISSION 2', title: 'SKY STRIKE',
     brief: 'He swam ashore and took to the sky! Now he flies over the waves firing ooze. Jump off the lip and knock him out of the air.',
-    tip: 'Jump to his height to throw. Up high he fires straight at you: time it!' },
+    tip: 'Jump to his height to throw. Up high he fires straight at you: time it!',
+    intro: [{ who: 'boss', text: 'Ha! Now I rule the SKY! Catch me, turtle!' },
+            { who: 'mikey', text: 'Dude. I catch air for breakfast.' }],
+    outro: [{ who: 'boss', text: "Nooo! I'll be back, turtle!" },
+            { who: 'mikey', text: 'Bay saved! Pizza time!' }] },
 ];
 export const MISSION = {
   FIRST_BOSS_S: [10, 14],   // s into a mission before its boss first shows up
