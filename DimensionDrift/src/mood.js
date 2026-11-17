@@ -261,6 +261,10 @@ export class Mood {
     this.uLampLead = 0;
     /** Cold edge light on everything, tinted with the sky. Zero by default. */
     this.uRimStrength = 0;
+    /** Rim colour. White unless a place says otherwise. */
+    this.uRimColor = new THREE.Color(0xffffff);
+    /** Multiplier on the hemisphere fill. See the note in lit.js. */
+    this.uFill = 1;
     /**
      * Windows on the FAR range. Same arrangement as the lamp and for the same
      * reason: not part of the day arc, zero by default, so every other place
@@ -327,6 +331,8 @@ export class Mood {
     if (u.uLampRange) u.uLampRange.value = this.uLampRange;
     if (u.uLampLead) u.uLampLead.value = this.uLampLead;
     if (u.uRimStrength) u.uRimStrength.value = this.uRimStrength;
+    if (u.uRimColor) u.uRimColor.value.copy(this.uRimColor);
+    if (u.uFill) u.uFill.value = this.uFill;
     if (u.uWindowColor) u.uWindowColor.value.copy(this.uWindowColor);
     if (u.uWindowStrength) u.uWindowStrength.value = this.uWindowStrength;
   }

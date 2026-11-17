@@ -95,6 +95,8 @@ uniform float uLampRange;
 uniform vec3  uLampAim;
 uniform float uLampLead;
 uniform float uRimStrength;
+uniform float uFill;
+uniform vec3  uRimColor;
 /**
  * ── STATIC LIGHTS ────────────────────────────────────────────────────────
  * xyz is the position, w is the range. w == 0 means the slot is empty, which
@@ -175,7 +177,24 @@ void main() {
   vec3 preL   = normalize(vec3(L.x * 1.6, 1.0, L.z * 1.6));
   float pre   = max(0.0, (dot(N, preL) + 0.48) / (dot(pisteN, preL) + 0.48));
   vec3 direct = uSunColor * mix(uSunFlat * d8 * d8 * pre, wrap, sunHi);
-  vec3 ambient = mix(uGroundColor, uSkyColor, N.y * 0.5 + 0.5);
+  /**
+   * ── THE FILL, AND WHY IT NEEDED A DIAL OF ITS OWN ──────────────────────
+   *
+   * This is a hemisphere term: ground colour below, sky colour above. Its
+   * STRENGTH was whatever those two palette colours happened to be, which is
+   * fine in daylight and ruinous at night -- the night palette makes both of
+   * them very dark, so the fill vanishes exactly when it is the only thing
+   * that could still describe a shape.
+   *
+   * The SewerShred prototype, same character and a far better read of it,
+   * lights its scene with a HemisphereLight at intensity 3.2 and almost
+   * nothing else. That is the whole difference: a big directionless fill that
+   * makes form legible, with the key doing character rather than work.
+   *
+   * So the fill gets a multiplier the place can push hard without touching
+   * the colours it is made of.
+   */
+  vec3 ambient = mix(uGroundColor, uSkyColor, N.y * 0.5 + 0.5) * uFill;
 
   vec3 H = normalize(L + V);
   float spec = pow(max(dot(N, H), 0.0), uGloss) * uSpecular;
@@ -253,7 +272,7 @@ void main() {
   if (uRimStrength > 0.0) {
     vec3 Vr = normalize(uCamPos - vWorld);
     float rim = 1.0 - max(0.0, dot(N, Vr));
-    col += uSkyColor * (uRimStrength * rim * rim);
+    col += uRimColor * (uRimStrength * rim * rim);
   }
 
   float dist = length(vWorld - uCamPos);
@@ -326,6 +345,8 @@ export function makeLitMaterial(mood, {
       uLampAim: { value: new THREE.Vector3(0, 0, -1) },
       uLampLead: { value: 0 },
       uRimStrength: { value: 0 },
+      uFill: { value: 1 },
+      uRimColor: { value: new THREE.Color(0xffffff) },
       uPtPos: { value: [new THREE.Vector4(), new THREE.Vector4(),
         new THREE.Vector4(), new THREE.Vector4()] },
       uPtCol: { value: [new THREE.Color(), new THREE.Color(),

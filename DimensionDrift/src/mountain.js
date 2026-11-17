@@ -727,6 +727,7 @@ uniform vec3  uRockColor;
 uniform vec3  uLampColor;
 uniform float uLampStrength;
 uniform float uLampRange;
+uniform float uFill;
 uniform vec3  uLampAim;
 uniform float uLampLead;
 uniform vec4  uPtPos[4];
@@ -1334,7 +1335,11 @@ void main() {
   // Hemispheric ambient: sky above, bounced snow-light below. On an open slope
   // the bounce term is not subtle — it is why shadowed snow stays bright blue
   // rather than going black.
-  vec3 ambient = mix(uGroundColor, uSkyColor, N.y * 0.5 + 0.5);
+  // The same hemisphere fill the lit shader carries, and the same dial. See
+  // the note on uFill in lit.js: at night the two palette colours it is made
+  // of are both dark, so without a multiplier the fill disappears exactly
+  // when it is the only thing left describing a shape.
+  vec3 ambient = mix(uGroundColor, uSkyColor, N.y * 0.5 + 0.5) * uFill;
 
   vec3 H = normalize(L + V);
   // SHEEN IS A GRAZING TERM, NOT A HIGHLIGHT. The old pow(dot(N,H), 46.0) is a
@@ -1826,6 +1831,7 @@ export class MountainMesh {
         uLampColor: { value: new THREE.Color(0xffffff) },
         uLampStrength: { value: 0 },
         uLampRange: { value: 34 },
+        uFill: { value: 1 },
         uLampAim: { value: new THREE.Vector3(0, 0, -1) },
         uLampLead: { value: 0 },
         uPtPos: { value: [new THREE.Vector4(), new THREE.Vector4(),

@@ -539,8 +539,8 @@ registerPlace({
     // city: a night sky that is evenly dark reads as wilderness, and the
     // skyline has to be silhouetted against something.
     uSunColor: 0x8fa6c8,        // thin cold moonlight, barely a key
-    uSkyColor: 0x39435c,        // the fill, and the bigger half of the light
-    uGroundColor: 0x241f1b,     // next to nothing comes back off wet dirt
+    uSkyColor: 0x3d4668,        // the fill, and the bigger half of the light
+    uGroundColor: 0x2a2434,     // next to nothing comes back off wet dirt
     /**
      * THE ROUTE, and it was 0x4a4034 for one render before this.
      *
@@ -551,24 +551,29 @@ registerPlace({
      * banks -- so lifting it is more honest than the first number was, as well
      * as more usable.
      */
-    uSnowColor: 0x4e4336,
-    uRockColor: 0x272521,
-    uFogColor: 0x2f3647,        // night haze lit from below by the city
-    uFogSunColor: 0x59617a,
+    uSnowColor: 0x5b5150,
+    uRockColor: 0x2d2b33,
+    uFogColor: 0x3a4466,        // night haze lit from below by the city
+    uFogSunColor: 0x5d6690,
     uZenith: 0x070a12,
-    uHorizon: 0x414b6e,         // the glow the towers stand against
+    uHorizon: 0x4b5580,         // the glow the towers stand against
     uSparkle: 0.0,
     uCloud: 0.38,
-    /**
-     * 0.62 -> 0.44. Bloom is still what makes a lit window read as a light
-     * rather than a bright square, so it stays above the daylight value -- but
-     * at 0.62 every window was bleeding into its neighbours and the whole
-     * skyline fused into one glowing mass. Bloom multiplies what is already
-     * bright, so it was the loudest of the three knobs turned down here.
-     */
-    bloom: 0.44,
+    bloom: 0.40,
     // 1.05 -> 1.18. The last stop between "dark" and "cannot see the route".
-    exposure: 0.98,
+    /**
+     * ── 0.98 -> 1.55, AND THIS IS THE CHEAPEST WIN ON THE LEVEL ───────────
+     *
+     * Both sister prototypes run the same ACES curve and the same sRGB output
+     * as this one, so the tone mapping was never the problem -- the exposure
+     * under it was. They sit at 1.5 and 2.12; this sat at 0.98 and then tried
+     * to buy brightness back by adding lamps, which is how a scene ends up
+     * with many weak light sources and still no light.
+     *
+     * Raising exposure lifts everything that is ALREADY there, including the
+     * fill above, instead of adding another thing to compute.
+     */
+    exposure: 1.55,
 
     /**
      * ── THE LAMP ──────────────────────────────────────────────────────────
@@ -628,7 +633,28 @@ registerPlace({
      * The rim. Small, because it is an EDGE: enough to find the outline of a
      * soldier or a pod against dark ground, nowhere near enough to light them.
      */
-    uRimStrength: 0.55,
+    uRimStrength: 0.62,
+    /**
+     * COOL, AGAINST A WARM KEY. The lamp that travels with the rider is warm
+     * sodium; the rim is the night behind it. Two light colours a world apart
+     * on the wheel is what gives a dark figure a readable front and back, and
+     * it is the trick every one of the sister prototypes leans on.
+     */
+    uRimColor: 0x8fb4ff,
+
+    /**
+     * ── THE FILL, AND IT IS THE BIGGEST NUMBER ON THIS LEVEL ──────────────
+     *
+     * The sister prototype that reads best lights almost its whole scene with
+     * a HemisphereLight at intensity 3.2 and lets a travelling point light do
+     * the character. Same model, far better read. Mine was lighting a night
+     * scene with a weak sun and a handful of lamps bolted on, and the shapes
+     * did not survive it.
+     *
+     * 3.0 here does the same job: a big directionless fill that describes
+     * FORM, with the key free to be character rather than work.
+     */
+    uFill: 3.0,
 
     /** Lit windows on the far skyline too. See the window block in range.js. */
     uWindowColor: 0xffd79a,

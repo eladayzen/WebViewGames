@@ -30,7 +30,9 @@ const GradeShader = {
     // 0.42 cost 0.15 stops at frame centre and 0.59 in the corners, on a frame
     // that had no light to spare. With the exposure fixed it can be a vignette
     // again rather than a second exposure control.
-    uVignette: { value: 0.26 },
+    uVignette: { value: 0.34 },
+    /** Chroma lift after lighting. 1 is untouched. See the note in the shader. */
+    uSat: { value: 1.16 },
     // Halved. This is a SCREEN-space term at a fixed amplitude, so it lands the
     // same 1.4-2.0 codes of gradient on every row of the frame regardless of how
     // far away that row's ground is — which puts a floor under every
@@ -56,6 +58,7 @@ const GradeShader = {
     uniform vec2  uSunUv;
     uniform vec3  uSunColor, uFlashColor, uShadowTint;
     uniform float uTime, uSpeed, uSunAmt, uVignette, uGrain, uFlash, uDamage, uBlur;
+uniform float uSat;
     varying vec2 vUv;
 
     float hash(vec2 p) {
@@ -131,6 +134,23 @@ const GradeShader = {
       float sat = (mx - min(col.r, min(col.g, col.b))) / max(mx, 1e-4);
       vec3 tint = uShadowTint / max(dot(uShadowTint, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
       col *= mix(tint, vec3(1.0), max(smoothstep(0.05, 0.55, luma), sat * 0.85));
+
+      /**
+       * ── SATURATION, LAST BEFORE THE VIGNETTE ──────────────────────────
+       *
+       * A night scene built from one hue family is the right call -- it is
+       * what the sister prototypes do and it is why they read -- but the cost
+       * is that everything lands near the same chroma and the frame goes
+       * muddy. A small lift after all the lighting is done separates the
+       * hazard colours from the dirt again without touching the palette they
+       * were chosen from.
+       *
+       * Against LUMINANCE, not a channel average: the weights are the ones
+       * the eye actually uses, so pushing saturation does not also shift the
+       * apparent brightness of anything.
+       */
+      float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+      col = mix(vec3(lum), col, uSat);
 
       col *= 1.0 - uVignette * r2 * 1.6;
       col = mix(col, vec3(1.0, 0.22, 0.30), uDamage * smoothstep(0.03, 0.40, r2));
