@@ -656,6 +656,14 @@ registerPlace({
      */
     uFill: 3.0,
 
+    /**
+     * THE AIR TAKES THE SKY'S COLOUR. See airSky in lit.js. 1 is fully the
+     * dome's own gradient; the flat fog colours above are then only reached
+     * where the sky is not, which on a level whose whole horizon is a skyline
+     * is almost nowhere.
+     */
+    uFogSky: 1.0,
+
     /** Lit windows on the far skyline too. See the window block in range.js. */
     uWindowColor: 0xffd79a,
     // 0.46 -> 0.30. Still every pane lit, as asked -- but a city seen from a

@@ -265,6 +265,8 @@ export class Mood {
     this.uRimColor = new THREE.Color(0xffffff);
     /** Multiplier on the hemisphere fill. See the note in lit.js. */
     this.uFill = 1;
+    /** How far the air takes the sky's own colour. See airSky in lit.js. */
+    this.uFogSky = 0;
     /**
      * Windows on the FAR range. Same arrangement as the lamp and for the same
      * reason: not part of the day arc, zero by default, so every other place
@@ -333,6 +335,7 @@ export class Mood {
     if (u.uRimStrength) u.uRimStrength.value = this.uRimStrength;
     if (u.uRimColor) u.uRimColor.value.copy(this.uRimColor);
     if (u.uFill) u.uFill.value = this.uFill;
+    if (u.uFogSky) u.uFogSky.value = this.uFogSky;
     if (u.uWindowColor) u.uWindowColor.value.copy(this.uWindowColor);
     if (u.uWindowStrength) u.uWindowStrength.value = this.uWindowStrength;
   }

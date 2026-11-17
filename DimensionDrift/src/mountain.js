@@ -734,6 +734,9 @@ uniform vec4  uPtPos[4];
 uniform vec3  uPtCol[4];
 uniform vec3  uFogColor;
 uniform vec3  uFogSunColor;
+uniform vec3  uZenith;
+uniform vec3  uHorizon;
+uniform float uFogSky;
 uniform float uFogDensity;
 uniform float uFogFalloff;
 uniform float uFogBase;
@@ -881,6 +884,27 @@ vec3 hash33(vec3 p) {
   p = fract(p * vec3(0.1031, 0.1030, 0.0973));
   p += dot(p, p.yxz + 33.33);
   return fract((p.xxy + p.yxx) * p.zyx);
+}
+
+/**
+ * ── THE AIR TAKES THE SKY'S OWN COLOUR ────────────────────────────────────
+ *
+ * The sky dome is a gradient from uZenith to uHorizon in the view ray's
+ * elevation, and the air in front of it was a FLAT colour. Those two can only
+ * agree in one direction, so everywhere else the horizon was a seam -- distant
+ * ground dissolving into one colour while the sky above it was another. It
+ * reads as a wall across the frame, which is exactly what it is.
+ *
+ * Recomputing the dome's formula here, from the same two uniforms and the same
+ * rate, means the air and the sky behind it cannot drift apart by
+ * construction. Borrowed from the WagonRampage prototype, which patches the
+ * three.js fog chunks to do the same thing -- this file has its own fog, so it
+ * copies the formula instead.
+ */
+vec3 airSky(vec3 viewDir) {
+  float elA = viewDir.y;
+  float hA = exp2(-max(elA, 0.0) * 7.0);
+  return mix(uZenith, uHorizon, hA);
 }
 
 void main() {
@@ -1568,6 +1592,7 @@ void main() {
 
   float toSun = pow(max(dot(-V, L), 0.0), 5.0);
   vec3 fogCol = mix(uFogColor, uFogSunColor, toSun);
+  fogCol = mix(fogCol, airSky(normalize(vWorld - uCamPos)), uFogSky);
 
   gl_FragColor = vec4(mix(col, fogCol, clamp(fog, 0.0, 1.0)), 1.0);
 }
@@ -1840,6 +1865,9 @@ export class MountainMesh {
           new THREE.Color(), new THREE.Color()] },
         uFogColor: { value: new THREE.Color(0.62, 0.72, 0.88) },
         uFogSunColor: { value: new THREE.Color(1.0, 0.82, 0.62) },
+        uZenith: { value: new THREE.Color(0x5738a3) },
+        uHorizon: { value: new THREE.Color(0x906fc9) },
+        uFogSky: { value: 0 },
         uFogDensity: { value: 0.0072 },
         uFogFalloff: { value: 0.012 },
         uFogBase: { value: 0 },
