@@ -7,7 +7,7 @@
 // that follows an actual gravity arc from the mouth's lip to wherever it meets
 // the pipe wall, and the game puts foam on that landing point.
 import * as THREE from 'three';
-import { R, frameAt, pointAt, wallDir, wallQuat } from './track.js';
+import { R, frameAt, pointAt, wallDir, wallQuat, featureAt, forkNear } from './track.js';
 
 const POOL = 3;
 const MOUTH_R = 1.15;      // inner radius of the side pipe
@@ -85,7 +85,8 @@ export class Junctions {
     this.coreTex.offset.y += dt * 2.6;
     while (this.nextS < playerS + AHEAD) {
       const free = this.items.find((it) => !it.on);
-      if (free) this._place(free, this.nextS);
+      // only worlds with waterfalls (the subway has none)
+      if (free && featureAt(this.nextS, 'falls') >= 1 && featureAt(this.nextS - 30, 'falls') >= 1 && !forkNear(this.nextS, 120, 160)) this._place(free, this.nextS);
       this.nextS += GAP[0] + Math.random() * (GAP[1] - GAP[0]);
     }
     const out = [];

@@ -175,6 +175,14 @@ export class Audio {
   trick() {
     [392, 523, 659, 784, 1047].forEach((f, i) => this.tone(f, { type: 'square', dur: 0.09, vol: 0.1, delay: i * 0.045 }));
   }
+  horn() {
+    // two-tone subway horn, twice
+    for (const d of [0, 0.55]) {
+      this.tone(311, { type: 'sawtooth', dur: 0.42, vol: 0.12, delay: d });
+      this.tone(392, { type: 'sawtooth', dur: 0.42, vol: 0.1, delay: d });
+    }
+    this.noiseHit({ dur: 1.2, vol: 0.18, freq: 160, q: 0.5 });
+  }
   splash() { this.noiseHit({ dur: 0.3, vol: 0.25, freq: 700, q: 5, sweep: 0.4 }); }
   beep(hi) { this.tone(hi ? 1046 : 523, { type: 'square', dur: hi ? 0.35 : 0.12, vol: 0.16 }); }
   over() {

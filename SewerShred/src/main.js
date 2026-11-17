@@ -5,7 +5,9 @@
 // points; chain pizza and near-misses into a combo; swing all the way around
 // the pipe for a LOOP. Three hits and you wipe out.
 import * as THREE from 'three';
-import { R, Track, ZONES, zoneIndex, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
+import { Trains } from './trains.js';
+import { installDevUnlock } from './devUnlock.js';
+import { R, Track, ZONES, WORLDS, zoneIndex, setStartWorld, getStartWorld, featureAt, pendingFork, forkNear, forkSpread, FORK_LEN, FORKS, CLIMB_LEN, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
 import { Junctions } from './junctions.js';
 import { Player, PHYS } from './player.js';
 import { Obstacles, FOOT_STYLES, FOOT_STYLE_ORDER } from './obstacles.js';
@@ -22,7 +24,7 @@ const FOG = { color: 0x4a5860, near: 30, far: 200 };   // look test: blue-grey, 
 // ── renderer / scene ─────────────────────────────────────────────────────────
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));   // perf: 1.5 is plenty on phones
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NeutralToneMapping;   // look test: flats stay flat
 renderer.toneMappingExposure = 0.85;
@@ -58,7 +60,7 @@ const audio = new Audio();
 audio.loadMusic('/audio/music.mp3');
 const input = new Input(canvas);
 
-let track, junctions, player, obstacles, particles, debris, streaks, boardTrail, sludge;
+let track, junctions, trains, player, obstacles, particles, debris, streaks, boardTrail, sludge;
 const tex = {};
 
 // ── HUD ──────────────────────────────────────────────────────────────────────
@@ -148,12 +150,13 @@ function startRun() {
   G.countdown = 3.2; G.lastBeep = -1;
   G.score = 0; G.lives = LIVES; G.combo = 1; G.comboFill = 0; G.bestCombo = 1; G.pizza = 0;
   G.shake = 0; G.hitStop = 0; G.fovKick = 0; G.camTheta = 0; G.camRoll = 0; G.loopAnchor = 0; G.wallT = 0;
-  G.overT = 0; G.restartHold = 0; G.zone = undefined; G.dirTarget = 0; G.dirOff = 0; G.waterOn = false; G.slimeOn = false;
+  G.overT = 0; G.restartHold = 0; G.zone = undefined; $('turn').className = ''; G.dirTarget = 0; G.dirOff = 0; G.waterOn = false; G.slimeOn = false;
   player.reset();
   player.speed = 8;
   track.reset();
   obstacles.reset();
   particles.clear(); sludge.clear(); debris.clear(); boardTrail.clear();
+  trains?.reset();
   renderLives(G.lives);
   hud.popups.innerHTML = '';
   $('gameover-overlay').classList.add('hidden');
@@ -307,11 +310,34 @@ function setFootStyle(n) {
   try { localStorage.setItem('sewershred.foe', G.footStyle); } catch { /* private mode */ }
 }
 const nextFootStyle = () => setFootStyle(FOOT_STYLE_ORDER[(FOOT_STYLE_ORDER.indexOf(G.footStyle) + 1) % FOOT_STYLE_ORDER.length]);
+// dev options closed by default; the gear (or the backquote key) opens them
+const toggleDev = () => { document.body.classList.toggle('dev-open'); if (devTagEl) devTagEl.style.display = document.body.classList.contains('dev-open') ? '' : 'none'; };
+$('dev-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleDev(); });
+// The gear itself is locked (GOBALANCE_APP_INTEGRATION.md): hold the lives row
+// for 7 s, then the code. Not persisted — a reload locks it again.
+installDevUnlock(document, $('lives'), () => { $('dev-btn').style.display = ''; toggleDev(); });
 $('foe-btn').addEventListener('click', (e) => { e.stopPropagation(); nextFootStyle(); });
+// WORLD (dev): which world the run starts in; restarts the run there
+function setWorld(i, restart = true) {
+  setStartWorld(i);
+  $('world-btn').textContent = WORLDS[getStartWorld()].name.replace(/^THE /, '');
+  try { localStorage.setItem('sewershred.world', String(getStartWorld())); } catch { /* private mode */ }
+  if (restart && track) startRun();
+}
+const nextWorld = () => setWorld(getStartWorld() + 1);
+$('world-btn').addEventListener('click', (e) => { e.stopPropagation(); nextWorld(); });
+{
+  const q = new URLSearchParams(location.search).get('world');
+  let i = WORLDS.findIndex((w) => w.key === q);
+  if (i < 0) try { i = +(localStorage.getItem('sewershred.world') || 0); } catch { i = 0; }
+  setWorld(i, false);
+}
 try { setFixCam(new URLSearchParams(location.search).get('cam') || localStorage.getItem('sewershred.cam') || 'auto'); } catch { setFixCam('auto'); }
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyC' && fixedCam()) nextFixCam();
   if (e.code === 'KeyF') nextFootStyle();
+  if (e.code === 'KeyN') nextWorld();
+  if (e.code === 'Backquote') toggleDev();
   if (e.code === 'KeyG') togglePhysics();
   if (e.code === 'KeyV') nextVariant();
 });
@@ -460,8 +486,79 @@ function devAttackTag({ n, label }) {
     devTagEl.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:999;' +
       'font:700 22px/1.2 monospace;color:#0f0;background:rgba(0,0,0,.75);padding:6px 14px;border-radius:6px;pointer-events:none';
     document.body.appendChild(devTagEl);
+    if (!document.body.classList.contains('dev-open')) devTagEl.style.display = 'none';
   }
   devTagEl.textContent = `ATTACK #${n} · ${label}`;
+}
+
+function onTrain(e) {
+  const up = wallDir(frameAt(player.s), player.theta, new THREE.Vector3()).negate();
+  if (e.type === 'warn') { bigText('TRAIN!', 'zone'); audio.horn(); }
+  else if (e.type === 'hit') onHit({ type: 'train', s: player.s, theta: 0 }, up, player.root.position.clone());
+  else if (e.type === 'pass' && e.close && G.state === 'play') {
+    bigText('CLOSE CALL!', 'smash'); award(250, player.root.position.clone()); addCombo(1); audio.near();
+  }
+}
+
+// ── Y-junctions: the half of the pipe you're on picks the arm ────────────────
+// (Elad 2026-11-16, as in Wagon Rampage). The prompt shows from FORK_PROMPT out;
+// the choice locks FORK_DECIDE before the split, where the arms physically part.
+const FORK_PROMPT = 230, FORK_DECIDE = 2;   // locks at the last moment (Elad)
+function forkChoice() {
+  const el = $('turn');
+  // forced climbs are decided when made: just call them out
+  for (const fk of FORKS) {
+    const to = fk.s - player.s;
+    if (fk.kind === 'rise' && !fk.called && to < 120 && to > 0) { fk.called = true; bigText('CLIMB!', 'zone'); }
+    if (fk.side > 0 && !fk.landed && to < -CLIMB_LEN * 0.6 && fk.kind !== 'y') {
+      fk.landed = true;
+      bigText('UP TOP!', 'loop'); award(150, player.root.position.clone()); addCombo(1); G.fovKick = 10; audio.trick();
+    }
+  }
+  const fk = pendingFork(player.s);
+  if (!fk) { if (!el.classList.contains('locked')) el.className = ''; return; }
+  const to = fk.s - player.s, th = angleDiff(player.theta, 0);
+  if (to > FORK_PROMPT) { el.className = ''; return; }
+  // y: which half you're on. climb: on the ramp (+1, centre of the floor) or round it (-1)
+  if (fk.kind === 'climb') {
+    if (!fk.called && to < 130) { fk.called = true; bigText('RAMP AHEAD!', 'zone'); }
+    if (to < FORK_DECIDE) track.decide(fk, Math.abs(th) < fk.ramp ? 1 : -1);
+    return;
+  }
+  const side = th < 0 ? -1 : 1;
+  $('turn-l').textContent = '\u25C0 LEFT';
+  $('turn-r').textContent = 'RIGHT \u25B6';
+  if (to < FORK_DECIDE) {
+    track.decide(fk, side);
+    el.className = 'show locked ' + (side < 0 ? 'l' : 'r');
+    clearTimeout(G.turnT); G.turnT = setTimeout(() => { el.className = ''; }, 900);
+    audio.trick();
+    return;
+  }
+  el.className = 'show ' + (side < 0 ? 'l' : 'r');
+}
+// Through the split the crease between the arms is a wall: the rider can't
+// ride over into the arm he didn't take.
+function forkWall(dt) {
+  const fk = forkNear(player.s, 0, FORK_LEN + 10);
+  if (!fk || !fk.side) return;
+  if (fk.kind === 'climb') {
+    // on the ramp you stay on it; below it you ride round its foot
+    const d = player.s - fk.s, th = angleDiff(player.theta, 0);
+    let tgt = null;
+    if (fk.side > 0 && d < CLIMB_LEN && Math.abs(th) > fk.ramp - 0.06) tgt = Math.sign(th) * (fk.ramp - 0.06);
+    if (fk.side < 0 && d < 16 && Math.abs(th) < fk.ramp + 0.12) tgt = (Math.sign(th) || 1) * (fk.ramp + 0.12);
+    if (tgt !== null) { player.theta += (tgt - th) * Math.min(1, dt * 14); G.dirOff = tgt - slimeAngle(player.s); }
+    return;
+  }
+  if (fk.kind !== 'y') return;
+  const lim = Math.asin(Math.min(1, forkSpread(player.s - fk.s) / R));
+  if (lim >= Math.PI / 2 - 0.01) return;
+  const th = angleDiff(player.theta, 0), edge = -fk.side * Math.max(0, lim - 0.12);
+  if (fk.side * th < fk.side * edge) {
+    player.theta += (edge - th) * Math.min(1, dt * 14);
+    G.dirOff = edge - slimeAngle(player.s);
+  }
 }
 
 function onHit(o, up, wp) {
@@ -572,6 +669,7 @@ function frame(now) {
     const target = THREE.MathUtils.lerp(BASE_SPEED, TOP_SPEED, diff);
     player.speed += (target - player.speed) * Math.min(1, simDt * (player.speed < target ? 0.9 : 1.6));
     steer(simDt, lean);
+    forkWall(simDt);
     const ds = player.speed * simDt;
     G.score += ds * 0.5 * G.combo;
     if (inSlime) G.slimeT += simDt;
@@ -612,6 +710,7 @@ function frame(now) {
     // bounded modes keep a clear lane inside the reachable arc (360 / swing: whole ring)
     obstacles.reach = (G.moveMode.startsWith('d360') || G.moveMode === 'swing') ? null : MODE_HALF[G.moveMode];
     obstacles.spawn(player.s, diff, player.theta);
+    forkChoice();
   } else if (G.state === 'dying') {
     G.overT += dt;
     player.speed *= Math.pow(0.25, dt);
@@ -636,6 +735,10 @@ function frame(now) {
   if (G.state === 'play' || G.state === 'countdown') obstacles.update(simDt, time, player, events);
   else obstacles.update(simDt, time, { s: player.s, theta: 1e3, hop: 0 }, events);
   for (const e of events) onEvent(e);
+  // subway trains
+  const tev = [];
+  trains.update(simDt, player, tev, G.state === 'play');
+  for (const e of tev) onTrain(e);
 
   // ── continuous FX ──
   const f = frameAt(player.s);
@@ -718,7 +821,10 @@ function frame(now) {
   // ── zones: banner on entry, fog + ambient ease to the zone's palette ──
   const zi = zoneIndex(player.s);
   if (zi !== G.zone) {
-    if (G.zone !== undefined && G.state === 'play') { bigText(ZONES[zi].name, 'zone'); audio.trick(); }
+    if (G.zone !== undefined && G.state === 'play') {
+      const newWorld = ZONES[zi].world !== ZONES[G.zone].world;
+      bigText(newWorld ? WORLDS[ZONES[zi].world].name : ZONES[zi].name, 'zone'); audio.trick();
+    }
     G.zone = zi;
   }
   const Z = ZONES[zi];
@@ -732,7 +838,7 @@ function frame(now) {
   // lights ride with the rider
   pointAt(player.s + 6, player.theta, R - 3.2, headLamp.position);
   pointAt(player.s + 10, slimeAngle(player.s + 10), R - 0.8, slimeLight.position);
-  slimeLight.intensity = 6 + Math.sin(time * 1.5) * 1.5;
+  slimeLight.intensity = (6 + Math.sin(time * 1.5) * 1.5) * featureAt(player.s + 10, 'river');
   flashLight.intensity *= Math.pow(0.004, dt);
 
   // ── camera ──
@@ -816,6 +922,7 @@ async function loadFootGeo(url) {
   track.syncFog(scene.fog);
   obstacles = new Obstacles(scene, tex);
   junctions = new Junctions(scene, tex);
+  trains = new Trains(scene, makeGlowTexture);
   obstacles.camera = camera;
   { let f = 'sprite'; try { f = new URLSearchParams(location.search).get('foe') || localStorage.getItem('sewershred.foe') || 'sprite'; } catch { /* private */ } setFootStyle(f); }
   particles = new Particles(scene);
@@ -831,5 +938,7 @@ async function loadFootGeo(url) {
   startRun();
   requestAnimationFrame(frame);
   // test hooks for the headless drive script
-  window.__game = { G, player, obstacles, PHYS, camera, startRun, setMoveMode, setFixCam, slimeAngle, junctions, setFootStyle };
+  window.__game = { worldName: () => WORLDS[ZONES[zoneIndex(player.s)].world].name + ' / ' + ZONES[zoneIndex(player.s)].name,
+    trainDist: () => { const t = trains.pool.filter((x) => x.on && x.s > player.s); return t.length ? Math.min(...t.map((x) => x.s - player.s)) : null; },
+    track, trains, setWorld, G, player, obstacles, PHYS, camera, startRun, setMoveMode, setFixCam, slimeAngle, junctions, setFootStyle };
 })();

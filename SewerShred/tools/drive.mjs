@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import puppeteer from 'puppeteer-core';
 
-const args = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith('--')).map((a) => a.slice(2).split('=')));
+const args = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith('--')).map((a) => { const i = a.indexOf('='); return i < 0 ? [a.slice(2), ''] : [a.slice(2, i), a.slice(i + 1)]; }));
 const outDir = process.argv.slice(2).find((a) => !a.startsWith('--')) || 'shots';
 const W = +(args.w || 1280), H = +(args.h || 720);
 const script = args.script || 'default';
@@ -26,7 +26,7 @@ const server = http.createServer((req, res) => {
   });
 }).listen(0, '127.0.0.1');
 await new Promise((r) => server.once('listening', r));
-const url = `http://127.0.0.1:${server.address().port}/index.html`;
+const url = `http://127.0.0.1:${server.address().port}/index.html` + (args.q ? '?' + args.q : '');
 
 const browser = await puppeteer.launch({
   executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -68,6 +68,59 @@ if (script === 'default') {
   await lean(-0.3); await wait(2500); await snap('cruise');
   await lean(0); await wait(4000); await snap('later');
   await wait(6000); await snap('much-later');
+} else if (script === 'fork') {
+  // ride up to the first Y-junction holding one side (--side=1 right / -1 left), shoot the approach + split
+  const side = +(args.side || 1);
+  await wait(1000);
+  if (args.kind) await page.evaluate((k) => { window.__game.track.nextKind = k; }, args.kind);
+  await wait(2800);
+  const fs = await page.evaluate(() => window.__game.track.forkS());
+  await page.evaluate((s) => { const { player } = window.__game; player.s = s; player.invuln = 99; }, fs - 190);
+  await lean(0);
+  await page.evaluate((d) => { window.__game.G.dirOff = d; }, side * +(args.off || 0.45));
+  const marks = (args.marks || '140,70,25,5,-12,-30,-55,-90').split(',').map(Number);
+  for (const m of marks) {
+    await page.waitForFunction((t) => window.__game.player.s >= t, { timeout: 30000 }, fs - m);
+    await snap('to' + m);
+    console.log('  world', await page.evaluate(() => window.__game.worldName()), 'theta', await page.evaluate(() => window.__game.player.theta.toFixed(2)));
+  }
+} else if (script === 'trains') {
+  // subway: stay on the floor, shoot trains coming; --dodge leans up the wall when one is close
+  await wait(3800);
+  await page.evaluate(() => { window.__game.player.invuln = 0; });
+  const t0 = Date.now(); let n = 0;
+  while (Date.now() - t0 < +(args.ms || 20000) && n < 8) {
+    const d = await page.evaluate(() => window.__game.trainDist());
+    if (d !== null && d < 90 && d > 60) { await snap('train' + (n++)); await wait(400); }
+    if (args.dodge) await lean(d !== null && d < 70 ? 1 : 0);
+    await wait(150);
+  }
+  console.log('final', JSON.stringify(await stat()));
+} else if (script === 'at') {
+  // jump to --s (comma list) and shoot each, --wait ms after the jump
+  await wait(3800);
+  for (const at of String(args.s || '280').split(',').map(Number)) {
+    await page.evaluate((x) => { const { player } = window.__game; player.s = x; player.invuln = 99; }, at);
+    await wait(+(args.wait || 300)); await snap('s' + at);
+  }
+} else if (script === 'devunlock') {
+  await wait(1500);
+  const before = await page.evaluate(() => getComputedStyle(document.getElementById('dev-btn')).display + '/' + getComputedStyle(document.getElementById('foe-btn')).display);
+  const r = await page.evaluate(() => { const b = document.getElementById('lives').getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; });
+  await page.mouse.move(r.x, r.y); await page.mouse.down(); await wait(7400); await page.mouse.up();
+  await snap('pad');
+  for (const k of '2128') await page.evaluate((d) => [...document.querySelectorAll('.devcode-key')].find((b) => b.textContent === d)?.click(), k);
+  await wait(400); await snap('unlocked');
+  const after = await page.evaluate(() => getComputedStyle(document.getElementById('dev-btn')).display + '/' + getComputedStyle(document.getElementById('foe-btn')).display);
+  console.log('dev-btn/foe-btn before', before, 'after', after);
+} else if (script === 'zones') {
+  // jump to the middle of each zone (invulnerable) and shoot it
+  await wait(3800);
+  const n = +(args.n || 8);
+  for (let z = 0; z < n; z++) {
+    await page.evaluate((s) => { const { player } = window.__game; player.s = s; player.invuln = 99; }, z * 300 + 120);
+    await wait(1600); await snap('zone' + z);
+  }
 } else if (script === 'loop') {
   await wait(3500);
   await lean(1); for (let i = 0; i < 6; i++) { await wait(500); await snap('loop' + i); }

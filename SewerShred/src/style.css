@@ -43,7 +43,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1c16; col
 @keyframes tick { 0% { transform: scale(1.18); color: var(--yellow); } 100% { transform: scale(1); } }
 #dist { font-size: clamp(14px, 2.6vmin, 20px); color: #bfe9cf; letter-spacing: 2px; text-shadow: 0 2px 0 var(--ink); }
 
-#lives { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 14px; display: flex; gap: 6px; }
+#lives { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 14px; display: flex; gap: 6px; pointer-events: auto; }   /* dev unlock: hold 7 s */
 .life { width: clamp(34px, 6vmin, 48px); filter: drop-shadow(0 3px 0 rgba(0,0,0,0.6)); transition: transform 0.2s, opacity 0.3s, filter 0.3s; }
 .life svg { width: 100%; display: block; }
 .life.lost { opacity: 0.25; filter: grayscale(1); transform: scale(0.8); }
@@ -132,5 +132,96 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1c16; col
 #var-btn { order: 3; background: rgba(90,50,140,0.85); }
 #var-btn.inactive { opacity: 0.45; }
 #cam-btn { order: 3; background: rgba(140,80,30,0.85); }
-#foe-btn { order: 3; background: rgba(150,30,40,0.85); }
+#world-btn { display: none; }   /* one world (sewers) for now */
+#foe-btn { order: 4; background: rgba(150,30,40,0.85); }
 #mute-btn { order: 2; }
+
+/* Y-junction prompt: the side you're on lights up; it locks with a pop (as in Wagon Rampage) */
+#turn { position: fixed; top: 22%; left: 0; right: 0; display: flex; justify-content: center; gap: 18vw; pointer-events: none; z-index: 13;
+  font-size: clamp(26px, 5vmin, 44px); letter-spacing: 2px; opacity: 0; transition: opacity .15s; }
+#turn.show { opacity: 1; }
+#turn span { color: rgba(255,255,255,.4); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 0 4px 0 var(--ink); transition: transform .12s, color .12s; }
+#turn.l .l, #turn.r .r { color: #ffd23a; transform: scale(1.25); }
+#turn.locked.l .r, #turn.locked.r .l { opacity: 0; }
+#turn.locked .l, #turn.locked .r { animation: turnlock .5s ease-out; }
+@keyframes turnlock { 0% { transform: scale(1.8); } 100% { transform: scale(1.25); } }
+
+/* dev options: closed by default (Elad 2026-11-17); the gear opens them */
+body:not(.dev-open) .pill-btn.dev { display: none !important; }
+#dev-btn { order: 2; opacity: .55; }
+body.dev-open #dev-btn { opacity: 1; }
+
+/* dev-tools unlock pad — copied from NovaVanguard/src/style.css (shared template) */
+.devhold { opacity: 0.72; }
+
+#devcode-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 10, 0.72);
+}
+
+#devcode-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(10, 12, 26, 0.97);
+  border: 1px solid rgba(111, 232, 255, 0.35);
+}
+
+#devcode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+#devcode-dots {
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  letter-spacing: 8px;
+  color: #6fe8ff;
+}
+
+#devcode-close {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(30, 40, 70, 0.9);
+  color: #eafcff;
+  font: 600 20px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+}
+
+#devcode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  gap: 8px;
+}
+
+.devcode-key {
+  height: 62px;
+  border-radius: 10px;
+  border: 1px solid rgba(111, 232, 255, 0.3);
+  background: rgba(30, 40, 70, 0.85);
+  color: #eafcff;
+  font: 700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 90ms linear;
+}
+
+/* Every key answers a press the same way. A key that looked inert while another
+   lit up was what gave the code away one digit at a time. */
+.devcode-key:active {
+  background: rgba(60, 84, 130, 0.95);
+  border-color: rgba(111, 232, 255, 0.7);
+}
+
+/* A wrong code, shown for a moment before the row clears. Amber rather than red:
+   this is a mistyped code, not an alarm. */
+#devcode-dots.devcode-wrong {
+  color: #ffb45c;
+}

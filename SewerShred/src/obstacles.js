@@ -5,7 +5,7 @@
 // coordinates. Patterns are authored as small functions so difficulty is a
 // question of which patterns are in the deck and how tightly they're dealt.
 import * as THREE from 'three';
-import { R, frameAt, pointAt, wallQuat, wallDir, slimeAngle, angleDiff, makeGlowTexture } from './track.js';
+import { R, frameAt, pointAt, wallQuat, wallDir, slimeAngle, angleDiff, makeGlowTexture, forkNear, FORK_QUIET, worldAt } from './track.js';
 
 // Foot Soldier kick trigger — enemies ONLY. Was ds<1.5 ahead, 1.05 m sideways.
 const _camL = new THREE.Vector3();
@@ -44,7 +44,7 @@ export class Obstacles {
     this.footSpriteMats = [tex.footA, tex.footB].map((t) => {
       t.colorSpace = THREE.SRGBColorSpace;
       // self-lit (Elad 2026-11-16): skip the scene's exposure-0.85 tone mapping, lift a touch above the art
-      return new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1.15, 1.15, 1.15), toneMapped: false, alphaTest: 0.5, side: THREE.DoubleSide, visible: false });
+      return new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1.55, 1.55, 1.55), toneMapped: false, alphaTest: 0.5, side: THREE.DoubleSide, visible: false });
     });
     this.footSpriteGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
     this.footRingMat = new THREE.MeshBasicMaterial({ color: 0xff4ad2, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
@@ -329,6 +329,9 @@ export class Obstacles {
   /** Deal patterns ahead of the player. */
   spawn(playerS, diff, playerTheta) {
     while (this.nextS < playerS + 210) {
+      // Y-junction: nothing in the split itself, and nothing past one the rider hasn't picked yet
+      const fk = forkNear(this.nextS, 30, FORK_QUIET);
+      if (fk) { if (!fk.side) break; this.nextS = fk.s + FORK_QUIET; continue; }
       const s = this.nextS;
       const gap = THREE.MathUtils.lerp(34, 19, diff) + Math.random() * 8;
       this._pattern(s, diff, playerTheta);
@@ -346,7 +349,9 @@ export class Obstacles {
       this.add('shield', s, sl + (Math.random() - 0.5) * 1.2);
       return;
     }
-    const deck = [
+    // the subway is its own game (Elad): no sewer obstacles, only pizza to chase
+    // between the trains (trains.js)
+    const deck = worldAt(s).trains ? [['pizzaRise', 1], ['pizzaLine', 0.4]] : [
       ['crates', 0.35],
       ['pizzaLine', 0.8],
       ['pizzaArc', 0.45],
@@ -458,6 +463,18 @@ export class Obstacles {
     }
     // and a crate parked on the floor so the arc is the way round
     this.add('saw', s - 2, side * -0.25);
+  }
+
+  // subway: the arc up the wall without the saw — it leads where you dodge the trains
+  _p_pizzaRise(s) {
+    const side = Math.random() < 0.5 ? -1 : 1;
+    for (let i = 0; i < 9; i++) this.add('pizza', s - 10 + i * 2.6, side * (0.3 + i * 0.12));
+  }
+
+  // subway: the arc up the wall without the saw — it leads where you dodge the trains
+  _p_pizzaRise(s) {
+    const side = Math.random() < 0.5 ? -1 : 1;
+    for (let i = 0; i < 9; i++) this.add('pizza', s - 10 + i * 2.6, side * (0.3 + i * 0.12));
   }
 
   _p_chord(s, diff, sl) {
