@@ -78,12 +78,13 @@
         </symbol>
       </svg>
 
-      <!-- Player HUD, top-left: lives as shells, then the score. Holding the
-           shells for seven seconds is also the (unlabelled) dev-tools unlock. -->
+      <!-- Player HUD, top-left: the score. -->
       <div id="hud-left">
-        <div id="lives"><svg class="shell" viewBox="0 0 44 36" aria-hidden="true" focusable="false"><use href="#shell-icon"/></svg><svg class="shell" viewBox="0 0 44 36" aria-hidden="true" focusable="false"><use href="#shell-icon"/></svg><svg class="shell" viewBox="0 0 44 36" aria-hidden="true" focusable="false"><use href="#shell-icon"/></svg></div>
         <div id="score"></div>
       </div>
+      <!-- Lives (shells), top centre under the ammo clip. hud.js fills in one shell
+           per RUN.LIVES. Holding it for seven seconds is the (unlabelled) dev-tools unlock. -->
+      <div id="lives"></div>
       <!-- Debug text HUD: dev tools only, revealed by the unlock. -->
       <div id="dbg" class="hidden"></div>
 
@@ -99,6 +100,38 @@
                line-height:1;display:flex;align-items:center;justify-content:center;
                box-shadow:0 0 14px rgba(0,0,0,0.55);
                -webkit-tap-highlight-color:transparent;">&times;</button>
+
+      <!-- MISSION CARD: the brief before each mission. Translucent, so the wave keeps
+           rolling behind it. LET'S GO, a 1 s hold (board lean / Space / press), or the
+           clock starts the mission. NOT #gameover-overlay. -->
+      <div id="mission-overlay" class="modal-overlay mission-screen hidden">
+        <div class="board-card mission-card">
+          <img class="mission-art" alt="" />
+          <div class="mission-text">
+            <div id="mission-tag" class="mission-tag"></div>
+            <h1 id="mission-title"></h1>
+            <p id="mission-brief" class="mission-brief"></p>
+            <p id="mission-tip" class="mission-tip"></p>
+            <button id="mission-go" class="mission-btn" type="button"><span class="fill"></span><span class="lbl">LET'S GO!</span></button>
+            <p id="mission-clock" class="mission-clock"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- MISSION COMPLETE: between missions. NEXT MISSION (or hold / clock) opens the next brief. -->
+      <div id="win-overlay" class="modal-overlay mission-screen hidden">
+        <div class="board-card mission-card">
+          <img class="mission-art" alt="" />
+          <div class="mission-text">
+            <div id="win-tag" class="mission-tag"></div>
+            <h1>MISSION COMPLETE!</h1>
+            <p id="win-stats" class="mission-brief"></p>
+            <p id="win-next" class="mission-tip"></p>
+            <button id="win-go" class="mission-btn" type="button"><span class="fill"></span><span class="lbl">NEXT MISSION</span></button>
+            <p id="win-clock" class="mission-clock"></p>
+          </div>
+        </div>
+      </div>
 
       <!-- "QUIT?" -- a modal over the paused run, not a screen. -->
       <div id="confirm-overlay" class="modal-overlay hidden">

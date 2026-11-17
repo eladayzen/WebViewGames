@@ -59,12 +59,18 @@ export const GAME = {
   PICK_AIR_CHANCE: 0.35,    // chance a string is an arc over the lip (only reachable by jumping)
   PICK_SPECIAL: 0.30,       // chance a string ends in a special (nunchaku for Mikey)
   PICK_SIZE: 0.30,          // pickup size as a fraction of Mikey's height
+  LIFE_EVERY: [16, 26],     // s between shell (extra life) pickups on the face
+  LIFE_PTS: 20,             // points for a shell pickup
   CLIP_MAX: 12,             // ammo clip capacity
-  FIRE_RATE: 4,             // shots per second while airborne
+  FIRE_RATE: 4,             // shots per second while level with the boss
+  FIRE_BAND: 0.75,          // 'level with the boss' = rider body within this many Mikey-heights of the boss's centre, vertically
   FIRE_NEEDS_BOSS: true,    // only fire when the boss is on screen (otherwise ammo is kept)
   SHOT_SPEED: 0.55,         // screen widths / s (stars); specials fly at 0.75x and spin
   SHOT_SIZE: 1.3,           // thrown star radius vs a pickup's
-  BOSS_HP: 14,              // star = 1 damage, special = 3
+  BOSS_HP: 14,              // star = 1 damage, special = 3 (kept between a boss's visits within a mission)
+  YACHT_SIZE: 0.95,         // yacht sprite height as a fraction of Mikey's height (it is ~2.3x as wide)
+  YACHT_X: [0.66, 0.80],    // where the yacht holds station (screen width fraction)
+  YACHT_H: 0.06,            // its waterline on the face (0 = trough, 1 = crest)
   SPECIAL_DMG: 3,
   JET_ENABLED: false,       // water (jetski) boss switched off for now
   JET_SIZE: 1.05,           // water boss (jetski) height vs Mikey's
@@ -74,8 +80,27 @@ export const GAME = {
 };
 
 // ===================== the run: lives, score, endings (new for the shipped game) =====================
+// ===================== missions (played in order; each ends when its boss is knocked out) =====================
+// boss 'yacht' = the villain on his ooze yacht, riding the sea at water level;
+// boss 'fly'   = the same villain in the air (the original boss).
+// sky: 1 = sunny day, 0 = evening (fades behind the mission card).
+export const MISSIONS = [
+  { boss: 'yacht', sky: 1, tag: 'MISSION 1', title: 'YACHT ATTACK',
+    brief: 'A mutant crook is dumping ooze into the bay from his yacht! Ride the wave, grab ninja stars, and drop down to his level to throw them until his yacht goes down.',
+    tip: 'Your stars fly when you are level with him. Grab shells for extra lives!' },
+  { boss: 'fly', sky: 0, tag: 'MISSION 2', title: 'SKY STRIKE',
+    brief: 'He swam ashore and took to the sky! Now he flies over the waves firing ooze. Jump off the lip and knock him out of the air.',
+    tip: 'Jump to his height to throw. Up high he fires straight at you: time it!' },
+];
+export const MISSION = {
+  FIRST_BOSS_S: [10, 14],   // s into a mission before its boss first shows up
+  BRIEF_SECONDS: 15,        // the mission card starts the mission by itself after this long
+  WIN_SECONDS: 12,          // the mission-complete card moves on by itself after this long
+  KO_HOLD_S: 1.8,           // let the KO animation play before the win card
+};
+
 export const RUN = {
-  LIVES: 3,                 // shells; every obstacle or ooze-ball hit costs one, the last one ends the run
+  LIVES: 7,                 // shells (also the cap for shell pickups); every obstacle or ooze-ball hit costs one, the last one ends the run
   COUNTDOWN_S: 3,           // auto-start countdown on load and on every restart (no key needed)
   RESULT_SECONDS: 10,       // death screen restarts itself after this long (the quit board has no clock)
   SKIP_GUARD_S: 0.3,        // a skip/restart press in the death screen's first 0.3 s is ignored

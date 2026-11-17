@@ -135,6 +135,7 @@ void archSpace(vec2 f, out float d, out float s, out float u){
   d=(r-1.)/max(length(g),1e-3);
   s=atan(max(u,0.),av)/1.5708;
 }`;
+const LIP_OLD = new URLSearchParams(location.search).get('lip') === 'old';   // ?lip=old -> the previous smooth band, for comparison
 const OOZE = new URLSearchParams(location.search).get('theme') === 'ooze';   // Ooze Street: same wave, ooze palette
 const NOISE = `
 float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
@@ -344,6 +345,7 @@ const post = new THREE.ShaderMaterial({
   vertexShader: `varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,
   fragmentShader: `
     ${OOZE ? '#define OOZE' : ''}
+    ${LIP_OLD ? '#define LIP_OLD' : ''}
     uniform sampler2D tC,tD,tN; uniform vec2 uRes; uniform float uTime,uScroll,near,far; varying vec2 vUv; ${NOISE} ${ARCH}
     float lin(float d){ float z=d*2.-1.; return 2.*near*far/(far+near-z*(far-near)); }
     float halftone(vec2 fc, float amt, float cell){ vec2 g=fc/cell; vec2 c=fract(vec2(g.x+0.5*mod(floor(g.y),2.),g.y))-0.5; return step(length(c), 0.62*sqrt(clamp(amt,0.,1.))); }
@@ -441,6 +443,7 @@ const post = new THREE.ShaderMaterial({
         if(lum<0.18) col=mix(col,vec3(0.07,0.04,0.14),h2*0.5);
 #endif
       }
+#ifdef LIP_OLD
       // ---- the pitching lip: thick white band riding the outside of the arch, pouring down ----
       if(F.y < uBase.y + 0.02 && aU > -1.){
         float th = aU>=0. ? mix(0.055, 0.016, pow(aS,0.8)) : 0.055*(1.-smoothstep(0.,0.9,-aU));
@@ -464,6 +467,41 @@ const post = new THREE.ShaderMaterial({
         float eo = abs(aD - outer);                                    // ink on the outer (torn) edge
         if(th > 0.002) ink = max(ink, smoothstep(lw, lw*0.35, eo) * step(-lw, aD));
       }
+#else
+      // ---- the pitching lip, take 2: a rolling curtain of water, not a band ----
+      // Mass pours down the arc: the thickness swells and thins in slow lumps that travel downward,
+      // the outer edge flexes, foam streaks run ALONG the flow, the inside edge drapes lace into the
+      // hollow, and the ink line varies in weight. Everything flows with pc; no term grows with time.
+      if(F.y < uBase.y + 0.03 && aU > -1.){
+        float al = aU>=0. ? aS*1.9 : aU*0.25;
+        float pc = al*(1. + 0.18*max(al,0.)) - uTime*0.30;                 // flow coordinate, down the arc
+        float fade = aU>=0. ? 1. : 1.-smoothstep(0.,0.9,-aU);               // dies out along the shoulder
+        float th0 = aU>=0. ? mix(0.060, 0.020, pow(aS,0.75)) : 0.060;
+        float lump = fbm(vec2(pc*1.7, 3.1 + uTime*0.05));                   // travelling swells of water mass
+        float th = th0*fade*(0.70 + 0.65*lump);
+        float flex = 0.010*(vn(vec2(al*2.2 - uTime*0.22, 7.7)) - 0.5) * (1.-0.6*aS);   // the whole outer edge breathes
+        float outer = th + flex*fade;
+        float inner = -0.012*fade*smoothstep(0.45, 0.75, vn(vec2(pc*6.0, 1.9))) * (0.4+0.6*aS);  // lace hanging into the hollow
+        float lw = 2.4/uRes.y;
+        if(aD >= inner - lw*0.5 && aD < outer && th > 0.002){
+          float rel = clamp((aD - inner)/max(outer - inner,1e-3),0.,1.);   // 0 = inside (hollow) edge, 1 = outside
+          float streak = fbm(vec2(pc*2.4, rel*6.5 + 0.7*lump));              // long streaks along the flow
+          vec3 white = vec3(0.97,0.99,1.0), cyan = vec3(0.62,0.90,0.98), grey = vec3(0.50,0.64,0.78), teal = vec3(0.30,0.72,0.86);
+          vec3 bc = mix(teal, cyan, smoothstep(0.02, 0.30, rel));            // translucent water on the inside
+          bc = mix(bc, white, smoothstep(0.35, 0.60, rel + 0.25*(streak-0.5)));   // white crest on the outside
+          bc = mix(bc, grey, 0.75*smoothstep(0.58, 0.70, streak)*smoothstep(0.25,0.5,rel));   // shadowed foam streaks
+          bc = mix(bc, cyan, 0.6*smoothstep(0.80, 1.0, rel)*smoothstep(0.55,0.62,fbm(vec2(pc*5., 9.))));  // sky light on the rim
+          if(aD < 0.) bc = mix(white, cyan, 0.35*vn(vec2(pc*12., aD*90.)));  // the lace: foam strands
+#ifdef OOZE
+          bc = oozeWater(bc);
+#endif
+          col = bc; ink = 0.;
+        }
+        float lwv = lw*(0.75 + 0.9*vn(vec2(pc*4.0, 5.3)));                 // hand-inked: the line weight varies
+        float eo = abs(aD - outer);
+        if(th > 0.002) ink = max(ink, smoothstep(lwv, lwv*0.35, eo) * step(-lw, aD) * step(0.15, fade));
+      }
+#endif
       // ---- spray thrown off the top of the lip ----
       for(int i=0;i<20;i++){
         float fi=float(i), per=0.9+0.7*h21(vec2(fi,3.1)), o=h21(vec2(fi,7.3));

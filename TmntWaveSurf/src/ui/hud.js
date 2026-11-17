@@ -7,10 +7,18 @@
 // so the quit board has its own id and its own buttons.
 import { identityFor } from '../data/avatars.js';
 
-export function createHud(doc) {
+const SVG = 'http://www.w3.org/2000/svg';
+export function createHud(doc, livesMax = 3) {
   const $ = (id) => doc.getElementById(id);
+  const livesEl = $('lives');
+  livesEl.textContent = '';
+  for (let i = 0; i < livesMax; i++) {   // one shell per life, reusing the #shell-icon symbol
+    const svg = doc.createElementNS(SVG, 'svg'); svg.setAttribute('class', 'shell'); svg.setAttribute('viewBox', '0 0 44 36');
+    svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
+    const use = doc.createElementNS(SVG, 'use'); use.setAttribute('href', '#shell-icon'); svg.appendChild(use); livesEl.appendChild(svg);
+  }
   const el = {
-    shells: [...doc.querySelectorAll('#lives .shell')],
+    shells: [...livesEl.querySelectorAll('.shell')],
     score: $('score'),
     countdown: $('countdown'),
     gameover: $('gameover-overlay'), gameoverStats: $('gameover-stats'), gameoverCountdown: $('gameover-countdown'),

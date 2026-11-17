@@ -20,6 +20,7 @@ import obstBUrl from '../assets/obstacle_b.webp';
 import bossUrl from '../assets/boss.webp';
 import projUrl from '../assets/projectile.webp';
 import jetUrl from '../assets/jetski_boss.webp';
+import yachtUrl from '../assets/yacht_boss.webp';
 
 // flow speed by face height in screen-widths/s (same curve as the shader flow)
 const flowAt = hh => (2.05 + (0.5 - 2.05) * Math.pow(Math.min(1, Math.max(0, hh / 0.95)) ** 2 * (3 - 2 * Math.min(1, Math.max(0, hh / 0.95))), 1.5)) / 1.778;
@@ -78,13 +79,14 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
     a: slot(obstAUrl, () => blobPH('#b5643c', '#f0a640', null)), b: slot(obstBUrl, () => blobPH('#c9c24a', '#9fd9b0', '#c8323c')),
     boss: slot(bossUrl, bossPH), proj: slot(projUrl, () => canvasOf(120, 120, g => { g.fillStyle = '#00ff1e'; g.strokeStyle = INK; g.lineWidth = 9;
       g.beginPath(); g.arc(60, 60, 48, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#c8ffb0'; g.beginPath(); g.arc(45, 45, 14, 0, 7); g.fill(); })),
-    jet: slot(jetUrl, bossPH),
+    jet: slot(jetUrl, bossPH), yacht: slot(yachtUrl, bossPH),
   };
   const sprImg = o => o.img || o.ph;
   const img = new Image(); img.src = mikeyUrl;
 
   // ---------- run state ----------
   let game, mode = 'Physics', noSpawn = false, lastW = 1280;
+  let bossKind = 'fly';   // 'yacht' (mission 1, at water level) or 'fly' (mission 2, in the air)
   let h, sPos, sVel, air, airT, airH, airV, airG, tilt, lastY, vyScreen, holdT, airTilt0, airTp, railNow, directT;
   const wake = []; let trailPrev = null;
   const lines = Array.from({ length: 9 }, () => ({ x: Math.random(), y: 0.58 + Math.random() * 0.4, len: 0.05 + Math.random() * 0.09, v: 1.3 + Math.random() * 0.6 }));
@@ -93,7 +95,7 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
   function reset() {
     game = { hits: 0, dodged: 0, obst: [], proj: [], nextObst: 2.0, invuln: 0, flash: 0, knockTilt: 0,
       boss: { state: 'away', t: 0, next: 20 + Math.random() * 10, x: 0, y: 0, tx: 0, shots: [], fired: 0, windup: 0, stay: 10 }, projTimes: [], clock: 0 };
-    game.picks = []; game.clip = []; game.shots = []; game.pops = []; game.nextPick = 1.2; game.fireCd = 0; game.collected = 0; game.bossHits = 0; game.bossKills = 0;
+    game.picks = []; game.clip = []; game.shots = []; game.pops = []; game.nextPick = 1.2; game.nextLife = rand(GAME.LIFE_EVERY); game.lives = 0; game.canFire = false; game.fireCd = 0; game.collected = 0; game.bossHits = 0; game.bossKills = 0;
     game.boss.hp = GAME.BOSS_HP; game.boss.flash = 0;
     game.jet = { state: 'away', next: 34 + Math.random() * 10, t: 0, x: 0, y: 0, s: 0.3, v: 0, holdT: 0, air: false, airH: 0, airV: 0, airG: 1, airT: 0,
       tgt: 0.4, tgtT: 0, hp: GAME.BOSS_HP, flash: 0, shots: [], fired: 0, windup: 0, stay: 12, tilt: 0, spin: 0, cx: 0, cy: 0 };
@@ -145,6 +147,16 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
     ctx.strokeStyle = '#3a3444'; ctx.lineWidth = Math.max(2, r * 0.09); ctx.beginPath(); ctx.moveTo(-r * 0.18, -r * 0.05); ctx.quadraticCurveTo(0, -r * 0.45, r * 0.18, -r * 0.05); ctx.stroke();
     ctx.restore();
   }
+  function drawShell(x, y, r, rot) {   // the lives icon (#shell-icon in index.html), drawn on the canvas
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot); const k = r / 20; ctx.scale(k, k); ctx.translate(-22, -19);
+    ctx.lineJoin = 'round'; ctx.strokeStyle = INK;
+    ctx.fillStyle = '#2d7a2a'; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.ellipse(22, 19, 20, 15.5, 0, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#7cc443'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.ellipse(22, 18, 15, 11, 0, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#5aa834'; ctx.lineWidth = 1.6; ctx.beginPath(); [[22,11.5],[27,14.5],[27,20],[22,23],[17,20],[17,14.5]].forEach(([a,b],i)=> i ? ctx.lineTo(a,b) : ctx.moveTo(a,b)); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); for (const [a,b,c,d] of [[22,7,22,11.5],[27,14.5,34,11.5],[27,20,34,23.5],[22,23,22,29],[17,20,10,23.5],[17,14.5,10,11.5]]) { ctx.moveTo(a,b); ctx.lineTo(c,d); } ctx.stroke();
+    ctx.fillStyle = 'rgba(200,240,138,0.7)'; ctx.beginPath(); ctx.ellipse(15, 12, 4, 2, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
   const drawAmmo = (type, x, y, r, rot) => type === 'special' ? drawNunchaku(x, y, r, rot) : drawShuriken(x, y, r, rot);
 
   function crestAt(x, W, rail, line) {   // live riding-range top (screen px) at screen x
@@ -183,30 +195,40 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
     }
     // --- boss ---
     const B = game.boss, bs = GAME.BOSS_SIZE * sprH;
-    if (B.state === 'away') { if (game.jet.state === 'away' && live) B.next -= dt; if (B.next <= 0 && game.jet.state === 'away') { B.state = 'enter'; B.t = 0; B.hp = GAME.BOSS_HP; B.dy = 0; B.flat = false; B.baseY = peakBodyY(H); B.spin = 0; B.x = W * 1.15; B.tx = rand(GAME.BOSS_POS.x) * W; B.y = peakBodyY(H);
+    if (B.state === 'away') { if (game.jet.state === 'away' && live) B.next -= dt; if (B.next <= 0 && game.jet.state === 'away') { B.state = 'enter'; B.t = 0; if (B.hp <= 0) B.hp = GAME.BOSS_HP; B.dy = 0; B.flat = false; B.baseY = peakBodyY(H); B.spin = 0; B.rot = 0; B.x = W * 1.15;
+        B.tx = rand(bossKind === 'yacht' ? GAME.YACHT_X : GAME.BOSS_POS.x) * W; B.y = peakBodyY(H);
         B.stay = rand(GAME.BOSS_STAY); const n = Math.round(rand([GAME.BOSS_SHOTS[0], GAME.BOSS_SHOTS[1] + 0.99])); B.shots = [];
         let ts = 1.4; for (let k = 0; k < n; k++) { B.shots.push(ts); ts += (B.stay - 2.2) / n; } B.fired = 0; B.windup = 0; } }
     else {
       B.t += dt;
+      const yacht = bossKind === 'yacht';
+      if (yacht) {   // rides the sea: its hull sits on the water line, bobbing and rocking
+        const yh = GAME.YACHT_SIZE * sprH, wl = yTr - GAME.YACHT_H * (yTr - crestAt(B.x, W, rail, line));
+        B.baseY = wl - 0.40 * yh; B.y = B.baseY + (B.state === 'defeat' ? B.sink || 0 : 0);
+        B.yb = Math.sin(game.clock * 2.4) * 6 * H / 1080; if (B.state !== 'defeat') B.rot = Math.sin(game.clock * 1.7) * 0.035;
+      }
       if (B.state === 'enter') { const k = Math.min(1, B.t / 1.0); B.x = W * 1.15 + (B.tx - W * 1.15) * (1 - Math.pow(1 - k, 3)); if (k >= 1) { B.state = 'hover'; B.t = 0; } }
       else if (B.state === 'hover') {
-        B.x = B.tx + Math.sin(B.t * 0.7) * 0.03 * W; B.yb = Math.sin(B.t * 2.1) * 10 * H / 1080;
+        B.x = B.tx + Math.sin(B.t * 0.7) * (yacht ? 0.02 : 0.03) * W; if (!yacht) B.yb = Math.sin(B.t * 2.1) * 10 * H / 1080;
         if (B.fired < B.shots.length && B.t >= B.shots[B.fired] - GAME.WINDUP) {
-          if (B.windup === 0) B.flat = body.y < GAME.FLAT_ZONE * H;          // decide the shot type as the wind-up starts
+          if (B.windup === 0) B.flat = !yacht && body.y < GAME.FLAT_ZONE * H;          // decide the shot type as the wind-up starts
           B.windup = Math.min(1, (B.t - (B.shots[B.fired] - GAME.WINDUP)) / GAME.WINDUP);
           if (B.flat) B.laneY = Math.min(GAME.FLAT_ZONE * H, body.y);        // track the rider's height through the wind-up
         } else B.windup = 0;
         // swoop: slide down to the firing lane for a flat shot, back up to the hover height otherwise
-        B.baseY = peakBodyY(H);
+        if (!yacht) B.baseY = peakBodyY(H);
         const tgtDy = B.flat && B.windup > 0 ? (B.laneY - 0.10 * bs) - B.baseY : 0;
-        B.dy += (tgtDy - B.dy) * Math.min(1, dt * GAME.SWOOP_RATE); B.y = B.baseY + B.dy;
+        B.dy += (tgtDy - B.dy) * Math.min(1, dt * GAME.SWOOP_RATE); if (!yacht) B.y = B.baseY + B.dy;
         if (B.fired < B.shots.length && B.t >= B.shots[B.fired]) {
-          const sx = B.x - 0.30 * bs, sy = B.y + 0.10 * bs + (B.yb || 0), T = rand(GAME.PROJ_TIME);
+          const mz = muzzle(H), sx = mz.x, sy = mz.y, T = rand(GAME.PROJ_TIME);
           if (B.flat) game.proj.push({ x: sx, y: sy, vx: (body.x - sx) / T, vy: 0, tx: body.x, t0: game.clock, T, done: false, flat: true });
           else game.proj.push({ x: sx, y: sy, vx: (body.x - sx) / T, vy: (body.y - sy) / T, tx: body.x, t0: game.clock, T, done: false });
           B.fired++; B.windup = 0; B.flat = false;
         }
         if (B.t >= B.stay) { B.state = 'exit'; B.t = 0; }
+      } else if (B.state === 'defeat' && yacht) {   // KO: the yacht lists and sinks
+        B.sink = (B.sink || 0) + (60 + 260 * B.t) * dt * H / 1080; B.rot += (-0.35 - B.rot) * Math.min(1, dt * 2); B.x -= 0.05 * W * dt;
+        if (B.t > 1.6) { B.state = 'away'; B.next = rand(GAME.BOSS_EVERY); B.sink = 0; B.rot = 0; }
       } else if (B.state === 'defeat') {   // KO: spins and tumbles off the top-right
         B.x += 900 * dt * W / 1920; B.y -= (500 - 1400 * B.t) * dt * H / 1080; B.spin = (B.spin || 0) + dt * 14;
         if (B.t > 1.6) { B.state = 'away'; B.next = rand(GAME.BOSS_EVERY); B.spin = 0; }
@@ -223,6 +245,11 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
     // --- pickups (strings on the face, arcs over the lip) ---
     if (live) game.nextPick -= dt;
     if (game.nextPick <= 0 && !noSpawn && live) { spawnPicks(); game.nextPick = rand(GAME.PICK_GAP); }
+    if (live) game.nextLife -= dt;
+    if (game.nextLife <= 0 && !noSpawn && live) {   // a single shell (extra life) riding the face
+      game.picks.push({ air: false, h: 0.15 + Math.random() * 0.6, x: 1.08 * W, type: 'life', ph: Math.random() * 6 });
+      game.nextLife = rand(GAME.LIFE_EVERY);
+    }
     const ps = GAME.PICK_SIZE * sprH, peakY = PHYS.AIR_PEAK_Y * H + 0.25 * sprH;
     for (let i = game.picks.length - 1; i >= 0; i--) {
       const q = game.picks[i];
@@ -236,8 +263,10 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
       }
       q.y += Math.sin(game.clock * 3 + q.ph) * 4 * H / 1080;
       if (Math.hypot(q.x - body.x, q.y - body.y) < body.r + 0.45 * ps) {
+        game.pops.push({ x: q.x, y: q.y, t: 0, type: q.type });
+        if (q.type === 'life') { game.lives++; game.score += GAME.LIFE_PTS; if (hooks && hooks.onLife) hooks.onLife(); game.picks.splice(i, 1); continue; }
         if (game.clip.length < GAME.CLIP_MAX) game.clip.push(q.type);
-        game.collected++; game.pops.push({ x: q.x, y: q.y, t: 0, type: q.type });
+        game.collected++;
         if (q.type === 'special') { game.specials++; game.score += RUN.SPECIAL_PTS; } else { game.stars++; game.score += RUN.STAR_PTS; }
         game.picks.splice(i, 1); continue;
       }
@@ -248,10 +277,15 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
     const bossUp = B.state === 'enter' || B.state === 'hover';
     const J = game.jet, jetUp = J.state === 'enter' || J.state === 'ride' || J.state === 'exit';
     const ko = () => { game.bossKills++; game.score += RUN.BOSS_KO_PTS; };
-    const tgt = bossUp ? { x: B.x, y: B.y + (B.yb || 0), r: 0.38 * bs, hit: dmg => { B.hp -= dmg; B.flash = 0.12; if (B.hp <= 0) { B.state = 'defeat'; B.t = 0; ko(); burst(B.x, B.y, 40, 900, W, H); } } }
+    const isY = bossKind === 'yacht';
+    const tgt = bossUp ? { x: isY ? B.x - 0.10 * GAME.YACHT_SIZE * sprH : B.x, y: B.y + (B.yb || 0), r: (isY ? 0.48 * GAME.YACHT_SIZE : 0.38 * GAME.BOSS_SIZE) * sprH,
+                hit: dmg => { B.hp -= dmg; B.flash = 0.12; if (B.hp <= 0) { B.state = 'defeat'; B.t = 0; B.sink = 0; ko(); burst(B.x, B.y, 40, 900, W, H); if (hooks && hooks.onBossKO) hooks.onBossKO(bossKind); } } }
               : jetUp ? { x: J.cx, y: J.cy, r: 0.40 * GAME.JET_SIZE * sprH, hit: dmg => { J.hp -= dmg; J.flash = 0.12; if (J.hp <= 0) { J.state = 'defeat'; J.t = 0; ko(); burst(J.cx, J.cy, 40, 900, W, H); } } } : null;
     game.fireCd = Math.max(0, game.fireCd - dt);
-    if (air && game.clip.length && game.fireCd === 0 && (tgt || !GAME.FIRE_NEEDS_BOSS)) {
+    // THE RULE (both bosses): you can throw when you are LEVEL with the boss -- on the face for the yacht,
+    // at the top of a jump (or high on the face when he swoops) for the flyer. Not tied to being airborne.
+    game.canFire = !!tgt && Math.abs(body.y - tgt.y) < GAME.FIRE_BAND * sprH;
+    if (game.canFire && game.clip.length && game.fireCd === 0) {
       const type = game.clip.shift(), sp = GAME.SHOT_SPEED * W * (type === 'special' ? 0.75 : 1);
       const tx = tgt ? tgt.x : W * 1.2, ty = tgt ? tgt.y : body.y - 0.2 * H;
       const flat = body.y < GAME.FLAT_ZONE * H && ty < GAME.FLAT_ZONE * H;   // both up high: straight 0 deg, no homing -> time your height
@@ -366,24 +400,35 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
       for (let k = 0; k < 4; k++) { const a = game.clock * 3 + o.ph + k * 1.6; ctx.beginPath(); ctx.arc(o.x + Math.cos(a) * wdt * 0.55, o.y - Math.abs(Math.sin(a)) * hgt * 0.12, hgt * 0.025, 0, 7); ctx.fill(); }   // splash flecks
     }
   }
+  // where the boss's ooze balls come from: his hand, or the yacht's bow cannon (sprite 760x324, muzzle ~(0.03, 0.47))
+  function muzzle(H) {
+    const B = game.boss, yb = B.y + (B.yb || 0);
+    if (bossKind === 'yacht') { const hgt = GAME.YACHT_SIZE * H / 1080 * 205, im = sprImg(SPR.yacht), wdt = hgt * im.width / im.height;
+      const lx = -0.47 * wdt, ly = -0.03 * hgt, c = Math.cos(B.rot || 0), sn = Math.sin(B.rot || 0);
+      return { x: B.x + lx * c - ly * sn, y: yb + lx * sn + ly * c }; }
+    const bs = GAME.BOSS_SIZE * H / 1080 * 205;
+    return { x: B.x - 0.30 * bs, y: yb + 0.10 * bs };
+  }
   function drawBoss(H) {
     const B = game.boss; if (B.state === 'away') return;
-    const im = sprImg(SPR.boss), hgt = GAME.BOSS_SIZE * H / 1080 * 205, wdt = hgt * im.width / im.height;
+    const yacht = bossKind === 'yacht';
+    const im = sprImg(yacht ? SPR.yacht : SPR.boss), hgt = (yacht ? GAME.YACHT_SIZE : GAME.BOSS_SIZE) * H / 1080 * 205, wdt = hgt * im.width / im.height;
     const shake = B.windup > 0 ? Math.sin(game.clock * 60) * 4 * B.windup : 0;
     const x = B.x + shake, y = B.y + (B.yb || 0);
-    if (B.windup > 0) {   // telegraph: glowing charge at his hand + "!"
-      const hx = x - 0.30 * hgt, hy = y + 0.10 * hgt, r = GAME.PROJ_R * H * (0.5 + B.windup);
+    if (B.windup > 0) {   // telegraph: glowing charge at his hand (the yacht's bow cannon) + "!"
+      const mz = muzzle(H), hx = mz.x + shake, hy = mz.y, r = GAME.PROJ_R * H * (0.5 + B.windup);
       ctx.fillStyle = `rgba(0,255,30,${0.25 + 0.5 * B.windup})`; ctx.beginPath(); ctx.arc(hx, hy, r * 1.8, 0, 7); ctx.fill();
       ctx.fillStyle = '#00ff1e'; ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(hx, hy, r, 0, 7); ctx.fill(); ctx.stroke();
       ctx.font = `900 ${Math.round(hgt * 0.32)}px system-ui`; ctx.fillStyle = '#ffd400'; ctx.strokeStyle = INK; ctx.lineWidth = 6;
       ctx.strokeText('!', x + hgt * 0.30, y - hgt * 0.42); ctx.fillText('!', x + hgt * 0.30, y - hgt * 0.42);
     }
-    ctx.save(); ctx.translate(x, y); if (B.spin) ctx.rotate(B.spin);
+    ctx.save(); ctx.translate(x, y); if (B.spin) ctx.rotate(B.spin); if (yacht && B.rot) ctx.rotate(B.rot);
+    if (yacht && B.state === 'defeat') ctx.globalAlpha = Math.max(0, 1 - B.t / 1.6);
     ctx.drawImage(im, -wdt / 2, -hgt / 2, wdt, hgt);
     if (B.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = B.flash / 0.12; ctx.drawImage(im, -wdt / 2, -hgt / 2, wdt, hgt); }
     ctx.restore();
     if (B.state !== 'defeat') {   // hp bar
-      const bw = hgt * 0.9, bh = Math.max(8, hgt * 0.06), bxx = x - bw / 2, byy = y - hgt * 0.62;
+      const bw = (yacht ? 1.1 : 0.9) * hgt, bh = Math.max(8, hgt * 0.06), bxx = x - bw / 2, byy = y - hgt * 0.62;
       ctx.fillStyle = INK; ctx.fillRect(bxx - 3, byy - 3, bw + 6, bh + 6);
       ctx.fillStyle = '#3a2a4a'; ctx.fillRect(bxx, byy, bw, bh);
       ctx.fillStyle = '#d60f0f'; ctx.fillRect(bxx, byy, bw * Math.max(0, B.hp) / GAME.BOSS_HP, bh);
@@ -392,7 +437,8 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
   function drawPicks(H) {
     const r = GAME.PICK_SIZE * H / 1080 * 205 / 2;
     for (const q of game.picks) {
-      ctx.save(); ctx.globalAlpha = 0.55; ctx.fillStyle = '#ffd400'; ctx.beginPath(); ctx.arc(q.x, q.y, r * 1.18, 0, 7); ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();   // yellow token disc
+      ctx.save(); ctx.globalAlpha = 0.55; ctx.fillStyle = q.type === 'life' ? '#e800a6' : '#ffd400'; ctx.beginPath(); ctx.arc(q.x, q.y, r * 1.18, 0, 7); ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();   // yellow token disc
+      if (q.type === 'life') { drawShell(q.x, q.y, r * 1.05, Math.sin(game.clock * 2.5 + q.ph) * 0.15); continue; }
       drawAmmo(q.type, q.x, q.y, q.type === 'special' ? r * 1.15 : r, q.type === 'special' ? Math.sin(game.clock * 3 + q.ph) * 0.5 : game.clock * 2.2 + q.ph);
     }
   }
@@ -416,7 +462,7 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
       if (i < game.clip.length) drawAmmo(game.clip[i], x, y0, game.clip[i] === 'special' ? r * 1.1 : r, game.clip[i] === 'special' ? 0.3 : 0.2);
       else { ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y0, r * 0.55, 0, 7); ctx.stroke(); }
     }
-    if (air && game.clip.length && (game.boss.state === 'enter' || game.boss.state === 'hover')) {   // FIRE! cue
+    if (game.canFire && game.clip.length) {   // FIRE! cue
       ctx.font = `900 ${Math.round(r * 1.1)}px system-ui`; ctx.fillStyle = '#ffd400'; ctx.fillText('FIRE!', x0 + GAME.CLIP_MAX * gap + r * 0.4, y0 + r * 0.4);
     }
     ctx.restore();
@@ -595,8 +641,17 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
     get debugText() { return debugText; },
     get mode() { return mode; },
     setMode(m) { mode = m; sVel = 0; air = false; },
+    /** Start a mission's fight: which boss, full HP, first visit after `firstS` seconds; clears the water. */
+    setMission(kind, firstS) {
+      bossKind = kind; const B = game.boss;
+      B.state = 'away'; B.hp = GAME.BOSS_HP; B.next = firstS; B.flash = 0; B.windup = 0; B.sink = 0; B.rot = 0; B.spin = 0;
+      game.proj.length = 0; game.obst.length = 0; game.shots.length = 0; game.nextObst = 2.0;
+    },
+    get bossKind() { return bossKind; },
     // dev tools only
-    dev: { summonBoss, summonJet, spawnObstacle, spawnPicks, setNoSpawn: v => { noSpawn = !!v; },
+    dev: { koBoss: () => { const B = game.boss; if (B.state !== 'enter' && B.state !== 'hover') return;
+        B.hp = 0; B.state = 'defeat'; B.t = 0; B.sink = 0; game.bossKills++; game.score += RUN.BOSS_KO_PTS; if (hooks && hooks.onBossKO) hooks.onBossKO(bossKind); },
+      summonBoss, summonJet, spawnObstacle, spawnPicks, setNoSpawn: v => { noSpawn = !!v; },
       rider: () => ({ mode, h, sPos, sVel, air, airH, airV, tilt }) },
   };
 }

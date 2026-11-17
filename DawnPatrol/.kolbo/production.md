@@ -25,3 +25,6 @@ nano-banana-pro, 4 variations, 1:1, DNAs @tales_mikey + @tales_tmnt_style, 72.8 
 - 2026-11-10 jetski water boss: generate_image nano-banana-pro, DNA @tales_tmnt_style, session 6af32208ce7f92989466d361, 18.2 credits, id 6af3220ae7877679bbe98c5f (flood-fill cut-out -> jetski_boss.png). Two earlier shuriken/nunchaku attempts timed out (no charge).
 
 - 2026-11-10 lobby thumbnail: generate_image_edit gpt-image-2 3:4 2K medium, session 6af3269ece7f92989466d4b8, 12 credits, id 6af3269fd64da20ef742d95b. Finalized to 200x226 / 400x452 / 600x680, square corners.
+
+- 2026-11-17 yacht boss (mission 1): generate_image_edit nano-banana-pro/edit, source = boss.png flattened on white, DNA @tales_tmnt_style, 16:9, 2 variations, session 6afc1751f6fe79cb5470fa84, 36.4 credits, gen 6afc175273b44d31f3e840dd. Picked variation 2 (cleaner side view, flat waterline); border flood-fill cut-out -> wave-levels/yacht_boss.png (760x324) and TmntWaveSurf/src/assets/yacht_boss.webp.
+- Mission/win card art: Elad's "micky happy.webp" (Documents/TMNT/TMNT MM Full body/start and win screen prototype), placeholder -> TmntWaveSurf/src/assets/mikey_happy.webp.

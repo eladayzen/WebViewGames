@@ -67,7 +67,7 @@ float fbm(vec2 p){float a=.5,s=0.;for(int i=0;i<4;i++){s+=a*vn(p);p*=2.03;a*=.5;
 
 const POST_FRAG = (ooze) => `
     ${ooze ? '#define OOZE' : ''}
-    uniform sampler2D tC,tD,tN; uniform vec2 uRes; uniform float uTime,uScroll,near,far; varying vec2 vUv; ${NOISE} ${ARCH}
+    uniform sampler2D tC,tD,tN; uniform vec2 uRes; uniform float uTime,uScroll,near,far,uDay; varying vec2 vUv; ${NOISE} ${ARCH}
     float lin(float d){ float z=d*2.-1.; return 2.*near*far/(far+near-z*(far-near)); }
     float halftone(vec2 fc, float amt, float cell){ vec2 g=fc/cell; vec2 c=fract(vec2(g.x+0.5*mod(floor(g.y),2.),g.y))-0.5; return step(length(c), 0.62*sqrt(clamp(amt,0.,1.))); }
     vec3 oozeWater(vec3 c){   // cyan/blue/white water -> ooze greens / lime foam
@@ -91,18 +91,22 @@ const POST_FRAG = (ooze) => `
 #ifdef OOZE
       return skyOoze(uv);
 #endif
-      vec3 c=mix(vec3(0.91,0.33,0.55),vec3(0.27,0.12,0.42),smoothstep(0.45,1.0,uv.y));
-      c=mix(c,vec3(1.0,0.75,0.35),smoothstep(0.62,0.45,uv.y)*0.6);
+      // uDay: 0 = evening (mission 2), 1 = sunny day (mission 1); blends, so a change can fade
+      vec3 eve=mix(vec3(0.91,0.33,0.55),vec3(0.27,0.12,0.42),smoothstep(0.45,1.0,uv.y));
+      eve=mix(eve,vec3(1.0,0.75,0.35),smoothstep(0.62,0.45,uv.y)*0.6);
+      vec3 day=mix(vec3(0.80,0.94,1.0),vec3(0.24,0.62,0.96),smoothstep(0.50,1.0,uv.y));   // pale horizon -> deep blue
+      vec3 c=mix(eve, day, uDay);
       // far skyline layer (~0.10 screen-widths/s), hazy, no windows
       float fx2=floor(uv.x*30.+uScroll*0.33); float fh=0.60+0.16*h21(vec2(fx2,5.));
-      if(uv.y<fh) c=mix(c, vec3(0.42,0.20,0.50), 0.85);
-      // near skyline layer (~0.20 screen-widths/s) with lit windows
+      if(uv.y<fh) c=mix(c, mix(vec3(0.42,0.20,0.50), vec3(0.58,0.72,0.88), uDay), 0.85);
+      // near skyline layer (~0.20 screen-widths/s) with lit windows at night, sky-reflecting ones by day
       float bx=floor(uv.x*46.+uScroll*1.0); float bh=0.55+0.13*h21(vec2(bx,3.))+0.06*step(0.85,h21(vec2(bx,9.)));
-      if(uv.y<bh){ c=vec3(0.20,0.09,0.32);
+      if(uv.y<bh){ c=mix(vec3(0.20,0.09,0.32), mix(vec3(0.62,0.30,0.26), vec3(0.36,0.42,0.58), step(0.5,h21(vec2(bx,8.)))), uDay);
         vec2 wc2=vec2(uv.x*184.+uScroll*4.0, uv.y*90.);
         vec2 wcell=fract(wc2);
-        float lit=step(0.8,h21(floor(wc2)));
-        if(wcell.x>0.3&&wcell.x<0.7&&wcell.y>0.3&&wcell.y<0.7&&lit>0.) c=mix(vec3(1.,0.83,0.),vec3(0.,0.79,1.),step(0.5,h21(floor(wc2)+1.)));
+        float lit=step(mix(0.8,0.45,uDay),h21(floor(wc2)));
+        vec3 wn=mix(mix(vec3(1.,0.83,0.),vec3(0.,0.79,1.),step(0.5,h21(floor(wc2)+1.))), vec3(0.72,0.90,1.0), uDay);
+        if(wcell.x>0.3&&wcell.x<0.7&&wcell.y>0.3&&wcell.y<0.7&&lit>0.) c=wn;
       }
       return c;
     }
@@ -369,7 +373,7 @@ export function createWave(canvas) {
   let rtColor = null, rtNormal = null;
   const normalMat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
   const postUniforms = { tC: { value: null }, tD: { value: null }, tN: { value: null },
-    uRes: { value: new THREE.Vector2(1, 1) }, uTime: { value: 0 }, uScroll: uniforms.uScroll, uApex: uniforms.uApex, uBase: uniforms.uBase, uShoulder: uniforms.uShoulder, uAsp: uniforms.uAsp, near: { value: camera.near }, far: { value: camera.far } };
+    uRes: { value: new THREE.Vector2(1, 1) }, uTime: { value: 0 }, uDay: { value: 0 }, uScroll: uniforms.uScroll, uApex: uniforms.uApex, uBase: uniforms.uBase, uShoulder: uniforms.uShoulder, uAsp: uniforms.uAsp, near: { value: camera.near }, far: { value: camera.far } };
   const postVert = `varying vec2 vUv; void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`;
   const postMats = {
     toon: new THREE.ShaderMaterial({ uniforms: postUniforms, vertexShader: postVert, fragmentShader: POST_FRAG(false), depthTest: false, depthWrite: false }),
@@ -478,5 +482,10 @@ export function createWave(canvas) {
     renderer.compile(scene, camera);
   }
 
-  return { layout, update, setTheme, getTheme: () => theme, precompile, renderer };
+  /** Sky time of day: 1 = sunny day, 0 = evening. Pass fade seconds to blend instead of cutting. */
+  let dayTarget = 0, dayFade = 0;
+  function setDay(v, fadeS = 0) { dayTarget = v; dayFade = fadeS; if (!fadeS) postUniforms.uDay.value = v; }
+  function stepDay(dt) { const u = postUniforms.uDay; if (u.value !== dayTarget) { const k = dayFade > 0 ? dt / dayFade : 1;
+    u.value = u.value < dayTarget ? Math.min(dayTarget, u.value + k) : Math.max(dayTarget, u.value - k); } }
+  return { layout, update, setTheme, getTheme: () => theme, precompile, renderer, setDay, stepDay };
 }
