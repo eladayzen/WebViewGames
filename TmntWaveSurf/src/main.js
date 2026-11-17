@@ -73,6 +73,8 @@ function boot() {
       onOoze(on) {   // ooze power: the world goes ooze green; +3 lives on pickup
         wave.setTheme(on ? 'ooze' : 'toon');
         if (on && state === State.RUNNING) { lives = Math.min(RUN.LIVES + GAME.OOZE_LIVES, lives + GAME.OOZE_LIVES); hud.setLives(lives); }
+        // when it wears off the 3 bonus lives go too -- but never below 2 (3 or fewer left -> 2)
+        if (!on && state === State.RUNNING) { lives = Math.max(2, lives - GAME.OOZE_LIVES); hud.setLives(lives); }
       },
       onLife() { if (state === State.RUNNING && lives < RUN.LIVES) { lives++; hud.setLives(lives); } },
       onDamage() {

@@ -95,7 +95,7 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
   function reset() {
     game = { hits: 0, dodged: 0, obst: [], proj: [], nextObst: 2.0, invuln: 0, flash: 0, knockTilt: 0,
       boss: { state: 'away', t: 0, next: 20 + Math.random() * 10, x: 0, y: 0, tx: 0, shots: [], fired: 0, windup: 0, stay: 10 }, projTimes: [], clock: 0 };
-    game.picks = []; game.clip = []; game.shots = []; game.pops = []; game.nextPick = 1.2; game.nextLife = rand(GAME.LIFE_EVERY); game.lives = 0; game.ooze = 0; game.oozeSpawned = false; game.canFire = false; game.fireCd = 0; game.collected = 0; game.bossHits = 0; game.bossKills = 0;
+    game.picks = []; game.clip = []; game.shots = []; game.pops = []; game.nextPick = 1.2; game.nextLife = rand(GAME.LIFE_EVERY); game.lives = 0; game.ooze = 0; game.oozeSpawned = false; game.oozeCd = 0; game.canFire = false; game.fireCd = 0; game.collected = 0; game.bossHits = 0; game.bossKills = 0;
     game.boss.hp = GAME.BOSS_HP; game.boss.flash = 0;
     game.jet = { state: 'away', next: 34 + Math.random() * 10, t: 0, x: 0, y: 0, s: 0.3, v: 0, holdT: 0, air: false, airH: 0, airV: 0, airG: 1, airT: 0,
       tgt: 0.4, tgtT: 0, hp: GAME.BOSS_HP, flash: 0, shots: [], fired: 0, windup: 0, stay: 12, tilt: 0, spin: 0, cx: 0, cy: 0 };
@@ -260,11 +260,12 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
     if (game.nextPick <= 0 && !noSpawn && live) { spawnPicks(); game.nextPick = rand(GAME.PICK_GAP); }
     if (live) game.nextLife -= dt;
     const Bq = game.boss;
-    if (live && !noSpawn && Bq.state === 'away' && Bq.next < GAME.OOZE_LEAD && !game.oozeSpawned && game.ooze <= 0) {
+    if (live && !noSpawn && Bq.state === 'away' && Bq.next < GAME.OOZE_LEAD && !game.oozeSpawned && game.ooze <= 0 && game.oozeCd <= 0) {
       game.picks.push({ air: false, h: 0.30 + Math.random() * 0.35, x: 1.08 * W, type: 'ooze', ph: Math.random() * 6 });
       game.oozeSpawned = true;
     }
     if (Bq.state !== 'away') game.oozeSpawned = false;   // re-arm for the boss's next visit
+    game.oozeCd = Math.max(0, (game.oozeCd || 0) - dt);
     if (game.ooze > 0) { game.ooze -= dt; if (game.ooze <= 0) { game.ooze = 0; if (hooks && hooks.onOoze) hooks.onOoze(false); } }
     if (game.nextLife <= 0 && !noSpawn && live) {   // a single shell (extra life) riding the face
       game.picks.push({ air: false, h: 0.15 + Math.random() * 0.6, x: 1.08 * W, type: 'life', ph: Math.random() * 6 });
@@ -285,7 +286,7 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
       if (Math.hypot(q.x - body.x, q.y - body.y) < body.r + 0.45 * ps) {
         game.pops.push({ x: q.x, y: q.y, t: 0, type: q.type });
         if (q.type === 'ooze') {
-          game.ooze = GAME.OOZE_DURATION; burst(q.x, q.y, 40, 900, W, H);
+          game.ooze = GAME.OOZE_DURATION; game.oozeCd = GAME.OOZE_COOLDOWN; burst(q.x, q.y, 40, 900, W, H);
           if (game.boss.state === 'away') game.boss.next = Math.min(game.boss.next, GAME.OOZE_BOSS_IN);   // the boss comes while you are powered
           if (hooks && hooks.onOoze) hooks.onOoze(true);
           game.picks.splice(i, 1); continue;
@@ -682,7 +683,7 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
       bossKind = kind; const B = game.boss;
       B.state = 'away'; B.hp = GAME.BOSS_HP; B.next = firstS; B.flash = 0; B.windup = 0; B.sink = 0; B.rot = 0; B.spin = 0;
       game.proj.length = 0; game.obst.length = 0; game.shots.length = 0; game.nextObst = 2.0;
-      game.ooze = 0; game.oozeSpawned = false; game.picks = game.picks.filter((q) => q.type !== 'ooze');
+      game.ooze = 0; game.oozeSpawned = false; game.oozeCd = 0; game.picks = game.picks.filter((q) => q.type !== 'ooze');
     },
     get bossKind() { return bossKind; },
     // dev tools only

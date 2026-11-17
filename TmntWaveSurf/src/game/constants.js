@@ -42,7 +42,7 @@ export const GAME = {
   OBST_H: [0.06, 0.88],     // face height band they spawn in (0 trough .. 1 crest)
   OBST_BOB: 6,              // px bob amplitude
   BOSS_SIZE: 0.80,          // boss height as a fraction of Mikey's height
-  BOSS_EVERY: [20, 30],     // s between visits
+  BOSS_EVERY: [8, 12],      // s between visits (was 20-30; Elad 2026-11-17: more often)
   BOSS_STAY: [8, 12],       // s hovering per visit
   BOSS_POS: { x: [0.65, 0.85], y: 0.13 },   // hover zone (screen fractions)
   BOSS_SHOTS: [2, 4],       // projectiles per visit
@@ -69,6 +69,7 @@ export const GAME = {
   OOZE_DMG: 3,              // damage multiplier for thrown stars / nunchaku
   OOZE_LEAD: 7,             // spawn the pickup when the boss is this many s from arriving
   OOZE_BOSS_IN: 2.5,        // after pickup, the boss arrives within this many s
+  OOZE_COOLDOWN: 30,        // s after a power starts before another canister can spawn (bosses now come every ~20 s)
   CLIP_MAX: 12,             // ammo clip capacity
   FIRE_RATE: 4,             // shots per second while level with the boss
   FIRE_BAND: 0.75,          // 'level with the boss' = rider body within this many Mikey-heights of the boss's centre, vertically
@@ -110,7 +111,7 @@ export const MISSIONS = [
             { who: 'mikey', text: 'Bay saved! Pizza time!' }] },
 ];
 export const MISSION = {
-  FIRST_BOSS_S: [10, 14],   // s into a mission before its boss first shows up
+  FIRST_BOSS_S: [6, 9],     // s into a mission before its boss first shows up
   BRIEF_SECONDS: 15,        // the mission card starts the mission by itself after this long
   WIN_SECONDS: 12,          // the mission-complete card moves on by itself after this long
   KO_HOLD_S: 1.8,           // let the KO animation play before the win card
