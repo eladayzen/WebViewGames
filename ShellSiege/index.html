@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script>
+      // GoBalance SDK integration -- see ../GOBALANCE_SDK.md for the contract.
+      // Everything here is a no-op outside the Unity WebView, so it is always
+      // safe to ship and safe to test in a normal browser.
+
+      // The only channel for JS errors on-device: there is no devtools console
+      // inside the WebView, so surface them through the native bridge.
+      window.addEventListener('error', function (e) {
+        if (window.Unity) window.Unity.call('JS ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        if (window.Unity) window.Unity.call('JS UNHANDLED REJECTION: ' + e.reason);
+      });
+
+      // rAF shim: WKWebView treats the occluded Unity overlay as a background
+      // tab and suspends requestAnimationFrame entirely. Queue callbacks
+      // instead; Unity's WebGameController flushes them via __pumpFrames()
+      // every frame regardless of visibility. A real native loop runs
+      // underneath too, so a normal browser behaves exactly as before.
+      (function () {
+        var nativeRAF = window.requestAnimationFrame.bind(window);
+        window.__rafQueue = [];
+        window.requestAnimationFrame = function (cb) { window.__rafQueue.push(cb); return window.__rafQueue.length; };
+        window.cancelAnimationFrame = function () {};
+        window.__pumpFrames = function () {
+          var q = window.__rafQueue;
+          if (!q.length) return;
+          window.__rafQueue = [];
+          var t = performance.now();
+          for (var i = 0; i < q.length; i++) {
+            try { q[i](t); }
+            catch (e) {
+              if (window.Unity) window.Unity.call('RAF CB ERROR: ' + e.message);
+              else if (typeof console !== 'undefined' && console.error) console.error('RAF CB ERROR:', e);
+            }
+          }
+        };
+        (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+      })();
+    </script>
+    <title>Shell Siege</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- The X is the only way out of a game on the board, and it carries
+         #gb-back because every game in this repo does. The inline handler is
+         the fallback for a build whose module failed to load: a game that
+         cannot boot must still be escapable. Quit then pause, the same order
+         in every game here, so a child who learns one knows them all. -->
+    <div id="chrome">
+      <button id="gb-back" type="button" aria-label="Quit"
+              onclick="(window.__gbBack ? window.__gbBack() : (window.Unity &amp;&amp; window.Unity.call('nav:back')))">&#10005;</button>
+      <button id="pause-button" type="button" aria-label="Pause">&#10074;&#10074;</button>
+      <!-- Opens the prototype readout. Small and last, because on a board it
+           is not for the player -- it is for whoever is standing behind them. -->
+      <button id="dev-button" type="button" aria-label="Readout">&#8943;</button>
+    </div>
+
+    <!-- WHAT THE PLAYER ACTUALLY NEEDS: how much health is left and how many
+         they have put down. Separate from the readout below, which is a dev
+         panel and starts closed. -->
+    <div id="vitals">
+      <div id="hp-bar"><div id="hp-fill"></div></div>
+      <div id="kills"><span id="hud-kills">0</span><small>down</small></div>
+      <div id="xp-wrap"><div id="xp-bar"><div id="xp-fill"></div></div><span id="lv-badge">1</span></div>
+    </div>
+
+    <canvas id="game"></canvas>
+
+    <!-- A PROTOTYPE READOUT, not a HUD. The Diablo furniture -- the globes,
+         the belt, the wave banner -- is phase 4; what is here is the three
+         numbers somebody standing on a board needs in order to say whether
+         the camera and the floor are right. `src` in particular: "does this
+         feel bad" has a different answer on a board than on a keyboard, and
+         the readout has to say which is being judged. -->
+    <!-- CLOSED BY DEFAULT. `?dev=1` opens it on load, the button toggles it. -->
+    <div id="hud" class="hidden">
+      <span id="hud-time">0.0s</span>
+      <span id="hud-hits">0</span><small>hits</small>
+      <span id="hud-src">-</span>
+    </div>
+
+    <div id="boot">loading the plaza&hellip;</div>
+
+    <!-- THE REQUIRED DOM CONTRACT. #gameover-overlay and #restart-button are
+         named by GOBALANCE_SDK.md: the app looks for this shape, so the ids
+         are not ours to rename. The Foot Clan can now end a run, so this is
+         reachable rather than ceremonial. -->
+    <div id="gameover-overlay" class="hidden">
+      <div class="card">
+        <div class="card-title">OVERRUN</div>
+        <div class="card-score"><span id="final-kills">0</span> down</div>
+        <button id="restart-button" type="button">GO AGAIN</button>
+      </div>
+    </div>
+
+    <!-- THE ONE PAUSE IN THE GAME. Two cards, one per lean direction, and
+         centre deliberately means nothing -- it is the way out of both, not a
+         third option. See core/levelup.js for why it is two and not three. -->
+    <div id="levelup-overlay" class="hidden">
+      <div class="lv-title">LEVEL <span id="lv-level">2</span></div>
+      <div class="lv-cards">
+        <div class="lv-card" data-i="0">
+          <div class="lv-label"></div>
+          <div class="lv-blurb"></div>
+          <div class="lv-track"><div class="lv-fill"></div></div>
+        </div>
+        <div class="lv-card" data-i="1">
+          <div class="lv-label"></div>
+          <div class="lv-blurb"></div>
+          <div class="lv-track"><div class="lv-fill"></div></div>
+        </div>
+      </div>
+      <div class="lv-hint">LEAN AND HOLD</div>
+    </div>
+
+    <div id="paused-overlay" class="hidden">
+      <div class="card">
+        <div class="card-title">PAUSED</div>
+        <button id="resume-button" type="button">KEEP GOING</button>
+      </div>
+    </div>
+
+    <script>
+      // The readout is a dev panel: closed unless asked for. Wired here rather
+      // than in the module so it still works if the module fails to load --
+      // the same reasoning as the inline fallback on the quit button.
+      (function () {
+        var hud = document.getElementById('hud');
+        if (/[?&]dev=1/.test(location.search)) hud.classList.remove('hidden');
+        document.getElementById('dev-button').addEventListener('click', function () {
+          hud.classList.toggle('hidden');
+        });
+      })();
+    </script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

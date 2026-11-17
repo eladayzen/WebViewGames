@@ -1,0 +1,183 @@
+/* Chrome only. The game is a canvas; everything here is the frame around it. */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #16242c;            /* matches render/view.js FOG.color */
+  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.hidden { display: none !important; }
+
+#chrome {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+#chrome button {
+  width: 42px;
+  height: 42px;
+  border: 2px solid rgba(190, 220, 210, 0.35);
+  border-radius: 50%;
+  background: rgba(10, 20, 26, 0.55);
+  color: #cfe8df;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#hud {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(14px, env(safe-area-inset-left));
+  z-index: 10;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: #bfe3d6;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+#hud small { opacity: 0.6; font-size: 11px; margin-left: -6px; }
+#hud-src { opacity: 0.55; font-size: 12px; }
+
+#boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #7fbfab;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  z-index: 20;
+}
+
+#gameover-overlay, #paused-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 16, 20, 0.6);
+  z-index: 30;
+}
+.card {
+  padding: 26px 34px;
+  border: 2px solid rgba(60, 230, 160, 0.3);
+  border-radius: 14px;
+  background: rgba(14, 28, 34, 0.94);
+  text-align: center;
+  color: #d8f0e6;
+}
+.card-title { font-size: 26px; letter-spacing: 0.1em; margin-bottom: 16px; }
+.card button {
+  padding: 11px 24px;
+  border: 0;
+  border-radius: 9px;
+  background: #3ce6a0;
+  color: #06231a;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+/* --- VITALS ------------------------------------------------------------
+   What the player needs, as opposed to what the developer needs: health
+   and a kill count. Top-centre and large, because this is read at a glance
+   from standing distance on a balance board, not from a desk. */
+#vitals {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 20;
+  pointer-events: none;
+}
+#hp-bar {
+  width: 30vw;
+  max-width: 320px;
+  min-width: 150px;
+  height: 14px;
+  border-radius: 8px;
+  border: 2px solid rgba(10, 22, 26, 0.55);
+  background: rgba(10, 22, 26, 0.45);
+  overflow: hidden;
+}
+#hp-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #ff6b4a, #ffd166 60%, #3ce6a0);
+  /* Eased, so chip damage is visible as movement rather than as a jump. */
+  transition: width 140ms linear;
+}
+#kills {
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
+}
+#kills small { font-size: 11px; font-weight: 400; opacity: 0.75; margin-left: 4px; }
+
+#dev-button { opacity: 0.45; }
+.card-score { font-size: 15px; opacity: 0.8; margin-bottom: 16px; }
+
+/* --- XP, beside the vitals -------------------------------------------- */
+#xp-wrap { display: flex; align-items: center; gap: 7px; }
+#xp-bar {
+  width: 16vw; max-width: 160px; min-width: 70px; height: 7px;
+  border-radius: 5px; background: rgba(10, 22, 26, 0.45);
+  border: 1px solid rgba(10, 22, 26, 0.5); overflow: hidden;
+}
+#xp-fill { height: 100%; width: 0%; background: #6fd0ff; transition: width 120ms linear; }
+#lv-badge {
+  color: #cdeeff; font-size: 12px; font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* --- THE CHOICE SCREEN ------------------------------------------------- */
+#levelup-overlay {
+  position: fixed; inset: 0; z-index: 40;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; background: rgba(8, 16, 20, 0.72);
+}
+.lv-title { color: #d8f0e6; font-size: 20px; letter-spacing: 0.18em; opacity: 0.85; }
+.lv-cards { display: flex; gap: 5vw; }
+/* The two cards are pushed APART on purpose: they map onto lean left and
+   lean right, so the gap between them is the neutral band made visible. */
+.lv-card {
+  width: 33vw; max-width: 260px; min-width: 130px;
+  padding: 18px 16px 14px;
+  border: 2px solid rgba(60, 230, 160, 0.22);
+  border-radius: 14px;
+  background: rgba(14, 28, 34, 0.94);
+  text-align: center; color: #d8f0e6;
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.lv-card.active { border-color: #3ce6a0; transform: scale(1.06); }
+.lv-label { font-size: 17px; font-weight: 700; letter-spacing: 0.06em; }
+.lv-blurb { font-size: 12px; opacity: 0.7; margin: 6px 0 12px; }
+.lv-track { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.lv-fill { height: 100%; width: 0%; background: #3ce6a0; }
+.lv-hint { color: #d8f0e6; font-size: 12px; letter-spacing: 0.14em; opacity: 0.5; }

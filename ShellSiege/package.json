@@ -1,0 +1,18 @@
+{
+  "name": "shell-siege",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test test/axes.test.mjs test/combat.test.mjs test/facing.test.mjs test/locomotion.test.mjs test/mask.test.mjs test/throwing.test.mjs test/weapon.test.mjs test/clipsets.test.mjs test/floors.test.mjs test/fist.test.mjs test/foes.test.mjs test/abilities.test.mjs test/levelup.test.mjs test/source-parses.test.mjs"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  }
+}
