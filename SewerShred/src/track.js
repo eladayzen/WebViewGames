@@ -436,8 +436,21 @@ export const ZONES_PARKED = ['rust_red', 'rust_ember'];   // too red / lava-like
 
 // Large-scale brightness variation: re-sample the wall's own map at 1/7 scale
 // and modulate, so identical tiles don't line up into an obvious grid.
-function antiRepeat(mat, stage1 = null) {
-  const key = stage1 ? 'antiRepeat-' + stage1.join('-') : 'antiRepeat';
+// The 180 edge (Elad 2026-11-18): the ride is the lower half (DIRECT 180 stops the
+// rider at θ = ±90°). A heavy ink seam with a pale lip marks those two lines
+// exactly, so the wall itself shows where the play ends, and everything above
+// them is shaded down: that upper half is what a matte painting will replace.
+// θ comes straight from the wall uv (u = θ / 2π · around, θ = 0 the floor).
+const edgeGlsl = (around) => `
+  {
+    float th = mod(vMapUv.x * ${(TAU / around).toFixed(6)} + PI, PI2) - PI;
+    float e = abs(th) - 1.5707963;                      // < 0 inside the 180
+    diffuseColor.rgb *= mix(1.0, 0.5, smoothstep(0.0, 0.18, e));          // upper half
+    diffuseColor.rgb *= mix(1.18, 1.0, smoothstep(-0.075, -0.045, e));    // pale lip inside the line
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.06, 0.07), 1.0 - smoothstep(0.022, 0.032, abs(e + 0.012)));  // the ink seam
+  }`;
+function antiRepeat(mat, stage1 = null, around = 8) {
+  const key = (stage1 ? 'antiRepeat-' + stage1.join('-') : 'antiRepeat') + '-a' + around;
   mat.customProgramCacheKey = () => key;   // same closure source, several shaders
   mat.onBeforeCompile = (sh) => {
     // Y-junction cut: walls inside the other arm are discarded (clip > 0)
@@ -457,6 +470,7 @@ function antiRepeat(mat, stage1 = null) {
           diffuseColor.rgb *= 0.9 + 0.2 * macro + 0.12 * (macro2 - 0.5);
           float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
           diffuseColor.rgb = mix(vec3(lum), diffuseColor.rgb, ${stage1[0].toFixed(3)}) * ${stage1[1].toFixed(3)} + 0.05;
+          ${edgeGlsl(around)}
         #endif`);
       return;
     }
@@ -465,6 +479,7 @@ function antiRepeat(mat, stage1 = null) {
         float macro = texture2D(map, vMapUv * 0.143 + vec2(0.37, 0.11)).g;
         float macro2 = texture2D(map, vMapUv.yx * 0.071 + vec2(0.7, 0.2)).r;
         diffuseColor.rgb *= 0.94 + 0.1 * macro + 0.08 * (macro2 - 0.5);   // look test: gentle, the art is flat on purpose
+        ${edgeGlsl(around)}
       #endif`);
   };
   return mat;
@@ -490,7 +505,7 @@ export class Track {
     this.zoneMats = ZONES.map((z) => {
       const m = tex[z.key];
       m.wrapS = m.wrapT = THREE.RepeatWrapping; m.colorSpace = THREE.SRGBColorSpace; m.anisotropy = 4;
-      return antiRepeat(new THREE.MeshLambertMaterial({ map: m, color: z.tint, side: THREE.BackSide }), z.stage1);
+      return antiRepeat(new THREE.MeshLambertMaterial({ map: m, color: z.tint, side: THREE.BackSide }), z.stage1, z.around);
     });
     this.wallMat = this.zoneMats[0];
     // the river: same refracting treatment as the pools — plates swim under a

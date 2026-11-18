@@ -47,6 +47,18 @@ const ATTACK_CUTS = {
   10: { skip: true },                        // Mutant Punch: not for this game
 };   // metres, feet to head
 
+// The sai THROW (Elad 2026-11-18): attacks.json #7 "Standing Melee Attack
+// Downward" is the overhand throw. Hand peaks high at 0.70 s and snaps forward
+// at 0.80 s (tools/throw-timing.mjs 7) — that's the release. Played on the
+// UPPER BODY only (a sub-clip with no hip/leg tracks can't move his stance on
+// the board) and SCRUBBED, not crossfaded: its weight is an envelope that is
+// exactly 0 at both ends, and it out-weighs the ride loop ×12 at the peak, so
+// the arms leave and rejoin the ride without a step (the Bloop Squad recipe).
+export const THROW = { clip: 7, start: 0.45, release: 0.8, end: 1.35, speed: 1.8, fadeIn: 0.07, fadeOut: 0.12, weight: 12 };
+const THROW_DUR = (THROW.end - THROW.start) / THROW.speed;
+export const THROW_RELEASE = (THROW.release - THROW.start) / THROW.speed;   // s after the throw starts
+const UPPER_BODY = /Spine1|Spine2|Neck|Head|Shoulder|Arm|Hand/;
+
 export class Player {
   constructor(scene) {
     this.scene = scene;
@@ -83,6 +95,8 @@ export class Player {
     const k = RIDER_H / h;
     this.model = new THREE.Group();
     this.model.add(model);
+    this.rig = model;
+    this.hand = model.getObjectByName('mixamorigRightHand');
     this.model.scale.setScalar(k);
     this.model.position.y = 0.16 - box.min.y * k;   // feet on the deck
     model.traverse((o) => {
@@ -158,6 +172,7 @@ export class Player {
     this.trickSpin = 0;
     this.spinY = 0;
     this.kicking = false;
+    if (this.throwT >= 0) { this.throwT = -1; this.throwAct?.stop(); }
     this.bank.rotation.set(0, 0, 0);
     this.shield.visible = false;
     if (this.mixer) {
@@ -215,6 +230,39 @@ export class Player {
       this.attacks.push({ action: a, label: json.label, n: i + 1, start, end, speed: cut.speed ?? 1.2 });
     });
     this.attackIdx = 0;
+    const tj = list[THROW.clip - 1];
+    if (tj) {
+      const clip = THREE.AnimationClip.parse(tj);
+      clip.tracks = clip.tracks.filter((t) => UPPER_BODY.test(t.name));
+      this.throwAct = this.mixer.clipAction(clip);
+      this.throwAct.timeScale = 0;
+    }
+    this.throwT = -1;
+  }
+
+  /** Start the overhand sai throw (upper body). False if one is already going. */
+  playThrow() {
+    if (!this.throwAct || this.throwT >= 0) return false;
+    this.throwT = 0;
+    this.throwAct.reset(); this.throwAct.timeScale = 0; this.throwAct.setEffectiveWeight(0); this.throwAct.play();
+    return true;
+  }
+  get throwing() { return this.throwT >= 0; }
+  /** Busy with a full-body move: a throw would fight it. */
+  get busy() { return this.kicking || !!(this.attackOn && this.attackOn.action.isRunning()); }
+  /** World position of the throwing hand (falls back to the chest). */
+  handWorld(out) {
+    if (this.hand) return this.hand.getWorldPosition(out);
+    return out.copy(this.root.position).addScaledVector(this.up || new THREE.Vector3(0, 1, 0), 1.2);
+  }
+  _stepThrow(dt) {
+    if (this.throwT < 0 || !this.throwAct) return;
+    this.throwT += dt;
+    const t = this.throwT;
+    if (t >= THROW_DUR) { this.throwT = -1; this.throwAct.setEffectiveWeight(0); this.throwAct.stop(); return; }
+    const w = Math.min(1, t / THROW.fadeIn, (THROW_DUR - t) / THROW.fadeOut);
+    this.throwAct.time = THROW.start + t * THROW.speed;
+    this.throwAct.setEffectiveWeight(Math.max(0, w) * THROW.weight);
   }
 
   /** Play the next attack in the rotation; returns {n, label} for the dev tag. */
@@ -292,6 +340,7 @@ export class Player {
       this.spinY += (0 - wrapPI(this.spinY)) * Math.min(1, dt * 8);
     }
     if (this.model) this.model.rotation.y = Math.PI + this.spinY;
+    this._stepThrow(dt);
     if (this.mixer) this.mixer.update(dt);
     // an audition attack with a trimmed end hands back to the ride loop there
     const at = this.attackOn;

@@ -6,6 +6,7 @@
 // the pipe for a LOOP. Three hits and you wipe out.
 import * as THREE from 'three';
 import { Trains } from './trains.js';
+import { Daggers } from './daggers.js';
 import { installDevUnlock } from './devUnlock.js';
 import { R, Track, ZONES, WORLDS, zoneIndex, setStartWorld, getStartWorld, featureAt, pendingFork, forkNear, forkSpread, FORK_LEN, FORKS, CLIMB_LEN, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
 import { Junctions } from './junctions.js';
@@ -60,7 +61,7 @@ const audio = new Audio();
 audio.loadMusic('/audio/music.mp3');
 const input = new Input(canvas);
 
-let track, junctions, trains, player, obstacles, particles, debris, streaks, boardTrail, sludge;
+let track, junctions, trains, daggers, player, obstacles, particles, debris, streaks, boardTrail, sludge;
 const tex = {};
 
 // ── HUD ──────────────────────────────────────────────────────────────────────
@@ -157,9 +158,11 @@ function startRun() {
   obstacles.reset();
   particles.clear(); sludge.clear(); debris.clear(); boardTrail.clear();
   trains?.reset();
+  daggers?.reset(); $('power').classList.remove('on');
   renderLives(G.lives);
   hud.popups.innerHTML = '';
   $('gameover-overlay').classList.add('hidden');
+  $('quit-overlay').classList.add('hidden'); closeConfirm();
   audio.muffle(false);
   audio.startMusic();
 }
@@ -177,7 +180,76 @@ function gameOver() {
   $('go-best').textContent = isBest ? 'NEW BEST!' : 'Best ' + Math.max(best, score).toLocaleString();
   $('go-best').className = 'go-best' + (isBest ? ' new' : '');
   $('gameover-overlay').classList.remove('hidden');
+  bankScore(score, 'go-board');
 }
+
+// ── GoBalance: every way a run ends banks the score, then shows the board ────
+// (GOBALANCE_APP_INTEGRATION.md "a run is whole, or it is nothing"). The SDK is
+// injected by the app; in a plain browser window.GoBalance is undefined and the
+// boards just stay empty.
+const gb = () => (typeof window !== 'undefined' && window.GoBalance && window.GoBalance.available !== false ? window.GoBalance : null);
+async function bankScore(score, boardId) {
+  const el = $(boardId);
+  el.innerHTML = '';
+  const sdk = gb();
+  if (!sdk) return;
+  try { await sdk.submitScore(score); } catch { /* offline: the host keeps a device copy */ }
+  let board = null;
+  try { board = await sdk.getScoreboard(); } catch { return; }
+  // submitScore resolves before the write commits: make sure the run just played is on it
+  const rows = (board?.entries || []).map((e) => ({ name: e.name || '?', score: Math.round(e.score), you: !!e.isYou }));
+  if (!rows.some((r) => r.you && r.score === score)) {
+    let name = rows.find((r) => r.you)?.name || '';
+    if (!name) try { name = (await sdk.getProfile())?.name || ''; } catch { /* no profile */ }
+    rows.push({ name, score, you: true });
+  }
+  rows.sort((a, b) => b.score - a.score);
+  let mine = rows.findIndex((r) => r.you && r.score === score);
+  const top = rows.slice(0, 5);
+  if (mine >= 5) top[4] = rows[mine];
+  el.innerHTML = top.map((r, i) => {
+    const rank = r === rows[mine] ? mine + 1 : i + 1;
+    return `<li class="${r === rows[mine] ? 'me' : ''}"><i>${rank}</i><span>${escapeHtml(r.name)}</span><b>${r.score.toLocaleString()}</b></li>`;
+  }).join('');
+}
+const escapeHtml = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const leaveToLobby = () => { if (window.GoBalance?.back) window.GoBalance.back(); else if (window.Unity) window.Unity.call('nav:back'); };
+
+// ── the X: the only way out on the board ─────────────────────────────────────
+// Mid-run it asks first (a mis-tap must not end a run); anywhere else it leaves.
+let pausedBeforeConfirm = false;
+window.__gbBack = () => {
+  if (G.confirm) return quitRun();                       // X again on the confirm = yes
+  if (G.state !== 'play') return leaveToLobby();          // countdown, death, quit screen: nothing to lose
+  pausedBeforeConfirm = G.paused;
+  setPaused(true);
+  $('pause-overlay').classList.add('hidden');
+  G.confirm = true;
+  $('quit-confirm').classList.remove('hidden');
+};
+function closeConfirm() {
+  G.confirm = false;
+  $('quit-confirm').classList.add('hidden');
+}
+function quitRun() {
+  closeConfirm();
+  G.paused = false; audio.setPaused(false); $('pause-overlay').classList.add('hidden');
+  G.state = 'quit';
+  const score = Math.floor(G.score);
+  if (score > readBest()) writeBest(score);
+  $('q-score').textContent = score.toLocaleString();
+  $('quit-overlay').classList.remove('hidden');
+  audio.muffle(true);
+  bankScore(score, 'q-board');                           // on the way IN: they may leave from here
+}
+$('qc-no').addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeConfirm();
+  if (pausedBeforeConfirm) $('pause-overlay').classList.remove('hidden'); else setPaused(false);
+});
+$('qc-yes').addEventListener('click', (e) => { e.stopPropagation(); quitRun(); });
+$('q-again').addEventListener('click', (e) => { e.stopPropagation(); if (G.state === 'quit') { $('quit-overlay').classList.add('hidden'); startRun(); } });
+$('q-leave').addEventListener('click', (e) => { e.stopPropagation(); leaveToLobby(); });
 function readBest() { try { return +localStorage.getItem('sewershred.best') || 0; } catch { return 0; } }
 function writeBest(v) { try { localStorage.setItem('sewershred.best', String(v)); } catch { /* private mode */ } }
 
@@ -429,6 +501,15 @@ function onEvent(e) {
       G.fovKick = 10;
       break;
     }
+    case 'sai': {
+      daggers.start();
+      audio.shield();
+      bigText('SAI STORM!', 'shield');
+      particles.burst(wp, up, 50, C_KICK, { speed: 10, spread: 1.6, size: 0.4, life: 0.8, drag: 2 });
+      flash('rgba(255,170,90,0.9)', 0.35);
+      G.fovKick = 10;
+      break;
+    }
     case 'near': {
       award(40, player.root.position, 'near');
       popup('CLOSE!', 'near-word', player.root.position, -80);
@@ -447,6 +528,18 @@ function onEvent(e) {
     case 'hit': onHit(o, up, wp); break;
     case 'enemy': onKick(o, up, wp); break;
   }
+}
+
+// a sai knocks a soldier down: same pay as a kick, no kick animation
+function onSaiHit(o, wp) {
+  const up = wallDir(frameAt(o.s), o.theta, new THREE.Vector3()).negate();
+  obstacles.launch(o, player.speed);
+  G.kicks = (G.kicks || 0) + 1;
+  award(150, wp, 'pts');
+  addCombo(0.6);
+  audio.kick();
+  G.shake = Math.max(G.shake, 0.25);
+  particles.burst(wp.clone().addScaledVector(up, 1.0), up, 22, C_KICK, { speed: 11, spread: 1.6, size: 0.42, life: 0.4, drag: 3 });
 }
 
 // ── enemies: the spin flip kick ──────────────────────────────────────────────
@@ -608,6 +701,7 @@ function frame(now) {
   last = now;
   if (G.state === 'loading') return;
   if (G.paused) {
+    if (G.confirm) { input.read(dt); input.consumePress(); return; }   // the quit question waits for a button
     // resume: Space/Enter (Unity forwards those), a tap, or a held lean —
     // after a short grace so the press that paused doesn't instantly resume
     const lean = input.read(dt);
@@ -719,6 +813,9 @@ function frame(now) {
       if (Math.abs(lean) > 0.7) G.restartHold += dt; else G.restartHold = 0;
       if (G.restartHold > 0.6 || (pressed && G.overT > 1.2)) startRun();
     }
+    // the death screen is the one a player lands on without choosing: it restarts
+    // itself, so an abandoned board never parks on it (the quit screen has no clock)
+    if (G.overT > 16) startRun();
   }
 
   player.place();
@@ -728,6 +825,10 @@ function frame(now) {
   if (G.state === 'play' || G.state === 'countdown') obstacles.update(simDt, time, player, events);
   else obstacles.update(simDt, time, { s: player.s, theta: 1e3, hop: 0 }, events);
   for (const e of events) onEvent(e);
+  // SAI STORM: auto-throws while the power-up lasts
+  if (daggers.update(simDt, player, obstacles, onSaiHit, G.state === 'play') === 'throw') audio.noiseHit({ dur: 0.18, vol: 0.28, freq: 2600, q: 0.9, sweep: 0.35 });
+  $('power').classList.toggle('on', daggers.active);
+  if (daggers.active) $('power-bar').style.transform = `scaleX(${daggers.left})`;
   // subway trains
   const tev = [];
   trains.update(simDt, player, tev, G.state === 'play');
@@ -909,6 +1010,7 @@ async function loadFootGeo(url) {
   names.forEach((n, i) => (tex[n.replace('wall_', '')] = loaded[i]));
   tex.sewage = tex.sewage_toon;                 // look test: flat cartoon water (Kolbo, ref '55')
   tex.valve = await loadTex('/tex/valve.png');
+  [tex.shieldIcon, tex.saiIcon] = await Promise.all([loadTex('/tex/shield_icon.png'), loadTex('/tex/sai_icon.png')]);
   [tex.footA, tex.footB] = await Promise.all([loadTex('/tex/foot_sprite_a.png'), loadTex('/tex/foot_sprite_b.png')]);  // look test: illustrated valve hatch
   tex.footGeo = await loadFootGeo('/models/foot.bin');
   track = new Track(scene, tex);
@@ -916,6 +1018,8 @@ async function loadFootGeo(url) {
   obstacles = new Obstacles(scene, tex);
   junctions = new Junctions(scene, tex);
   trains = new Trains(scene, makeGlowTexture);
+  daggers = new Daggers(scene, makeGlowTexture());
+  daggers.upFn = (o) => wallDir(frameAt(o.s), o.theta, new THREE.Vector3()).negate();
   obstacles.camera = camera;
   { let f = 'sprite'; try { f = new URLSearchParams(location.search).get('foe') || 'sprite'; } catch { /* private */ } setFootStyle(f); }
   particles = new Particles(scene);
@@ -933,5 +1037,5 @@ async function loadFootGeo(url) {
   // test hooks for the headless drive script
   window.__game = { worldName: () => WORLDS[ZONES[zoneIndex(player.s)].world].name + ' / ' + ZONES[zoneIndex(player.s)].name,
     trainDist: () => { const t = trains.pool.filter((x) => x.on && x.s > player.s); return t.length ? Math.min(...t.map((x) => x.s - player.s)) : null; },
-    track, trains, setWorld, G, player, obstacles, PHYS, camera, startRun, setMoveMode, setFixCam, slimeAngle, junctions, setFootStyle };
+    track, trains, daggers, setWorld, G, player, obstacles, PHYS, camera, startRun, setMoveMode, setFixCam, slimeAngle, junctions, setFootStyle };
 })();

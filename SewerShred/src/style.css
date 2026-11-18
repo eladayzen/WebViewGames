@@ -225,3 +225,32 @@ body.dev-open #dev-btn { opacity: 1; }
 #devcode-dots.devcode-wrong {
   color: #ffb45c;
 }
+
+/* SAI STORM timer: the power-up's icon + a draining bar, under the combo (no text) */
+#power { position: absolute; top: max(124px, calc(env(safe-area-inset-top) + 114px)); right: 14px; display: flex; align-items: center; gap: 6px; opacity: 0; transform: scale(0.6); transition: opacity 0.2s, transform 0.2s; }
+#power.on { opacity: 1; transform: scale(1); }
+#power img { width: clamp(34px, 6vmin, 48px); filter: drop-shadow(0 3px 0 rgba(0,0,0,0.6)); animation: hot 0.5s ease-in-out infinite alternate; }
+#power .bar { width: clamp(56px, 11vmin, 96px); height: 8px; border-radius: 4px; background: rgba(0,0,0,0.55); border: 2px solid var(--ink); overflow: hidden; }
+#power .bar i { display: block; height: 100%; background: linear-gradient(90deg, #ff6b3a, #ffb070); transform-origin: left; }
+
+/* ── quit: confirm modal (light scrim, game visible) + quit screen + board ── */
+#quit-confirm { position: fixed; inset: 0; z-index: 46; display: flex; align-items: center; justify-content: center; background: rgba(5, 12, 8, 0.28); }
+#quit-confirm.hidden, #quit-overlay.hidden { display: none; }
+.qc-card { padding: 16px 22px 18px; border-radius: 22px; background: linear-gradient(180deg, #23412d, #12231a); border: 4px solid var(--ink); box-shadow: 0 8px 0 var(--ink); text-align: center; animation: panelIn 0.3s cubic-bezier(.2, 1.4, .4, 1); }
+.qc-q { font-size: clamp(40px, 8vmin, 60px); color: #fff; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 0 4px 0 var(--ink); line-height: 1; margin-bottom: 12px; }
+.qc-row, .q-row { display: flex; gap: 16px; justify-content: center; }
+.qc-btn, .q-btn { width: 84px; height: 84px; border-radius: 22px; border: 4px solid var(--ink); box-shadow: 0 6px 0 var(--ink); padding: 18px; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
+.qc-btn svg, .q-btn svg { width: 100%; height: 100%; display: block; fill: var(--ink); stroke: var(--ink); }
+.qc-btn.no, .q-btn.again { background: linear-gradient(180deg, #a6ff7a, #4fd43a); }
+.qc-btn.yes, .q-btn.leave { background: linear-gradient(180deg, #ff8a7a, #e2382b); }
+.qc-btn:active, .q-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--ink); }
+#quit-overlay { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(5, 12, 8, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+#quit-overlay .q-row { margin-top: 14px; }
+.board { list-style: none; margin: 8px 0 0; padding: 0; }
+.board:empty { display: none; }
+.board li { display: flex; align-items: center; gap: 10px; padding: 4px 8px; font-size: 22px; color: #d7f5e2; border-radius: 10px; }
+.board li i { font-style: normal; width: 26px; color: #9fd8b6; }
+.board li span { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: system-ui, sans-serif; font-weight: 700; font-size: 17px; }
+.board li b { font-weight: 400; color: #fff; }
+.board li.me { background: rgba(255, 210, 58, 0.18); color: var(--yellow); }
+.board li.me b { color: var(--yellow); }

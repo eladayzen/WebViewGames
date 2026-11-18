@@ -103,6 +103,33 @@ if (script === 'default') {
     await page.evaluate((x) => { const { player } = window.__game; player.s = x; player.invuln = 99; }, at);
     await wait(+(args.wait || 300)); await snap('s' + at);
   }
+} else if (script === 'shield') {
+  // spawn a shield pickup just ahead on the river line and shoot it closing in
+  await wait(3800);
+  await page.evaluate(() => { const { player, obstacles, slimeAngle } = window.__game; player.invuln = 99; obstacles.add('shield', player.s + 30, slimeAngle(player.s + 30) + 0.5); });
+  for (const t of [700, 1000, 1200, 1400]) { await wait(t === 700 ? 700 : 200); await snap('shield' + t); }
+} else if (script === 'sai') {
+  // grab SAI STORM and line up Foot Soldiers ahead: shoot the throws + returns
+  await wait(3800);
+  await page.evaluate(() => {
+    const { player, obstacles, daggers, slimeAngle } = window.__game;
+    player.invuln = 99; daggers.start();
+    for (const [d, off] of [[22, 0.5], [30, -0.6], [38, 0.2], [46, -0.3]]) obstacles.add('foot', player.s + d, slimeAngle(player.s + d) + off, { base: 0, phase: 0 });
+  });
+  for (let i = 0; i < 10; i++) { await wait(140); await snap('sai' + i); }
+  console.log(JSON.stringify(await page.evaluate(() => ({ kicks: window.__game.G.kicks, left: window.__game.daggers.left }))));
+} else if (script === 'quit') {
+  // fake the GoBalance SDK, press X mid-run: confirm card, then quit screen + board
+  await wait(5200);
+  await page.evaluate(() => { window.__subs = []; window.GoBalance = { available: true, submitScore: async (v) => { window.__subs.push(v); }, getScoreboard: async () => ({ complete: true, entries: [{ name: 'Maya', score: 4200, isYou: false }, { name: 'Elad', score: 2600, isYou: true }, { name: 'Noa', score: 900, isYou: false }] }), back: () => { window.__left = true; } }; });
+  await page.evaluate(() => document.getElementById('gb-back').click());
+  await wait(300); await snap('confirm');
+  const paused = await page.evaluate(() => window.__game.G.paused);
+  await page.evaluate(() => document.getElementById('qc-yes').click());
+  await wait(500); await snap('quitscreen');
+  console.log(JSON.stringify(await page.evaluate(() => ({ paused: window.__game.G.paused, state: window.__game.G.state, subs: window.__subs, rows: document.querySelectorAll('#q-board li').length, restartBtns: document.querySelectorAll('#restart-button').length }))), 'pausedOnConfirm', paused);
+  await page.evaluate(() => document.getElementById('q-leave').click());
+  console.log('left', await page.evaluate(() => window.__left));
 } else if (script === 'devunlock') {
   await wait(1500);
   const before = await page.evaluate(() => getComputedStyle(document.getElementById('dev-btn')).display + '/' + getComputedStyle(document.getElementById('foe-btn')).display);

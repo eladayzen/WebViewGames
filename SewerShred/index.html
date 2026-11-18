@@ -50,7 +50,7 @@
 <body>
   <!-- GoBalance SDK: native-bridge Back button. Returns to the SDK games list. -->
   <button id="gb-back"
-    onclick="if(window.Unity)window.Unity.call('nav:back');"
+    onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
     style="position:fixed;top:12px;left:12px;z-index:9999;padding:8px 16px;border:none;
            border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
            font:600 15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
@@ -82,6 +82,7 @@
     <div id="lives"></div>
     <div id="combo-wrap"><div id="combo">x1</div><div id="combo-bar"><i></i></div></div>
     <div id="slime-tag">SPLASH!</div>
+    <div id="power"><img src="/tex/sai_icon.png" alt="" /><div class="bar"><i id="power-bar"></i></div></div>
   </div>
   <div id="popups"></div>
   <div id="countdown"></div>
@@ -108,8 +109,33 @@
       <div class="go-row"><span>Pizza</span><b id="go-pizza">0</b></div>
       <div class="go-row"><span>Best combo</span><b id="go-combo">x1</b></div>
       <div class="go-best" id="go-best"></div>
+      <ol class="board" id="go-board"></ol>
       <button id="restart-button">SHRED AGAIN</button>
       <div class="go-hint">lean or press Space</div>
+    </div>
+  </div>
+
+  <!-- X mid-run: a modal over the paused game (the run stays visible), icons only -->
+  <div id="quit-confirm" class="hidden">
+    <div class="qc-card">
+      <div class="qc-q">QUIT?</div>
+      <div class="qc-row">
+        <button id="qc-no" class="qc-btn no" aria-label="Keep playing"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+        <button id="qc-yes" class="qc-btn yes" aria-label="Quit"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke-width="3.2" stroke-linecap="round"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- after a confirmed quit: the run's score (banked), the board, play again / quit. Its own id,
+       never #gameover-overlay (the host clicks #restart-button on Space there). No clock. -->
+  <div id="quit-overlay" class="hidden">
+    <div class="panel">
+      <div class="go-score"><span>SCORE</span><b id="q-score">0</b></div>
+      <ol class="board" id="q-board"></ol>
+      <div class="q-row">
+        <button id="q-again" class="q-btn again" aria-label="Play again"><svg viewBox="0 0 24 24"><path d="M12 5a7 7 0 1 1-6.6 4.7" fill="none" stroke-width="3" stroke-linecap="round"/><path d="M4 4v6h6z"/></svg></button>
+        <button id="q-leave" class="q-btn leave" aria-label="Quit"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke-width="3.2" stroke-linecap="round"/></svg></button>
+      </div>
     </div>
   </div>
 

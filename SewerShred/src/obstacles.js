@@ -31,6 +31,8 @@ export class Obstacles {
     tex.pipe.colorSpace = THREE.SRGBColorSpace;
     tex.pipe.wrapS = tex.pipe.wrapT = THREE.RepeatWrapping;
     this.glowTex = makeGlowTexture();
+    this.shieldIcon = tex.shieldIcon; this.saiIcon = tex.saiIcon;
+    for (const t of [tex.shieldIcon, tex.saiIcon]) if (t) t.colorSpace = THREE.SRGBColorSpace;
     this.footGeo = tex.footGeo;
     this.footMat = makeFootMaterial();
     this.footOutlineMat = makeOutlineMaterial(0xff3fd0, 0.028);
@@ -239,21 +241,38 @@ export class Obstacles {
         g.userData = { body, ring, aura, card };
         return g;
       },
-      shield: () => {
-        const g = new THREE.Group();
-        const shell = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 10, 0, TAU, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0x4f8a2a, emissive: 0x1d3a0c }));
-        shell.scale.y = 0.7;
-        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.08, 8, 20), new THREE.MeshLambertMaterial({ color: 0xe8c86a, emissive: 0x3a2a08 }));
-        rim.rotation.x = Math.PI / 2;
-        const inner = new THREE.Group(); inner.add(shell, rim);
-        g.add(inner);
-        const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0x6fd0ff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.9 }));
-        glow.scale.set(2.8, 2.8, 1);
-        g.add(glow);
-        g.userData.wedge = inner;
-        return g;
-      },
+      // Shell shield (Elad 2026-11-18: "not understood what it is and that it's a good
+      // pickup"): read as a classic power-up — a floating, bobbing shield badge
+      // (Kolbo, tex/shield_icon.png) in a cyan bubble, with an orbiting ring, a halo
+      // and a light beam down to the floor so it's spotted from far away.
+      shield: () => this._powerUp(this.shieldIcon, 0x5fd8ff, 0x7fe0ff, 0x9fe8ff, 0xdff8ff),
+      sai: () => this._powerUp(this.saiIcon, 0xff8a3a, 0xffa060, 0xffb27a, 0xfff0d8),
     };
+  }
+
+  // a power-up: floating badge (Kolbo icon) in a bubble, orbit ring, halo, and a
+  // light beam to the floor so it's spotted far down the pipe
+  _powerUp(iconTex, beamC, haloC, bubbleC, ringC) {
+    const g = new THREE.Group();
+    const add = (c) => ({ color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.9, 3.2, 16, 1, true), new THREE.MeshBasicMaterial({ ...add(beamC), opacity: 0.16, side: THREE.DoubleSide }));
+    beam.position.y = 0.6;
+    const bob = new THREE.Group();
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, ...add(haloC), opacity: 0.85 }));
+    halo.scale.set(3.4, 3.4, 1);
+    const bubble = new THREE.Mesh(new THREE.SphereGeometry(0.95, 20, 14), new THREE.MeshBasicMaterial({ ...add(bubbleC), opacity: 0.14 }));
+    const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconTex, transparent: true, depthWrite: false, fog: false }));
+    icon.scale.set(1.45, 1.45, 1);
+    const spin = new THREE.Group();
+    const orbit = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.045, 6, 40), new THREE.MeshBasicMaterial({ color: ringC, transparent: true }));
+    orbit.rotation.x = Math.PI / 2.6;
+    spin.add(orbit);
+    bob.add(halo, bubble, spin, icon);
+    bob.scale.setScalar(1.35);
+    g.add(beam, bob);
+    g.userData.wedge = spin;
+    g.userData.bob = bob;
+    return g;
   }
 
   _get(type) {
@@ -275,11 +294,17 @@ export class Obstacles {
     this.list.length = 0;
     this.nextS = 70;
     this.lastShieldS = 0;
+    this.lastSaiS = 0;
     this.patternCount = 0;
   }
 
   add(type, s, theta, extra = {}) {
     const o = { type, s, theta, hit: false, done: false, near: false, mesh: this._get(type), ...extra };
+    // pooled pickups come back from their collect fade: full size, full opacity
+    if (o.mesh.userData.wedge) {
+      o.mesh.scale.setScalar(1);
+      o.mesh.traverse((c) => { const u = c.material?.userData; if (u && u.op0 !== undefined) { c.material.opacity = u.op0; c.material.transparent = u.tr0; } });
+    }
     if (type === 'foot') { o.mesh.children.forEach((c) => (c.visible = true)); o.mesh.userData.body.scale.setScalar(FOOT_SCALE); }  // pooled: undo the launch hiding + dissolve
     this._placeStatic(o);
     this.list.push(o);
@@ -343,6 +368,12 @@ export class Obstacles {
   _pattern(s, diff, pTheta) {
     const sl = slimeAngle(s);
     const r = Math.random();
+    // SAI STORM: roughly every 520 m from 180 m on (the first one early, so it's met)
+    if (s - this.lastSaiS > 520 && s > 180 && s - this.lastShieldS > 60 && Math.random() < 0.55) {
+      this.lastSaiS = s;
+      this.add('sai', s, sl + (Math.random() - 0.5) * 1.2);
+      return;
+    }
     // shields: roughly every 450 m, never in the first 300
     if (s - this.lastShieldS > 450 && s > 300 && Math.random() < 0.5) {
       this.lastShieldS = s;
@@ -555,14 +586,16 @@ export class Obstacles {
     for (const o of this.list) {
       const ds = o.s - ps;
       // ── per-type animation ──
-      if (o.type === 'pizza' || o.type === 'shield') {
+      if (o.type === 'pizza' || o.type === 'shield' || o.type === 'sai') {
         const w = o.mesh.userData.wedge;
         w.rotation.y = time * 3 + o.s;
+        const bob = o.mesh.userData.bob;
+        if (bob) bob.position.y = 0.35 + Math.sin(time * 3.2 + o.s) * 0.18;
         o.mesh.position.multiplyScalar(1); // static anchor
         if (o.collected) {
           o.t = (o.t || 0) + dt;
           o.mesh.scale.setScalar(Math.max(0.01, 1 + o.t * 6));
-          o.mesh.traverse((c) => { if (c.material) { c.material.transparent = true; c.material.opacity = Math.max(0, 1 - o.t * 5); } });
+          o.mesh.traverse((c) => { if (c.material) { const u = c.material.userData; u.op0 ??= c.material.opacity; u.tr0 ??= c.material.transparent; c.material.transparent = true; c.material.opacity = u.op0 * Math.max(0, 1 - o.t * 5); } });
           if (o.t > 0.2) o.done = true;
         }
       } else if (o.type === 'foot') {
@@ -709,6 +742,7 @@ export class Obstacles {
         if (Math.abs(ds) < 1.3 && Math.abs(angleDiff(pt, o.theta)) < 0.27) return 'pickup';
         return null;
       case 'shield':
+      case 'sai':
         if (Math.abs(ds) < 1.5 && Math.abs(angleDiff(pt, o.theta)) < 0.32) return 'pickup';
         return null;
     }
