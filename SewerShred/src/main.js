@@ -274,9 +274,9 @@ function steer(dt, lean) {
 // (360 / 360 FIXED stay reachable via ?move=d360 or d360f, off the buttons.)
 const VARIANTS = ['d220', 'd220f', 'd180', 'd180f', 'd360', 'd360f'];   // 360s added to the button (Elad 2026-11-16)
 const VAR_LABEL = { d220: '220', d220f: '220 FIXED', d180: '180', d180f: '180 FIXED', d360: '360', d360f: '360 FIXED' };
-G.variant = 'd220';
+G.variant = 'd180f';   // shipping default (Elad 2026-11-18): DIRECT 180, fixed CENTER camera
 function setMoveMode(m) {
-  if (!MODES.includes(m)) m = 'd220';
+  if (!MODES.includes(m)) m = 'd180f';
   if (m !== 'swing') G.variant = m;
   G.moveMode = m;
   // keep the rider where he is: start the offset from his current spot
@@ -287,7 +287,6 @@ function setMoveMode(m) {
   $('var-btn').textContent = VAR_LABEL[G.variant];
   $('var-btn').classList.toggle('inactive', m === 'swing');
   $('cam-btn').style.display = m.endsWith('f') ? '' : 'none';
-  try { localStorage.setItem('sewershred.move3', m); localStorage.setItem('sewershred.var3', G.variant); } catch { /* private mode */ }
 }
 const togglePhysics = () => setMoveMode(G.moveMode === 'swing' ? G.variant : 'swing');
 // picking a variant also switches you to DIRECT — that's the only place it applies
@@ -295,10 +294,9 @@ const nextVariant = () => setMoveMode(VARIANTS[(VARIANTS.indexOf(G.variant) + 1)
 $('mode-btn').addEventListener('click', (e) => { e.stopPropagation(); togglePhysics(); });
 $('var-btn').addEventListener('click', (e) => { e.stopPropagation(); nextVariant(); });
 function setFixCam(c) {
-  if (!FIXCAMS[c]) c = 'auto';
+  if (!FIXCAMS[c]) c = 'center';
   G.fixCam = c; FIXCAM = FIXCAMS[c];
   $('cam-btn').textContent = 'CAM ' + (c === 'auto2' ? 'AUTO 2 SIDES' : c.toUpperCase());
-  try { localStorage.setItem('sewershred.cam', c); } catch { /* private mode */ }
 }
 const nextFixCam = () => setFixCam(FIXCAM_ORDER[(FIXCAM_ORDER.indexOf(G.fixCam) + 1) % FIXCAM_ORDER.length]);
 $('cam-btn').addEventListener('click', (e) => { e.stopPropagation(); nextFixCam(); });
@@ -307,7 +305,6 @@ function setFootStyle(n) {
   if (!obstacles) { G.footStyle = n; return; }
   G.footStyle = obstacles.setFootStyle(n);
   $('foe-btn').textContent = 'FOE ' + FOOT_STYLES[G.footStyle].label;
-  try { localStorage.setItem('sewershred.foe', G.footStyle); } catch { /* private mode */ }
 }
 const nextFootStyle = () => setFootStyle(FOOT_STYLE_ORDER[(FOOT_STYLE_ORDER.indexOf(G.footStyle) + 1) % FOOT_STYLE_ORDER.length]);
 // dev options closed by default; the gear (or the backquote key) opens them
@@ -321,7 +318,6 @@ $('foe-btn').addEventListener('click', (e) => { e.stopPropagation(); nextFootSty
 function setWorld(i, restart = true) {
   setStartWorld(i);
   $('world-btn').textContent = WORLDS[getStartWorld()].name.replace(/^THE /, '');
-  try { localStorage.setItem('sewershred.world', String(getStartWorld())); } catch { /* private mode */ }
   if (restart && track) startRun();
 }
 const nextWorld = () => setWorld(getStartWorld() + 1);
@@ -329,10 +325,12 @@ $('world-btn').addEventListener('click', (e) => { e.stopPropagation(); nextWorld
 {
   const q = new URLSearchParams(location.search).get('world');
   let i = WORLDS.findIndex((w) => w.key === q);
-  if (i < 0) try { i = +(localStorage.getItem('sewershred.world') || 0); } catch { i = 0; }
+  if (i < 0) i = 0;
   setWorld(i, false);
 }
-try { setFixCam(new URLSearchParams(location.search).get('cam') || localStorage.getItem('sewershred.cam') || 'auto'); } catch { setFixCam('auto'); }
+// Dev-panel picks are NOT remembered (Elad 2026-11-18): every load starts on the
+// shipping config, same as the app; the panel is for trying things this session only.
+setFixCam(new URLSearchParams(location.search).get('cam') || 'center');
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyC' && fixedCam()) nextFixCam();
   if (e.code === 'KeyF') nextFootStyle();
@@ -345,11 +343,6 @@ window.addEventListener('keydown', (e) => {
   // ?move=d220|d220f|d180|d180f|d360|d360f|swing (old ?move=direct → d220).
   let m = new URLSearchParams(location.search).get('move');
   if (m === 'direct') m = 'd220';
-  try {
-    const v = localStorage.getItem('sewershred.var3');
-    if (MODES.includes(v) && v !== 'swing') G.variant = v;
-    if (!m) m = localStorage.getItem('sewershred.move3');
-  } catch { /* private mode */ }
   setMoveMode(m === 'swing' ? 'swing' : (m || G.variant));
   if (m === 'swing') $('var-btn').textContent = VAR_LABEL[G.variant];
 }
@@ -924,7 +917,7 @@ async function loadFootGeo(url) {
   junctions = new Junctions(scene, tex);
   trains = new Trains(scene, makeGlowTexture);
   obstacles.camera = camera;
-  { let f = 'sprite'; try { f = new URLSearchParams(location.search).get('foe') || localStorage.getItem('sewershred.foe') || 'sprite'; } catch { /* private */ } setFootStyle(f); }
+  { let f = 'sprite'; try { f = new URLSearchParams(location.search).get('foe') || 'sprite'; } catch { /* private */ } setFootStyle(f); }
   particles = new Particles(scene);
   sludge = new Particles(scene, { additive: false });
   debris = new Debris(scene, tex);
