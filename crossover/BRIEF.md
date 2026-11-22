@@ -352,15 +352,28 @@ reuse; **design and internals** are not, and anything in 7.3 crosses that line b
 
 ## ShellSiege today (context for the Survivor agent)
 
-A three.js 3D prototype in the same family: Raphael on an isometric plaza, auto-throwing,
-against five armoured constructs. It is now a room-clearing campaign: clear a room, a pizza
-box opens on one random ability, levels bank. **196 tests pass.** Build **6.32 MB** (measured
-in bytes; earlier figures in chat were disk blocks). **Uncommitted**, in the `sewer-swarm`
-worktree. It is not the thing you are working on; it is here so you know what your sibling is.
+A three.js 3D prototype in the same family: Raphael on an isometric arena, auto-throwing,
+against five armoured constructs. It is a room-clearing campaign: clear a room, a pizza
+box opens on one random ability, levels bank.
+
+As of 22 Nov, evening: **259 tests pass**; build **7.36 MB** (measured in bytes; earlier
+figures in chat were disk blocks). Each room now has its own floor painting and layout of
+obstacles, and each enemy has its own job (a thrower, a charger, a slammer, a summoner)
+with a warning drawn on the floor. Clearing a room is an iris closing on the turtle, the
+box over black, and the iris opening on the next room.
 
 ![ShellSiege mid-room](shots/shellsiege-gameplay.jpg)
 ![ShellSiege enemies, mid-stride](shots/shellsiege-enemies.jpg)
 ![ShellSiege ability reveal](shots/shellsiege-roll.jpg)
 
-The reveal box and the `SPLIT THROW` icon in that last frame are placeholders. The icon is
-one of the things section 7.2 proposes replacing with Survivor's art.
+These three screenshots are from the earlier version (before the new rooms and enemy
+jobs). The reveal box and the `SPLIT THROW` icon in the last one are placeholders. The icon
+is one of the things section 7.2 proposes replacing with Survivor's art.
+
+**One thing worth knowing from the ShellSiege side, because it is about the art pipeline you
+share:** the three new floor paintings and the loot-box art were generated with Kolbo
+(`gpt-image-2.6-flare`) using an existing in-game image as the style reference, and the
+brightness of each was lifted to match the plaza with a small gamma tool
+(`ShellSiege/tools/lift-floor.py`). Generating flat, evenly lit art "to match the reference
+image's brightness" in the prompt was not enough on its own: the three came back at 0.57,
+0.67 and 0.72 mean value against the reference's 0.83.
