@@ -35,8 +35,8 @@ export function applyDefaultPreset() { Object.assign(PHYS, PHYS_PRESETS[DEFAULT_
 export function mountDevPanel(parent, api) {
   let devPreset = DEFAULT_PRESET;
   const dev = document.createElement('div');
-  dev.id = 'dev';
-  dev.innerHTML = `<div class="hd"><b>DEV · physics</b><button id="devx" title="hide (\`)">–</button></div>
+  dev.id = 'dev'; dev.style.display = 'none';
+  dev.innerHTML = `<div class="hd"><b>DEV</b><button id="devx" title="close (\`)">✕</button></div>
     <div class="devrow" id="devsw"></div><div id="devbody"></div>`;
   parent.appendChild(dev);
   const sw = dev.querySelector('#devsw'), body = dev.querySelector('#devbody');
@@ -49,10 +49,12 @@ export function mountDevPanel(parent, api) {
     const th = api.getTheme(), md = api.getMode();
     sw.innerHTML = `<button data-t="toon" class="${th === 'toon' ? 'on' : ''}">1 · 3D Toon</button>` +
       `<button data-t="ooze" class="${th === 'ooze' ? 'on' : ''}">2 · Ooze Street</button>` +
-      `<button id="devctl" class="mode">C · ${md}</button><button id="devboss">B · Boss</button>`;
+      `<button id="devctl" class="mode">C · ${md}</button><button id="devboss">B · Boss</button>` +
+      `<br><button id="devinput" class="mode">Input: ${api.getInput() === 'classic' ? 'Classic L up / R down' : 'Left only'}</button>`;
     sw.querySelectorAll('button[data-t]').forEach(b => b.onclick = () => { api.setTheme(b.dataset.t); buildSwitches(); });
     sw.querySelector('#devctl').onclick = () => { api.toggleMode(); buildSwitches(); };
     sw.querySelector('#devboss').onclick = () => api.summonBoss();
+    sw.querySelector('#devinput').onclick = () => { api.toggleInput(); buildSwitches(); };
   }
   function applyPreset(name) {
     const cfg = name === 'Custom' ? loadCustom() : PHYS_PRESETS[name]; if (!cfg) return;
@@ -74,12 +76,14 @@ export function mountDevPanel(parent, api) {
     const P = PHYS; body.querySelector('#devmeas').innerHTML =
       `climb trough→lip: ${simFace(P, true)}<br>drop lip→trough: ${simFace(P, false)}<br>fall speed max: ${(P.GRAVITY / P.DAMP).toFixed(2)} rail/s`;
   }
-  dev.querySelector('#devx').onclick = () => { dev.classList.toggle('min'); dev.querySelector('#devx').textContent = dev.classList.contains('min') ? '+' : '–'; };
+  const self = {};
+  dev.querySelector('#devx').onclick = () => (self.onClose ? self.onClose() : (dev.style.display = 'none'));
   buildSwitches(); build();
 
-  return {
+  return Object.assign(self, {
     el: dev,
     refreshSwitches: buildSwitches,
-    toggleVisible() { dev.style.display = dev.style.display === 'none' ? '' : 'none'; },
-  };
+    setVisible(on) { dev.style.display = on ? '' : 'none'; if (on) buildSwitches(); },
+    isVisible: () => dev.style.display !== 'none',
+  });
 }

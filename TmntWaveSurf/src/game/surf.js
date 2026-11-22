@@ -13,7 +13,7 @@
 //   * the score accumulates here (distance, airtime, pickups, boss KOs);
 //   * the test hooks on window (__spawnObstacle, __summonBoss, __hold, ...)
 //     are now methods on the returned object, reached only through the dev tools.
-import { PHYS, GAME, WAKE, RUN, DIRECT_RATE } from './constants.js';
+import { PHYS, GAME, WAKE, RUN, DIRECT_RATE, INPUT } from './constants.js';
 import mikeyUrl from '../assets/mikey_surf.webp';
 import obstAUrl from '../assets/obstacle_a.webp';
 import obstBUrl from '../assets/obstacle_b.webp';
@@ -73,7 +73,7 @@ const bossPH = () => canvasOf(300, 380, g => {
  * @param {() => object} o.directKeys   {up, dn, lastKey} for the Direct dev controller
  * @param {object} o.hooks              { onDamage() }
  */
-export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
+export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKeys, hooks }) {
   const ctx = canvas.getContext('2d');
   const SPR = {
     a: slot(obstAUrl, () => blobPH('#b5643c', '#f0a640', null)), b: slot(obstBUrl, () => blobPH('#c9c24a', '#9fd9b0', '#c8323c')),
@@ -529,7 +529,12 @@ export function createSurf({ canvas, wave, holding, directKeys, hooks }) {
     if (!air) {
       holdT = holding() ? holdT + dt : 0;
       const ramp = 1 + (P.RAMP || 0) * Math.min(1, holdT / (P.RAMP_T || 1));
-      const a = -P.GRAVITY + (holding() ? P.THRUST * ramp : 0) - P.DAMP * sVel;
+      let a = -P.GRAVITY + (holding() ? P.THRUST * ramp : 0) - P.DAMP * sVel;
+      if (inputMode && inputMode() === 'classic') {   // dev: left = up (as above), right = firmer drop, centre = hold the line
+        const d = leanDir();
+        if (d < 0) a = -P.GRAVITY * INPUT.CLASSIC_DOWN - P.DAMP * sVel;
+        else if (d === 0) a = -INPUT.CLASSIC_HOLD_DAMP * sVel;
+      }
       sVel += a * dt; sPos += sVel * dt;
       if (sPos <= 0) { sPos = 0; sVel = sVel < -0.3 ? -sVel * P.BOUNCE : 0; }
       if (sPos >= 1) {

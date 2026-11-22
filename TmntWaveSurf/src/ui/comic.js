@@ -39,7 +39,6 @@ export function createComic(doc) {
         const im = f.querySelector('img'); if (im.getAttribute('src') !== cc.img) im.src = cc.img; }
     }
     bubble.className = 'bubble ' + c.side; bubble.style.setProperty('--col', c.col);
-    bubble.querySelector('b').textContent = c.name;
     void bubble.offsetWidth; bubble.classList.add('pop');
     letter(bubble.querySelector('span'), l.text);
     clearTimeout(timer); timer = setTimeout(next, 1900 + l.text.length * 45);

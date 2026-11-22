@@ -15,7 +15,10 @@ import { createWave } from './wave/wave.js';
 import { createSurf } from './game/surf.js';
 import { RUN, MISSIONS, MISSION, GAME } from './game/constants.js';
 import happyUrl from './assets/mikey_happy.webp';
-import { installInput, pollBoard, holding, directKeys, setSensitivity, thresholds } from './input/input.js';
+import surfUrl from './assets/mikey_surf.webp';
+import bossUrl from './assets/boss.webp';
+import yachtUrl from './assets/yacht_boss.webp';
+import { installInput, pollBoard, holding, directKeys, setSensitivity, thresholds, holdSide, setHoldSide, leanDir, inputMode, setInputMode } from './input/input.js';
 import { createHud } from './ui/hud.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
 import { installDevUnlock } from './ui/devUnlock.js';
@@ -56,7 +59,6 @@ function boot() {
   let mission = 0;               // index into MISSIONS
   let koT = -1;                  // counts down after the boss KO, then the mission is won
   let cardT = 0, holdT = 0;      // the mission / win card: auto-advance clock, hold-to-continue
-  let missionStartScore = 0;
   let paused = false;            // the confirm modal freezes everything, wave included
   let pausedBeforeConfirm = false;
   let lives = RUN.LIVES;
@@ -67,7 +69,7 @@ function boot() {
   let pendingDeath = false;
 
   const surf = createSurf({
-    canvas: fx, wave, holding, directKeys,
+    canvas: fx, wave, holding, leanDir, inputMode, directKeys,
     hooks: {
       onBossKO() { if (state === State.RUNNING && koT < 0) koT = MISSION.KO_HOLD_S; },
       onOoze(on) {   // ooze power: the world goes ooze green; +3 lives on pickup
@@ -94,7 +96,22 @@ function boot() {
       `${g.bossKills} boss KO${g.bossKills === 1 ? '' : 's'} · surfed ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
   };
 
-  function setPaused(next) { paused = !!next; }
+  function setPaused(next) {
+    paused = !!next;
+    document.getElementById('pause-button').classList.toggle('on', paused);
+    document.getElementById('paused-overlay').classList.toggle('hidden', !paused);
+  }
+  /** The pause button: only while riding (countdown or run), never under the confirm modal. */
+  function togglePause() {
+    if (hud.isConfirmOpen() || !(state === State.COUNTDOWN || state === State.RUNNING)) return;
+    setPaused(!paused);
+  }
+  for (const id of ['pause-button', 'resume-button']) {
+    document.getElementById(id).addEventListener('click', (e) => { e.stopPropagation(); togglePause(); });
+    document.getElementById(id).addEventListener('pointerdown', (e) => e.stopPropagation());   // not a surf hold
+  }
+  document.getElementById('paused-overlay').addEventListener('pointerdown', (e) => e.stopPropagation());
+  addEventListener('keydown', (e) => { if ((e.code === 'KeyP' || e.code === 'Escape') && !e.repeat) togglePause(); });
 
   /** Leaders plus a window around the run just played (scoreboard.js). When the
    *  run is already among the leaders resultSections returns no window, so the
@@ -121,15 +138,18 @@ function boot() {
   // ---------------------------------------------------------------- missions
   const $ = (id) => document.getElementById(id);
   const missionEl = $('mission-overlay'), winEl = $('win-overlay');
-  document.querySelectorAll('.mission-art').forEach((im) => { im.src = happyUrl; });
+  missionEl.querySelector('.m-hero').src = surfUrl; winEl.querySelector('.m-happy').src = happyUrl;
+  /** One pip per mission: done ones ticked green, the current one lit. */
+  function pips(el, cur, doneUpTo) {
+    el.querySelector('.pips').innerHTML = MISSIONS.map((_, k) => `<i class="${k < doneUpTo ? 'done' : ''}${k === cur ? ' cur' : ''}"></i>`).join('');
+  }
   const comic = createComic(document); preloadComic();
   function showBrief(i) {
     mission = i; const m = MISSIONS[i];
     wave.setDay(m.sky, i === 0 ? 0 : 3);   // first card cuts straight to its sky; later ones fade behind the card
-    $('mission-tag').textContent = m.tag + ' of ' + MISSIONS.length;
-    $('mission-title').textContent = m.title;
-    $('mission-brief').textContent = m.brief;
-    $('mission-tip').textContent = m.tip;
+    missionEl.querySelector('.m-boss').src = m.boss === 'yacht' ? yachtUrl : bossUrl;
+    missionEl.querySelector('.m-boss').classList.toggle('wide', m.boss === 'yacht');
+    pips(missionEl, i, i);
     winEl.classList.add('hidden'); missionEl.classList.add('hidden');
     hud.setCountdown(null);
     state = State.BRIEF; cardT = MISSION.BRIEF_SECONDS; holdT = 0; koT = -1;
@@ -140,7 +160,6 @@ function boot() {
     missionEl.classList.add('hidden');
     const f = MISSION.FIRST_BOSS_S;
     surf.setMission(MISSIONS[mission].boss, f[0] + Math.random() * (f[1] - f[0])); wave.setTheme('toon');
-    missionStartScore = runScore();
     lives = RUN.LIVES; hud.setLives(lives);   // every mission starts with full shells
     state = State.COUNTDOWN; countdownT = RUN.COUNTDOWN_S;
   }
@@ -151,10 +170,7 @@ function boot() {
     comic.play(MISSIONS[mission].outro, () => { if (state !== State.WON) return; if (last) campaignDone(); else showWinCard(); });
   }
   function showWinCard() {
-    const next = MISSIONS[mission + 1];
-    $('win-tag').textContent = MISSIONS[mission].tag + ' · ' + MISSIONS[mission].title;
-    $('win-stats').textContent = `+${(runScore() - missionStartScore).toLocaleString()} points this mission · total ${runScore().toLocaleString()}`;
-    $('win-next').textContent = `Next: ${next.tag} · ${next.title}`;
+    pips(winEl, mission, mission + 1);
     winEl.classList.remove('hidden');
     cardT = MISSION.WIN_SECONDS; holdT = 0;
   }
@@ -265,12 +281,21 @@ function boot() {
     toggleMode: () => surf.setMode(surf.mode === 'Physics' ? 'Direct' : 'Physics'),
     getMode: () => surf.mode,
     summonBoss: () => surf.dev.summonBoss(),
+    getInput: inputMode,
+    toggleInput: () => setInputMode(inputMode() === 'classic' ? 'one' : 'classic'),
   };
   function mountDev() {
     if (devPanel) return;
-    devPanel = mountDevPanel(stage, devApi);
-    dbg.classList.remove('hidden');
-    document.querySelector('#dev #devx')?.click();   // starts COLLAPSED to its header: tap + to open (works on device, no keyboard needed)
+    devPanel = mountDevPanel(stage, devApi);   // starts hidden; the wrench in the chrome row opens it
+    // Chrome row, right to left: X (12px), pause (70px), this wrench (128px, dev only), gear (186px).
+    const devBtn = document.createElement('button');
+    devBtn.id = 'dev-button'; devBtn.type = 'button'; devBtn.setAttribute('aria-label', 'Dev tools');
+    devBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.7 19 13.6 9.9c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>';
+    stage.appendChild(devBtn); stage.classList.add('dev-on');
+    const showDev = (on) => { devPanel.setVisible(on); dbg.classList.toggle('hidden', !on); devBtn.classList.toggle('on', on); };
+    devBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    devBtn.addEventListener('click', (e) => { e.stopPropagation(); showDev(!devPanel.isVisible()); });
+    devPanel.onClose = () => showDev(false);
     addEventListener('keydown', (e) => {
       if (e.code === 'Digit1') { wave.setTheme('toon'); devPanel.refreshSwitches(); }
       if (e.code === 'Digit2') { wave.setTheme('ooze'); devPanel.refreshSwitches(); }
@@ -278,11 +303,11 @@ function boot() {
       if (e.code === 'KeyM' && state === State.RUNNING) missionWon();   // dev: skip to mission complete
       if (e.code === 'KeyN') surf.dev.summonJet();
       if (e.code === 'KeyC') { devApi.toggleMode(); devPanel.refreshSwitches(); }
-      if (e.code === 'Backquote') devPanel.toggleVisible();
+      if (e.code === 'Backquote') devBtn.click();
     });
     // Scripted access for headless checks -- exists only once unlocked.
     window.__tws = {
-      state: () => state, lives: () => lives, score: runScore, paused: () => paused,
+      state: () => state, setHoldSide, holding, lives: () => lives, score: runScore, paused: () => paused,
       rider: surf.dev.rider, spawnObstacle: surf.dev.spawnObstacle, spawnPicks: surf.dev.spawnPicks,
       summonBoss: surf.dev.summonBoss, koBoss: surf.dev.koBoss, game: () => surf.game, setNoSpawn: surf.dev.setNoSpawn, setTheme: devApi.setTheme, thresholds,
     };
@@ -296,12 +321,14 @@ function boot() {
   // ---------------------------------------------------------------- the loop
   hud.setLives(lives);
   showBrief(0);                  // every run opens on the first mission's card
+  const pauseBtn = document.getElementById('pause-button');
   let prev = performance.now();
   function tick(now) {
     requestAnimationFrame(tick);   // first, so a throw below cannot end the loop
     const dt = Math.min(0.05, Math.max(0, (now - prev) / 1000)); prev = now;
     fitViewport();
     pollBoard();
+    pauseBtn.classList.toggle('idle', !(state === State.COUNTDOWN || state === State.RUNNING));
     wave.stepDay(dt);
     if (!paused && (state === State.COUNTDOWN || state === State.RUNNING)) {
       waveT += dt;
@@ -326,7 +353,7 @@ function boot() {
       cardT -= dt;                       // lean (or hold Space / press) for 1 s = the button
       const btn = state === State.BRIEF ? $('mission-go') : $('win-go');
       btn.style.setProperty('--hold', Math.min(1, holdT / 1.0).toFixed(3));
-      $(state === State.BRIEF ? 'mission-clock' : 'win-clock').textContent = `${state === State.BRIEF ? 'Starting' : 'Next mission'} in ${Math.max(0, Math.ceil(cardT))} · or lean and hold`;
+      btn.parentNode.style.setProperty('--t', Math.max(0, cardT / (state === State.BRIEF ? MISSION.BRIEF_SECONDS : MISSION.WIN_SECONDS)).toFixed(3));   // the ring runs down
       if (holdT >= 1.0 || cardT <= 0) advanceCard();
       }
     } else if (state === State.DEAD && resultT >= 0) {
@@ -336,7 +363,7 @@ function boot() {
     }
     hud.setScore(runScore());
     hud.setOoze(surf.game.ooze / GAME.OOZE_DURATION);
-    if (devPanel) dbg.textContent = surf.debugText + `\nstate ${state}${paused ? ' (paused)' : ''}   lives ${lives}   theme ${wave.getTheme()}   ctl ${surf.mode}   board ${window.__gbSensor ? (+window.__gbSensor.x).toFixed(2) : 'none'} (press ${thresholds().press.toFixed(2)})`;
+    if (devPanel) dbg.textContent = surf.debugText + `\nstate ${state}${paused ? ' (paused)' : ''}   lives ${lives}   theme ${wave.getTheme()}   ctl ${surf.mode}   board ${window.__gbSensor ? (+window.__gbSensor.x).toFixed(2) : 'none'} (press ${thresholds().press.toFixed(2)}, up = ${inputMode() === 'classic' ? 'classic L up / R down' : 'lean ' + holdSide()})`;
   }
   requestAnimationFrame(tick);
 }

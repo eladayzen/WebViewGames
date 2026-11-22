@@ -29,8 +29,13 @@ export const PHYS_PRESETS = {
   'B · Soft drop + ramp': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.165, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
   // the user's saved Custom (B physics) with every jump locked to peak at 0.27 of screen height
   'C · Saved, locked jump': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
+  // C with a quicker start off the bottom -- one knob changed each (2026-11-18 "the pull-up start feels hard")
+  'D · C + fast ramp': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 0.55, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
+  'E · C + more thrust': { GRAVITY: 4.704, THRUST: 6.5, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
+  'F · C + less drag': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 3.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
+  'G · C, full push at once': { GRAVITY: 4.704, THRUST: 7.5, DAMP: 4.2, RAMP: 0, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
 };
-export const DEFAULT_PRESET = 'C · Saved, locked jump';
+export const DEFAULT_PRESET = 'G · C, full push at once';   // picked 2026-11-18: full push from the first frame, no build-up
 export const DIRECT_RATE = 1.68;   // Direct (dev) controller: face-heights per second
 export const WAKE = { RATE: 160, LIFE: 0.55, FLOW: 0.75, SPREAD: 55, GROW: 2.4 };   // per s, s, screen-widths/s, px/s, radius growth
 
@@ -93,22 +98,18 @@ export const GAME = {
 // boss 'yacht' = the villain on his ooze yacht, riding the sea at water level;
 // boss 'fly'   = the same villain in the air (the original boss).
 // sky: 1 = sunny day, 0 = evening (fades behind the mission card).
+// Story: at most 2 bubbles per scene, at most ~6 words each. The cards are icons only.
 export const MISSIONS = [
-  { boss: 'yacht', sky: 1, tag: 'MISSION 1', title: 'YACHT ATTACK',
-    brief: 'A mutant crook is dumping ooze into the bay from his yacht! Ride the wave, grab ninja stars, and drop down to his level to throw them until his yacht goes down.',
-    tip: 'Your stars fly when you are level with him. Grab shells for extra lives!',
-    intro: [{ who: 'mikey', text: "Whoa! Who's dumping ooze in our bay?!" },
-            { who: 'yacht', text: "Me! And no surfing turtle can stop me!" },
-            { who: 'mikey', text: 'Wanna bet? Cowabunga!' }],
-    outro: [{ who: 'yacht', text: 'My yacht! You sank my YACHT!' },
-            { who: 'mikey', text: 'Booyah! Ooze-free waves, dude!' }] },
-  { boss: 'fly', sky: 0, tag: 'MISSION 2', title: 'SKY STRIKE',
-    brief: 'He swam ashore and took to the sky! Now he flies over the waves firing ooze. Jump off the lip and knock him out of the air.',
-    tip: 'Jump to his height to throw. Up high he fires straight at you: time it!',
-    intro: [{ who: 'boss', text: 'Ha! Now I rule the SKY! Catch me, turtle!' },
-            { who: 'mikey', text: 'Dude. I catch air for breakfast.' }],
-    outro: [{ who: 'boss', text: "Nooo! I'll be back, turtle!" },
-            { who: 'mikey', text: 'Bay saved! Pizza time!' }] },
+  { boss: 'yacht', sky: 1,
+    intro: [{ who: 'yacht', text: 'Ooze for the whole bay! Ha!' },
+            { who: 'mikey', text: 'Not on my wave, dude!' }],
+    outro: [{ who: 'yacht', text: 'My YACHT!' },
+            { who: 'mikey', text: 'Booyah!' }] },
+  { boss: 'fly', sky: 0,
+    intro: [{ who: 'boss', text: 'Catch me up here, turtle!' },
+            { who: 'mikey', text: 'Cowabunga!' }],
+    outro: [{ who: 'boss', text: "I'll be back!" },
+            { who: 'mikey', text: 'Pizza time!' }] },
 ];
 export const MISSION = {
   FIRST_BOSS_S: [6, 9],     // s into a mission before its boss first shows up
@@ -130,8 +131,11 @@ export const RUN = {
   BOSS_KO_PTS: 500,         // per boss knocked out
 };
 
-// ===================== board input (lateral axis only) =====================
-// The hold is |__gbSensor.x| past PRESS, released below RELEASE (hysteresis).
+// ===================== board input: ONE direction =====================
+// Only one lean direction pushes the board up (HOLD_SIDE); every other lean,
+// including the opposite side, is "no input" (2026-11-22: leaning either way
+// for up was not intuitive). The hold is the lean along HOLD_SIDE past PRESS,
+// released below RELEASE (hysteresis).
 // Thresholds follow the player's sensitivity with the SAME mapping the host
 // uses for its own synthetic keys (WebGameController.ApplySensitivity):
 // press = lerp(0.60, 0.15, pct/100), release = press * 0.6. The host does NOT
@@ -141,7 +145,10 @@ export const INPUT = {
   PRESS_AT_MIN: 0.60,       // press threshold at sensitivity 0
   PRESS_AT_MAX: 0.15,       // press threshold at sensitivity 100
   RELEASE_RATIO: 0.6,       // release = press x this
-  HOLD_CODES: ['Space', 'ArrowUp', 'KeyW'],
+  HOLD_CODES: ['Space', 'ArrowUp', 'KeyW'],   // keyboard holds (plus the arrow key of HOLD_SIDE)
+  HOLD_SIDE: 'left',
+  CLASSIC_DOWN: 1.6,        // classic mode, lean right: gravity x this (a firmer drop than letting go)
+  CLASSIC_HOLD_DAMP: 9,     // classic mode, centre: no gravity, speed bleeds off at this rate (holds the line)        // 'left' | 'right' | 'front' | 'back' -- a player setting later
 };
 
 // the jump peak's rider-body height, used by the boss hover

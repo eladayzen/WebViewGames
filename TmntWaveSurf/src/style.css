@@ -58,7 +58,6 @@ html, body {
   background: rgba(18, 10, 30, 0.88); color: #fff; font: 12px ui-monospace, Menlo, monospace;
   border: 2px solid var(--ink); border-radius: 10px; padding: 8px 10px; box-shadow: 3px 3px 0 var(--ink);
 }
-#dev.min #devbody, #dev.min #devsw { display: none; }
 #dev .hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 #dev button { font: 700 11px system-ui; border: 2px solid var(--ink); border-radius: 6px; background: var(--yellow); color: var(--ink); padding: 3px 7px; margin: 2px 2px 2px 0; cursor: pointer; }
 #dev button.on { background: #00ff1e; }
@@ -488,9 +487,25 @@ html, body {
 }
 
 
-/* ---- this game's chrome row: X at 12px, the gear next to it (no pause button) ---- */
-#settings-button { right: 70px; }
-#settings-panel { right: 12px; }
+/* ---- this game's chrome row: X at 12px, pause at 70px, gear at 128px (template pitch) ---- */
+#pause-button { position: absolute; top: 12px; right: 70px; z-index: 9999; width: 52px; height: 52px; padding: 0; border-radius: 999px;
+  border: 0.2vmin solid rgba(150, 215, 240, 0.55); background: rgba(20, 20, 40, 0.72); box-shadow: 0 0 1.4vmin rgba(0, 0, 0, 0.5);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+#pause-button.idle { opacity: 0.4; pointer-events: none; }
+#dev-button { position: absolute; top: 12px; right: 128px; z-index: 9999; width: 52px; height: 52px; padding: 0; border-radius: 999px;
+  border: 0.2vmin solid rgba(150, 215, 240, 0.55); background: rgba(20, 20, 40, 0.72); box-shadow: 0 0 1.4vmin rgba(0, 0, 0, 0.5);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+#dev-button svg { width: 22px; height: 22px; fill: #eafcff; }
+#dev-button.on { background: rgba(55, 200, 230, 0.85); }
+#dev-button.on svg { fill: #04121a; }
+.dev-on #settings-button { right: 186px; }
+.dev-on #settings-panel { right: 130px; }
+#pause-button svg { width: 22px; height: 22px; fill: #eafcff; }
+#pause-button .i-play, #pause-button.on .i-pause { display: none; }
+#pause-button.on .i-play { display: block; fill: #04121a; }
+#paused-overlay { position: absolute; inset: 0; z-index: 9990; background: rgba(10, 4, 22, 0.55); display: grid; place-items: center; }
+#paused-overlay.hidden { display: none; }
+#resume-button { width: 18vmin; height: 18vmin; }
 
 /* ---- TMNT accents on the shared cards ---- */
 .board-screen { background: radial-gradient(120% 90% at 50% 0%, rgba(60, 24, 90, 0.92) 0%, rgba(10, 5, 20, 0.97) 62%), #07040e; }
@@ -505,20 +520,23 @@ html, body {
 
 /* ---- mission card + mission complete (TMNT Wave Surf) ---- */
 .mission-screen { background: rgba(10, 4, 22, 0.55); z-index: 9999; }   /* above the dev panel (9998), below the X (10001) so leaving always works */
-.mission-card { display: flex; align-items: center; gap: min(3vmin, 1.7vw); text-align: left; min-width: 0; width: min(120vmin, 74vw); max-width: 90%; }
-.mission-art { height: min(52vmin, 30vw); width: auto; flex: 0 0 auto; filter: drop-shadow(0.6vmin 0.6vmin 0 rgba(18, 10, 30, 0.8)); }
-.mission-text { flex: 1 1 auto; }
-.mission-tag { font: 900 min(2.4vmin, 1.4vw)/1 system-ui, sans-serif; letter-spacing: 0.5vmin; color: var(--cyan); margin-bottom: 1vmin; }
-.mission-card h1 { margin: 0 0 1.6vmin; font: 900 min(6.4vmin, 3.6vw)/1 system-ui, sans-serif; letter-spacing: 0.3vmin;
-  color: var(--yellow); -webkit-text-stroke: 0.3vmin var(--ink); paint-order: stroke fill; text-shadow: 0.5vmin 0.5vmin 0 var(--ink); }
-.mission-brief { margin: 0 0 1.2vmin; font: 600 min(2.5vmin, 1.45vw)/1.35 system-ui, sans-serif; color: #eafcff; }
-.mission-tip { margin: 0 0 2vmin; font: 700 min(2.1vmin, 1.2vw)/1.3 system-ui, sans-serif; color: #00ff1e; }
-.mission-btn { position: relative; overflow: hidden; font: 900 min(2.8vmin, 1.6vw)/1 system-ui, sans-serif; letter-spacing: 0.3vmin;
-  padding: 1.6vmin 5vmin; border-radius: 1vmin; border: 0.3vmin solid var(--ink); background: var(--yellow); color: var(--ink); cursor: pointer;
-  box-shadow: 0.5vmin 0.5vmin 0 var(--ink); -webkit-tap-highlight-color: transparent; }
-.mission-btn .fill { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--hold, 0) * 100%); background: #00ff1e; }
-.mission-btn .lbl { position: relative; }
-.mission-clock { margin: 1.4vmin 0 0; font: 700 min(1.9vmin, 1.1vw)/1 system-ui, sans-serif; color: rgba(234, 252, 255, 0.6); min-height: 1em; }
+.mission-card { display: flex; flex-direction: column; align-items: center; gap: 3vmin; min-width: 0; padding: 3.5vmin 6vmin; }
+.mission-card .pips { display: flex; gap: 1.6vmin; }
+.mission-card .pips i { width: 2.6vmin; height: 2.6vmin; border-radius: 50%; border: 0.4vmin solid var(--ink); background: rgba(234, 252, 255, 0.25); }
+.mission-card .pips i.done { background: #00ff1e; }
+.mission-card .pips i.cur { background: var(--yellow); box-shadow: 0 0 1.6vmin var(--yellow); }
+.mission-card .pips i.cur.done { background: #00ff1e; box-shadow: 0 0 1.6vmin #00ff1e; }
+.vs-row { display: flex; align-items: center; gap: 3vmin; position: relative; }
+.vs-row img { height: min(34vmin, 22vw); width: auto; filter: drop-shadow(0.6vmin 0.6vmin 0 rgba(18, 10, 30, 0.8)); }
+.vs-row img.m-boss.wide { height: min(26vmin, 17vw); }
+.vs-row .vs { width: 10vmin; height: 10vmin; fill: var(--yellow); stroke: var(--ink); stroke-width: 1.4; stroke-linejoin: round; filter: drop-shadow(0.5vmin 0.5vmin 0 var(--ink)); }
+.vs-row.win .star { position: absolute; left: 50%; top: 50%; width: 46vmin; height: 46vmin; transform: translate(-50%, -50%); fill: var(--yellow); stroke: var(--ink); stroke-width: 0.8; opacity: 0.9; }
+.vs-row.win img { position: relative; height: min(40vmin, 26vw); }
+.go-ring { --t: 1; padding: 0.9vmin; border-radius: 50%; background: conic-gradient(#eafcff calc(var(--t) * 360deg), rgba(234, 252, 255, 0.15) 0); }
+.mission-btn { position: relative; overflow: hidden; display: grid; place-items: center; width: 13vmin; height: 13vmin; padding: 0; border-radius: 50%;
+  border: 0.4vmin solid var(--ink); background: var(--yellow); cursor: pointer; box-shadow: 0.4vmin 0.4vmin 0 var(--ink); -webkit-tap-highlight-color: transparent; }
+.mission-btn .fill { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--hold, 0) * 100%); background: #00ff1e; }
+.mission-btn svg { position: relative; width: 62%; height: 62%; fill: var(--ink); margin-left: 8%; }
 
 
 /* ---- story comic (minimal take on WagonRampage's comic.css) ---- */
@@ -541,9 +559,6 @@ html, body {
 #comic .bubble { position: absolute; top: 9vh; max-width: min(46vw, 560px); background: #fff; color: var(--ink); border: 5px solid var(--ink);
   border-radius: 26px; padding: 26px 30px 22px; box-shadow: 8px 8px 0 rgba(0,0,0,.4); z-index: 3; }
 #comic .bubble.left { left: 30vw; } #comic .bubble.right { right: 30vw; }
-#comic .bubble b { position: absolute; top: -22px; left: 22px; padding: 3px 14px 2px; background: var(--col); border: 4px solid var(--ink);
-  font: italic 900 18px/1 system-ui, sans-serif; letter-spacing: 1px; color: var(--ink); transform: rotate(-4deg) skewX(-8deg); }
-#comic .bubble.right b { left: auto; right: 22px; transform: rotate(4deg) skewX(8deg); }
 #comic .bubble span { display: block; min-height: 1.1em; font: italic 900 clamp(18px, 2.9vw, 32px)/1.12 system-ui, sans-serif; text-transform: uppercase; }
 #comic .bubble::before, #comic .bubble::after { content: ''; position: absolute; width: 0; height: 0; border-style: solid; }
 #comic .bubble.left::before { left: 18%; bottom: -46px; border-width: 46px 34px 0 0; border-color: var(--ink) transparent transparent; transform: skewX(-25deg); }
