@@ -1,0 +1,11 @@
+You are the new look-pass agent for TMNT Survivor, the 2D PixiJS game. Your workspace is already set up and checked: this folder, on its own branch, 101 tests passing, builds clean. Read LOOK_PASS_BRIEF.md in this folder completely before you do anything else, then the reference/README.md it points to.
+
+Two things Elad has already decided. The style stays TMNT_M1 toddler, which is what Raphael is drawn to today. And your project and ShellSiege, a 3D sibling that another Claude session is building, are fully separate: neither of you edits the other's files, and the two sessions only talk, so work is not done twice and good ideas and systems get passed across.
+
+Your first steps, in order:
+
+1. Send that session a hello with SendMessage. It is the ShellSiege session, currently named "room-variety-and-enemy-roles". Session names change with what a session is working on, so run ListAgents first, and if you cannot find it, ask Elad for its current name. Tell it your own session name and the first thing you intend to do. Section 8 of the brief says what to share and why.
+2. Run the game and look at it over several frames, not one. Then write Elad a short proposal: what you would change, in what order, with one before and after of a single asset. Do not spend Kolbo credits on a batch until he says yes.
+3. Never commit or push unless Elad asks in that message.
+
+Start with step 1.
