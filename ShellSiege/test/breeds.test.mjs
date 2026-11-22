@@ -99,3 +99,31 @@ test('every breed states the geometry the renderer and the sim both need', () =>
     assert.ok(b.reach > b.radius, `${k} cannot reach past its own body`);
   }
 });
+
+test('THE HITBOX IS THE SIZE OF THE BODY YOU SEE -- a giant with a small hitbox is a bug', () => {
+  // Drawn height and sim radius are separate numbers and are changed by hand,
+  // so they can drift. Radius per unit of height is about 21 for every breed
+  // today; a breed far outside that band is either invisible to its own
+  // hitbox or swallowing shots that visibly miss it.
+  for (const [k, b] of Object.entries(BREEDS)) {
+    const per = b.radius / b.height;
+    assert.ok(per > 16 && per < 26, `${k}: radius ${b.radius} for height ${b.height} is ${per.toFixed(1)} px per unit`);
+  }
+});
+
+test('SIZE ORDER IS THE INTENDED ONE: Slayer smallest, the two big golems biggest', () => {
+  const h = (k) => BREEDS[k].height;
+  assert.ok(h('slayer') < h('evilgod'), 'the Evil God is taller than a Slayer');
+  assert.ok(h('evilgod') < h('mechgolem'));
+  assert.ok(h('mechgolem') < h('elemgolem'));
+  assert.ok(h('mechgolem') < h('fortgolem'));
+  // Elad: the two big golems are "about 80%" bigger, so they must be a class
+  // apart from the Mechanical Golem, not a step above it.
+  assert.ok(h('elemgolem') > h('mechgolem') * 1.4, 'the big golems are not clearly bigger');
+  assert.ok(h('fortgolem') > h('mechgolem') * 1.4);
+});
+
+test('A BIGGER BODY REACHES FURTHER -- reach scales with size, not just radius', () => {
+  const reachBeyondBody = (k) => BREEDS[k].reach - BREEDS[k].radius;
+  assert.ok(reachBeyondBody('fortgolem') > reachBeyondBody('slayer'), 'a giant swings no further than a Slayer');
+});

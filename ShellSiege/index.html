@@ -115,22 +115,33 @@
     <!-- THE ONE PAUSE IN THE GAME: a box opens and hands over one ability.
          Nothing here takes input -- the player does not choose, they find out.
          The phase is set on `data-phase` by ui/roll.js and the CSS does the
-         rest, so how long it takes lives in core/roll.js and nowhere else. -->
+         rest, so how long it takes lives in core/roll.js and nowhere else.
+         The art follows the reference concepts in art-candidates/loot-box/:
+         a spotlight on black (concept A), and the three beats of shake, crack
+         open, rise (concept C). It plays on the black the iris leaves behind. -->
     <div id="roll-overlay" class="hidden" data-phase="">
       <div class="roll-title">NEW POWER</div>
       <div class="roll-stage">
-        <div class="roll-glow"></div>
+        <div class="roll-pool"></div>
+        <div class="roll-rays"></div>
+        <img class="roll-box closed" alt="" />
+        <img class="roll-box open" alt="" />
+        <div class="roll-sparks">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
         <div class="roll-card">
           <div class="roll-icon"></div>
           <div class="roll-label"></div>
           <div class="roll-blurb"></div>
         </div>
-        <div class="roll-box">
-          <div class="roll-base"></div>
-          <div class="roll-lid"></div>
-        </div>
       </div>
     </div>
+
+    <!-- The iris and the flash: painted by ui/iris.js and ui/hud.js from
+         core/transition.js. Both start hidden and cost nothing while the
+         screen is open. -->
+    <div id="iris" style="display:none"></div>
+    <div id="flash"></div>
 
     <div id="paused-overlay" class="hidden">
       <div class="card">

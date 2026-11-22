@@ -25,20 +25,24 @@ import { stepAngle, desiredFacing, AIM_RANGE_MUL } from './core/facing.js';
 import { THROW } from './core/throwing.js';
 import { localHeading } from './core/locomotion.js';
 import { createTargets, updateTargets } from './systems/targets.js';
-import { updateFoes, PLAYER_HP } from './core/foes.js';
+import { updateFoes, updateFoeShots, PLAYER_HP } from './core/foes.js';
 import { createView, CAM } from './render/view.js';
 import { createStage } from './render/stage.js';
 import { createFx } from './render/fx.js';
 import { createHeld } from './render/held.js';
-import { FLOOR } from './render/floors.js';
+import { FLOORS } from './render/floors.js';
+import { THEMES, layoutObstacles, usedFloors } from './core/looks.js';
 import { createFoes, loadEnemies } from './render/foes.js';
 import { createDebris, loadDebris } from './render/debris.js';
+import { createTelegraphs } from './render/telegraph.js';
 import { stats } from './core/abilities.js';
 import { START } from './core/breeds.js';
 import { createRun, stepRun, restartLevel, nextLevel, frozen } from './core/run.js';
 import { enemiesLeft } from './core/rooms.js';
 import { createRollUi } from './ui/roll.js';
 import { createHud } from './ui/hud.js';
+import { createIris } from './ui/iris.js';
+import { TRANS, irisOpen } from './core/transition.js';
 import { loadRig } from './render/rig.js';
 import { PX } from './render/units.js';
 
@@ -52,17 +56,22 @@ function loadTex(url) {
 }
 
 async function boot() {
-  const [floor, crate, shuriken, sai, enemies, debrisGeos] = await Promise.all([
-    loadTex(FLOOR.tex),
+  // EVERY FLOOR PAINTING A ROOM CAN USE, up front: swapping rooms is then a
+  // pointer change under the black, not a decode the player could feel.
+  const floorKeys = usedFloors();
+  const [floorList, crate, shuriken, sai, enemies, debrisGeos] = await Promise.all([
+    Promise.all(floorKeys.map((k) => loadTex(FLOORS[k].tex))),
     loadTex('tex/crate.webp'),
     loadTex('tex/shuriken.webp'),
     loadTex('tex/sai.webp'),
     loadEnemies(),
     loadDebris(),
   ]);
-  const stage = createStage(view.scene, { floor });
+  const floors = Object.fromEntries(floorKeys.map((k, i) => [k, floorList[i]]));
+  const stage = createStage(view.scene, { floors });
   const foesFx = createFoes(view.scene, enemies);
   const debrisFx = createDebris(view.scene, debrisGeos);
+  const telegraphs = createTelegraphs(view.scene);
   const fx = createFx(view.scene, { crate, shuriken, sai });
   const rig = await loadRig(view.scene);
   // After the rig, because the blades are parented to its hand bones.
@@ -103,6 +112,10 @@ async function boot() {
 
   const rollUi = createRollUi();
   const hud = createHud();
+  const iris = createIris();
+  const irisAt = new THREE.Vector3();
+  // Real seconds of slow motion still to run after the last kill. See core/transition.js.
+  let slowT = 0;
 
   /**
    * WHERE YOU ARE IN THE CAMPAIGN. The run is pure state (core/run.js); this
@@ -110,6 +123,20 @@ async function boot() {
    * in, so one room can be looked at without clearing the ones before it.
    */
   let run = createRun({ level: START.level, room: START.room });
+
+  /**
+   * PUT A ROOM'S LOOK ON THE SCREEN AND ITS OBSTACLES IN THE WORLD, from the one
+   * list, so what you see is exactly what stops you. Called when a room begins
+   * -- which is while the iris is still closed, so nothing visibly changes --
+   * and again after a restart, which rebuilds the world and so empties it.
+   */
+  function applyLook(look) {
+    const theme = THEMES[look.theme];
+    w.obstacles = layoutObstacles(look.layout);
+    stage.setTheme(theme);
+    stage.setObstacles(w.obstacles, theme);
+  }
+  applyLook(run.room.look);
 
   /** Health scales with THICK HIDE, and picking one heals exactly what it added. */
   function syncMaxHp(st, full = false) {
@@ -121,6 +148,14 @@ async function boot() {
     } else if (full) {
       w.hp = m;
     }
+  }
+
+  /** Put the iris on the turtle, wherever he is on screen right now. */
+  function updateIris() {
+    const open = irisOpen(run);
+    if (open >= 1) { iris.set(1, 0, 0); return; }
+    irisAt.set(w.player.x / PX, 0.9, w.player.y / PX).project(view.camera);
+    iris.set(open, (irisAt.x * 0.5 + 0.5) * window.innerWidth, (-irisAt.y * 0.5 + 0.5) * window.innerHeight);
   }
 
   function announceRoom() {
@@ -151,10 +186,17 @@ async function boot() {
 
   /** What a run event looks like on screen. The run itself never touches the DOM. */
   function onRunEvent(e) {
-    if (e.type === 'cleared') hud.say(e.last ? 'LEVEL CLEAR' : 'ROOM CLEAR');
+    if (e.type === 'cleared') {
+      // THE MOMENT. A beat of slow motion and a white pop on the last kill, the
+      // banner with the count, and then (from core/transition.js, driven by the
+      // run's own clock) the iris closes on the turtle.
+      slowT = TRANS.slowS;
+      hud.flash();
+      hud.say(e.last ? 'LEVEL CLEAR' : 'ROOM CLEAR', `${kills} down`);
+    }
     else if (e.type === 'rollStart') { if (!e.roll.done) rollUi.open(e.roll); }
     else if (e.type === 'rollDone') rollUi.close();
-    else if (e.type === 'roomStart') announceRoom();
+    else if (e.type === 'roomStart') { applyLook(run.room.look); announceRoom(); }
     else if (e.type === 'won') showEnd('won');
   }
 
@@ -177,11 +219,14 @@ async function boot() {
     hits = 0;
     kills = 0;
     run = won ? nextLevel(run) : restartLevel(run);
+    applyLook(run.room.look);
     rollUi.close();
+    slowT = 0;
     hud.hideBanner();
     // Hide the pool immediately, or the last frame's bodies are still standing
     // there behind the overlay when it fades.
     foesFx.syncFoes([], 0, 0);
+    telegraphs.sync([], [], 0);
     overlay?.classList.add('hidden');
     announceRoom();
   }
@@ -196,8 +241,13 @@ async function boot() {
     requestAnimationFrame(frame);
     // Clamped: a WebView that was backgrounded hands back a dt measured in
     // seconds, and an unclamped step teleports everything through everything.
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const realDt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    // SLOW MOTION IS A SCALE ON THE SIMULATION'S CLOCK ONLY. The camera and the
+    // slow-motion countdown itself keep real time, or the beat would last as
+    // long again as it was meant to and the camera would lag behind the action.
+    const dt = realDt * (slowT > 0 ? TRANS.slowScale : 1);
+    if (slowT > 0) slowT = Math.max(0, slowT - realDt);
 
     // THE BOX FREEZES THE WORLD, and nothing else. It runs by itself -- there is
     // no lean to wait for, which is the point of having replaced the choice
@@ -207,6 +257,7 @@ async function boot() {
       readInput(dt);
       if (!paused) for (const e of stepRun(run, w, dt)) onRunEvent(e);
       if (frozen(run)) rollUi.update(run.roll);
+      updateIris();
       view.renderer.render(view.scene, view.camera);
       return;
     }
@@ -289,13 +340,15 @@ async function boot() {
       // its own windup.
       for (const e of stepRun(run, w, dt)) onRunEvent(e);
       updateFoes(w, dt, () => fx.spark(w.player.x, w.player.y, 0.9));
+      updateFoeShots(w, dt, () => fx.spark(w.player.x, w.player.y, 0.9));
 
       if (w.dead && overlay?.classList.contains('hidden')) showEnd('dead');
 
-      view.follow(w.camera.x, w.camera.y, dt);
+      view.follow(w.camera.x, w.camera.y, realDt);
       stage.update(w.timeS);
       fx.syncCrates(crates, w.timeS);
       foesFx.syncFoes(w.foes, w.timeS, dt);
+      telegraphs.sync(w.foes, w.foeShots, w.timeS);
       fx.syncShots(w.bullets, w.timeS, muzzleY);
       // After the rig has been posed and after updateFiring, so the hand is
       // emptied on the same frame the blade it threw first appears.
@@ -313,13 +366,14 @@ async function boot() {
       if (hudHits) hudHits.textContent = String(hits);
     }
 
+    updateIris();
     view.renderer.render(view.scene, view.camera);
   }
   requestAnimationFrame(frame);
 
   // Handy while tuning from a desk.
   window.__ss = {
-    w, view, stage, rig, fx, heldFx, foesFx, debrisFx, restart, floor: FLOOR, ARENA,
+    w, view, stage, rig, fx, heldFx, foesFx, debrisFx, telegraphs, restart, floors: FLOORS, ARENA,
     hud, rollUi, get run() { return run; }, get stats() { return stats(w.build); },
   };
 }

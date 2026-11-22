@@ -23,7 +23,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ARENA } from '../core/world.js';
-import { FLOOR } from './floors.js';
+import { FLOORS } from './floors.js';
 import { u } from './units.js';
 
 const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
@@ -39,8 +39,8 @@ const CX = W / 2, CZ = H / 2;
 // MEASURED off whichever floor art is loaded, not guessed -- the scan bins the
 // green-minus-red signal by radius and takes the peak band. Each floor painting
 // puts its runes somewhere different, so the radius travels with the art rather
-// than living here as a constant; see render/floors.js.
-export const RUNE_R = num('ring', FLOOR.runeR);
+// than living here as a constant; see render/floors.js. `?ring=` still overrides.
+const runeRadius = (floorKey) => num('ring', (FLOORS[floorKey] || FLOORS.warm).runeR);
 
 /** A soft round glow, built once and shared by every additive sprite. */
 export function glowTexture(inner = 'rgba(255,255,255,1)', outer = 'rgba(255,255,255,0)') {
@@ -71,6 +71,10 @@ function pillarGeometry() {
   return mergeGeometries(parts, false);
 }
 
+/**
+ * @param tex.floors  { warm, stone }: every painting a theme can use, loaded up
+ *        front so swapping rooms is a pointer change, not a decode.
+ */
 export function createStage(scene, tex) {
   const group = new THREE.Group();
   scene.add(group);
@@ -93,11 +97,13 @@ export function createStage(scene, tex) {
   // is two triangles, so the brazier pools would light four corners and
   // nothing in between. Phong with no specular is per-pixel and costs one
   // screen of fill, which is what a floor costs anyway.
-  tex.floor.colorSpace = THREE.SRGBColorSpace;
-  tex.floor.anisotropy = 8;
+  for (const t of Object.values(tex.floors)) {
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+  }
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(W, H),
-    new THREE.MeshPhongMaterial({ map: tex.floor, shininess: 0, specular: 0x000000 }),
+    new THREE.MeshPhongMaterial({ map: tex.floors.warm, shininess: 0, specular: 0x000000 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(CX, 0, CZ);
@@ -106,7 +112,7 @@ export function createStage(scene, tex) {
   // --- the rune ring: a live glow sitting exactly on the painted one, so the
   // dais breathes instead of being a picture of a dais.
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(RUNE_R - 0.28, RUNE_R + 0.28, 96),
+    new THREE.RingGeometry(runeRadius('warm') - 0.28, runeRadius('warm') + 0.28, 96),
     new THREE.MeshBasicMaterial({
       color: 0x3ce6a0, transparent: true, opacity: 0.16,
       blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
@@ -120,6 +126,7 @@ export function createStage(scene, tex) {
   // --- the colonnade, far edges only (see the header).
   const geo = pillarGeometry();
   const mat = new THREE.MeshLambertMaterial({ color: 0xc6b89d });
+  const colMat = mat;                    // recoloured per theme
   const SPAN = 10;                       // columns per far edge
   const OUT = num('colon', 1.6);         // how far outside the floor they stand
   const mesh = new THREE.InstancedMesh(geo, mat, SPAN * 2);
@@ -209,5 +216,81 @@ export function createStage(scene, tex) {
     }
   }
 
-  return { group, floor, ring, braziers, update, glowTexture };
+  // ---- ROOMS: a theme for the floor and the mood, obstacles for the layout ----
+  //
+  // THE FLOOR IS SWAPPED BY POINTER AND THE GRADE BY MATERIAL COLOUR. The
+  // paintings are decoded once, at load. A material's `color` multiplies its
+  // map, so the same stone reads as dusk or ember for the price of one
+  // setHex(); a real new painting is one more entry in `tex.floors`.
+  //
+  // THE FOG IS ALSO THE BACKGROUND, so it moves with the theme: it sets the
+  // value of every pixel the floor does not cover.
+  function setTheme(theme) {
+    floor.material.map = tex.floors[theme.floor] || tex.floors.warm;
+    floor.material.color.setHex(theme.tint);
+    floor.material.needsUpdate = true;
+    apron.material.color.setHex(theme.apron);
+    scene.fog.color.setHex(theme.fog);
+    scene.background.setHex(theme.fog);
+    colMat.color.setHex(theme.props);
+    kerbMat.color.setHex(theme.props).multiplyScalar(0.88);
+    if (theme.ring) {
+      const r = runeRadius(theme.floor);
+      ring.geometry.dispose();
+      ring.geometry = new THREE.RingGeometry(r - 0.28, r + 0.28, 96);
+      ring.material.color.setHex(theme.ring.color);
+      ring.visible = true;
+    } else {
+      ring.visible = false;
+    }
+  }
+
+  const obstacleGroup = new THREE.Group();
+  group.add(obstacleGroup);
+  const pillarGeo = pillarGeometry();
+  const rubbleGeo = new THREE.DodecahedronGeometry(1, 0);
+  const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+  let obstacleMats = [];
+
+  /**
+   * Build the room's obstacles from the same list the simulation collides with,
+   * so what you see is exactly what stops you. The visual footprint is a few
+   * percent WIDER than the hitbox on purpose: a body that stops just short of
+   * the visible edge reads as solid, one that sinks into it reads as broken.
+   *
+   * Pillars are cut down to about half height. Full-height columns at this
+   * pitch hid the enemy standing behind them, which is the one thing an
+   * obstacle in a combat room must not do.
+   */
+  function setObstacles(list, theme) {
+    for (const c of [...obstacleGroup.children]) obstacleGroup.remove(c);
+    for (const m of obstacleMats) m.dispose();
+    obstacleMats = [];
+    const base = new THREE.Color(theme.props);
+    const mk = (k) => { const m = new THREE.MeshLambertMaterial({ color: base.clone().multiplyScalar(k) }); obstacleMats.push(m); return m; };
+    const matPillar = mk(1.0), matRubble = mk(0.74), matWall = mk(0.9);
+    list.forEach((o, i) => {
+      let mesh;
+      if (o.kind === 'rect') {
+        mesh = new THREE.Mesh(boxGeo, matWall);
+        mesh.scale.set(u(o.hw * 2), 1.25, u(o.hh * 2));
+        mesh.position.set(u(o.x), 0.625, u(o.y));
+      } else if (o.tall) {
+        mesh = new THREE.Mesh(pillarGeo, matPillar);
+        const s = u(o.r) / 0.55;
+        mesh.scale.set(s, s * 0.5, s);
+        mesh.position.set(u(o.x), 0, u(o.y));
+        mesh.rotation.y = i * 0.7;
+      } else {
+        mesh = new THREE.Mesh(rubbleGeo, matRubble);
+        const r = u(o.r);
+        mesh.scale.set(r * 1.05, r * 0.7, r * 0.95);
+        mesh.position.set(u(o.x), r * 0.45, u(o.y));
+        mesh.rotation.set(i * 0.5, i * 1.1, 0);
+      }
+      obstacleGroup.add(mesh);
+    });
+  }
+
+  return { group, floor, ring, braziers, update, glowTexture, setTheme, setObstacles };
 }

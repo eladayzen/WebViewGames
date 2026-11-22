@@ -20,6 +20,7 @@
 // would be 27, and the stone would read as mush under a camera this close.
 
 import { createBuild } from './abilities.js';
+import { resolveCircle } from './obstacles.js';
 
 export const ARENA = { width: 3600, height: 3600 };
 
@@ -57,6 +58,12 @@ export function createWorld() {
     // the whole combat system takes "anything with a position, a radius and
     // hp" and neither it nor the aiming needs to know which is which.
     targets: [],
+    // WHAT YOU CANNOT WALK THROUGH in this room (core/obstacles.js), set by the
+    // frame loop when a room begins. Empty means an open floor.
+    obstacles: [],
+    // THINGS THE ENEMIES HAVE THROWN, in flight (core/foes.js). The player's own
+    // blades are in `bullets`; these are kept apart because they hurt HIM.
+    foeShots: [],
     // References to the SAME objects as the foes in `targets`, never copies.
     // core/foes.js explains why that is the cheap way to have two views.
     foes: [],
@@ -109,6 +116,13 @@ export function updateWorld(w, dir, dt) {
   const r = w.playerRadius;
   p.x = Math.max(r, Math.min(ARENA.width - r, p.x));
   p.y = Math.max(r, Math.min(ARENA.height - r, p.y));
+  // AFTER the wall clamp, then the wall again: being pushed out of a pillar must
+  // not push him out of the arena, and being clamped must not leave him in one.
+  if (w.obstacles && w.obstacles.length) {
+    resolveCircle(p, r, w.obstacles);
+    p.x = Math.max(r, Math.min(ARENA.width - r, p.x));
+    p.y = Math.max(r, Math.min(ARENA.height - r, p.y));
+  }
 
   // FACING FOLLOWS TRAVEL, and only while travelling -- recomputing it from a
   // zero vector snaps him to face right every time the player stops, which

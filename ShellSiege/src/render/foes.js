@@ -31,6 +31,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { u } from './units.js';
 import { FOE } from '../core/foes.js';
 import { BREEDS, DEFAULT_BREED, usedBreeds } from '../core/breeds.js';
+import { TELEGRAPH_STATES } from '../core/behaviors.js';
 
 const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const num = (k, d) => {
@@ -192,6 +193,8 @@ export function createFoes(scene, enemies, _unusedAtlas) {
   scene.add(group);
 
   const TELL = new THREE.Color(0xff5a3c);     // the windup
+  const TELL_CAST = new THREE.Color(0xb98cff); // calling reinforcements: violet, to match its floor sigil
+  const STUN = new THREE.Color(0x7aa8ff);      // crashed into something: dazed blue
   const shadowMat = new THREE.MeshBasicMaterial({
     map: shadowTexture(), transparent: true, depthWrite: false, fog: false,
   });
@@ -257,9 +260,15 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     // points a +Z-facing mesh along it. Same convention as the player's rig.
     holder.rotation.y = Math.atan2(Math.cos(f.facing), Math.sin(f.facing)) + ENEMY.yaw;
 
-    const swinging = f.state === 'windup' || f.state === 'recover';
-    const moving = f.stepped > 0.0001;
-    const windupS = f.windupS ?? FOE.windupS;
+    // EVERY WARNING STATE SWINGS THE ARM, not just the melee wind-up: a thrower's
+    // throw, a charger's wind-up, a slam and a summon all scrub the same attack
+    // clip over THEIR OWN warning time (the job's, not the melee swing's), so the
+    // body shows the same thing the floor marker does. Better clips per job can
+    // replace this later; the timing is already right.
+    const telegraphing = TELEGRAPH_STATES.has(f.state);
+    const swinging = telegraphing || f.state === 'recover';
+    const moving = f.stateT >= 0 && f.stepped > 0.0001;     // a DASH moves, so it plays the walk
+    const windupS = (f.state !== 'windup' && telegraphing && f.job?.windupS) || (f.windupS ?? FOE.windupS);
     const recoverS = f.recoverS ?? FOE.recoverS;
 
     if (act.attack) {
@@ -267,14 +276,15 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       // winds up for 0.60s where an elf takes 0.32s, so a shared constant
       // would land the blade on the wrong frame for four breeds out of five.
       const span = windupS + recoverS;
-      const into = f.state === 'windup' ? f.stateT : windupS + f.stateT;
+      const into = telegraphing ? f.stateT : windupS + f.stateT;
       const d = act.attack.getClip().duration;
       act.attack.time = Math.max(0, Math.min(d, (into / span) * d));
       act.attack.setEffectiveWeight(swinging ? 1 : 0);
     }
     if (act.walk) {
       act.walk.setEffectiveWeight(!swinging && moving ? 1 : 0);
-      act.walk.timeScale = ENEMY.cadence;
+      // A dash is a run: the same cycle, played much faster.
+      act.walk.timeScale = ENEMY.cadence * (f.state === 'dash' ? 2.4 : 1);
     }
     if (act.idle) act.idle.setEffectiveWeight(!swinging && !moving ? 1 : 0);
 
@@ -282,9 +292,12 @@ export function createFoes(scene, enemies, _unusedAtlas) {
 
     // --- colour: the telegraph, the hit flash, and the fade on death.
     mat.color.copy(BASE);
-    if (f.state === 'windup') {
+    if (telegraphing) {
       const k = Math.min(1, f.stateT / windupS);
-      mat.color.copy(BASE).lerp(TELL, 0.25 + 0.6 * k);
+      mat.color.copy(BASE).lerp(f.state === 'cast' ? TELL_CAST : TELL, 0.25 + 0.6 * k);
+    } else if (f.state === 'stunned') {
+      // dazed, and visibly so: a charger that has crashed is the player's opening
+      mat.color.copy(BASE).lerp(STUN, 0.5 + 0.15 * Math.sin(f.stateT * 24));
     } else if (f.state === 'recover') {
       const k = Math.min(1, f.stateT / (recoverS * 0.3));
       mat.color.copy(BASE).lerp(TELL, 0.5 * (1 - k));
@@ -297,6 +310,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       holder.visible = false;
     } else {
       body.rotation.x = 0;
+      body.rotation.z = f.state === 'stunned' ? Math.sin(f.stateT * 28) * 0.07 : 0;   // swaying
       body.position.y = s.baseY;
       s.shadow.visible = true;
     }

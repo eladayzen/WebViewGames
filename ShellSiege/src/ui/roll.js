@@ -17,6 +17,15 @@ export function createRollUi() {
   const label = root?.querySelector('.roll-label');
   const blurb = root?.querySelector('.roll-blurb');
 
+  // THE BOX IS REAL ART NOW (tex/loot_closed.webp, tex/loot_open.webp), cut from
+  // a matched pair so the swap from one to the other happens in place. Set here,
+  // once, with the same relative URLs the other textures use -- an absolute
+  // path would work in a browser and fail inside the app's WebView.
+  const closed = root?.querySelector('.roll-box.closed');
+  const open_ = root?.querySelector('.roll-box.open');
+  if (closed) closed.src = 'tex/loot_closed.webp';
+  if (open_) open_.src = 'tex/loot_open.webp';
+
   function open(roll) {
     const a = ABILITIES[roll.key];
     if (!root || !a) return;

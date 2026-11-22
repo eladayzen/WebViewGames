@@ -167,3 +167,14 @@ test('ON A LATER LEVEL THE SAME BREED IS TOUGHER, not just more of them', () => 
   assert.ok(four.maxHp > BREEDS[four.breed].hp);
   assert.ok(four.damage >= BREEDS[four.breed].damage);
 });
+
+test('EVERY ROOM CARRIES ITS LOOK, and it is the one the campaign says it should be', async () => {
+  const { lookFor } = await import('../src/core/looks.js');
+  for (let level = 1; level <= 3; level++) {
+    for (let r = 0; r < 5; r++) {
+      const room = createRoom(level, r, 5, seeded(1));
+      assert.deepEqual(room.look, lookFor(level, r));
+      assert.ok(room.look.theme && room.look.layout);
+    }
+  }
+});

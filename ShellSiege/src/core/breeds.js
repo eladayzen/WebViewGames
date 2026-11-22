@@ -18,35 +18,30 @@
 // in the 2012 series. A wave of faceless machines reads as the Foot. A wave
 // of orcs reads as a different game wearing a TMNT skin.
 //
-// EACH BREED CHANGES ONE THING, so a player can name what just arrived:
+// EACH BREED HAS ITS OWN JOB, so a player can name what just arrived and knows
+// what to do about it. Elad, 22 Nov: "Slayer is currently the relatively fast
+// simple soldier" and the rest should be different. The behaviours live in
+// core/behaviors.js; the numbers that tune them are the `job` on each breed below.
 //
-//   slayer     the baseline everything else is read against -- a plate
-//              knight, the most legible silhouette in the pack
-//   evilgod    fast and fragile, a skinny metal frame -- the first that
-//              gets PAST you
-//   mechgolem  the first that does not die on the way in
-//   elemgolem  slow, huge, survives most of a magazine
-//   fortgolem  the wall. Its telegraph is the longest in the game ON
-//              PURPOSE, because a thing that size landing an unreadable hit
-//              is just unfair
+//   slayer     GRUNT    chases and swings. The baseline everything is read against.
+//   evilgod    THROWER  low health; keeps its distance and throws a slow orb.
+//                       Sidestep the orb, hide behind a pillar, or rush it.
+//   mechgolem  CHARGER  locks a lane on the floor, then rushes down it. Lean
+//                       sideways. Crashing into a pillar stuns it.
+//   elemgolem  SLAMMER  stops near you; a ring fills on the floor, then the ground
+//                       is struck. Walk out of the circle.
+//   fortgolem  WARDEN   slowest and biggest; calls Slayers (twice, no more).
+//                       Kill it first.
 //
-// THE NUMBERS ARE NOT A SMOOTH CURVE. `evilgod` has less health than
-// `slayer` and is far more dangerous, because speed and health are different
-// questions for someone standing on a board.
+// SIZES (Elad, 22 Nov): Slayer -15%, Evil God +15%, Mechanical Golem +20%, and
+// the Elemental and Fort Golems +80%. Drawn height, hitbox radius and reach all
+// move together (test/breeds.test.mjs pins that), or a giant would have a small
+// hitbox and a small one a giant's.
 //
-// Measured against the base gun -- 10 damage, a shot every 0.55s, 620px
-// range -- with your undivided attention on one enemy:
-//
-//   breed      hp   shots  kill    walk-in  margin
-//   slayer     50   5      2.20s   2.99s    +0.79  dies just before it lands
-//   evilgod    30   3      1.10s   2.19s    +1.09  dies early, if you see it
-//   mechgolem  90   9      4.40s   3.31s    -1.09  ARRIVES ALIVE
-//   elemgolem 130  13      6.60s   3.79s    -2.81
-//   fortgolem 180  18      9.35s   4.43s    -4.92
-//
-// The sign flip between evilgod and mechgolem is the whole difficulty curve:
-// before it you can kill anything one-on-one, after it you cannot, and the
-// build has to start carrying you.
+// THE NUMBERS ARE FIRST GUESSES. The old table of kill-time-versus-walk-in
+// margins is gone with the thing it measured: that arithmetic assumed every
+// enemy simply walked up and swung. What a job costs the player is a matter of
+// how readable its warning is and how fast he can lean, and only a board can say.
 //
 //   ?room=3        start in the third room, to look at it without clearing two
 //   ?level=2       start on a later level (more enemies, and a bit tougher)
@@ -62,28 +57,37 @@ const num = (k, d) => {
 export const BREEDS = {
   slayer: {
     label: 'Slayer', glb: 'models/rivals/Character_Slayer_01.glb', tex: 'tex/rivals.webp',
-    hp: 50, speed: 165, damage: 13, radius: 46, reach: 126,
-    height: 2.20, windupS: 0.40, recoverS: 0.52, cost: 1,
+    hp: 50, speed: 165, damage: 13, radius: 39, reach: 107,
+    height: 1.87, windupS: 0.40, recoverS: 0.52, cost: 1,
+    behavior: 'melee',
   },
   evilgod: {
     label: 'Evil God', glb: 'models/rivals/Character_EvilGod_01.glb', tex: 'tex/rivals.webp',
-    hp: 30, speed: 230, damage: 9, radius: 38, reach: 116,
-    height: 2.05, windupS: 0.32, recoverS: 0.45, cost: 1,
+    hp: 30, speed: 230, damage: 9, radius: 44, reach: 133,
+    height: 2.36, windupS: 0.32, recoverS: 0.45, cost: 1,
+    behavior: 'thrower',
+    job: { keepMin: 380, keepMax: 520, throwEvery: 2.0, windupS: 0.50, shotSpeed: 360, shotRadius: 24, shotDamage: 9, shotLifeS: 2.8 },
   },
   mechgolem: {
     label: 'Mechanical Golem', glb: 'models/rivals/Character_MechanicalGolem_01.glb', tex: 'tex/rivals.webp',
-    hp: 90, speed: 145, damage: 17, radius: 54, reach: 140,
-    height: 2.55, windupS: 0.50, recoverS: 0.62, cost: 2,
+    hp: 90, speed: 145, damage: 17, radius: 65, reach: 168,
+    height: 3.06, windupS: 0.50, recoverS: 0.62, cost: 2,
+    behavior: 'charger',
+    job: { chargeMin: 260, chargeMax: 650, dist: 780, speed: 760, every: 3.0, windupS: 0.70, stunS: 1.6, hitDamage: 17 },
   },
   elemgolem: {
     label: 'Elemental Golem', glb: 'models/rivals/Character_ElementalGolem_01.glb', tex: 'tex/rivals.webp',
-    hp: 130, speed: 125, damage: 22, radius: 58, reach: 146,
-    height: 2.70, windupS: 0.55, recoverS: 0.66, cost: 3,
+    hp: 130, speed: 125, damage: 22, radius: 104, reach: 263,
+    height: 4.86, windupS: 0.55, recoverS: 0.66, cost: 3,
+    behavior: 'slammer',
+    job: { trigger: 300, radius: 320, every: 2.0, windupS: 0.90, damage: 22 },
   },
   fortgolem: {
     label: 'Fort Golem', glb: 'models/rivals/Character_FortGolem_01.glb', tex: 'tex/rivals.webp',
-    hp: 180, speed: 105, damage: 28, radius: 64, reach: 155,
-    height: 2.95, windupS: 0.62, recoverS: 0.72, cost: 4,
+    hp: 180, speed: 105, damage: 28, radius: 115, reach: 279,
+    height: 5.31, windupS: 0.62, recoverS: 0.72, cost: 4,
+    behavior: 'summoner',
+    job: { first: 2, every: 7, max: 2, count: 2, breed: 'slayer', windupS: 0.80 },
   },
 };
 

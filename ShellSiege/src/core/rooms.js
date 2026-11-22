@@ -26,7 +26,12 @@
 // comes when the last is nearly dead, or after a gap, so a player cannot stall
 // by refusing to engage.
 import { BREEDS, LEVELS, poolFor, costOf } from './breeds.js';
-import { makeFoe, spawnPoint } from './foes.js';
+import { makeFoe, spawnPoint, applyLevel, levelMul } from './foes.js';
+
+// Level scaling moved to core/foes.js (a summoned Slayer must be scaled too);
+// re-exported so everything that asked rooms.js for it still can.
+export { levelMul };
+import { lookFor } from './looks.js';
 
 export const ROOM = {
   baseBudget: 10,
@@ -41,23 +46,12 @@ export const ROOM = {
   refillAt: 0.30,
   // ...or when this long has passed, whichever is first.
   maxGapS: 7,
-  // A level makes each enemy a bit tougher, not just more numerous.
-  hpPerLevel: 0.15,
-  dmgPerLevel: 0.10,
 };
 
 /** How much trouble room `roomIdx` (0-based) of `level` (1-based) holds. */
 export function roomBudget(level, roomIdx) {
   return Math.round(
     ROOM.baseBudget * (1 + ROOM.perLevel * (level - 1)) * (1 + ROOM.perRoom * roomIdx));
-}
-
-/** { hp, dmg } multipliers for everything spawned on this level. Level 1 is exactly 1. */
-export function levelMul(level) {
-  return {
-    hp: 1 + ROOM.hpPerLevel * (level - 1),
-    dmg: 1 + ROOM.dmgPerLevel * (level - 1),
-  };
 }
 
 /**
@@ -121,6 +115,10 @@ export function createRoom(level, roomIdx, rooms, rng = Math.random) {
 
   return {
     level, index: roomIdx, rooms, isLast, budget, boss,
+    // WHAT THE ROOM LOOKS LIKE AND HOW IT PLAYS: a theme and a layout. Decided
+    // here, from where you are in the campaign, so the same room is always the
+    // same place. See core/looks.js.
+    look: lookFor(level, roomIdx),
     batches, batchIdx: 0,
     pending: [], lastBatchSize: 0,
     spawnT: 0, sinceBatchS: 0, t: 0,
@@ -145,11 +143,9 @@ export function roomCleared(w, room) {
 }
 
 function bring(w, room, key, rng) {
-  const p = spawnPoint(w.player.x, w.player.y, rng);
+  const p = spawnPoint(w.player.x, w.player.y, rng, w.obstacles);
   const f = makeFoe(p.x, p.y, w.timeS, key);
-  const m = levelMul(room.level);
-  f.hp = f.maxHp = Math.max(1, Math.round(f.hp * m.hp));
-  f.damage = Math.round(f.damage * m.dmg);
+  applyLevel(f, room.level);
   w.foes.push(f);
   w.targets.push(f);   // the SAME object -- see core/foes.js
   return f;

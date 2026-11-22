@@ -29,6 +29,8 @@
 //   ?php=100     the player's health
 import { ARENA } from './world.js';
 import { BREEDS, DEFAULT_BREED } from './breeds.js';
+import { resolveCircle, overlapsAny, blocksShot } from './obstacles.js';
+import { BEHAVIORS, meleeStep, tellOf } from './behaviors.js';
 
 const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const num = (k, d) => {
@@ -92,11 +94,49 @@ export const PLAYER_HP = num('php', 100);
  * means a `?fspd=` override still works as the default for breeds that do
  * not state their own.
  */
+/**
+ * LATER LEVELS MAKE EACH ENEMY A LITTLE TOUGHER, not only more numerous. It lives
+ * here rather than in core/rooms.js because a Fort Golem's summoned Slayers must
+ * be scaled too, and rooms.js imports this file, not the other way round.
+ */
+export const LEVEL_SCALE = { hpPerLevel: 0.15, dmgPerLevel: 0.10 };
+
+/** { hp, dmg } multipliers for level `level`. Level 1 is exactly 1. */
+export function levelMul(level) {
+  return {
+    hp: 1 + LEVEL_SCALE.hpPerLevel * (level - 1),
+    dmg: 1 + LEVEL_SCALE.dmgPerLevel * (level - 1),
+  };
+}
+
+/** Toughen a freshly made foe for its level, including the damage of its special attack. */
+export function applyLevel(f, level) {
+  const m = levelMul(level);
+  f.level = level;
+  f.hp = f.maxHp = Math.max(1, Math.round(f.hp * m.hp));
+  f.damage = Math.round(f.damage * m.dmg);
+  if (f.job) {
+    for (const k of ['shotDamage', 'hitDamage', 'damage']) {
+      if (typeof f.job[k] === 'number') f.job[k] = Math.round(f.job[k] * m.dmg);
+    }
+  }
+  return f;
+}
+
+let nextFoeId = 0;
+
 export function makeFoe(x, y, timeS = 0, breedKey = DEFAULT_BREED) {
   const b = BREEDS[breedKey] || BREEDS[DEFAULT_BREED];
+  const id = nextFoeId++;
   return {
     kind: 'foe',
     breed: breedKey,
+    id,
+    // WHICH WAY ROUND A PILLAR. A chaser lined up dead behind one is pushed back
+    // exactly as hard as it walks forward and stands still; each foe is given a
+    // fixed side to slide toward (core/obstacles.js), alternating so a crowd
+    // splits round an obstacle instead of queueing on one side of it.
+    side: id % 2 ? 1 : -1,
     x, y,
     radius: b.radius ?? FOE.radius,
     speed: b.speed ?? FOE.speed,
@@ -111,7 +151,20 @@ export function makeFoe(x, y, timeS = 0, breedKey = DEFAULT_BREED) {
     alive: true,
     deadAtS: -Infinity,
     bornAtS: timeS,
-    // 'walk' -> 'windup' -> 'recover' -> 'walk'
+    // WHAT THIS ONE DOES (core/behaviors.js). `job` is a COPY, because level
+    // scaling raises its damage numbers and the breed table must not change.
+    behavior: b.behavior || 'melee',
+    job: b.job ? { ...b.job } : null,
+    level: 1,
+    // Per-behaviour scratch (cooldowns, a locked charge line); created on first use.
+    b: null,
+    // What the renderer should draw as the WARNING while the foe is telegraphing
+    // (a ground ring, a charge line, a charging orb); null the rest of the time.
+    tell: null,
+    // A ring that has just gone off, for the renderer to expand and fade.
+    shock: null,
+    // 'walk' -> 'windup' -> 'recover' -> 'walk'; the jobs add 'throw', 'charge',
+    // 'dash', 'stunned', 'slam' and 'cast' (see core/behaviors.js).
     state: 'walk',
     stateT: 0,
     facing: 0,
@@ -127,12 +180,15 @@ export function makeFoe(x, y, timeS = 0, breedKey = DEFAULT_BREED) {
  * than clamped, because clamping a corner spawn is exactly what puts one in
  * your face.
  */
-export function spawnPoint(px, py, rand = Math.random) {
+export function spawnPoint(px, py, rand = Math.random, obstacles = null) {
   const m = FOE.radius + 10;
   for (let tries = 0; tries < 8; tries++) {
     const a = rand() * Math.PI * 2;
     const x = Math.max(m, Math.min(ARENA.width - m, px + Math.cos(a) * FOE.spawnDist));
     const y = Math.max(m, Math.min(ARENA.height - m, py + Math.sin(a) * FOE.spawnDist));
+    // 130 clears the biggest body in the roster, so a giant is never born
+    // already inside a wall and spat out of it on its first frame.
+    if (overlapsAny(x, y, 130, obstacles)) continue;
     if (Math.hypot(x - px, y - py) > FOE.spawnDist * 0.6) return { x, y };
   }
   // Every angle was pinned against a wall -- the player is in a corner. Put it
@@ -152,49 +208,164 @@ export function spawnPoint(px, py, rand = Math.random) {
 export function updateFoes(w, dt, onStrike) {
   const p = w.player;
 
+  // ONE CONTEXT, REUSED. A behaviour is handed what it needs and the few things
+  // it may DO; it never touches the world directly. `cur` is whichever foe is
+  // being stepped, so the closures below act on the right one without a new
+  // object per foe per frame.
+  let cur = null;
+  const c = {
+    w, p, dt, onStrike,
+    slack: FOE.strikeSlack,
+    pr: w.playerRadius,
+    dx: 0, dy: 0, d: 1,
+    hurt: (n) => hurtPlayer(w, n),
+    move: (mx, my, slide) => moveFoe(w, cur, mx, my, slide),
+    shoot: (spec) => spawnFoeShot(w, cur, spec),
+    spawn: (breed, x, y) => spawnFoe(w, cur, breed, x, y),
+    clear: () => clearShot(w, cur),
+  };
+
   for (const f of w.foes) {
     f.stepped = 0;
     if (!f.alive) continue;
     if (f.hitT > 0) f.hitT = Math.max(0, f.hitT - dt);
+    if (f.shock) { f.shock.t -= dt; if (f.shock.t <= 0) f.shock = null; }
 
     const dx = p.x - f.x;
     const dy = p.y - f.y;
     const d = Math.hypot(dx, dy) || 1;
     // He always turns to face the player, even mid-swing: a swing that lands
     // behind the enemy is unreadable, and turning is not the same as moving.
+    // (A charger overrides this: its line is locked, and so is its facing.)
     f.facing = Math.atan2(dy, dx);
     f.stateT += dt;
+    f.tell = null;
 
-    if (f.state === 'walk') {
-      if (d <= f.reach) {
-        f.state = 'windup';
-        f.stateT = 0;
-      } else {
-        const step = Math.min(f.speed * dt, d - f.reach);
-        f.x += (dx / d) * step;
-        f.y += (dy / d) * step;
-        f.stepped = step;
-      }
-    } else if (f.state === 'windup') {
-      if (f.stateT >= f.windupS) {
-        // THE RELEASE FRAME. Re-measured now, not when the swing started --
-        // that is what makes stepping out of range a dodge rather than a
-        // cosmetic retreat, and it is the whole point of the telegraph.
-        if (d <= f.reach + FOE.strikeSlack && !w.dead) {
-          hurtPlayer(w, f.damage);
-          if (onStrike) onStrike(f);
-        }
-        f.state = 'recover';
-        f.stateT = 0;
-      }
-    } else if (f.stateT >= f.recoverS) {
-      f.state = 'walk';
-      f.stateT = 0;
-    }
+    cur = f;
+    c.dx = dx; c.dy = dy; c.d = d;
+    const x0 = f.x, y0 = f.y;
+    (BEHAVIORS[f.behavior] || meleeStep)(f, c);
+    f.tell = tellOf(f);
+    // WHERE IT WAS TRYING TO GO this frame, for the obstacle pass below: round a
+    // wall, a foe should slide the way it is already heading (core/obstacles.js).
+    // A foe that did not move falls back to heading for the player.
+    const mx = f.x - x0, my = f.y - y0, ml = Math.hypot(mx, my);
+    f.ux = ml > 1e-6 ? mx / ml : dx / d;
+    f.uy = ml > 1e-6 ? my / ml : dy / d;
+    f.ustep = ml;                       // how far it tried to go: the obstacle slide is a fraction of this
   }
 
   separate(w.foes);
+  // OBSTACLES LAST, so a crowd shoving a foe cannot leave it inside a pillar. The
+  // arena clamp comes after, because being pushed out of a pillar must not put
+  // a foe outside the room.
+  if (w.obstacles && w.obstacles.length) {
+    for (const f of w.foes) {
+      if (!f.alive) continue;
+      // WALL-FOLLOWING: the first contact picks a way round and the foe keeps it
+      // until it has been clear of everything for a moment (core/obstacles.js).
+      const slide = { dx: f.ux ?? 0, dy: f.uy ?? 0, step: f.ustep || 0, side: f.side, commit: f.slideSign || 0, chosen: 0 };
+      if (resolveCircle(f, f.radius, w.obstacles, slide)) {
+        f.slideSign = slide.chosen || f.slideSign || f.side;
+        f.slideIdle = 0;
+      } else if (f.slideSign) {
+        f.slideIdle = (f.slideIdle || 0) + dt;
+        if (f.slideIdle > 0.6) f.slideSign = 0;
+      }
+      f.x = Math.max(f.radius, Math.min(ARENA.width - f.radius, f.x));
+      f.y = Math.max(f.radius, Math.min(ARENA.height - f.radius, f.y));
+    }
+  }
   cullCorpses(w);
+}
+
+/**
+ * Move a foe by a step WITH collision, and say what stopped it: `null`, an
+ * 'obstacle' (a charger that hits one is stunned) or the arena 'wall'.
+ */
+function moveFoe(w, f, mx, my, slide = false) {
+  f.x += mx;
+  f.y += my;
+  let hit = null;
+  // `slide` is for a foe that is WALKING (the thrower closing in or backing off):
+  // it must get round a pillar like any chaser. A charger's DASH leaves it off on
+  // purpose -- hitting the obstacle is the point, and is what stuns it. Without
+  // this the thrower stood pinned behind every pillar it met head-on.
+  const len = Math.hypot(mx, my);
+  const sl = slide && len > 1e-6
+    ? { dx: mx / len, dy: my / len, step: len, side: f.side, commit: f.slideSign || 0, chosen: 0 }
+    : 0;
+  if (w.obstacles && w.obstacles.length && resolveCircle(f, f.radius, w.obstacles, sl)) {
+    hit = 'obstacle';
+    if (sl) { f.slideSign = sl.chosen || f.slideSign || f.side; f.slideIdle = 0; }
+  }
+  const nx = Math.max(f.radius, Math.min(ARENA.width - f.radius, f.x));
+  const ny = Math.max(f.radius, Math.min(ARENA.height - f.radius, f.y));
+  if (nx !== f.x || ny !== f.y) { f.x = nx; f.y = ny; hit = hit || 'wall'; }
+  return hit;
+}
+
+/**
+ * Is there a clear line from this foe to the player, for a thrown thing? Sampled
+ * every 40px along the segment, against TALL obstacles only (low ones are flown
+ * over). A thrower uses this to decide whether to throw at all.
+ */
+function clearShot(w, f) {
+  if (!w.obstacles || w.obstacles.length === 0) return true;
+  const dx = w.player.x - f.x, dy = w.player.y - f.y;
+  const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 40));
+  const r = f.job?.shotRadius ?? 20;
+  for (let i = 1; i < n; i++) {
+    if (blocksShot(f.x + (dx * i) / n, f.y + (dy * i) / n, r, w.obstacles)) return false;
+  }
+  return true;
+}
+
+/** Add a foe to the room mid-fight (a summon), scaled for the summoner's level. */
+function spawnFoe(w, from, breedKey, x, y) {
+  const nf = makeFoe(x, y, w.timeS, breedKey);
+  applyLevel(nf, from.level || 1);
+  w.foes.push(nf);
+  w.targets.push(nf);          // the SAME object -- see the header
+  return nf;
+}
+
+// ---- THROWN THINGS -------------------------------------------------------------
+//
+// An orb is aimed at where the player is at the moment of RELEASE and then flies
+// straight: it does not home. That, and a speed lower than his own, is what makes
+// it a thing you dodge by moving rather than a hit you simply take. Tall obstacles
+// stop it; low ones do not (core/obstacles.js).
+
+function spawnFoeShot(w, f, spec) {
+  const dx = w.player.x - f.x, dy = w.player.y - f.y;
+  const d = Math.hypot(dx, dy) || 1;
+  const ux = dx / d, uy = dy / d;
+  w.foeShots.push({
+    x: f.x + ux * f.radius, y: f.y + uy * f.radius,
+    vx: ux * spec.shotSpeed, vy: uy * spec.shotSpeed,
+    r: spec.shotRadius, damage: spec.shotDamage, lifeS: spec.shotLifeS,
+    alive: true, from: f.id,
+  });
+}
+
+/** Fly the orbs, stop them on tall obstacles, and hurt the player ONCE per orb. */
+export function updateFoeShots(w, dt, onHit) {
+  const p = w.player;
+  for (const s of w.foeShots) {
+    if (!s.alive) continue;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.lifeS -= dt;
+    if (s.lifeS <= 0 || blocksShot(s.x, s.y, s.r, w.obstacles)) { s.alive = false; continue; }
+    if (!w.dead && Math.hypot(s.x - p.x, s.y - p.y) <= s.r + w.playerRadius) {
+      hurtPlayer(w, s.damage);
+      s.alive = false;
+      if (onHit) onHit(s);
+    }
+  }
+  // The array only ever needs the living; keeping the dead would grow it all run.
+  if (w.foeShots.some((s) => !s.alive)) w.foeShots = w.foeShots.filter((s) => s.alive);
 }
 
 /** Take damage, with a brief flinch window the renderer can read. */

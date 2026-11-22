@@ -43,5 +43,14 @@ export function createHud() {
 
   function hideBanner() { banner?.classList.remove('show'); }
 
-  return { setRooms, setLeft, say, hideBanner };
+  /** A white pop over everything, for the last kill. Re-triggerable. */
+  function flash() {
+    const el = document.getElementById('flash');
+    if (!el) return;
+    el.classList.remove('go');
+    void el.offsetWidth;
+    el.classList.add('go');
+  }
+
+  return { setRooms, setLeft, say, hideBanner, flash };
 }

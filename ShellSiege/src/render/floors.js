@@ -23,8 +23,15 @@
 // room dim because the floor is most of the screen. Both new floors measure
 // about 0.83, which is 1.7x the light off the same lamps.
 //
-//   ?floor=warm   warm sandstone flagstones, irregular, inlaid compass medallion
-//   ?floor=stone  the original grey dais -- kept, not deleted
+//   warm   warm sandstone flagstones, irregular, inlaid compass medallion
+//   stone  the original grey dais -- KEPT, not deleted, and NOT in any room's
+//          rotation: its stepped dais is the thing Elad rejected. It is only
+//          reachable at ?theme=stone, to look at.
+//   sewer, roof, tech   three flat paintings generated 22 Nov so the rooms of a
+//          level stop sharing one floor. Each obeys the same rule as the plaza:
+//          NOTHING IN THEM CLAIMS A HEIGHT. They have no rune ring (runeR null).
+//
+// Which painting a ROOM uses is core/looks.js's decision, not this file's.
 //
 // THE STONES HAVE TO BE THE RIGHT SIZE ON THE GROUND, which is a thing only
 // the game can tell you. The first warm floor drew about eight flagstones
@@ -42,8 +49,6 @@
 // the green-minus-red signal by radius from the image centre and takes the
 // peak band (tools/ring scan, in the commit). The arena is 36 units across,
 // so the fraction-of-half-width the scan reports is multiplied by 18.
-const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
-
 // WEBP, NOT JPEG. GoBalance's MimeFor() already serves .webp and every target
 // WebView decodes it; at quality 86 these are visually identical to the JPEGs
 // under a camera that never gets within 8 units of the floor, and the three
@@ -56,6 +61,10 @@ const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.s
 export const FLOORS = {
   warm:  { key: 'warm',  tex: 'tex/floor_warm.webp',  runeR: 4.14, label: 'warm sandstone flagstones' },
   stone: { key: 'stone', tex: 'tex/floor_plaza.webp', runeR: 3.94, label: 'grey dais (kept for later)' },
+  // No runes in these, so no ring radius: stage.js hides the glow ring for them.
+  sewer: { key: 'sewer', tex: 'tex/floor_sewer.webp', runeR: null, label: 'sewer paving with a manhole inlay' },
+  roof:  { key: 'roof',  tex: 'tex/floor_roof.webp',  runeR: null, label: 'tar-and-gravel rooftop' },
+  tech:  { key: 'tech',  tex: 'tex/floor_tech.webp',  runeR: null, label: 'steel panels with circuit lines' },
 };
 
 /** The floor this run is using. Unknown names fall back rather than crash. */
@@ -63,4 +72,3 @@ export function pickFloor(name) {
   return FLOORS[name] || FLOORS.warm;
 }
 
-export const FLOOR = pickFloor(QS.get('floor'));

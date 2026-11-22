@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorld, ARENA } from '../src/core/world.js';
-import { FOE, makeFoe, spawnPoint, updateFoes, hurtPlayer } from '../src/core/foes.js';
+import { FOE, makeFoe, spawnPoint, updateFoes, updateFoeShots, hurtPlayer } from '../src/core/foes.js';
 import { BREEDS, DEFAULT_BREED } from '../src/core/breeds.js';
 
 // WHAT A BARE makeFoe() ACTUALLY PRODUCES. Every tunable is copied onto the
@@ -157,4 +157,93 @@ test('a dead foe stops walking and stops swinging', () => {
   run(w, 1, 1 / 60, () => struck++);
   assert.equal(struck, 0);
   assert.equal(w.hp, w.maxHp);
+});
+
+test('A FOE LINED UP BEHIND A PILLAR STILL GETS ROUND IT AND REACHES YOU', () => {
+  // Through the real update loop, not just the push-out: the side-nudge in
+  // makeFoe is what stops a chaser standing still behind an obstacle while the
+  // player waits on the far side.
+  for (let i = 0; i < 6; i++) {                     // both sides, several foes
+    const w = createWorld();
+    const pillar = { kind: 'circle', x: w.player.x - 300, y: w.player.y, r: 90, tall: true };
+    w.obstacles = [pillar];
+    const f = makeFoe(w.player.x - 700, w.player.y, 0);
+    w.foes.push(f); w.targets.push(f);
+    let reached = false;
+    for (let t = 0; t < 30 && !reached; t += 1 / 60) {
+      w.timeS += 1 / 60;
+      updateFoes(w, 1 / 60);
+      reached = Math.hypot(f.x - w.player.x, f.y - w.player.y) <= B.reach + 5;
+    }
+    assert.ok(reached, `foe ${i} (side ${f.side}) never got round the pillar; stopped at x=${f.x.toFixed(0)}`);
+  }
+});
+
+test('A FOE IS NEVER LEFT INSIDE AN OBSTACLE, even when a crowd is pushing it in', () => {
+  const w = createWorld();
+  const o = { kind: 'rect', x: w.player.x + 600, y: w.player.y, hw: 60, hh: 400, tall: true };
+  w.obstacles = [o];
+  for (let i = 0; i < 8; i++) {
+    const f = makeFoe(w.player.x + 1000, w.player.y - 300 + i * 80, 0);
+    w.foes.push(f); w.targets.push(f);
+  }
+  for (let t = 0; t < 10; t += 1 / 60) {
+    w.timeS += 1 / 60;
+    updateFoes(w, 1 / 60);
+    for (const f of w.foes) {
+      const cx = Math.max(o.x - o.hw, Math.min(o.x + o.hw, f.x)), cy = Math.max(o.y - o.hh, Math.min(o.y + o.hh, f.y));
+      assert.ok(Math.hypot(f.x - cx, f.y - cy) >= f.radius - 0.5, `a foe is inside the wall at t=${t.toFixed(2)}`);
+    }
+  }
+});
+
+test('SPAWNS NEVER LAND INSIDE AN OBSTACLE', () => {
+  const w = createWorld();
+  // one big obstacle on the ring, so a careless spawn would often hit it
+  const obs = [{ kind: 'circle', x: w.player.x + 1400, y: w.player.y, r: 300, tall: true }];
+  let s = 7; const rng = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  for (let i = 0; i < 400; i++) {
+    const p = spawnPoint(w.player.x, w.player.y, rng, obs);
+    assert.ok(Math.hypot(p.x - obs[0].x, p.y - obs[0].y) >= obs[0].r + 130 - 1e-6, `spawn ${i} is inside the obstacle`);
+  }
+});
+
+// ---- THE SWEEP THAT THE SOAK TEST FORCED ------------------------------------------
+// A Fort Golem once stood pinned against a rooftop barricade for four minutes. The
+// single-pillar test above never caught it because it only covered a foe dead
+// behind a round obstacle; this covers every breed, in every layout, approaching
+// from all eight sides, with both tie-break directions. If ANY of them can be
+// pinned forever, a room can never be cleared.
+
+test('NO FOE CAN BE PINNED FOREVER: every breed reaches a waiting player, in every layout, from every side', async () => {
+  const { LAYOUTS, layoutObstacles } = await import('../src/core/looks.js');
+  const { BREEDS } = await import('../src/core/breeds.js');
+  const stuck = [];
+  for (const layout of Object.keys(LAYOUTS)) {
+    const obstacles = layoutObstacles(layout);
+    for (const breed of Object.keys(BREEDS)) {
+      for (let k = 0; k < 8; k++) {
+        for (const side of [1, -1]) {
+          const w = createWorld();
+          w.maxHp = w.hp = 1e9;
+          w.obstacles = obstacles;
+          const a = (k / 8) * Math.PI * 2;
+          const f = makeFoe(w.player.x + Math.cos(a) * 1250, w.player.y + Math.sin(a) * 1250, 0, breed);
+          f.side = side;
+          // "arrived" means close enough to do its job -- a thrower never closes to melee
+          const near = Math.max(f.reach, f.job?.trigger ?? 0, f.job?.keepMax ?? 0, f.job?.chargeMax ?? 0) + 80;
+          w.foes.push(f); w.targets.push(f);
+          let arrived = false;
+          for (let t = 0; t < 70 && !arrived; t += 1 / 30) {
+            w.timeS += 1 / 30;
+            updateFoes(w, 1 / 30);
+            updateFoeShots(w, 1 / 30);
+            arrived = Math.hypot(f.x - w.player.x, f.y - w.player.y) <= near;
+          }
+          if (!arrived) stuck.push(`${breed} in "${layout}" from ${(k * 45)}deg, side ${side}: stopped at ${Math.round(f.x)},${Math.round(f.y)}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(stuck, [], `${stuck.length} cases pinned:\n  ${stuck.slice(0, 8).join('\n  ')}`);
 });
