@@ -109,8 +109,11 @@ html, body {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 12px;
+  gap: 6px 12px;
+  max-width: 92vw;
   z-index: 20;
   pointer-events: none;
 }
@@ -143,41 +146,117 @@ html, body {
 #dev-button { opacity: 0.45; }
 .card-score { font-size: 15px; opacity: 0.8; margin-bottom: 16px; }
 
-/* --- XP, beside the vitals -------------------------------------------- */
-#xp-wrap { display: flex; align-items: center; gap: 7px; }
-#xp-bar {
-  width: 16vw; max-width: 160px; min-width: 70px; height: 7px;
-  border-radius: 5px; background: rgba(10, 22, 26, 0.45);
-  border: 1px solid rgba(10, 22, 26, 0.5); overflow: hidden;
+/* --- ROOM PROGRESS, on a second row under the health bar ------------------
+   Five dots and a count. The dots answer "how far through am I", which is the
+   question the whole room structure exists to make answerable; the count
+   answers "how long until the door". The last dot is a diamond: it is the
+   boss, and it should look like the end of something. */
+#room-info { flex-basis: 100%; display: flex; justify-content: center; align-items: center; gap: 12px; }
+#room-pips { display: flex; gap: 7px; align-items: center; }
+.pip {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: rgba(10, 22, 26, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  box-sizing: border-box;
 }
-#xp-fill { height: 100%; width: 0%; background: #6fd0ff; transition: width 120ms linear; }
-#lv-badge {
-  color: #cdeeff; font-size: 12px; font-weight: 700;
+.pip.boss { border-radius: 3px; transform: rotate(45deg); width: 13px; height: 13px; }
+.pip.done { background: #3ce6a0; border-color: #3ce6a0; }
+.pip.now { background: #ffd166; border-color: #ffd166; animation: pipPulse 900ms ease-in-out infinite; }
+@keyframes pipPulse { 50% { box-shadow: 0 0 0 5px rgba(255, 209, 102, 0.28); } }
+.pip.boss.now { animation-name: pipPulseBoss; }
+@keyframes pipPulseBoss { 50% { box-shadow: 0 0 0 5px rgba(255, 209, 102, 0.28); } }
+#enemies-left {
+  color: #fff; font-size: 13px; font-weight: 700; min-width: 58px;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
 }
 
-/* --- THE CHOICE SCREEN ------------------------------------------------- */
-#levelup-overlay {
+/* --- THE BANNER: "ROOM 2 / 5", "ROOM CLEAR" ---------------------------- */
+#banner {
+  position: fixed; left: 50%; top: 24%; z-index: 25;
+  transform: translateX(-50%);
+  pointer-events: none; text-align: center; opacity: 0;
+  color: #fff; font-weight: 800; letter-spacing: 0.12em;
+  font-size: clamp(28px, 6vw, 64px);
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 0 26px rgba(60, 230, 160, 0.5);
+}
+#banner small {
+  display: block; margin-top: 6px; font-size: 0.3em; font-weight: 600;
+  letter-spacing: 0.32em; opacity: 0.85;
+}
+#banner.show { animation: bannerIn 1.15s ease-out both; }
+@keyframes bannerIn {
+  0%   { opacity: 0; transform: translateX(-50%) scale(0.8); }
+  16%  { opacity: 1; transform: translateX(-50%) scale(1.07); }
+  26%  { transform: translateX(-50%) scale(1); }
+  78%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) scale(1); }
+}
+
+/* --- THE ROLL ---------------------------------------------------------------
+   A box that shakes -- the "what will it be" -- then pops open onto the
+   ability. Under two seconds in total; the timing lives in core/roll.js and
+   this only reacts to `data-phase`, so the CSS can never disagree with the
+   rules about how long it takes. Deliberately a pizza box and not a slot
+   machine: this is a kids' platform, and a lever and reels read as gambling
+   to exactly the people who will be looking at it. */
+#roll-overlay {
   position: fixed; inset: 0; z-index: 40;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 18px; background: rgba(8, 16, 20, 0.72);
+  gap: 6px; background: rgba(8, 16, 20, 0.72);
 }
-.lv-title { color: #d8f0e6; font-size: 20px; letter-spacing: 0.18em; opacity: 0.85; }
-.lv-cards { display: flex; gap: 5vw; }
-/* The two cards are pushed APART on purpose: they map onto lean left and
-   lean right, so the gap between them is the neutral band made visible. */
-.lv-card {
-  width: 33vw; max-width: 260px; min-width: 130px;
-  padding: 18px 16px 14px;
-  border: 2px solid rgba(60, 230, 160, 0.22);
-  border-radius: 14px;
-  background: rgba(14, 28, 34, 0.94);
-  text-align: center; color: #d8f0e6;
-  transition: transform 120ms ease, border-color 120ms ease;
+.roll-title { color: #d8f0e6; font-size: 20px; letter-spacing: 0.22em; opacity: 0.9; }
+.roll-stage { position: relative; width: min(80vw, 280px); height: 330px; }
+.roll-glow {
+  position: absolute; left: 50%; bottom: 20px; width: 300px; height: 300px; margin-left: -150px;
+  background: radial-gradient(circle, rgba(255, 226, 130, 0.85), rgba(60, 230, 160, 0) 65%);
+  opacity: 0; transform: scale(0.3); transition: opacity 220ms ease-out, transform 360ms ease-out;
+  z-index: 0;
 }
-.lv-card.active { border-color: #3ce6a0; transform: scale(1.06); }
-.lv-label { font-size: 17px; font-weight: 700; letter-spacing: 0.06em; }
-.lv-blurb { font-size: 12px; opacity: 0.7; margin: 6px 0 12px; }
-.lv-track { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
-.lv-fill { height: 100%; width: 0%; background: #3ce6a0; }
-.lv-hint { color: #d8f0e6; font-size: 12px; letter-spacing: 0.14em; opacity: 0.5; }
+/* STACKING IS THE POINT: the lid flips up and over, and without the card above it the lid
+   lands in front of the words -- found by looking at it, not by reasoning about it. */
+.roll-box { position: absolute; left: 50%; bottom: 0; width: 150px; height: 126px; margin-left: -75px; transform-origin: 50% 100%; z-index: 1; }
+.roll-base {
+  position: absolute; left: 0; right: 0; bottom: 0; top: 26px;
+  background: linear-gradient(#c88a4a, #a06a36);
+  border: 3px solid #744820; border-radius: 6px;
+}
+.roll-base::after {   /* the slice on the front, so it reads as pizza before it opens */
+  content: ''; position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
+  background: conic-gradient(from 200deg, #ffcf4a 0 55deg, transparent 55deg);
+  border-radius: 50%; opacity: 0.9;
+}
+.roll-lid {
+  position: absolute; left: -5px; right: -5px; top: 0; height: 34px;
+  background: #dca45e; border: 3px solid #744820; border-radius: 6px;
+  transform-origin: 50% 100%;
+  transition: transform 300ms cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+.roll-card {
+  position: absolute; left: 50%; bottom: 62px; width: min(70vw, 250px);
+  transform: translateX(-50%) translateY(46px) scale(0.55);
+  padding: 14px 16px 12px; text-align: center; color: #d8f0e6;
+  border: 2px solid #3ce6a0; border-radius: 14px; background: rgba(14, 28, 34, 0.97);
+  opacity: 0; transition: opacity 180ms ease-out, transform 380ms cubic-bezier(0.2, 1.4, 0.4, 1);
+  z-index: 2;
+}
+.roll-icon { color: #ffd166; height: 64px; }
+.roll-icon svg { width: 64px; height: 64px; }
+.roll-label { margin-top: 4px; font-size: 20px; font-weight: 800; letter-spacing: 0.07em; }
+.roll-blurb { margin-top: 4px; font-size: 13px; opacity: 0.8; }
+
+#roll-overlay[data-phase="spin"] .roll-box { animation: rollShake 1s ease-in both; }
+@keyframes rollShake {
+  0%   { transform: rotate(0) scale(1); }
+  12%  { transform: rotate(-3deg) translateX(-3px); }
+  24%  { transform: rotate(3deg) translateX(3px); }
+  36%  { transform: rotate(-5deg) translateX(-5px) scale(1.02); }
+  48%  { transform: rotate(5deg) translateX(5px) scale(1.03); }
+  60%  { transform: rotate(-7deg) translateX(-7px) scale(1.05); }
+  72%  { transform: rotate(7deg) translateX(7px) scale(1.07); }
+  84%  { transform: rotate(-9deg) translateX(-9px) scale(1.09); }
+  100% { transform: rotate(0) scale(1.12); }
+}
+#roll-overlay[data-phase="reveal"] .roll-box { transform: scale(1.1); }
+#roll-overlay[data-phase="reveal"] .roll-lid { transform: translateY(-16px) rotate(-104deg); }
+#roll-overlay[data-phase="reveal"] .roll-glow { opacity: 1; transform: scale(1); }
+#roll-overlay[data-phase="reveal"] .roll-card { opacity: 1; transform: translateX(-50%) translateY(-92px) scale(1); }

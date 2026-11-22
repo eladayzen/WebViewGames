@@ -1,51 +1,21 @@
-// The draw and the stacking -- the two things that would quietly ruin a run.
+// The stacking and the table -- the things that would quietly ruin a run.
+// (The draw itself is core/roll.js now, and is tested in roll.test.mjs.)
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ABILITIES, createBuild, stats, draw, take, offerable, xpForLevel } from '../src/core/abilities.js';
-
-/** A deterministic rng, so a failure is reproducible rather than a story. */
-function seeded(seed) {
-  let s = seed >>> 0;
-  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
-}
-
-test('A DRAW NEVER OFFERS THE SAME ABILITY TWICE', () => {
-  // Two identical cards is not bad luck, it reads as the game being broken.
-  const rng = seeded(7);
-  for (let i = 0; i < 400; i++) {
-    const got = draw(createBuild(), rng);
-    assert.equal(new Set(got).size, got.length, `duplicate in ${got.join(', ')}`);
-  }
-});
+import { ABILITIES, KINDS, createBuild, stats, take, offerable } from '../src/core/abilities.js';
 
 test('a maxed ability stops being offered', () => {
   const b = createBuild();
   for (let i = 0; i < ABILITIES.pierce.max; i++) take(b, 'pierce');
   assert.equal(b.pierce, ABILITIES.pierce.max);
   assert.ok(!offerable(b).includes('pierce'));
-  const rng = seeded(3);
-  for (let i = 0; i < 300; i++) assert.ok(!draw(b, rng).includes('pierce'));
 });
 
 test('taking one past its cap does nothing', () => {
   const b = createBuild();
   for (let i = 0; i < ABILITIES.multi.max + 5; i++) take(b, 'multi');
   assert.equal(b.multi, ABILITIES.multi.max);
-});
-
-test('NEAR THE END A SHORT DRAW IS CORRECT, not a padded one', () => {
-  const b = createBuild();
-  // Max everything but two. slice(0, -2) rather than slice(0, 6): this pool
-  // is six abilities, not Survivor's eight, and a hardcoded 6 maxed ALL of
-  // them -- so the test asked for a draw of two from an empty pool and the
-  // assertion it really cares about never ran.
-  for (const k of Object.keys(ABILITIES).slice(0, -2)) {
-    for (let i = 0; i < ABILITIES[k].max; i++) take(b, k);
-  }
-  const got = draw(b, seeded(11));
-  assert.equal(got.length, 2);
-  assert.equal(new Set(got).size, 2);
 });
 
 test('stacking moves the numbers the game actually reads', () => {
@@ -60,11 +30,12 @@ test('stacking moves the numbers the game actually reads', () => {
   assert.ok(after.speedMul > base.speedMul);
   // And nothing it did not touch moved.
   assert.equal(after.rangePx, base.rangePx);
+  assert.equal(after.maxHpMul, base.maxHpMul);
 });
 
-test('EVERY ABILITY CHANGES SOMETHING -- no dead cards in the pool', () => {
-  // A card that does nothing is worse than a missing card: the player spends
-  // their pick on it and learns the choice does not matter.
+test('EVERY ABILITY CHANGES SOMETHING -- no dead rolls in the pool', () => {
+  // A roll that does nothing is worse than a missing one: the player waits
+  // for the box, sees it open, and learns the box does not matter.
   const base = JSON.stringify(stats(createBuild()));
   for (const key of Object.keys(ABILITIES)) {
     const b = take(createBuild(), key);
@@ -72,8 +43,28 @@ test('EVERY ABILITY CHANGES SOMETHING -- no dead cards in the pool', () => {
   }
 });
 
-test('levels cost more as they go, and the first is cheap', () => {
-  assert.ok(xpForLevel(1) < xpForLevel(2));
-  assert.ok(xpForLevel(5) < xpForLevel(6));
-  assert.ok(xpForLevel(1) <= 20, 'the first level must arrive early enough to teach the loop');
+test('THICK HIDE RAISES MAX HEALTH, and is a multiplier so ?php= still works', () => {
+  const b = createBuild();
+  assert.equal(stats(b).maxHpMul, 1);
+  take(b, 'hearts');
+  assert.ok(stats(b).maxHpMul > 1);
+  for (let i = 0; i < 20; i++) take(b, 'hearts');
+  assert.equal(b.hearts, ABILITIES.hearts.max, 'and it caps like everything else');
+});
+
+test('EVERY ABILITY SAYS WHETHER IT IS PERMANENT, and carries a usable weight', () => {
+  // `kind` is what the run will read to decide what survives a death. An
+  // ability without one would be silently treated as one or the other.
+  for (const [k, a] of Object.entries(ABILITIES)) {
+    assert.ok(KINDS.includes(a.kind), `${k} has kind ${a.kind}`);
+    assert.ok(Number.isFinite(a.weight) && a.weight > 0, `${k} has weight ${a.weight}`);
+    assert.ok(a.max >= 1 && a.step > 0, `${k} cannot be taken`);
+  }
+});
+
+test('EVERY ABILITY TODAY IS PERMANENT -- the temporary kind is phase 3', () => {
+  // Pinned so the day a temporary ability is added, this fails and whoever
+  // adds it is pointed at the rule that has to exist for it: what survives
+  // a level, and which one is carried.
+  for (const a of Object.values(ABILITIES)) assert.equal(a.kind, 'perm');
 });

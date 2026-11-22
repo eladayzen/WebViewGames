@@ -1,0 +1,78 @@
+// WHAT YOU GET, DECIDED BY LUCK, REVEALED IN UNDER TWO SECONDS.
+//
+// This replaces the lean-and-hold choice screen. Elad's reasoning, 22 Nov:
+// choosing with a balance board "is not as fun" as choosing with a regular
+// input, and what he wants instead is the moment of "what will I get this
+// time" -- over fast, a payoff, "wow, new ability". Two seconds, tops.
+//
+// SO THERE IS NO INPUT AT ALL. The roll runs by itself, which also means the
+// run can never stall waiting for a lean, and a whole level can be played
+// unattended in a test.
+//
+// NO CHOICE MEANS A BAD ROLL IS THE GAME'S FAULT, not the player's, and the
+// game has to guard against that:
+//
+//   - A MAXED ABILITY IS NEVER ROLLED. A reveal of something that does
+//     nothing is the single worst outcome here.
+//   - REPEATS ARE LESS LIKELY, NOT FORBIDDEN. Each copy already owned scales an
+//     ability's weight down, so the roll leans toward what you do NOT have yet
+//     -- the thing that feels like finding something -- without ever hiding a
+//     good ability from someone who wants a second one.
+//
+// THE RESULT IS FIXED THE MOMENT THE ROLL IS CREATED. The animation is a
+// playback, not a draw: if it were the other way round a dropped frame could
+// show the player one ability and grant them another.
+import { ABILITIES, offerable } from './abilities.js';
+
+export const ROLL = {
+  // The box shakes. This is the "what will it be" -- the anticipation.
+  spinS: 1.0,
+  // ...and the answer stays on screen long enough to read.
+  holdS: 0.8,
+  // Each copy already owned multiplies the weight by this.
+  repeatFalloff: 0.65,
+};
+
+/** How long the whole thing takes. Elad's ceiling is two seconds. */
+export const rollDurationS = () => ROLL.spinS + ROLL.holdS;
+
+/** The weight of every ability that could still be rolled, for this build. */
+export function rollWeights(build) {
+  const out = {};
+  for (const k of offerable(build)) {
+    out[k] = (ABILITIES[k].weight ?? 1) * Math.pow(ROLL.repeatFalloff, build[k]);
+  }
+  return out;
+}
+
+/** One ability key, or null when every ability is maxed out. */
+export function rollAbility(build, rng = Math.random) {
+  const w = rollWeights(build);
+  const keys = Object.keys(w);
+  if (!keys.length) return null;
+  let r = rng() * keys.reduce((a, k) => a + w[k], 0);
+  for (const k of keys) { r -= w[k]; if (r <= 0) return k; }
+  return keys[keys.length - 1];
+}
+
+/**
+ * A roll in progress. With nothing left to give it is born `done`, so the run
+ * skips straight past it instead of showing an empty box.
+ */
+export function createRoll(build, rng = Math.random) {
+  const key = rollAbility(build, rng);
+  return { key, t: 0, phase: key ? 'spin' : 'done', done: !key };
+}
+
+/** Advance by a frame. Returns true on the frame the roll finishes. */
+export function updateRoll(roll, dt) {
+  if (roll.done) return false;
+  roll.t += dt;
+  if (roll.t >= ROLL.spinS + ROLL.holdS) {
+    roll.phase = 'done';
+    roll.done = true;
+    return true;
+  }
+  roll.phase = roll.t >= ROLL.spinS ? 'reveal' : 'spin';
+  return false;
+}

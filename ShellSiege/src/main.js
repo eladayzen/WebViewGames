@@ -12,10 +12,10 @@
 //   3. Does the lean still mean what the player thinks it means once the
 //      camera is turned 45 degrees? See core/axes.js.
 //
-// There is no horde, no health, no level-up and no score, because none of
-// those change the answers above and all of them would slow down getting to
-// them. The shooting range is here only so that something is moving while the
-// first two questions are being looked at.
+// THAT WAS THE PROTOTYPE. It has grown a campaign since: rooms you clear,
+// a box that hands you one ability after each, levels that bank. The three
+// questions above are still the ones that matter, and every system below is
+// there to keep asking them for longer than a single encounter.
 import * as THREE from 'three';
 import { createWorld, updateWorld, __setSpeedSource, ARENA } from './core/world.js';
 import { screenToWorld } from './core/axes.js';
@@ -25,17 +25,20 @@ import { stepAngle, desiredFacing, AIM_RANGE_MUL } from './core/facing.js';
 import { THROW } from './core/throwing.js';
 import { localHeading } from './core/locomotion.js';
 import { createTargets, updateTargets } from './systems/targets.js';
-import { maybeSpawn, updateFoes } from './core/foes.js';
+import { updateFoes, PLAYER_HP } from './core/foes.js';
 import { createView, CAM } from './render/view.js';
 import { createStage } from './render/stage.js';
 import { createFx } from './render/fx.js';
 import { createHeld } from './render/held.js';
 import { FLOOR } from './render/floors.js';
-import { createFoes, loadEnemy, ENEMIES, ENEMY_KIND } from './render/foes.js';
+import { createFoes, loadEnemies } from './render/foes.js';
 import { createDebris, loadDebris } from './render/debris.js';
-import { createBuild, stats, draw, take, xpForLevel } from './core/abilities.js';
-import { createChoice, updateChoice } from './core/levelup.js';
-import { createLevelUpUi } from './ui/levelup.js';
+import { stats } from './core/abilities.js';
+import { START } from './core/breeds.js';
+import { createRun, stepRun, restartLevel, nextLevel, frozen } from './core/run.js';
+import { enemiesLeft } from './core/rooms.js';
+import { createRollUi } from './ui/roll.js';
+import { createHud } from './ui/hud.js';
 import { loadRig } from './render/rig.js';
 import { PX } from './render/units.js';
 
@@ -49,17 +52,16 @@ function loadTex(url) {
 }
 
 async function boot() {
-  const [floor, crate, shuriken, sai, enemy, skinAtlas, debrisGeos] = await Promise.all([
+  const [floor, crate, shuriken, sai, enemies, debrisGeos] = await Promise.all([
     loadTex(FLOOR.tex),
     loadTex('tex/crate.webp'),
     loadTex('tex/shuriken.webp'),
     loadTex('tex/sai.webp'),
-    loadEnemy(),
-    loadTex(ENEMIES[ENEMY_KIND].tex),
+    loadEnemies(),
     loadDebris(),
   ]);
   const stage = createStage(view.scene, { floor });
-  const foesFx = createFoes(view.scene, enemy, skinAtlas);
+  const foesFx = createFoes(view.scene, enemies);
   const debrisFx = createDebris(view.scene, debrisGeos);
   const fx = createFx(view.scene, { crate, shuriken, sai });
   const rig = await loadRig(view.scene);
@@ -99,47 +101,92 @@ async function boot() {
   const hudKills = document.getElementById('hud-kills');
   const finalScore = document.getElementById('final-kills');
 
-  /** Put the run back to the start WITHOUT reloading the page. */
+  const rollUi = createRollUi();
+  const hud = createHud();
+
+  /**
+   * WHERE YOU ARE IN THE CAMPAIGN. The run is pure state (core/run.js); this
+   * file only reacts to what it reports. `?level=` and `?room=` start partway
+   * in, so one room can be looked at without clearing the ones before it.
+   */
+  let run = createRun({ level: START.level, room: START.room });
+
+  /** Health scales with THICK HIDE, and picking one heals exactly what it added. */
+  function syncMaxHp(st, full = false) {
+    const m = Math.max(1, Math.round(PLAYER_HP * st.maxHpMul));
+    if (m !== w.maxHp) {
+      const gained = m - w.maxHp;
+      w.maxHp = m;
+      w.hp = full ? m : Math.min(m, w.hp + Math.max(0, gained));
+    } else if (full) {
+      w.hp = m;
+    }
+  }
+
+  function announceRoom() {
+    const n = run.roomIdx + 1;
+    if (run.room.isLast) hud.say('FINAL ROOM', `LEVEL ${run.level}  \u00b7  BOSS`);
+    else hud.say(`ROOM ${n}`, `LEVEL ${run.level}  \u00b7  ${n} / ${run.rooms}`);
+  }
+
+  /** ONE CARD FOR BOTH ENDINGS: the SDK's restart contract is this overlay and button. */
+  function showEnd(kind) {
+    if (!overlay) return;
+    const title = document.getElementById('over-title');
+    const note = document.getElementById('over-note');
+    const btn = document.getElementById('restart-button');
+    if (kind === 'won') {
+      if (title) title.textContent = 'LEVEL CLEAR';
+      if (note) note.textContent = `Level ${run.level + 1} is bigger`;
+      if (btn) btn.textContent = 'NEXT LEVEL';
+    } else {
+      if (title) title.textContent = 'OVERRUN';
+      if (note) note.textContent = `Back to room 1 of level ${run.level}`;
+      if (btn) btn.textContent = 'GO AGAIN';
+    }
+    if (finalScore) finalScore.textContent = String(kills);
+    hud.hideBanner();
+    overlay.classList.remove('hidden');
+  }
+
+  /** What a run event looks like on screen. The run itself never touches the DOM. */
+  function onRunEvent(e) {
+    if (e.type === 'cleared') hud.say(e.last ? 'LEVEL CLEAR' : 'ROOM CLEAR');
+    else if (e.type === 'rollStart') { if (!e.roll.done) rollUi.open(e.roll); }
+    else if (e.type === 'rollDone') rollUi.close();
+    else if (e.type === 'roomStart') announceRoom();
+    else if (e.type === 'won') showEnd('won');
+  }
+
+  /**
+   * Put the run back WITHOUT reloading the page.
+   *
+   * THE BUILD IS KEPT. Every ability is permanent today, and the design is
+   * that permanent stats survive a death -- so dying costs the rooms cleared
+   * on this level and nothing else, and a player who keeps falling over comes
+   * back stronger each time. A WON level goes on to the next one instead.
+   */
   function restart() {
+    const keepBuild = w.build;
+    const won = run.phase === 'won';
     Object.assign(w, createWorld());
+    w.build = keepBuild;
+    syncMaxHp(stats(w.build), true);
     w.targets = createTargets();
     crates = w.targets.slice();
     hits = 0;
     kills = 0;
-    choice = null;
-    levelUi.close();
+    run = won ? nextLevel(run) : restartLevel(run);
+    rollUi.close();
+    hud.hideBanner();
     // Hide the pool immediately, or the last frame's bodies are still standing
     // there behind the overlay when it fades.
     foesFx.syncFoes([], 0, 0);
     overlay?.classList.add('hidden');
+    announceRoom();
   }
   document.getElementById('restart-button')?.addEventListener('click', restart);
-
-  // --- the build -----------------------------------------------------
-  // THE BUILD IS THE ONLY PLACE STATS LIVE. `stats(build)` is derived every
-  // frame rather than cached, because a cached stat is a bug that only
-  // appears after a level-up -- the hardest moment to reproduce.
-  const levelUi = createLevelUpUi();
-  let choice = null;
-
-  const xpFill = document.getElementById('xp-fill');
-  const lvBadge = document.getElementById('lv-badge');
-
-  function gainXp(n) {
-    w.xp += n;
-    const need = xpForLevel(w.level);
-    if (w.xp >= need && !choice) {
-      w.xp -= need;
-      w.level += 1;
-      const options = draw(w.build, Math.random, 2);
-      // Nothing left to offer means every ability is maxed. Levelling with no
-      // choice to make is not a screen worth opening.
-      if (options.length) {
-        choice = createChoice(options);
-        levelUi.open(choice, w.level);
-      }
-    }
-  }
+  announceRoom();
 
   let last = performance.now();
   let muzzleY = 1.1;
@@ -152,18 +199,14 @@ async function boot() {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
-    // THE CHOICE SCREEN FREEZES THE RUN. Input is still read -- the lean IS
-    // the interface here -- but nothing else in the world advances, which is
-    // what makes this the one place in the game a player can stop and read.
-    if (choice) {
-      const lean = readInput(dt);
-      const taken = updateChoice(choice, lean.x, dt);
-      levelUi.update(choice);
-      if (taken) {
-        take(w.build, taken);
-        choice = null;
-        levelUi.close();
-      }
+    // THE BOX FREEZES THE WORLD, and nothing else. It runs by itself -- there is
+    // no lean to wait for, which is the point of having replaced the choice
+    // screen, and also why a whole level can now be played unattended. Input
+    // is still sampled so the smoothing does not go stale across the pause.
+    if (frozen(run)) {
+      readInput(dt);
+      if (!paused) for (const e of stepRun(run, w, dt)) onRunEvent(e);
+      if (frozen(run)) rollUi.update(run.roll);
       view.renderer.render(view.scene, view.camera);
       return;
     }
@@ -189,6 +232,7 @@ async function boot() {
       // horde lands this is the place to hand both a single result.
       const st = { ...stats(w.build), weapon: BASE_GUN.weapon };
       w.speedMul = st.speedMul;
+      syncMaxHp(st);
       const aimAt = nearestTarget(w, st.rangePx * AIM_RANGE_MUL);
       const want = desiredFacing(w.player, aimAt, movingNow, w.bodyFacing);
       w.bodyFacing = stepAngle(w.bodyFacing, want, dt);
@@ -229,26 +273,24 @@ async function boot() {
         hits++;
         if (t.kind === 'foe' && !t.alive) {
           kills++;
-          gainXp(1);
           // The burst goes here rather than in the renderer because this is
           // the one place that knows a kill JUST happened, as opposed to
           // "is dead", which is true on every frame afterwards.
-          debrisFx.burst(t.x, t.y, 1);
+          debrisFx.burst(t.x, t.y, Math.min(2, (t.radius || 44) / 44));
         }
         fx.spark(t.x, t.y, 0.6);
       });
       updateTargets(w, dt);
 
-      // THE FOOT CLAN. Spawn first so a new one gets a frame of walking before
-      // anything looks at it, then step them -- the strike is committed inside
-      // updateFoes, on the release frame of its own windup.
-      maybeSpawn(w, dt);
+      // THE ROOM RUNS FIRST, so a new arrival gets a frame of walking before
+      // anything looks at it, and so a room whose last enemy fell to this
+      // frame's bullets is seen as cleared on THIS frame -- then the foes step,
+      // and the strike is committed inside updateFoes, on the release frame of
+      // its own windup.
+      for (const e of stepRun(run, w, dt)) onRunEvent(e);
       updateFoes(w, dt, () => fx.spark(w.player.x, w.player.y, 0.9));
 
-      if (w.dead && overlay?.classList.contains('hidden')) {
-        overlay.classList.remove('hidden');
-        if (finalScore) finalScore.textContent = String(kills);
-      }
+      if (w.dead && overlay?.classList.contains('hidden')) showEnd('dead');
 
       view.follow(w.camera.x, w.camera.y, dt);
       stage.update(w.timeS);
@@ -262,8 +304,9 @@ async function boot() {
       debrisFx.update(dt);
 
       if (hpFill) hpFill.style.width = Math.max(0, (w.hp / w.maxHp) * 100) + '%';
-      if (xpFill) xpFill.style.width = Math.min(100, (w.xp / xpForLevel(w.level)) * 100) + '%';
-      if (lvBadge) lvBadge.textContent = String(w.level);
+      hud.setRooms(run.roomIdx, run.rooms,
+        run.phase === 'cleared' || run.phase === 'roll' || run.phase === 'won');
+      hud.setLeft(enemiesLeft(w, run.room), run.phase === 'fight');
       if (hudKills) hudKills.textContent = String(kills);
       if (hudTime) hudTime.textContent = w.timeS.toFixed(1) + 's';
       if (hudSrc) hudSrc.textContent = lean.source;
@@ -277,7 +320,7 @@ async function boot() {
   // Handy while tuning from a desk.
   window.__ss = {
     w, view, stage, rig, fx, heldFx, foesFx, debrisFx, restart, floor: FLOOR, ARENA,
-    get choice() { return choice; }, get stats() { return stats(w.build); },
+    hud, rollUi, get run() { return run; }, get stats() { return stats(w.build); },
   };
 }
 

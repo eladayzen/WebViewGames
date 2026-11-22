@@ -1,8 +1,25 @@
-// WHAT YOU PICK WHEN YOU LEVEL UP, AND WHAT IT DOES.
+// WHAT YOU ARE HANDED AFTER A ROOM, AND WHAT IT DOES.
 //
 // Lifted from TMNT Survivor, which is the point: that game already solved
 // this and the solution is not Survivor-specific. What was dropped in the
 // port is as deliberate as what was kept.
+//
+// NOBODY PICKS ANY MORE. Elad, 22 Nov: choosing a card with a balance board
+// "is not as fun" as choosing with a regular input, so the cards are gone and
+// core/roll.js hands over one ability at random after each cleared room. That
+// is why every entry below carries a `weight`, and why a repeat is made less
+// likely rather than impossible: with no choice, a dead roll is the one thing
+// that cannot be allowed to feel like the player's fault.
+//
+// EVERY ABILITY IS EITHER PERMANENT OR TEMPORARY, and that is a property of
+// the ability, not of the run (Elad's design, same day):
+//
+//   perm  a stat. Survives death AND the end of the level, which is how a
+//         player who keeps dying still gets stronger and the game stays
+//         kind to a child who is not good at it yet.
+//   temp  a behaviour -- the turtle allies. Earned again every level; one
+//         may be carried across. None exist yet (phase 3), but the field is
+//         here now so the roll and the run never have to be reworked for it.
 //
 // MOSTLY NUMBERS, ON PURPOSE. Every one of these is a stat modifier -- it
 // changes a number the rest of the game already reads. That ratio is the
@@ -25,13 +42,18 @@
 // THE SAI IS NOT AN ABILITY EITHER, and should not become one by accident:
 // it is the base weapon, and these all modify it.
 
+export const KINDS = ['perm', 'temp'];
+
 export const ABILITIES = {
-  rapid:  { label: 'RAPID THROW', blurb: 'Throw more often',     step: 0.22, max: 6 },
-  multi:  { label: 'SPLIT THROW', blurb: 'One more blade',       step: 1,    max: 4 },
-  damage: { label: 'HARD SHELL',  blurb: 'Hit harder',           step: 0.30, max: 6 },
-  pierce: { label: 'PIERCE',      blurb: 'Blades pass through',  step: 1,    max: 3 },
-  reach:  { label: 'LONG REACH',  blurb: 'Throw further',        step: 0.25, max: 4 },
-  swift:  { label: 'SWIFT',       blurb: 'Move faster',          step: 0.14, max: 4 },
+  rapid:  { kind: 'perm', weight: 1.0, label: 'RAPID THROW', blurb: 'Throw more often',     step: 0.22, max: 6 },
+  multi:  { kind: 'perm', weight: 0.7, label: 'SPLIT THROW', blurb: 'One more blade',       step: 1,    max: 4 },
+  damage: { kind: 'perm', weight: 1.0, label: 'HARD SHELL',  blurb: 'Hit harder',           step: 0.30, max: 6 },
+  pierce: { kind: 'perm', weight: 0.7, label: 'PIERCE',      blurb: 'Blades pass through',  step: 1,    max: 3 },
+  reach:  { kind: 'perm', weight: 0.8, label: 'LONG REACH',  blurb: 'Throw further',        step: 0.25, max: 4 },
+  swift:  { kind: 'perm', weight: 0.8, label: 'SWIFT',       blurb: 'Move faster',          step: 0.14, max: 4 },
+  // ADDED FOR THIS DESIGN: Elad's own example of a permanent upgrade was
+  // health, and there was no way to get any.
+  hearts: { kind: 'perm', weight: 1.0, label: 'THICK HIDE',  blurb: 'More health',          step: 0.25, max: 5 },
 };
 
 /** A fresh, empty build. */
@@ -60,6 +82,9 @@ export function stats(build) {
     pierce: build.pierce * a.pierce.step,
     rangePx: 620 * (1 + build.reach * a.reach.step),
     speedMul: 1 + build.swift * a.swift.step,
+    // A MULTIPLIER on the player's base health, not a number of hearts: the
+    // base itself is `?php=` overridable, and a multiplier survives that.
+    maxHpMul: 1 + build.hearts * a.hearts.step,
   };
 }
 
@@ -68,45 +93,9 @@ export function offerable(build) {
   return Object.keys(ABILITIES).filter((k) => build[k] < ABILITIES[k].max);
 }
 
-/**
- * Two to choose from -- one per lean direction. See core/levelup.js for why
- * two and not three.
- *
- * WITHOUT REPLACEMENT, which is the only load-bearing rule here: the same
- * ability twice in one draw is a choice between two identical cards, and a
- * player reads that as the game being broken rather than as bad luck.
- *
- * Late in a long run there may be fewer than two left. Offering one is
- * correct; padding with a duplicate is not.
- *
- * `rng` is injected so a test can be deterministic and so a run could later
- * be seeded and replayed.
- */
-export function draw(build, rng = Math.random, count = 2) {
-  const pool = offerable(build);
-  const picked = [];
-  while (picked.length < count && pool.length) {
-    picked.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
-  }
-  return picked;
-}
-
 /** Take one. Capped, so a maxed ability can never exceed its own limit. */
 export function take(build, key) {
   if (!(key in ABILITIES)) return build;
   build[key] = Math.min(ABILITIES[key].max, build[key] + 1);
   return build;
-}
-
-/**
- * Kills needed to reach the NEXT level, from the current one.
- *
- * XP IS KILLS HERE, not gems: no drops, no magnet, no pickup system. So the
- * curve is gentler than Survivor's -- it counted gems, and a player collected
- * well under one per kill. Five for the first level is about twelve seconds
- * of play, which is early enough that a new player meets the choice screen
- * before they have decided what the game is.
- */
-export function xpForLevel(level) {
-  return Math.round(5 * Math.pow(1.45, level - 1));
 }

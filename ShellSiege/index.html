@@ -61,14 +61,22 @@
       <button id="dev-button" type="button" aria-label="Readout">&#8943;</button>
     </div>
 
-    <!-- WHAT THE PLAYER ACTUALLY NEEDS: how much health is left and how many
-         they have put down. Separate from the readout below, which is a dev
-         panel and starts closed. -->
+    <!-- WHAT THE PLAYER ACTUALLY NEEDS: how much health is left, how many they
+         have put down, and where they are in the level. There is no XP bar --
+         nothing is earned mid-room any more, so there is nothing to fill.
+         Separate from the readout below, which is a dev panel and starts
+         closed. -->
     <div id="vitals">
       <div id="hp-bar"><div id="hp-fill"></div></div>
       <div id="kills"><span id="hud-kills">0</span><small>down</small></div>
-      <div id="xp-wrap"><div id="xp-bar"><div id="xp-fill"></div></div><span id="lv-badge">1</span></div>
+      <div id="room-info">
+        <div id="room-pips"></div>
+        <span id="enemies-left"></span>
+      </div>
     </div>
+
+    <!-- "ROOM 2 / 5", "ROOM CLEAR". Re-triggered from main.js. -->
+    <div id="banner"></div>
 
     <canvas id="game"></canvas>
 
@@ -93,30 +101,35 @@
          reachable rather than ceremonial. -->
     <div id="gameover-overlay" class="hidden">
       <div class="card">
-        <div class="card-title">OVERRUN</div>
+        <!-- ONE card for both endings, because the SDK's restart contract is
+             this exact overlay and button: whether the run ended by dying or
+             by winning, the board's own button has to land on #restart-button.
+             main.js decides the words and what the button does. -->
+        <div class="card-title" id="over-title">OVERRUN</div>
         <div class="card-score"><span id="final-kills">0</span> down</div>
+        <div class="card-score" id="over-note"></div>
         <button id="restart-button" type="button">GO AGAIN</button>
       </div>
     </div>
 
-    <!-- THE ONE PAUSE IN THE GAME. Two cards, one per lean direction, and
-         centre deliberately means nothing -- it is the way out of both, not a
-         third option. See core/levelup.js for why it is two and not three. -->
-    <div id="levelup-overlay" class="hidden">
-      <div class="lv-title">LEVEL <span id="lv-level">2</span></div>
-      <div class="lv-cards">
-        <div class="lv-card" data-i="0">
-          <div class="lv-label"></div>
-          <div class="lv-blurb"></div>
-          <div class="lv-track"><div class="lv-fill"></div></div>
+    <!-- THE ONE PAUSE IN THE GAME: a box opens and hands over one ability.
+         Nothing here takes input -- the player does not choose, they find out.
+         The phase is set on `data-phase` by ui/roll.js and the CSS does the
+         rest, so how long it takes lives in core/roll.js and nowhere else. -->
+    <div id="roll-overlay" class="hidden" data-phase="">
+      <div class="roll-title">NEW POWER</div>
+      <div class="roll-stage">
+        <div class="roll-glow"></div>
+        <div class="roll-card">
+          <div class="roll-icon"></div>
+          <div class="roll-label"></div>
+          <div class="roll-blurb"></div>
         </div>
-        <div class="lv-card" data-i="1">
-          <div class="lv-label"></div>
-          <div class="lv-blurb"></div>
-          <div class="lv-track"><div class="lv-fill"></div></div>
+        <div class="roll-box">
+          <div class="roll-base"></div>
+          <div class="roll-lid"></div>
         </div>
       </div>
-      <div class="lv-hint">LEAN AND HOLD</div>
     </div>
 
     <div id="paused-overlay" class="hidden">

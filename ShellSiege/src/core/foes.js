@@ -23,12 +23,12 @@
 // whether the BOARD is responsive enough to dodge with. The telegraph IS the
 // experiment.
 //
-//   ?foes=10     how many may be alive at once   ?fspawn=1.6  seconds between
 //   ?fhp=20      hit points                      ?fspd=170    walk, px/s
 //   ?freach=120  centre-to-centre strike range   ?fdmg=10     damage per hit
 //   ?fwind=0.4   telegraph, seconds              ?frec=0.55   recovery
 //   ?php=100     the player's health
 import { ARENA } from './world.js';
+import { BREEDS, DEFAULT_BREED } from './breeds.js';
 
 const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const num = (k, d) => {
@@ -71,8 +71,6 @@ export const FOE = {
   windupS: num('fwind', 0.4),
   recoverS: num('frec', 0.55),
   damage: num('fdmg', 10),
-  maxAlive: num('foes', 10),
-  spawnEveryS: num('fspawn', 1.2),
   // Just past the corner of a 20-unit view (2000 px across), so they walk in
   // from off screen instead of appearing in front of you.
   spawnDist: num('fsdist', 1400),
@@ -85,14 +83,30 @@ export const FOE = {
 
 export const PLAYER_HP = num('php', 100);
 
-/** A foe at a point, ready to go into `w.targets`. */
-export function makeFoe(x, y, timeS = 0) {
+/**
+ * A foe at a point, ready to go into `w.targets`.
+ *
+ * EVERY TUNABLE IS COPIED ONTO THE FOE, not read from FOE at use time. Five
+ * breeds walk at different speeds and swing at different ranges, so the sim
+ * has to ask the individual rather than the module -- and copying at birth
+ * means a `?fspd=` override still works as the default for breeds that do
+ * not state their own.
+ */
+export function makeFoe(x, y, timeS = 0, breedKey = DEFAULT_BREED) {
+  const b = BREEDS[breedKey] || BREEDS[DEFAULT_BREED];
   return {
     kind: 'foe',
+    breed: breedKey,
     x, y,
-    radius: FOE.radius,
-    hp: FOE.hp,
-    maxHp: FOE.hp,
+    radius: b.radius ?? FOE.radius,
+    speed: b.speed ?? FOE.speed,
+    reach: b.reach ?? FOE.reach,
+    damage: b.damage ?? FOE.damage,
+    windupS: b.windupS ?? FOE.windupS,
+    recoverS: b.recoverS ?? FOE.recoverS,
+    cost: b.cost ?? 1,
+    hp: b.hp ?? FOE.hp,
+    maxHp: b.hp ?? FOE.hp,
     hitT: 0,
     alive: true,
     deadAtS: -Infinity,
@@ -129,20 +143,6 @@ export function spawnPoint(px, py, rand = Math.random) {
   };
 }
 
-/** Add one foe if the timer is up and there is room. */
-export function maybeSpawn(w, dt, rand = Math.random) {
-  w.spawnT = (w.spawnT || 0) + dt;
-  if (w.spawnT < FOE.spawnEveryS) return null;
-  w.spawnT = 0;
-  const living = w.foes.reduce((n, f) => n + (f.alive ? 1 : 0), 0);
-  if (living >= FOE.maxAlive) return null;
-  const p = spawnPoint(w.player.x, w.player.y, rand);
-  const f = makeFoe(p.x, p.y, w.timeS);
-  w.foes.push(f);
-  w.targets.push(f);          // the SAME object -- see the header
-  return f;
-}
-
 /**
  * Walk them at the player, swing when close, and commit the damage on the
  * release frame.
@@ -166,28 +166,28 @@ export function updateFoes(w, dt, onStrike) {
     f.stateT += dt;
 
     if (f.state === 'walk') {
-      if (d <= FOE.reach) {
+      if (d <= f.reach) {
         f.state = 'windup';
         f.stateT = 0;
       } else {
-        const step = Math.min(FOE.speed * dt, d - FOE.reach);
+        const step = Math.min(f.speed * dt, d - f.reach);
         f.x += (dx / d) * step;
         f.y += (dy / d) * step;
         f.stepped = step;
       }
     } else if (f.state === 'windup') {
-      if (f.stateT >= FOE.windupS) {
+      if (f.stateT >= f.windupS) {
         // THE RELEASE FRAME. Re-measured now, not when the swing started --
         // that is what makes stepping out of range a dodge rather than a
         // cosmetic retreat, and it is the whole point of the telegraph.
-        if (d <= FOE.reach + FOE.strikeSlack && !w.dead) {
-          hurtPlayer(w, FOE.damage);
+        if (d <= f.reach + FOE.strikeSlack && !w.dead) {
+          hurtPlayer(w, f.damage);
           if (onStrike) onStrike(f);
         }
         f.state = 'recover';
         f.stateT = 0;
       }
-    } else if (f.stateT >= FOE.recoverS) {
+    } else if (f.stateT >= f.recoverS) {
       f.state = 'walk';
       f.stateT = 0;
     }
