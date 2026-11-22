@@ -118,6 +118,39 @@ if (script === 'default') {
   });
   for (let i = 0; i < 10; i++) { await wait(140); await snap('sai' + i); }
   console.log(JSON.stringify(await page.evaluate(() => ({ kicks: window.__game.G.kicks, left: window.__game.daggers.left }))));
+} else if (script === 'edges') {
+  // Elad 2026-11-22: hold full right 20 s, then full left 20 s — does the rider
+  // ever ride above the 180 seam (θ = ±90°)? Sample every 100 ms, shoot the worst.
+  await wait(4200);
+  await page.evaluate(() => { window.__game.player.invuln = 1e9; window.__game.G.lives = 99; });
+  const hold = async (side, secs) => {
+    await lean(side);
+    let worst = { over: -1e9 }, n = 0, over = 0;
+    for (let t = 0; t < secs * 10; t++) {
+      await wait(100);
+      const r = await page.evaluate(() => { const { player, G } = window.__game; const th = Math.atan2(Math.sin(player.theta), Math.cos(player.theta)); window.__game.player.invuln = 1e9; G.lives = 99; return { th: th * 180 / Math.PI, s: player.s, off: G.dirOff * 180 / Math.PI, state: G.state }; });
+      if (t < 15) continue;                      // let him get there
+      n++;
+      const o = Math.abs(r.th) + 2.96 - 90;   // the board's outer EDGE (0.31 m half-width at R 6), not its centre
+      if (o > 0.5) over++;
+      if (o > worst.over) worst = { ...r, over: o };
+    }
+    console.log(`side ${side}: ${n} samples, ${over} with the board edge past the seam (>0.5°), worst ${worst.over.toFixed(1)}° over at s=${worst.s.toFixed(0)} (θ=${worst.th.toFixed(1)}°, dirOff=${worst.off.toFixed(1)}°, ${worst.state})`);
+    await snap(side > 0 ? 'hold-right' : 'hold-left');
+  };
+  await hold(1, 20);
+  await hold(-1, 20);
+} else if (script === 'city') {
+  // OPEN TOP look: ride, swing to each rim, shoot along the way
+  await wait(1200); await snap('countdown');
+  await wait(3000); await page.evaluate(() => { window.__game.player.invuln = 1e9; }); await snap('go');
+  await wait(2500); await snap('cruise');
+  await lean(1); await wait(1800); await snap('rim-right');
+  await lean(-1); await wait(2600); await snap('rim-left');
+  await lean(0); await wait(5000); await snap('later');
+  await lean(0.6); await wait(6000); await snap('much-later');
+  const kinds = await page.evaluate(() => { const c = {}; for (const o of window.__game.obstacles.list) c[o.type] = (c[o.type] || 0) + 1; return c; });
+  console.log('obstacle types alive:', JSON.stringify(kinds));
 } else if (script === 'quit') {
   // fake the GoBalance SDK, press X mid-run: confirm card, then quit screen + board
   await wait(5200);

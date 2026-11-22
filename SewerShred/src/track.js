@@ -430,6 +430,8 @@ export function worldAt(s) { return WORLDS[ZONES[zoneIndex(s)].world]; }
 // A world feature (river / falls / rails / trains) at s, 0..1. Worlds only
 // change at a Y-junction, and forkFade dries everything out through those.
 export function featureAt(s, key) {
+  // OPEN TOP is not a sewer (Elad 2026-11-22): no river, no water outlets
+  if (OPEN_TOP.value && (key === 'river' || key === 'falls')) return 0;
   return worldAt(s)[key] * (key === 'falls' || key === 'river' ? 1 : forkFade(s));
 }
 export const ZONES_PARKED = ['rust_red', 'rust_ember'];   // too red / lava-like (Elad)
@@ -448,11 +450,17 @@ const edgeGlsl = (around) => `
     diffuseColor.rgb *= mix(1.0, 0.5, smoothstep(0.0, 0.18, e));          // upper half
     diffuseColor.rgb *= mix(1.18, 1.0, smoothstep(-0.075, -0.045, e));    // pale lip inside the line
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.06, 0.07), 1.0 - smoothstep(0.022, 0.032, abs(e + 0.012)));  // the ink seam
+    if (uOpenTop > 0.5 && e > 0.02) discard;            // OPEN TOP: the pipe ends at its ink line
   }`;
+// OPEN TOP (Elad 2026-11-22, a variation): the upper half of the pipe is cut
+// away at the 180 seams and a city matte painting shows over the rims (city.js).
+export const OPEN_TOP = { value: 0 };
 function antiRepeat(mat, stage1 = null, around = 8) {
   const key = (stage1 ? 'antiRepeat-' + stage1.join('-') : 'antiRepeat') + '-a' + around;
   mat.customProgramCacheKey = () => key;   // same closure source, several shaders
   mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uOpenTop = OPEN_TOP;
+    sh.fragmentShader = 'uniform float uOpenTop;\n' + sh.fragmentShader;
     // Y-junction cut: walls inside the other arm are discarded (clip > 0)
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float clip;\nvarying float vClip;')
@@ -779,6 +787,16 @@ export class Track {
     } else seg.graf.visible = false;
   }
 
+  /** OPEN TOP variation: cut the roof off. The walls show both faces (you can see
+   *  a rim's outside across a bend); the ceiling lamps and roof collars go. */
+  setOpenTop(on) {
+    OPEN_TOP.value = on ? 1 : 0;
+    this.openTop = !!on;
+    for (const m of this.zoneMats) { m.side = on ? THREE.DoubleSide : THREE.BackSide; m.needsUpdate = true; }
+    this.lamps.forEach((l) => (l.visible = !on));
+    for (const seg of this.segments) this._build(seg, seg.s0);   // river in / out
+  }
+
   /** dev: s of the next junction */
   forkS() { return nextVisitEnd(); }
 
@@ -926,7 +944,7 @@ export class Track {
     for (let i = 0; i < 2; i++) {
       const js = bs[i];
       const j = this.junctions[i];
-      j.visible = js !== undefined;
+      j.visible = js !== undefined && !this.openTop;
       if (js !== undefined && j.userData.s !== js) {
         j.userData.s = js;
         const jf = frameAt(js, this.f);

@@ -5,7 +5,7 @@
 // coordinates. Patterns are authored as small functions so difficulty is a
 // question of which patterns are in the deck and how tightly they're dealt.
 import * as THREE from 'three';
-import { R, frameAt, pointAt, wallQuat, wallDir, slimeAngle, angleDiff, makeGlowTexture, forkNear, FORK_QUIET, worldAt } from './track.js';
+import { R, frameAt, pointAt, wallQuat, wallDir, slimeAngle, angleDiff, makeGlowTexture, forkNear, FORK_QUIET, worldAt, OPEN_TOP } from './track.js';
 
 // Foot Soldier kick trigger — enemies ONLY. Was ds<1.5 ahead, 1.05 m sideways.
 const _camL = new THREE.Vector3();
@@ -382,16 +382,19 @@ export class Obstacles {
     }
     // the subway is its own game (Elad): no sewer obstacles, only pizza to chase
     // between the trains (trains.js)
+    const open = OPEN_TOP.value > 0;
     const deck = worldAt(s).trains ? [['pizzaRise', 1], ['pizzaLine', 0.4]] : [
       ['crates', 0.35],
       ['pizzaLine', 0.8],
       ['pizzaArc', 0.45],
-      ['pole', 1.65 + diff * 0.4],   // +0.35: took the valves' share (Elad 2026-11-16)
-      ['poleX', diff > 0.25 ? 0.5 + diff * 0.5 : 0],
+      // OPEN TOP (Elad 2026-11-22): bars through the axis reach into the sky
+      // with no roof to end on — off there, the saw discs carry the load
+      ['pole', open ? 0 : 1.65 + diff * 0.4],   // +0.35: took the valves' share (Elad 2026-11-16)
+      ['poleX', open ? 0 : diff > 0.25 ? 0.5 + diff * 0.5 : 0],
       ['gate', diff > 0.3 ? 0.15 + diff * 0.2 : 0],
-      ['dropper', 0.15 + diff * 0.2],
-      ['slalom', diff > 0.2 ? 0.2 : 0],
-      ['fan', diff > 0.35 ? 0.2 + diff * 0.5 : 0],
+      ['dropper', open ? 0.6 + diff * 0.4 : 0.15 + diff * 0.2],
+      ['slalom', open ? 0.5 : diff > 0.2 ? 0.2 : 0],
+      ['fan', open ? 0 : diff > 0.35 ? 0.2 + diff * 0.5 : 0],
 
       ['valves', 0],   // off for now (Elad 2026-11-16: "just don't use it, more poles instead")
       ['foot', 2.6 + diff * 0.6],

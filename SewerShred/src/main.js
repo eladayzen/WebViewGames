@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { Trains } from './trains.js';
 import { Daggers } from './daggers.js';
+import { City, CITY_FOG, CITY_HEMI } from './city.js';
 import { installDevUnlock } from './devUnlock.js';
 import { R, Track, ZONES, WORLDS, zoneIndex, setStartWorld, getStartWorld, featureAt, pendingFork, forkNear, forkSpread, FORK_LEN, FORKS, CLIMB_LEN, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
 import { Junctions } from './junctions.js';
@@ -61,7 +62,7 @@ const audio = new Audio();
 audio.loadMusic('/audio/music.mp3');
 const input = new Input(canvas);
 
-let track, junctions, trains, daggers, player, obstacles, particles, debris, streaks, boardTrail, sludge;
+let city, track, junctions, trains, daggers, player, obstacles, particles, debris, streaks, boardTrail, sludge;
 const tex = {};
 
 // ── HUD ──────────────────────────────────────────────────────────────────────
@@ -147,6 +148,7 @@ const _foeCol = new THREE.Color();
 const C_JFOAM = new THREE.Color(0.8, 0.92, 1.0), C_JSPRAY = new THREE.Color(0.45, 0.6, 0.7);   // look test: light splash
 function startRun() {
   junctions?.reset();
+  city?.reset();
   G.state = 'countdown';
   G.countdown = 3.2; G.lastBeep = -1;
   G.score = 0; G.lives = LIVES; G.combo = 1; G.comboFill = 0; G.bestCombo = 1; G.pizza = 0;
@@ -270,7 +272,10 @@ $('restart-button').addEventListener('click', () => { if (G.state === 'over') st
 //   the camera never spins or rolls — upright, pulled back toward the pipe's
 //   axis so the whole ring stays in view and the rider moves around the screen.
 const MODES = ['d360', 'd360f', 'd220', 'd220f', 'd180', 'd180f', 'swing'];
-const MODE_HALF = { d360: Math.PI, d220: (220 / 2) * Math.PI / 180, d180: Math.PI / 2 };
+// the deck is ~0.31 m half-wide = 3° at R 6: stop its CENTRE that far short so
+// the whole board stays under the 180 seam (Elad 2026-11-22: never above the line)
+const BOARD_HALF = 0.31 / 6 + 0.003;
+const MODE_HALF = { d360: Math.PI, d220: (220 / 2) * Math.PI / 180, d180: Math.PI / 2 - BOARD_HALF };
 for (const k of Object.keys(MODE_HALF)) MODE_HALF[k + 'f'] = MODE_HALF[k];
 const fixedCam = () => G.moveMode.endsWith('f');
 const loops = () => G.moveMode.startsWith('d360');
@@ -332,8 +337,11 @@ function steer(dt, lean) {
     G.dirOff = lean * half;
   } else {
     G.dirOff += lean * DIRECT_RATE * dt;
-    if (!loops()) G.dirOff = THREE.MathUtils.clamp(G.dirOff, -half, half);
   }
+  // the limit is ABSOLUTE (±half from the floor, where the 180 seams are
+  // painted) — not ±half from the swaying slime line, which let him ride up to
+  // 13° over the seam holding a side (measured, tools/drive.mjs --script=edges)
+  if (!loops()) G.dirOff = THREE.MathUtils.clamp(G.dirOff, -half - base, half - base);
   // unwrap: keep the target on the same lap as the rider so a 360 loop
   // never spins him back the long way
   const tgt = base + G.dirOff;
@@ -393,6 +401,21 @@ function setWorld(i, restart = true) {
   if (restart && track) startRun();
 }
 const nextWorld = () => setWorld(getStartWorld() + 1);
+// TOP (dev, Elad 2026-11-22): CLOSED pipe, or OPEN — roof cut off at the 180
+// seams, city matte painting over the rims (city.js). ?top=open
+G.openTop = false;
+function setOpenTop(on) {
+  G.openTop = !!on;
+  track.setOpenTop(on);
+  city.setOn(on);
+  junctions?.reset();
+  scene.fog.near = on ? CITY_FOG.near : FOG.near;
+  scene.fog.far = on ? CITY_FOG.far : FOG.far;
+  scene.fog.color.set(on ? CITY_FOG.color : FOG.color);
+  track.syncFog(scene.fog);
+  $('top-btn').textContent = on ? 'TOP OPEN' : 'TOP CLOSED';
+}
+$('top-btn').addEventListener('click', (e) => { e.stopPropagation(); if (track) setOpenTop(!G.openTop); });
 $('world-btn').addEventListener('click', (e) => { e.stopPropagation(); nextWorld(); });
 {
   const q = new URLSearchParams(location.search).get('world');
@@ -923,10 +946,11 @@ function frame(now) {
   }
   const Z = ZONES[zi];
   const ease = Math.min(1, dt * 1.2);
-  scene.fog.color.lerp(_zc.set(Z.fog), ease);
+  const open = G.openTop;
+  scene.fog.color.lerp(_zc.set(open ? CITY_FOG.color : Z.fog), ease);
   scene.background.copy(scene.fog.color);
-  hemi.color.lerp(_zc.set(Z.hemi[0]), ease);
-  hemi.groundColor.lerp(_zc.set(Z.hemi[1]), ease);
+  hemi.color.lerp(_zc.set(open ? CITY_HEMI[0] : Z.hemi[0]), ease);
+  hemi.groundColor.lerp(_zc.set(open ? CITY_HEMI[1] : Z.hemi[1]), ease);
   track.syncFog(scene.fog);
 
   // lights ride with the rider
@@ -989,6 +1013,7 @@ function frame(now) {
   hud.comboWrap.classList.toggle('hot', G.combo >= 4);
   $('speedlines').style.opacity = G.state === 'play' ? (speedN * 0.5).toFixed(2) : 0;
 
+  city?.update(player.s, camera);
   renderer.render(scene, camera);
 }
 
@@ -1015,6 +1040,8 @@ async function loadFootGeo(url) {
   tex.footGeo = await loadFootGeo('/models/foot.bin');
   track = new Track(scene, tex);
   track.syncFog(scene.fog);
+  city = new City(scene, { sky: await loadTex('/tex/city_sky.jpg'), bldg: await loadTex('/tex/city_bldg.png') });
+  setOpenTop(new URLSearchParams(location.search).get('top') === 'open');
   obstacles = new Obstacles(scene, tex);
   junctions = new Junctions(scene, tex);
   trains = new Trains(scene, makeGlowTexture);

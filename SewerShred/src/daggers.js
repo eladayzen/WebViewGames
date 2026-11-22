@@ -18,11 +18,11 @@ import { THROW_RELEASE } from './player.js';
 export const SAI = {
   dur: 10,            // s the power-up lasts
   every: 0.62,        // s between throws
-  range: [6, 46],     // metres ahead a target may be
+  range: [5, 24],     // metres ahead a target may be (was 46 — Elad 2026-11-22: "range too big")
   speed: 62,          // m/s out (the rider does ~15)
   backSpeed: 40,      // m/s back — slower: it's the part you watch
   bow: 0.32,          // return curve depth, × distance
-  life: 1.1,          // s out before it turns on its own
+  life: 0.6,          // s out before it turns on its own (≈ the range at full speed)
   hitR: 1.3,          // metres
 };
 
