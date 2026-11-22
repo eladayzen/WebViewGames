@@ -7,8 +7,10 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { World, HW, FAC, LANES, DECIDE_AT, path, pointAt, frameAt, yawAt, forkPoint, refl } from './world.js';
+import { World, HW, FAC, LANES, FORK_MID, path, pointAt, frameAt, yawAt, forkPoint, refl } from './world.js';
 import { Car, KINDS, FOOT_LOOK, loadCarModels } from './cars.js';
+import { envFor } from './env.js';
+import { Backdrop } from './backdrop.js';
 import { FX } from './fx.js';
 import { Audio } from './audio.js';
 import { Input } from './input.js';
@@ -30,38 +32,28 @@ const LEVELS = [
   { n: 1, kind: 'wreck', waves: true, title: 'JOY RIDE', time: 100, target: 10, stars: [10, 14, 18], firstLen: 1400, go: 'WRECK THE FOOT!',
     powers: ['raph', 'mike'], unlock: ['raph', 'mike'],
     objective: 'Wreck 10 Foot Clan cars before the time runs out',
-    intro: [{ who: 'mikey', text: 'Today I am taking the car for a ride!' }, { who: 'raph_q', text: 'Do you know how to drive this thing?' }],
-    outro: [{ who: 'raph', text: 'Not too bad, Mikey.' }] },
+    intro: [{ who: 'mikey', text: "Let's take the wagon for a spin!" }] },
   { n: 2, kind: 'wreck', waves: true, title: 'PICK UP LEO', time: 100, target: 12, stars: [12, 16, 20], firstLen: 900, go: 'GO GET LEO!',
     powers: ['raph', 'mike', 'leo'], unlock: ['leo'],
     objective: 'Wreck 12 Foot cars on the way to pick up Leo',
-    intro: [{ who: 'leo', text: "Guys, I heard you're in trouble. Come pick me up!" }, { who: 'raph_q', text: 'Leo? Where are you?' },
-      { who: 'leo', text: 'On a rooftop downtown. Clear the street on your way.' }, { who: 'mikey', text: 'One turtle pick-up, coming right up!' }],
-    outro: [{ who: 'leo', text: "Nice driving, Mikey. Now let's get to work." }] },
+    intro: [{ who: 'leo', text: "Heard you're in trouble. Pick me up on your way!" }] },
   { n: 3, kind: 'april', title: 'SAVE APRIL', time: 70, firstLen: 650, go: 'PROTECT APRIL!',
     powers: ['raph', 'mike', 'leo', 'donnie'], unlock: ['donnie'],
     objective: "Keep April's van safe for 70 seconds, and follow her at every fork",
-    intro: [{ who: 'leo', text: 'The Clan is chasing April downtown!' }, { who: 'raph_q', text: 'April? What do they want with April?' },
-      { who: 'donnie', text: "We're taking the car." }, { who: 'mikey', text: 'I am driving!' }],
-    outro: [{ who: 'raph', text: 'COWABUNGA!' }] },
+    intro: [{ who: 'leo', text: 'The Foot are after April! Follow her van.' }] },
   { n: 4, kind: 'wreck', chase: true, title: 'ON OUR TAIL', time: 90, target: 12, stars: [12, 16, 20], firstLen: 700, go: 'SHAKE THEM OFF!',
     powers: ['raph', 'mike', 'leo', 'donnie', 'saws'], unlock: ['saws'],
     objective: "They're chasing us! Wreck 12 Foot cars before they wreck the wagon",
-    intro: [{ who: 'donnie', text: "Guys? The Foot followed us from April's place." }, { who: 'raph_q', text: 'All of them?!' },
-      { who: 'leo', text: 'Then we fight our way out. Mikey, keep us moving!' }, { who: 'donnie', text: 'Good thing I bolted saw blades on last night.' }],
-    outro: [{ who: 'raph', text: "Ha! That'll teach them to tailgate." }] },
+    intro: [{ who: 'donnie', text: 'The Foot followed us! Good thing I bolted on saw blades.' }] },
   { n: 5, kind: 'boss', title: 'BOSS RUN', time: 100, firstLen: 800, go: 'TAKE HIM DOWN!',
     powers: ['raph', 'mike', 'leo', 'donnie', 'saws', 'nitro'], unlock: ['nitro'],
     objective: "Chase down the Foot boss's truck and take him out",
-    intro: [{ who: 'leo', text: "See that big red truck? That's the Foot boss running this whole thing." }, { who: 'raph_q', text: 'So... we just crash into him?' },
-      { who: 'mikey', text: 'With NITRO! Donnie hooked up the boosters this morning.' }, { who: 'donnie', text: "Please don't scratch the paint." }],
-    outro: [{ who: 'raph', text: "Boss down! Now we're talking." }] },
+    intro: [{ who: 'leo', text: 'That red truck is the Foot boss. Take him down!' }] },
   { n: 6, kind: 'dist', title: 'TECHNODROME', time: 95, dist: 3400, firstLen: 700, go: 'BREAK THROUGH!',
     powers: ['raph', 'mike', 'leo', 'donnie', 'saws', 'nitro'], unlock: [],
     objective: 'Break through the Foot and reach the Technodrome: 3400 m',
-    intro: [{ who: 'donnie', text: 'That signal is coming from the Technodrome!' }, { who: 'leo', text: 'The Foot will do anything to keep us from reaching it.' },
-      { who: 'raph_q', text: 'Anything? Like what?' }, { who: 'mikey', text: "Like... all of them. Good thing we've got everything!" }],
-    outro: [{ who: 'raph', text: 'Technodrome, here we come. COWABUNGA!' }] },
+    intro: [{ who: 'donnie', text: 'That signal is the Technodrome! Break through the Foot.' }],
+    outro: [{ who: 'raph', text: 'COWABUNGA!' }] },
 ];
 for (const L of LEVELS) L.april = L.kind === 'april';
 let LV = LEVELS[0];
@@ -112,6 +104,8 @@ const LOOK_PRESETS = {
 const LOOK = { ...LOOK_DEFAULTS };
 const DEV = devPanelWanted();
 if (DEV) loadSavedLook(LOOK);
+const LOOK_BASE = { ...LOOK };   // each level's environment (env.js) overrides this, so levels never inherit each other's look
+const ENV_FORCE = +(new URLSearchParams(location.search).get('env')) || 0;   // ?env=N: that environment on any level
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -132,10 +126,22 @@ scene.add(stage);
 
 // Night sky: deep blue overhead, a sodium-purple city glow at the horizon. Symmetric in |y|
 // so its reflection in the wet road matches.
-const HORIZON = new THREE.Color(0x3a4580), ZENITH = new THREE.Color(0x080b22), BAND = new THREE.Color(0x9a5aa8);
+// The three sky colours are PLAIN {r,g,b} objects, not THREE.Color: three clones Color uniform
+// values per material but shares plain objects, so one write here reaches the sky dome and the
+// fog of every material (fog_fragment below reads skyH/skyZ/skyB). Patched into the shader
+// libraries before any material exists.
+const SKY = { H: { r: 0.227, g: 0.27, b: 0.5 }, Z: { r: 0.03, g: 0.043, b: 0.133 }, B: { r: 0.6, g: 0.35, b: 0.66 } };
+for (const lib of [THREE.UniformsLib.fog, ...Object.values(THREE.ShaderLib).map((l) => l.uniforms)]) {
+  if (lib && 'fogColor' in lib) { lib.skyH = { value: SKY.H }; lib.skyZ = { value: SKY.Z }; lib.skyB = { value: SKY.B }; }
+}
+function setSky(sk) {
+  for (const [k, hex] of [['H', sk.horizon], ['Z', sk.zenith], ['B', sk.band]]) { const c = new THREE.Color(hex); Object.assign(SKY[k], { r: c.r, g: c.g, b: c.b }); }
+  const bg = new THREE.Color(sk.horizon).multiplyScalar(0.9);
+  scene.background.copy(bg); scene.fog.color.copy(bg);
+}
 const sky = new THREE.Mesh(new THREE.SphereGeometry(500, 24, 12), new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false, fog: false,
-  uniforms: { cH: { value: HORIZON }, cZ: { value: ZENITH }, cB: { value: BAND } },
+  uniforms: { cH: { value: SKY.H }, cZ: { value: SKY.Z }, cB: { value: SKY.B } },
   vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); vec4 p = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * p; }',
   fragmentShader: 'uniform vec3 cH; uniform vec3 cZ; uniform vec3 cB; varying vec3 vD; void main(){ float y = abs(vD.y); float h = pow(clamp(y*1.8, 0.0, 1.0), 0.55); vec3 c = mix(cH, cZ, h) + cB * exp(-y * 14.0) * 0.3; gl_FragColor = vec4(c, 1.0); }',
 }));
@@ -145,14 +151,13 @@ scene.fog = new THREE.FogExp2(0x33408a, 0.0052);
 scene.background = new THREE.Color(0x33408a);
 const camera = new THREE.PerspectiveCamera(52, 1, 0.5, 1100);
 {
-  const v3 = (c) => `vec3(${c.r.toFixed(5)}, ${c.g.toFixed(5)}, ${c.b.toFixed(5)})`;
   THREE.ShaderChunk.fog_pars_vertex = '#ifdef USE_FOG\nvarying float vFogDepth;\nvarying vec3 vFogDir;\n#endif';
   THREE.ShaderChunk.fog_vertex = '#ifdef USE_FOG\nvFogDepth = - mvPosition.z;\nvFogDir = (vec4(mvPosition.xyz, 0.0) * viewMatrix).xyz;\n#endif';
-  THREE.ShaderChunk.fog_pars_fragment = '#ifdef USE_FOG\nuniform vec3 fogColor;\nvarying float vFogDepth;\nvarying vec3 vFogDir;\nuniform float fogDensity;\n#endif';
+  THREE.ShaderChunk.fog_pars_fragment = '#ifdef USE_FOG\nuniform vec3 fogColor;\nvarying float vFogDepth;\nvarying vec3 vFogDir;\nuniform float fogDensity;\nuniform vec3 skyH;\nuniform vec3 skyZ;\nuniform vec3 skyB;\n#endif';
   THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
 float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
 float fy = abs(normalize(vFogDir).y);
-vec3 skyC = mix(${v3(HORIZON)}, ${v3(ZENITH)}, pow(clamp(fy * 1.8, 0.0, 1.0), 0.55)) + ${v3(BAND)} * exp(-fy * 14.0) * 0.3;
+vec3 skyC = mix(skyH, skyZ, pow(clamp(fy * 1.8, 0.0, 1.0), 0.55)) + skyB * exp(-fy * 14.0) * 0.3;
 gl_FragColor.rgb = mix( gl_FragColor.rgb, skyC, fogFactor );
 #endif`;
 }
@@ -169,7 +174,7 @@ scene.add(sun, sun.target);
 const lampLights = Array.from({ length: 4 }, () => { const l = new THREE.PointLight(0xffb878, 24, 32, 1.5); scene.add(l); return l; });
 // neon spill from the shopfronts: magenta / cyan / amber pools fixed along the street (every
 // 34 m, alternating sides) so the cars and the wet road pick up colour as they pass
-const NEON_COLS = [0xd860b0, 0x60a8d8, 0xd89050, 0x9070d0];
+const NEON_COLS = [0xd860b0, 0x60a8d8, 0xd89050, 0x9070d0];   // replaced per environment
 const neonLights = Array.from({ length: 3 }, () => { const l = new THREE.PointLight(0xffffff, 26, 26, 1.6); scene.add(l); return l; });
 // the wagon's headlights
 const head = new THREE.SpotLight(0xfff0d8, 160, 55, 0.55, 0.7, 1.3);
@@ -265,6 +270,21 @@ function render() {
 }
 
 const sunOff = new THREE.Vector3(-22, 40, 12);
+let backdrop, devGui;
+// The place a level happens in (env.js): look overrides, sky + fog, lamp and neon colours, tints
+// and the street kit. Called at level start BEFORE world.reset(), so the new street is built in it.
+function applyEnv(n) {
+  const env = envFor(ENV_FORCE || n);
+  G.env = env;
+  Object.assign(LOOK, LOOK_BASE, env.look);
+  setSky(env.sky);
+  for (const l of lampLights) l.color.setHex(env.lamp);
+  NEON_COLS.splice(0, NEON_COLS.length, ...env.neon);
+  if (world) world.setEnv(env);
+  if (backdrop) backdrop.set(env.kit.backdrop, env.sky, LV && LV.dist);
+  applyLook();
+  if (devGui) devGui.controllersRecursive().forEach((c) => c.updateDisplay());
+}
 function applyLook() {
   const L = LOOK;
   renderer.toneMappingExposure = L.exposure;
@@ -340,8 +360,9 @@ const input = new Input(canvas);
   enemies.push(boss.car);
   ({ leo, raphTop, mikeTop, donTop } = await loadHeroes());
   buildBuffProps();
-  applyLook();
-  if (DEV) buildDevPanel(LOOK, LOOK_PRESETS, applyLook, G);
+  backdrop = new Backdrop(stage);
+  applyEnv(1);
+  if (DEV) devGui = buildDevPanel(LOOK, LOOK_PRESETS, applyLook, G);
   await preloadStory();
   $('loading').classList.add('hidden');
   requestAnimationFrame(loop);
@@ -653,6 +674,7 @@ function startRun() {
   endBuff();
   endGadget();
   resetHatch();
+  applyEnv(LV.n);
   world.reset(LV.firstLen);
   player.reset();
   Object.assign(player, { s: 0, u: 0, vs: SPEED.start, alive: true, active: true });
@@ -807,9 +829,10 @@ function enemyAI(e, dt) {
     if (Math.abs(ds) < (e.L + o.L) / 2 + 2 && Math.abs(ou) < (e.W + o.W) / 2 + 0.8) e.vu -= Math.sign(ou || 1) * 10 * dt;
   }
   if (ai.mode === 'flee' && rel > 70) retire(e);
-  // nobody drives past a junction the wagon hasn't chosen yet
-  if (e.boss) { if (path.junction) e.s = Math.min(e.s, path.junction.s - 8); return; }
-  if (path.junction && e.s > path.junction.s - 6) retire(e);
+  // nobody drives past the end of the divider before the wagon has chosen (they may enter the
+  // junction: past it, the road under them blends by which side of the divider they're on)
+  if (e.boss) { if (path.junction) e.s = Math.min(e.s, path.junction.s + FORK_MID - 8); return; }
+  if (path.junction && e.s > path.junction.s + FORK_MID - 6) retire(e);
   if (rel < -70 || rel > 115) retire(e);
 }
 
@@ -940,7 +963,7 @@ function wreckEnemy(e, dir, label = 'WRECKED!', big = false) {
   if (G.combo >= 2) popupAt(_p.clone().setY(4), `x${G.combo} COMBO`, '');
   if (LV.target && !G.cleared && G.wrecks >= LV.target && G.state === 'play') {
     if (l1Done()) { G.cleared = true; endLevel(true); }
-    else if (!G.script.needPick) { G.script.needPick = true; say('raph_q', 'Not done yet, Mikey. Grab those pick-ups!'); }
+    else if (!G.script.needPick) { G.script.needPick = true; say('raph_q', 'Grab those pick-ups!'); }
   }
   if (e.boss && G.state === 'play') { G.hitStop = 0.08; flash(0.5); endLevel(true); }
 }
@@ -1053,10 +1076,10 @@ const l1Missing = () => L1_NEED.filter((k) => !G.took?.[k]);
 // comes straight back, and once it's taken they say how it works. (It doesn't gate the win.)
 const NEW_AT = 3;
 const NEW_SHOW = {
-  leo: { who: 'leo', call: "That's me! Drive through my pickup!", tip: "I'll jump onto the Foot cars myself. Just get me close to them!" },
-  donnie: { who: 'donnie', call: 'My new staff! Grab the pickup!', tip: "Watch this. I'll lift one car and drop it on another!" },
-  saws: { who: 'donnie', call: 'Saw blades are ready. Drive through the pickup!', tip: 'Get right alongside them and let the saws do the work!' },
-  nitro: { who: 'mikey', call: 'NITRO! Grab it, grab it!', tip: 'Full speed! Ram them, nitro hits three times as hard!' },
+  leo: { who: 'leo', call: "That's me! Grab it!", tip: "I'll jump on them. Get me close!" },
+  donnie: { who: 'donnie', call: 'My new staff! Grab it!', tip: "I'll lift one car and drop it on another!" },
+  saws: { who: 'donnie', call: 'Saw blades! Grab them!', tip: 'Get alongside them!' },
+  nitro: { who: 'mikey', call: 'NITRO! Grab it!', tip: 'Ram them! Nitro hits 3x as hard!' },
 };
 const newMissing = () => (LV.n > 1 ? LV.unlock.filter((k) => !G.took?.[k]) : []);
 const l1Done = () => LV.n !== 1 || !l1Missing().length;
@@ -2062,7 +2085,7 @@ function updateStrike(realDt) {
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), _c = new THREE.Vector3(), _l = new THREE.Vector3();
 let camInit = false;
 function updateCamera(dt) {
-  frameAt(player.s, _T, _R);
+  frameAt(player.s, _T, _R, player.u);
   const portrait = window.innerWidth < window.innerHeight;
   // low and tight behind the wagon, looking well down the street: speed reads from the road
   const back = portrait ? 12.5 : 10.5, up = portrait ? 9 : 7.4;
@@ -2104,6 +2127,7 @@ function updateCamera(dt) {
   sun.position.copy(player.group.position).add(sunOff);
   sun.target.position.copy(player.group.position);
   sky.position.copy(camera.position);
+  if (backdrop) backdrop.update(camera);
   // hang the pooled point lights on the lamps just ahead of the wagon
   const near = world.routeLamps().filter((l) => l.s > player.s - 12).sort((a, b) => a.s - b.s);
   lampLights.forEach((l, i) => { const lp = near[i]; l.visible = !!lp; if (lp) l.position.copy(lp.pos); });
@@ -2341,8 +2365,7 @@ function levelScript(dt) {
     if (!S.foot && G.time > L1.foot) {
       S.foot = true;
       spawnWave('pass');
-      say('donnie', 'Foot Clan soldiers? What are they doing here?');
-      say('leo', "Never mind what they're doing here. Take them out!");
+      say('leo', 'Foot Clan! Take them out!');
       G.spawnT = 4;
     }
     if (!S.pickup && G.time > L1.pickup) {
@@ -2353,21 +2376,21 @@ function levelScript(dt) {
     if (S.pickup && !S.pickupDone && G.took?.raph) S.pickupDone = true;
     if (!S.fork && S.pickupDone && J && J.s - player.s < L1.forkAt) {
       S.fork = true;
-      say('mikey', 'Select which way to go!');
-      hint('LEAN LEFT OR RIGHT TO PICK A ROAD');
+      say('mikey', 'Pick a side!');
+      hint('PICK A SIDE OF THE YELLOW LINE');
       L1.forkHint = true;
     }
   }
   if (LV.n === 2) {
-    if (!S.go && G.time > 1) { S.go = true; say('leo', "I can see you from up here. Watch out, Foot cars incoming!"); }
-    if (!S.half && G.wrecks >= LV.target / 2) { S.half = true; say('leo', "Halfway! I'm on the next block!"); }
+    if (!S.go && G.time > 1) { S.go = true; say('leo', 'Foot cars incoming!'); }
+    if (!S.half && G.wrecks >= LV.target / 2) { S.half = true; say('leo', 'Halfway there!'); }
   }
   if (LV.chase) {
-    if (!S.go && G.time > 1) { S.go = true; spawnWave('pass'); say('raph_q', "Here they come! Right on our bumper!"); }
+    if (!S.go && G.time > 1) { S.go = true; spawnWave('pass'); say('raph_q', "They're on our bumper!"); }
   }
   if (LV.kind === 'boss') {
     if (!S.go && G.time > 1) { S.go = true; banner('BOSS!', 'raph'); say('leo', 'There he is! Stay on him!'); }
-    if (!S.half && boss.hp < boss.maxHp / 2) { S.half = true; say('donnie', "His armour's cracking. Keep hitting him!"); }
+    if (!S.half && boss.hp < boss.maxHp / 2) { S.half = true; say('donnie', 'His armour is cracking!'); }
   }
   if (LV.kind === 'dist') {
     const left = LV.dist - (player.s - G.s0);
@@ -2376,10 +2399,10 @@ function levelScript(dt) {
     if (!S.near && left < 500) { S.near = true; say('mikey', 'I can see it! Floor it!'); }
   }
   if (LV.april) {
-    if (!S.go && G.time > 1.5) { S.go = true; say('leo', "Stay on April's tail. Don't let them hit her!"); }
+    if (!S.go && G.time > 1.5) { S.go = true; say('leo', "Stay on April's tail!"); }
     if (!S.chase && G.time > 2.5) { S.chase = true; spawnEnemy('racer', -30, -5.4); spawnEnemy('racer', -36, 5.4); G.spawnT = 3; }
-    if (!S.fork && J && J.s - player.s < 330) { S.fork = true; say('mikey', 'Watch her blinker. Go where April goes!'); }
-    if (!S.half && april.hp < APRIL.hp / 2) { S.half = true; say('donnie', "April's van can't take much more!"); }
+    if (!S.fork && J && J.s - player.s < 330) { S.fork = true; say('mikey', 'Go where April goes!'); }
+    if (!S.half && april.hp < APRIL.hp / 2) { S.half = true; say('donnie', "April's van is hurting!"); }
     if (G.lostT > 0) { G.lostT -= dt; if (G.lostT <= 0) endLevel(false, 'YOU LOST APRIL!', 'Follow her blinker: at every fork, take the road April takes.'); }
   }
 }
@@ -2600,9 +2623,15 @@ function junctionChoice() {
   const J = path.junction, el = $('turn');
   if (!J) return;
   const to = J.s - player.s;
-  if (to < DECIDE_AT) {
+  if (to <= -FORK_MID) {
+    // the end of the divider: whichever side of it the wagon is on, that's the way it goes
     const turn = player.u < 0 ? -1 : 1;
+    // everything already inside the junction changes road with the wagon (its u re-expressed, the offset eased)
+    const cars = [player, ...(april.on && april.turn === turn && aprilCar.alive ? [aprilCar] : []), ...enemies.filter((e) => e.active && e.alive && !e.lift && e.s > J.s)];
+    const was = cars.map((c) => { c.place(0); return { x: c.group.position.x, z: c.group.position.z, yaw: c.group.rotation.y }; });
+    for (const c of cars) c.u = world.forkU(turn, c.s, c.u);
     world.decide(turn);
+    cars.forEach((c, i) => { c.place(0); c.ease = { x: was[i].x - c.group.position.x, z: was[i].z - c.group.position.z, yaw: was[i].yaw - c.group.rotation.y }; c.place(0); });
     G.forks = (G.forks || 0) + 1;
     if (L1.forkHint) { L1.forkHint = false; hint(''); }
     if (april.on && april.turn && turn !== april.turn && G.state === 'play') {
@@ -2628,7 +2657,7 @@ function junctionChoice() {
     fol.className = 'hidden'; $('follow-arrow').className = 'hidden';
     $('april-tag').querySelector('b').textContent = 'APRIL';
   }
-  if (!el.classList.contains('locked')) el.className = to < 230 && G.state === 'play' ? 'show ' + (player.u < 0 ? 'l' : 'r') + (showFol ? ' low' : '') : '';
+  if (!el.classList.contains('locked')) el.className = to < 230 && G.state === 'play' ? 'show ' + (player.u < 0 ? 'l' : 'r') + (showFol ? ' low' : L1.forkHint ? ' under' : '') : '';
 }
 
 // the wagon wrecked (hurt) lands here; everything else calls endLevel directly
@@ -2647,7 +2676,7 @@ async function endLevel(win, title, why = '') {
     banner({ april: 'APRIL IS SAFE!', boss: 'BOSS DOWN!', dist: 'TECHNODROME REACHED!' }[LV.kind] || 'STREET CLEARED!');
     await new Promise((r) => setTimeout(r, 1300));
     if (run !== levelRun) return;
-    if (!AUTO) await playScene({ bg: 'win', lines: LV.outro, title: last ? 'COWABUNGA!' : `LEVEL ${LV.n} CLEAR!`, objective: last ? 'You made it to the Technodrome. The wagon is yours, Mikey.' : `Next: ${LEVELS[LV.n].title}`, start: last ? 'THE END' : 'NEXT' });
+    if (!AUTO && LV.outro) await playScene({ bg: 'win', lines: LV.outro, title: last ? 'COWABUNGA!' : `LEVEL ${LV.n} CLEAR!`, objective: last ? 'You made it to the Technodrome. The wagon is yours, Mikey.' : `Next: ${LEVELS[LV.n].title}`, start: last ? 'THE END' : 'NEXT' });
     if (run !== levelRun) return;
   } else audio.over();
   const stars = LV.april ? [1, 50, 80].filter((h) => win && april.hp >= h).length
@@ -2715,7 +2744,9 @@ function autoLean() {
     if (d < bd) { bd = d; best = e; }
   }
   const J = path.junction;
-  if (J && J.s - player.s < 200) {
+  // (the lock is now at the end of the divider, 79 m of driving later than it was, so the pilot
+  // starts picking its side that much later: it spends the same time on forks as before)
+  if (J && J.s - player.s < 120) {
     const side = april.on && april.turn ? april.turn * (window.__wrongFork ? -1 : 1) : (G.autoFork ??= 1);
     return clamp((side * 6 - player.u) * 0.5, -1, 1);
   }
@@ -2726,4 +2757,4 @@ function autoLean() {
   const du = best.u - player.u;
   return Math.abs(best.s - player.s) < 6 ? Math.sign(du) : clamp(du * 0.5, -1, 1);
 }
-window.__game = { G, april, boss, spawnEnemy, spawnWave, get donTop() { return donTop; }, get aprilCar() { return aprilCar; }, startLevel, endLevel, get LV() { return LV; }, LEVELS, startBuff, liftStep, get world() { return world; }, path, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, hatchS, get fx() { return fx; }, saws, updateSaws, startGadget, get mikeTop() { return mikeTop; }, sky, scene, stage, renderer, composer };
+window.__game = { get backdrop() { return backdrop; }, G, april, boss, spawnEnemy, spawnWave, get donTop() { return donTop; }, get aprilCar() { return aprilCar; }, startLevel, endLevel, get LV() { return LV; }, LEVELS, startBuff, liftStep, get world() { return world; }, path, get player() { return player; }, enemies, orbs, camera, waves, bolts, zaps, shots, startBuff, get leo() { return leo; }, get raphTop() { return raphTop; }, hatchS, get fx() { return fx; }, saws, updateSaws, startGadget, get mikeTop() { return mikeTop; }, sky, scene, stage, renderer, composer };

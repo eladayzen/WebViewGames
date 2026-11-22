@@ -70,16 +70,59 @@ tag and health bar. It alternates **run** (4.5 s, weaving 22-40 m ahead and shoo
 so the attack is the window to ram and grind it. Leo's katana does 250 to it instead of the
 usual instant wreck, and Donnie can't lift it but can drop cars on it.
 
+**Environments** (`src/env.js`, `applyEnv` in `main.js`, `World.setEnv`, `src/backdrop.js`): each
+level happens somewhere different, switched at level start before `world.reset()`:
+
+| Level | Place | What changes |
+| --- | --- | --- |
+| 1 | Midtown night | the original look |
+| 2 | Downtown dusk | low orange sun, warm air, dry road, tall blocks, spires on the skyline |
+| 3 | Chinatown in the rain | teal-black air, thick fog, glossy road, narrow low shopfronts, red lanterns, strong neon |
+| 4 | Docks | steel sky, sodium lamps, low wide warehouses, container yards in the gaps, gantry cranes, no steam vents |
+| 5 | Foot Clan district | red sky, black towers, hanging banners, roof spikes, pagoda skyline, brighter Foot rim glow |
+| 6 | Technodrome approach | green and violet air, glowing pylons, and the Technodrome itself looming on the horizon |
+
+An env is `look` (overrides on the base `LOOK`), `sky` (horizon / zenith / band), lamp and neon
+colours, `tint` (multipliers on the existing textures, window glow, paint) and a `kit` (floors,
+widths, gaps, props, lamp spacing, skyline). Layer 1 is tint and light; layer 2 is shape; no new
+textures were generated. The traps:
+- **The fog reads the sky from shared uniforms** (`skyH/skyZ/skyB`, plain `{r,g,b}` objects so
+  three shares them instead of cloning). Change the sky and the fog follows; a baked colour would
+  bring back the horizon popping.
+- Building generation draws the same randoms in the same order whatever the kit, so a street still
+  rebuilds identically after a fork. Don't add `Math.random()` to world generation.
+- Foot cars must stay readable in each place: `footRim`, `footRimColor` and the car tints are part of
+  levels 5 and 6's `look`.
+- `?env=N` forces environment N on any level (screenshots, tuning). The dev panel edits the current
+  level's values; "Copy values (JSON)" gives numbers to paste into that level's entry.
+- Technodrome: fixed at the goal's world position, drawn at 460 m and scaled to its true angular
+  size, so it grows as you close in and still sits inside the far plane.
+
+**Scripts:** one turtle, one line per level scene (`intro`), an `outro` scene only on the last level.
+In-level callouts are a few words. Fewer taps, less text.
+
+**Forks** (`_fork`, `routePose`, `junctionChoice`): the approach's double yellow line runs
+on into the junction to its middle (`FORK_MID`, 24 m past where the roads start to part), and
+each branch's centre line comes out of the end of it, so the markings make a Y. The choice is
+read at the end of the divider: whichever side of it the wagon is on there, that's the road.
+Until then, past the junction start, the wagon, the camera and April follow a blend of the two
+branches by which side of the line they're on (a lane each side of it is the blend zone), so
+you're already driving down the road you'll get. The lock itself moves nothing; if it lands
+while you straddle the line, the leftover offset eases away over a few frames (`Car.ease`).
+Measured with `fork-mid.mjs`: the biggest jump in a frame at the lock is 0.16 m and 0.04 rad,
+the same as ordinary steering.
+
 **Level 1 is the tutorial** (`levelScript`, `L1`):
 - An empty street first. At 5 s two Foot cars come up from behind, with Donnie's and Leo's lines.
 - At 12.5 s a Raph pickup is placed in the wagon's lane, with Donnie's line and a hint.
-- 300 m before the first fork, Mikey says to pick a way and a hint says to lean. The first
+- 300 m before the first fork, Mikey says to pick a way and a hint says "PICK A SIDE OF THE
+  YELLOW LINE" (the LEFT / RIGHT sign moves under it). The first
   straight is 1400 m long (`firstLen`), so the lessons come one at a time.
 
 **Level 3, April** (`APRIL`, `updateApril`):
 - Her van is the Foot truck without its cannon, painted blue (`Car` with `friendly`). It drives
-  18-30 m ahead of the wagon, always less than the fork lock-in distance, so the player
-  chooses before she reaches the fork.
+  18-30 m ahead of the wagon, so she's already on her branch while the player can still
+  switch sides of the divider.
 - 270 m before each fork she picks a side, moves over and blinks. A big caption says
   "APRIL IS TURNING / RIGHT ▶ / FOLLOW HER!", a giant arrow pulses on that side of the
   screen, and her van's tag gets the arrow too.
@@ -250,6 +293,8 @@ port 8155.
 | Tool | Checks |
 | --- | --- |
 | `levels.mjs` | The level loop: `intro` (level 1 scene and tutorial), `april` (level 2 to the end), `wrong` (takes the other fork; logs when Raph warns and when she's lost), `level3` / `level4` / `level5` |
+| `env-shots.mjs`, `env-techno.mjs` | One screenshot set per level's environment (any size) with sky / building / road colours and frame time; the Technodrome backdrop with the goal pulled in |
+| `fork-mid.mjs` | Holds one side into a fork, switches `switchAt` m past its start; logs which way it went, u at the lock, and the biggest per-frame jump in position and yaw around it |
 | `l1-pickups.mjs`, `pickup-mix.mjs`, `card.mjs` | Level 1's pickup rule; which pickups a level hands out; a level's title card |
 | `make-mike-icon.py` | Mikey's power icon from the current art, in the medallion format |
 | `donnie.mjs` | Frames through Donnie's swings, the lift / crush counts, then a frozen frame of the held car with its on-screen size |

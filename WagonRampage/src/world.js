@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { envFor } from './env.js';
 
 // ── The street grid ──────────────────────────────────────────────────────────
 // The route is a chain of pieces: straight streets, each ending at a T-junction where the
@@ -17,7 +18,13 @@ const FORK_ARC = RF * FORK_ANG;
 const SEG = 24;                 // generation chunk (m)
 const AHEAD = 380, BEHIND = 70;
 const ARM = 200;                // how much of each branch is built before the choice
-export const DECIDE_AT = 55;    // metres before the junction the choice locks in
+// The choice locks FORK_MID metres INTO the junction, where the divider painted down the
+// middle of the road ends: until then, whichever side of it the wagon is on is the way it goes.
+// Past J.s and before the lock, the road pose is a blend of the two branches by which side of
+// the divider you're on (so the wagon, camera and April already follow that branch), and the
+// lock itself changes nothing on screen.
+export const FORK_MID = 24;
+const FORK_BLEND = 1.8;         // u range either side of the divider over which the branches blend
 
 function pose(p, d, u, out) {
   let x, z, h;
@@ -56,15 +63,27 @@ class Path {
 }
 export const path = new Path();
 
-const _o = {};
-export function pointAt(s, u, out = new THREE.Vector3()) {
+const _o = {}, _fa = {}, _fb = {};
+// pose at (s, u) on the route, or — past an undecided fork — between its two branches by u
+// (u == null: straight down the middle)
+function routePose(s, u, out) {
+  const J = path.junction;
+  if (J && s > J.s) {
+    const t = u == null ? 0.5 : Math.min(1, Math.max(0, (u + FORK_BLEND) / (2 * FORK_BLEND)));
+    const k = t * t * (3 - 2 * t);
+    forkPoint(J, -1, s - J.s, u || 0, _fa); forkPoint(J, 1, s - J.s, u || 0, _fb);
+    out.x = _fa.x + (_fb.x - _fa.x) * k; out.z = _fa.z + (_fb.z - _fa.z) * k; out.h = _fa.h + (_fb.h - _fa.h) * k;
+    return out;
+  }
   const p = path.find(s);
-  pose(p, s - p.s0, u, _o);
+  return pose(p, s - p.s0, u || 0, out);
+}
+export function pointAt(s, u, out = new THREE.Vector3()) {
+  routePose(s, u, _o);
   return out.set(_o.x, 0, _o.z);
 }
-export function frameAt(s, T = new THREE.Vector3(), R = new THREE.Vector3()) {
-  const p = path.find(s);
-  pose(p, s - p.s0, 0, _o);
+export function frameAt(s, T = new THREE.Vector3(), R = new THREE.Vector3(), u = null) {
+  routePose(s, u, _o);
   T.set(Math.sin(_o.h), 0, -Math.cos(_o.h));
   R.set(Math.cos(_o.h), 0, Math.sin(_o.h));
   return { T, R };
@@ -75,7 +94,7 @@ export function forkPoint(J, turn, d, u, out = {}) {
   const [arc, line] = J.branch[turn];
   return d < arc.len ? pose(arc, d, u, out) : pose(line, d - arc.len, u, out);
 }
-export function yawAt(s) { const p = path.find(s); pose(p, s - p.s0, 0, _o); return -_o.h; }
+export function yawAt(s, u = null) { routePose(s, u, _o); return -_o.h; }
 const lpt = (p, d, u, out = new THREE.Vector3()) => { pose(p, d, u, _o); return out.set(_o.x, 0, _o.z); };
 const lh = (p, d) => pose(p, d, 0, _o).h;
 
@@ -138,6 +157,18 @@ function glowTex(color, size = 128) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+// a hanging banner: dark border, a glowing sigil
+function bannerTex() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 160;
+  const x = c.getContext('2d');
+  x.fillStyle = '#7a0c14'; x.fillRect(0, 0, 64, 160);
+  x.fillStyle = '#16050a'; x.fillRect(0, 0, 64, 6); x.fillRect(0, 154, 64, 6); x.fillRect(0, 0, 5, 160); x.fillRect(59, 0, 5, 160);
+  x.strokeStyle = '#ff7a50'; x.lineWidth = 5;
+  x.beginPath(); x.arc(32, 62, 17, 0, Math.PI * 2); x.stroke();
+  x.fillStyle = '#ff7a50';
+  x.beginPath(); x.moveTo(32, 44); x.lineTo(40, 66); x.lineTo(32, 100); x.lineTo(24, 66); x.closePath(); x.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 function arrowTex() {
   const c = document.createElement('canvas'); c.width = 128; c.height = 256;
   const x = c.getContext('2d');
@@ -170,6 +201,10 @@ export class World {
       lamp: new THREE.MeshBasicMaterial({ color: hdr(1.25, 1.05, 0.75) }),   // soft bulb: the light is the pool, not the glare
       manhole: new THREE.MeshLambertMaterial({ color: 0x2a2833 }),
       pool: new THREE.MeshBasicMaterial({ map: GLOW.warm, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.3, polygonOffset: true, polygonOffsetFactor: -2 }),
+      lantern: new THREE.MeshBasicMaterial({ color: hdr(2.2, 0.5, 0.35) }),
+      banner: new THREE.MeshBasicMaterial({ map: bannerTex(), color: hdr(1.3, 1.3, 1.3), side: THREE.DoubleSide }),
+      pylon: new THREE.MeshBasicMaterial({ color: hdr(0.4, 2.4, 1.2) }),
+      container: new THREE.MeshLambertMaterial({ vertexColors: true }),
       arrow: new THREE.MeshBasicMaterial({ map: arrowTex(), transparent: true, depthWrite: false, color: hdr(0.85, 0.75, 0.22), polygonOffset: true, polygonOffsetFactor: -3 }),
     };
     // upper floors: four facades × colour casts, so neighbours rarely match
@@ -197,7 +232,33 @@ export class World {
     this.base = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), new THREE.MeshLambertMaterial({ color: 0x17141f }));
     this.base.rotation.x = -Math.PI / 2;
     this.root.add(this.base);
+    this.env = envFor(1);
+    this.neonTint = new THREE.Color(1, 1, 1);
     this.reset();
+  }
+
+  // Switch the look of the street to a level's environment (see env.js). Tints multiply the
+  // authored colours, so the baseline (all white) is the original Midtown night. Call before
+  // reset(): the new street is built with the new kit.
+  setEnv(env) {
+    this.env = env;
+    const T = env.tint, col = (hex) => new THREE.Color(hex);
+    const mul = (m, hex) => { m.userData.col0 ??= m.color.clone(); m.color.copy(m.userData.col0).multiply(col(hex)); };
+    const win = col(T.win);
+    for (const [m, hex] of [...this.uppers.map((u) => [u.m, T.upper]), ...this.grounds.map((m) => [m, T.ground]), [this.mat.tower, T.tower]]) {
+      mul(m, hex);
+      m.userData.emBase ??= m.emissive.clone();
+      m.userData.em0 = m.userData.emBase.clone().multiply(win);   // setGlow scales this by the dev-panel multiplier
+    }
+    mul(this.mat.road, T.road); mul(this.mat.walk, T.walk);
+    this.mat.yellow.color.setHex(T.yellow); this.mat.white.color.setHex(T.white);
+    this.mat.pool.color.setHex(env.pool);
+    this.base.material.color.setHex(T.base);
+    this.neonTint.setHex(T.neon);
+    const N = env.neon;
+    this.mat.lantern.color.copy(col(N[0])).multiplyScalar(1.5);
+    this.mat.pylon.color.copy(col(N[0])).multiplyScalar(2.4);
+    this.mat.banner.color.setScalar(1.3);
   }
 
   // firstLen: metres of straight before the first fork (levels use it to pace their tutorial)
@@ -229,7 +290,7 @@ export class World {
       m.userData.em0 ??= m.emissive.clone();
       m.emissive.copy(m.userData.em0).multiplyScalar(windows);
     }
-    for (const m of this.neonMats) m.color.setScalar(signs);
+    for (const m of this.neonMats) m.color.copy(this.neonTint).multiplyScalar(signs);
   }
   routeLamps() { return this.lamps.filter((l) => path.pieces.includes(l.p)); }
   routeVents() { return this.vents.filter((l) => path.pieces.includes(l.p)); }
@@ -242,6 +303,7 @@ export class World {
     return {
       p, d: from, preview: !!o.preview, end: o.preview ? o.previewEnd : p.len,
       roadFrom: from, roadY: o.roadY || 0, paintFrom: o.paintFrom ?? from,
+      centreFrom: o.centreFrom ?? o.paintFrom ?? from, outerPaintFrom: o.outerPaintFrom ?? o.paintFrom ?? from,
       inner, innerWalkFrom: o.innerWalkFrom ?? from, cur: [from, from], innerBFrom: o.innerBFrom ?? from,
       rng: [mulberry(p.seed * 7 + 1), mulberry(p.seed * 7 + 2)],
       // one pass-through cross street on longer straights
@@ -281,13 +343,46 @@ export class World {
       const lineInnerB = Math.max(0, ((2 * FAC + DEPTH) / 2 - RF * (1 - Math.cos(FORK_ANG))) / Math.sin(FORK_ANG));
       J.branch[turn] = [arc, line];
       const sts = [
-        this._genState(arc, { preview: true, previewEnd: FORK_ARC, inner: -turn, paintFrom: sep(HW), innerWalkFrom: sep(FAC), innerBFrom: Infinity, roadY: turn > 0 ? 0.004 : 0, noCross: true }),
+        // paint: the outer lane lines carry straight on from the approach; the branch's centre
+        // line comes out of the end of the divider; the inner lanes wait until the roads part
+        this._genState(arc, { preview: true, previewEnd: FORK_ARC, inner: -turn, paintFrom: sep(HW), centreFrom: FORK_MID - 6, outerPaintFrom: 0, innerWalkFrom: sep(FAC), innerBFrom: Infinity, roadY: turn > 0 ? 0.004 : 0, noCross: true }),
         this._genState(line, { preview: true, previewEnd: ARM, inner: -turn, innerBFrom: lineInnerB, noCross: true }),
       ];
       const group = new THREE.Group();
       this.root.add(group);
       this.previews.push({ turn, J, sts, group });
     }
+    // the divider: the approach's double yellow runs on into the junction to its middle
+    const dg = new THREE.Group(), ext = { type: 'line', len: FORK_MID, x0: J.x, z0: J.z, h0: J.h };
+    for (const [u0, u1] of [[-0.26, -0.08], [0.08, 0.26]]) this._strip(dg, ext, 0, FORK_MID, u0, u1, 0.02, 0.02, this.mat.yellow);
+    this.root.add(dg);
+    this.chunks.push({ sEnd: J.s + FORK_MID, group: dg });
+  }
+  // a road-surface strip between u0 and u1 over [a, b) of piece pc, into group g
+  _strip(g, pc, a, b, u0, u1, y0, y1, mat, vScale = 1, uScale = 1) {
+    if (b - a < 0.01) return;
+    const N = Math.max(1, Math.ceil((b - a) / 6)), pos = [], uv = [], idx = [];
+    for (let i = 0; i <= N; i++) {
+      const d = a + ((b - a) * i) / N;
+      const A = lpt(pc, d, u0), B = lpt(pc, d, u1);
+      pos.push(A.x, y0, A.z, B.x, y1, B.z);
+      uv.push(u0 / uScale, d / vScale, u1 / uScale, d / vScale);
+      if (i < N) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx); geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); this.ground.push(m);
+  }
+  // the wagon's u on branch `turn` that keeps it exactly where it is now (call before decide)
+  forkU(turn, s, u) {
+    const J = path.junction;
+    if (!J || s <= J.s) return u;
+    routePose(s, u, _o);
+    const x = _o.x, z = _o.z;
+    forkPoint(J, turn, s - J.s, 0, _fa);
+    return (x - _fa.x) * Math.cos(_fa.h) + (z - _fa.z) * Math.sin(_fa.h);
   }
 
   // Lock in the branch. Its preview pieces become the route — same pieces, same generators,
@@ -350,22 +445,7 @@ export class World {
     st.d = d0 + SEG;
     const end = st.end;
     const clip = (a, b) => [Math.max(a, d0), Math.min(b, d1)];
-    const strip = (pc, a, b, u0, u1, y0, y1, mat, vScale = 1, uScale = 1) => {
-      if (b - a < 0.01) return;
-      const N = Math.max(1, Math.ceil((b - a) / 6)), pos = [], uv = [], idx = [];
-      for (let i = 0; i <= N; i++) {
-        const d = a + ((b - a) * i) / N;
-        const A = lpt(pc, d, u0), B = lpt(pc, d, u1);
-        pos.push(A.x, y0, A.z, B.x, y1, B.z);
-        uv.push(u0 / uScale, d / vScale, u1 / uScale, d / vScale);
-        if (i < N) { const k = i * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-      geo.setIndex(idx); geo.computeVertexNormals();
-      const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; g.add(m); this.ground.push(m);
-    };
+    const strip = (...args) => this._strip(g, ...args);
     const X = st.cross;
     // ranges [a,b) minus the cross street's mouth
     const minusCross = (a, b, half) => (X == null ? [[a, b]] : [[a, Math.min(b, X - half)], [Math.max(a, X + half), b]]);
@@ -380,15 +460,17 @@ export class World {
         else { strip(p, a, b, HW, FAC, CURB, CURB, this.mat.walk, 3, 3); strip(p, a, b, HW, HW, 0, CURB, this.mat.curb); }
       }
     }
-    // paint: edge lines always; centre and lanes once a fork's two roads have separated
+    // paint: edge lines always; centre and lanes from where each piece says (a fork branch:
+    // centre out of the divider's end, outer lanes straight on, inner lanes once the roads part)
     const py = 0.012 + st.roadY;
     [a, b] = clip(st.roadFrom, end);
     if (st.inner !== 1) strip(p, a, b, HW - 0.45, HW - 0.25, py, py, this.mat.white);
     if (st.inner !== -1) strip(p, a, b, -HW + 0.25, -HW + 0.45, py, py, this.mat.white);
-    [a, b] = clip(st.paintFrom, end);
-    if (b > a) {
-      strip(p, a, b, -0.26, -0.08, py, py, this.mat.yellow); strip(p, a, b, 0.08, 0.26, py, py, this.mat.yellow);
-      for (const u of [-7.2, -3.6, 3.6, 7.2]) for (let d = Math.ceil(a / 9) * 9; d < b; d += 9) {
+    [a, b] = clip(st.centreFrom, end);
+    if (b > a) { strip(p, a, b, -0.26, -0.08, py, py, this.mat.yellow); strip(p, a, b, 0.08, 0.26, py, py, this.mat.yellow); }
+    for (const u of [-7.2, -3.6, 3.6, 7.2]) {
+      [a, b] = clip(st.inner && Math.sign(u) !== st.inner ? st.outerPaintFrom : st.paintFrom, end);
+      for (let d = Math.ceil(a / 9) * 9; d < b; d += 9) {
         const da = Math.max(d, a), db = Math.min(d + 4.5, b);
         if (db > da) strip(p, da, db, u - 0.08, u + 0.08, py, py, this.mat.white);
       }
@@ -413,7 +495,7 @@ export class World {
       if (X >= d0 && X < d1) this._crossStreet(st, X, g, strip);
     }
     // a steaming manhole now and then, between the lanes
-    if (d1 - d0 > 12 && (Math.floor(d0 / SEG) * 7919) % 5 < 2) {
+    if (this.env.kit.vents && d1 - d0 > 12 && (Math.floor(d0 / SEG) * 7919) % 5 < 2) {
       const md = d0 + 6 + ((Math.floor(d0) * 31) % 12), mu = [-7.2, -3.6, 0, 3.6, 7.2][((Math.floor(d0) % 5) + 5) % 5];
       if (md < end - 4 && (X == null || Math.abs(md - X) > HW + 6)) {
         const q = lpt(p, md, mu);
@@ -424,7 +506,7 @@ export class World {
       }
     }
     // one row of lamps zig-zagging across the street: left, right, left…
-    const LS = 24;
+    const LS = this.env.kit.lampEvery;
     for (let d = Math.ceil(Math.max(d0, st.roadFrom + 6) / LS) * LS; d < Math.min(d1, end - 4); d += LS) {
       const sg = Math.round(d / LS) % 2 ? 1 : -1;
       if (sg === st.inner && d < st.innerWalkFrom + 4) continue;
@@ -486,18 +568,20 @@ export class World {
   // then a gap (alley / lot) so the frontage breathes. Every call draws from that side's
   // seeded rng in a fixed order, so a street always rebuilds identically.
   _building(p, d, sign, r, end) {
-    let w = 9 + r() * 13;
-    const gap = r() < 0.16 ? 5 + r() * 9 : 0.05;
-    const setback = r() < 0.25 ? 1.5 + r() * 2.5 : 0;
-    const floors = 2 + Math.floor(r() * 8);
+    const K = this.env.kit;
+    let w = K.width[0] + r() * (K.width[1] - K.width[0]);
+    const gap = r() < K.gap ? K.gapLen[0] + r() * (K.gapLen[1] - K.gapLen[0]) : 0.05;
+    const setback = r() < K.setback ? 1.5 + r() * 2.5 : 0;
+    const floors = K.floors[0] + Math.floor(r() * (K.floors[1] - K.floors[0] + 1));
     const U = this.uppers[Math.floor(r() * this.uppers.length)];
     const G = this.grounds[Math.floor(r() * this.grounds.length)];
     const uo = r(), fe = r(), fz = r(), wt = r(), wx = r(), wz = r(), nn = r(), nm = r(), ny = r(), nz = r(), tw0 = r(), tw1 = r(), tw2 = r();
+    const pa = r(), pb = r(), pc = r(), pd = r();
     if (d + w > end) w = end - d;
     const next = d + w + gap;
     if (w < 4) return { next };
     const dm = d + w / 2;
-    const ground = 4.4, up = floors * 3.5, top = ground + up;
+    const ground = K.ground, up = floors * 3.5, top = ground + up;
     const g = new THREE.Group();
     const c = lpt(p, dm, sign * (FAC + setback + DEPTH / 2));
     g.position.set(c.x, 0, c.z);
@@ -532,13 +616,89 @@ export class World {
       sgn.position.set(face - sign * 1.3, ground + 2 + ny * 2.5, (nz - 0.5) * Math.max(0, w - 2));
       g.add(sgn);
     }
-    if (tw0 < 0.4) {
-      const tw = 14 + tw1 * 14, th = 35 + tw2 * 55;
+    if (tw0 < K.towers) {
+      const tw = 14 + tw1 * 14, th = K.towerH[0] + tw2 * (K.towerH[1] - K.towerH[0]);
       const t = new THREE.Mesh(tiledBox(tw, th, Math.max(w, 12), 10, 7), this.mat.tower);
       t.position.set(sign * (DEPTH / 2 + 10 + tw / 2), th / 2, 0);
       g.add(t);
     }
+    if (K.props.length && pa < K.propChance) this._prop(K.props[Math.floor(pb * K.props.length)], g, { w, top, ground, up, face, sign, a: pc, b: pd });
+    if (K.lot && gap > 6) this._lot(K.lot, g, { w, gap, sign, a: pc, b: pd });
     return { next, group: g };
+  }
+
+  // set dressing on a building (one merged mesh each; a, b are seeded randoms in 0..1)
+  _prop(kind, g, o) {
+    const { w, top, ground, up, face, sign, a, b } = o;
+    const parts = [];
+    const put = (geo, x, y, z) => { geo.translate(x, y, z); parts.push(geo); };
+    if (kind === 'lanterns') {
+      // two strings of red lanterns along the shopfronts
+      const n = 3 + Math.floor(a * 4), span = Math.max(2, w - 3);
+      for (const [y, off] of [[3.3, 1.5], [ground + 3.2, 1.3]]) for (let i = 0; i < n; i++) {
+        const geo = new THREE.SphereGeometry(0.32, 8, 6); geo.scale(1, 1.35, 1);
+        put(geo, face - sign * off, y + (i % 2) * 0.45, ((i + 0.5) / n - 0.5) * span);
+      }
+      g.add(new THREE.Mesh(mergeGeometries(parts), this.mat.lantern));
+    } else if (kind === 'banners') {
+      // long banners hanging down the facade
+      const h = Math.min(up * 0.8, 6 + a * 3);
+      for (const z of [-w * 0.27, w * 0.27]) {
+        const geo = new THREE.PlaneGeometry(1.7, h); geo.rotateY(Math.PI / 2);
+        put(geo, face - sign * 0.18, ground + up * 0.55 + h * 0.1, z);
+      }
+      g.add(new THREE.Mesh(mergeGeometries(parts), this.mat.banner));
+    } else if (kind === 'spikes') {
+      // a crown of black spikes along the roofline
+      const n = 3 + Math.floor(a * 4);
+      for (let i = 0; i < n; i++) {
+        const geo = new THREE.ConeGeometry(0.6, 3.5 + (i % 2) * 2.5, 4);
+        put(geo, face - sign * -1.2, top + 2.5 + (i % 2) * 1.2, ((i + 0.5) / n - 0.5) * Math.max(2, w - 2));
+      }
+      g.add(new THREE.Mesh(mergeGeometries(parts), this.mat.iron));
+    } else if (kind === 'pylons') {
+      // glowing pylons on the roof
+      const n = 1 + Math.floor(a * 2.5);
+      for (let i = 0; i < n; i++) {
+        const hh = 7 + b * 7 + i * 2;
+        put(new THREE.CylinderGeometry(0.28, 0.5, hh, 6), (i - (n - 1) / 2) * 4 * 0.5, top + 0.6 + hh / 2, (i % 2 ? 1 : -1) * w * 0.2);
+      }
+      const m = new THREE.Mesh(mergeGeometries(parts), this.mat.pylon);
+      g.add(m);
+    } else if (kind === 'crane') {
+      // a harbour gantry: two legs, a beam along the roof and a jib reaching toward the street
+      const hh = 16 + a * 8, z0 = w * 0.3;
+      put(new THREE.BoxGeometry(0.8, hh, 0.8), 0, top + hh / 2, -z0);
+      put(new THREE.BoxGeometry(0.8, hh, 0.8), 0, top + hh / 2, z0);
+      put(new THREE.BoxGeometry(1.0, 1.0, z0 * 2 + 3), 0, top + hh, 0);
+      put(new THREE.BoxGeometry(14, 0.7, 0.7), face - sign * 6, top + hh, z0 * (b < 0.5 ? 1 : -1));
+      g.add(new THREE.Mesh(mergeGeometries(parts), this.mat.iron));
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.5, 6, 5), this.mat.lantern);
+      lamp.position.set(0, top + hh + 1, 0); g.add(lamp);
+    }
+  }
+
+  // what fills an empty lot beside a building: a yard of stacked containers
+  _lot(kind, g, o) {
+    const { w, gap, a, b } = o;
+    if (kind !== 'containers') return;
+    const palette = [0x8a2a24, 0x2a4a7a, 0x2a6a4a, 0xb0702a, 0x70747c, 0x5a3a6a];
+    const parts = [], z0 = w / 2 + 1.5;
+    const cols = Math.min(10, Math.floor((gap - 2) / 2.9));
+    let k = 0;
+    for (let i = 0; i < cols; i++) for (let row = 0; row < 2; row++) {
+      const stack = 1 + Math.floor(((Math.sin((i + 1) * 12.9898 + a * 78.2 + row * 4.1 + b) * 43758.5453) % 1 + 1) % 1 * 3);
+      for (let y = 0; y < stack; y++) {
+        const geo = new THREE.BoxGeometry(6, 2.6, 2.5);
+        geo.translate((row ? 1 : -1) * 3.6, 1.3 + y * 2.6, z0 + i * 2.9);
+        const col = new THREE.Color(palette[(k++ + i * 2 + row) % palette.length]);
+        const n = geo.attributes.position.count, arr = new Float32Array(n * 3);
+        for (let v = 0; v < n; v++) { arr[v * 3] = col.r; arr[v * 3 + 1] = col.g; arr[v * 3 + 2] = col.b; }
+        geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+        parts.push(geo);
+      }
+    }
+    if (parts.length) g.add(new THREE.Mesh(mergeGeometries(parts), this.mat.container));
   }
 }
 

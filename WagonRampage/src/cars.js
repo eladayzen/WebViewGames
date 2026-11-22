@@ -268,7 +268,7 @@ export class Car {
   }
 
   reset() {
-    this.s = 0; this.u = 0; this.vs = 0; this.vu = 0;
+    this.s = 0; this.u = 0; this.vs = 0; this.vu = 0; this.ease = null;
     this.hp = this.maxHp = this.k.hp || 1;
     this.alive = true; this.active = false;
     this.flash = 0; this.charge = 0; this.tilt = 0; this.roll = 0; this.bounce = 0;
@@ -288,7 +288,15 @@ export class Car {
   place(dt) {
     pointAt(this.s, this.u, this.group.position);
     const steer = Math.atan2(-this.vu, Math.max(4, this.vs)) * 0.9;
-    this.group.rotation.set(0, yawAt(this.s) + steer, 0);
+    this.group.rotation.set(0, yawAt(this.s, this.u) + steer, 0);
+    // a leftover offset from a change of road (the fork locking in while the car straddled
+    // the divider) melts away instead of snapping
+    const E = this.ease;
+    if (E) {
+      this.group.position.x += E.x; this.group.position.z += E.z; this.group.rotation.y += E.yaw;
+      const k = Math.exp(-dt * 8); E.x *= k; E.z *= k; E.yaw *= k;
+      if (Math.abs(E.yaw) < 1e-3 && Math.hypot(E.x, E.z) < 0.01) this.ease = null;
+    }
     // body roll into lateral moves, a little nose dip on hits
     // a sprung chassis: small moves barely lean it; the roll grows with how hard the turn is
     // (squared, so a nudge is ~nothing) and with how long it's held, plus whatever the game

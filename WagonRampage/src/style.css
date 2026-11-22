@@ -293,6 +293,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1622; col
 .big-btn.hidden { display: none !important; }
 body.covered #corner-btns { display: none; }
 #turn.low { top: 31%; }
+#turn.under { top: 36%; }
 #boss-tag b { background: #e8321f; color: #fff; -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; font-size: 19px; }
 #boss-tag i { width: 130px; height: 11px; }
 #boss-tag u { background: linear-gradient(#ff7a5a, #c0141e); }
