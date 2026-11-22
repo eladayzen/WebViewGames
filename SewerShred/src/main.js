@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { Trains } from './trains.js';
 import { Daggers } from './daggers.js';
 import { City, CITY_FOG, CITY_HEMI } from './city.js';
-import { LEVELS, showCard, cardUp, cardPress, showClear, clearUp, clearPress, renderGoal, loadProgress, saveProgress } from './levels.js';
+import { LEVELS, setWeaponIcon, showCard, cardUp, cardPress, showClear, clearUp, clearPress, renderGoal, loadProgress, saveProgress } from './levels.js';
 import { installDevUnlock } from './devUnlock.js';
 import { R, Track, ZONES, WORLDS, zoneIndex, setStartWorld, getStartWorld, featureAt, pendingFork, forkNear, forkSpread, FORK_LEN, FORKS, CLIMB_LEN, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
 import { Junctions } from './junctions.js';
@@ -147,6 +147,17 @@ function difficulty() { return THREE.MathUtils.clamp(player.s / RAMP_DIST, 0, 1)
 
 const _foeCol = new THREE.Color();
 const C_JFOAM = new THREE.Color(0.8, 0.92, 1.0), C_JSPRAY = new THREE.Color(0.45, 0.6, 0.7);   // look test: light splash
+// ── the hero (Elad 2026-11-22: "make this into Michelangelo — orange ribbons, nunchucks") ──
+// Same rigged model and clips; MIKEY = the texture with the red cloth recoloured orange
+// (tex/mikey_skin.jpg) + nunchucks for the weapon power-up. ?hero=raph brings Raph back.
+const HEROES = {
+  mikey: { skin: '/tex/mikey_skin.jpg', weapon: 'nunchuck', icon: '/tex/nunchuck_icon.png', word: 'NUNCHUCKS!' },
+  raph: { skin: null, weapon: 'sai', icon: '/tex/sai_icon.png', word: 'SAI STORM!' },
+};
+const HERO = HEROES[new URLSearchParams(location.search).get('hero')] || HEROES.mikey;
+setWeaponIcon(HERO.icon);
+$('power').querySelector('img').src = HERO.icon;
+
 // ── the level loop (levels.js) ──
 G.level = 0;
 G.topOverride = null;   // dev: TOP button / ?top=open beat the level's own setting
@@ -567,7 +578,7 @@ function onEvent(e) {
     case 'sai': {
       daggers.start();
       audio.shield();
-      bigText('SAI STORM!', 'shield');
+      bigText(HERO.word, 'shield');
       particles.burst(wp, up, 50, C_KICK, { speed: 10, spread: 1.6, size: 0.4, life: 0.8, drag: 2 });
       flash('rgba(255,170,90,0.9)', 0.35);
       G.fovKick = 10;
@@ -1108,7 +1119,7 @@ async function loadFootGeo(url) {
   names.forEach((n, i) => (tex[n.replace('wall_', '')] = loaded[i]));
   tex.sewage = tex.sewage_toon;                 // look test: flat cartoon water (Kolbo, ref '55')
   tex.valve = await loadTex('/tex/valve.png');
-  [tex.shieldIcon, tex.saiIcon] = await Promise.all([loadTex('/tex/shield_icon.png'), loadTex('/tex/sai_icon.png')]);
+  [tex.shieldIcon, tex.saiIcon] = await Promise.all([loadTex('/tex/shield_icon.png'), loadTex(HERO.icon)]);
   [tex.footA, tex.footB] = await Promise.all([loadTex('/tex/foot_sprite_a.png'), loadTex('/tex/foot_sprite_b.png')]);  // look test: illustrated valve hatch
   tex.footGeo = await loadFootGeo('/models/foot.bin');
   tex.props = await loadTex('/tex/street_props.png');
@@ -1119,7 +1130,7 @@ async function loadFootGeo(url) {
   obstacles = new Obstacles(scene, tex);
   junctions = new Junctions(scene, tex);
   trains = new Trains(scene, makeGlowTexture);
-  daggers = new Daggers(scene, makeGlowTexture());
+  daggers = new Daggers(scene, makeGlowTexture(), HERO.weapon);
   daggers.upFn = (o) => wallDir(frameAt(o.s), o.theta, new THREE.Vector3()).negate();
   obstacles.camera = camera;
   { let f = 'sprite'; try { f = new URLSearchParams(location.search).get('foe') || 'sprite'; } catch { /* private */ } setFootStyle(f); }
@@ -1129,6 +1140,7 @@ async function loadFootGeo(url) {
   streaks = new Streaks(scene);
   boardTrail = new BoardTrail(scene, makeGlowTexture());
   player = new Player(scene);
+  if (HERO.skin) player.skin = await loadTex(HERO.skin);
   await player.load('/models/raphael.glb', '/models/clips.json');
   await player.loadAttacks('/models/attacks.json');
   renderLives(LIVES);

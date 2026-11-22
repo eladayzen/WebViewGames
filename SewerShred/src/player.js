@@ -111,6 +111,7 @@ export class Player {
       }
     });
     this.bank.add(this.model);
+    if (this.skin) this.setSkin(this.skin);
 
     const clipsJson = await (await fetch(clipsUrl)).json();
     this.mixer = new THREE.AnimationMixer(model);
@@ -283,6 +284,14 @@ export class Player {
     this.actions.ride?.fadeOut(0.1);
     this.attackOn = at;
     return { n: at.n, label: at.label };
+  }
+
+  /** Swap the body texture (MIKEY: the same model with the red cloth recoloured orange). */
+  setSkin(tex) {
+    this.skin = tex;
+    if (!this.model) return;
+    tex.colorSpace = THREE.SRGBColorSpace; tex.flipY = false;   // glTF texture convention
+    this.model.traverse((o) => { if (o.isMesh && o.material.map) { o.material.map = tex; o.material.emissiveMap = tex; o.material.needsUpdate = true; } });
   }
 
   /** Physics step. `lean` in [-1, 1], positive = right. */

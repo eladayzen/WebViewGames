@@ -27,14 +27,18 @@ export const SAI = {
 };
 
 export class Daggers {
-  constructor(scene, glowTex) {
+  constructor(scene, glowTex, weapon = 'sai') {
     this.scene = scene;
+    this.weapon = weapon;
     const steel = new THREE.MeshLambertMaterial({ color: 0xdfe6ee, emissive: 0x4a525c });
     const grip = new THREE.MeshLambertMaterial({ color: 0xd9302a, emissive: 0x4a0d0a });
     const ink = new THREE.MeshBasicMaterial({ color: 0x101216, side: THREE.BackSide });
     const glowMat = new THREE.SpriteMaterial({ map: glowTex, color: 0xffb070, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.7 });
     this.pool = [];
+    const wood = new THREE.MeshLambertMaterial({ color: 0xa8692e, emissive: 0x3a1e08 });
+    const tape = new THREE.MeshLambertMaterial({ color: 0xff7a1a, emissive: 0x5a2400 });
     for (let i = 0; i < 6; i++) {
+      if (weapon === 'nunchuck') { this.pool.push(this._nunchuck(wood, tape, steel, ink, glowMat, scene)); continue; }
       // a sai along local +Y: long centre blade, two curled side prongs, red grip
       const sai = new THREE.Group();
       const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.06, 1.0, 6), steel); blade.position.y = 0.55;
@@ -59,6 +63,34 @@ export class Daggers {
     this.side = 1;
     this.v = new THREE.Vector3(); this.h = new THREE.Vector3(); this.c = new THREE.Vector3(); this.tgt = new THREE.Vector3(); this.sw = new THREE.Vector3();
     this.reset();
+  }
+
+  // MIKEY's weapon (Elad 2026-11-22): a nunchuck — two taped wooden sticks on a short
+  // chain, splayed in a V and whirling about the hinge as it flies out and back
+  _nunchuck(wood, tape, steel, ink, glowMat, scene) {
+    const nun = new THREE.Group();
+    const stickGeo = new THREE.CylinderGeometry(0.075, 0.075, 0.62, 8).translate(0, -0.36, 0);
+    const bandGeo = new THREE.CylinderGeometry(0.085, 0.085, 0.1, 8);
+    const capGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.05, 8);
+    for (const sgn of [-1, 1]) {
+      const st = new THREE.Group();
+      st.add(new THREE.Mesh(stickGeo, wood));
+      for (const y of [-0.2, -0.56]) { const b = new THREE.Mesh(bandGeo, tape); b.position.y = y; st.add(b); }
+      const cap = new THREE.Mesh(capGeo, steel); cap.position.y = -0.04; st.add(cap);
+      for (const m of [...st.children]) { const o = new THREE.Mesh(m.geometry, ink); o.position.copy(m.position); o.scale.setScalar(1.3); st.add(o); }
+      st.position.set(sgn * 0.1, 0.02, 0);
+      st.rotation.z = sgn * 2.2;           // the two sticks fling apart from the chain
+      nun.add(st);
+    }
+    const linkGeo = new THREE.TorusGeometry(0.045, 0.014, 4, 8);
+    for (let k = 0; k < 3; k++) { const l = new THREE.Mesh(linkGeo, steel); l.position.set(-0.06 + k * 0.06, 0.06, 0); l.rotation.y = k % 2 ? Math.PI / 2 : 0; nun.add(l); }
+    const spin = new THREE.Group(); spin.add(nun);
+    const g = new THREE.Group(); g.add(spin);
+    const glow = new THREE.Sprite(glowMat); glow.scale.set(1.6, 1.6, 1); g.add(glow);
+    g.scale.setScalar(1.5);
+    g.visible = false;
+    scene.add(g);
+    return { g, spin, on: false };
   }
 
   reset() {
@@ -102,7 +134,8 @@ export class Daggers {
     for (const d of this.pool) {
       if (!d.on) continue;
       d.age += dt;
-      d.spin.rotation.x -= dt * 26;                       // end over end
+      if (this.weapon === 'nunchuck') { d.spin.rotation.z -= dt * 22; d.spin.rotation.x = 0.5; }   // whirling flat, tilted at the camera
+      else d.spin.rotation.x -= dt * 26;                  // end over end
       const p = d.g.position;
       if (!d.back) {
         const o = d.o;

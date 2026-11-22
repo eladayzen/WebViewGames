@@ -27,6 +27,8 @@ export const ICON = {
 };
 const GOAL_ICON = { pizza: 'pizza', dist: 'exit', air: 'air' };
 const UNLOCK_IMG = { shield: '/tex/shield_icon.png', sai: '/tex/sai_icon.png' };
+/** The hero's weapon badge (MIKEY: nunchucks) stands in for the sai one. */
+export function setWeaponIcon(src) { UNLOCK_IMG.sai = src; }
 
 export function goalLabel(goal) { return goal.type === 'dist' ? `${goal.n} m` : `× ${goal.n}`; }
 
