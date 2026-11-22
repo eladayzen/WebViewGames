@@ -8,11 +8,12 @@ import * as THREE from 'three';
 import { Trains } from './trains.js';
 import { Daggers } from './daggers.js';
 import { City, CITY_FOG, CITY_HEMI } from './city.js';
+import { LEVELS, showCard, cardUp, cardPress, showClear, clearUp, clearPress, renderGoal, loadProgress, saveProgress } from './levels.js';
 import { installDevUnlock } from './devUnlock.js';
 import { R, Track, ZONES, WORLDS, zoneIndex, setStartWorld, getStartWorld, featureAt, pendingFork, forkNear, forkSpread, FORK_LEN, FORKS, CLIMB_LEN, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
 import { Junctions } from './junctions.js';
 import { Player, PHYS } from './player.js';
-import { Obstacles, FOOT_STYLES, FOOT_STYLE_ORDER } from './obstacles.js';
+import { Obstacles, FOOT_STYLES, FOOT_STYLE_ORDER, KICK_POP } from './obstacles.js';
 import { Particles, Debris, Streaks, BoardTrail } from './fx.js';
 import { Audio } from './audio.js';
 import { Input } from './input.js';
@@ -146,9 +147,46 @@ function difficulty() { return THREE.MathUtils.clamp(player.s / RAMP_DIST, 0, 1)
 
 const _foeCol = new THREE.Color();
 const C_JFOAM = new THREE.Color(0.8, 0.92, 1.0), C_JSPRAY = new THREE.Color(0.45, 0.6, 0.7);   // look test: light splash
+// ── the level loop (levels.js) ──
+G.level = 0;
+G.topOverride = null;   // dev: TOP button / ?top=open beat the level's own setting
+function levelGoalHave() {
+  const g = LEVELS[G.level].goal;
+  return g.type === 'pizza' ? G.pizza : g.type === 'air' ? G.airPizza : player.s;
+}
+/** Start level i; with `card`, its one-step card first (a retry after a wipeout skips it). */
+async function startLevel(i, card = true) {
+  G.level = i;
+  startRun();
+  if (!card) return;
+  G.state = 'card'; G.cardHold = 0;
+  await showCard(LEVELS[i]);
+  if (G.state === 'card') { G.state = 'countdown'; G.countdown = 3.2; G.lastBeep = -1; }
+}
+async function levelClear() {
+  G.state = 'clear';
+  const last = G.level === LEVELS.length - 1;
+  audio.trick();
+  flash('rgba(255,240,160,0.9)', 0.5); G.fovKick = 12;
+  if (Math.floor(G.score) > readBest()) writeBest(Math.floor(G.score));
+  gb()?.submitScore?.(Math.floor(G.score))?.catch?.(() => {});
+  const nextLv = last ? 1 : G.level + 1;     // after the last: back to the sewers (practice is once)
+  saveProgress(nextLv);
+  await new Promise((r) => setTimeout(r, 900));
+  await showClear(last);
+  startLevel(nextLv, true);
+}
+
 function startRun() {
   junctions?.reset();
   city?.reset();
+  {
+    const L = LEVELS[G.level];
+    setOpenTop(G.topOverride ?? L.open);
+    obstacles.deckMode = L.deck;
+    obstacles.firstPickup = L.unlock || null;
+    G.airPizza = 0;
+  }
   G.state = 'countdown';
   G.countdown = 3.2; G.lastBeep = -1;
   G.score = 0; G.lives = LIVES; G.combo = 1; G.comboFill = 0; G.bestCombo = 1; G.pizza = 0;
@@ -405,6 +443,7 @@ const nextWorld = () => setWorld(getStartWorld() + 1);
 // seams, city matte painting over the rims (city.js). ?top=open
 G.openTop = false;
 function setOpenTop(on) {
+  if (!track) return;
   G.openTop = !!on;
   track.setOpenTop(on);
   city.setOn(on);
@@ -415,7 +454,7 @@ function setOpenTop(on) {
   track.syncFog(scene.fog);
   $('top-btn').textContent = on ? 'TOP OPEN' : 'TOP CLOSED';
 }
-$('top-btn').addEventListener('click', (e) => { e.stopPropagation(); if (track) setOpenTop(!G.openTop); });
+$('top-btn').addEventListener('click', (e) => { e.stopPropagation(); if (track) { G.topOverride = !G.openTop; setOpenTop(G.topOverride); } });
 $('world-btn').addEventListener('click', (e) => { e.stopPropagation(); nextWorld(); });
 {
   const q = new URLSearchParams(location.search).get('world');
@@ -507,6 +546,7 @@ function onEvent(e) {
   switch (e.type) {
     case 'pizza': {
       G.pizza++;
+      if (o.air) G.airPizza++;
       award(25, wp, 'pts');
       addCombo(0.34);
       audio.pizza(G.combo + G.comboFill * 3);
@@ -531,6 +571,24 @@ function onEvent(e) {
       particles.burst(wp, up, 50, C_KICK, { speed: 10, spread: 1.6, size: 0.4, life: 0.8, drag: 2 });
       flash('rgba(255,170,90,0.9)', 0.35);
       G.fovKick = 10;
+      break;
+    }
+    // street set (OPEN TOP)
+    case 'ramp': {
+      player.hopV = KICK_POP; player.hop = Math.max(player.hop, 0.02);
+      player.trickSpin = Math.sign(player.omega || 1) * TAU;
+      award(50, player.root.position, 'pts');
+      popup('AIR!', 'near-word', player.root.position, -80);
+      addCombo(0.5);
+      audio.trick();
+      G.fovKick = Math.max(G.fovKick, 6);
+      break;
+    }
+    case 'grind': {
+      G.score += 140 * e.dt;
+      if (!o.grinding) { o.grinding = true; popup('GRIND!', 'near-word', player.root.position, -80); addCombo(0.6); audio.near(); }
+      addCombo(e.dt * 0.25);
+      if (Math.random() < 0.7) particles.burst(player.root.position, up, 2, C_SPARK, { speed: 7, spread: 1.2, size: 0.18, life: 0.3, drag: 1 });
       break;
     }
     case 'near': {
@@ -670,6 +728,8 @@ function forkWall(dt) {
   }
 }
 
+const STREET_SMASH = new Set(['cone', 'prop', 'tire', 'barrier']);
+const SMASHABLE = new Set(['crate', 'saw', ...STREET_SMASH]);
 function onHit(o, up, wp) {
   if (player.invuln > 0 && !player.shieldOn) return;
   const fwd = frameAt(o.s).T.clone();
@@ -686,7 +746,7 @@ function onHit(o, up, wp) {
     particles.burst(player.root.position, up, 40, C_SHIELD, { speed: 12, spread: 1.6, size: 0.45, life: 0.6 });
     G.shake = 0.5; G.hitStop = 0.06;
     flash('rgba(140,220,255,0.9)', 0.4);
-    if (o.type === 'crate' || o.type === 'saw') o.done = true;  // the shield wrecks it
+    if (SMASHABLE.has(o.type)) o.done = true;  // the shield wrecks it
     return;
   }
   G.lives--;
@@ -704,7 +764,8 @@ function onHit(o, up, wp) {
   $('vignette').classList.remove('hurt'); void $('vignette').offsetWidth; $('vignette').classList.add('hurt');
   particles.burst(player.root.position, up, 40, C_HIT, { speed: 10, spread: 1.4, size: 0.4, life: 0.5 });
   particles.burst(player.root.position, up, 25, C_WHITE, { speed: 14, spread: 1.0, size: 0.25, life: 0.35 });
-  if (o.type === 'crate') o.done = true;
+  if (o.type === 'crate' || STREET_SMASH.has(o.type)) o.done = true;   // cones, props, tires, sawhorses go flying
+  if (STREET_SMASH.has(o.type)) particles.burst(wp, up, 24, C_DUST, { speed: 9, spread: 1.5, size: 0.5, life: 0.6, drag: 2 });
   if (G.lives <= 0) {
     G.state = 'dying'; G.overT = 0;
     player.dead = true;
@@ -746,7 +807,17 @@ function frame(now) {
   const pressed = input.consumePress();
   const diff = difficulty();
 
-  if (G.state === 'countdown') {
+  if (G.state === 'card') {
+    // the level card is up: board parked, GO on a tap / Space / a held lean
+    player.speed = 0;
+    if (Math.abs(lean) > 0.7) G.cardHold += dt; else G.cardHold = 0;
+    if (pressed || G.cardHold > 0.8) cardPress();
+  } else if (G.state === 'clear') {
+    // level done: keep cruising (nothing new spawns, nothing hits) while the clear screen is up
+    player.speed += (BASE_SPEED * 0.7 - player.speed) * Math.min(1, dt);
+    steer(simDt, lean);
+    if (pressed) clearPress();
+  } else if (G.state === 'countdown') {
     G.countdown -= dt;
     const n = Math.ceil(G.countdown - 0.2);
     if (n !== G.lastBeep && n >= 0) {
@@ -821,6 +892,7 @@ function frame(now) {
     obstacles.reach = (G.moveMode.startsWith('d360') || G.moveMode === 'swing') ? null : MODE_HALF[G.moveMode];
     obstacles.spawn(player.s, diff, player.theta);
     forkChoice();
+    if (levelGoalHave() >= LEVELS[G.level].goal.n) levelClear();
   } else if (G.state === 'dying') {
     G.overT += dt;
     player.speed *= Math.pow(0.25, dt);
@@ -1008,6 +1080,7 @@ function frame(now) {
   // ── HUD ──
   hud.score.textContent = Math.floor(G.score).toLocaleString();
   hud.dist.textContent = Math.floor(player.s) + ' m';
+  renderGoal(G.state === 'card' ? null : LEVELS[G.level], levelGoalHave());
   hud.combo.textContent = 'x' + G.combo;
   hud.comboBar.style.transform = `scaleX(${G.combo >= 8 ? 1 : G.comboFill})`;
   hud.comboWrap.classList.toggle('hot', G.combo >= 4);
@@ -1038,10 +1111,11 @@ async function loadFootGeo(url) {
   [tex.shieldIcon, tex.saiIcon] = await Promise.all([loadTex('/tex/shield_icon.png'), loadTex('/tex/sai_icon.png')]);
   [tex.footA, tex.footB] = await Promise.all([loadTex('/tex/foot_sprite_a.png'), loadTex('/tex/foot_sprite_b.png')]);  // look test: illustrated valve hatch
   tex.footGeo = await loadFootGeo('/models/foot.bin');
+  tex.props = await loadTex('/tex/street_props.png');
   track = new Track(scene, tex);
   track.syncFog(scene.fog);
   city = new City(scene, { sky: await loadTex('/tex/city_sky.jpg'), bldg: await loadTex('/tex/city_bldg.png') });
-  setOpenTop(new URLSearchParams(location.search).get('top') === 'open');
+  if (new URLSearchParams(location.search).get('top') === 'open') G.topOverride = true;
   obstacles = new Obstacles(scene, tex);
   junctions = new Junctions(scene, tex);
   trains = new Trains(scene, makeGlowTexture);
@@ -1059,10 +1133,15 @@ async function loadFootGeo(url) {
   await player.loadAttacks('/models/attacks.json');
   renderLives(LIVES);
   $('loading').classList.add('gone');
-  startRun();
+  {
+    // ?level=N (dev) or the saved progress; the first-ever run starts on PRACTICE
+    const q = new URLSearchParams(location.search).get('level');
+    const lv = q !== null && !isNaN(+q) ? Math.max(0, Math.min(LEVELS.length - 1, +q)) : await loadProgress();
+    startLevel(lv, new URLSearchParams(location.search).get('card') !== '0');
+  }
   requestAnimationFrame(frame);
   // test hooks for the headless drive script
   window.__game = { worldName: () => WORLDS[ZONES[zoneIndex(player.s)].world].name + ' / ' + ZONES[zoneIndex(player.s)].name,
     trainDist: () => { const t = trains.pool.filter((x) => x.on && x.s > player.s); return t.length ? Math.min(...t.map((x) => x.s - player.s)) : null; },
-    track, trains, daggers, setWorld, G, player, obstacles, PHYS, camera, startRun, setMoveMode, setFixCam, slimeAngle, junctions, setFootStyle };
+    track, trains, daggers, setWorld, G, player, obstacles, PHYS, camera, startRun, startLevel, LEVELS, setMoveMode, setFixCam, slimeAngle, junctions, setFootStyle };
 })();

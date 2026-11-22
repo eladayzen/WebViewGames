@@ -21,7 +21,7 @@ const LIGHT_SPACING = 18;
 const AHEAD = 250;                 // metres of city kept in front (fog eats the rest)
 const SKY_R = 330;
 
-export const CITY_FOG = { color: 0xb4c8d8, near: 40, far: 280 };   // the haze in the painting's skyline
+export const CITY_FOG = { color: 0xb4c8d8, near: 40, far: 245 };   // the haze in the painting's skyline
 export const CITY_HEMI = [0xfff6e6, 0x8a96a0];
 
 const rand = (s) => { const x = Math.sin(s * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };

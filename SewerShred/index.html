@@ -80,6 +80,7 @@
 
   <div id="hud">
     <div id="score-wrap"><div id="score">0</div><div id="dist">0 m</div></div>
+    <div id="goal" class="hidden"></div>
     <div id="lives"></div>
     <div id="combo-wrap"><div id="combo">x1</div><div id="combo-bar"><i></i></div></div>
     <div id="slime-tag">SPLASH!</div>
@@ -99,6 +100,25 @@
       <div class="go-title paused">PAUSED</div>
       <button id="resume-button">RESUME</button>
       <div class="go-hint">tap, hold a lean, or press Space</div>
+    </div>
+  </div>
+
+  <!-- level card (Elad 2026-11-22: one step, minimum words): level, title, goal icon + number,
+       the NEW power (it's this level's first pickup), a round GO whose ring is the auto-start clock -->
+  <div id="level-card" class="hidden">
+    <div class="lc-card">
+      <div id="lc-num"></div>
+      <div id="lc-title"></div>
+      <div id="lc-goal"></div>
+      <div id="lc-new" class="hidden"></div>
+      <button id="lc-go" class="ring-btn" aria-label="Go"><svg class="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" pathLength="100" class="track"/><circle cx="22" cy="22" r="20" pathLength="100" class="run" id="lc-ring"/></svg><span>GO</span></button>
+    </div>
+  </div>
+  <!-- level clear: its own id — never #gameover-overlay (the host clicks #restart-button on Space there) -->
+  <div id="level-clear" class="hidden">
+    <div class="lc-card">
+      <div id="lclr-title">LEVEL CLEAR!</div>
+      <button id="lclr-next" class="ring-btn" aria-label="Next"><svg class="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" pathLength="100" class="track"/><circle cx="22" cy="22" r="20" pathLength="100" class="run" id="lclr-ring"/></svg><svg class="arrow" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
     </div>
   </div>
 

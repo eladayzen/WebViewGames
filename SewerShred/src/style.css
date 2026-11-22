@@ -259,3 +259,36 @@ body.dev-open #dev-btn { opacity: 1; }
 @media (max-aspect-ratio: 1/1), (max-width: 560px) {
   #lives { top: max(58px, calc(env(safe-area-inset-top) + 48px)); left: 12px; }
 }
+
+/* ── level loop (Elad 2026-11-22): card / clear / goal HUD — icons, no prose ── */
+#goal { position: absolute; top: max(78px, calc(env(safe-area-inset-top) + 68px)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; background: rgba(20,20,40,0.6); border: 2px solid var(--ink); border-radius: 999px; padding: 4px 12px 4px 6px; }
+#goal.hidden { display: none; }
+#goal i { width: clamp(26px, 5vmin, 36px); height: clamp(26px, 5vmin, 36px); display: block; }
+#goal i svg, #lc-goal i svg { width: 100%; height: 100%; display: block; }
+#goal .bar { width: clamp(70px, 16vmin, 140px); height: 10px; border-radius: 5px; background: rgba(0,0,0,0.55); border: 2px solid var(--ink); overflow: hidden; }
+#goal .bar u { display: block; height: 100%; background: linear-gradient(90deg, #7dff6a, #d8ff4a); transform-origin: left; transform: scaleX(0); transition: transform 0.15s; text-decoration: none; }
+#goal b { font-size: clamp(16px, 3.4vmin, 24px); color: #fff; -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; min-width: 3.2em; }
+#level-card, #level-clear { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, rgba(10,12,30,0.35), rgba(10,12,30,0.75)); }
+#level-card.hidden, #level-clear.hidden { display: none; }
+.lc-card { display: flex; flex-direction: column; align-items: center; gap: clamp(6px, 1.6vmin, 14px); transform: scale(0.6); opacity: 0; transition: transform 0.35s cubic-bezier(.2,1.6,.4,1), opacity 0.2s; }
+.pop .lc-card { transform: scale(1); opacity: 1; }
+#lc-num { font-size: clamp(16px, 3.6vmin, 26px); color: var(--yellow); -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; letter-spacing: 2px; }
+#lc-title, #lclr-title { font-size: clamp(44px, 11vmin, 96px); color: #fff; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 0 6px 0 var(--ink); line-height: 1; }
+#lclr-title { color: var(--yellow); }
+#lc-goal { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.12); border: 3px solid var(--ink); border-radius: 18px; padding: 8px 18px; }
+#lc-goal i { width: clamp(48px, 10vmin, 78px); height: clamp(48px, 10vmin, 78px); display: block; }
+#lc-goal b { font-size: clamp(30px, 7vmin, 56px); color: #fff; -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; }
+#lc-new { position: relative; width: clamp(64px, 13vmin, 104px); animation: newbob 0.9s ease-in-out infinite alternate; }
+#lc-new.hidden { display: none; }
+#lc-new img { width: 100%; display: block; filter: drop-shadow(0 4px 0 rgba(0,0,0,0.6)); }
+#lc-new em { position: absolute; top: -8px; right: -22px; font-style: normal; font-size: clamp(14px, 3vmin, 20px); color: #fff; background: #ff3b2e; border: 2px solid var(--ink); border-radius: 8px; padding: 1px 6px; transform: rotate(12deg); }
+@keyframes newbob { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-6px) rotate(4deg); } }
+.ring-btn { position: relative; width: clamp(84px, 17vmin, 128px); height: clamp(84px, 17vmin, 128px); border-radius: 50%; border: none; background: #2fd05a; box-shadow: 0 6px 0 var(--ink), inset 0 -6px 0 rgba(0,0,0,0.2); cursor: pointer; padding: 0; -webkit-tap-highlight-color: transparent; }
+.ring-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 var(--ink); }
+.ring-btn span { position: relative; font-size: clamp(28px, 6vmin, 44px); color: #fff; -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; }
+.ring-btn .arrow { position: relative; width: 50%; height: 50%; fill: #fff; stroke: var(--ink); stroke-width: 1.5; }
+.ring-btn .ring { position: absolute; inset: -8px; width: calc(100% + 16px); height: calc(100% + 16px); transform: rotate(-90deg); }
+.ring-btn .ring circle { fill: none; stroke-width: 3.5; }
+.ring-btn .ring .track { stroke: rgba(0,0,0,0.35); }
+.ring-btn .ring .run { stroke: #fff; stroke-dasharray: 100; stroke-dashoffset: 100; stroke-linecap: round; }
+#lclr-next.again { background: #ff9a1e; }

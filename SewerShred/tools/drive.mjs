@@ -26,7 +26,11 @@ const server = http.createServer((req, res) => {
   });
 }).listen(0, '127.0.0.1');
 await new Promise((r) => server.once('listening', r));
-const url = `http://127.0.0.1:${server.address().port}/index.html` + (args.q ? '?' + args.q : '');
+// the level loop (levels.js) opens on a card at the saved level: older scripts
+// want level 1 (the full sewer deck) with no card, unless they say otherwise
+const q0 = script === 'levels' ? '' : 'level=1&card=0';
+const qq = [args.q && args.q.includes('level=') ? '' : q0, args.q || ''].filter(Boolean).join('&');
+const url = `http://127.0.0.1:${server.address().port}/index.html` + (qq ? '?' + qq : '');
 
 const browser = await puppeteer.launch({
   executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -151,6 +155,55 @@ if (script === 'default') {
   await lean(0.6); await wait(6000); await snap('much-later');
   const kinds = await page.evaluate(() => { const c = {}; for (const o of window.__game.obstacles.list) c[o.type] = (c[o.type] || 0) + 1; return c; });
   console.log('obstacle types alive:', JSON.stringify(kinds));
+} else if (script === 'street') {
+  // OPEN TOP street set: deal each pattern in front of the rider, steer onto the
+  // ones you ride (kicker / rail), log what happened, shoot it
+  await wait(4300);
+  await page.evaluate((m) => { window.__miss = m; }, +(args.miss || 0));
+  await page.evaluate(() => { const g = window.__game; g.G.lives = 99; g.obstacles.nextS = 1e9; for (const o of g.obstacles.list) o.done = true; });
+  for (const name of (args.only ? args.only.split(',') : ['cones', 'barricade', 'kicker', 'rail', 'tires', 'props'])) {
+    const info = await page.evaluate((n) => {
+      const g = window.__game, ob = g.obstacles, s = g.player.s + 40, n0 = ob.list.length;
+      ob[`_p_${n}`](s, 0.5, g.slimeAngle(s));
+      const fresh = ob.list.slice(n0);
+      const aim = fresh.find((o) => o.type === 'kicker' || o.type === 'rail');
+      window.__aim = aim ? aim.theta : null;
+      window.__log = { maxHop: 0, lives: g.G.lives, score: g.G.score, pizza: g.G.pizza };
+      return fresh.map((o) => o.type).join(',');
+    }, name);
+    for (let t = 0; t < 32; t++) {
+      await wait(100);
+      await page.evaluate(() => {
+        const g = window.__game;
+        if (window.__aim !== null) g.G.dirOff = window.__aim + (window.__miss || 0) - g.slimeAngle(g.player.s);
+        window.__log.maxHop = Math.max(window.__log.maxHop, g.player.hop);
+        g.G.lives = Math.max(g.G.lives, 50);
+      });
+      if (t === +(args.at || 18)) await snap(name);
+    }
+    const r = await page.evaluate(() => { const g = window.__game; return { ...window.__log, livesNow: g.G.lives, gained: Math.round(g.G.score - window.__log.score), pz: g.G.pizza - window.__log.pizza }; });
+    console.log(name, '->', info, JSON.stringify({ maxHop: +r.maxHop.toFixed(2), hit: r.livesNow < r.lives, pts: r.gained, pizza: r.pz }));
+    await page.evaluate(() => { const g = window.__game; g.G.dirOff = 0; g.player.invuln = 0; });
+    await wait(1500);
+  }
+} else if (script === 'levels') {
+  // the level loop end to end; progress is forced so it doesn't take minutes
+  const st = () => page.evaluate(() => { const g = window.__game; return { state: g.G.state, level: g.G.level, open: g.G.openTop, s: Math.round(g.player.s), pickups: g.obstacles.list.filter((o) => o.type === 'shield' || o.type === 'sai').map((o) => o.type + '@' + Math.round(o.s)).join(' '), saved: localStorage.getItem('sewerShred.progress') }; });
+  const space = async () => { await page.keyboard.press('Space'); await wait(400); };
+  await page.evaluate(() => localStorage.removeItem('sewerShred.progress'));
+  await wait(1200); await snap('L0-card'); console.log('card0', JSON.stringify(await st()));
+  await space(); await wait(4200); await snap('L0-play'); console.log('play0', JSON.stringify(await st()));
+  await page.evaluate(() => { window.__game.G.pizza = 10; }); await wait(1500); await snap('L0-clear'); console.log('clear0', JSON.stringify(await st()));
+  await space(); await wait(900); await snap('L1-card'); console.log('card1', JSON.stringify(await st()));
+  await space(); await wait(9000); await snap('L1-play'); console.log('play1', JSON.stringify(await st()));
+  await page.evaluate(() => { window.__game.player.s = 1490; }); await wait(2000); await snap('L1-clear'); console.log('clear1', JSON.stringify(await st()));
+  await space(); await wait(900); await snap('L2-card'); console.log('card2', JSON.stringify(await st()));
+  await space(); await wait(9000); await snap('L2-play'); console.log('play2', JSON.stringify(await st()));
+  await page.evaluate(() => { window.__game.G.airPizza = 15; }); await wait(1500); await snap('L2-clear'); console.log('clear2', JSON.stringify(await st()));
+  await wait(6500); console.log('after-auto-next', JSON.stringify(await st())); await snap('back-to-L1');
+} else if (script === 'firstpick') {
+  await wait(9000);
+  console.log('first pickups:', await page.evaluate(() => window.__game.obstacles.list.filter((o) => o.type === 'shield' || o.type === 'sai').map((o) => `${o.type}@${Math.round(o.s)}`).join(' ') || 'none'), 'level', await page.evaluate(() => window.__game.G.level));
 } else if (script === 'quit') {
   // fake the GoBalance SDK, press X mid-run: confirm card, then quit screen + board
   await wait(5200);

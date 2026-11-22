@@ -19,6 +19,18 @@ const BODY = 1.7 * 1.3;      // rider height (30% bigger) for chord-pipe clearan
 const CRATE = 1.5;
 const POLE_R = 0.42;
 const SAW_R = 1.45;
+// ── street set (OPEN TOP, Elad 2026-11-22: "more types of obstacles, credit-cheap") ──
+const CONE_R = 0.7;                  // cone base radius, m (big cartoon cones: they must read at 40 m)
+const BARRIER_HALF = 0.26;           // rad each sawhorse barricade blocks (~3 m)
+const KICK_HALF = 0.2, KICK_L = 2.6, KICK_H = 0.9;
+export const KICK_POP = 13;   // kicker: half-width rad, length, height, hop speed
+const RAIL_L = 14, RAIL_HALF = 0.14; // grind rail: length m, catch half-width rad
+const TIRE_R = 1.05, TIRE_V = 7;     // rolling tire: radius m, m/s up the pipe at you
+// street props (Kolbo sheet, tex/street_props.png 1024×479): x, y, w, h px, height m
+const PROPS = [[0, 115, 247, 364, 2.3], [252, 98, 236, 381, 2.2], [492, 0, 259, 479, 2.9], [755, 83, 264, 396, 2.4]];
+const PROP_W = 1024, PROP_H = 479;
+
+const HAZARDS = new Set(['crate', 'saw', 'pipe', 'fan', 'valve', 'pole', 'cone', 'barrier', 'tire', 'prop']);
 
 export class Obstacles {
   constructor(scene, tex) {
@@ -248,6 +260,63 @@ export class Obstacles {
       shield: () => this._powerUp(this.shieldIcon, 0x5fd8ff, 0x7fe0ff, 0x9fe8ff, 0xdff8ff),
       sai: () => this._powerUp(this.saiIcon, 0xff8a3a, 0xffa060, 0xffb27a, 0xfff0d8),
     };
+    this._initStreet(tex);
+  }
+
+  // The street set: simple shapes + ink hulls (0 credits), and one Kolbo sheet of props.
+  _initStreet(tex) {
+    // unlit flat colour + ink hull: the lighting greyed the orange to pink (look test 2026-11-22)
+    const lam = (c) => new THREE.MeshBasicMaterial({ color: c });
+    const ink = this.inkMat;
+    const inked = (g, geo, mat, k = 1.08) => { const m = new THREE.Mesh(geo, mat); const o = new THREE.Mesh(geo, ink); o.scale.setScalar(k); g.add(m, o); return m; };
+    const orange = lam(0xff5e0e), white = lam(0xffffff), steel = lam(0xffc21e), wood = lam(0xc98a45);
+    const rubber = new THREE.MeshLambertMaterial({ color: 0x2a2c30, emissive: 0x0c0c0e });
+    const hazard = new THREE.MeshBasicMaterial({ map: makeStripeTexture('#ff6a10', '#17181b', 3) });
+    hazard.map.rotation = Math.PI / 4;
+    const coneGeo = new THREE.ConeGeometry(CONE_R * 0.8, 1.8, 16).translate(0, 0.96, 0);
+    const coneBand = new THREE.CylinderGeometry(CONE_R * 0.42, CONE_R * 0.55, 0.32, 16).translate(0, 0.95, 0);
+    const coneFoot = new THREE.BoxGeometry(CONE_R * 2, 0.08, CONE_R * 2).translate(0, 0.04, 0);
+    const bw = 2 * R * Math.sin(BARRIER_HALF);
+    const board = new THREE.BoxGeometry(bw, 0.45, 0.12);
+    const leg = new THREE.BoxGeometry(0.08, 1.3, 0.08);
+    // kicker: a side profile extruded across; rises downstream (local -Z)
+    const prof = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(KICK_L, 0), new THREE.Vector2(KICK_L, KICK_H), new THREE.Vector2(KICK_L * 0.55, KICK_H * 0.38)]);
+    const kw = 2 * R * Math.sin(KICK_HALF);
+    const kickGeo = new THREE.ExtrudeGeometry(prof, { depth: kw, bevelEnabled: false, curveSegments: 6 }).rotateY(Math.PI / 2).translate(-kw / 2, 0, KICK_L / 2);
+    const lipGeo = new THREE.BoxGeometry(kw, 0.08, 0.3).translate(0, KICK_H, -KICK_L / 2 + 0.15);
+    const railGeo = new THREE.CylinderGeometry(0.13, 0.13, RAIL_L, 10).rotateX(Math.PI / 2).translate(0, 0.7, 0);
+    const postGeo = new THREE.BoxGeometry(0.14, 0.7, 0.14).translate(0, 0.35, 0);
+    const tireGeo = new THREE.TorusGeometry(TIRE_R - 0.3, 0.32, 12, 24).rotateY(Math.PI / 2);
+    const hubGeo = new THREE.CylinderGeometry(TIRE_R - 0.45, TIRE_R - 0.45, 0.26, 14).rotateZ(Math.PI / 2);
+    tex.props.colorSpace = THREE.SRGBColorSpace;
+    const propMat = new THREE.MeshBasicMaterial({ map: tex.props, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(1.2, 1.2, 1.2), toneMapped: false });
+    this.propGeos = PROPS.map(([x, y, w, h, m]) => {
+      const g = new THREE.PlaneGeometry((w / h) * m, m).translate(0, m / 2, 0);
+      const uv = g.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, (x + uv.getX(i) * w) / PROP_W, 1 - (y + (1 - uv.getY(i)) * h) / PROP_H);
+      return g;
+    });
+    Object.assign(this.mk, {
+      cone: () => { const g = new THREE.Group(); inked(g, coneGeo, orange); inked(g, coneBand, white, 1.06); inked(g, coneFoot, orange, 1.1); return g; },
+      barrier: () => {
+        // a sawhorse: two striped boards on splayed legs
+        const g = new THREE.Group();
+        for (const y of [1.15, 0.62]) { const b = inked(g, board, hazard, 1.04); b.position.y = y; g.children[g.children.length - 1].position.y = y; }
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+          const l = new THREE.Group(); inked(l, leg, white, 1.15);
+          l.position.set(sx * (bw / 2 - 0.15), 0.62, sz * 0.25); l.rotation.x = sz * 0.3; g.add(l);
+        }
+        return g;
+      },
+      kicker: () => { const g = new THREE.Group(); inked(g, kickGeo, wood, 1.03); inked(g, lipGeo, hazard, 1.05); return g; },
+      rail: () => {
+        const g = new THREE.Group(); inked(g, railGeo, steel, 1.4);
+        for (let z = -RAIL_L / 2 + 0.5; z <= RAIL_L / 2 - 0.4; z += 2.75) { const p = new THREE.Group(); inked(p, postGeo, steel, 1.2); p.position.z = z; g.add(p); }
+        return g;
+      },
+      tire: () => { const g = new THREE.Group(), w = new THREE.Group(); inked(w, tireGeo, rubber, 1.06); inked(w, hubGeo, steel, 1.05); w.position.y = TIRE_R; g.add(w); g.userData.wheel = w; return g; },
+      prop: () => { const g = new THREE.Group(); const card = new THREE.Mesh(this.propGeos[0], propMat); g.add(card); g.userData.card = card; return g; },
+    });
   }
 
   // a power-up: floating badge (Kolbo icon) in a bubble, orbit ring, halo, and a
@@ -337,8 +406,13 @@ export class Obstacles {
         b1.visible = o.n === 2;
         b1.rotation.z = o.beta - Math.PI + Math.PI / 2;
       }
+    } else if (o.type === 'rail' || o.type === 'kicker' || o.type === 'barrier' || o.type === 'cone' || o.type === 'tire' || o.type === 'prop') {
+      pointAt(o.s, o.theta, R - 0.02, m.position, f);
+      wallQuat(f, o.theta, m.quaternion);
+      if (o.type === 'prop') m.userData.card.geometry = this.propGeos[o.kind];
+      if (o.type === 'cone') m.rotateY(o.yaw || 0);
     } else {
-      const lift = o.type === 'crate' ? CRATE / 2 + (o.stack || 0) * CRATE : o.type === 'valve' || o.type === 'foot' || o.type === 'saw' ? 0 : 1.0;
+      const lift = o.type === 'crate' ? CRATE / 2 + (o.stack || 0) * CRATE : o.type === 'valve' || o.type === 'foot' || o.type === 'saw' ? 0 : 1.0 + (o.air || 0);
       pointAt(o.s, o.theta, R - lift, m.position, f);
       wallQuat(f, o.theta, m.quaternion);
       // the model's face is local +Z and wallQuat already points +Z back down the pipe at the
@@ -368,6 +442,15 @@ export class Obstacles {
   _pattern(s, diff, pTheta) {
     const sl = slimeAngle(s);
     const r = Math.random();
+    // level loop (levels.js): the level's NEW power is its first pickup
+    if (this.firstPickup && s > 85) {
+      this.add(this.firstPickup, s, sl);
+      if (this.firstPickup === 'shield') this.lastShieldS = s; else this.lastSaiS = s;
+      this.firstPickup = null;
+      return;
+    }
+    // PRACTICE: pizza only — nothing to hit, it teaches the lean
+    if (this.deckMode === 'practice') { this[r < 0.55 ? '_p_pizzaLine' : '_p_pizzaArc'](s, diff, sl); return; }
     // SAI STORM: roughly every 520 m from 180 m on (the first one early, so it's met)
     if (s - this.lastSaiS > 520 && s > 180 && s - this.lastShieldS > 60 && Math.random() < 0.55) {
       this.lastSaiS = s;
@@ -399,6 +482,13 @@ export class Obstacles {
       ['valves', 0],   // off for now (Elad 2026-11-16: "just don't use it, more poles instead")
       ['foot', 2.6 + diff * 0.6],
       ['footLine', diff > 0.05 ? 1.0 : 0],
+      // the street set — OPEN TOP only
+      ['cones', open ? 0.8 : 0],
+      ['barricade', open ? 0.55 + diff * 0.3 : 0],
+      ['kicker', open ? (this.deckMode === 'city' ? 1.5 : 0.55) : 0],   // the CITY level's goal is air pizza
+      ['rail', 0],   // grind rail off for now (Elad 2026-11-22) — code kept; was open ? 0.6 : 0
+      ['tires', open && diff > 0.1 ? 0.45 + diff * 0.3 : 0],
+      ['props', open ? 0.8 : 0],
     ];
     const tot = deck.reduce((a, d) => a + d[1], 0);
     let pick = r * tot, name = 'crates';
@@ -421,6 +511,9 @@ export class Obstacles {
       case 'saw': return near(o.theta, (SAW_R + 0.4) / R + LANE_PAD);
       case 'crate': return near(o.theta, (CRATE / 2 + 0.4) / R + LANE_PAD);
       case 'valve': return near(o.theta, 1.25 / R + LANE_PAD);
+      case 'cone': return near(o.theta, (CONE_R + 0.4) / R + LANE_PAD);
+      case 'prop': return near(o.theta, 1.15 / R + LANE_PAD);
+      case 'barrier': return near(o.theta, BARRIER_HALF + 0.4 / R + LANE_PAD);
       case 'pipe': return near(o.theta, o.arc + LANE_PAD);
       case 'pole': {
         const ends = o.n === 2 ? 4 : 2;
@@ -457,7 +550,7 @@ export class Obstacles {
         this._placeStatic(roll);
         continue;
       }
-      const loose = live.filter((o) => o.type === 'saw' || o.type === 'crate' || o.type === 'valve');
+      const loose = live.filter((o) => o.type === 'saw' || o.type === 'crate' || o.type === 'valve' || o.type === 'cone' || o.type === 'prop');
       if (!loose.length) { for (const o of live) o.done = true; break; }   // give up: clear the pattern's hazards
       loose.sort((a, b) => Math.abs(angleDiff(a.theta, slimeAngle(a.s))) - Math.abs(angleDiff(b.theta, slimeAngle(b.s))));
       loose[0].done = true;
@@ -549,6 +642,58 @@ export class Obstacles {
     if (Math.random() < 0.5) this.add('foot', s + 9, (Math.random() < 0.5 ? 1 : -1) * 0.9, { base: 0, strafe: 0, phase: 0, yaw: 0 });
   }
 
+  // ── street patterns (OPEN TOP) ──
+  _reach() { return this.reach || 1.4; }
+  _p_cones(s, diff, sl) {
+    // a slalom: cones swap sides every 5 m, pizza through the gaps
+    const off = 0.5, n = 5 + Math.floor(diff * 3), side0 = Math.random() < 0.5 ? -1 : 1;
+    for (let i = 0; i < n; i++) {
+      const sd = (i % 2 ? -1 : 1) * side0, th = sl + sd * off;
+      this.add('cone', s + i * 5, th, { yaw: Math.random() * 6 });
+      this.add('cone', s + i * 5, th + sd * 0.26, { yaw: Math.random() * 6 });
+      this.add('pizza', s + i * 5, sl - sd * off * 0.9);
+    }
+  }
+  _p_barricade(s, diff, sl) {
+    // sawhorses shoulder to shoulder across the 180, one gap with a pizza in it
+    const reach = this._reach(), gap = sl + (Math.random() - 0.5) * 2 * (reach - 0.5);
+    for (let a = -reach + BARRIER_HALF; a <= reach - BARRIER_HALF + 1e-6; a += 2 * BARRIER_HALF + 0.03) {
+      const th = sl + a;
+      if (Math.abs(angleDiff(th, gap)) < BARRIER_HALF + 0.42) continue;
+      this.add('barrier', s, th);
+    }
+    this.add('pizza', s, gap);
+  }
+  _p_kicker(s, diff, sl) {
+    // hit the kicker and fly into a line of pizza hanging in the air (Elad 2026-11-22:
+    // "a positive thing I should jump towards, up high" — not a hazard on the floor).
+    // The hop peaks ~2.8 m, 6–12 m past the lip depending on speed; the pizzas span that.
+    // Laid on the real flight path: take-off 0.9 m before the kicker's centre, hop
+    // h(t) = POP·t − 15t² (player.js gravity 30), at the rider's speed now (it barely
+    // changes over the ~200 m before he gets here).
+    const th = sl + (Math.random() - 0.5) * 1.0, v = this.riderSpeed || 15;
+    this.add('kicker', s, th);
+    for (let i = 0; i < 5; i++) {
+      const t = 0.17 + i * 0.13;
+      this.add('pizza', s - 0.9 + v * t, th, { air: KICK_POP * t - 15 * t * t });
+    }
+  }
+  _p_rail(s, diff, sl) {
+    const th = sl + (Math.random() - 0.5) * 1.6;
+    this.add('rail', s + RAIL_L / 2, th);
+    if (Math.random() < 0.6) this.add('cone', s + RAIL_L / 2, th + (th > sl ? -0.5 : 0.5));
+  }
+  _p_tires(s, diff, sl) {
+    // they roll up the pipe at you, weaving
+    const n = 1 + (Math.random() < diff ? 1 : 0);
+    for (let i = 0; i < n; i++) this.add('tire', s + 25 + i * 9, sl, { base: sl + (Math.random() - 0.5) * 0.6, phase: Math.random() * 6, roll: 0 });
+  }
+  _p_props(s, diff, sl) {
+    const n = 2 + Math.floor(Math.random() * (1 + diff * 2)), base = sl + (Math.random() - 0.5) * 1.2;
+    for (let i = 0; i < n; i++) this.add('prop', s + (Math.random() - 0.5) * 8, base + (Math.random() - 0.5) * 2.2, { kind: Math.floor(Math.random() * PROPS.length) });
+    this.add('pizza', s, base);
+  }
+
   _p_poleX(s, diff, sl) {
     // two bars crossing: four blocked spots, four lanes between them
     this.add('pole', s, 0, { beta: Math.random() * Math.PI, n: 2 });
@@ -586,6 +731,8 @@ export class Obstacles {
    */
   update(dt, time, player, events) {
     const ps = player.s, pt = player.theta;
+    this._hop = player.hop || 0;
+    if (player.speed) this.riderSpeed = player.speed;
     for (const o of this.list) {
       const ds = o.s - ps;
       // ── per-type animation ──
@@ -633,6 +780,14 @@ export class Obstacles {
         o.mesh.userData.glow.material.opacity = 0.75 + Math.sin(time * 10 + o.s) * 0.25;
       } else if (o.type === 'valve') {
         for (const c of o.mesh.userData.spin) c.rotation.z += dt * 2;
+      } else if (o.type === 'tire' && !o.hit) {
+        o.s -= TIRE_V * dt;
+        o.theta = o.base + Math.sin(time * 1.7 + o.phase) * 0.45;
+        this._placeStatic(o);
+        o.mesh.userData.wheel.rotation.x = (o.roll -= (TIRE_V / TIRE_R) * dt);
+      } else if (o.type === 'prop' && this.camera) {
+        const c = o.mesh.worldToLocal(_camL.copy(this.camera.position));
+        o.mesh.userData.card.rotation.y = Math.atan2(c.x, c.z);
       } else if (o.type === 'fan') {
         o.angle = o.phase + time * o.spin;
         o.mesh.userData.blades.rotation.z = o.angle;
@@ -655,18 +810,22 @@ export class Obstacles {
       }
 
       // ── collision ──
-      if (!o.hit && !o.collected && Math.abs(ds) < (o.type === 'foot' ? FOOT_REACH_AHEAD : 2.2)) {
+      if (o.type === 'rail') {
+        // grinding: on the rail's line, along its length, wheels down
+        if (Math.abs(ds) < RAIL_L / 2 && Math.abs(angleDiff(pt, o.theta)) < RAIL_HALF && player.hop < 0.3) events.push({ type: 'grind', o, dt });
+      } else if (!o.hit && !o.collected && Math.abs(ds) < (o.type === 'foot' ? FOOT_REACH_AHEAD : 2.2)) {
         const r = this._collide(o, ds, pt);
         if (r === 'hit' && player.hop < 0.5) { o.hit = true; events.push({ type: 'hit', o }); }
         else if (r === 'enemy') { o.hit = true; events.push({ type: 'enemy', o }); }
         else if (r === 'pickup') { o.collected = true; events.push({ type: o.type, o }); }
+        else if (r === 'ramp' && player.hop < 0.3) { o.hit = true; events.push({ type: 'ramp', o }); }
       }
       // near miss: obstacle just passed, closest clearance was tight
       if (!o.hit && !o.near && ds < -0.8 && ds > -3 && this._isHazard(o)) {
         o.near = true;
         if (o.minClear !== undefined && o.minClear < 0.22) events.push({ type: 'near', o, clear: o.minClear });
       }
-      if (ds < -14) o.done = true;
+      if (ds < (o.type === 'rail' ? -RAIL_L / 2 - 4 : -14)) o.done = true;
     }
     // retire
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -691,7 +850,7 @@ export class Obstacles {
     return name in FOOT_STYLES ? name : 'purple';
   }
 
-  _isHazard(o) { return o.type === 'crate' || o.type === 'saw' || o.type === 'pipe' || o.type === 'fan' || o.type === 'valve' || o.type === 'pole'; }
+  _isHazard(o) { return HAZARDS.has(o.type); }
 
   _collide(o, ds, pt) {
     let clear = Infinity;
@@ -735,6 +894,29 @@ export class Obstacles {
         }
         break;
       }
+      case 'cone': {
+        if (Math.abs(ds) > 0.6) return null;
+        clear = Math.abs(angleDiff(pt, o.theta)) - (CONE_R * 0.8 + 0.3) / R;
+        break;
+      }
+      case 'prop': {
+        if (Math.abs(ds) > 0.6) return null;
+        clear = Math.abs(angleDiff(pt, o.theta)) - 1.1 / R;
+        break;
+      }
+      case 'barrier': {
+        if (Math.abs(ds) > 0.45) return null;
+        clear = Math.abs(angleDiff(pt, o.theta)) - (BARRIER_HALF + 0.35 / R);
+        break;
+      }
+      case 'tire': {
+        if (Math.abs(ds) > TIRE_R + 0.2) return null;
+        clear = Math.abs(angleDiff(pt, o.theta)) - 0.95 / R;
+        break;
+      }
+      case 'kicker':
+        if (Math.abs(ds) < 0.9 && Math.abs(angleDiff(pt, o.theta)) < KICK_HALF + 0.03) return 'ramp';
+        return null;
       case 'foot':
         if (o.flying) return null;
         // Bigger than the body on purpose (Elad 2026-11-15): the kick triggers
@@ -742,6 +924,7 @@ export class Obstacles {
         if (ds > -1.5 && ds < FOOT_REACH_AHEAD && Math.abs(angleDiff(pt, o.theta)) < FOOT_REACH_SIDE / R) return 'enemy';
         return null;
       case 'pizza':
+        if (o.air && Math.abs(this._hop - o.air) > 1.1) return null;   // air pizza: only off the kicker
         if (Math.abs(ds) < 1.3 && Math.abs(angleDiff(pt, o.theta)) < 0.27) return 'pickup';
         return null;
       case 'shield':
@@ -917,3 +1100,4 @@ function makeSawMaterial() {
       }`,
   });
 }
+

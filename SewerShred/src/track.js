@@ -8,7 +8,7 @@ import * as THREE from 'three';
 
 export const R = 6;                 // pipe radius, metres
 const SEG_LEN = 30;                 // metres per recycled tube segment
-const SEG_COUNT = 8;                // 240 m of pipe alive at once (fog eats the far end)
+const SEG_COUNT = 10;               // 300 m of pipe alive at once (fog eats the far end; OPEN TOP's thinner haze needs the extra 60 m)
 const RADIAL = 40;
 const RINGS = 18;
 const TAU = Math.PI * 2;
@@ -767,7 +767,7 @@ export class Track {
     const fk = FORKS.find((x) => x.side && x.kind !== 'rise' && s0 + SEG_LEN > x.s && s0 < x.s + FORK_ARM);
     const clip = g.attributes.clip.array;
     if (fk) fillClip(clip, pos, s0, SEG_LEN, RINGS, RADIAL, fk, fk.side);
-    else if (clip[0] !== -1 || clip[clip.length - 1] !== -1) clip.fill(-1);
+    else clip.fill(-1);
     g.attributes.clip.needsUpdate = true;
 
     this._buildRails(seg, s0);
