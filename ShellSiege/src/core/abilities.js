@@ -56,6 +56,7 @@ export const ABILITIES = {
   hearts: { kind: 'perm', weight: 1.0, label: 'THICK HIDE',  blurb: 'More health',          step: 0.25, max: 5 },
   // THE TURTLE ALLIES (core/allies.js). Temporary: they last for the level.
   leo:    { kind: 'temp', weight: 0.9, label: 'LEONARDO',    blurb: 'Dashes in with twin blades', step: 1,   max: 4 },
+  mikey:  { kind: 'temp', weight: 0.9, label: 'MICHELANGELO', blurb: 'Bakes pizza that heals', step: 1, max: 4 },
   donnie: { kind: 'temp', weight: 0.9, label: 'DONATELLO',   blurb: 'Wide staff, stuns a lane', step: 1,  max: 4 },
 };
 

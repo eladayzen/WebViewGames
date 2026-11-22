@@ -1,6 +1,6 @@
 # Shell Siege — ready for the Unity drop
 
-Built and verified from `dist/`, not from the dev server. 161 tests pass.
+Built and verified from `dist/`, not from the dev server. 306 tests pass.
 
 ```
 npm test && npm run build && node tools/manifest.mjs
@@ -10,7 +10,7 @@ npm test && npm run build && node tools/manifest.mjs
 
 | | |
 |---|---|
-| `dist/` | **3.46 MB**, 13 files |
+| `dist/` | **7.95 MB**, 27 files (+ `manifest.txt`) |
 | biggest | `raphael.glb` 925 KB · `clips.json` 566 KB · `skeleton.glb` 410 KB · `floor_warm.webp` 516 KB |
 | tests | 161 pass, 0 fail |
 
@@ -24,7 +24,7 @@ be sanity-checked over real HTTP (`npx vite preview`).
 - Losing works: died at 12 s, `#gameover-overlay` appeared, card read **4 down**
 - `#restart-button` resets in place — health, level, build, kills, timer — no page reload
 - `__pumpFrames` present, `#gb-back` present, dev readout **closed** by default
-- `manifest.txt`: 13 lines, 13 files on disk, lists no `.meta`, does not list itself
+- `manifest.txt`: 27 lines, 27 files on disk, lists no `.meta`, does not list itself
 
 ## What the project owner still has to do
 
@@ -87,3 +87,14 @@ part of it ships; the tool regenerates it whenever that is worth finishing.
 ?php=100         player health
 ?dev=1           open the readout
 ```
+
+
+## What is new since the first drop (22 Nov)
+
+Saving: permanent abilities are kept between sessions through the host's `window.GoBalance`
+(`load`/`save`), falling back to `localStorage` at a plain URL (`src/systems/save.js`).
+**Not yet proven on a real board** -- if a child's upgrades do not come back after closing the
+game, that is the first place to look. `?fresh=1` starts from nothing; `?kit=` rooms never load or write it.
+
+Everything else (allies, the comic UI, the end screen and start roll, knockback) is in the commit
+message of `47a8daa` and the one after it.

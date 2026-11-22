@@ -37,7 +37,7 @@ import { createDebris, loadDebris } from './render/debris.js';
 import { createTelegraphs } from './render/telegraph.js';
 import { createSeeThrough } from './render/seethrough.js';
 import { createAllies } from './render/allies.js';
-import { updateAllies } from './core/allies.js';
+import { updateAllies, updatePizzas } from './core/allies.js';
 import { clearTemp } from './core/abilities.js';
 import { stats } from './core/abilities.js';
 import { START } from './core/breeds.js';
@@ -46,6 +46,7 @@ import { enemiesLeft } from './core/rooms.js';
 import { createRollUi } from './ui/roll.js';
 import { createHud } from './ui/hud.js';
 import { renderEnd } from './ui/endscreen.js';
+import { loadProgress, saveProgress } from './systems/save.js';
 import { createIris } from './ui/iris.js';
 import { TRANS, irisOpen } from './core/transition.js';
 import { loadRig } from './render/rig.js';
@@ -88,6 +89,15 @@ async function boot() {
   if (!rig.hasWalks()) console.warn('no four-way walk set; rig will not animate', clips);
 
   const w = createWorld();
+  // WHAT YOU KEEP: the permanent abilities from your last session (systems/save.js). Not for the
+  // test rooms (?kit=) and not with ?fresh=1, which starts from nothing.
+  {
+    const q = new URLSearchParams(location.search);
+    if (!q.get('kit') && !q.get('fresh')) {
+      const kept = await loadProgress();
+      for (const [k, c] of Object.entries(kept)) w.build[k] = Math.max(w.build[k] || 0, c);
+    }
+  }
   w.targets = createTargets();
   // The crates never leave the array once laid out, so hold them here rather
   // than filtering `w.targets` by kind on every frame: the foes share it now.
@@ -177,6 +187,7 @@ async function boot() {
     const btn = document.getElementById('restart-button');
     if (btn) btn.textContent = kind === 'won' ? 'NEXT LEVEL' : 'GO AGAIN';
     renderEnd(kind, { build: w.build, level: run.level, rooms: run.rooms });
+    saveProgress(w.build);
     if (finalScore) finalScore.textContent = String(kills);
     hud.hideBanner();
     overlay.classList.remove('hidden');
@@ -193,7 +204,7 @@ async function boot() {
       hud.say(e.last ? 'LEVEL CLEAR' : 'ROOM CLEAR', `${kills} down`);
     }
     else if (e.type === 'rollStart') { if (!e.roll.done) rollUi.open(e.roll, { black: !!e.start }); }
-    else if (e.type === 'rollDone') rollUi.close();
+    else if (e.type === 'rollDone') { rollUi.close(); saveProgress(w.build); }
     else if (e.type === 'roomStart') { applyLook(run.room.look); announceRoom(); }
     else if (e.type === 'won') showEnd('won');
   }
@@ -224,7 +235,7 @@ async function boot() {
     // Hide the pool immediately, or the last frame's bodies are still standing
     // there behind the overlay when it fades.
     foesFx.syncFoes([], 0, 0);
-    alliesFx.sync([], 0, 0);
+    alliesFx.sync([], 0, 0, []);
     telegraphs.sync([], [], 0);
     overlay?.classList.add('hidden');
     // THE FREE START POWER: over black, one quick roll, and THEN the room begins. The roll
@@ -342,8 +353,9 @@ async function boot() {
       const allyHooks = {
         onKill: (f) => { kills++; debrisFx.burst(f.x, f.y, Math.min(2, (f.radius || 44) / 44)); },
         onHit: (f) => fx.spark(f.x, f.y, 0.5),
+        onPizza: (z) => { fx.spark(z.x, z.y, 1.2); hud.flash(); },
       };
-      if (!frozen(run)) updateAllies(w, dt, allyHooks);
+      if (!frozen(run)) { updateAllies(w, dt, allyHooks); updatePizzas(w, dt, allyHooks); }
 
       // THE ROOM RUNS FIRST, so a new arrival gets a frame of walking before
       // anything looks at it, and so a room whose last enemy fell to this
@@ -360,7 +372,7 @@ async function boot() {
       stage.update(w.timeS);
       fx.syncCrates(crates, w.timeS);
       foesFx.syncFoes(w.foes, w.timeS, dt, seeThrough.update(w.foes, w.player, w.foeShots));
-      alliesFx.sync(w.allies, w.timeS, dt);
+      alliesFx.sync(w.allies, w.timeS, dt, w.pizzas);
       telegraphs.sync(w.foes, w.foeShots, w.timeS);
       fx.syncShots(w.bullets, w.timeS, muzzleY);
       // After the rig has been posed and after updateFiring, so the hand is

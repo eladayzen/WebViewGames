@@ -26,6 +26,11 @@
 //             (fast, in a straight line), cuts it up at close range, then dashes
 //             back. A short-range attacker who is at his best on the enemy that
 //             is hurting you right now.
+//   MICHELANGELO the SUPPORT. No damage at all, on purpose (Elad: "support"): he stays behind
+//             you and every few seconds bakes a pizza on the floor nearby; walk onto it
+//             and it heals you. It only gets made when you are hurt, and he does nothing
+//             that Raphael or Leonardo do. More copies of the ability: longer on the
+//             field AND a bigger heal per pizza.
 //   DONATELLO the CONTROLLER. Stays at your shoulder. His staff is a wide sweep;
 //             when it connects it fires a narrow stun wave down the line he is
 //             facing -- every enemy in that 30-degree cone stops dead. He does
@@ -35,8 +40,20 @@
 // any wind-up it was in is cancelled. That cancel is the point -- stunning a
 // golem mid-slam is the reward for it, and the reason to want Donatello near.
 import { TELEGRAPH_STATES } from './behaviors.js';
+import { ARENA } from './world.js';
+import { overlapsAny } from './obstacles.js';
 
 export const ALLY = {
+  mikey: {
+    label: 'Michelangelo',
+    activeS: 8, upgradeS: 4, breakS: 12,
+    followDist: 190, speed: 560,
+    bakeEvery: 2.6,           // seconds between pizzas while he is out and you are hurt
+    bakeS: 0.9, bakeAtS: 0.55,  // the flourish: the pizza appears this far in
+    needBelow: 0.95,          // only bakes when you are below this share of your health
+    maxOut: 3,                // never more than this many on the floor
+    pizza: { near: 190, far: 330, lifeS: 9, radius: 95, heal: 0.10, healPerLevel: 0.03 },
+  },
   leo: {
     label: 'Leonardo',
     followDist: 170,          // where he stands beside you, px
@@ -137,10 +154,11 @@ function walkTo(a, tx, ty, speed, dt, stopAt = 30) {
   return true;
 }
 
+const HOME_ANGLE = { leo: -2.2, donnie: 2.2, mikey: Math.PI };      // where each stands about the player's facing
+
 /** The spot an ally likes to stand: off the player's shoulder, away from the foes' side. */
 function homeSpot(a, w, dist) {
-  const side = a.key === 'leo' ? -1 : 1;
-  const ang = w.player.facing + side * 2.2;
+  const ang = w.player.facing + (HOME_ANGLE[a.key] ?? 2.2);
   return { x: w.player.x + Math.cos(ang) * dist, y: w.player.y + Math.sin(ang) * dist };
 }
 
@@ -292,6 +310,68 @@ function donnieStep(a, w, dt, hooks) {
 
 const POP_S = 0.4;
 
+// ---- MICHELANGELO ------------------------------------------------------------
+
+/** Where a pizza goes: near the player, inside the arena, not inside a wall. */
+function pizzaSpot(w, rng) {
+  const P = ALLY.mikey.pizza;
+  for (let tries = 0; tries < 12; tries++) {
+    const ang = rng() * Math.PI * 2, d = P.near + rng() * (P.far - P.near);
+    const x = Math.max(60, Math.min(ARENA.width - 60, w.player.x + Math.cos(ang) * d));
+    const y = Math.max(60, Math.min(ARENA.height - 60, w.player.y + Math.sin(ang) * d));
+    if (!overlapsAny(x, y, 50, w.obstacles)) return { x, y };
+  }
+  return { x: w.player.x, y: w.player.y + P.near };
+}
+
+function mikeyStep(a, w, dt, hooks) {
+  const C = ALLY.mikey;
+  a.cool = Math.max(0, a.cool - dt);
+  a.walking = false;
+  if (a.slashT < 0) {
+    const hurt = w.hp < w.maxHp * C.needBelow && !w.dead;
+    const out = (w.pizzas || []).length;
+    if (a.cool <= 0 && hurt && out < C.maxOut) { a.slashT = 0; a.hitDone = false; }
+    else {
+      const h = homeSpot(a, w, C.followDist);
+      a.walking = walkTo(a, h.x, h.y, C.speed, dt, 40);
+    }
+  }
+  if (a.slashT >= 0) {
+    a.facing = Math.atan2(w.player.y - a.y, w.player.x - a.x);       // he looks at you while he cooks
+    a.slashT += dt / C.bakeS;
+    if (!a.hitDone && a.slashT * C.bakeS >= C.bakeAtS) {
+      a.hitDone = true;
+      const spot = pizzaSpot(w, hooks?.rng || Math.random);
+      const level = Math.max(1, w.build[a.key] || 1);
+      (w.pizzas || (w.pizzas = [])).push({
+        x: spot.x, y: spot.y, from: { x: a.x, y: a.y }, age: 0, alive: true,
+        heal: C.pizza.heal + (level - 1) * C.pizza.healPerLevel, lifeS: C.pizza.lifeS,
+      });
+      if (hooks?.onBake) hooks.onBake(a);
+    }
+    if (a.slashT >= 1) { a.slashT = -1; a.cool = C.bakeEvery; }
+  }
+}
+
+/** Age the pizzas, and heal the player who walks onto one. */
+export function updatePizzas(w, dt, hooks) {
+  if (!w.pizzas || !w.pizzas.length) return;
+  const R = ALLY.mikey.pizza.radius;
+  for (const p of w.pizzas) {
+    p.age += dt;
+    if (p.age >= p.lifeS) { p.alive = false; continue; }
+    if (!w.dead && Math.hypot(p.x - w.player.x, p.y - w.player.y) <= R + w.playerRadius * 0.5) {
+      if (w.hp < w.maxHp) {
+        w.hp = Math.min(w.maxHp, w.hp + Math.round(w.maxHp * p.heal));
+        p.alive = false;
+        if (hooks?.onPizza) hooks.onPizza(p);
+      }
+    }
+  }
+  if (w.pizzas.some((p) => !p.alive)) w.pizzas = w.pizzas.filter((p) => p.alive);
+}
+
 /** Step every ally: on the field for `duration`, away for `breakS`, and back. */
 export function updateAllies(w, dt, hooks) {
   syncAllies(w);
@@ -316,6 +396,6 @@ export function updateAllies(w, dt, hooks) {
       a.duration = a.timer = durationOf(a.key, w.build[a.key] || 1);
     }
     if (!a.present) continue;
-    (a.key === 'leo' ? leoStep : donnieStep)(a, w, dt, hooks);
+    (a.key === 'leo' ? leoStep : a.key === 'mikey' ? mikeyStep : donnieStep)(a, w, dt, hooks);
   }
 }

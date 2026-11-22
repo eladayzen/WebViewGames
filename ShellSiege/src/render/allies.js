@@ -25,6 +25,7 @@ const isRed = (r, g, b) => r > 50 && r > g * 2.2 && r > b * 2.0;
 const PAINT = {
   leo:    (l) => [l * 0.16, l * 0.42, l * 1.0],      // blue
   donnie: (l) => [l * 0.62, l * 0.2, l * 0.95],      // purple
+  mikey:  (l) => [l * 1.0, l * 0.5, l * 0.04],       // orange
 };
 
 /** Raphael's texture with the red repainted. */
@@ -77,6 +78,19 @@ export async function createAllies(scene, rig) {
   };
 
   const rigs = new Map();     // sim ally -> its drawn parts
+
+  // a pizza on the floor: the painted slice (the same one the progress pips use) over a warm glow
+  const pizzaTex = new THREE.TextureLoader().load('tex/ui_pizza_full.png');
+  pizzaTex.colorSpace = THREE.SRGBColorSpace;
+  const poolTex = glowTexture('rgba(255,190,80,1)', 'rgba(255,150,40,0)');
+  const pizzaSprites = [];
+  function makePizza() {
+    const slice = new THREE.Sprite(new THREE.SpriteMaterial({ map: pizzaTex, transparent: true, depthWrite: false, fog: false }));
+    const pool = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    pool.rotation.x = -Math.PI / 2;
+    group.add(slice, pool);
+    return { slice, pool };
+  }
 
   function build(a) {
     const scaler = cloneSkinned(template);
@@ -145,6 +159,16 @@ export async function createAllies(scene, rig) {
         group.add(w);
         p.weapons.push({ obj: w, side, bone: side < 0 ? 'lh' : 'rh' });
       }
+    } else if (a.key === 'mikey') {
+      // a pizza box held out in the right hand: his one prop, and the thing he is cooking
+      const w = new THREE.Group();
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.07, 0.62), lam(0xe8a248, 0x3a1c00));
+      const slice = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.03, 10, 1, false, 0, Math.PI * 1.7), lam(0xffd24a, 0x553300));
+      slice.position.y = 0.05;
+      w.add(box, slice);
+      group.add(w);
+      p.weapons.push({ obj: w, side: 1, bone: 'rh', box: true });
+      p.bake = sprite(glow);
     } else {
       const w = new THREE.Group();
       const bo = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 2.1, 10), lam(0xc89a58));
@@ -171,11 +195,12 @@ export async function createAllies(scene, rig) {
   }
 
   /** Per-frame: draw `allies`. */
-  function sync(allies, timeS, dt) {
+  function sync(allies, timeS, dt, pizzas = []) {
     // remove rigs of allies that are gone
     for (const [a, p] of rigs) {
       if (!allies.includes(a)) {
         group.remove(p.holder, p.shadow, p.cone, p.pop, ...p.trail);
+        if (p.bake) group.remove(p.bake);
         for (const w of p.weapons) group.remove(w.obj);
         rigs.delete(a);
       }
@@ -184,6 +209,17 @@ export async function createAllies(scene, rig) {
       let p = rigs.get(a);
       if (!p) { p = build(a); rigs.set(a, p); }
       const C = ALLY[a.key];
+      // MICHELANGELO's bake: a warm glow gathers round him while he cooks
+      if (p.bake) {
+        const cooking = a.present && a.slashT >= 0;
+        p.bake.visible = cooking;
+        if (cooking) {
+          p.bake.position.set(u(a.x), 0.9, u(a.y));
+          p.bake.scale.setScalar(1.2 + 1.4 * Math.sin(Math.min(1, a.slashT) * Math.PI));
+          p.bake.material.opacity = 0.35 + 0.5 * Math.sin(Math.min(1, a.slashT) * Math.PI);
+          p.bake.material.color.setHex(0xffb347);
+        }
+      }
       // the pop of light where he arrived or left
       p.pop.visible = !!a.fx;
       if (a.fx) {
@@ -260,6 +296,7 @@ export async function createAllies(scene, rig) {
         } else {
           // the bo rests angled up; its sweep whips flat across the arc
           const wind = clamp01(s / 0.25), cut = clamp01((s - 0.25) / 0.35), back = clamp01((s - 0.7) / 0.3);
+          if (w.box) { w.obj.quaternion.identity(); w.obj.rotation.set(0.25 + s * 0.2, yaw, 0); w.obj.position.y += 0.15; continue; }
           const sweep = slashing ? lerp(-C.staffArc / 2, C.staffArc / 2, cut) * (1 - back) : 0;
           const pitch = slashing ? lerp(1.1, 0.15, Math.min(1, wind + cut) * (1 - back)) : 1.1;
           aim(w.obj, yaw + sweep + (slashing ? 0 : 0.5), pitch);
@@ -268,6 +305,27 @@ export async function createAllies(scene, rig) {
         }
       }
     }
+
+    // THE PIZZAS ON THE FLOOR: a slice floating over a warm pool, blinking out as it expires
+    let pi = 0;
+    for (const z of pizzas || []) {
+      if (!z.alive) continue;
+      const v = pizzaSprites[pi] || (pizzaSprites[pi] = makePizza());
+      pi++;
+      const left = z.lifeS - z.age;
+      const drop = clamp01(z.age / 0.45);                                  // it lands from Michelangelo's hand
+      const x = z.from.x + (z.x - z.from.x) * drop, y = z.from.y + (z.y - z.from.y) * drop;
+      const arc = Math.sin(drop * Math.PI) * 1.2;
+      const blink = left < 2.5 ? (Math.sin(timeS * 18) > 0 ? 1 : 0.25) : 1;
+      v.slice.visible = v.pool.visible = true;
+      v.slice.position.set(u(x), 0.75 + arc + Math.sin(timeS * 4 + pi) * 0.06, u(y));
+      v.slice.scale.setScalar(1.05);
+      v.slice.material.opacity = blink;
+      v.pool.position.set(u(x), 0.05, u(y));
+      v.pool.scale.setScalar(1.8 + Math.sin(timeS * 5) * 0.12);
+      v.pool.material.opacity = 0.55 * blink;
+    }
+    for (; pi < pizzaSprites.length; pi++) { pizzaSprites[pi].slice.visible = pizzaSprites[pi].pool.visible = false; }
   }
 
   return { group, sync };

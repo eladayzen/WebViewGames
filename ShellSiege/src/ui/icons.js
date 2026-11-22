@@ -45,6 +45,10 @@ export const ICONS = {
   donnie: svg(
     '<rect x="4" y="35" width="26" height="6" rx="3" transform="rotate(-35 17 38)"/>' +
     '<path d="M24 24 46 8v16z" opacity=".8"/><path d="M24 24 46 24v16z" opacity=".5"/>'),
+  // A pizza slice with a plus: Michelangelo heals.
+  mikey: svg(
+    '<path d="M6 8c10-4 26-4 36 0L24 44z"/>' +
+    '<circle cx="19" cy="17" r="3" fill="#000" opacity=".35"/><circle cx="29" cy="19" r="3" fill="#000" opacity=".35"/><circle cx="24" cy="29" r="3" fill="#000" opacity=".35"/>'),
   // A heart: more health.
   hearts: svg('<path d="M24 43C8 31 3 22 3 14 3 8 8 4 13 4c5 0 8 3 11 7 3-4 6-7 11-7 5 0 10 4 10 10 0 8-5 17-21 29z"/>'),
 };

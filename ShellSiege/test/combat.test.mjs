@@ -154,3 +154,34 @@ test('THE KILL IS ALREADY RESOLVED WHEN onHit IS CALLED', () => {
   assert.equal(aliveInsideCallback, false, 'onHit saw the target still alive');
   assert.equal(t.alive, false);
 });
+
+// ---- SPLIT SHOT MUST HIT -----------------------------------------------------------
+// Elad: aimed at an enemy, the two blades split to either side of it and mostly missed.
+test('SPLIT SHOT ALWAYS HAS A BLADE ON THE AIM LINE: two blades at one enemy do not both miss it', () => {
+  for (const n of [2, 3, 4]) {
+    const w = createWorld();
+    crate(w, 600, 0, { radius: 40 });
+    updateFiring(w, gun({ projectiles: n }), 1);
+    const angles = w.bullets.map((b) => Math.atan2(b.vy, b.vx));
+    assert.ok(angles.some((a) => Math.abs(a) < 1e-9), `${n} blades and none dead on`);
+  }
+});
+
+test('SPLIT SHOT AT A CROWD SENDS EACH BLADE AT A DIFFERENT ENEMY', () => {
+  const w = createWorld();
+  const a = crate(w, 400, 0), b = crate(w, 0, 500), c = crate(w, -700, 0);
+  updateFiring(w, gun({ projectiles: 3 }), 1);
+  const aim = (t) => Math.atan2(t.y - w.player.y, t.x - w.player.x);
+  const got = w.bullets.map((x) => Math.atan2(x.vy, x.vx));
+  for (const t of [a, b, c]) assert.ok(got.some((g) => Math.abs(g - aim(t)) < 1e-9), 'an enemy got no blade');
+});
+
+test('IN PLAY: two blades at one enemy at long range hit it, every time', () => {
+  for (const dist of [300, 600, 850]) {
+    const w = createWorld();
+    const t = crate(w, dist, 0, { radius: 40, hp: 1000, maxHp: 1000 });
+    updateFiring(w, gun({ projectiles: 2 }), 1);
+    for (let i = 0; i < 120; i++) updateBullets(w, 1 / 60);
+    assert.ok(t.hp < 1000, `missed at ${dist}px`);
+  }
+});

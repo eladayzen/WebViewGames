@@ -222,3 +222,73 @@ test('he comes back at the PLAYER, not where he left', () => {
   assert.equal(a.present, true);
   assert.ok(Math.hypot(a.x - w.player.x, a.y - w.player.y) < ALLY.leo.followDist * 2);
 });
+
+// ---- MICHELANGELO ------------------------------------------------------------------
+import { updatePizzas } from '../src/core/allies.js';
+
+function hurtRoom() { const w = room('mikey'); w.maxHp = 100; w.hp = 40; return w; }
+
+test('MICHELANGELO BAKES A PIZZA WHEN YOU ARE HURT, and only then', () => {
+  const w = hurtRoom();
+  syncAllies(w);
+  run(w, 4);
+  assert.ok((w.pizzas || []).length >= 1, 'no pizza when hurt');
+  const w2 = room('mikey'); w2.maxHp = w2.hp = 100;
+  syncAllies(w2);
+  run(w2, 6);
+  assert.equal((w2.pizzas || []).length, 0, 'baked for a player at full health');
+});
+
+test('WALKING ONTO A PIZZA HEALS YOU AND USES IT UP', () => {
+  const w = hurtRoom();
+  w.pizzas = [{ x: w.player.x + 20, y: w.player.y, from: { x: 0, y: 0 }, age: 0, alive: true, heal: 0.10, lifeS: 9 }];
+  let ate = 0;
+  updatePizzas(w, 1 / 60, { onPizza: () => ate++ });
+  assert.equal(w.hp, 50);
+  assert.equal(ate, 1);
+  assert.equal(w.pizzas.length, 0);
+});
+
+test('A PIZZA FAR AWAY IS LEFT ALONE, and it spoils after its time', () => {
+  const w = hurtRoom();
+  w.pizzas = [{ x: w.player.x + 600, y: w.player.y, from: { x: 0, y: 0 }, age: 0, alive: true, heal: 0.10, lifeS: 2 }];
+  updatePizzas(w, 1 / 60, {});
+  assert.equal(w.hp, 40);
+  for (let i = 0; i < 130; i++) updatePizzas(w, 1 / 60, {});
+  assert.equal(w.pizzas.length, 0, 'it never went off');
+});
+
+test('A PIZZA DOES NOTHING FOR A PLAYER AT FULL HEALTH and is not wasted', () => {
+  const w = hurtRoom(); w.hp = w.maxHp;
+  w.pizzas = [{ x: w.player.x, y: w.player.y, from: { x: 0, y: 0 }, age: 0, alive: true, heal: 0.10, lifeS: 9 }];
+  updatePizzas(w, 1 / 60, {});
+  assert.equal(w.pizzas.length, 1, 'eaten at full health');
+});
+
+test('HE NEVER LITTERS THE FLOOR: at most maxOut pizzas at a time', () => {
+  const w = hurtRoom(); w.hp = 1;
+  syncAllies(w);
+  const nobody = () => 1e9;
+  run(w, 7.5);
+  assert.ok((w.pizzas || []).length <= ALLY.mikey.maxOut);
+});
+
+test('MORE COPIES OF THE ABILITY HEAL MORE PER PIZZA', () => {
+  const heal = (copies) => {
+    const w = hurtRoom();
+    for (let i = 1; i < copies; i++) take(w.build, 'mikey');
+    syncAllies(w);
+    run(w, 3);
+    return w.pizzas[0].heal;
+  };
+  assert.ok(heal(3) > heal(1));
+});
+
+test('MICHELANGELO NEVER HURTS ANYTHING', () => {
+  const w = hurtRoom();
+  const f = addFoe(w, 120, 0); f.speed = 0; f.hp = f.maxHp = 1e6;
+  syncAllies(w);
+  run(w, 8);
+  assert.equal(f.hp, 1e6);
+  assert.equal(f.stunT || 0, 0);
+});

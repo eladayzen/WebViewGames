@@ -95,7 +95,7 @@ export function createWorld() {
     hp: PLAYER_HP_DEFAULT,
     maxHp: PLAYER_HP_DEFAULT,
     hurtT: 0,
-    allies: [],
+    allies: [], pizzas: [],
     knock: { vx: 0, vy: 0, t: 0 },     // a shove in progress, see KNOCK_S and core/foes.js hurtPlayer
     dead: false,
     diedAtS: -Infinity,

@@ -64,12 +64,33 @@ export function nearestTarget(w, rangePx) {
 /**
  * Fire if it is time to, at whatever is nearest.
  *
- * SPLIT SHOT FANS, it does not stack on one line: several projectiles along
- * the same vector are indistinguishable from one projectile doing more damage,
- * so the upgrade would be invisible. A spread makes it legible, and makes it
- * worse against one target and better against a crowd -- a real choice rather
- * than a bigger number.
+ * SPLIT SHOT GOES AT DIFFERENT ENEMIES, not around one. Elad, 22 Nov: aimed at an enemy and
+ * then "split to the two sides of it", the shots missed most of the time -- an even fan has
+ * NO projectile on the aim line, so two shots at one target both pass beside it.
+ *
+ * So each projectile is given its own job, in this order:
+ *   1. the nearest enemies, one projectile each, dead on -- a crowd is hit more, and none of
+ *      the shots is wasted on empty air beside a target;
+ *   2. any projectiles left over (fewer enemies than shots) go at the nearest one again,
+ *      fanned about the aim line starting WITH a dead-on one (0, +s, -s, +2s...), so the
+ *      extra blades are visibly extra and the first is never off the line.
+ * With one enemy that is a straight shot plus a narrow fan; with many it is a volley.
  */
+/** The nearest `n` living targets in range, nearest first. */
+export function targetsFor(w, rangePx, n) {
+  const near = [];
+  for (const e of w.targets) {
+    if (!e.alive) continue;
+    const d = Math.hypot(e.x - w.player.x, e.y - w.player.y);
+    if (d < rangePx) near.push([d, e]);
+  }
+  near.sort((a, b) => a[0] - b[0]);
+  return near.slice(0, n).map((x) => x[1]);
+}
+
+/** Angle between the extra blades fanned about one target, radians (about 6 degrees). */
+const FAN = 0.11;
+
 export function updateFiring(w, st, dt) {
   w.fireT -= dt;
   if (w.fireT > 0) return;
@@ -87,13 +108,19 @@ export function updateFiring(w, st, dt) {
   // weapon while aiming along the centre-to-target line makes a shot visibly
   // miss what it was pointed at, and the error is worst at close range, which
   // is exactly when the player is watching.
-  const base = Math.atan2(target.y - from.y, target.x - from.x);
   const n = st.projectiles;
-  const spread = n > 1 ? 0.20 : 0;
+  const aimed = targetsFor(w, st.rangePx, n);          // nearest first; at least `target`
+  const base = Math.atan2(target.y - from.y, target.x - from.x);
+  const spread = FAN;
   const wp = st.weapon || WEAPON;
   const speed = BULLET.speedPxS * (wp.speedMul || 1);
   for (let i = 0; i < n; i++) {
-    const a = base + (n === 1 ? 0 : (i - (n - 1) / 2) * spread);
+    let a;
+    if (i < aimed.length) a = Math.atan2(aimed[i].y - from.y, aimed[i].x - from.x);       // its own target, dead on
+    else {
+      const k = i - aimed.length + 1;                                                     // 1, 2, 3 ...: +s, -s, +2s ...
+      a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * spread;
+    }
     w.bullets.push({
       x: from.x, y: from.y,
       vx: Math.cos(a) * speed,
