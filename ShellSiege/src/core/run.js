@@ -65,11 +65,27 @@ export function nextLevel(run, rng = Math.random) {
 /** True while the world should stand still: the box is open. */
 export const frozen = (run) => run.phase === 'roll';
 
+/**
+ * THE FREE START POWER. Elad, 22 Nov: after GO AGAIN, over black, one quick roll of a new
+ * ability, and then the run starts. It is the same box and the same roll as between rooms,
+ * but it grants its ability and goes to the SAME room (the first), not the next.
+ * Returns the events: `rollStart` (or nothing, if every ability is already maxed).
+ */
+export function beginStartRoll(run, w, rng = Math.random) {
+  const ev = [];
+  run.roll = createRoll(w.build, rng);
+  if (run.roll.done) { run.roll = null; return ev; }       // nothing left to give: no empty box
+  run.phase = 'roll'; run.t = 0; run.startRoll = true;
+  ev.push({ type: 'rollStart', roll: run.roll, start: true });
+  return ev;
+}
+
 function finishRoll(run, w, rng, ev) {
   const key = run.roll.key;
   if (key) take(w.build, key);
   ev.push({ type: 'rollDone', key });
-  run.roomIdx += 1;
+  if (run.startRoll) run.startRoll = false;      // the start roll does not advance the room
+  else run.roomIdx += 1;
   enter(run, rng);
   ev.push({ type: 'roomStart', room: run.roomIdx, rooms: run.rooms, last: run.room.isLast });
 }

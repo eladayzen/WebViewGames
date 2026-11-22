@@ -26,13 +26,16 @@ export function createRollUi() {
   if (closed) closed.src = 'tex/loot_closed.webp';
   if (open_) open_.src = 'tex/loot_open.webp';
 
-  function open(roll) {
+  function open(roll, { black = false } = {}) {
     const a = ABILITIES[roll.key];
     if (!root || !a) return;
     if (icon) icon.innerHTML = iconFor(roll.key);
     if (label) label.textContent = a.label;
     if (blurb) blurb.textContent = a.blurb;
+    const rib = root.querySelector('.roll-ribbon');
+    if (rib) rib.textContent = a.kind === 'perm' ? 'PERMANENT' : 'THIS LEVEL';
     root.dataset.phase = roll.phase;
+    root.classList.toggle('over-black', black);
     root.classList.remove('hidden');
   }
 

@@ -19,7 +19,18 @@
 // spread over 36 units is 57 texels per unit; spread over Survivor's arena it
 // would be 27, and the stone would read as mush under a camera this close.
 
-import { createBuild } from './abilities.js';
+import { createBuild, ABILITIES } from './abilities.js';
+
+// ?kit=max starts the run with EVERY ability at its cap, to see them all working at once.
+const kitParam = () => (typeof location !== 'undefined' ? new URLSearchParams(location.search).get('kit') : null);
+const kitMax = () => kitParam() === 'max' || kitParam() === 'allies';
+// ?kit=allies is ONLY the turtle allies -- no stat upgrades -- to judge them on their own.
+const maxBuild = () => {
+  const b = createBuild();
+  for (const k of Object.keys(ABILITIES)) if (kitParam() === 'allies') { if (ABILITIES[k].kind === 'temp') b[k] = 1; }       // base level: judge the timers as a new player sees them
+    else b[k] = ABILITIES[k].max;
+  return b;
+};
 import { resolveCircle } from './obstacles.js';
 
 export const ARENA = { width: 3600, height: 3600 };
@@ -76,7 +87,7 @@ export function createWorld() {
     // THE BUILD, and the progress toward the next pick. `speedMul` is written
     // by the frame loop from stats(build) -- updateWorld already multiplies
     // by it, so SWIFT needed no change in here at all.
-    build: createBuild(),
+    build: kitMax() ? maxBuild() : createBuild(),
     level: 1,
     xp: 0,
     speedMul: 1,
@@ -84,6 +95,8 @@ export function createWorld() {
     hp: PLAYER_HP_DEFAULT,
     maxHp: PLAYER_HP_DEFAULT,
     hurtT: 0,
+    allies: [],
+    knock: { vx: 0, vy: 0, t: 0 },     // a shove in progress, see KNOCK_S and core/foes.js hurtPlayer
     dead: false,
     diedAtS: -Infinity,
 
@@ -103,6 +116,9 @@ export function createWorld() {
  * This function never learns which way the camera is pointing, which is what
  * keeps it testable and what kept it portable.
  */
+/** How long a shove lasts. Short: it is a punch of motion, not a slide. */
+export const KNOCK_S = 0.22;
+
 export function updateWorld(w, dir, dt) {
   const p = w.player;
   const before = { x: p.x, y: p.y };
@@ -110,6 +126,18 @@ export function updateWorld(w, dir, dt) {
   const speed = speedGetter() * (w.speedMul || 1);
   p.x += dir.x * speed * dt;
   p.y += dir.y * speed * dt;
+
+  // A SHOVE ADDS TO WALKING, it does not replace it, so the player can still lean
+  // against it. Speed falls linearly to zero over KNOCK_S, so the total distance
+  // is exactly the attack's `push` value (v0 = 2 * push / KNOCK_S).
+  const k = w.knock;
+  if (k && k.t > 0) {
+    const step = Math.min(dt, k.t);
+    const f = (k.t - step / 2) / KNOCK_S;      // mean of the falling speed over this step
+    p.x += k.vx * f * step;
+    p.y += k.vy * f * step;
+    k.t -= step;
+  }
 
   // Bounded, with the body's own radius held off the wall so he stops at it
   // rather than sinking half into it.

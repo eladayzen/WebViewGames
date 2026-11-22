@@ -34,7 +34,12 @@
 //                       Kill it first.
 //
 // SIZES (Elad, 22 Nov): Slayer -15%, Evil God +15%, Mechanical Golem +20%, and
-// the Elemental and Fort Golems +80%. Drawn height, hitbox radius and reach all
+// the Elemental and Fort Golems first +80% and then, after he saw them in play,
+// CUT BACK TO +50% and slowed by about a quarter ("decrease the size of the
+// giants, slow them down"). At +80% they stood 3.3 times Raphael's height at this
+// camera pitch and hid half the room. They are also the two breeds marked
+// `seeThrough`: a giant fades to 70% while it is standing between the camera and
+// something the player needs to see (render/seethrough.js). Drawn height, hitbox radius and reach all
 // move together (test/breeds.test.mjs pins that), or a giant would have a small
 // hitbox and a small one a giant's.
 //
@@ -57,35 +62,43 @@ const num = (k, d) => {
 export const BREEDS = {
   slayer: {
     label: 'Slayer', glb: 'models/rivals/Character_Slayer_01.glb', tex: 'tex/rivals.webp',
-    hp: 50, speed: 165, damage: 13, radius: 39, reach: 107,
+    hp: 50, speed: 165, damage: 13, push: 70, radius: 39, reach: 107,
     height: 1.87, windupS: 0.40, recoverS: 0.52, cost: 1,
     behavior: 'melee',
   },
   evilgod: {
     label: 'Evil God', glb: 'models/rivals/Character_EvilGod_01.glb', tex: 'tex/rivals.webp',
-    hp: 30, speed: 230, damage: 9, radius: 44, reach: 133,
+    hp: 30, speed: 230, damage: 9, push: 60, radius: 44, reach: 133,
     height: 2.36, windupS: 0.32, recoverS: 0.45, cost: 1,
     behavior: 'thrower',
-    job: { keepMin: 380, keepMax: 520, throwEvery: 2.0, windupS: 0.50, shotSpeed: 360, shotRadius: 24, shotDamage: 9, shotLifeS: 2.8 },
+    job: { keepMin: 380, keepMax: 520, throwEvery: 2.0, windupS: 0.50, shotSpeed: 360, shotRadius: 24, shotDamage: 9, shotLifeS: 2.8, push: 45,
+      // THE THROW IS SYNCED TO THE CLIP. The attack clip's right hand is overhead at 17-20% of
+      // its length and passes forward through the release at ~28% (measured by sampling
+      // Hand_R, see render/foes.js). `release` is that fraction: the windup ends exactly on it,
+      // so the orb leaves the hand on the frame the arm comes through. `muzzle` is where the
+      // hand is then: 0.88 units ahead of the body, 1.3 up (the orb falls to flight height).
+      release: 0.28, muzzle: { fwd: 88, h: 1.3 } },
   },
   mechgolem: {
     label: 'Mechanical Golem', glb: 'models/rivals/Character_MechanicalGolem_01.glb', tex: 'tex/rivals.webp',
-    hp: 90, speed: 145, damage: 17, radius: 65, reach: 168,
+    hp: 90, speed: 145, damage: 17, push: 140, radius: 65, reach: 168,
     height: 3.06, windupS: 0.50, recoverS: 0.62, cost: 2,
     behavior: 'charger',
-    job: { chargeMin: 260, chargeMax: 650, dist: 780, speed: 760, every: 3.0, windupS: 0.70, stunS: 1.6, hitDamage: 17 },
+    job: { chargeMin: 260, chargeMax: 650, dist: 780, speed: 760, every: 3.0, windupS: 0.70, stunS: 1.6, hitDamage: 17, push: 340 },
   },
   elemgolem: {
     label: 'Elemental Golem', glb: 'models/rivals/Character_ElementalGolem_01.glb', tex: 'tex/rivals.webp',
-    hp: 130, speed: 125, damage: 22, radius: 104, reach: 263,
-    height: 4.86, windupS: 0.55, recoverS: 0.66, cost: 3,
+    hp: 130, speed: 95, damage: 22, push: 160, radius: 87, reach: 219,
+    height: 4.05, windupS: 0.55, recoverS: 0.66, cost: 3,
+    seeThrough: true,
     behavior: 'slammer',
-    job: { trigger: 300, radius: 320, every: 2.0, windupS: 0.90, damage: 22 },
+    job: { trigger: 300, radius: 320, every: 2.0, windupS: 0.90, damage: 22, push: 260 },
   },
   fortgolem: {
     label: 'Fort Golem', glb: 'models/rivals/Character_FortGolem_01.glb', tex: 'tex/rivals.webp',
-    hp: 180, speed: 105, damage: 28, radius: 115, reach: 279,
-    height: 5.31, windupS: 0.62, recoverS: 0.72, cost: 4,
+    hp: 180, speed: 80, damage: 28, push: 210, radius: 96, reach: 233,
+    height: 4.43, windupS: 0.62, recoverS: 0.72, cost: 4,
+    seeThrough: true,
     behavior: 'summoner',
     job: { first: 2, every: 7, max: 2, count: 2, breed: 'slayer', windupS: 0.80 },
   },

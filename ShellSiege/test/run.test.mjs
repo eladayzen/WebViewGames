@@ -150,3 +150,35 @@ test('?room= STARTS PARTWAY IN, clamped to a room that exists', () => {
   const r = createRun({ room: 500, rng: seeded(1) });
   assert.equal(r.roomIdx, r.rooms - 1);
 });
+
+// ---- THE FREE START POWER ---------------------------------------------------------
+import { beginStartRoll } from '../src/core/run.js';
+
+test('THE START ROLL GRANTS AN ABILITY AND THEN STARTS THE SAME ROOM, not the next', async () => {
+  const { createWorld } = await import('../src/core/world.js');
+  const { ABILITIES } = await import('../src/core/abilities.js');
+  const w = createWorld();
+  const run = createRun({ level: 1, room: 0, rng: () => 0.2 });
+  const ev = beginStartRoll(run, w, () => 0.2);
+  assert.equal(ev[0].type, 'rollStart');
+  assert.equal(run.phase, 'roll');
+  const key = run.roll.key;
+  const before = w.build[key];
+  let done = false;
+  for (let t = 0; t < 4 && !done; t += 1 / 60) done = stepRun(run, w, 1 / 60, () => 0.2).some((e) => e.type === 'rollDone');
+  assert.ok(done, 'the roll never finished');
+  assert.equal(w.build[key], before + 1, 'the rolled ability was not granted');
+  assert.equal(run.roomIdx, 0, 'the start roll advanced the room');
+  assert.equal(run.phase, 'intro');
+  assert.ok(key in ABILITIES);
+});
+
+test('with everything maxed there is NO start roll and no empty box', async () => {
+  const { createWorld } = await import('../src/core/world.js');
+  const { ABILITIES } = await import('../src/core/abilities.js');
+  const w = createWorld();
+  for (const k of Object.keys(ABILITIES)) w.build[k] = ABILITIES[k].max;
+  const run = createRun({ level: 1, room: 0 });
+  assert.deepEqual(beginStartRoll(run, w), []);
+  assert.equal(run.phase, 'intro');
+});

@@ -55,7 +55,7 @@ export function meleeStep(f, c) {
       // is what makes stepping out of range a dodge rather than a cosmetic
       // retreat, and it is the whole point of the telegraph.
       if (c.d <= f.reach + c.slack && !c.w.dead) {
-        c.hurt(f.damage);
+        c.hurt(f.damage, f.push, f);
         if (c.onStrike) c.onStrike(f);
       }
       f.state = 'recover';
@@ -164,7 +164,7 @@ export function chargerStep(f, c) {
     // contact hurts ONCE per charge, measured body to body after the move
     if (!b.hit && Math.hypot(c.p.x - f.x, c.p.y - f.y) <= f.radius + c.pr) {
       b.hit = true;
-      c.hurt(j.hitDamage);
+      c.hurt(j.hitDamage, j.push, f);
       if (c.onStrike) c.onStrike(f);
     }
     if (hit === 'obstacle') { b.cool = j.every; state(f, 'stunned'); }      // crashed
@@ -194,7 +194,7 @@ export function slammerStep(f, c) {
     if (f.stateT >= j.windupS) {
       // measured NOW: stepping out of the ring during the warning is a dodge
       if (c.d <= j.radius + c.pr && !c.w.dead) {
-        c.hurt(j.damage);
+        c.hurt(j.damage, j.push, f);
         if (c.onStrike) c.onStrike(f);
       }
       f.shock = { x: f.x, y: f.y, r: j.radius, t: 0.4 };       // the expanding ring the renderer draws

@@ -247,3 +247,43 @@ test('NO FOE CAN BE PINNED FOREVER: every breed reaches a waiting player, in eve
   }
   assert.deepEqual(stuck, [], `${stuck.length} cases pinned:\n  ${stuck.slice(0, 8).join('\n  ')}`);
 });
+
+// ---- KNOCKBACK: every attack shoves by its own amount ------------------------------
+import { updateWorld } from '../src/core/world.js';
+
+function shoved(push, ticks = 40) {
+  const w = createWorld();
+  const x0 = w.player.x;
+  hurtPlayer(w, 1, push, x0 - 100, w.player.y);      // hit from the left: shove goes right
+  for (let i = 0; i < ticks; i++) updateWorld(w, { x: 0, y: 0 }, 1 / 60);
+  return w.player.x - x0;
+}
+
+test('A SHOVE MOVES THE PLAYER AWAY FROM THE ATTACK BY EXACTLY ITS PUSH VALUE, then stops', () => {
+  assert.ok(Math.abs(shoved(200) - 200) < 3, `moved ${shoved(200).toFixed(1)}`);
+  assert.equal(shoved(200, 60), shoved(200, 90), 'it kept sliding after the shove ended');
+});
+test('a bigger push throws further, and zero push does not move anyone', () => {
+  assert.ok(shoved(300) > shoved(100) * 2.5);
+  assert.equal(shoved(0), 0);
+});
+test('A SHOVE CANNOT THROW THE PLAYER OUT OF THE ARENA', () => {
+  const w = createWorld();
+  w.player.x = w.playerRadius + 5;
+  hurtPlayer(w, 1, 400, w.player.x + 100, w.player.y);     // from the right, towards the wall
+  for (let i = 0; i < 40; i++) updateWorld(w, { x: 0, y: 0 }, 1 / 60);
+  assert.ok(w.player.x >= w.playerRadius - 0.01);
+});
+test('EVERY ATTACK HAS ITS OWN PUSH, and the big ones throw you further than the small ones', () => {
+  assert.ok(BREEDS.slayer.push > 0 && BREEDS.fortgolem.push > BREEDS.slayer.push);
+  assert.ok(BREEDS.mechgolem.job.push > BREEDS.mechgolem.push, 'the charge hits harder than the swing');
+  assert.ok(BREEDS.elemgolem.job.push > BREEDS.elemgolem.push, 'the slam hits harder than the swing');
+  assert.ok(BREEDS.evilgod.job.push < BREEDS.slayer.push, 'an orb is a flick, not a shove');
+});
+test('a melee hit shoves along the line from the foe, through the real update loop', () => {
+  const { w } = worldWithFoe(B.reach - 5, 0);
+  const x0 = w.player.x;
+  run(w, B.windupS + 0.05);
+  for (let i = 0; i < 20; i++) updateWorld(w, { x: 0, y: 0 }, 1 / 60);
+  assert.ok(x0 - w.player.x > 20, `shoved only ${(x0 - w.player.x).toFixed(1)}px away from the foe`);
+});

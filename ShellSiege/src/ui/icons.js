@@ -37,6 +37,14 @@ export const ICONS = {
   swift: svg(
     '<path d="M3 8l16 16L3 40h10l16-16L13 8z"/>' +
     '<path d="M19 8l16 16-16 16h10l16-16L29 8z" opacity=".65"/>'),
+  // Two crossed blades: Leonardo.
+  leo: svg(
+    '<path d="M6 40 34 8l5 4L12 44z"/><path d="M42 40 14 8 9 12l27 32z" opacity=".8"/>' +
+    '<rect x="3" y="36" width="12" height="6" rx="2" transform="rotate(-50 9 39)"/><rect x="33" y="36" width="12" height="6" rx="2" transform="rotate(50 39 39)"/>'),
+  // A bo staff with a cone of light fanning from its tip: Donatello's stun.
+  donnie: svg(
+    '<rect x="4" y="35" width="26" height="6" rx="3" transform="rotate(-35 17 38)"/>' +
+    '<path d="M24 24 46 8v16z" opacity=".8"/><path d="M24 24 46 24v16z" opacity=".5"/>'),
   // A heart: more health.
   hearts: svg('<path d="M24 43C8 31 3 22 3 14 3 8 8 4 13 4c5 0 8 3 11 7 3-4 6-7 11-7 5 0 10 4 10 10 0 8-5 17-21 29z"/>'),
 };

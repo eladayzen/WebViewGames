@@ -119,11 +119,21 @@ test('SIZE ORDER IS THE INTENDED ONE: Slayer smallest, the two big golems bigges
   assert.ok(h('mechgolem') < h('fortgolem'));
   // Elad: the two big golems are "about 80%" bigger, so they must be a class
   // apart from the Mechanical Golem, not a step above it.
-  assert.ok(h('elemgolem') > h('mechgolem') * 1.4, 'the big golems are not clearly bigger');
-  assert.ok(h('fortgolem') > h('mechgolem') * 1.4);
+  // They were +80% and are now +50% (Elad: "decrease the size of the giants"), so
+  // "a class apart" is a smaller margin than it was -- but still a margin.
+  assert.ok(h('elemgolem') > h('mechgolem') * 1.25, 'the big golems are not clearly bigger');
+  assert.ok(h('fortgolem') > h('mechgolem') * 1.25);
 });
 
 test('A BIGGER BODY REACHES FURTHER -- reach scales with size, not just radius', () => {
   const reachBeyondBody = (k) => BREEDS[k].reach - BREEDS[k].radius;
   assert.ok(reachBeyondBody('fortgolem') > reachBeyondBody('slayer'), 'a giant swings no further than a Slayer');
+});
+
+test('THE GIANTS ARE SLOWER THAN EVERYTHING ELSE, and only they fade when they block the view', () => {
+  const speeds = Object.entries(BREEDS).filter(([k]) => !['elemgolem', 'fortgolem'].includes(k)).map(([, b]) => b.speed);
+  assert.ok(BREEDS.elemgolem.speed < Math.min(...speeds), 'the Elemental Golem is not the slowest');
+  assert.ok(BREEDS.fortgolem.speed < BREEDS.elemgolem.speed, 'the Fort Golem should be slower still');
+  const fading = Object.keys(BREEDS).filter((k) => BREEDS[k].seeThrough).sort();
+  assert.deepEqual(fading, ['elemgolem', 'fortgolem']);
 });

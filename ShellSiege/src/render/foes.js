@@ -32,6 +32,7 @@ import { u } from './units.js';
 import { FOE } from '../core/foes.js';
 import { BREEDS, DEFAULT_BREED, usedBreeds } from '../core/breeds.js';
 import { TELEGRAPH_STATES } from '../core/behaviors.js';
+import { stepAlpha } from './seethrough.js';
 
 const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const num = (k, d) => {
@@ -220,11 +221,13 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       // enemy, and one shared material would flash the whole clan at once.
       // The MAP and the geometry stay shared, which is where the memory is.
       let mat = null;
+      const mats = [];     // every mesh's material -- the see-through fade has to reach all of them
       body.traverse((o) => {
         if (!o.isMesh) return;
         o.frustumCulled = false;
         mat = new THREE.MeshLambertMaterial({ map: enemy.atlas, color: 0xffffff });
         o.material = mat;
+        mats.push(mat);
       });
 
       const mixer = new THREE.AnimationMixer(body);
@@ -246,15 +249,32 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       holder.add(shadow, body);
       holder.visible = false;
       group.add(holder);
-      slots.push({ holder, body, mat, shadow, mixer, act, baseY, walked: 0 });
+      let hand = null;                                   // the throwing hand, for synced orbs
+      body.traverse((o) => { if (o.isBone && /^Hand_R/.test(o.name)) hand = o; });
+      slots.push({ holder, body, mat, mats, hand, shadow, mixer, act, baseY, walked: 0, alpha: 1, owner: null });
     }
     pools[key] = slots;
   }
 
   const BASE = new THREE.Color(0xffffff);
+  const STUN_ALLY = new THREE.Color(0x7fd8ff);      // frozen blue: Donatello's stun, distinct from the charger's own dazed tint
 
-  function poseOne(s, f, dt) {
+  /** Apply a foe's opacity to its slot. Transparent only while actually faded, so the
+   *  common case keeps the cheaper opaque path and its depth-sorted correctness. */
+  function setAlpha(s, f, target, dt) {
+    if (s.owner !== f) { s.owner = f; s.alpha = 1; }     // a recycled slot starts solid
+    s.alpha = stepAlpha(s.alpha, target, dt);
+    if (Math.abs(s.alpha - target) < 0.004) s.alpha = target;
+    const faded = s.alpha < 0.999;
+    for (const m of s.mats) {
+      if (m.transparent !== faded) { m.transparent = faded; m.needsUpdate = true; }
+      m.opacity = s.alpha;
+    }
+  }
+
+  function poseOne(s, f, dt, target = 1) {
     const { holder, body, mat, act } = s;
+    setAlpha(s, f, target, dt);
     holder.position.set(u(f.x), 0, u(f.y));
     // The sim's (dx, dy) maps to the scene's (x, z); a yaw of atan2(x, z)
     // points a +Z-facing mesh along it. Same convention as the player's rig.
@@ -275,10 +295,20 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       // SCRUBBED FROM THE SIM'S CLOCK, and from THIS FOE's timings -- an ork
       // winds up for 0.60s where an elf takes 0.32s, so a shared constant
       // would land the blade on the wrong frame for four breeds out of five.
-      const span = windupS + recoverS;
-      const into = telegraphing ? f.stateT : windupS + f.stateT;
       const d = act.attack.getClip().duration;
-      act.attack.time = Math.max(0, Math.min(d, (into / span) * d));
+      let frac;
+      const rel = f.job?.release;
+      if (rel != null && (f.state === 'throw' || f.state === 'recover')) {
+        // A THROW IS NOT A SWING: the clip's release frame (job.release) lands exactly
+        // when the windup ends, which is when the sim spawns the orb.
+        frac = f.state === 'throw'
+          ? rel * Math.min(1, f.stateT / windupS)
+          : rel + (1 - rel) * Math.min(1, f.stateT / recoverS);
+      } else {
+        const span = windupS + recoverS;
+        frac = (telegraphing ? f.stateT : windupS + f.stateT) / span;
+      }
+      act.attack.time = Math.max(0, Math.min(d, frac * d));
       act.attack.setEffectiveWeight(swinging ? 1 : 0);
     }
     if (act.walk) {
@@ -289,6 +319,12 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     if (act.idle) act.idle.setEffectiveWeight(!swinging && !moving ? 1 : 0);
 
     s.mixer.update(dt);
+    // Publish where the throwing hand is, so the gathering orb can sit IN it.
+    if (s.hand && f.state === 'throw') {
+      holder.updateMatrixWorld(true);
+      (f.handPos || (f.handPos = new THREE.Vector3())).setFromMatrixPosition(s.hand.matrixWorld);
+      f.handOn = true;
+    } else f.handOn = false;
 
     // --- colour: the telegraph, the hit flash, and the fade on death.
     mat.color.copy(BASE);
@@ -302,6 +338,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       const k = Math.min(1, f.stateT / (recoverS * 0.3));
       mat.color.copy(BASE).lerp(TELL, 0.5 * (1 - k));
     }
+    if (f.stunT > 0) mat.color.copy(BASE).lerp(STUN_ALLY, 0.55 + 0.2 * Math.sin(f.stunT * 30));
     if (f.hitT > 0) mat.color.lerp(new THREE.Color(0xff3020), 0.8);
 
     if (!f.alive) {
@@ -317,7 +354,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
   }
 
   /** Put each breed's pool onto that breed's live foes. */
-  function syncFoes(foes, timeS, dt = 0) {
+  function syncFoes(foes, timeS, dt = 0, targets = null) {
     const used = {};
     for (const f of foes) {
       const key = pools[f.breed] ? f.breed : DEFAULT_BREED;
@@ -327,7 +364,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       if (i >= slots.length) continue;     // more of this breed than pool slots
       used[key] = i + 1;
       slots[i].holder.visible = true;
-      poseOne(slots[i], f, dt);
+      poseOne(slots[i], f, dt, targets?.get(f) ?? 1);
     }
     for (const [key, slots] of Object.entries(pools)) {
       for (let i = used[key] || 0; i < slots.length; i++) slots[i].holder.visible = false;

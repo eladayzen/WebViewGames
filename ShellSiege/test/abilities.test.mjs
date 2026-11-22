@@ -37,7 +37,9 @@ test('EVERY ABILITY CHANGES SOMETHING -- no dead rolls in the pool', () => {
   // A roll that does nothing is worse than a missing one: the player waits
   // for the box, sees it open, and learns the box does not matter.
   const base = JSON.stringify(stats(createBuild()));
-  for (const key of Object.keys(ABILITIES)) {
+  // Permanent abilities are stat modifiers. A TEMP one is a behaviour (the turtle allies,
+  // core/allies.js), which changes no stat -- its test is that it summons someone.
+  for (const key of Object.keys(ABILITIES).filter((k) => ABILITIES[k].kind === 'perm')) {
     const b = take(createBuild(), key);
     assert.notEqual(JSON.stringify(stats(b)), base, `${key} changed no stat`);
   }
@@ -62,9 +64,13 @@ test('EVERY ABILITY SAYS WHETHER IT IS PERMANENT, and carries a usable weight', 
   }
 });
 
-test('EVERY ABILITY TODAY IS PERMANENT -- the temporary kind is phase 3', () => {
-  // Pinned so the day a temporary ability is added, this fails and whoever
-  // adds it is pointed at the rule that has to exist for it: what survives
-  // a level, and which one is carried.
-  for (const a of Object.values(ABILITIES)) assert.equal(a.kind, 'perm');
+test('THE TEMPORARY ABILITIES ARE EXACTLY THE TURTLE ALLIES, and a won level clears them', async () => {
+  const { clearTemp } = await import('../src/core/abilities.js');
+  const temp = Object.keys(ABILITIES).filter((k) => ABILITIES[k].kind === 'temp').sort();
+  assert.deepEqual(temp, ['donnie', 'leo']);
+  const b = createBuild();
+  take(b, 'leo'); take(b, 'donnie'); take(b, 'rapid');
+  clearTemp(b);
+  assert.equal(b.leo, 0); assert.equal(b.donnie, 0);
+  assert.equal(b.rapid, 1, 'a permanent ability survived the level');
 });

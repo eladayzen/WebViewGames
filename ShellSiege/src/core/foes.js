@@ -27,7 +27,7 @@
 //   ?freach=120  centre-to-centre strike range   ?fdmg=10     damage per hit
 //   ?fwind=0.4   telegraph, seconds              ?frec=0.55   recovery
 //   ?php=100     the player's health
-import { ARENA } from './world.js';
+import { ARENA, KNOCK_S } from './world.js';
 import { BREEDS, DEFAULT_BREED } from './breeds.js';
 import { resolveCircle, overlapsAny, blocksShot } from './obstacles.js';
 import { BEHAVIORS, meleeStep, tellOf } from './behaviors.js';
@@ -142,6 +142,7 @@ export function makeFoe(x, y, timeS = 0, breedKey = DEFAULT_BREED) {
     speed: b.speed ?? FOE.speed,
     reach: b.reach ?? FOE.reach,
     damage: b.damage ?? FOE.damage,
+    push: b.push ?? 0,
     windupS: b.windupS ?? FOE.windupS,
     recoverS: b.recoverS ?? FOE.recoverS,
     cost: b.cost ?? 1,
@@ -218,7 +219,7 @@ export function updateFoes(w, dt, onStrike) {
     slack: FOE.strikeSlack,
     pr: w.playerRadius,
     dx: 0, dy: 0, d: 1,
-    hurt: (n) => hurtPlayer(w, n),
+    hurt: (n, push, from) => hurtPlayer(w, n, push, (from || cur).x, (from || cur).y),
     move: (mx, my, slide) => moveFoe(w, cur, mx, my, slide),
     shoot: (spec) => spawnFoeShot(w, cur, spec),
     spawn: (breed, x, y) => spawnFoe(w, cur, breed, x, y),
@@ -230,6 +231,12 @@ export function updateFoes(w, dt, onStrike) {
     if (!f.alive) continue;
     if (f.hitT > 0) f.hitT = Math.max(0, f.hitT - dt);
     if (f.shock) { f.shock.t -= dt; if (f.shock.t <= 0) f.shock = null; }
+    // STUNNED (core/allies.js): it does nothing at all until this runs out.
+    if (f.stunT > 0) {
+      f.stunT = Math.max(0, f.stunT - dt);
+      f.tell = null; f.ustep = 0; f.ux = 0; f.uy = 0;
+      continue;
+    }
 
     const dx = p.x - f.x;
     const dy = p.y - f.y;
@@ -341,10 +348,12 @@ function spawnFoeShot(w, f, spec) {
   const dx = w.player.x - f.x, dy = w.player.y - f.y;
   const d = Math.hypot(dx, dy) || 1;
   const ux = dx / d, uy = dy / d;
+  // From the HAND when the job says where the hand is, else from the body's edge.
+  const m = spec.muzzle, reach = m ? m.fwd : f.radius;
   w.foeShots.push({
-    x: f.x + ux * f.radius, y: f.y + uy * f.radius,
+    x: f.x + ux * reach, y: f.y + uy * reach, h: m ? m.h : 0.7, age: 0,
     vx: ux * spec.shotSpeed, vy: uy * spec.shotSpeed,
-    r: spec.shotRadius, damage: spec.shotDamage, lifeS: spec.shotLifeS,
+    r: spec.shotRadius, damage: spec.shotDamage, push: spec.push || 0, lifeS: spec.shotLifeS,
     alive: true, from: f.id,
   });
 }
@@ -357,9 +366,10 @@ export function updateFoeShots(w, dt, onHit) {
     s.x += s.vx * dt;
     s.y += s.vy * dt;
     s.lifeS -= dt;
+    s.age = (s.age || 0) + dt;
     if (s.lifeS <= 0 || blocksShot(s.x, s.y, s.r, w.obstacles)) { s.alive = false; continue; }
     if (!w.dead && Math.hypot(s.x - p.x, s.y - p.y) <= s.r + w.playerRadius) {
-      hurtPlayer(w, s.damage);
+      hurtPlayer(w, s.damage, s.push, s.x - s.vx, s.y - s.vy);
       s.alive = false;
       if (onHit) onHit(s);
     }
@@ -369,8 +379,15 @@ export function updateFoeShots(w, dt, onHit) {
 }
 
 /** Take damage, with a brief flinch window the renderer can read. */
-export function hurtPlayer(w, amount) {
+export function hurtPlayer(w, amount, push = 0, fromX = 0, fromY = 0) {
   if (w.dead) return;
+  // EVERY ATTACK SHOVES BY ITS OWN AMOUNT (`push`, px), straight away from where it came
+  // from. A Slayer's cut nudges; a charging golem throws you. Not on the killing blow.
+  if (push > 0) {
+    const dx = w.player.x - fromX, dy = w.player.y - fromY, d = Math.hypot(dx, dy) || 1;
+    const v = (2 * push) / KNOCK_S;
+    w.knock = { vx: (dx / d) * v, vy: (dy / d) * v, t: KNOCK_S };
+  }
   w.hp = Math.max(0, w.hp - amount);
   w.hurtT = 0.35;
   if (w.hp <= 0) {

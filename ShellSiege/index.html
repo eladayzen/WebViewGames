@@ -67,7 +67,16 @@
          Separate from the readout below, which is a dev panel and starts
          closed. -->
     <div id="vitals">
-      <div id="hp-bar"><div id="hp-fill"></div></div>
+      <div id="hp-wrap">
+        <svg id="hp-badge" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="21" fill="#5fb24a" stroke="#14210f" stroke-width="3.5"/>
+          <path d="M4 17c6-4 34-4 40 0l-1 12c-6 4-32 4-38 0z" fill="#d6242c" stroke="#14210f" stroke-width="3"/>
+          <ellipse cx="16" cy="23" rx="5.2" ry="4.2" fill="#fff" stroke="#14210f" stroke-width="2"/>
+          <ellipse cx="32" cy="23" rx="5.2" ry="4.2" fill="#fff" stroke="#14210f" stroke-width="2"/>
+          <circle cx="17" cy="23.5" r="1.8" fill="#14210f"/><circle cx="31" cy="23.5" r="1.8" fill="#14210f"/>
+        </svg>
+        <div id="hp-bar"><div id="hp-fill"></div></div>
+      </div>
       <div id="kills"><span id="hud-kills">0</span><small>down</small></div>
       <div id="room-info">
         <div id="room-pips"></div>
@@ -77,6 +86,10 @@
 
     <!-- "ROOM 2 / 5", "ROOM CLEAR". Re-triggered from main.js. -->
     <div id="banner"></div>
+
+    <!-- THE ABILITIES YOU HOLD: one slot per ability taken, with how many times.
+         Filled by ui/hud.js from the build, only when it changes. -->
+    <div id="abilities"></div>
 
     <canvas id="game"></canvas>
 
@@ -100,14 +113,14 @@
          are not ours to rename. The Foot Clan can now end a run, so this is
          reachable rather than ceremonial. -->
     <div id="gameover-overlay" class="hidden">
-      <div class="card">
+      <div class="card over-card">
         <!-- ONE card for both endings, because the SDK's restart contract is
-             this exact overlay and button: whether the run ended by dying or
-             by winning, the board's own button has to land on #restart-button.
-             main.js decides the words and what the button does. -->
+             this exact overlay and button. ui/endscreen.js fills the title, the
+             three panels and the map; the ids below are the contract and stay. -->
         <div class="card-title" id="over-title">OVERRUN</div>
-        <div class="card-score"><span id="final-kills">0</span> down</div>
-        <div class="card-score" id="over-note"></div>
+        <div id="over-panels"></div>
+        <div id="over-map"></div>
+        <div class="card-score"><span id="final-kills">0</span> down<span id="over-note"></span></div>
         <button id="restart-button" type="button">GO AGAIN</button>
       </div>
     </div>
@@ -133,6 +146,7 @@
           <div class="roll-icon"></div>
           <div class="roll-label"></div>
           <div class="roll-blurb"></div>
+          <div class="roll-ribbon"></div>
         </div>
       </div>
     </div>

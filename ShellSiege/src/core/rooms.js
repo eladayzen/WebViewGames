@@ -50,6 +50,9 @@ export const ROOM = {
 
 /** How much trouble room `roomIdx` (0-based) of `level` (1-based) holds. */
 export function roomBudget(level, roomIdx) {
+  // ?budget=80 forces every room to that size, for stress-testing a build.
+  const forced = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('budget')) : 0;
+  if (forced > 0) return forced;
   return Math.round(
     ROOM.baseBudget * (1 + ROOM.perLevel * (level - 1)) * (1 + ROOM.perRoom * roomIdx));
 }

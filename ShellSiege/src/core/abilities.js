@@ -54,7 +54,16 @@ export const ABILITIES = {
   // ADDED FOR THIS DESIGN: Elad's own example of a permanent upgrade was
   // health, and there was no way to get any.
   hearts: { kind: 'perm', weight: 1.0, label: 'THICK HIDE',  blurb: 'More health',          step: 0.25, max: 5 },
+  // THE TURTLE ALLIES (core/allies.js). Temporary: they last for the level.
+  leo:    { kind: 'temp', weight: 0.9, label: 'LEONARDO',    blurb: 'Dashes in with twin blades', step: 1,   max: 4 },
+  donnie: { kind: 'temp', weight: 0.9, label: 'DONATELLO',   blurb: 'Wide staff, stuns a lane', step: 1,  max: 4 },
 };
+
+/** A level is over: temporary abilities go, permanent ones stay. */
+export function clearTemp(build) {
+  for (const k of Object.keys(ABILITIES)) if (ABILITIES[k].kind === 'temp') build[k] = 0;
+  return build;
+}
 
 /** A fresh, empty build. */
 export function createBuild() {

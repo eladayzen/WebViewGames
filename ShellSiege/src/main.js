@@ -35,12 +35,17 @@ import { THEMES, layoutObstacles, usedFloors } from './core/looks.js';
 import { createFoes, loadEnemies } from './render/foes.js';
 import { createDebris, loadDebris } from './render/debris.js';
 import { createTelegraphs } from './render/telegraph.js';
+import { createSeeThrough } from './render/seethrough.js';
+import { createAllies } from './render/allies.js';
+import { updateAllies } from './core/allies.js';
+import { clearTemp } from './core/abilities.js';
 import { stats } from './core/abilities.js';
 import { START } from './core/breeds.js';
-import { createRun, stepRun, restartLevel, nextLevel, frozen } from './core/run.js';
+import { createRun, stepRun, restartLevel, nextLevel, beginStartRoll, frozen } from './core/run.js';
 import { enemiesLeft } from './core/rooms.js';
 import { createRollUi } from './ui/roll.js';
 import { createHud } from './ui/hud.js';
+import { renderEnd } from './ui/endscreen.js';
 import { createIris } from './ui/iris.js';
 import { TRANS, irisOpen } from './core/transition.js';
 import { loadRig } from './render/rig.js';
@@ -75,6 +80,8 @@ async function boot() {
   const fx = createFx(view.scene, { crate, shuriken, sai });
   const rig = await loadRig(view.scene);
   // After the rig, because the blades are parented to its hand bones.
+  const seeThrough = createSeeThrough(view.camera);
+  const alliesFx = await createAllies(view.scene, rig);
   const heldFx = createHeld(rig, { shuriken, sai }, view.camera);
 
   const clips = await rig.loadClips();
@@ -167,18 +174,9 @@ async function boot() {
   /** ONE CARD FOR BOTH ENDINGS: the SDK's restart contract is this overlay and button. */
   function showEnd(kind) {
     if (!overlay) return;
-    const title = document.getElementById('over-title');
-    const note = document.getElementById('over-note');
     const btn = document.getElementById('restart-button');
-    if (kind === 'won') {
-      if (title) title.textContent = 'LEVEL CLEAR';
-      if (note) note.textContent = `Level ${run.level + 1} is bigger`;
-      if (btn) btn.textContent = 'NEXT LEVEL';
-    } else {
-      if (title) title.textContent = 'OVERRUN';
-      if (note) note.textContent = `Back to room 1 of level ${run.level}`;
-      if (btn) btn.textContent = 'GO AGAIN';
-    }
+    if (btn) btn.textContent = kind === 'won' ? 'NEXT LEVEL' : 'GO AGAIN';
+    renderEnd(kind, { build: w.build, level: run.level, rooms: run.rooms });
     if (finalScore) finalScore.textContent = String(kills);
     hud.hideBanner();
     overlay.classList.remove('hidden');
@@ -194,7 +192,7 @@ async function boot() {
       hud.flash();
       hud.say(e.last ? 'LEVEL CLEAR' : 'ROOM CLEAR', `${kills} down`);
     }
-    else if (e.type === 'rollStart') { if (!e.roll.done) rollUi.open(e.roll); }
+    else if (e.type === 'rollStart') { if (!e.roll.done) rollUi.open(e.roll, { black: !!e.start }); }
     else if (e.type === 'rollDone') rollUi.close();
     else if (e.type === 'roomStart') { applyLook(run.room.look); announceRoom(); }
     else if (e.type === 'won') showEnd('won');
@@ -212,7 +210,7 @@ async function boot() {
     const keepBuild = w.build;
     const won = run.phase === 'won';
     Object.assign(w, createWorld());
-    w.build = keepBuild;
+    w.build = won ? clearTemp(keepBuild) : keepBuild;     // a won level takes the turtle allies with it
     syncMaxHp(stats(w.build), true);
     w.targets = createTargets();
     crates = w.targets.slice();
@@ -226,9 +224,14 @@ async function boot() {
     // Hide the pool immediately, or the last frame's bodies are still standing
     // there behind the overlay when it fades.
     foesFx.syncFoes([], 0, 0);
+    alliesFx.sync([], 0, 0);
     telegraphs.sync([], [], 0);
     overlay?.classList.add('hidden');
-    announceRoom();
+    // THE FREE START POWER: over black, one quick roll, and THEN the room begins. The roll
+    // freezes the world (frozen(run)); when it ends the run enters room 1 as usual.
+    const startEv = beginStartRoll(run, w);
+    if (startEv.length) for (const e of startEv) onRunEvent(e);
+    else announceRoom();
   }
   document.getElementById('restart-button')?.addEventListener('click', restart);
   announceRoom();
@@ -333,6 +336,15 @@ async function boot() {
       });
       updateTargets(w, dt);
 
+      // THE OTHER TURTLES act after the player's own blades and before the foes step,
+      // so what they kill this frame is dead before the room is asked if it is cleared.
+      // A kill by an ally counts exactly like one of the player's: the counter and the burst.
+      const allyHooks = {
+        onKill: (f) => { kills++; debrisFx.burst(f.x, f.y, Math.min(2, (f.radius || 44) / 44)); },
+        onHit: (f) => fx.spark(f.x, f.y, 0.5),
+      };
+      if (!frozen(run)) updateAllies(w, dt, allyHooks);
+
       // THE ROOM RUNS FIRST, so a new arrival gets a frame of walking before
       // anything looks at it, and so a room whose last enemy fell to this
       // frame's bullets is seen as cleared on THIS frame -- then the foes step,
@@ -347,7 +359,8 @@ async function boot() {
       view.follow(w.camera.x, w.camera.y, realDt);
       stage.update(w.timeS);
       fx.syncCrates(crates, w.timeS);
-      foesFx.syncFoes(w.foes, w.timeS, dt);
+      foesFx.syncFoes(w.foes, w.timeS, dt, seeThrough.update(w.foes, w.player, w.foeShots));
+      alliesFx.sync(w.allies, w.timeS, dt);
       telegraphs.sync(w.foes, w.foeShots, w.timeS);
       fx.syncShots(w.bullets, w.timeS, muzzleY);
       // After the rig has been posed and after updateFiring, so the hand is
@@ -356,6 +369,8 @@ async function boot() {
       fx.updateSparks(dt);
       debrisFx.update(dt);
 
+      hud.setAbilities(w.build);
+      hud.setAllyTimers(w.allies);
       if (hpFill) hpFill.style.width = Math.max(0, (w.hp / w.maxHp) * 100) + '%';
       hud.setRooms(run.roomIdx, run.rooms,
         run.phase === 'cleared' || run.phase === 'roll' || run.phase === 'won');

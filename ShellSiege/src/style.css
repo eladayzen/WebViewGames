@@ -315,3 +315,218 @@ html, body {
 @keyframes rollSpark { 0% { opacity: 0; transform: scale(0) rotate(0deg); }
                        40% { opacity: 1; transform: scale(1.25) rotate(45deg); }
                        100% { opacity: 0.35; transform: scale(0.9) rotate(90deg); } }
+
+/* ======================================================================
+   THE COMIC SKIN (from the concept frames in art-candidates/ui-concepts/)
+   Tales-of-TMNT look: thick dark outlines, flat bold colour, sewer green and
+   pizza orange. It overrides the plain rules above, so it lives at the end
+   and the old values stay readable as the fallback.
+   ====================================================================== */
+:root {
+  --ink: #14210f; --green: #5fb24a; --green-d: #2f6b2a; --orange: #f08a24; --cream: #fbe6b0; --red: #d6242c;
+}
+@font-face { font-family: 'sans-fallback'; src: local('Arial Black'); }
+.comic-text { font-family: 'Arial Black', Impact, 'Trebuchet MS', sans-serif; }
+
+/* --- health: a green pill with the mask badge on its left end --- */
+#vitals { gap: 6px 14px; }
+#hp-wrap { position: relative; display: flex; align-items: center; padding-left: 26px; }
+#hp-badge { position: absolute; left: 0; width: 46px; height: 46px; z-index: 2; filter: drop-shadow(0 3px 0 rgba(0,0,0,.35)); }
+#hp-bar {
+  height: 28px; width: 34vw; max-width: 360px; min-width: 170px;
+  padding: 4px 5px 4px 28px; border-radius: 16px; background: var(--green);
+  border: 4px solid var(--ink); box-shadow: 0 4px 0 rgba(0,0,0,.35); overflow: hidden;
+}
+#hp-bar::before { content: ''; position: absolute; inset: 4px 5px 4px 28px; border-radius: 10px; background: var(--green-d); }
+#hp-fill {
+  position: relative; border-radius: 10px; height: 100%;
+  background: repeating-linear-gradient(90deg, var(--orange) 0 9px, #c9690f 9px 11px);
+}
+#kills { font-family: 'Arial Black', Impact, sans-serif; font-size: 18px; color: var(--cream); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: none; }
+
+/* --- room progress: pizzas eaten --- */
+#room-pips { gap: 6px; }
+.pip, .pip.boss, .pip.done, .pip.now {
+  width: 30px; height: 30px; border: 0; border-radius: 0; transform: none; box-shadow: none;
+  background: center / contain no-repeat url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><circle cx='20' cy='20' r='17' fill='%23f6b93b' stroke='%2314210f' stroke-width='3.5'/><circle cx='20' cy='20' r='12' fill='%23ffd86b'/><circle cx='14' cy='15' r='3' fill='%23c62828'/><circle cx='25' cy='14' r='3' fill='%23c62828'/><circle cx='21' cy='25' r='3' fill='%23c62828'/><circle cx='12' cy='25' r='2.4' fill='%23c62828'/></svg>");
+  filter: grayscale(1) brightness(.55) drop-shadow(0 2px 0 rgba(0,0,0,.3));
+}
+.pip.done { filter: drop-shadow(0 2px 0 rgba(0,0,0,.35)); }
+.pip.now { filter: saturate(.8) brightness(.9) drop-shadow(0 2px 0 rgba(0,0,0,.35)); animation: pipBob 900ms ease-in-out infinite; }
+.pip.boss { width: 38px; height: 38px; }
+@keyframes pipBob { 50% { transform: translateY(-3px) scale(1.08); } }
+#enemies-left {
+  font-family: 'Arial Black', Impact, sans-serif; font-size: 14px; color: var(--ink); text-shadow: none; text-transform: uppercase;
+  min-width: 70px; text-align: center; padding: 9px 14px 8px;
+  background: #fff8e1;
+  clip-path: polygon(0 50%, 8% 28%, 4% 8%, 22% 16%, 34% 0, 46% 14%, 62% 0, 70% 16%, 90% 6%, 88% 28%, 100% 48%, 88% 66%, 94% 92%, 72% 82%, 60% 100%, 46% 84%, 32% 100%, 24% 82%, 6% 92%, 10% 68%);
+}
+#enemies-left:empty { display: none; }
+
+/* --- buttons in the corner: chunky and round --- */
+#chrome button {
+  width: 48px; height: 48px; border: 4px solid var(--ink); background: var(--cream); color: var(--ink);
+  font-weight: 900; box-shadow: 0 4px 0 rgba(0,0,0,.35);
+}
+#chrome #pause-button { background: var(--orange); }
+
+/* --- the ability strip: pizza-box slots along the bottom --- */
+#abilities {
+  position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  display: flex; gap: 10px; z-index: 20; pointer-events: none; max-width: 94vw; flex-wrap: wrap; justify-content: center;
+}
+.slot {
+  position: relative; width: 58px; height: 58px; border-radius: 15px; padding: 9px;
+  background: var(--cream); border: 4px solid var(--green); color: var(--ink);
+  box-shadow: 0 0 0 3px var(--ink), 0 5px 0 3px rgba(0,0,0,.3);
+}
+.slot.temp { border-color: var(--orange); }
+.slot svg { width: 100%; height: 100%; }
+.slot b {
+  position: absolute; right: -9px; bottom: -9px; min-width: 24px; height: 24px; padding: 0 5px; line-height: 20px;
+  text-align: center; font: 900 13px 'Arial Black', Impact, sans-serif; color: #fff;
+  background: var(--orange); border: 3px solid var(--ink); border-radius: 12px;
+}
+
+/* --- the banner: words in a comic burst, with a dark outline ---
+   clip-path would clip any outline drawn on the same element, so the burst is
+   TWO pseudo-elements: a dark one slightly larger behind a cream one. */
+#banner {
+  font-family: 'Arial Black', Impact, 'Trebuchet MS', sans-serif; letter-spacing: 0.04em; text-transform: uppercase;
+  white-space: nowrap; isolation: isolate;
+  color: var(--orange); -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill;
+  padding: 0.55em 1.5em 0.5em; text-shadow: none;
+}
+#banner::before, #banner::after {
+  content: ''; position: absolute; z-index: -1;
+  clip-path: polygon(0 50%, 7% 24%, 3% 6%, 20% 14%, 30% 0, 44% 13%, 60% 0, 70% 15%, 88% 4%, 88% 26%, 100% 46%, 90% 64%, 96% 94%, 74% 84%, 62% 100%, 46% 86%, 32% 100%, 24% 84%, 6% 94%, 10% 70%);
+}
+#banner::before { inset: -9px -12px; background: var(--ink); }
+#banner::after  { inset: 0; background: #fff8e1; }
+#banner small { color: var(--green-d); -webkit-text-stroke: 0; letter-spacing: 0.2em; opacity: 1; font-size: 0.32em; }
+
+/* --- cards: end, pause --- */
+.card {
+  border: 5px solid var(--ink); border-radius: 22px; background: var(--cream); color: var(--ink);
+  box-shadow: 0 8px 0 rgba(0,0,0,.4); padding: 26px 38px;
+}
+.card-title {
+  font-family: 'Arial Black', Impact, sans-serif; font-size: 34px; letter-spacing: .04em; color: var(--orange);
+  -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill;
+}
+.card-score { opacity: 1; font-weight: 800; color: var(--green-d); }
+.card button {
+  padding: 14px 34px; border: 5px solid var(--ink); border-radius: 16px; background: var(--orange); color: #fff;
+  font: 900 20px 'Arial Black', Impact, sans-serif; letter-spacing: .05em; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill;
+  box-shadow: 0 6px 0 rgba(0,0,0,.4);
+}
+.card button:active { transform: translateY(3px); box-shadow: 0 3px 0 rgba(0,0,0,.4); }
+
+/* --- the reveal card: a cream card with a dark icon panel and a ribbon --- */
+.roll-title {
+  font-family: 'Arial Black', Impact, sans-serif; font-size: 26px; letter-spacing: .06em; color: var(--orange);
+  -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; text-shadow: none;
+}
+.roll-card {
+  padding: 0 0 12px; overflow: visible; border: 5px solid var(--ink); border-radius: 18px; background: var(--cream); color: var(--ink);
+  box-shadow: 0 0 30px rgba(255, 196, 80, 0.7), 0 6px 0 rgba(0,0,0,.4);
+}
+.roll-icon { height: auto; padding: 14px 0 10px; background: linear-gradient(#244a63, #17303f); border-radius: 12px 12px 0 0; border-bottom: 4px solid var(--ink); color: #cfe9ff; }
+.roll-icon svg { width: 64px; height: 64px; filter: drop-shadow(0 0 10px rgba(150, 210, 255, .8)); }
+.roll-label { font: 900 21px 'Arial Black', Impact, sans-serif; letter-spacing: .03em; margin-top: 10px; }
+.roll-blurb { color: var(--green-d); font-weight: 800; opacity: 1; }
+.roll-ribbon {
+  display: inline-block; margin-top: 8px; padding: 3px 16px 3px; font: 900 12px 'Arial Black', Impact, sans-serif; letter-spacing: .08em;
+  color: #fff; background: var(--green); border: 3px solid var(--ink); border-radius: 6px;
+}
+/* filter runs BEFORE clip-path on the same element, so the burst's outline is drawn by the parent */
+#room-info { filter: drop-shadow(2px 0 0 var(--ink)) drop-shadow(-2px 0 0 var(--ink)) drop-shadow(0 2px 0 var(--ink)) drop-shadow(0 -2px 0 var(--ink)); }
+
+/* ---- painted pieces cut from the concept frame (tools/cut-ui.py) ---- */
+img.pip, img.pip.done, img.pip.now, img.pip.boss { background: none; filter: none; width: 36px; height: auto; border-radius: 0; box-shadow: none; transform: none; }
+img.pip { filter: grayscale(.15) brightness(.75) drop-shadow(0 2px 0 rgba(0,0,0,.35)); }   /* the dim pizza is already dark */
+img.pip.done, img.pip.now { filter: drop-shadow(0 2px 0 rgba(0,0,0,.4)); }
+img.pip.now { animation: pipBob 900ms ease-in-out infinite; }
+img.pip.boss { width: 46px; }
+
+/* the ROOM CLEAR title is a picture: no burst of our own behind it */
+#banner.art { padding: 0; color: inherit; -webkit-text-stroke: 0; }
+#banner.art::before, #banner.art::after { display: none; }
+#banner.art img { display: block; width: min(86vw, 520px); height: auto; margin: 0 auto; filter: drop-shadow(0 6px 0 rgba(0,0,0,.35)); }
+#banner.art small { margin-top: 10px; color: #fff8e1; -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; font-size: 18px; letter-spacing: .16em; }
+
+/* ---- "N LEFT": a chunky badge in the same family as the ability slots ---- */
+#room-info { filter: none; }
+#enemies-left, #enemies-left:empty {
+  clip-path: none; background: var(--cream); min-width: 0; padding: 3px 12px 4px;
+  border: 4px solid var(--ink); border-radius: 14px; box-shadow: 0 4px 0 rgba(0,0,0,.35);
+  display: flex; flex-direction: column; align-items: center; line-height: 1;
+}
+#enemies-left:empty { display: none; }
+#enemies-left b { font: 900 26px 'Arial Black', Impact, sans-serif; color: var(--orange); -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; }
+#enemies-left i { font: 900 10px 'Arial Black', Impact, sans-serif; font-style: normal; letter-spacing: .14em; color: var(--green-d); text-transform: uppercase; margin-top: 1px; }
+
+/* ---- ally timers on their ability slots ---- */
+.slot[data-key="leo"], .slot[data-key="donnie"] { overflow: visible; }
+.slot[data-key="leo"]::after, .slot[data-key="donnie"]::after {
+  content: ''; position: absolute; inset: 0; border-radius: 11px; pointer-events: none;
+  background: conic-gradient(rgba(10, 20, 8, .62) calc(var(--cover, 0) * 360deg), transparent 0);
+}
+.slot.away svg { opacity: .4; filter: grayscale(1); }
+.slot.away { border-color: #8a8a7a; }
+.slot b { z-index: 2; }
+
+/* ======================================================================
+   THE END-OF-RUN SCREEN (ui/endscreen.js; concept: art-candidates/ui-concepts/overrun-progression.png)
+   ====================================================================== */
+.over-card { width: min(94vw, 720px); padding: 14px 18px 18px; background: transparent; border: 0; box-shadow: none; }
+.over-card .card-title { margin: 0; }
+#over-title.art img { display: block; width: min(70vw, 400px); height: auto; margin: 0 auto -6px; filter: drop-shadow(0 6px 0 rgba(0,0,0,.4)); }
+#over-title:not(.art) { color: var(--orange); font-size: 40px; margin-bottom: 8px; }
+
+#over-panels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 6px; }
+#over-panels section {
+  background: var(--cream); border: 5px solid var(--ink); border-radius: 18px; padding: 8px 8px 10px;
+  box-shadow: 0 6px 0 rgba(0,0,0,.4); min-height: 150px; display: flex; flex-direction: column; align-items: center;
+}
+#over-panels h3 {
+  margin: 0 0 6px; font: 900 22px 'Arial Black', Impact, sans-serif; letter-spacing: .03em; color: var(--ink);
+  -webkit-text-stroke: 0; text-transform: uppercase;
+}
+#over-panels section:nth-child(1) h3 { color: #c24a2a; }
+#over-panels section.kept h3 { color: var(--green-d); }
+#over-panels section.roll h3 { color: var(--orange); -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; }
+#over-panels .slots { display: flex; flex-wrap: wrap; gap: 14px 12px; justify-content: center; align-content: center; flex: 1; padding: 6px 2px; }
+#over-panels .slots em { font: 800 13px 'Trebuchet MS', sans-serif; color: #8a8a72; font-style: normal; }
+#over-panels .slot { width: 50px; height: 50px; padding: 7px; pointer-events: auto; }
+/* USED UP: greyed and dashed -- spent */
+#over-panels .slot.spent { filter: grayscale(1) brightness(.85); opacity: .7; border-style: dashed; border-color: #8a8a7a; }
+#over-panels .roll .mystery { position: relative; width: 108px; margin-top: 2px; }
+#over-panels .roll .mystery img { width: 100%; display: block; filter: drop-shadow(0 4px 0 rgba(0,0,0,.35)); }
+#over-panels .roll .mystery b {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%) rotate(-8deg);
+  font: 900 40px 'Arial Black', Impact, sans-serif; color: #ffd84a; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill;
+}
+#over-panels .roll p { margin: 4px 0 0; font: 900 11px 'Arial Black', Impact, sans-serif; letter-spacing: .06em; color: var(--ink); text-align: center; }
+
+/* the map: a trail of pizzas from START to the boss */
+#over-map { margin: 14px 4px 4px; position: relative; }
+#over-map .trail { display: flex; justify-content: space-between; align-items: flex-end; position: relative; padding: 0 6px; }
+#over-map .trail::before { content: ''; position: absolute; left: 30px; right: 30px; bottom: 22px; border-top: 6px dotted rgba(251, 230, 176, .75); }
+#over-map .node { position: relative; width: 52px; text-align: center; }
+#over-map .node img { width: 100%; display: block; position: relative; }
+#over-map .node.boss img { width: 62px; margin-left: -5px; }
+#over-map .node.start img { filter: drop-shadow(0 0 10px rgba(255, 225, 120, .95)); }
+#over-map .map-turtle { position: absolute; left: 8px; top: -34px; width: 38px; height: 38px; z-index: 2; filter: drop-shadow(0 2px 0 rgba(0,0,0,.4)); }
+#over-map .flag {
+  position: absolute; left: 36px; top: -44px; padding: 1px 7px; font: 900 11px 'Arial Black', Impact, sans-serif; color: var(--ink);
+  background: var(--cream); border: 3px solid var(--ink); border-radius: 4px; z-index: 2;
+}
+#over-map .crown { position: absolute; left: 50%; top: -22px; transform: translateX(-50%); font-size: 26px; color: #ffd84a; text-shadow: 0 0 0 var(--ink), 2px 2px 0 var(--ink), -2px -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink); }
+#over-map .lvl { position: absolute; right: 0; bottom: -18px; font: 900 13px 'Arial Black', Impact, sans-serif; color: var(--cream); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+.over-card .card-score { margin: 22px 0 10px; color: var(--cream); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; font: 900 16px 'Arial Black', Impact, sans-serif; }
+.over-card #over-note:not(:empty)::before { content: ' \00b7 '; }
+
+/* the free start roll plays over BLACK */
+#roll-overlay.over-black { background: #000; }
+#gameover-overlay { background: rgba(5, 9, 11, 0.8); }

@@ -185,7 +185,9 @@ export function createTelegraphs(scene) {
           const s = charge[chargeI++];
           const h = (BREEDS[f.breed]?.height ?? 2) * 0.92;
           s.visible = true;
-          s.position.set(u(f.x), h, u(f.y));
+          // In the hand when the renderer has published it (render/foes.js), else overhead.
+          if (f.handOn && f.handPos) s.position.copy(f.handPos);
+          else s.position.set(u(f.x), h, u(f.y));
           const k = 0.25 + 0.95 * tell.t;
           s.scale.set(k, k, 1);
           s.material.opacity = 0.6 + 0.4 * pulse;
@@ -206,7 +208,8 @@ export function createTelegraphs(scene) {
       v.g.visible = true;
       v.g.position.set(u(s.x), 0, u(s.y));
       const pulse = 1 + 0.18 * Math.sin(timeS * 22 + i);
-      v.glow.position.y = v.core.position.y = 0.7;
+      // released at hand height, falling to flight height as it leaves
+      v.glow.position.y = v.core.position.y = 0.7 + ((s.h ?? 0.7) - 0.7) * Math.exp(-(s.age || 0) * 9);
       v.glow.scale.set(R * 6.4 * pulse, R * 6.4 * pulse, 1);
       v.core.scale.set(R * 3.6, R * 3.6, 1);
       v.blob.scale.set(R * 3, R * 3, 1);
