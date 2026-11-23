@@ -22,7 +22,7 @@
 // ALL OF IT IS A FUNCTION OF `run.phase` AND `run.t`. Nothing here keeps a
 // timer of its own, so it cannot drift out of step with the run -- and it can
 // be tested without a browser.
-import { RUN } from './run.js';
+import { RUN, holdOf } from './run.js';
 
 export const TRANS = {
   closeS: 0.55,      // the iris closing, at the end of the "cleared" hold
@@ -47,7 +47,7 @@ export function irisOpen(run) {
   switch (run.phase) {
     case 'intro':   return ease(run.t / TRANS.openS);
     case 'fight':   return 1;
-    case 'cleared': return 1 - ease((run.t - (RUN.clearHoldS - TRANS.closeS)) / TRANS.closeS);
+    case 'cleared': return 1 - ease((run.t - (holdOf(run) - TRANS.closeS)) / TRANS.closeS);
     default:        return 0;    // 'roll' and 'won' both stay on black
   }
 }

@@ -13,6 +13,8 @@
 
 import { paced } from '../core/pace.js';
 import { WEAPON, arcPoint } from '../core/weapon.js';
+import { ARENA } from '../core/world.js';
+import { blocksShot } from '../core/obstacles.js';
 
 const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const num = (k, d) => {
@@ -228,6 +230,13 @@ export function updateBullets(w, dt, onHit) {
       }
     }
 
+    // WALLS STOP EVERY PROJECTILE (the arena's edge walls and tall obstacles). A star dies on one; a
+    // dagger going out bounces off it and comes home; a dagger already coming home is simply caught.
+    // Effects (grenades, stuns, shocks) are not projectiles and ignore walls.
+    if (b.x < 0 || b.y < 0 || b.x > ARENA.width || b.y > ARENA.height || blocksShot(b.x, b.y, BULLET.radius, w.obstacles)) {
+      if (b.mode === 'out' && b.returns) sendHome(b, w); else b.alive = false;
+      continue;
+    }
     for (const e of w.targets) {
       if (!e.alive || b.hit.has(e)) continue;
       if (Math.hypot(e.x - b.x, e.y - b.y) > e.radius + BULLET.radius) continue;

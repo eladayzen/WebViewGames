@@ -283,9 +283,25 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     // A CHARGE IS A POWER MOVE, not a run: the body is held in one committed lunge,
     // leaning hard into it. A short crouch on the way in (the telegraph) sets it up.
     const dashing = f.state === 'dash';
-    const lean = dashing ? 0.55 : f.state === 'charge' ? -0.18 * Math.min(1, f.stateT / (f.job?.windupS || 1)) : 0;
-    s.lean = (s.lean || 0) + (lean - (s.lean || 0)) * Math.min(1, dt * (dashing ? 40 : 14));
+    // A SLAM IS A STOMP, not a sword swing: the whole body rises and leans back through the warning,
+    // hangs for a beat, then DROPS hard on the release frame, and the ground answers with a dip and a
+    // tremor that settle over the shock ring's life (f.shock). Only the slammer has a ring.
+    const slamming = f.state === 'slam' && f.job?.radius;
+    let lift = 0, stompPitch = 0, slamT = 0;
+    if (slamming) {
+      slamT = Math.min(1, f.stateT / (f.job.windupS || 1));
+      const UP = 0.72;
+      if (slamT < UP) { const k = slamT / UP; lift = 0.9 * (1 - (1 - k) * (1 - k)); stompPitch = -0.22 * k; }
+      else { const k = (slamT - UP) / (1 - UP); lift = 0.9 * (1 - k * k * k); stompPitch = -0.22 + 0.5 * k; }
+    }
+    const lean = dashing ? 0.55 : slamming ? stompPitch : f.state === 'charge' ? -0.18 * Math.min(1, f.stateT / ((f.b?.quick ? f.job?.quickS : f.job?.windupS) || 1)) : 0;
+    s.lean = (s.lean || 0) + (lean - (s.lean || 0)) * Math.min(1, dt * (dashing || slamming ? 40 : 14));
     holder.rotation.x = s.lean;
+    // the landing: a dip into the floor and a tremor, decaying with the shock ring
+    let tremor = 0;
+    if (f.shock && f.job?.radius) { const k = Math.max(0, f.shock.t / 0.4); lift -= 0.2 * k * k; tremor = Math.sin(f.shock.t * 70) * 0.05 * k; }
+    holder.position.y = lift;
+    holder.rotation.z = tremor;
 
     // EVERY WARNING STATE SWINGS THE ARM, not just the melee wind-up: a thrower's
     // throw, a charger's wind-up, a slam and a summon all scrub the same attack
@@ -295,7 +311,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     const telegraphing = TELEGRAPH_STATES.has(f.state);
     const swinging = telegraphing || f.state === 'recover' || dashing;
     const moving = f.stateT >= 0 && f.stepped > 0.0001;     // a DASH moves, so it plays the walk
-    const windupS = (f.state !== 'windup' && telegraphing && f.job?.windupS) || (f.windupS ?? FOE.windupS);
+    const windupS = (f.state !== 'windup' && telegraphing && (f.state === 'charge' && f.b?.quick ? f.job?.quickS : f.job?.windupS)) || (f.windupS ?? FOE.windupS);
     const recoverS = f.recoverS ?? FOE.recoverS;
 
     if (act.attack) {
@@ -305,7 +321,10 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       const d = act.attack.getClip().duration;
       let frac;
       const rel = f.job?.release;
-      if (dashing) {
+      if (slamming) {
+        // arms go overhead with the rise (the clip's overhead pose is ~0.2) and strike down on the drop
+        frac = slamT < 0.72 ? 0.2 * (slamT / 0.72) : 0.2 + 0.3 * ((slamT - 0.72) / 0.28);
+      } else if (dashing) {
         frac = 0.5;       // ONE FRAME of the swing, held: arm driven forward, blade out
       } else if (rel != null && (f.state === 'throw' || f.state === 'recover')) {
         // A THROW IS NOT A SWING: the clip's release frame (job.release) lands exactly

@@ -47,7 +47,7 @@ test('OWNING COPIES MAKES AN ABILITY LESS LIKELY, but never impossible', () => {
   const owned = rollWeights(b);
   assert.ok(owned.rapid < fresh.rapid, 'a third copy is no more likely than the first');
   assert.ok(owned.rapid > 0, 'but it must still be possible');
-  assert.equal(owned.damage, fresh.damage, 'and nothing else moved');
+  assert.ok(owned.damage >= fresh.damage, 'and what you lack gets more likely (the kind stays at 50%)');
 });
 
 test('THE ROLL LEANS TOWARD WHAT YOU DO NOT HAVE', () => {
@@ -92,4 +92,15 @@ test('a roll goes spin -> reveal -> done, and reports finishing exactly once', (
   assert.equal(r.phase, 'done');
   assert.equal(r.done, true);
   assert.equal(updateRoll(r, 1), false, 'a finished roll must stay finished');
+});
+
+test('HALF THE ROLLS ARE PERMANENT AND HALF TEMPORARY', () => {
+  const b = createBuild(); b.stars = 1;
+  const w = rollWeights(b);
+  const sum = { perm: 0, temp: 0 };
+  for (const [k, v] of Object.entries(w)) sum[ABILITIES[k].kind] += v;
+  assert.ok(Math.abs(sum.perm - sum.temp) < 1e-9, `perm ${sum.perm} vs temp ${sum.temp}`);
+  const rng = seeded(5); let perm = 0;
+  for (let i = 0; i < 4000; i++) if (ABILITIES[rollAbility(createBuild(), rng)].kind === 'perm') perm++;
+  assert.ok(perm > 1800 && perm < 2200, `${perm}/4000 permanent`);
 });

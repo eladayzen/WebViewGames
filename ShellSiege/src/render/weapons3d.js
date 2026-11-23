@@ -78,3 +78,29 @@ export function makeNunchuck({ wood = 0xa8692e, tape = 0xff7a1a, len = 0.62 } = 
   group.traverse((o) => { o.frustumCulled = false; });
   return { group, free };
 }
+
+/**
+ * A NINJA STAR (shuriken): four swept points of steel with a red hub and a dark ink outline, lying in
+ * the XY plane with an outer radius of 1. Thick enough to read from above, unlike the flat picture.
+ */
+export function makeStar() {
+  const g = new THREE.Group();
+  const shape = new THREE.Shape();
+  const N = 4, OUT = 1, IN = 0.34;
+  for (let i = 0; i < N * 2; i++) {
+    const a = (i / (N * 2)) * Math.PI * 2 + Math.PI / 4, r = i % 2 === 0 ? OUT : IN;
+    // each point leans a little (swept), by pulling the inner corners back round the circle
+    const aa = i % 2 === 0 ? a : a - 0.18;
+    const x = Math.cos(aa) * r, y = Math.sin(aa) * r;
+    if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.16, bevelEnabled: true, bevelSize: 0.03, bevelThickness: 0.03, bevelSegments: 1 });
+  geo.translate(0, 0, -0.08);
+  const body = new THREE.Mesh(geo, steel());
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.26, 12), grip());
+  hub.rotation.x = Math.PI / 2;
+  g.add(body, hub);
+  for (const m of g.children) m.frustumCulled = false;
+  return inked(g, 1.22);
+}

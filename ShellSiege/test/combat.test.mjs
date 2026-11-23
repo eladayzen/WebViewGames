@@ -211,3 +211,19 @@ test('STARS FIRE ON THEIR OWN CLOCK, FLY WITHOUT RETURNING, AND DO NOT BLOCK THE
   updateFiring(w, st, 0.5);
   assert.equal(w.bullets.filter((b) => b.kind === 'star').length, 3, 'stars fired before their interval');
 });
+
+test('WALLS STOP PROJECTILES: a star dies on one, a dagger bounces home, and an edge does too', () => {
+  const w = createWorld();
+  w.obstacles = [{ kind: 'rect', x: w.player.x + 300, y: w.player.y, hw: 40, hh: 300, tall: true }];
+  const star = { x: w.player.x + 200, y: w.player.y, vx: 900, vy: 0, alive: true, pierce: 0, damage: 5, lifeS: 3, hit: new Set(), kind: 'star', returns: false, mode: 'out', t: 0 };
+  const dag = { x: w.player.x + 200, y: w.player.y + 50, vx: 900, vy: 0, alive: true, pierce: 0, damage: 5, lifeS: 3, hit: new Set(), kind: 'dagger', returns: true, returnSpeedPxS: 1500, bow: 0, side: 1, mode: 'out', t: 0 };
+  w.bullets.push(star, dag);
+  for (let i = 0; i < 30; i++) updateBullets(w, 1 / 60);
+  assert.equal(star.alive, false, 'a star flew through a wall');
+  assert.equal(dag.mode, 'back', 'a dagger went through a wall');
+  const w2 = createWorld();
+  const edge = { x: 5, y: 1800, vx: -900, vy: 0, alive: true, pierce: 0, damage: 5, lifeS: 3, hit: new Set(), kind: 'star', returns: false, mode: 'out', t: 0 };
+  w2.bullets.push(edge);
+  for (let i = 0; i < 10; i++) updateBullets(w2, 1 / 60);
+  assert.equal(edge.alive, false, 'a star left the arena');
+});

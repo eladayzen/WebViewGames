@@ -27,7 +27,7 @@ const kitMax = () => kitParam() === 'max' || kitParam() === 'allies';
 // ?kit=allies is ONLY the turtle allies -- no stat upgrades -- to judge them on their own.
 const maxBuild = () => {
   const b = createBuild();
-  for (const k of Object.keys(ABILITIES)) if (kitParam() === 'allies') { if (ABILITIES[k].kind === 'temp') b[k] = 1; }       // base level: judge the timers as a new player sees them
+  for (const k of Object.keys(ABILITIES)) if (kitParam() === 'allies') { if (['leo', 'mikey', 'donnie'].includes(k)) b[k] = 1; }       // base level: judge the timers as a new player sees them
     else b[k] = ABILITIES[k].max;
   return b;
 };

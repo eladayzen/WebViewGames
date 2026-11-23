@@ -42,6 +42,11 @@ export function rollWeights(build) {
   for (const k of offerable(build)) {
     out[k] = (ABILITIES[k].weight ?? 1) * Math.pow(ROLL.repeatFalloff, build[k]);
   }
+  // HALF THE ROLLS ARE PERMANENT, HALF TEMPORARY (Elad: a run held 8 permanent and 1 temporary). The
+  // weights are rescaled so each kind carries 50% of the total, however many of each there are.
+  const sum = { perm: 0, temp: 0 };
+  for (const k of Object.keys(out)) sum[ABILITIES[k].kind] += out[k];
+  if (sum.perm > 0 && sum.temp > 0) for (const k of Object.keys(out)) out[k] *= 0.5 / sum[ABILITIES[k].kind];
   return out;
 }
 

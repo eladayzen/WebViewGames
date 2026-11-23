@@ -537,3 +537,62 @@ img.pip.boss { width: 46px; }
 #banner.plain::before, #banner.plain::after { display: none; }
 #banner.plain { font-size: clamp(18px, 3vw, 30px); color: #fff8e1; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; letter-spacing: .12em; line-height: 1.05; }
 #banner.plain small { margin-top: 2px; font-size: 1.4em; color: var(--orange); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; letter-spacing: .08em; }
+
+/* ================= THE BANK: loose vs banked, the confetti, and the pizza-box safe ================= */
+/* In the HUD: a permanent ability is LOOSE (dashed, wobbling) until the level is cleared, then BANKED. */
+.slot.loose { border-style: dashed; animation: looseWobble 1.6s ease-in-out infinite; }
+@keyframes looseWobble { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+.slot.banked::after {
+  content: ''; position: absolute; right: -7px; top: -9px; width: 20px; height: 20px; border-radius: 50%;
+  background: #ffd84a url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3' fill='none' stroke='%2314210f' stroke-width='2.6'/%3E%3Crect x='6' y='11' width='12' height='9' rx='2' fill='%2314210f'/%3E%3C/svg%3E") center/70% no-repeat;
+  border: 2px solid var(--ink);
+}
+.slot { position: relative; }
+
+#confetti { position: fixed; inset: 0; z-index: 60; pointer-events: none; overflow: hidden; }
+#confetti i { position: absolute; top: -4%; width: 11px; height: 17px; border: 2px solid var(--ink); border-radius: 2px; opacity: 0; }
+#confetti.go i { animation-name: confettiFall; animation-timing-function: cubic-bezier(.3, .6, .5, 1); animation-fill-mode: forwards; }
+@keyframes confettiFall {
+  0% { opacity: 1; transform: translateY(0) rotate(0); }
+  100% { opacity: 1; transform: translateY(112vh) rotate(var(--r)); }
+}
+
+/* the end card: a level clear is a bigger moment than a room clear */
+#over-title.big { font-size: 54px; display: flex; align-items: center; justify-content: center; gap: 12px; animation: titlePop .7s cubic-bezier(.2, 1.6, .4, 1) both; }
+#over-title.big .medal { width: 60px; filter: drop-shadow(0 4px 0 rgba(0,0,0,.4)); animation: medalSwing 1.2s ease-in-out .4s 2; transform-origin: 50% 0; }
+#over-title.big span { -webkit-text-stroke: 7px var(--ink); paint-order: stroke fill; letter-spacing: .03em; }
+@keyframes titlePop { 0% { transform: scale(.3); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes medalSwing { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-14deg); } 75% { transform: rotate(14deg); } }
+
+#over-panels.won, #over-panels.dead { grid-template-columns: 1fr 1.9fr 1fr; align-items: stretch; }
+#over-panels .vault { padding: 4px 6px 8px; overflow: hidden; }
+#over-panels .vault-loose { display: flex; gap: 8px; justify-content: center; min-height: 54px; }
+#over-panels .vault-loose .slot { width: 46px; height: 46px; padding: 6px; border-style: dashed; }
+#over-panels .vault .box { width: 158px; margin: 2px auto 0; display: block; overflow: visible; }
+#over-panels .vault-bank { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; }
+#over-panels .vault-bank .slot { width: 38px; height: 38px; padding: 5px; }
+
+/* the loose icons fly into the box one after another... */
+#over-panels .slot.fly { animation: flyIn .75s cubic-bezier(.5, 0, .7, .4) var(--d) forwards; }
+@keyframes flyIn {
+  0% { transform: none; opacity: 1; }
+  70% { transform: translateY(78px) scale(.55); opacity: 1; }
+  100% { transform: translateY(96px) scale(.2); opacity: 0; }
+}
+/* ...or, after a death, crumble to grey dust (the one that was kept flew in) */
+#over-panels .slot.crumble { animation: crumble 1s ease-in var(--d) forwards; }
+@keyframes crumble {
+  0% { transform: none; opacity: 1; filter: none; }
+  25% { transform: translateX(-4px) rotate(-6deg); }
+  50% { transform: translateX(4px) rotate(6deg); filter: grayscale(1); }
+  100% { transform: translateY(60px) rotate(30deg) scale(.6); opacity: 0; filter: grayscale(1); }
+}
+/* the lid shuts when the last one is in, the padlock snaps on, the bank fills */
+#over-panels .box .lid { transform-box: view-box; transform-origin: 80px 64px; animation: lidShut .4s cubic-bezier(.3, 1.5, .5, 1) var(--shut) forwards; }
+@keyframes lidShut { 0% { transform: scaleY(1); } 100% { transform: scaleY(-.42); } }
+#over-panels .box .lock { transform-box: fill-box; transform-origin: 50% 50%; transform: scale(0); animation: lockPop .35s cubic-bezier(.3, 1.8, .5, 1) calc(var(--shut) + .35s) forwards; }
+@keyframes lockPop { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+#over-panels .vault-bank .slot { animation: bankIn .4s ease-out both; animation-delay: 0s; }
+#over-panels .vault-bank .slot.fresh { opacity: 0; animation: bankFresh .5s cubic-bezier(.3, 1.6, .5, 1) calc(var(--d) + .5s) forwards; }
+@keyframes bankFresh { 0% { opacity: 0; transform: scale(.2); } 100% { opacity: 1; transform: scale(1); } }
+#over-panels .slot.banked::after { width: 14px; height: 14px; right: -5px; top: -6px; }

@@ -123,41 +123,21 @@ export function createStage(scene, tex) {
   ring.position.set(CX, 0.015, CZ);
   group.add(ring);
 
-  // --- the colonnade, far edges only (see the header).
-  const geo = pillarGeometry();
+  // (the colonnade of columns that stood here is gone: the back walls do the job on their own)
   const mat = new THREE.MeshLambertMaterial({ color: 0xc6b89d });
   const colMat = mat;                    // recoloured per theme
-  const SPAN = 10;                       // columns per far edge
-  const OUT = num('colon', 1.6);         // how far outside the floor they stand
-  const mesh = new THREE.InstancedMesh(geo, mat, SPAN * 2);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const s = new THREE.Vector3();
-  let i = 0;
-  for (let k = 0; k < SPAN; k++) {
-    const t = (k + 0.5) / SPAN;
-    // Gentle per-column variation so a straight row does not read as a fence.
-    const jitter = (Math.sin(k * 12.9898) * 43758.5453) % 1;
-    s.set(1, 0.9 + Math.abs(jitter) * 0.25, 1);
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), jitter * 0.6);
-    m.compose(new THREE.Vector3(-OUT, 0, t * H), q, s);
-    mesh.setMatrixAt(i++, m);
-    m.compose(new THREE.Vector3(t * W, 0, -OUT), q, s);
-    mesh.setMatrixAt(i++, m);
-  }
-  mesh.instanceMatrix.needsUpdate = true;
-  group.add(mesh);
+  const OUT = num('colon', 1.6);         // how far outside the floor the kerb stands
 
   // --- THE BACK WALLS: a solid wall along the two far edges (north-west and north-east on screen),
   // behind the columns, with a lighter cap and a dark plinth, so the room reads as closed in
   // rather than as a floor with a row of posts. Recoloured per theme.
-  const WALL_T = 1.3, WALL_H = 2.7, WALL_OFF = OUT + 0.95;
+  const WALL_T = 1.3, WALL_H = 2.7;   // the wall's inner face sits exactly on the floor's edge
   const wallMat = new THREE.MeshLambertMaterial({ color: 0xb4a68c });
   const capMat = new THREE.MeshLambertMaterial({ color: 0xd2c6ac });
   const plinthMat = new THREE.MeshLambertMaterial({ color: 0x8c7f68 });
   for (const [px, pz, sx, sz] of [
-    [-WALL_OFF, CZ - WALL_OFF / 2, WALL_T, H + WALL_OFF],       // along the west edge
-    [CX - WALL_OFF / 2, -WALL_OFF, W + WALL_OFF, WALL_T],       // along the north edge
+    [-WALL_T / 2, CZ - WALL_T / 2, WALL_T, H + WALL_T],         // along the west edge
+    [CX - WALL_T / 2, -WALL_T / 2, W + WALL_T, WALL_T],         // along the north edge
   ]) {
     const wall = new THREE.Mesh(new THREE.BoxGeometry(sx, WALL_H, sz), wallMat);
     wall.position.set(px, WALL_H / 2, pz);

@@ -122,7 +122,8 @@ export function createHeld(rig, tex, camera) {
   });
 
   const world = new THREE.Vector3();
-  for (const boneName of ['mixamorigRightHand', 'mixamorigLeftHand']) {
+  // ONE DAGGER ONLY, in the upper (throwing) hand: the left hand holds nothing and never closes.
+  for (const boneName of ['mixamorigRightHand']) {
     const bone = rig.bones?.[boneName];
     if (!bone) continue;
     bone.getWorldScale(world);
@@ -153,11 +154,13 @@ export function createHeld(rig, tex, camera) {
   const _cam = new THREE.Vector3();
 
   /** Empty the right hand from the release frame to the end of the throw. */
-  function sync(rigState = rig) {
+  function sync(rigState = rig, q = { quiver: 1, out: 0 }) {
     const t = rigState.throwPhase();
     const gone = t >= THROW.preS && t < THROW_SPAN;
-    if (held[0]) held[0].visible = !gone;   // right -- the throwing hand
-    if (held[1]) held[1].visible = true;    // left  -- never thrown from
+    // Shown only when there are TWO daggers (twin daggers) and one is still in the quiver; with a
+    // single dagger the hand stays empty and the dagger simply appears as it is thrown.
+    const spare = (q.quiver ?? 1) >= 2 && (q.quiver - (q.out ?? 0)) >= 1;
+    if (held[0]) held[0].visible = spare && !gone;
 
     // THE FIST GOES ON AFTER THE MIXER HAS WRITTEN THE FRAME, which is why it
     // lives in sync() and not in the rig's own update(): main.js runs the rig

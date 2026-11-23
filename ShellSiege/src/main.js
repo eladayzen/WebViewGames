@@ -40,13 +40,14 @@ import { createAllies } from './render/allies.js';
 import { updateAllies, updatePizzas } from './core/allies.js';
 import { stats } from './core/abilities.js';
 import { START } from './core/breeds.js';
-import { clearTemp } from './core/abilities.js';
+import { clearTemp, createBuild } from './core/abilities.js';
 import { createRun, stepRun, restartLevel, nextLevel, beginStartRoll, frozen } from './core/run.js';
 import { enemiesLeft } from './core/rooms.js';
 import { createRollUi } from './ui/roll.js';
 import { createHud } from './ui/hud.js';
 import { renderEnd } from './ui/endscreen.js';
 import { loadProgress, saveProgress } from './systems/save.js';
+import { looseOf, bankOnWin, bankOnDeath, pickToKeep, buildFromBank } from './core/bank.js';
 import { createIris } from './ui/iris.js';
 import { TRANS, irisOpen } from './core/transition.js';
 import { loadRig } from './render/rig.js';
@@ -91,10 +92,16 @@ async function boot() {
   const w = createWorld();
   // WHAT YOU KEEP: the permanent abilities from your last session (systems/save.js). Not for the
   // test rooms (?kit=) and not with ?fresh=1, which starts from nothing.
+  // THE BANK (core/bank.js): what is saved. Permanent abilities are held loose during a run and
+  // only banked when a level is cleared (all of them) or you die (one pick).
+  let bank = {};
+  let persist = true;
   {
     const q = new URLSearchParams(location.search);
-    if (!q.get('kit') && !q.get('fresh')) {
+    persist = !q.get('kit') && !q.get('fresh');
+    if (persist) {
       const kept = await loadProgress();
+      bank = { ...kept };
       for (const [k, c] of Object.entries(kept)) w.build[k] = Math.max(w.build[k] || 0, c);
     }
   }
@@ -186,8 +193,14 @@ async function boot() {
     if (!overlay) return;
     const btn = document.getElementById('restart-button');
     if (btn) btn.textContent = kind === 'won' ? 'NEXT LEVEL' : 'GO AGAIN';
-    renderEnd(kind, { build: w.build, level: run.level, rooms: run.rooms });
-    saveProgress(w.build);
+    // BANK NOW: a level clear banks every permanent ability; a death banks one pick.
+    const loose = looseOf(w.build, bank);
+    const keptPick = kind === 'won' ? null : pickToKeep(w.build, bank);
+    const newBank = kind === 'won' ? bankOnWin(bank, w.build) : bankOnDeath(bank, w.build);
+    renderEnd(kind, { build: w.build, bank: newBank, oldBank: bank, loose, keptPick, level: run.level, rooms: run.rooms });
+    bank = newBank;
+    if (persist) saveProgress(bank);
+    if (kind === 'won') hud.celebrate();
     if (finalScore) finalScore.textContent = String(kills);
     hud.hideBanner();
     overlay.classList.remove('hidden');
@@ -199,12 +212,13 @@ async function boot() {
       // THE MOMENT. A beat of slow motion and a white pop on the last kill, the
       // banner with the count, and then (from core/transition.js, driven by the
       // run's own clock) the iris closes on the turtle.
-      slowT = TRANS.slowS;
+      slowT = e.last ? TRANS.slowS * 2.5 : TRANS.slowS;
       hud.flash();
       hud.say(e.last ? 'LEVEL CLEAR' : 'ROOM CLEAR', `${kills} down`);
+      if (e.last) hud.celebrate();            // confetti over the field: a level is a bigger moment than a room
     }
     else if (e.type === 'rollStart') { if (!e.roll.done) rollUi.open(e.roll, { black: !!e.start }); }
-    else if (e.type === 'rollDone') { rollUi.close(); saveProgress(w.build); }
+    else if (e.type === 'rollDone') { rollUi.close(); }
     else if (e.type === 'roomStart') { applyLook(run.room.look); announceRoom(); }
     else if (e.type === 'won') showEnd('won');
   }
@@ -212,16 +226,17 @@ async function boot() {
   /**
    * Put the run back WITHOUT reloading the page.
    *
-   * THE BUILD IS KEPT. Every ability is permanent today, and the design is
-   * that permanent stats survive a death -- so dying costs the rooms cleared
-   * on this level and nothing else, and a player who keeps falling over comes
-   * back stronger each time. A WON level goes on to the next one instead.
+   * WHAT SURVIVES: a death restarts the level from the BANK (core/bank.js) -- the permanent
+   * abilities banked by earlier clears plus one pick -- and loses every temporary ability. A WON
+   * level goes on to the next one with everything it holds.
    */
   function restart() {
     const keepBuild = w.build;
     const won = run.phase === 'won';
     Object.assign(w, createWorld());
-    w.build = won ? keepBuild : clearTemp(keepBuild);     // a won level keeps EVERYTHING, turtles included; a death ends the temporary ones
+    // A won level keeps EVERYTHING (the permanent ones are banked now, the temporary ones carry on).
+    // A death restarts from the BANK alone: the temporary ones are gone and the loose ones with them.
+    w.build = won ? keepBuild : persist ? buildFromBank(bank, createBuild) : clearTemp(keepBuild);
     syncMaxHp(stats(w.build), true);
     w.targets = createTargets();
     crates = w.targets.slice();
@@ -315,6 +330,11 @@ async function boot() {
         // coming gets an animation.
         if (d <= st.rangePx) rig.startThrow(Math.max(0, THROW.preS - Math.max(0, w.fireT)));
       }
+      // THE NINJA STARS HAVE THEIR OWN CLOCK, so they get their own throw too: the same animation,
+      // opened `preS` before each volley so the release lands on the frame the stars leave.
+      if (st.stars && (w.starT ?? 0) <= THROW.preS && nearestTarget(w, st.stars.rangePx)) {
+        rig.startThrow(Math.max(0, THROW.preS - Math.max(0, w.starT ?? 0)));
+      }
 
       // THE RIG IS PLACED BEFORE THE GUN FIRES. Survivor learned this the
       // hard way: firing first spawns the volley from where the hand was on
@@ -377,11 +397,12 @@ async function boot() {
       fx.syncShots(w.bullets, w.timeS, muzzleY);
       // After the rig has been posed and after updateFiring, so the hand is
       // emptied on the same frame the blade it threw first appears.
-      heldFx.sync(rig);
+      // the spare dagger in the hand: only with twin daggers, and only while one is still in the quiver
+      heldFx.sync(rig, { quiver: st.quiver, out: w.bullets.reduce((n, b) => n + (b.alive && b.kind !== 'star' ? 1 : 0), 0) });
       fx.updateSparks(dt);
       debrisFx.update(dt);
 
-      hud.setAbilities(w.build);
+      hud.setAbilities(w.build, bank);
       hud.setAllyTimers(w.allies);
       if (hpFill) hpFill.style.width = Math.max(0, (w.hp / w.maxHp) * 100) + '%';
       hud.setRooms(run.roomIdx, run.rooms,
@@ -400,7 +421,7 @@ async function boot() {
 
   // Handy while tuning from a desk.
   window.__ss = {
-    w, view, stage, rig, fx, heldFx, foesFx, debrisFx, telegraphs, restart, floors: FLOORS, ARENA,
+    w, view, stage, rig, fx, heldFx, showEnd, get bank() { return bank; }, foesFx, debrisFx, telegraphs, restart, floors: FLOORS, ARENA,
     hud, rollUi, get run() { return run; }, get stats() { return stats(w.build); },
   };
 }

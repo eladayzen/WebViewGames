@@ -88,7 +88,7 @@ test('LEONARDO GOES HOME when the room is empty', () => {
 test('A STUNNED FOE DOES NOTHING: no walking, no striking, and its wind-up is cancelled', () => {
   const w = room();
   const f = addFoe(w, 100, 0);
-  for (let i = 0; i < 20; i++) { w.timeS += 1 / 60; updateFoes(w, 1 / 60); }
+  for (let i = 0; i < 8; i++) { w.timeS += 1 / 60; updateFoes(w, 1 / 60); }
   assert.equal(f.state, 'windup');
   stunFoe(f, 1.0);
   assert.notEqual(f.state, 'windup', 'the wind-up survived the stun');

@@ -49,20 +49,20 @@ export const ABILITIES = {
   // LOCKED FOR NOW (max 0 = never offered): the blade is a single dagger that must come home before
   // the next throw. A second one unlocks later, then freeze / shock / chain-shock / explosion.
   // DAGGERS: one to start; this adds the second (the cap). Nothing is thrown while the quiver is empty.
-  multi:  { kind: 'perm', weight: 0.7, label: 'TWIN DAGGERS', blurb: 'A second dagger',     step: 1,    max: 1 },
+  multi:  { kind: 'temp', weight: 0.7, label: 'TWIN DAGGERS', blurb: 'A second dagger',     step: 1,    max: 1 },
   // NINJA STARS: a second weapon beside the daggers (see systems/combat.js). Thrown, not caught.
-  stars:    { kind: 'perm', weight: 1.0, label: 'NINJA STARS',  blurb: 'Throw stars too',      step: 1,    max: 1 },
-  starrate: { kind: 'perm', weight: 0.9, label: 'STAR FLURRY',  blurb: 'Throw stars faster',   step: 0.30, max: 5, requires: 'stars' },
-  starsplit:{ kind: 'perm', weight: 0.8, label: 'STAR SPREAD',  blurb: 'More stars per throw', step: 1,    max: 3, requires: 'stars' },
+  stars:    { kind: 'temp', weight: 1.0, label: 'NINJA STARS',  blurb: 'Throw stars too',      step: 1,    max: 1 },
+  starrate: { kind: 'temp', weight: 0.9, label: 'STAR FLURRY',  blurb: 'Throw stars faster',   step: 0.30, max: 5, requires: 'stars' },
+  starsplit:{ kind: 'temp', weight: 0.8, label: 'STAR SPREAD',  blurb: 'More stars per throw', step: 1,    max: 3, requires: 'stars' },
   damage: { kind: 'perm', weight: 1.0, label: 'HARD SHELL',  blurb: 'Hit harder',           step: 0.30, max: 6 },
-  pierce: { kind: 'perm', weight: 0.7, label: 'PIERCE',      blurb: 'Blades pass through',  step: 1,    max: 3 },
+  pierce: { kind: 'temp', weight: 0.7, label: 'PIERCE',      blurb: 'Blades pass through',  step: 1,    max: 3 },
   reach:  { kind: 'perm', weight: 0.8, label: 'LONG REACH',  blurb: 'Throw further',        step: 0.25, max: 4 },
   // LOCKED (Elad, 23 Nov: never upgrade the player's speed): never rolled, kept so the stat plumbing stays.
   swift:  { kind: 'perm', weight: 0.8, label: 'SWIFT',       blurb: 'Move faster',          step: 0.14, max: 0, locked: true },
   // ADDED FOR THIS DESIGN: Elad's own example of a permanent upgrade was
   // health, and there was no way to get any.
   hearts: { kind: 'perm', weight: 1.0, label: 'THICK HIDE',  blurb: 'More health',          step: 0.25, max: 5 },
-  shield: { kind: 'perm', weight: 0.9, label: 'SHELL SHIELD', blurb: 'Shield that cuts hits, on and off', step: 1, max: 4 },
+  shield: { kind: 'temp', weight: 0.9, label: 'SHELL SHIELD', blurb: 'Shield that cuts hits, on and off', step: 1, max: 4 },
   // THE TURTLE ALLIES (core/allies.js). Temporary: they last for the level.
   leo:    { kind: 'temp', weight: 0.9, label: 'LEONARDO',    blurb: 'Dashes in with twin blades', step: 1,   max: 4 },
   mikey:  { kind: 'temp', weight: 0.9, label: 'MICHELANGELO', blurb: 'Nunchucks that stun a lane', step: 1, max: 4 },

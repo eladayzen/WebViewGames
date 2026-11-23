@@ -63,7 +63,7 @@ export const BREEDS = {
   slayer: {
     label: 'Slayer', glb: 'models/rivals/Character_Slayer_01.glb', tex: 'tex/rivals.webp',
     mass: 1, hp: 65, speed: 165, damage: 13, push: 70, radius: 39, reach: 107,
-    height: 1.87, windupS: 0.40, recoverS: 0.52, cost: 1,
+    height: 1.87, windupS: 0.26, recoverS: 0.52, cost: 1,   // quick to start: the swing begins fast
     behavior: 'melee',
   },
   evilgod: {
@@ -84,7 +84,9 @@ export const BREEDS = {
     mass: 3, hp: 117, speed: 145, damage: 17, push: 140, radius: 65, reach: 168,
     height: 3.06, windupS: 0.50, recoverS: 0.62, cost: 2,
     behavior: 'charger',
-    job: { chargeMin: 260, chargeMax: 650, dist: 780, speed: 1150, every: 3.0, windupS: 0.30, stunS: 1.6, hitDamage: 17, push: 340 },
+    job: { chargeMin: 260, chargeMax: 650, dist: 780, speed: 1150, every: 3.0, windupS: 0.30, stunS: 1.6, hitDamage: 17, push: 340,
+      // the quick second strike when you are still close after a charge
+      quickS: 0.12, comboRange: 330, comboDist: 340, comboS: 2.2 },
   },
   elemgolem: {
     label: 'Elemental Golem', glb: 'models/rivals/Character_ElementalGolem_01.glb', tex: 'tex/rivals.webp',

@@ -81,10 +81,10 @@ const state = (f, name) => { f.state = name; f.stateT = 0; };
 export function tellOf(f) {
   const j = f.job, b = f.b;
   if (!j) return null;
-  const t = Math.min(1, f.stateT / (j.windupS || 1));
+  const t = Math.min(1, f.stateT / ((f.state === 'charge' && b?.quick ? j.quickS : j.windupS) || 1));
   switch (f.state) {
     case 'throw':  return { kind: 'orb', t };
-    case 'charge': return { kind: 'line', x: f.x, y: f.y, dx: b.dx, dy: b.dy, len: j.dist, halfW: f.radius, t };
+    case 'charge': return { kind: 'line', x: f.x, y: f.y, dx: b.dx, dy: b.dy, len: b.dist ?? j.dist, halfW: f.radius, t };
     case 'slam':   return { kind: 'ring', x: f.x, y: f.y, r: j.radius, t };
     case 'cast':   return { kind: 'sigil', x: f.x, y: f.y, r: f.radius * 1.5, t };
     default:       return null;
@@ -136,13 +136,23 @@ export function throwerStep(f, c) {
  */
 export function chargerStep(f, c) {
   const j = f.job;
-  const b = f.b || (f.b = { cool: 1.0, dx: 1, dy: 0, left: 0, hit: false });
+  const b = f.b || (f.b = { cool: 1.0, dx: 1, dy: 0, left: 0, hit: false, combo: 0, quick: false, dist: j.dist });
   b.cool = Math.max(0, b.cool - c.dt);
+  b.combo = Math.max(0, (b.combo || 0) - c.dt);
+  if (b.dist === undefined) b.dist = j.dist;
 
   if (f.state === 'walk') {
+    // THE FOLLOW-UP: for a moment after a charge, if you are still CLOSE, it does not wait out the
+    // cooldown or the full warning -- it lunges again, short and fast (quickS wind-up, comboDist).
+    if (b.combo > 0 && c.d <= j.comboRange) {
+      b.dx = c.dx / c.d; b.dy = c.dy / c.d; b.quick = true; b.dist = j.comboDist; b.combo = 0;
+      state(f, 'charge');
+      return;
+    }
     if (b.cool <= 0 && c.d >= j.chargeMin && c.d <= j.chargeMax) {
       b.dx = c.dx / c.d;
       b.dy = c.dy / c.d;
+      b.quick = false; b.dist = j.dist;
       state(f, 'charge');
       return;
     }
@@ -150,8 +160,8 @@ export function chargerStep(f, c) {
   } else if (f.state === 'charge') {
     // THE LINE IS LOCKED THE MOMENT THE WARNING STARTS and does not follow the player.
     f.facing = Math.atan2(b.dy, b.dx);
-    if (f.stateT >= j.windupS) {
-      b.left = j.dist;
+    if (f.stateT >= (b.quick ? j.quickS : j.windupS)) {
+      b.left = b.dist;
       b.hit = false;
       state(f, 'dash');
     }
@@ -167,8 +177,12 @@ export function chargerStep(f, c) {
       c.hurt(j.hitDamage, j.push, f);
       if (c.onStrike) c.onStrike(f);
     }
-    if (hit === 'obstacle') { b.cool = j.every; state(f, 'stunned'); }      // crashed
-    else if (hit === 'wall' || b.left <= 0.5) { b.cool = j.every; state(f, 'recover'); }
+    if (hit === 'obstacle') { b.cool = j.every; b.combo = 0; state(f, 'stunned'); }      // crashed
+    else if (hit === 'wall' || b.left <= 0.5) {
+      b.cool = j.every;
+      b.combo = b.quick ? 0 : j.comboS;                 // a full charge opens the follow-up window; a follow-up does not
+      state(f, 'recover');
+    }
   } else if (f.state === 'stunned') {
     if (f.stateT >= j.stunS) state(f, 'walk');
   } else {

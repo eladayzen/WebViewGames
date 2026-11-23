@@ -67,15 +67,35 @@ export function createHud() {
   }
 
   /** The ability strip: one slot per ability held. `build` is core/abilities.js's. */
-  function setAbilities(build) {
+  function setAbilities(build, bank = {}) {
     if (!strip) return;
     const held = Object.keys(ABILITIES).filter((k) => build[k] > 0);
-    const key = held.map((k) => `${k}${build[k]}`).join(',');
+    const key = held.map((k) => `${k}${build[k]}/${bank[k] || 0}`).join(',');
     if (key === stripKey) return;
     stripKey = key;
-    strip.innerHTML = held.map((k) =>
-      `<div class="slot ${ABILITIES[k].kind}" data-key="${k}" title="${ABILITIES[k].label}">${iconFor(k)}` +
-      (build[k] > 1 ? `<b>${build[k]}</b>` : '') + '</div>').join('');
+    // A permanent ability is LOOSE (dashed, wobbling) until the level is cleared, then BANKED (solid,
+    // padlocked). Temporary ones are neither: they keep the orange border.
+    strip.innerHTML = held.map((k) => {
+      const perm = ABILITIES[k].kind === 'perm';
+      const state = !perm ? '' : build[k] > (bank[k] || 0) ? ' loose' : ' banked';
+      return `<div class="slot ${ABILITIES[k].kind}${state}" data-key="${k}" title="${ABILITIES[k].label}">${iconFor(k)}` +
+        (build[k] > 1 ? `<b>${build[k]}</b>` : '') + '</div>';
+    }).join('');
+  }
+
+  /** Confetti over the whole screen, for a cleared level. DOM bits with CSS animation; removed after. */
+  function celebrate() {
+    const host = document.getElementById('confetti');
+    if (!host) return;
+    const colours = ['#ff7a1a', '#ffd84a', '#5fb24a', '#d6242c', '#4aa8ff', '#fff8e1'];
+    let html = '';
+    for (let i = 0; i < 70; i++) {
+      const x = Math.random() * 100, d = Math.random() * 0.6, dur = 1.8 + Math.random() * 1.6, r = Math.random() * 720 - 360;
+      html += `<i style="left:${x}%;background:${colours[i % colours.length]};animation-delay:${d.toFixed(2)}s;animation-duration:${dur.toFixed(2)}s;--r:${r.toFixed(0)}deg"></i>`;
+    }
+    host.innerHTML = html;
+    host.classList.remove('go'); void host.offsetWidth; host.classList.add('go');
+    setTimeout(() => { host.innerHTML = ''; host.classList.remove('go'); }, 4200);
   }
 
   /**
@@ -94,5 +114,5 @@ export function createHud() {
     }
   }
 
-  return { setRooms, setLeft, say, hideBanner, flash, setAbilities, setAllyTimers };
+  return { setRooms, setLeft, say, hideBanner, flash, celebrate, setAbilities, setAllyTimers };
 }

@@ -31,6 +31,8 @@ export const RUN = {
   bannerS: 1.2,
   // The room is clear and the player gets a beat to take it in before the box.
   clearHoldS: 1.1,
+  // The LAST room of a level holds longer: the celebration plays on the field before the screen closes.
+  levelClearHoldS: 3.8,
   // Clearing a room heals this share of max health. Not in Elad's design --
   // a call of mine, because with permanent hearts and no healing at all a
   // five-room level would be decided entirely by the first bad room.
@@ -94,6 +96,9 @@ function finishRoll(run, w, rng, ev) {
  * Advance the run by one frame. Returns the events that happened, in order:
  * `fight`, `cleared`, `rollStart`, `rollDone`, `roomStart`, `won`.
  */
+/** How long the 'cleared' phase lasts: a level's last room is held longer for the celebration. */
+export const holdOf = (run) => (run.room && run.room.isLast ? RUN.levelClearHoldS : RUN.clearHoldS);
+
 export function stepRun(run, w, dt, rng = Math.random) {
   const ev = [];
   run.t += dt;
@@ -109,7 +114,7 @@ export function stepRun(run, w, dt, rng = Math.random) {
       ev.push({ type: 'cleared', room: run.roomIdx, last: run.room.isLast });
     }
   } else if (run.phase === 'cleared') {
-    if (run.t >= RUN.clearHoldS) {
+    if (run.t >= holdOf(run)) {
       if (run.room.isLast) {
         run.phase = 'won';
         run.t = 0;

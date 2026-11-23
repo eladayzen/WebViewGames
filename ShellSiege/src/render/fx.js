@@ -19,7 +19,7 @@ import * as THREE from 'three';
 import { u } from './units.js';
 import { glowTexture } from './stage.js';
 import { WEAPON } from '../core/weapon.js';
-import { makeSai, SAI_LEN } from './weapons3d.js';
+import { makeSai, makeStar, SAI_LEN } from './weapons3d.js';
 
 const MAX_SHOTS = 160;
 
@@ -125,16 +125,16 @@ export function createFx(scene, tex) {
     shots.push({ g, star });
   }
 
-  // NINJA STARS: a flat spinning shuriken (the star art), thrown and never caught.
-  const starArt = WEAPON.name === 'sai' ? tex.shuriken : art;
-  starArt.colorSpace = THREE.SRGBColorSpace;
-  const ninjaMat = new THREE.MeshBasicMaterial({ map: starArt, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });
-  const ninjaGeo = new THREE.PlaneGeometry(1, 1);
+  // NINJA STARS: a real 3D shuriken (steel points, red hub, ink outline), lying flat and spinning.
+  // Radius about 1.5x the old flat picture, so it reads at a glance.
   const ninjas = [];
   for (let i = 0; i < 48; i++) {
-    const m = new THREE.Mesh(ninjaGeo, ninjaMat);
-    m.rotation.x = -Math.PI / 2; m.scale.setScalar(u(34)); m.visible = false;
-    scene.add(m); ninjas.push(m);
+    const g = new THREE.Group();
+    const star = makeStar();
+    star.rotation.x = -Math.PI / 2;
+    g.add(star);
+    g.scale.setScalar(u(26)); g.visible = false;
+    scene.add(g); ninjas.push(g);
   }
 
   function syncShots(bullets, timeS, muzzleY) {
@@ -144,7 +144,7 @@ export function createFx(scene, tex) {
         if (ni < ninjas.length) {
           const m = ninjas[ni++]; m.visible = true;
           m.position.set(u(b.x), Math.max(0.4, muzzleY - 0.12), u(b.y));
-          m.rotation.z = timeS * 30;
+          m.rotation.y = timeS * 22;
         }
         continue;
       }

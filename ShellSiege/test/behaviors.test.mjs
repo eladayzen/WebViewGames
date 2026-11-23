@@ -44,7 +44,7 @@ test('EVERY BREED NAMES A BEHAVIOUR THAT EXISTS, with the numbers that behaviour
   const need = {
     melee: [],
     thrower: ['keepMin', 'keepMax', 'throwEvery', 'windupS', 'shotSpeed', 'shotRadius', 'shotDamage', 'shotLifeS'],
-    charger: ['chargeMin', 'chargeMax', 'dist', 'speed', 'every', 'windupS', 'stunS', 'hitDamage'],
+    charger: ['chargeMin', 'chargeMax', 'dist', 'speed', 'every', 'windupS', 'stunS', 'hitDamage', 'quickS', 'comboRange', 'comboDist', 'comboS'],
     slammer: ['trigger', 'radius', 'every', 'windupS', 'damage'],
     summoner: ['first', 'every', 'max', 'count', 'breed', 'windupS'],
   };
@@ -204,6 +204,22 @@ test('A CHARGER RESTS BETWEEN CHARGES', () => {
   let charges = 0, prev = f.state;
   run(w, 6, () => { if (f.state === 'charge' && prev !== 'charge') charges++; prev = f.state; });
   assert.ok(charges <= Math.ceil(6 / BREEDS.mechgolem.job.every) + 1, `${charges} charges in 6 seconds`);
+});
+
+test('A CHARGER LUNGES AGAIN, FAST, WHEN YOU ARE STILL CLOSE AFTER A CHARGE', () => {
+  const { w, f } = setup('mechgolem', 520);
+  const j = BREEDS.mechgolem.job;
+  let first = null, second = null, prev = f.state;
+  run(w, 6, () => {
+    if (f.state === 'charge' && prev !== 'charge') { if (!first) first = { t: w.timeS }; else if (!second) second = { t: w.timeS }; }
+    if (f.state === 'charge') (second || first).len = f.stateT;
+    prev = f.state;
+    // stay right next to it once it has dashed: the follow-up needs you close
+    if (first && !second) { w.player.x = f.x + 200; w.player.y = f.y; }
+  });
+  assert.ok(first && second, 'no follow-up lunge');
+  assert.ok(second.t - first.t < j.every, `the second attack came after ${(second.t - first.t).toFixed(2)}s, not quicker than the cooldown`);
+  assert.ok(second.len <= j.quickS + 0.05, `the follow-up warning lasted ${second.len}s`);
 });
 
 // ---------------------------------------------------------------- Elemental Golem

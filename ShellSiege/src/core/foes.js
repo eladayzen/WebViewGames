@@ -372,7 +372,7 @@ export function updateFoeShots(w, dt, onHit) {
     s.y += s.vy * dt;
     s.lifeS -= dt;
     s.age = (s.age || 0) + dt;
-    if (s.lifeS <= 0 || blocksShot(s.x, s.y, s.r, w.obstacles)) { s.alive = false; continue; }
+    if (s.lifeS <= 0 || blocksShot(s.x, s.y, s.r, w.obstacles) || s.x < 0 || s.y < 0 || s.x > ARENA.width || s.y > ARENA.height) { s.alive = false; continue; }   // walls stop every projectile
     if (!w.dead && Math.hypot(s.x - p.x, s.y - p.y) <= s.r + w.playerRadius) {
       hurtPlayer(w, s.damage, s.push, s.x - s.vx, s.y - s.vy);
       s.alive = false;
