@@ -61,6 +61,13 @@ export class Obstacles {
       return new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1.55, 1.55, 1.55), toneMapped: false, alphaTest: 0.5, side: THREE.DoubleSide, visible: false });
     });
     this.footSpriteGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
+    // DOJO dummies (Elad 2026-11-22): flat cardboard Foot Soldier cut-outs (Kolbo, one sheet of
+    // three). They ARE Foot Soldiers to the game — kicked, starred, counted the same — only
+    // the card changes, and the glow, ring and 3D body are hidden.
+    this.dummyMats = (tex.dummies || []).map((t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      return new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1.25, 1.25, 1.25), toneMapped: false, alphaTest: 0.5, side: THREE.DoubleSide });
+    });
     this.footRingMat = new THREE.MeshBasicMaterial({ color: 0xff4ad2, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
     this.footAuraMat = new THREE.SpriteMaterial({ map: this.glowTex, color: 0xb03cff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.55 });
     const pipeTex = tex.pipe.clone();
@@ -250,7 +257,7 @@ export class Obstacles {
         const disc = new THREE.Mesh(new THREE.CircleGeometry(1.0, 24), new THREE.MeshBasicMaterial({ color: 0xff4ad2, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending }));
         disc.rotation.x = -Math.PI / 2; disc.position.y = 0.04;
         g.add(disc);
-        g.userData = { body, ring, aura, card };
+        g.userData = { body, ring, aura, card, disc, cardMat: card.material, cardScale: card.scale.clone() };
         return g;
       },
       // Shell shield (Elad 2026-11-18: "not understood what it is and that it's a good
@@ -374,7 +381,16 @@ export class Obstacles {
       o.mesh.scale.setScalar(1);
       o.mesh.traverse((c) => { const u = c.material?.userData; if (u && u.op0 !== undefined) { c.material.opacity = u.op0; c.material.transparent = u.tr0; } });
     }
-    if (type === 'foot') { o.mesh.children.forEach((c) => (c.visible = true)); o.mesh.userData.body.scale.setScalar(FOOT_SCALE); }  // pooled: undo the launch hiding + dissolve
+    if (type === 'foot') {
+      o.mesh.children.forEach((c) => (c.visible = true)); o.mesh.userData.body.scale.setScalar(FOOT_SCALE);  // pooled: undo the launch hiding + dissolve
+      const u = o.mesh.userData, dm = o.dummy && this.dummyMats.length;
+      for (const c of u.body.children) if (c !== u.card) c.visible = !dm;
+      u.aura.visible = u.ring.visible = u.disc.visible = !dm;
+      if (dm) {
+        const m = this.dummyMats[(o.kind ?? Math.floor(Math.random() * this.dummyMats.length)) % this.dummyMats.length], img = m.map.image;
+        u.card.material = m; u.card.scale.set(1.08 * img.width / img.height, 1.08, 1);
+      } else { u.card.material = u.cardMat; u.card.scale.copy(u.cardScale); }
+    }
     this._placeStatic(o);
     this.list.push(o);
     return o;
@@ -451,14 +467,25 @@ export class Obstacles {
     }
     // PRACTICE: pizza only — nothing to hit, it teaches the lean
     if (this.deckMode === 'practice') { this[r < 0.55 ? '_p_pizzaLine' : '_p_pizzaArc'](s, diff, sl); return; }
+    // TRAINING 1: no enemies — pizza to steer for, the odd saw / crate to steer round
+    if (this.deckMode === 'training') { const first = this.list.length; this[r < 0.45 ? '_p_pizzaLine' : r < 0.8 ? '_p_pizzaArc' : '_p_crates'](s, 0, sl); if (this.reach) this._fitReach(first, s); return; }
+    // TRAINING 2, the dojo: cardboard dummies to knock down, stars often, pizza between
+    // (only cardboard and pizza here — Elad 2026-11-23: the stars come in the city)
+    if (this.deckMode === 'dojo') {
+      const first = this.list.length;
+      this[r < 0.5 ? '_p_dummy' : r < 0.78 ? '_p_dummyLine' : '_p_pizzaLine'](s, diff, sl);
+      if (this.reach) this._fitReach(first, s);
+      return;
+    }
     // SAI STORM: roughly every 520 m from 180 m on (the first one early, so it's met)
-    if (s - this.lastSaiS > 520 && s > 180 && s - this.lastShieldS > 60 && Math.random() < 0.55) {
+    const can = (k) => !this.allowPick || this.allowPick.includes(k);   // the level's powers
+    if (can('sai') && s - this.lastSaiS > 520 && s > 180 && s - this.lastShieldS > 60 && Math.random() < 0.55) {
       this.lastSaiS = s;
       this.add('sai', s, sl + (Math.random() - 0.5) * 1.2);
       return;
     }
     // shields: roughly every 450 m, never in the first 300
-    if (s - this.lastShieldS > 450 && s > 300 && Math.random() < 0.5) {
+    if (can('shield') && s - this.lastShieldS > 450 && s > 300 && Math.random() < 0.5) {
       this.lastShieldS = s;
       this.add('shield', s, sl + (Math.random() - 0.5) * 1.2);
       return;
@@ -480,8 +507,9 @@ export class Obstacles {
       ['fan', open ? 0 : diff > 0.35 ? 0.2 + diff * 0.5 : 0],
 
       ['valves', 0],   // off for now (Elad 2026-11-16: "just don't use it, more poles instead")
-      ['foot', 2.6 + diff * 0.6],
-      ['footLine', diff > 0.05 ? 1.0 : 0],
+      // GET HOME (level 1): the big obstacles and pizza, no Foot yet
+      ['foot', this.deckMode === 'nofoes' ? 0 : 2.6 + diff * 0.6],
+      ['footLine', this.deckMode !== 'nofoes' && diff > 0.05 ? 1.0 : 0],
       // the street set — OPEN TOP only
       ['cones', open ? 0.8 : 0],
       ['barricade', open ? 0.55 + diff * 0.3 : 0],
@@ -721,6 +749,22 @@ export class Obstacles {
     }
   }
 
+  // dojo: cardboard Foot Soldiers on stakes — they stand still, and never hurt
+  _p_dummy(s, diff, sl) {
+    const n = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < n; i++) {
+      const th = sl + (Math.random() - 0.5) * 1.8;
+      this.add('foot', s + i * 6 + Math.random() * 2, th, { base: th, strafe: 0, phase: 0, yaw: 0, dummy: true, kind: Math.floor(Math.random() * 3) });
+    }
+  }
+  _p_dummyLine(s, diff, sl) {
+    const side = Math.random() < 0.5 ? -1 : 1;
+    for (let i = 0; i < 4; i++) {
+      const th = sl + side * (-0.6 + i * 0.4);
+      this.add('foot', s + i * 3.5, th, { base: th, strafe: 0, phase: 0, yaw: 0, dummy: true, kind: i % 3 });
+    }
+  }
+
   _p_valves(s, diff, sl) {
     for (let i = 0; i < 3; i++) this.add('valve', s + i * 5, sl + (Math.random() - 0.5) * 2.4);
   }
@@ -765,7 +809,7 @@ export class Obstacles {
         } else {
           if (o.strafe) { o.theta = o.base + Math.sin(time * 1.6 + o.phase) * o.strafe; this._placeStatic(o); }
           // ready stance bob + target ring pulse
-          o.mesh.userData.body.position.y = Math.abs(Math.sin(time * 5 + o.phase)) * 0.12;
+          o.mesh.userData.body.position.y = o.dummy ? 0 : Math.abs(Math.sin(time * 5 + o.phase)) * 0.12;
           if (this.camera && o.mesh.userData.card) {
             // turn the card about the wall normal (group Y) toward the camera
             const c = o.mesh.worldToLocal(_camL.copy(this.camera.position));

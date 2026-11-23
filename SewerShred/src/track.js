@@ -378,6 +378,17 @@ export const WORLDS = [
     { key: 'concrete_warm', name: 'OLD MAINLINE', around: 8, tint: 0xf4f0ea, fog: 0x544f48, hemi: [0xfaf4ea, 0x777068] },
     { key: 'concrete_grey', name: 'SLIME WORKS',  around: 8, tint: 0xecf6ec, fog: 0x4e6058, hemi: [0xf4fbf2, 0x74847a] },
   ] },
+  // TRAINING 2 (Elad 2026-11-22): "a wooden self-made training course, like the turtles built".
+  // Same pipe, lined with plywood planks; no river, no water outlets. Only levels pick it.
+  // TRAINING (Elad 2026-11-22 → 11-23): "a wooden self-made training course, like the
+  // turtles built" — picked look: wood where you ride, the sewer's grey concrete above
+  // the 180 seams, no river. "Break the long planks … mix some garbage-playground
+  // textures — a scavenger-like, amateur-built DIY training area": the floor is cut
+  // into staggered panels, and some panels are scrap (patches: a 2×2 atlas of tin /
+  // painted door / taped cardboard / red plate). Only levels pick this world.
+  { key: 'dojo', name: 'THE DOJO COURSE', river: 0, falls: 0, rails: 0, trains: 0, areaLen: 300, perVisit: 3, areas: [
+    { key: 'wood_planks', upper: 'concrete_grey', upperAround: 8, patches: 'scrap_atlas', name: 'DOJO COURSE', around: 2, tint: 0xfff8ee, fog: 0x4a5860, hemi: [0xfff6ea, 0x7a7466] },
+  ] },
   // (the subway / trains world is saved for a later "underground mines" level — Elad
   //  2026-11-17; trains.js is kept, no world turns it on)
 ];
@@ -455,12 +466,58 @@ const edgeGlsl = (around) => `
 // OPEN TOP (Elad 2026-11-22, a variation): the upper half of the pipe is cut
 // away at the 180 seams and a city matte painting shows over the rims (city.js).
 export const OPEN_TOP = { value: 0 };
-function antiRepeat(mat, stage1 = null, around = 8) {
-  const key = (stage1 ? 'antiRepeat-' + stage1.join('-') : 'antiRepeat') + '-a' + around;
+const PANEL = 4;   // DIY floor cells per wall tile (around 2: ~4.7 m square)
+function antiRepeat(mat, stage1 = null, around = 8, upper = null, patches = null) {
+  const key = (stage1 ? 'antiRepeat-' + stage1.join('-') : 'antiRepeat') + '-a' + around + (upper ? '-up' + upper.around : '') + (patches ? '-patch' : '');
   mat.customProgramCacheKey = () => key;   // same closure source, several shaders
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uOpenTop = OPEN_TOP;
     sh.fragmentShader = 'uniform float uOpenTop;\n' + sh.fragmentShader;
+    if (patches) {
+      // DIY floor: PANEL × PANEL cells per tile, columns staggered along the pipe.
+      // A wood cell re-samples the planks at its own offset (so they end at a joint,
+      // never run for ever); ~1 in 4 cells is a scrap sheet from the atlas instead.
+      // Every cell gets a dark joint line at its ends; scrap sheets all round.
+      sh.uniforms.uPatch = { value: patches.map };
+      sh.fragmentShader = 'uniform sampler2D uPatch;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+        #ifdef USE_MAP
+        if (abs(mod(vMapUv.x * ${(TAU / around).toFixed(6)} + PI, PI2) - PI) < 1.5707963) {
+          vec2 cuv = vMapUv * ${PANEL.toFixed(1)};
+          float colI = floor(cuv.x);
+          cuv.y += fract(sin(colI * 91.7) * 4375.85);            // stagger the joints
+          vec2 cell = floor(cuv), f = fract(cuv);
+          float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+          float h2 = fract(h * 7.131 + 0.37);
+          vec2 dx = dFdx(vMapUv), dy = dFdy(vMapUv);
+          vec3 c = diffuse * textureGrad(map, vMapUv + vec2(0.0, h2 * 3.0), dx, dy).rgb;
+          float jointW = 0.014;
+          float edge = min(f.y, 1.0 - f.y);
+          if (h < ${patches.chance.toFixed(3)}) {
+            float q = floor(h2 * 4.0);
+            vec2 auv = (vec2(mod(q, 2.0), floor(q * 0.5)) + 0.03 + f * 0.94) * 0.5;
+            c = textureGrad(uPatch, auv, dx * ${(PANEL * 0.47).toFixed(3)}, dy * ${(PANEL * 0.47).toFixed(3)}).rgb;
+            edge = min(edge, min(f.x, 1.0 - f.x));
+            jointW = 0.02;
+          }
+          c *= mix(0.25, 1.0, smoothstep(jointW * 0.5, jointW, edge));   // the joint / sheet edge
+          c *= mix(0.82, 1.0, smoothstep(jointW, jointW * 3.0, edge));   // a soft shade beside it
+          diffuseColor.rgb = c;
+        }
+        #endif`);
+    }
+    if (upper) {
+      // above the 180 seams: the other wall art, square tiles at its own count around
+      sh.uniforms.uUpper = { value: upper.map };
+      sh.fragmentShader = 'uniform sampler2D uUpper;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+        #ifdef USE_MAP
+        {
+          float thU = mod(vMapUv.x * ${(TAU / around).toFixed(6)} + PI, PI2) - PI;
+          vec4 upTex = texture2D(uUpper, vMapUv * ${(upper.around / around).toFixed(6)});
+          float isUp = step(1.5707963, abs(thU));
+          diffuseColor.rgb = mix(diffuseColor.rgb, ${upper.tint} * upTex.rgb, isUp);
+        }
+        #endif`);
+    }
     // Y-junction cut: walls inside the other arm are discarded (clip > 0)
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float clip;\nvarying float vClip;')
@@ -513,7 +570,20 @@ export class Track {
     this.zoneMats = ZONES.map((z) => {
       const m = tex[z.key];
       m.wrapS = m.wrapT = THREE.RepeatWrapping; m.colorSpace = THREE.SRGBColorSpace; m.anisotropy = 4;
-      return antiRepeat(new THREE.MeshLambertMaterial({ map: m, color: z.tint, side: THREE.BackSide }), z.stage1, z.around);
+      let up = null;
+      if (z.upper) {
+        const um = tex[z.upper];
+        um.wrapS = um.wrapT = THREE.RepeatWrapping; um.colorSpace = THREE.SRGBColorSpace; um.anisotropy = 4;
+        // the sewer half replaces the tinted wood outright: its own untinted grey
+        up = { map: um, around: z.upperAround || 8, tint: 'vec3(1.0)' };
+      }
+      let pa = null;
+      if (z.patches) {
+        const pm = tex[z.patches];
+        pm.colorSpace = THREE.SRGBColorSpace; pm.anisotropy = 4;
+        pa = { map: pm, chance: 0.26 };
+      }
+      return antiRepeat(new THREE.MeshLambertMaterial({ map: m, color: z.tint, side: THREE.BackSide }), z.stage1, z.around, up, pa);
     });
     this.wallMat = this.zoneMats[0];
     // the river: same refracting treatment as the pools — plates swim under a

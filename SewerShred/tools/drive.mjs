@@ -191,16 +191,34 @@ if (script === 'default') {
   const st = () => page.evaluate(() => { const g = window.__game; return { state: g.G.state, level: g.G.level, open: g.G.openTop, s: Math.round(g.player.s), pickups: g.obstacles.list.filter((o) => o.type === 'shield' || o.type === 'sai').map((o) => o.type + '@' + Math.round(o.s)).join(' '), saved: localStorage.getItem('sewerShred.progress') }; });
   const space = async () => { await page.keyboard.press('Space'); await wait(400); };
   await page.evaluate(() => localStorage.removeItem('sewerShred.progress'));
-  await wait(1200); await snap('L0-card'); console.log('card0', JSON.stringify(await st()));
-  await space(); await wait(4200); await snap('L0-play'); console.log('play0', JSON.stringify(await st()));
-  await page.evaluate(() => { window.__game.G.pizza = 10; }); await wait(1500); await snap('L0-clear'); console.log('clear0', JSON.stringify(await st()));
-  await space(); await wait(900); await snap('L1-card'); console.log('card1', JSON.stringify(await st()));
-  await space(); await wait(9000); await snap('L1-play'); console.log('play1', JSON.stringify(await st()));
-  await page.evaluate(() => { window.__game.player.s = 1490; }); await wait(2000); await snap('L1-clear'); console.log('clear1', JSON.stringify(await st()));
-  await space(); await wait(900); await snap('L2-card'); console.log('card2', JSON.stringify(await st()));
-  await space(); await wait(9000); await snap('L2-play'); console.log('play2', JSON.stringify(await st()));
-  await page.evaluate(() => { window.__game.G.airPizza = 15; }); await wait(1500); await snap('L2-clear'); console.log('clear2', JSON.stringify(await st()));
-  await wait(6500); console.log('after-auto-next', JSON.stringify(await st())); await snap('back-to-L1');
+  await wait(1200);
+  // force each level's goal so the loop runs in seconds
+  const force = {
+    dist: (n) => `window.__game.player.s = ${n} - 10`,
+    ko: (n) => `window.__game.G.kicks = ${n}`,
+    air: (n) => `window.__game.G.airPizza = ${n}`,
+    pizza: (n) => `window.__game.G.pizza = ${n}`,
+  };
+  const levels = await page.evaluate(() => window.__game.LEVELS.map((L) => ({ key: L.key, goal: L.goal })));
+  for (let i = 0; i < levels.length; i++) {
+    const L = levels[i];
+    await snap(`L${i}-card`); console.log('card', i, JSON.stringify(await st()));
+    await space(); await wait(9000); await snap(`L${i}-play`);
+    console.log('play', i, L.key, JSON.stringify(await st()), 'world', await page.evaluate(() => window.__game.worldName()));
+    await page.evaluate(force[L.goal.type](L.goal.n)); await wait(2200); await snap(`L${i}-clear`); console.log('clear', i, JSON.stringify(await st()));
+    await space(); await wait(900);
+  }
+  console.log('after-last', JSON.stringify(await st()));
+} else if (script === 'dojo') {
+  // the dojo level: ride, sway across the wall, count dummies down, see the stars
+  await wait(4500);
+  await page.evaluate(() => { const { player, obstacles, slimeAngle } = window.__game; for (const [d, off, k] of [[16, -0.5, 0], [19, 0.1, 1], [22, 0.6, 2]]) obstacles.add('foot', player.s + d, slimeAngle(player.s + d) + off, { base: 0, phase: 0, dummy: true, kind: k }); });
+  await wait(250); await snap('dummies-close'); await wait(500); await snap('dummies-hit');
+  for (let k = 0; k < 8; k++) {
+    await page.keyboard.down(k % 2 ? 'ArrowLeft' : 'ArrowRight'); await wait(1100); await page.keyboard.up(k % 2 ? 'ArrowLeft' : 'ArrowRight');
+    await wait(900); await snap('dojo' + k);
+    console.log(JSON.stringify(await page.evaluate(() => { const g = window.__game; return { s: Math.round(g.player.s), kicks: g.G.kicks, lives: g.G.lives, stars: g.daggers.active, dummies: g.obstacles.list.filter((o) => o.dummy && !o.done).length, world: g.worldName() }; })));
+  }
 } else if (script === 'firstpick') {
   await wait(9000);
   console.log('first pickups:', await page.evaluate(() => window.__game.obstacles.list.filter((o) => o.type === 'shield' || o.type === 'sai').map((o) => `${o.type}@${Math.round(o.s)}`).join(' ') || 'none'), 'level', await page.evaluate(() => window.__game.G.level));

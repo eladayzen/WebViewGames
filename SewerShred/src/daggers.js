@@ -26,6 +26,12 @@ export const SAI = {
   hitR: 1.3,          // metres
 };
 
+// Elad 2026-11-22: "ninja stars would be better — they don't need to come back.
+// Save the flying-back daggers as a dormant feature." Stars fly straight, spin flat,
+// and vanish on the hit (or at the end of their life). The boomerang return below
+// is kept intact but OFF; ?boomerang=1 wakes it for any weapon.
+export const RETURNS = typeof location !== 'undefined' && new URLSearchParams(location.search).get('boomerang') === '1';
+
 export class Daggers {
   constructor(scene, glowTex, weapon = 'sai') {
     this.scene = scene;
@@ -38,6 +44,7 @@ export class Daggers {
     const wood = new THREE.MeshLambertMaterial({ color: 0xa8692e, emissive: 0x3a1e08 });
     const tape = new THREE.MeshLambertMaterial({ color: 0xff7a1a, emissive: 0x5a2400 });
     for (let i = 0; i < 6; i++) {
+      if (weapon === 'star') { this.pool.push(this._star(steel, ink, glowMat, scene)); continue; }
       if (weapon === 'nunchuck') { this.pool.push(this._nunchuck(wood, tape, steel, ink, glowMat, scene)); continue; }
       // a sai along local +Y: long centre blade, two curled side prongs, red grip
       const sai = new THREE.Group();
@@ -65,7 +72,31 @@ export class Daggers {
     this.reset();
   }
 
-  // MIKEY's weapon (Elad 2026-11-22): a nunchuck — two taped wooden sticks on a short
+  // MIKEY's weapon (Elad 2026-11-22): a four-point shuriken, flat, spinning about its
+  // own axis — the axis points along the flight, so from behind it reads as a whirling star
+  _star(steel, ink, glowMat, scene) {
+    const sh = new THREE.Shape();
+    const P = 4, rOut = 0.5, rIn = 0.12;
+    for (let k = 0; k < P * 2; k++) {
+      const a = (k / (P * 2)) * Math.PI * 2, r = k % 2 ? rIn : rOut;
+      if (k === 0) sh.moveTo(Math.sin(a) * r, Math.cos(a) * r); else sh.lineTo(Math.sin(a) * r, Math.cos(a) * r);
+    }
+    sh.closePath();
+    const hole = new THREE.Path(); hole.absarc(0, 0, 0.055, 0, Math.PI * 2, true); sh.holes.push(hole);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 1 }).translate(0, 0, -0.025);
+    const star = new THREE.Group();
+    star.add(new THREE.Mesh(geo, steel));
+    const o = new THREE.Mesh(geo, ink); o.scale.set(1.14, 1.14, 1.6); star.add(o);
+    const spin = new THREE.Group(); spin.add(star);
+    const g = new THREE.Group(); g.add(spin);
+    const glow = new THREE.Sprite(glowMat); glow.scale.set(1.6, 1.6, 1); g.add(glow);
+    g.scale.setScalar(1.5);
+    g.visible = false;
+    scene.add(g);
+    return { g, spin, on: false };
+  }
+
+  // (dormant) a nunchuck — two taped wooden sticks on a short
   // chain, splayed in a V and whirling about the hinge as it flies out and back
   _nunchuck(wood, tape, steel, ink, glowMat, scene) {
     const nun = new THREE.Group();
@@ -134,7 +165,8 @@ export class Daggers {
     for (const d of this.pool) {
       if (!d.on) continue;
       d.age += dt;
-      if (this.weapon === 'nunchuck') { d.spin.rotation.z -= dt * 22; d.spin.rotation.x = 0.5; }   // whirling flat, tilted at the camera
+      if (this.weapon === 'star') { d.spin.rotation.z -= dt * 30; d.spin.rotation.x = 0.55; }   // whirling, tipped toward the camera so it reads as a star
+      else if (this.weapon === 'nunchuck') { d.spin.rotation.z -= dt * 22; d.spin.rotation.x = 0.5; }   // whirling flat, tilted at the camera
       else d.spin.rotation.x -= dt * 26;                  // end over end
       const p = d.g.position;
       if (!d.back) {
@@ -144,7 +176,10 @@ export class Daggers {
         const dist = this.v.length(), stepLen = SAI.speed * dt;
         if (dist <= Math.max(stepLen, 0.01)) p.copy(this.tgt); else p.addScaledVector(this.v, stepLen / dist);
         d.g.lookAt(this.tgt);
-        if (this._hits(d, obstacles, onHit) || dist < 0.5 || d.age > SAI.life) { player.handWorld(this.h); this._turn(d); }
+        if (this._hits(d, obstacles, onHit) || dist < 0.5 || d.age > SAI.life) {
+          if (RETURNS) { player.handWorld(this.h); this._turn(d); }
+          else { d.on = false; d.g.visible = false; }      // a star is spent on the hit
+        }
       } else {
         // the return: rebuilt every frame against where his hand is NOW
         player.handWorld(this.h);

@@ -151,7 +151,8 @@ const C_JFOAM = new THREE.Color(0.8, 0.92, 1.0), C_JSPRAY = new THREE.Color(0.45
 // Same rigged model and clips; MIKEY = the texture with the red cloth recoloured orange
 // (tex/mikey_skin.jpg) + nunchucks for the weapon power-up. ?hero=raph brings Raph back.
 const HEROES = {
-  mikey: { skin: '/tex/mikey_skin.jpg', weapon: 'nunchuck', icon: '/tex/nunchuck_icon.png', word: 'NUNCHUCKS!' },
+  // Elad 2026-11-22: ninja stars, not nunchucks — they don't come back (see RETURNS in daggers.js)
+  mikey: { skin: '/tex/mikey_skin.jpg', weapon: 'star', icon: '/tex/star_icon.png', word: 'NINJA STARS!' },
   raph: { skin: null, weapon: 'sai', icon: '/tex/sai_icon.png', word: 'SAI STORM!' },
 };
 const HERO = HEROES[new URLSearchParams(location.search).get('hero')] || HEROES.mikey;
@@ -163,7 +164,7 @@ G.level = 0;
 G.topOverride = null;   // dev: TOP button / ?top=open beat the level's own setting
 function levelGoalHave() {
   const g = LEVELS[G.level].goal;
-  return g.type === 'pizza' ? G.pizza : g.type === 'air' ? G.airPizza : player.s;
+  return g.type === 'pizza' ? G.pizza : g.type === 'air' ? G.airPizza : g.type === 'ko' ? (G.kicks || 0) : player.s;
 }
 /** Start level i; with `card`, its one-step card first (a retry after a wipeout skips it). */
 async function startLevel(i, card = true) {
@@ -181,7 +182,7 @@ async function levelClear() {
   flash('rgba(255,240,160,0.9)', 0.5); G.fovKick = 12;
   if (Math.floor(G.score) > readBest()) writeBest(Math.floor(G.score));
   gb()?.submitScore?.(Math.floor(G.score))?.catch?.(() => {});
-  const nextLv = last ? 1 : G.level + 1;     // after the last: back to the sewers (practice is once)
+  const nextLv = last ? Math.max(0, LEVELS.findIndex((L) => L.key === 'sewers')) : G.level + 1;   // after the last: back to the sewers (the two trainings are once)
   saveProgress(nextLv);
   await new Promise((r) => setTimeout(r, 900));
   await showClear(last);
@@ -196,7 +197,11 @@ function startRun() {
     setOpenTop(G.topOverride ?? L.open);
     obstacles.deckMode = L.deck;
     obstacles.firstPickup = L.unlock || null;
-    G.airPizza = 0;
+    obstacles.allowPick = L.pickups || null;
+    G.airPizza = 0; G.kicks = 0;
+    // the level's world (sewers / dojo); ?world= still overrides for dev
+    const wi = WORLDS.findIndex((w) => w.key === (G.worldOverride || L.world || 'sewers'));
+    setStartWorld(Math.max(0, wi));
   }
   G.state = 'countdown';
   G.countdown = 3.2; G.lastBeep = -1;
@@ -444,8 +449,9 @@ $('dev-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleDev()
 installDevUnlock(document, $('lives'), () => { $('dev-btn').style.display = ''; toggleDev(); });
 $('foe-btn').addEventListener('click', (e) => { e.stopPropagation(); nextFootStyle(); });
 // WORLD (dev): which world the run starts in; restarts the run there
-function setWorld(i, restart = true) {
+function setWorld(i, restart = true, override = true) {
   setStartWorld(i);
+  if (override) G.worldOverride = WORLDS[getStartWorld()].key;
   $('world-btn').textContent = WORLDS[getStartWorld()].name.replace(/^THE /, '');
   if (restart && track) startRun();
 }
@@ -469,9 +475,8 @@ $('top-btn').addEventListener('click', (e) => { e.stopPropagation(); if (track) 
 $('world-btn').addEventListener('click', (e) => { e.stopPropagation(); nextWorld(); });
 {
   const q = new URLSearchParams(location.search).get('world');
-  let i = WORLDS.findIndex((w) => w.key === q);
-  if (i < 0) i = 0;
-  setWorld(i, false);
+  const i = WORLDS.findIndex((w) => w.key === q);
+  setWorld(Math.max(0, i), false, i >= 0);
 }
 // Dev-panel picks are NOT remembered (Elad 2026-11-18): every load starts on the
 // shipping config, same as the app; the panel is for trying things this session only.
@@ -1009,7 +1014,7 @@ function frame(now) {
     if (o.type !== 'foot' || !o.flying || !(o.dissolve > 0) || o.done) continue;
     const wp = o.mesh.localToWorld(tmpE.set(0, 1.3 * (1 - o.dissolve * 0.6), 0));
     const k = 1 - o.dissolve;
-    particles.burst(wp, tmpD.copy(o.vel).normalize().multiplyScalar(0.6), 6, _foeCol.setRGB(...FOOT_STYLES[G.footStyle].suit).multiplyScalar(1.5), { speed: 6, spread: 3.4, size: 0.32 + k * 0.3, life: 0.55, drag: 2.2, jitter: 0.9 * k + 0.3 });
+    particles.burst(wp, tmpD.copy(o.vel).normalize().multiplyScalar(0.6), 6, o.dummy ? _foeCol.setRGB(0.85, 0.6, 0.35) : _foeCol.setRGB(...FOOT_STYLES[G.footStyle].suit).multiplyScalar(1.5), { speed: 6, spread: 3.4, size: 0.32 + k * 0.3, life: 0.55, drag: 2.2, jitter: 0.9 * k + 0.3 });
     if (Math.random() < 0.6) particles.burst(wp, tmpD, 2, C_WHITE, { speed: 5, spread: 3.6, size: 0.22, life: 0.4, drag: 2.5, jitter: 0.6 });
   }
   for (const j of junctions.update(simDt, player.s)) {
@@ -1114,12 +1119,13 @@ async function loadFootGeo(url) {
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 (async function boot() {
-  const names = ['wall', 'slime', 'graffiti', 'crate', 'pipe', 'water', 'sewage_toon', 'concrete_grey', 'concrete_warm'];
+  const names = ['wall', 'slime', 'graffiti', 'crate', 'pipe', 'water', 'sewage_toon', 'concrete_grey', 'concrete_warm', 'wood_planks', 'scrap_atlas'];
   const loaded = await Promise.all(names.map((n) => loadTex(`/tex/${n}.jpg`)));
   names.forEach((n, i) => (tex[n.replace('wall_', '')] = loaded[i]));
   tex.sewage = tex.sewage_toon;                 // look test: flat cartoon water (Kolbo, ref '55')
   tex.valve = await loadTex('/tex/valve.png');
   [tex.shieldIcon, tex.saiIcon] = await Promise.all([loadTex('/tex/shield_icon.png'), loadTex(HERO.icon)]);
+  tex.dummies = await Promise.all(['a', 'b', 'c'].map((k) => loadTex(`/tex/dummy_${k}.png`)));
   [tex.footA, tex.footB] = await Promise.all([loadTex('/tex/foot_sprite_a.png'), loadTex('/tex/foot_sprite_b.png')]);  // look test: illustrated valve hatch
   tex.footGeo = await loadFootGeo('/models/foot.bin');
   tex.props = await loadTex('/tex/street_props.png');

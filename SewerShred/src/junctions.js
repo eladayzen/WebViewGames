@@ -16,6 +16,7 @@ const AHEAD = 150;         // spawn distance in front of the rider
 const GAP = [140, 260];    // metres between junctions
 const FIRST = 120;
 const G = 9.8;
+const RIM_HALF = (MOUTH_R + 0.06 + 0.13) / R;   // angular half-width of the mouth + rim
 
 export class Junctions {
   constructor(scene, tex) {
@@ -103,9 +104,12 @@ export class Junctions {
   }
 
   _place(it, s) {
-    // high on either wall: 95°–125° from the floor, so it pours across the wall
+    // ALWAYS wholly above the ride (Elad 2026-11-23: "I think I'm going to bump into it
+    // ... it should just be out of my way all of the time"). The ride stops at the 180
+    // seams (θ = ±90°); the mouth + rim reach RIM_HALF either side of θ, so the centre
+    // sits at 109°–129° and its lowest lip clears the seam by ≥ 6°.
     const side = Math.random() < 0.5 ? -1 : 1;
-    const theta = side * (1.45 + Math.random() * 0.45);
+    const theta = side * (Math.PI / 2 + RIM_HALF + 0.1 + Math.random() * 0.35);
     const f = frameAt(s);
     pointAt(s, theta, R - 0.02, it.group.position, f);
     wallQuat(f, theta, it.group.quaternion);

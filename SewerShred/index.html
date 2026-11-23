@@ -48,17 +48,15 @@
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
-  <!-- GoBalance SDK: native-bridge Back button. Returns to the SDK games list. -->
-  <button id="gb-back"
-    onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"
-    style="position:fixed;top:12px;left:12px;z-index:9999;padding:8px 16px;border:none;
-           border-radius:999px;background:rgba(20,20,40,0.72);color:#eafcff;
-           font:600 15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;cursor:pointer;
-           -webkit-tap-highlight-color:transparent;">&#8249; Back</button>
 
   <div id="corner-btns">
     <button id="pause-btn" class="round-btn" aria-label="Pause">
       <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+    </button>
+    <!-- GoBalance SDK back, as an X right of pause (Elad 2026-11-22). Same id + onclick: __gbBack asks first mid-run. -->
+    <button id="gb-back" class="round-btn" aria-label="Exit"
+      onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()">
+      <svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke-width="3" stroke-linecap="round"/></svg>
     </button>
     <button id="dev-btn" class="round-btn" aria-label="Dev options" style="display:none"><svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm8.4 2l-1.9-.4a6.9 6.9 0 0 0-.7-1.6l1.1-1.6-1.6-1.6-1.6 1.1a6.9 6.9 0 0 0-1.6-.7l-.4-1.9h-2.3l-.4 1.9a6.9 6.9 0 0 0-1.6.7L7.8 5.3 6.2 6.9l1.1 1.6a6.9 6.9 0 0 0-.7 1.6l-1.9.4v2.3l1.9.4c.2.6.4 1.1.7 1.6l-1.1 1.6 1.6 1.6 1.6-1.1c.5.3 1 .5 1.6.7l.4 1.9h2.3l.4-1.9c.6-.2 1.1-.4 1.6-.7l1.6 1.1 1.6-1.6-1.1-1.6c.3-.5.5-1 .7-1.6l1.9-.4z"/></svg></button>
     <button id="mode-btn" class="pill-btn dev" aria-label="Direct or swing">DIRECT</button>
@@ -109,6 +107,7 @@
     <div class="lc-card">
       <div id="lc-num"></div>
       <div id="lc-title"></div>
+      <div id="lc-say" class="hidden"><img src="/tex/donnie_head.png" alt=""><p></p></div>
       <div id="lc-goal"></div>
       <div id="lc-new" class="hidden"></div>
       <button id="lc-go" class="ring-btn" aria-label="Go"><svg class="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" pathLength="100" class="track"/><circle cx="22" cy="22" r="20" pathLength="100" class="run" id="lc-ring"/></svg><span>GO</span></button>
