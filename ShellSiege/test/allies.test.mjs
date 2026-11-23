@@ -5,7 +5,17 @@ import assert from 'node:assert/strict';
 import { createWorld } from '../src/core/world.js';
 import { makeFoe, updateFoes } from '../src/core/foes.js';
 import { take } from '../src/core/abilities.js';
-import { syncAllies, updateAllies, stunFoe, inCone, durationOf, ALLY } from '../src/core/allies.js';
+import { syncAllies as realSync, updateAllies, stunFoe, inCone, durationOf, ALLY, RISE_S } from '../src/core/allies.js';
+
+// A new ally STARTS ON COOLDOWN (tested at the bottom). Everything else here is about
+// what a turtle does once he is on the field, so this puts him there, fully risen.
+function syncAllies(w) {
+  realSync(w);
+  for (const a of w.allies) if (a.phase === 'away' && a.timer === ALLY[a.key].firstS && !a.called) {
+    a.called = true; a.phase = 'active'; a.present = true; a.rise = RISE_S;
+    a.timer = a.duration = durationOf(a.key, w.build[a.key] || 1);
+  }
+}
 
 function room(...keys) {
   const w = createWorld();
@@ -291,4 +301,40 @@ test('MICHELANGELO NEVER HURTS ANYTHING', () => {
   run(w, 8);
   assert.equal(f.hp, 1e6);
   assert.equal(f.stunT || 0, 0);
+});
+
+// ---- A ROOM OPENS WITH THE COOLDOWN, AND A TURTLE IS SUMMONED, NOT SWITCHED ON -----
+test('A NEW ROOM STARTS WITH THE COOLDOWN: he is not there until the break has run out', () => {
+  for (const key of ['leo', 'donnie', 'mikey']) {
+    const w = room(key);
+    realSync(w);
+    const a = w.allies[0];
+    assert.equal(a.present, false, `${key} was standing there when the room began`);
+    assert.equal(a.phase, 'away');
+    run(w, ALLY[key].firstS - 1);
+    assert.equal(a.present, false, `${key} came early`);
+    run(w, 1.5);
+    assert.equal(a.present, true, `${key} never arrived`);
+  }
+});
+
+test('WHEN CALLED HE RISES FIRST: rooted, doing nothing, with a light pop, then acts', () => {
+  const w = room('leo');
+  realSync(w);
+  const a = w.allies[0];
+  run(w, ALLY.leo.firstS + 0.05);
+  assert.equal(a.present, true);
+  assert.ok(a.rise < RISE_S, 'he arrived already risen');
+  const f = addFoe(w, 450, 0); f.speed = 0;
+  const x0 = a.x, y0 = a.y;
+  run(w, RISE_S * 0.5);
+  assert.equal(a.x, x0); assert.equal(a.y, y0);
+  assert.equal(a.state, 'follow', 'he started fighting while still coming out of the floor');
+  run(w, 2);
+  assert.ok(a.rise >= RISE_S);
+});
+
+test('THE TURTLES ARE STAGGERED: by default no two arrive together', () => {
+  const t = ['leo', 'donnie', 'mikey'].map((k) => ALLY[k].firstS).sort((a, b) => a - b);
+  for (let i = 1; i < t.length; i++) assert.ok(t[i] - t[i - 1] >= 2, 'two turtles arrive within 2s of each other');
 });

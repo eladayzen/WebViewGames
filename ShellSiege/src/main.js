@@ -38,9 +38,9 @@ import { createTelegraphs } from './render/telegraph.js';
 import { createSeeThrough } from './render/seethrough.js';
 import { createAllies } from './render/allies.js';
 import { updateAllies, updatePizzas } from './core/allies.js';
-import { clearTemp } from './core/abilities.js';
 import { stats } from './core/abilities.js';
 import { START } from './core/breeds.js';
+import { clearTemp } from './core/abilities.js';
 import { createRun, stepRun, restartLevel, nextLevel, beginStartRoll, frozen } from './core/run.js';
 import { enemiesLeft } from './core/rooms.js';
 import { createRollUi } from './ui/roll.js';
@@ -221,7 +221,7 @@ async function boot() {
     const keepBuild = w.build;
     const won = run.phase === 'won';
     Object.assign(w, createWorld());
-    w.build = won ? clearTemp(keepBuild) : keepBuild;     // a won level takes the turtle allies with it
+    w.build = won ? keepBuild : clearTemp(keepBuild);     // a won level keeps EVERYTHING, turtles included; a death ends the temporary ones
     syncMaxHp(stats(w.build), true);
     w.targets = createTargets();
     crates = w.targets.slice();

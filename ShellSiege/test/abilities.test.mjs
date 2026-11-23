@@ -64,7 +64,7 @@ test('EVERY ABILITY SAYS WHETHER IT IS PERMANENT, and carries a usable weight', 
   }
 });
 
-test('THE TEMPORARY ABILITIES ARE EXACTLY THE TURTLE ALLIES (the three of them), and a won level clears them', async () => {
+test('THE TEMPORARY ABILITIES ARE EXACTLY THE TURTLE ALLIES (the three of them), and `clearTemp` (a death) clears them', async () => {
   const { clearTemp } = await import('../src/core/abilities.js');
   const temp = Object.keys(ABILITIES).filter((k) => ABILITIES[k].kind === 'temp').sort();
   assert.deepEqual(temp, ['donnie', 'leo', 'mikey']);

@@ -84,7 +84,7 @@ export const BREEDS = {
     hp: 90, speed: 145, damage: 17, push: 140, radius: 65, reach: 168,
     height: 3.06, windupS: 0.50, recoverS: 0.62, cost: 2,
     behavior: 'charger',
-    job: { chargeMin: 260, chargeMax: 650, dist: 780, speed: 760, every: 3.0, windupS: 0.70, stunS: 1.6, hitDamage: 17, push: 340 },
+    job: { chargeMin: 260, chargeMax: 650, dist: 780, speed: 1150, every: 3.0, windupS: 0.30, stunS: 1.6, hitDamage: 17, push: 340 },
   },
   elemgolem: {
     label: 'Elemental Golem', glb: 'models/rivals/Character_ElementalGolem_01.glb', tex: 'tex/rivals.webp',

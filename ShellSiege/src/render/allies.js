@@ -14,6 +14,7 @@
 // LEONARDO'S DASH leaves a trail of fading glows behind him; DONATELLO'S STUN CONE
 // is drawn on the floor, a narrow fan down the line he faced, fading as it goes.
 import * as THREE from 'three';
+import { RISE_S } from '../core/allies.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { u } from './units.js';
 import { glowTexture } from './stage.js';
@@ -142,7 +143,15 @@ export async function createAllies(scene, rig) {
     fanMesh.rotation.x = -Math.PI / 2;
     cone.add(fanMesh);
     group.add(cone);
-    const p = { holder, mixer, act, mats, lh, rh, shadow, weapons: [], trail, hist, cone, fanMesh, pop: sprite(glow) };
+    // THE SUMMON: a ring of light on the floor under his feet and a column rising out of it
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 1, 40),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+    ring.rotation.x = -Math.PI / 2; ring.visible = false;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.9, 3.4, 20, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+    beam.visible = false;
+    group.add(ring, beam);
+    const p = { holder, mixer, act, mats, lh, rh, shadow, ring, beam, weapons: [], trail, hist, cone, fanMesh, pop: sprite(glow) };
 
     // ---- weapons, as plain volumes ------------------------------------------------
     const lam = (color, emissive = 0x000000) => new THREE.MeshLambertMaterial({ color, emissive });
@@ -199,7 +208,7 @@ export async function createAllies(scene, rig) {
     // remove rigs of allies that are gone
     for (const [a, p] of rigs) {
       if (!allies.includes(a)) {
-        group.remove(p.holder, p.shadow, p.cone, p.pop, ...p.trail);
+        group.remove(p.holder, p.shadow, p.cone, p.pop, p.ring, p.beam, ...p.trail);
         if (p.bake) group.remove(p.bake);
         for (const w of p.weapons) group.remove(w.obj);
         rigs.delete(a);
@@ -224,13 +233,28 @@ export async function createAllies(scene, rig) {
       p.pop.visible = !!a.fx;
       if (a.fx) {
         const k = a.fx.t / 0.4;
-        p.pop.position.set(u(a.fx.x), 0.9, u(a.fx.y));
+        p.pop.position.set(u(a.fx.x), 0.35, u(a.fx.y));     // low: it comes from below his legs
         p.pop.scale.setScalar(1.2 + 2.6 * k);
         p.pop.material.opacity = 0.9 * (1 - k);
       }
       // AWAY (his break): nothing of him is drawn
       p.holder.visible = a.present;
       p.shadow.visible = a.present;
+      // THE SUMMON, drawn from the sim's own rise clock: the ring snaps out wide and
+      // closes in under his feet while the column of light lifts him out of the floor.
+      const rk = a.present ? clamp01(a.rise / RISE_S) : 1;
+      const rising = a.present && rk < 1;
+      p.ring.visible = rising; p.beam.visible = rising;
+      if (rising) {
+        const tint = { leo: 0x4aa8ff, donnie: 0xb06bff, mikey: 0xffa43a }[a.key] || 0xffffff;
+        p.ring.material.color.setHex(tint); p.beam.material.color.setHex(tint);
+        p.ring.position.set(u(a.x), 0.04, u(a.y));
+        p.ring.scale.setScalar(2.4 - 1.5 * rk);
+        p.ring.material.opacity = 0.9 * (1 - rk * 0.6);
+        p.beam.position.set(u(a.x), 1.7, u(a.y));
+        p.beam.scale.set(1 - 0.5 * rk, 1, 1 - 0.5 * rk);
+        p.beam.material.opacity = 0.5 * Math.sin(Math.PI * Math.min(1, rk * 1.15));
+      }
       for (const w of p.weapons) w.obj.visible = a.present;
       if (!a.present) { p.cone.visible = false; for (const t of p.trail) t.visible = false; continue; }
       const yaw = Math.atan2(Math.cos(a.facing), Math.sin(a.facing));
@@ -249,8 +273,10 @@ export async function createAllies(scene, rig) {
       p.mixer.update(dt);
       p.holder.updateMatrixWorld(true);
 
-      for (const m of p.mats) m.opacity = 1;
-      p.holder.scale.set(1, 1, 1);
+      // rising: grows up out of the floor, with a little overshoot, fading in
+      const ease = 1 - Math.pow(1 - rk, 3);
+      for (const m of p.mats) m.opacity = rk < 1 ? 0.25 + 0.75 * ease : 1;
+      p.holder.scale.set(1, rk < 1 ? Math.max(0.02, ease * (1 + 0.08 * Math.sin(rk * Math.PI))) : 1, 1);
       // a dash plays the walk fast and leans him into it
       if (p.act.walk) p.act.walk.timeScale = a.dashing ? 2.6 : 1.25;
       p.holder.rotation.x = a.dashing ? 0.28 : 0;

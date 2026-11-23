@@ -278,7 +278,14 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     holder.position.set(u(f.x), 0, u(f.y));
     // The sim's (dx, dy) maps to the scene's (x, z); a yaw of atan2(x, z)
     // points a +Z-facing mesh along it. Same convention as the player's rig.
+    holder.rotation.order = 'YXZ';                // yaw first, so a pitch leans along the way he faces
     holder.rotation.y = Math.atan2(Math.cos(f.facing), Math.sin(f.facing)) + ENEMY.yaw;
+    // A CHARGE IS A POWER MOVE, not a run: the body is held in one committed lunge,
+    // leaning hard into it. A short crouch on the way in (the telegraph) sets it up.
+    const dashing = f.state === 'dash';
+    const lean = dashing ? 0.55 : f.state === 'charge' ? -0.18 * Math.min(1, f.stateT / (f.job?.windupS || 1)) : 0;
+    s.lean = (s.lean || 0) + (lean - (s.lean || 0)) * Math.min(1, dt * (dashing ? 40 : 14));
+    holder.rotation.x = s.lean;
 
     // EVERY WARNING STATE SWINGS THE ARM, not just the melee wind-up: a thrower's
     // throw, a charger's wind-up, a slam and a summon all scrub the same attack
@@ -286,7 +293,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     // body shows the same thing the floor marker does. Better clips per job can
     // replace this later; the timing is already right.
     const telegraphing = TELEGRAPH_STATES.has(f.state);
-    const swinging = telegraphing || f.state === 'recover';
+    const swinging = telegraphing || f.state === 'recover' || dashing;
     const moving = f.stateT >= 0 && f.stepped > 0.0001;     // a DASH moves, so it plays the walk
     const windupS = (f.state !== 'windup' && telegraphing && f.job?.windupS) || (f.windupS ?? FOE.windupS);
     const recoverS = f.recoverS ?? FOE.recoverS;
@@ -298,7 +305,9 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       const d = act.attack.getClip().duration;
       let frac;
       const rel = f.job?.release;
-      if (rel != null && (f.state === 'throw' || f.state === 'recover')) {
+      if (dashing) {
+        frac = 0.5;       // ONE FRAME of the swing, held: arm driven forward, blade out
+      } else if (rel != null && (f.state === 'throw' || f.state === 'recover')) {
         // A THROW IS NOT A SWING: the clip's release frame (job.release) lands exactly
         // when the windup ends, which is when the sim spawns the orb.
         frac = f.state === 'throw'
@@ -313,8 +322,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     }
     if (act.walk) {
       act.walk.setEffectiveWeight(!swinging && moving ? 1 : 0);
-      // A dash is a run: the same cycle, played much faster.
-      act.walk.timeScale = ENEMY.cadence * (f.state === 'dash' ? 2.4 : 1);
+      act.walk.timeScale = ENEMY.cadence;
     }
     if (act.idle) act.idle.setEffectiveWeight(!swinging && !moving ? 1 : 0);
 

@@ -46,7 +46,7 @@ import { overlapsAny } from './obstacles.js';
 export const ALLY = {
   mikey: {
     label: 'Michelangelo',
-    activeS: 8, upgradeS: 4, breakS: 12,
+    activeS: 8, upgradeS: 4, breakS: 12, firstS: 4,
     followDist: 190, speed: 560,
     bakeEvery: 2.6,           // seconds between pizzas while he is out and you are hurt
     bakeS: 0.9, bakeAtS: 0.55,  // the flourish: the pizza appears this far in
@@ -59,7 +59,7 @@ export const ALLY = {
     followDist: 170,          // where he stands beside you, px
     speed: 560,               // walking speed to that spot
     seek: 620,                // he goes for foes within this of YOU
-    activeS: 8, upgradeS: 4, breakS: 12,
+    activeS: 8, upgradeS: 4, breakS: 12, firstS: 8,
     dashSpeed: 1800,          // px/s: fast enough to read as a dash, slow enough to see him go
     dashCooldownS: 0.8,
     strikeEvery: 0.5, windupS: 0.16, reach: 190, damage: 17, arc: 2.6,   // arc: total radians swept
@@ -68,7 +68,7 @@ export const ALLY = {
   },
   donnie: {
     label: 'Donatello',
-    activeS: 8, upgradeS: 4, breakS: 12,
+    activeS: 8, upgradeS: 4, breakS: 12, firstS: 12,
     followDist: 120,          // CLOSE to Raphael
     speed: 600,
     staffEvery: 1.1, staffWindupS: 0.28,
@@ -86,7 +86,10 @@ export const durationOf = (key, level) => ALLY[key].activeS + Math.max(0, level 
 export function makeAlly(key, w) {
   const a = ALLY[key];
   return {
-    present: true, phase: 'active', timer: durationOf(key, w.build[key] || 1), duration: durationOf(key, w.build[key] || 1),
+    // A NEW ROOM STARTS WITH THE COOLDOWN, not the turtle: he is called when the break runs out.
+    // and each turtle's first call is staggered (firstS), so they do not all land together
+    present: false, phase: 'away', timer: a.firstS, duration: a.firstS,
+    rise: RISE_S,                   // 0 -> RISE_S while he is being summoned in; he does nothing until it is full
     fx: null,                       // {x, y, t}: a pop of light where he arrived or left
     key, x: w.player.x + (key === 'leo' ? -a.followDist : a.followDist), y: w.player.y + 60,
     facing: 0, state: 'follow', t: 0, target: null,
@@ -309,6 +312,8 @@ function donnieStep(a, w, dt, hooks) {
 }
 
 const POP_S = 0.4;
+/** Seconds he spends rising out of the floor when called, rooted, before he acts. */
+export const RISE_S = 0.7;
 
 // ---- MICHELANGELO ------------------------------------------------------------
 
@@ -390,12 +395,13 @@ export function updateAllies(w, dt, hooks) {
     } else if (a.timer <= 0) {
       // the break is over: back at the player's shoulder, for as long as the ability has been upgraded to
       const h = homeSpot(a, w, ALLY[a.key].followDist);
-      a.x = h.x; a.y = h.y; a.cool = 0.3;
+      a.x = h.x; a.y = h.y; a.cool = 0.3; a.rise = 0;
       a.fx = { x: a.x, y: a.y, t: 0 };
       a.phase = 'active'; a.present = true;
       a.duration = a.timer = durationOf(a.key, w.build[a.key] || 1);
     }
     if (!a.present) continue;
+    if (a.rise < RISE_S) { a.rise += dt; a.walking = false; continue; }     // still being summoned
     (a.key === 'leo' ? leoStep : a.key === 'mikey' ? mikeyStep : donnieStep)(a, w, dt, hooks);
   }
 }
