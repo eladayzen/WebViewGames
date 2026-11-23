@@ -10,11 +10,13 @@ import { Daggers } from './daggers.js';
 import { City, CITY_FOG, CITY_HEMI } from './city.js';
 import { LEVELS, setWeaponIcon, showCard, cardUp, cardPress, showClear, clearUp, clearPress, renderGoal, loadProgress, saveProgress } from './levels.js';
 import { installDevUnlock } from './devUnlock.js';
-import { R, Track, ZONES, WORLDS, zoneIndex, setStartWorld, getStartWorld, featureAt, pendingFork, forkNear, forkSpread, FORK_LEN, FORKS, CLIMB_LEN, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
+import { R, Track, ZONES, WORLDS, zoneIndex, setStartWorld, getStartWorld, ROUTES, featureAt, pendingFork, forkNear, forkSpread, FORK_LEN, FORKS, CLIMB_LEN, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
 import { Junctions } from './junctions.js';
+import { Gear, GLIDE_H, GLIDE_T, SAW_T } from './gear.js';
+import { Portal } from './portal.js';
 import { Player, PHYS } from './player.js';
 import { Obstacles, FOOT_STYLES, FOOT_STYLE_ORDER, KICK_POP } from './obstacles.js';
-import { Particles, Debris, Streaks, BoardTrail } from './fx.js';
+import { Particles, Debris, CardDebris, Streaks, BoardTrail } from './fx.js';
 import { Audio } from './audio.js';
 import { Input } from './input.js';
 
@@ -63,7 +65,7 @@ const audio = new Audio();
 audio.loadMusic('/audio/music.mp3');
 const input = new Input(canvas);
 
-let city, track, junctions, trains, daggers, player, obstacles, particles, debris, streaks, boardTrail, sludge;
+let portal, cards, gear, city, track, junctions, trains, daggers, player, obstacles, particles, debris, streaks, boardTrail, sludge;
 const tex = {};
 
 // ── HUD ──────────────────────────────────────────────────────────────────────
@@ -133,6 +135,7 @@ const camF = frameAt(0), lookF = frameAt(0);
 const _zc = new THREE.Color();
 const _wl = new THREE.Vector3(), _wr = new THREE.Vector3(), _ws = new THREE.Vector3(), _wb = new THREE.Vector3();
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3(), tmpD = new THREE.Vector3(), tmpE = new THREE.Vector3();
+const C_CARD = new THREE.Color(0.8, 0.58, 0.34);   // cardboard dust
 const C_SLIME = new THREE.Color(0.45, 1.0, 0.3), C_SPARK = new THREE.Color(1.0, 0.65, 0.25),
   C_PIZZA = new THREE.Color(1.0, 0.75, 0.2), C_HIT = new THREE.Color(1.0, 0.3, 0.2), C_SHIELD = new THREE.Color(0.4, 0.8, 1.0),
   C_DUST = new THREE.Color(0.45, 0.5, 0.45), C_WHITE = new THREE.Color(1, 1, 1),
@@ -177,6 +180,7 @@ async function startLevel(i, card = true) {
 }
 async function levelClear() {
   G.state = 'clear';
+  if (LEVELS[G.level].portal) { const w = $('warp'); w.classList.remove('hidden'); void w.offsetWidth; w.classList.add('on'); audio.shield(); }
   const last = G.level === LEVELS.length - 1;
   audio.trick();
   flash('rgba(255,240,160,0.9)', 0.5); G.fovKick = 12;
@@ -194,14 +198,25 @@ function startRun() {
   city?.reset();
   {
     const L = LEVELS[G.level];
+    city.setNight(!!L.night);
     setOpenTop(G.topOverride ?? L.open);
+    portal?.place(null); G.portalUp = false;
+    { const w = document.getElementById('warp'); if (w) { w.classList.remove('on'); w.classList.add('hidden'); } }
+    { const b = document.getElementById('dev-lv'); if (b) b.textContent = `LV ${L.n} ${L.title}`; }
     obstacles.deckMode = L.deck;
     obstacles.firstPickup = L.unlock || null;
     obstacles.allowPick = L.pickups || null;
+    // Donnie's gear: a level with `gear` wears the pack and deals the glider + saws;
+    // ?gear=1 (test) turns it on anywhere, often
+    const gearOn = !!L.gear || GEAR_TEST;
+    if (gear) { gear.reset(); gear.on = gearOn; }
+    obstacles.gearGap = GEAR_TEST ? 150 : L.gear ? (L.gearGap || 320) : 0;
+    if (GEAR_TEST) obstacles.allowPick = null;
     G.airPizza = 0; G.kicks = 0;
     // the level's world (sewers / dojo); ?world= still overrides for dev
     const wi = WORLDS.findIndex((w) => w.key === (G.worldOverride || L.world || 'sewers'));
     setStartWorld(Math.max(0, wi));
+    Object.assign(ROUTES, { kinds: L.routes?.kinds || null, every: L.routes?.every || 0, i: 0, switch: L.routes?.switch || null });
   }
   G.state = 'countdown';
   G.countdown = 3.2; G.lastBeep = -1;
@@ -212,7 +227,7 @@ function startRun() {
   player.speed = 8;
   track.reset();
   obstacles.reset();
-  particles.clear(); sludge.clear(); debris.clear(); boardTrail.clear();
+  particles.clear(); sludge.clear(); debris.clear(); cards.clear(); boardTrail.clear();
   trains?.reset();
   daggers?.reset(); $('power').classList.remove('on');
   renderLives(G.lives);
@@ -442,8 +457,30 @@ function setFootStyle(n) {
 }
 const nextFootStyle = () => setFootStyle(FOOT_STYLE_ORDER[(FOOT_STYLE_ORDER.indexOf(G.footStyle) + 1) % FOOT_STYLE_ORDER.length]);
 // dev options closed by default; the gear (or the backquote key) opens them
+// DEV PANEL extras (Elad 2026-11-23: "I want to experience all new abilities and new
+// levels — put them in the dev panel; the dev icon shows by default for now")
+function devLevelLabel() { const L = LEVELS[G.level]; return `LV ${L.n} ${L.title}`; }
+function devGive(k) {
+  if (G.state !== 'play') return;
+  const wp = player.root.position.clone(), up = wallDir(frameAt(player.s), player.theta, new THREE.Vector3()).negate();
+  if (k === 'glider' || k === 'saws') gear.on = true;
+  onEvent({ type: k, o: { s: player.s, theta: player.theta, mesh: { position: wp } } });
+  void up;
+}
 const toggleDev = () => { document.body.classList.toggle('dev-open'); if (devTagEl) devTagEl.style.display = document.body.classList.contains('dev-open') ? '' : 'none'; };
 $('dev-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleDev(); });
+$('dev-lv').addEventListener('click', (e) => { e.stopPropagation(); startLevel((G.level + 1) % LEVELS.length); $('dev-lv').textContent = devLevelLabel(); });
+$('dev-lv-prev').addEventListener('click', (e) => { e.stopPropagation(); startLevel((G.level + LEVELS.length - 1) % LEVELS.length); $('dev-lv').textContent = devLevelLabel(); });
+for (const k of ['glider', 'saws', 'shield', 'sai']) $('dev-' + k).addEventListener('click', (e) => { e.stopPropagation(); devGive(k); });
+// FLOOR (Elad 2026-11-23: "another variation for the city, day and night — the lower half
+// wooden"): ride any level on the DIY wood floor, or back on the level's own
+$('dev-floor').addEventListener('click', (e) => {
+  e.stopPropagation();
+  G.worldOverride = G.worldOverride === 'dojo' ? null : 'dojo';
+  $('dev-floor').textContent = G.worldOverride === 'dojo' ? 'FLOOR: WOOD' : 'FLOOR: LEVEL';
+  startLevel(G.level, false);
+});
+$('dev-gear').addEventListener('click', (e) => { e.stopPropagation(); gear.on = !gear.pack.visible; $('dev-gear').textContent = gear.pack.visible ? 'BACKPACK ON' : 'BACKPACK OFF'; });
 // The gear itself is locked (GOBALANCE_APP_INTEGRATION.md): hold the lives row
 // for 7 s, then the code. Not persisted — a reload locks it again.
 installDevUnlock(document, $('lives'), () => { $('dev-btn').style.display = ''; toggleDev(); });
@@ -459,6 +496,7 @@ const nextWorld = () => setWorld(getStartWorld() + 1);
 // TOP (dev, Elad 2026-11-22): CLOSED pipe, or OPEN — roof cut off at the 180
 // seams, city matte painting over the rims (city.js). ?top=open
 G.openTop = false;
+const GEAR_TEST = (() => { try { return new URLSearchParams(location.search).get('gear') === '1'; } catch { return false; } })();
 function setOpenTop(on) {
   if (!track) return;
   G.openTop = !!on;
@@ -485,8 +523,12 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyC' && fixedCam()) nextFixCam();
   if (e.code === 'KeyF') nextFootStyle();
   if (e.code === 'KeyN') nextWorld();
+  // G = glider now, H = saw arms now (dev; Elad 2026-11-23). G used to toggle SWING
+  // physics, which also swaps to the free 360 camera — that's on Y now.
+  if (G.state === 'play' && e.code === 'KeyG') { gear.on = true; gear.startGlide(); obstacles.glideLine(player.s, player.theta, GLIDE_H); bigText('HANG GLIDER!', 'shield'); }
+  if (G.state === 'play' && e.code === 'KeyH') { gear.on = true; gear.startSaws(); bigText('SAW ARMS!', 'shield'); }
   if (e.code === 'Backquote') toggleDev();
-  if (e.code === 'KeyG') togglePhysics();
+  if (e.code === 'KeyY') togglePhysics();
   if (e.code === 'KeyV') nextVariant();
 });
 {
@@ -571,7 +613,8 @@ function onEvent(e) {
       break;
     }
     case 'shield': {
-      player.shieldOn = true; player.shield.visible = true;
+      endAbilities();
+      player.shieldOn = true; player.shield.visible = true; G.shieldT = SHIELD_T;
       audio.shield();
       bigText('SHELL SHIELD!', 'shield');
       particles.burst(wp, up, 50, C_SHIELD, { speed: 10, spread: 1.6, size: 0.4, life: 0.8, drag: 2 });
@@ -580,7 +623,29 @@ function onEvent(e) {
       G.fovKick = 10;
       break;
     }
+    case 'glider': {
+      endAbilities();
+      gear.startGlide();
+      obstacles.glideLine(player.s, player.theta, GLIDE_H);
+      audio.shield();
+      bigText('HANG GLIDER!', 'shield');
+      particles.burst(wp, up, 50, C_SHIELD, { speed: 10, spread: 1.6, size: 0.4, life: 0.8, drag: 2 });
+      flash('rgba(190,150,255,0.9)', 0.35);
+      G.fovKick = 12;
+      break;
+    }
+    case 'saws': {
+      endAbilities();
+      gear.startSaws();
+      audio.shield();
+      bigText('SAW ARMS!', 'shield');
+      particles.burst(wp, up, 50, C_SPARK, { speed: 10, spread: 1.6, size: 0.4, life: 0.8, drag: 2 });
+      flash('rgba(255,200,90,0.9)', 0.35);
+      G.fovKick = 10;
+      break;
+    }
     case 'sai': {
+      endAbilities();
       daggers.start();
       audio.shield();
       bigText(HERO.word, 'shield');
@@ -628,9 +693,18 @@ function onEvent(e) {
 }
 
 // a sai knocks a soldier down: same pay as a kick, no kick animation
+// a cardboard dummy doesn't fly off whole: it bursts into pieces of itself
+function shatterDummy(o, up) {
+  const card = o.mesh.userData.card;
+  const c = card.getWorldPosition(new THREE.Vector3());
+  cards.explode(c, up, frameAt(o.s).T.clone(), card.material.map, 20, card.getWorldScale(new THREE.Vector3()).y || 2.2);
+  particles.burst(c, up, 18, C_CARD, { speed: 8, spread: 1.6, size: 0.3, life: 0.5, drag: 2.5 });
+  o.mesh.visible = false; o.done = true;
+}
+
 function onSaiHit(o, wp) {
   const up = wallDir(frameAt(o.s), o.theta, new THREE.Vector3()).negate();
-  obstacles.launch(o, player.speed);
+  if (o.dummy) shatterDummy(o, up); else obstacles.launch(o, player.speed);
   G.kicks = (G.kicks || 0) + 1;
   award(150, wp, 'pts');
   addCombo(0.6);
@@ -643,10 +717,34 @@ function onSaiHit(o, wp) {
 // The ONLY place the Spin Flip Kick clip plays. Enemies never hurt you —
 // riding into one IS the attack.
 const KICK_WORDS = ['HI-YAH!', 'COWABUNGA!', 'BOOYAKASHA!', 'KICK!', 'SHELL SHOCK!'];
+// SAW ARMS (gear.js): a Foot in reach is knocked flying like a kick; anything else is cut
+function onSawCut(o) {
+  const wp = o.mesh.position.clone();
+  const up = wallDir(frameAt(o.s), o.theta, new THREE.Vector3()).negate();
+  if (o.type === 'foot') { o.hit = true; onKick(o, up, wp); return; }
+  o.hit = true; o.done = true;
+  if (o.type === 'crate') debris.explode(wp, up, frameAt(o.s).T.clone(), 14, 1);
+  particles.burst(wp.clone().addScaledVector(up, 0.6), up, 46, C_SPARK, { speed: 14, spread: 1.5, size: 0.24, life: 0.5, grav: up.clone().multiplyScalar(-20), drag: 0.6 });
+  award(80, wp, 'pts');
+  addCombo(0.4);
+  popup('SLICE!', 'kick-word', wp, -70);
+  audio.saw(); audio.smash();
+  G.shake = Math.max(G.shake, 0.3);
+}
+
+// ONE ABILITY AT A TIME (Elad 2026-11-23): picking one up ends whatever was running
+const SHIELD_T = 10;   // s — the shield times out like the others (or pops on a hit)
+const POWER_ICON = { shield: '/tex/shield_icon.png', sai: HERO.icon, saws: '/tex/saws_icon.png', glider: '/tex/glider_icon.png' };
+function endAbilities() {
+  player.shieldOn = false; G.shieldT = 0;
+  if (daggers.active) daggers.t = 0;
+  gear.stop();
+}
+
 function onKick(o, up, wp) {
   const atk = player.playNextAttack();
   if (atk) devAttackTag(atk);
-  obstacles.launch(o, player.speed);
+  if (o.dummy) shatterDummy(o, up); else obstacles.launch(o, player.speed);
   G.kicks = (G.kicks || 0) + 1;
   award(150, wp, 'pts');
   addCombo(0.6);
@@ -658,7 +756,7 @@ function onKick(o, up, wp) {
   flashLight.position.copy(wp); flashLight.color.set(0xff9a3c); flashLight.intensity = 90;
   // impact star: hot core + purple shards
   particles.burst(wp.clone().addScaledVector(up, 1.0), up, 26, C_KICK, { speed: 12, spread: 1.6, size: 0.45, life: 0.4, drag: 3 });
-  particles.burst(wp.clone().addScaledVector(up, 1.0), up, 18, C_FOOT, { speed: 9, spread: 1.2, size: 0.3, life: 0.7, drag: 1.5 });
+  particles.burst(wp.clone().addScaledVector(up, 1.0), up, 18, o.dummy ? C_CARD : C_FOOT, { speed: 9, spread: 1.2, size: 0.3, life: 0.7, drag: 1.5 });
 }
 
 // DEV ONLY: which audition attack just played (1–10). Remove with the audition.
@@ -692,10 +790,10 @@ function forkChoice() {
   // forced climbs are decided when made: just call them out
   for (const fk of FORKS) {
     const to = fk.s - player.s;
-    if (fk.kind === 'rise' && !fk.called && to < 120 && to > 0) { fk.called = true; bigText('CLIMB!', 'zone'); }
+    if ((fk.kind === 'rise' || fk.kind === 'drop') && !fk.called && to < 120 && to > 0) { fk.called = true; bigText(fk.kind === 'drop' ? 'DROP IN!' : 'CLIMB!', 'zone'); }
     if (fk.side > 0 && !fk.landed && to < -CLIMB_LEN * 0.6 && fk.kind !== 'y') {
       fk.landed = true;
-      bigText('UP TOP!', 'loop'); award(150, player.root.position.clone()); addCombo(1); G.fovKick = 10; audio.trick();
+      bigText(fk.kind === 'drop' ? 'DROPPED IN!' : 'UP TOP!', 'loop'); award(150, player.root.position.clone()); addCombo(1); G.fovKick = 10; audio.trick();
     }
   }
   const fk = pendingFork(player.s);
@@ -769,7 +867,7 @@ function onHit(o, up, wp) {
   renderLives(G.lives, G.lives);
   G.combo = 1; G.comboFill = 0;
   player.invuln = 1.8;
-  player.shield.visible = true;  // the "stunned" bubble, like the reference
+  // (no bubble here — Elad 2026-11-23: the bubble means a SHIELD; a hit only flickers him)
   player.speed *= 0.82;   // a stumble, not a stop
   // knocked away from what you hit
   const side = Math.sign(angleDiff(player.theta, o.theta)) || (Math.random() < 0.5 ? -1 : 1);
@@ -863,7 +961,7 @@ function frame(now) {
     }
     // river is cosmetic (splash + spray) — no speed or score modifier, since
     // gravity keeps you in it whenever you're not leaning
-    const target = THREE.MathUtils.lerp(BASE_SPEED, TOP_SPEED, diff);
+    const target = THREE.MathUtils.lerp(BASE_SPEED, TOP_SPEED, diff) * (LEVELS[G.level].speed || 1);   // a level can ride faster (the portal)
     player.speed += (target - player.speed) * Math.min(1, simDt * (player.speed < target ? 0.9 : 1.6));
     steer(simDt, lean);
     forkWall(simDt);
@@ -929,6 +1027,11 @@ function frame(now) {
     if (G.overT > 16) startRun();
   }
 
+  if (G.state === 'play') gear.update(simDt, time, obstacles, onSawCut);
+  // NIGHT CITY's portal: stood at the finish once the road to it is settled
+  { const L = LEVELS[G.level];
+    if (L.portal && !G.portalUp && player.s > L.goal.n - 260) { G.portalUp = true; portal.place(L.goal.n - 2); }
+    portal.update(time); }
   player.place();
   player.animate(simDt, time);
 
@@ -938,8 +1041,16 @@ function frame(now) {
   for (const e of events) onEvent(e);
   // SAI STORM: auto-throws while the power-up lasts
   if (daggers.update(simDt, player, obstacles, onSaiHit, G.state === 'play') === 'throw') audio.noiseHit({ dur: 0.18, vol: 0.28, freq: 2600, q: 0.9, sweep: 0.35 });
-  $('power').classList.toggle('on', daggers.active);
-  if (daggers.active) $('power-bar').style.transform = `scaleX(${daggers.left})`;
+  // one timer for whichever ability is running (shield / stars / saws / glider)
+  if (player.shieldOn && G.state === 'play') { G.shieldT -= simDt; if (G.shieldT <= 0) { player.shieldOn = false; audio.shieldPop(); } }
+  const act = player.shieldOn ? ['shield', G.shieldT / SHIELD_T] : daggers.active ? ['sai', daggers.left]
+    : gear.sawing ? ['saws', gear.sawT / SAW_T] : gear.gliding ? ['glider', gear.glideT / GLIDE_T] : null;
+  $('power').classList.toggle('on', !!act);
+  if (act) {
+    $('power-bar').style.transform = `scaleX(${Math.max(0, act[1])})`;
+    const src = POWER_ICON[act[0]];
+    if (G.powerIcon !== src) { G.powerIcon = src; $('power').querySelector('img').src = src; }
+  }
   // subway trains
   const tev = [];
   trains.update(simDt, player, tev, G.state === 'play');
@@ -1005,6 +1116,7 @@ function frame(now) {
   particles.update(dt);
   sludge.update(dt);
   debris.update(simDt);
+  cards.update(simDt);
   const speedN = THREE.MathUtils.clamp((player.speed - BASE_SPEED) / (TOP_SPEED - BASE_SPEED), 0, 1);
   streaks.update(player.s, player.speed, frameAt, pointAt, R, G.state === 'play' ? 0.08 + speedN * 0.25 : 0);
   track.update(player.s, simDt, time, player.speed);
@@ -1057,7 +1169,9 @@ function frame(now) {
   if (fixed && G.fixCam === 'auto') updateAutoCam(dt);
   if (fixed && G.fixCam === 'auto2') updateAuto2Cam(dt);
   G.camTheta += angleDiff(fixed ? 0 : player.theta, G.camTheta) * Math.min(1, dt * 7);
-  const camS = player.s - (fixed ? FIXCAM.back : 4.8);
+  // GLIDER: he flies up toward the axis — where the centre camera sits — so it eases back
+  G.glideCam = (G.glideCam || 0) + ((gear?.gliding ? 1 : 0) - (G.glideCam || 0)) * Math.min(1, dt * 2.5);
+  const camS = player.s - (fixed ? FIXCAM.back : 4.8) - G.glideCam * 3.5;
   frameAt(camS, camF);
   const camDir = wallDir(camF, G.camTheta, tmpA);
   camera.position.copy(camF.C).addScaledVector(camDir, fixed ? FIXCAM.r : R - 3.15);
@@ -1119,12 +1233,12 @@ async function loadFootGeo(url) {
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 (async function boot() {
-  const names = ['wall', 'slime', 'graffiti', 'crate', 'pipe', 'water', 'sewage_toon', 'concrete_grey', 'concrete_warm', 'wood_planks', 'scrap_atlas'];
+  const names = ['wall', 'slime', 'graffiti', 'crate', 'pipe', 'water', 'sewage_toon', 'concrete_grey', 'concrete_warm', 'wood_planks', 'scrap_atlas', 'portal_wall', 'dimx_rock'];
   const loaded = await Promise.all(names.map((n) => loadTex(`/tex/${n}.jpg`)));
   names.forEach((n, i) => (tex[n.replace('wall_', '')] = loaded[i]));
   tex.sewage = tex.sewage_toon;                 // look test: flat cartoon water (Kolbo, ref '55')
   tex.valve = await loadTex('/tex/valve.png');
-  [tex.shieldIcon, tex.saiIcon] = await Promise.all([loadTex('/tex/shield_icon.png'), loadTex(HERO.icon)]);
+  [tex.shieldIcon, tex.saiIcon, tex.gliderIcon, tex.sawsIcon] = await Promise.all([loadTex('/tex/shield_icon.png'), loadTex(HERO.icon), loadTex('/tex/glider_icon.png'), loadTex('/tex/saws_icon.png')]);
   tex.dummies = await Promise.all(['a', 'b', 'c'].map((k) => loadTex(`/tex/dummy_${k}.png`)));
   [tex.footA, tex.footB] = await Promise.all([loadTex('/tex/foot_sprite_a.png'), loadTex('/tex/foot_sprite_b.png')]);  // look test: illustrated valve hatch
   tex.footGeo = await loadFootGeo('/models/foot.bin');
@@ -1139,15 +1253,20 @@ async function loadFootGeo(url) {
   daggers = new Daggers(scene, makeGlowTexture(), HERO.weapon);
   daggers.upFn = (o) => wallDir(frameAt(o.s), o.theta, new THREE.Vector3()).negate();
   obstacles.camera = camera;
+  obstacles.busy = () => player.shieldOn || daggers.active || gear.sawing || gear.gliding;
   { let f = 'sprite'; try { f = new URLSearchParams(location.search).get('foe') || 'sprite'; } catch { /* private */ } setFootStyle(f); }
   particles = new Particles(scene);
   sludge = new Particles(scene, { additive: false });
   debris = new Debris(scene, tex);
+  cards = new CardDebris(scene);
   streaks = new Streaks(scene);
   boardTrail = new BoardTrail(scene, makeGlowTexture());
   player = new Player(scene);
+  gear = new Gear(player, tex.sawsIcon);
+  portal = new Portal(scene);
   if (HERO.skin) player.skin = await loadTex(HERO.skin);
   await player.load('/models/raphael.glb', '/models/clips.json');
+  gear.attach();
   await player.loadAttacks('/models/attacks.json');
   renderLives(LIVES);
   $('loading').classList.add('gone');
@@ -1161,5 +1280,5 @@ async function loadFootGeo(url) {
   // test hooks for the headless drive script
   window.__game = { worldName: () => WORLDS[ZONES[zoneIndex(player.s)].world].name + ' / ' + ZONES[zoneIndex(player.s)].name,
     trainDist: () => { const t = trains.pool.filter((x) => x.on && x.s > player.s); return t.length ? Math.min(...t.map((x) => x.s - player.s)) : null; },
-    track, trains, daggers, setWorld, G, player, obstacles, PHYS, camera, startRun, startLevel, LEVELS, setMoveMode, setFixCam, slimeAngle, junctions, setFootStyle };
+    track, trains, daggers, setWorld, G, player, obstacles, PHYS, camera, startRun, startLevel, LEVELS, setMoveMode, setFixCam, slimeAngle, junctions, setFootStyle, FORKS, get gear() { return gear; } };
 })();

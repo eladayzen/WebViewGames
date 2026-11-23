@@ -45,15 +45,20 @@ export function centerAt(s, out = new THREE.Vector3(), armFork = null, armSide =
 //   'climb' a ramp rises out of the floor into a pipe above: side +1 = ride onto
 //           the ramp (centre of the floor) and climb, side -1 = stay down
 //   'rise'  a full-width climb: the pipe itself ramps up, no choice
+//   'drop'  its mirror: the pipe itself dips down, no choice (Elad 2026-11-23: up and
+//           down are never a choice, and the wall runs straight through, same texture)
 export const FORKS = [];
 export const FORK_LEN = 80, FORK_SPREAD = 9.5, FORK_ARM = 150, FORK_QUIET = 95;
-export const CLIMB = 14, CLIMB_LEN = 42, RAMP_HALF = 0.6;
+// a long, gentle S (Elad 2026-11-23: the 14 m in 42 m bend creased the walls and felt funny):
+// steepest ~15°, tightest bend radius ~90 m — the pipe rolls up / down, never kinks
+export const CLIMB = 16, CLIMB_LEN = 95, RAMP_HALF = 0.6;
 const _off = new THREE.Vector3();
 const ease01 = (t) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
 export function forkSpread(d) { return FORK_SPREAD * ease01(d / FORK_LEN); }
 function armOffset(fk, side, d, out) {
   out.set(0, 0, 0);
   if (fk.kind === 'y') return out.copy(fk.lat).multiplyScalar(side * forkSpread(d));
+  if (fk.kind === 'drop') return side > 0 ? out.set(0, -CLIMB * ease01(d / CLIMB_LEN), 0) : out;   // the mirror of a rise
   return side > 0 ? out.set(0, CLIMB * ease01(d / CLIMB_LEN), 0) : out;     // climb / rise
 }
 // The river is always there (Elad). Through a Y it splits: each arm starts with
@@ -386,8 +391,23 @@ export const WORLDS = [
   // textures — a scavenger-like, amateur-built DIY training area": the floor is cut
   // into staggered panels, and some panels are scrap (patches: a 2×2 atlas of tin /
   // painted door / taped cardboard / red plate). Only levels pick this world.
-  { key: 'dojo', name: 'THE DOJO COURSE', river: 0, falls: 0, rails: 0, trains: 0, areaLen: 300, perVisit: 3, areas: [
+  { key: 'dojo_split', name: 'THE DOJO COURSE', river: 0, falls: 0, rails: 0, trains: 0, areaLen: 300, perVisit: 3, areas: [
     { key: 'wood_planks', upper: 'concrete_grey', upperAround: 8, patches: 'scrap_atlas', name: 'DOJO COURSE', around: 2, tint: 0xfff8ee, fog: 0x4a5860, hemi: [0xfff6ea, 0x7a7466] },
+  ] },
+  // Elad 2026-11-23: now the dojo default — the DIY panels over the WHOLE pipe, a
+  // wooden roof too (the concrete-roof version above stays as ?world=dojo_split)
+  { key: 'dojo', name: 'THE DOJO COURSE', river: 0, falls: 0, rails: 0, trains: 0, areaLen: 300, perVisit: 3, areas: [
+    { key: 'wood_planks', patches: 'scrap_atlas', patchAll: true, name: 'DOJO COURSE', around: 2, tint: 0xfff8ee, fog: 0x4a3626, hemi: [0xfff4e4, 0x8a7460] },
+  ] },
+  // Elad 2026-11-23: INSIDE THE PORTAL (a cosmic energy tube, self-lit, its swirl
+  // streaming past) and DIMENSION X (alien purple rock with crystal veins)
+  { key: 'portal', name: 'THE PORTAL', river: 0, falls: 0, rails: 0, trains: 0, areaLen: 300, perVisit: 3, areas: [
+    // Elad 2026-11-23: the sewers' grey floor where you ride, the art above the seams
+    // as a backdrop (upper), boosted + streaming TOWARD you so the speed reads
+    { key: 'concrete_grey', upper: 'portal_wall', upperAround: 3, upperBoost: 2.6, upperScroll: [0.02, 1.4], name: 'THE PORTAL', around: 8, tint: 0xdcd8f0, fog: 0x1c1250, hemi: [0xe0d4ff, 0x6a5ab0] },
+  ] },
+  { key: 'dimx', name: 'DIMENSION X', river: 0, falls: 0, rails: 0, trains: 0, areaLen: 300, perVisit: 3, areas: [
+    { key: 'concrete_grey', upper: 'dimx_rock', upperAround: 4, upperBoost: 1.9, name: 'DIMENSION X', around: 8, tint: 0xe4dcec, fog: 0x2e1446, hemi: [0xf4dcff, 0x7a5a90] },
   ] },
   // (the subway / trains world is saved for a later "underground mines" level — Elad
   //  2026-11-17; trains.js is kept, no world turns it on)
@@ -402,7 +422,12 @@ export function getStartWorld() { return startWorld; }
 // picked at the Y-junction where the previous one ends.
 const visits = [];
 export function resetVisits() { visits.length = 0; visits.push({ w: startWorld, start: 0, a0: 0 }); FORKS.length = 0; }
-export function visitLen(wi) { return WORLDS[wi].areaLen * WORLDS[wi].perVisit; }
+// Per-level routes (Elad 2026-11-23): which fork kinds a level deals, taken in turn
+// so each one is met, and how often (metres between forks; 0 = the world's own visit length).
+// switch: { at: n, world: key } — past fork #n the level carries on in another world
+// (the dojo's "half pipe": wood below, the sewer's grey concrete above — Elad 2026-11-23)
+export const ROUTES = { kinds: null, every: 0, i: 0, switch: null };
+export function visitLen(wi) { return ROUTES.every || WORLDS[wi].areaLen * WORLDS[wi].perVisit; }
 export function addVisit(wi, start, a0 = 0) { visits.push({ w: wi, start, a0 }); }
 /** Where the current last visit ends: the next Y-junction. */
 export function nextVisitEnd() { const v = visits[visits.length - 1]; return v.start + visitLen(v.w); }
@@ -468,7 +493,7 @@ const edgeGlsl = (around) => `
 export const OPEN_TOP = { value: 0 };
 const PANEL = 4;   // DIY floor cells per wall tile (around 2: ~4.7 m square)
 function antiRepeat(mat, stage1 = null, around = 8, upper = null, patches = null) {
-  const key = (stage1 ? 'antiRepeat-' + stage1.join('-') : 'antiRepeat') + '-a' + around + (upper ? '-up' + upper.around : '') + (patches ? '-patch' : '');
+  const key = (stage1 ? 'antiRepeat-' + stage1.join('-') : 'antiRepeat') + '-a' + around + (upper ? '-up' + upper.around + '-b' + (upper.boost || 1) : '') + (patches ? (patches.all ? '-patchall' : '-patch') : '');
   mat.customProgramCacheKey = () => key;   // same closure source, several shaders
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uOpenTop = OPEN_TOP;
@@ -481,7 +506,7 @@ function antiRepeat(mat, stage1 = null, around = 8, upper = null, patches = null
       sh.uniforms.uPatch = { value: patches.map };
       sh.fragmentShader = 'uniform sampler2D uPatch;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
         #ifdef USE_MAP
-        if (abs(mod(vMapUv.x * ${(TAU / around).toFixed(6)} + PI, PI2) - PI) < 1.5707963) {
+        if (${patches.all ? 'true' : `abs(mod(vMapUv.x * ${(TAU / around).toFixed(6)} + PI, PI2) - PI) < 1.5707963`}) {
           vec2 cuv = vMapUv * ${PANEL.toFixed(1)};
           float colI = floor(cuv.x);
           cuv.y += fract(sin(colI * 91.7) * 4375.85);            // stagger the joints
@@ -508,13 +533,14 @@ function antiRepeat(mat, stage1 = null, around = 8, upper = null, patches = null
     if (upper) {
       // above the 180 seams: the other wall art, square tiles at its own count around
       sh.uniforms.uUpper = { value: upper.map };
-      sh.fragmentShader = 'uniform sampler2D uUpper;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+      sh.uniforms.uUpScroll = upper.scroll;
+      sh.fragmentShader = 'uniform sampler2D uUpper;\nuniform vec2 uUpScroll;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
         #ifdef USE_MAP
         {
           float thU = mod(vMapUv.x * ${(TAU / around).toFixed(6)} + PI, PI2) - PI;
-          vec4 upTex = texture2D(uUpper, vMapUv * ${(upper.around / around).toFixed(6)});
+          vec4 upTex = texture2D(uUpper, vMapUv * ${(upper.around / around).toFixed(6)} + uUpScroll);
           float isUp = step(1.5707963, abs(thU));
-          diffuseColor.rgb = mix(diffuseColor.rgb, ${upper.tint} * upTex.rgb, isUp);
+          diffuseColor.rgb = mix(diffuseColor.rgb, ${upper.tint} * ${(upper.boost || 1).toFixed(3)} * upTex.rgb, isUp);
         }
         #endif`);
     }
@@ -575,15 +601,20 @@ export class Track {
         const um = tex[z.upper];
         um.wrapS = um.wrapT = THREE.RepeatWrapping; um.colorSpace = THREE.SRGBColorSpace; um.anisotropy = 4;
         // the sewer half replaces the tinted wood outright: its own untinted grey
-        up = { map: um, around: z.upperAround || 8, tint: 'vec3(1.0)' };
+        up = { map: um, around: z.upperAround || 8, tint: 'vec3(1.0)', boost: z.upperBoost || 1, scroll: { value: new THREE.Vector2() } };
+        if (z.upperScroll) (this.upScroll ||= []).push({ u: up.scroll, v: z.upperScroll });
       }
       let pa = null;
       if (z.patches) {
         const pm = tex[z.patches];
         pm.colorSpace = THREE.SRGBColorSpace; pm.anisotropy = 4;
-        pa = { map: pm, chance: 0.26 };
+        pa = { map: pm, chance: 0.26, all: !!z.patchAll };
       }
-      return antiRepeat(new THREE.MeshLambertMaterial({ map: m, color: z.tint, side: THREE.BackSide }), z.stage1, z.around, up, pa);
+      const mat = new THREE.MeshLambertMaterial({ map: m, color: z.tint, side: THREE.BackSide });
+      // self-lit walls (the portal glows; Dimension X's crystals a little)
+      if (z.glow) { mat.emissive.set(0xffffff); mat.emissiveMap = m; mat.emissiveIntensity = z.glow; }
+      if (z.scroll) (this.scrolling ||= []).push({ t: m, v: z.scroll });
+      return antiRepeat(mat, z.stage1, z.around, up, pa);
     });
     this.wallMat = this.zoneMats[0];
     // the river: same refracting treatment as the pools — plates swim under a
@@ -834,7 +865,7 @@ export class Track {
     g.attributes.position.needsUpdate = g.attributes.normal.needsUpdate = g.attributes.uv.needsUpdate = true;
     g.computeBoundingSphere();
     // inside a decided junction: cut away the wall where it runs inside the other arm
-    const fk = FORKS.find((x) => x.side && x.kind !== 'rise' && s0 + SEG_LEN > x.s && s0 < x.s + FORK_ARM);
+    const fk = FORKS.find((x) => x.side && x.kind !== 'rise' && x.kind !== 'drop' && s0 + SEG_LEN > x.s && s0 < x.s + FORK_ARM);
     const clip = g.attributes.clip.array;
     if (fk) fillClip(clip, pos, s0, SEG_LEN, RINGS, RADIAL, fk, fk.side);
     else clip.fill(-1);
@@ -896,10 +927,15 @@ export class Track {
     const f0 = frameAt(b);
     const lat = new THREE.Vector3(f0.Rt.x, 0, f0.Rt.z).normalize();
     const nk = this.nextKind;   // dev/test override: 'y' | 'climb' | 'rise'
-    const kind = nk || (Math.random() < 0.5 ? 'y' : Math.random() < 0.65 ? 'climb' : 'rise');
+    const kind = nk || (ROUTES.kinds ? ROUTES.kinds[ROUTES.i++ % ROUTES.kinds.length]
+      : Math.random() < 0.5 ? 'y' : Math.random() < 0.5 ? 'rise' : 'drop');   // 'climb' (the ramp choice) retired
     const fk = { s: b, kind, side: 0, visit: v, opts: [wi, wi], a0: [a0, a0], lat, ramp: RAMP_HALF };
+    if (ROUTES.switch && ROUTES.i === ROUTES.switch.at) {
+      const w2 = WORLDS.findIndex((w) => w.key === ROUTES.switch.world);
+      if (w2 >= 0) { fk.opts = [w2, w2]; fk.a0 = [0, 0]; }
+    }
     FORKS.push(fk);
-    if (kind === 'rise') { this.decide(fk, 1); return fk; }
+    if (kind === 'rise' || kind === 'drop') { this.decide(fk, 1); return fk; }
     for (const arm of this.arms) {
       const side = arm.userData.side;
       arm.material = this.zoneMats[zc];
@@ -992,6 +1028,9 @@ export class Track {
   }
 
   update(playerS, dt, time, speed) {
+    // streaming walls (the portal's energy runs past you)
+    if (this.scrolling) for (const x of this.scrolling) { x.t.offset.x += x.v[0] * dt; x.t.offset.y += x.v[1] * dt; }
+    if (this.upScroll) for (const x of this.upScroll) { x.u.value.x += x.v[0] * dt; x.u.value.y += x.v[1] * dt; }
     // Y-junctions at every world border, made before the track reaches them
     const nextB = nextVisitEnd();
     if (nextB < playerS + SEG_COUNT * SEG_LEN + 60 && !FORKS.find((fk) => fk.s === nextB)) this._makeFork(nextB);

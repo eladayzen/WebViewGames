@@ -58,7 +58,7 @@
       onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()">
       <svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke-width="3" stroke-linecap="round"/></svg>
     </button>
-    <button id="dev-btn" class="round-btn" aria-label="Dev options" style="display:none"><svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm8.4 2l-1.9-.4a6.9 6.9 0 0 0-.7-1.6l1.1-1.6-1.6-1.6-1.6 1.1a6.9 6.9 0 0 0-1.6-.7l-.4-1.9h-2.3l-.4 1.9a6.9 6.9 0 0 0-1.6.7L7.8 5.3 6.2 6.9l1.1 1.6a6.9 6.9 0 0 0-.7 1.6l-1.9.4v2.3l1.9.4c.2.6.4 1.1.7 1.6l-1.1 1.6 1.6 1.6 1.6-1.1c.5.3 1 .5 1.6.7l.4 1.9h2.3l.4-1.9c.6-.2 1.1-.4 1.6-.7l1.6 1.1 1.6-1.6-1.1-1.6c.3-.5.5-1 .7-1.6l1.9-.4z"/></svg></button>
+    <button id="dev-btn" class="round-btn" aria-label="Dev options"><svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zm8.4 2l-1.9-.4a6.9 6.9 0 0 0-.7-1.6l1.1-1.6-1.6-1.6-1.6 1.1a6.9 6.9 0 0 0-1.6-.7l-.4-1.9h-2.3l-.4 1.9a6.9 6.9 0 0 0-1.6.7L7.8 5.3 6.2 6.9l1.1 1.6a6.9 6.9 0 0 0-.7 1.6l-1.9.4v2.3l1.9.4c.2.6.4 1.1.7 1.6l-1.1 1.6 1.6 1.6 1.6-1.1c.5.3 1 .5 1.6.7l.4 1.9h2.3l.4-1.9c.6-.2 1.1-.4 1.6-.7l1.6 1.1 1.6-1.6-1.1-1.6c.3-.5.5-1 .7-1.6l1.9-.4z"/></svg></button>
     <button id="mode-btn" class="pill-btn dev" aria-label="Direct or swing">DIRECT</button>
     <button id="var-btn" class="pill-btn dev" aria-label="Direct variant">220</button>
     <button id="cam-btn" class="pill-btn dev" aria-label="Fixed camera position" style="display:none">CAM LOW</button>
@@ -70,8 +70,20 @@
       <svg class="off" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke-width="2" stroke-linecap="round"/></svg>
     </button>
   </div>
+  <!-- dev column (Elad 2026-11-23): jump to any level, fire any ability now -->
+  <div id="dev-col" class="dev-col">
+    <div class="dev-row"><button id="dev-lv-prev" class="pill-btn dev" aria-label="Previous level">&#9664;</button><button id="dev-lv" class="pill-btn dev" aria-label="Next level">LEVEL &#9654;</button></div>
+    <button id="dev-glider" class="pill-btn dev">GLIDER</button>
+    <button id="dev-saws" class="pill-btn dev">SAW ARMS</button>
+    <button id="dev-shield" class="pill-btn dev">SHIELD</button>
+    <button id="dev-sai" class="pill-btn dev">STARS</button>
+    <button id="dev-gear" class="pill-btn dev">BACKPACK</button>
+    <button id="dev-floor" class="pill-btn dev">FLOOR: LEVEL</button>
+  </div>
 
   <canvas id="game"></canvas>
+  <!-- through the portal (Elad 2026-11-23): the street is gone, you're in the warp -->
+  <div id="warp" class="hidden"><i></i></div>
   <div id="flash"></div>
   <div id="vignette"></div>
   <div id="speedlines"></div>

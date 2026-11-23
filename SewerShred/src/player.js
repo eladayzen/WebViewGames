@@ -371,7 +371,7 @@ export class Player {
     // The bubble shows ONLY while a shield is held or during the post-hit stun.
     // (Bug: it used to be switched on and never off, so after the first pop or
     // hit it hung around looking like protection that wasn't there.)
-    this.shield.visible = this.shieldOn || this.invuln > 0;
+    this.shield.visible = this.shieldOn;   // only a real shield shows the bubble (not the post-hit blink)
     // shield bubble shimmer
     if (this.shield.visible) {
       this.shield.rotation.y += dt * 1.7;

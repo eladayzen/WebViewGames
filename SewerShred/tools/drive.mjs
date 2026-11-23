@@ -16,7 +16,7 @@ const script = args.script || 'default';
 fs.mkdirSync(outDir, { recursive: true });
 
 const ROOT = path.resolve('dist');
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.jpg': 'image/jpeg', '.png': 'image/png', '.glb': 'model/gltf-binary', '.json': 'application/json', '.mp3': 'audio/mpeg', '.woff2': 'font/woff2' };
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.glb': 'model/gltf-binary', '.json': 'application/json', '.mp3': 'audio/mpeg', '.woff2': 'font/woff2' };
 const server = http.createServer((req, res) => {
   const p = path.join(ROOT, decodeURIComponent(req.url.split('?')[0]).replace(/\/$/, '/index.html'));
   fs.readFile(p, (err, data) => {
@@ -209,6 +209,118 @@ if (script === 'default') {
     await space(); await wait(900);
   }
   console.log('after-last', JSON.stringify(await st()));
+} else if (script === 'nofoes') {
+  // GET HOME must deal no Foot at all: ride it and count what the deck put out
+  await page.evaluate(() => { window.__game.G.lives = 99; window.__game.player.invuln = 9999; });
+  let foes = 0, poles = 0, pizza = 0; const seen = new Set();
+  for (let t = 0; t < 16; t++) {
+    await wait(3000);
+    const r = await page.evaluate(() => window.__game.obstacles.list.map((o) => [o.type, Math.round(o.s * 10), !!o.dummy]));
+    for (const [ty, k, dm] of r) { const id = ty + k; if (seen.has(id)) continue; seen.add(id); if (ty === 'foot' && !dm) foes++; if (ty === 'pole') poles++; if (ty === 'pizza') pizza++; }
+    if (t === 8) await snap('ride');
+  }
+  console.log('nofoes', JSON.stringify({ s: await page.evaluate(() => Math.round(window.__game.player.s)), foes, poles, pizza, deck: await page.evaluate(() => window.__game.obstacles.deckMode) }));
+} else if (script === 'routes') {
+  // which fork kinds the current level deals: ride ~650 m and list every fork met
+  await page.evaluate(() => { window.__game.G.lives = 99; window.__game.player.invuln = 9999; });
+  const goal = await page.evaluate(() => { const g = window.__game; g.LEVELS[g.G.level].goal.n = 99999; return g.LEVELS[g.G.level].key; });
+  let shot0 = 0;
+  for (let t = 0; t < 18; t++) {
+    await wait(3000);
+    const near = await page.evaluate(() => { const g = window.__game; const f = g.FORKS.find((x) => x.s - g.player.s > 8 && x.s - g.player.s < 30); return f ? f.kind : null; });
+    if (near && shot0 < 3) { shot0++; await snap('fork-' + near); }
+  }
+  console.log('routes', goal, JSON.stringify(await page.evaluate(() => ({ s: Math.round(window.__game.player.s), forks: window.__game.FORKS.map((f) => f.kind + '@' + Math.round(f.s)) }))));
+} else if (script === 'climbseq') {
+  // ride through one forced rise or drop (--kind=rise|drop) and snap it frame by frame
+  const kind = args.kind || 'rise';
+  await page.evaluate((k) => { const g = window.__game; g.track.nextKind = k; g.G.lives = 99; g.LEVELS[g.G.level].goal.n = 99999; }, kind);
+  await page.evaluate(() => window.__game.startRun());
+  await page.evaluate(() => { window.__game.G.lives = 99; });
+  await wait(1500);
+  const fs0 = await page.evaluate(() => window.__game.FORKS[0] && [window.__game.FORKS[0].kind, Math.round(window.__game.FORKS[0].s)]);
+  console.log('fork', JSON.stringify(fs0));
+  for (const d of [45, 15, 0, -15, -30, -50]) {
+    await page.waitForFunction((dd) => { const g = window.__game; return g.FORKS[0] && g.FORKS[0].s - g.player.s < dd; }, { timeout: 90000 }, d);
+    await page.evaluate(() => { window.__game.G.lives = 99; });
+    await snap(kind + '_' + d);
+  }
+} else if (script === 'halfpipe') {
+  // the dojo: past its 2nd fork (a climb) the roof turns to grey concrete — snap the way through
+  await page.evaluate(() => { const g = window.__game; g.G.lives = 99; g.LEVELS[g.G.level].goal.n = 99999; });
+  await page.waitForFunction(() => window.__game.FORKS.length >= 2, { timeout: 90000 });
+  console.log('fork 2', await page.evaluate(() => { const f = window.__game.FORKS[1]; return f.kind + '@' + Math.round(f.s); }));
+  for (const d of [-40, -5, 30, 70, 110]) {
+    await page.waitForFunction((dd) => { const g = window.__game; return g.player.s - g.FORKS[1].s > dd; }, { timeout: 90000 }, d);
+    await page.evaluate(() => { window.__game.G.lives = 99; });
+    await snap('hp' + d);
+  }
+  console.log('world', await page.evaluate(() => window.__game.worldName()));
+} else if (script === 'gear') {
+  // ?gear=1: glide, then saws — snap both, count what the saws cut
+  await page.evaluate(() => { const g = window.__game; g.G.lives = 99; g.LEVELS[g.G.level].goal.n = 99999; });
+  await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 }); await wait(500);
+  await page.keyboard.press('KeyG'); await wait(600); await snap('glide-up');
+  await wait(1500); await snap('glide-high');
+  console.log('glide', JSON.stringify(await page.evaluate(() => ({ hop: +window.__game.player.hop.toFixed(2), pizza: window.__game.G.pizza }))));
+  await wait(3800); await snap('glide-end');
+  console.log('after glide', JSON.stringify(await page.evaluate(() => ({ hop: +window.__game.player.hop.toFixed(2), pizza: window.__game.G.pizza, lives: window.__game.G.lives }))));
+  const before = await page.evaluate(() => ({ score: window.__game.G.score, kicks: window.__game.G.kicks || 0 }));
+  await page.keyboard.press('KeyH'); await wait(700); await snap('saws-out');
+  // lay a row of things right in his lane so the saws have work
+  await page.evaluate(() => { const g = window.__game, o = g.obstacles, p = g.player;
+    o.add('crate', p.s + 30, p.theta); o.add('foot', p.s + 45, p.theta + 0.2, { base: p.theta + 0.2, strafe: 0, phase: 0, yaw: 0 }); o.add('crate', p.s + 60, p.theta - 0.3); });
+  let cut = 0;
+  for (let i = 0; i < 6; i++) { await wait(1000); if (i === 2) await snap('saws-cutting'); }
+  cut = await page.evaluate(() => window.__game.gear.cuts || 0);
+  console.log('saws', JSON.stringify({ cut, ...(await page.evaluate(() => ({ kicks: window.__game.G.kicks || 0, lives: window.__game.G.lives }))), before }));
+} else if (script === 'shatter') {
+  // a dummy right in his lane: snap just after the kick, to see the cardboard burst
+  await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 }); await wait(800);
+  const k0 = await page.evaluate(() => { const g = window.__game, p = g.player; g.obstacles.add('foot', p.s + 22, p.theta, { base: p.theta, strafe: 0, phase: 0, yaw: 0, dummy: true, kind: 1 }); return g.G.kicks || 0; });
+  await page.waitForFunction((k) => (window.__game.G.kicks || 0) > k, { timeout: 20000 }, k0);
+  for (const t of [90, 250, 500]) { await wait(t === 90 ? 90 : t - 90); await snap('shatter-' + t); }
+} else if (script === 'portalend') {
+  // NIGHT CITY's finish: jump near the end and snap the portal, then the dev panel
+  await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 });
+  await page.evaluate(() => { const g = window.__game; g.G.lives = 99; g.player.s = g.LEVELS[g.G.level].goal.n - 150; });
+  await wait(4500); await snap('portal-near');
+  await wait(2500); await snap('portal-close');
+  await page.click('#dev-btn'); await wait(400); await snap('devpanel');
+} else if (script === 'pack') {
+  // the pack rides his spine: snap riding, then mid-kick; G must not change move mode / camera
+  await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 }); await wait(600);
+  await page.evaluate(() => { const g = window.__game; g.gear.on = true; g.G.lives = 99; });
+  const m0 = await page.evaluate(() => [window.__game.G.moveMode, window.__game.G.fixCam]);
+  await snap('pack-ride');
+  await page.keyboard.press('KeyG'); await wait(400);
+  const m1 = await page.evaluate(() => [window.__game.G.moveMode, window.__game.G.fixCam, window.__game.gear.gliding]);
+  console.log('mode before', JSON.stringify(m0), 'after G', JSON.stringify(m1));
+  await wait(6500);
+  const k0 = await page.evaluate(() => { const g = window.__game, p = g.player; g.obstacles.add('foot', p.s + 24, p.theta, { base: p.theta, strafe: 0, phase: 0, yaw: 0 }); return g.G.kicks || 0; });
+  await page.waitForFunction((k) => (window.__game.G.kicks || 0) > k, { timeout: 20000 }, k0);
+  for (const t of [120, 300, 500]) { await wait(t === 120 ? 120 : t - (t === 300 ? 120 : 300)); await snap('pack-kick-' + t); }
+} else if (script === 'powers') {
+  // one ability at a time + the shield's timer; then NIGHT CITY's portal end
+  await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 }); await wait(500);
+  const st = () => page.evaluate(() => { const g = window.__game; return { shield: g.player.shieldOn, stars: g.daggers.active, saws: g.gear.sawing, glide: g.gear.gliding, power: document.getElementById('power').classList.contains('on') }; });
+  await page.click('#dev-btn'); await wait(200);
+  await page.click('#dev-shield'); await wait(300); console.log('shield', JSON.stringify(await st()));
+  await page.click('#dev-saws'); await wait(300); console.log('then saws', JSON.stringify(await st()));
+  await snap('saws-bar');
+  await page.click('#dev-sai'); await wait(300); console.log('then stars', JSON.stringify(await st()));
+  await page.click('#dev-shield'); await wait(10600); console.log('shield +10.6s', JSON.stringify(await st()));
+  await page.evaluate(() => { const g = window.__game; g.G.lives = 99; g.player.s = g.LEVELS[g.G.level].goal.n - 60; });
+  await page.waitForFunction(() => window.__game.G.state === 'clear', { timeout: 30000 }); await wait(700);
+  await snap('portal-through');
+  await wait(1800); await snap('portal-clear');
+} else if (script === 'hit') {
+  // a crate in his lane, no shield: after the hit the bubble must stay off
+  await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 }); await wait(500);
+  const l0 = await page.evaluate(() => { const g = window.__game, p = g.player; g.obstacles.add('crate', p.s + 25, p.theta); return g.G.lives; });
+  await page.waitForFunction((l) => window.__game.G.lives < l, { timeout: 20000 }, l0);
+  await wait(250); await snap('after-hit');
+  console.log('hit', JSON.stringify(await page.evaluate(() => ({ lives: window.__game.G.lives, invuln: +window.__game.player.invuln.toFixed(2), bubble: window.__game.player.shield.visible }))));
 } else if (script === 'dojo') {
   // the dojo level: ride, sway across the wall, count dummies down, see the stars
   await wait(4500);

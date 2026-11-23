@@ -23,6 +23,14 @@ const SKY_R = 330;
 
 export const CITY_FOG = { color: 0xb4c8d8, near: 40, far: 245 };   // the haze in the painting's skyline
 export const CITY_HEMI = [0xfff6e6, 0x8a96a0];
+const DAY_FOG = { ...CITY_FOG }, DAY_HEMI = [...CITY_HEMI];
+function glowTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,0.35)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
 
 const rand = (s) => { const x = Math.sin(s * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
@@ -50,6 +58,7 @@ export class City {
     tex.bldg.colorSpace = THREE.SRGBColorSpace;
     tex.bldg.anisotropy = 4;
     const bMat = new THREE.MeshBasicMaterial({ map: tex.bldg, alphaTest: 0.5, side: THREE.DoubleSide, color: 0xe8ecf0 });
+    this.bMat = bMat;
     this.bGeos = BLDG.map(([x, y, w, h]) => {
       const g = new THREE.PlaneGeometry(w / h, 1);       // 1 m tall, true aspect; scaled per building
       g.translate(0, 0.5, 0);                            // origin at its base
@@ -83,6 +92,10 @@ export class City {
         const o = new THREE.Mesh(geo, ink); o.scale.setScalar(1.08); g.add(o);
       }
       g.add(new THREE.Mesh(bulb, bulbMat));
+      // a pool of light under the lamp, only at night (setNight)
+      const glow = new THREE.Sprite(this.glowMat ||= new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffd27a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.9 }));
+      glow.position.set(2.0, 6.5, 0); glow.scale.set(6, 6, 1); glow.visible = false; g.add(glow);
+      g.userData.glow = glow;
       g.userData.s = -1e9;
       this.group.add(g);
       this.lights.push(g);
@@ -92,6 +105,20 @@ export class City {
   }
 
   setOn(on) { this.group.visible = !!on; }
+
+  /** NIGHT CITY (Elad 2026-11-23: "a different hour of day — twilight or night"): the
+   *  same painting and towers tinted to dusk, a darker fog/light, the streetlights lit.
+   *  Mutates CITY_FOG / CITY_HEMI, which main reads when it switches the city on. */
+  setNight(on) {
+    this.night = !!on;
+    this.sky.material.color.setHex(on ? 0x8a76c4 : 0xffffff);
+    this.bMat.color.setHex(on ? 0x6e6aa4 : 0xe8ecf0);
+    // the ride stays lit (Elad: "lower half too dark"): the dusk lives in the sky,
+    // the towers and a far-off fog; the trench keeps a near-day light, cooled a touch
+    Object.assign(CITY_FOG, on ? { color: 0x4a4280, near: 70, far: 260 } : DAY_FOG);
+    CITY_HEMI[0] = on ? 0xf6f0ff : DAY_HEMI[0]; CITY_HEMI[1] = on ? 0x8c88b8 : DAY_HEMI[1];
+    for (const l of this.lights) l.userData.glow.visible = this.night;
+  }
   get on() { return this.group.visible; }
 
   reset() {

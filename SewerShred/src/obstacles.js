@@ -30,6 +30,7 @@ const TIRE_R = 1.05, TIRE_V = 7;     // rolling tire: radius m, m/s up the pipe 
 const PROPS = [[0, 115, 247, 364, 2.3], [252, 98, 236, 381, 2.2], [492, 0, 259, 479, 2.9], [755, 83, 264, 396, 2.4]];
 const PROP_W = 1024, PROP_H = 479;
 
+const POWER_GAP = 150;   // metres between any two ability pickups
 const HAZARDS = new Set(['crate', 'saw', 'pipe', 'fan', 'valve', 'pole', 'cone', 'barrier', 'tire', 'prop']);
 
 export class Obstacles {
@@ -43,8 +44,8 @@ export class Obstacles {
     tex.pipe.colorSpace = THREE.SRGBColorSpace;
     tex.pipe.wrapS = tex.pipe.wrapT = THREE.RepeatWrapping;
     this.glowTex = makeGlowTexture();
-    this.shieldIcon = tex.shieldIcon; this.saiIcon = tex.saiIcon;
-    for (const t of [tex.shieldIcon, tex.saiIcon]) if (t) t.colorSpace = THREE.SRGBColorSpace;
+    this.shieldIcon = tex.shieldIcon; this.saiIcon = tex.saiIcon; this.gliderIcon = tex.gliderIcon; this.sawsIcon = tex.sawsIcon;
+    for (const t of [tex.shieldIcon, tex.saiIcon, tex.gliderIcon, tex.sawsIcon]) if (t) t.colorSpace = THREE.SRGBColorSpace;
     this.footGeo = tex.footGeo;
     this.footMat = makeFootMaterial();
     this.footOutlineMat = makeOutlineMaterial(0xff3fd0, 0.028);
@@ -266,6 +267,9 @@ export class Obstacles {
       // and a light beam down to the floor so it's spotted from far away.
       shield: () => this._powerUp(this.shieldIcon, 0x5fd8ff, 0x7fe0ff, 0x9fe8ff, 0xdff8ff),
       sai: () => this._powerUp(this.saiIcon, 0xff8a3a, 0xffa060, 0xffb27a, 0xfff0d8),
+      // Donnie's gear (gear.js): the glider and the saw arms
+      glider: () => this._powerUp(this.gliderIcon, 0xb07aff, 0xc59aff, 0xd2b2ff, 0xf2e8ff),
+      saws: () => this._powerUp(this.sawsIcon, 0xffb02e, 0xffc35a, 0xffd27a, 0xfff2d0),
     };
     this._initStreet(tex);
   }
@@ -371,10 +375,15 @@ export class Obstacles {
     this.nextS = 70;
     this.lastShieldS = 0;
     this.lastSaiS = 0;
+    this.lastGearS = 0;
+    this.lastPowerS = -1e9;
     this.patternCount = 0;
   }
 
   add(type, s, theta, extra = {}) {
+    // GET HOME (level 1, Elad 2026-11-23): no enemies AT ALL — this catches the ones
+    // that come bundled inside other patterns (the Foot waiting beside a pole)
+    if (type === 'foot' && !extra.dummy && this.deckMode === 'nofoes') return null;
     const o = { type, s, theta, hit: false, done: false, near: false, mesh: this._get(type), ...extra };
     // pooled pickups come back from their collect fade: full size, full opacity
     if (o.mesh.userData.wedge) {
@@ -446,9 +455,14 @@ export class Obstacles {
     while (this.nextS < playerS + 210) {
       // Y-junction: nothing in the split itself, and nothing past one the rider hasn't picked yet
       const fk = forkNear(this.nextS, 30, FORK_QUIET);
+      // GET HOME: a forced climb / drop is no reason to go quiet — string pizza up it
+      if (fk && fk.side && this.deckMode === 'nofoes' && (fk.kind === 'rise' || fk.kind === 'drop')) {
+        this._p_pizzaLine(this.nextS, 0, slimeAngle(this.nextS));
+        this.nextS += 16; continue;
+      }
       if (fk) { if (!fk.side) break; this.nextS = fk.s + FORK_QUIET; continue; }
       const s = this.nextS;
-      const gap = THREE.MathUtils.lerp(34, 19, diff) + Math.random() * 8;
+      const gap = (THREE.MathUtils.lerp(34, 19, diff) + Math.random() * 8) * (this.deckMode === 'nofoes' ? 0.7 : 1);
       this._pattern(s, diff, playerTheta);
       this.nextS += gap;
       this.patternCount++;
@@ -461,7 +475,7 @@ export class Obstacles {
     // level loop (levels.js): the level's NEW power is its first pickup
     if (this.firstPickup && s > 85) {
       this.add(this.firstPickup, s, sl);
-      if (this.firstPickup === 'shield') this.lastShieldS = s; else this.lastSaiS = s;
+      if (this.firstPickup === 'shield') this.lastShieldS = s; else if (this.firstPickup === 'sai') this.lastSaiS = s; else this.lastGearS = s;
       this.firstPickup = null;
       return;
     }
@@ -478,15 +492,26 @@ export class Obstacles {
       return;
     }
     // SAI STORM: roughly every 520 m from 180 m on (the first one early, so it's met)
-    const can = (k) => !this.allowPick || this.allowPick.includes(k);   // the level's powers
+    // the level's powers — and only one ability at a time (Elad 2026-11-23): none dealt
+    // while one is running, and never two within POWER_GAP of each other
+    const free = !(this.busy && this.busy()) && s - (this.lastPowerS || -1e9) > POWER_GAP;
+    const can = (k) => free && (!this.allowPick || this.allowPick.includes(k));
     if (can('sai') && s - this.lastSaiS > 520 && s > 180 && s - this.lastShieldS > 60 && Math.random() < 0.55) {
-      this.lastSaiS = s;
+      this.lastPowerS = s; this.lastSaiS = s;
       this.add('sai', s, sl + (Math.random() - 0.5) * 1.2);
+      return;
+    }
+    // Donnie's gear: a glider or saws roughly every gearGap m (?gear=1 test: often), taking turns
+    if ((can('glider') || can('saws')) && this.gearGap && s - this.lastGearS > this.gearGap && s > 120) {
+      this.lastPowerS = s; this.lastGearS = s;
+      const both = can('glider') && can('saws');
+      const k = both ? ((this.gearN = (this.gearN || 0) + 1) % 2 ? 'glider' : 'saws') : can('glider') ? 'glider' : 'saws';
+      this.add(k, s, sl + (Math.random() - 0.5) * 0.8);
       return;
     }
     // shields: roughly every 450 m, never in the first 300
     if (can('shield') && s - this.lastShieldS > 450 && s > 300 && Math.random() < 0.5) {
-      this.lastShieldS = s;
+      this.lastPowerS = s; this.lastShieldS = s;
       this.add('shield', s, sl + (Math.random() - 0.5) * 1.2);
       return;
     }
@@ -495,8 +520,9 @@ export class Obstacles {
     const open = OPEN_TOP.value > 0;
     const deck = worldAt(s).trains ? [['pizzaRise', 1], ['pizzaLine', 0.4]] : [
       ['crates', 0.35],
-      ['pizzaLine', 0.8],
-      ['pizzaArc', 0.45],
+      // GET HOME (level 1, Elad 2026-11-23: "add a lot of pizzas"): pizza ~3x as often
+      ['pizzaLine', this.deckMode === 'nofoes' ? 2.6 : 0.8],
+      ['pizzaArc', this.deckMode === 'nofoes' ? 1.6 : 0.45],
       // OPEN TOP (Elad 2026-11-22): bars through the axis reach into the sky
       // with no roof to end on — off there, the saw discs carry the load
       ['pole', open ? 0 : 1.65 + diff * 0.4],   // +0.35: took the valves' share (Elad 2026-11-16)
@@ -663,6 +689,11 @@ export class Obstacles {
     }
   }
 
+  /** The glider's line: pizza strung along the pipe at gliding height, where he'll fly. */
+  glideLine(s, theta, h) {
+    for (let i = 0; i < 12; i++) this.add('pizza', s + 18 + i * 5, theta + Math.sin(i * 0.55) * 0.35, { air: h });
+  }
+
   _p_pole(s, diff, sl) {
     // one bar through the axis; usually tilted so one end isn't on the floor
     this.add('pole', s, 0, { beta: (Math.random() - 0.5) * Math.PI * 0.9 + Math.PI / 2, n: 1 });
@@ -780,7 +811,7 @@ export class Obstacles {
     for (const o of this.list) {
       const ds = o.s - ps;
       // ── per-type animation ──
-      if (o.type === 'pizza' || o.type === 'shield' || o.type === 'sai') {
+      if (o.type === 'pizza' || o.type === 'shield' || o.type === 'sai' || o.type === 'glider' || o.type === 'saws') {
         const w = o.mesh.userData.wedge;
         w.rotation.y = time * 3 + o.s;
         const bob = o.mesh.userData.bob;
@@ -973,6 +1004,8 @@ export class Obstacles {
         return null;
       case 'shield':
       case 'sai':
+      case 'glider':
+      case 'saws':
         if (Math.abs(ds) < 1.5 && Math.abs(angleDiff(pt, o.theta)) < 0.32) return 'pickup';
         return null;
     }

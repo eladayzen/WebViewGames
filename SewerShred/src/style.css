@@ -153,6 +153,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1c16; col
 
 /* dev options: closed by default (Elad 2026-11-17); the gear opens them */
 body:not(.dev-open) .pill-btn.dev { display: none !important; }
+#dev-col { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 52px); right: 14px; z-index: 45; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+#dev-col .dev-row { display: flex; gap: 6px; }
+#dev-col .pill-btn { height: 34px; font-size: 15px; letter-spacing: 1px; }
 #dev-btn { order: 2; opacity: .55; }
 body.dev-open #dev-btn { opacity: 1; }
 
@@ -232,7 +235,7 @@ body.dev-open #dev-btn { opacity: 1; }
 }
 
 /* SAI STORM timer: the power-up's icon + a draining bar, under the combo (no text) */
-#power { position: absolute; top: max(124px, calc(env(safe-area-inset-top) + 114px)); right: 14px; display: flex; align-items: center; gap: 6px; opacity: 0; transform: scale(0.6); transition: opacity 0.2s, transform 0.2s; }
+#power { position: absolute; top: max(calc(clamp(44px,8vmin,62px) + 84px), calc(env(safe-area-inset-top) + clamp(44px,8vmin,62px) + 74px)); left: 16px; display: flex; align-items: center; gap: 6px; opacity: 0; transform: scale(0.6); transition: opacity 0.2s, transform 0.2s; }
 #power.on { opacity: 1; transform: scale(1); }
 #power img { width: clamp(34px, 6vmin, 48px); filter: drop-shadow(0 3px 0 rgba(0,0,0,0.6)); animation: hot 0.5s ease-in-out infinite alternate; }
 #power .bar { width: clamp(56px, 11vmin, 96px); height: 8px; border-radius: 4px; background: rgba(0,0,0,0.55); border: 2px solid var(--ink); overflow: hidden; }
@@ -278,7 +281,7 @@ body.dev-open #dev-btn { opacity: 1; }
 /* Donnie on the walkie-talkie: one line per level */
 #lc-say { display: flex; align-items: center; gap: 10px; max-width: min(92vw, 560px); }
 #lc-say.hidden { display: none; }
-#lc-say img { width: clamp(56px, 12vmin, 92px); height: clamp(56px, 12vmin, 92px); border-radius: 50%; border: 3px solid var(--ink); background: #6b4fb3; object-fit: cover; flex: none; }
+#lc-say img { width: clamp(56px, 12vmin, 92px); height: clamp(56px, 12vmin, 92px); border-radius: 50%; border: 3px solid var(--ink); background: #ffc93a; object-fit: contain; padding: clamp(5px, 1.2vmin, 9px); box-sizing: border-box; flex: none; }
 #lc-say p { position: relative; margin: 0; background: #fff; color: var(--ink); border: 3px solid var(--ink); border-radius: 16px; padding: 8px 14px; font-size: clamp(15px, 3.4vmin, 24px); line-height: 1.15; text-align: left; }
 #lc-say p::before { content: ''; position: absolute; left: -12px; top: 50%; margin-top: -9px; border: 9px solid transparent; border-right-color: var(--ink); border-left: 0; }
 #lc-goal { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.12); border: 3px solid var(--ink); border-radius: 18px; padding: 8px 18px; }
@@ -298,3 +301,15 @@ body.dev-open #dev-btn { opacity: 1; }
 .ring-btn .ring .track { stroke: rgba(0,0,0,0.35); }
 .ring-btn .ring .run { stroke: #fff; stroke-dasharray: 100; stroke-dashoffset: 100; stroke-linecap: round; }
 #lclr-next.again { background: #ff9a1e; }
+
+/* THE PORTAL'S END: once through it, the screen IS the warp — a spinning energy swirl
+   rushing out from the centre (no more street), under the LEVEL CLEAR card */
+#warp { position: fixed; inset: 0; z-index: 40; overflow: hidden; pointer-events: none; background: #120a3a; opacity: 0; transition: opacity 0.35s ease-out; }
+#warp.on { opacity: 1; }
+#warp.hidden { display: none; }
+#warp i { position: absolute; left: 50%; top: 50%; width: 260vmax; height: 260vmax; margin: -130vmax 0 0 -130vmax;
+  background: radial-gradient(circle, #fff 0, rgba(255,255,255,0.85) 3%, rgba(140,240,255,0.5) 9%, transparent 22%),
+    repeating-conic-gradient(from 0deg, #2a1680 0deg, #4a2ad0 10deg, #2cd8ff 18deg, #b040ff 26deg, #2a1680 36deg);
+  animation: warpspin 1.6s linear infinite, warppulse 0.9s ease-in-out infinite alternate; }
+@keyframes warpspin { to { transform: rotate(360deg); } }
+@keyframes warppulse { from { filter: brightness(0.9) saturate(1.1); } to { filter: brightness(1.25) saturate(1.4); } }

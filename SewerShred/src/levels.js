@@ -22,13 +22,24 @@ const $ = (id) => document.getElementById(id);
 // on the card; `pickups` is which powers that level deals (null = all of them).
 export const LEVELS = [
   { key: 'home', n: 1, title: 'GET HOME', world: 'sewers', open: false, deck: 'nofoes', goal: { type: 'dist', n: 600 }, pickups: [],
+    routes: { kinds: ['rise'], every: 220 },   // up only: the pipe climbs
     say: 'Mikey, back to the dojo NOW! Enemies on the way!' },
   { key: 'dojo', n: 2, title: 'TRAINING', world: 'dojo', open: false, deck: 'dojo', goal: { type: 'ko', n: 12 }, pickups: [],
+    routes: { kinds: ['y', 'rise', 'drop'], every: 260 },   // a split, a climb, a drop — wood all the way round, all the way (Elad 2026-11-23)
     say: "Let's get you trained. Knock down the dummies!" },
   { key: 'sewers', n: 3, title: 'SEWERS', world: 'sewers', open: false, deck: 'normal', goal: { type: 'dist', n: 1200 }, unlock: 'shield', pickups: ['shield'],
+    routes: { kinds: ['rise', 'y', 'drop'], every: 300 },   // every route kind
     say: "You're ready. Go fight them!" },
   { key: 'city', n: 4, title: 'CITY', open: true, deck: 'city', goal: { type: 'dist', n: 1500 }, unlock: 'sai', pickups: ['shield', 'sai'],
     say: 'They ran up to the street! Take these stars!' },
+  // Elad 2026-11-23: the city again at twilight, Donnie's gear (backpack: glider +
+  // saw arms), and a portal at the end — then inside the portal, then Dimension X
+  { key: 'night', n: 5, title: 'NIGHT CITY', open: true, night: true, deck: 'city', goal: { type: 'dist', n: 1500 }, unlock: 'glider', gear: true, portal: true,
+    pickups: ['shield', 'sai', 'glider', 'saws'], say: 'New gear in your backpack! Glide over them, saw through them!' },
+  { key: 'portal', n: 6, title: 'THE PORTAL', world: 'portal', open: false, deck: 'nofoes', speed: 1.45, goal: { type: 'dist', n: 700 }, gear: true, gearGap: 220,
+    pickups: ['glider', 'saws', 'shield'], routes: { kinds: ['drop', 'rise'], every: 230 }, say: 'Whoa, a portal! Hold on tight, Mikey!' },
+  { key: 'dimx', n: 7, title: 'DIMENSION X', world: 'dimx', open: false, deck: 'normal', goal: { type: 'dist', n: 1500 }, gear: true,
+    pickups: ['shield', 'sai', 'glider', 'saws'], routes: { kinds: ['y', 'rise', 'drop'], every: 300 }, say: 'Dimension X! Stay sharp out there!' },
 ];
 
 // inline SVG icons (no emoji — they render differently per device)
@@ -40,7 +51,7 @@ export const ICON = {
   air: '<svg viewBox="0 0 24 24"><path d="M2 21h11l8-7v7z" fill="#c98a45" stroke="#14181a" stroke-width="1.4" stroke-linejoin="round"/><g transform="translate(6 -1) scale(0.55)"><path d="M3 5.5Q12 1 21 5.5L12 22Z" fill="#ffcf3a" stroke="#14181a" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="11" r="2" fill="#c62f1f"/></g><path d="M4 15q2-6 6-9" fill="none" stroke="#fff" stroke-width="1.4" stroke-dasharray="2 2"/></svg>',
 };
 const GOAL_ICON = { pizza: 'pizza', dist: 'exit', air: 'air', ko: 'dummy' };
-const UNLOCK_IMG = { shield: '/tex/shield_icon.png', sai: '/tex/sai_icon.png' };
+const UNLOCK_IMG = { shield: '/tex/shield_icon.png', sai: '/tex/sai_icon.png', glider: '/tex/glider_icon.png' };
 /** The hero's weapon badge (MIKEY: nunchucks) stands in for the sai one. */
 export function setWeaponIcon(src) { UNLOCK_IMG.sai = src; }
 

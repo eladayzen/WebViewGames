@@ -143,6 +143,85 @@ export class Debris {
 }
 
 /**
+ * Cardboard shards (Elad 2026-11-23: "the target hit effect would be different —
+ * like a cardboard smashing into pieces"). A knocked-down dummy bursts into flat,
+ * ragged pieces cut from ITS OWN picture — bits of bullseye, marker and tape fly
+ * off, tumbling and flapping, then drop away.
+ */
+export class CardDebris {
+  constructor(scene, n = 42) {
+    this.items = [];
+    this.mats = new Map();
+    for (let i = 0; i < n; i++) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6 * 3), 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(6 * 2), 2));
+      geo.setIndex([0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5]);
+      const m = new THREE.Mesh(geo, null);
+      m.visible = false; m.frustumCulled = false;
+      scene.add(m);
+      this.items.push({ m, life: 0, v: new THREE.Vector3(), g: new THREE.Vector3(), w: new THREE.Vector3(), s: 1 });
+    }
+    this.cursor = 0;
+    this._e = new THREE.Euler(); this._q = new THREE.Quaternion();
+  }
+
+  _mat(tex) {
+    if (!this.mats.has(tex)) this.mats.set(tex, new THREE.MeshBasicMaterial({ map: tex, color: 0xffffff, side: THREE.DoubleSide, alphaTest: 0.5, toneMapped: false }));
+    return this.mats.get(tex);
+  }
+
+  /** p: the card's centre; up: away from the wall; fwd: downstream. */
+  explode(p, up, fwd, tex, count = 14, cardH = 2.2) {
+    const mat = this._mat(tex);
+    const aspect = tex.image ? tex.image.width / tex.image.height : 0.6;
+    for (let k = 0; k < count; k++) {
+      const it = this.items[this.cursor]; this.cursor = (this.cursor + 1) % this.items.length;
+      // a ragged 5-sided piece, about a fifth of the card
+      const sz = cardH * (0.2 + Math.random() * 0.16);
+      const u0 = 0.15 + Math.random() * 0.7, v0 = 0.12 + Math.random() * 0.76;
+      const pos = it.m.geometry.attributes.position.array, uv = it.m.geometry.attributes.uv.array;
+      pos[0] = 0; pos[1] = 0; pos[2] = 0; uv[0] = u0; uv[1] = v0;
+      for (let j = 0; j < 5; j++) {
+        const a = (j / 5) * Math.PI * 2 + (Math.random() - 0.5) * 0.9, r = sz * (0.55 + Math.random() * 0.6);
+        const x = Math.cos(a) * r, y = Math.sin(a) * r;
+        pos[(j + 1) * 3] = x; pos[(j + 1) * 3 + 1] = y; pos[(j + 1) * 3 + 2] = 0;
+        uv[(j + 1) * 2] = u0 + x / (cardH * aspect); uv[(j + 1) * 2 + 1] = v0 + y / cardH;
+      }
+      it.m.geometry.attributes.position.needsUpdate = it.m.geometry.attributes.uv.needsUpdate = true;
+      it.m.geometry.computeBoundingSphere();
+      it.m.material = mat;
+      it.m.position.copy(p).add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(cardH * 0.5));
+      it.m.quaternion.random();
+      it.v.copy(up).multiplyScalar(5 + Math.random() * 7)
+        .addScaledVector(fwd, 7 + Math.random() * 9)
+        .add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(10));
+      it.g.copy(up).multiplyScalar(-18);
+      it.w.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(16);
+      it.life = 1.3 + Math.random() * 0.4;
+      it.m.scale.setScalar(1);
+      it.m.visible = true;
+    }
+  }
+
+  update(dt) {
+    for (const it of this.items) {
+      if (it.life <= 0) continue;
+      it.life -= dt;
+      it.v.multiplyScalar(Math.pow(0.35, dt));          // cardboard catches the air
+      it.v.addScaledVector(it.g, dt);
+      it.m.position.addScaledVector(it.v, dt);
+      this._q.setFromEuler(this._e.set(it.w.x * dt, it.w.y * dt, it.w.z * dt));
+      it.m.quaternion.multiply(this._q);
+      it.m.scale.setScalar(Math.min(1, it.life * 2.5));
+      if (it.life <= 0) it.m.visible = false;
+    }
+  }
+
+  clear() { for (const it of this.items) { it.life = 0; it.m.visible = false; } }
+}
+
+/**
  * The board against the floor: two glowing wheel tracks laid on the wall
  * behind the rear wheels (fading ribbons), and a contact glow under the deck.
  * Cool cyan on water, hot orange on dry plates.
