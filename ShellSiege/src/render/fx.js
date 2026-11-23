@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { u } from './units.js';
 import { glowTexture } from './stage.js';
 import { WEAPON } from '../core/weapon.js';
+import { makeSai, SAI_LEN } from './weapons3d.js';
 
 const MAX_SHOTS = 160;
 
@@ -100,21 +101,53 @@ export function createFx(scene, tex) {
 
   const shots = [];
   for (let i = 0; i < MAX_SHOTS; i++) {
-    const star = new THREE.Mesh(starGeo, starMat);
-    star.rotation.x = -Math.PI / 2;      // lying flat, skimming the stone
-    star.scale.setScalar(u(WEAPON.sizePx));
+    let star;
+    if (WEAPON.name === 'sai') {
+      // A REAL 3D SAI, lying flat and spinning in the plane like the picture did: the blade
+      // runs along +Z (centred), and `star.rotation.y` is the spin.
+      const inner = makeSai();
+      inner.rotation.x = Math.PI / 2;
+      star = new THREE.Group();
+      star.add(inner);
+      star.scale.setScalar(u(WEAPON.sizePx) * WEAPON.aspect / SAI_LEN);
+      inner.position.z = -0.45;
+    } else {
+      star = new THREE.Mesh(starGeo, starMat);
+      star.rotation.x = -Math.PI / 2;      // lying flat, skimming the stone
+      star.scale.setScalar(u(WEAPON.sizePx));
+    }
     const trail = new THREE.Sprite(trailMat);
     trail.scale.set(u(WEAPON.sizePx) * 1.1, u(WEAPON.sizePx) * 1.1, 1);
     const g = new THREE.Group();
-    g.add(trail, star);
+    g.add(star);                         // no glow sprite: the dagger reads on its own
     g.visible = false;
     scene.add(g);
     shots.push({ g, star });
   }
 
+  // NINJA STARS: a flat spinning shuriken (the star art), thrown and never caught.
+  const starArt = WEAPON.name === 'sai' ? tex.shuriken : art;
+  starArt.colorSpace = THREE.SRGBColorSpace;
+  const ninjaMat = new THREE.MeshBasicMaterial({ map: starArt, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });
+  const ninjaGeo = new THREE.PlaneGeometry(1, 1);
+  const ninjas = [];
+  for (let i = 0; i < 48; i++) {
+    const m = new THREE.Mesh(ninjaGeo, ninjaMat);
+    m.rotation.x = -Math.PI / 2; m.scale.setScalar(u(34)); m.visible = false;
+    scene.add(m); ninjas.push(m);
+  }
+
   function syncShots(bullets, timeS, muzzleY) {
-    let i = 0;
+    let i = 0, ni = 0;
     for (const b of bullets) {
+      if (b.alive && b.kind === 'star') {
+        if (ni < ninjas.length) {
+          const m = ninjas[ni++]; m.visible = true;
+          m.position.set(u(b.x), Math.max(0.4, muzzleY - 0.12), u(b.y));
+          m.rotation.z = timeS * 30;
+        }
+        continue;
+      }
       if (!b.alive || i >= MAX_SHOTS) continue;
       const s = shots[i++];
       s.g.visible = true;
@@ -126,9 +159,11 @@ export function createFx(scene, tex) {
       // alone is not enough to read at this camera distance.
       const y = b.mode === 'back' ? 0.42 : Math.max(0.38, muzzleY - 0.12);
       s.g.position.set(u(b.x), y, u(b.y));
-      s.star.rotation.z = timeS * WEAPON.spinRadS * (b.mode === 'back' ? -1 : 1);
+      if (WEAPON.name === 'sai') s.star.rotation.y = timeS * WEAPON.spinRadS * (b.mode === 'back' ? -1 : 1);
+      else s.star.rotation.z = timeS * WEAPON.spinRadS * (b.mode === 'back' ? -1 : 1);
     }
     for (; i < MAX_SHOTS; i++) shots[i].g.visible = false;
+    for (; ni < ninjas.length; ni++) ninjas[ni].visible = false;
   }
 
   // --- impact sparks ------------------------------------------------------

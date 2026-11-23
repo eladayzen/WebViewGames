@@ -31,6 +31,7 @@ import { ARENA, KNOCK_S } from './world.js';
 import { BREEDS, DEFAULT_BREED } from './breeds.js';
 import { resolveCircle, overlapsAny, blocksShot } from './obstacles.js';
 import { BEHAVIORS, meleeStep, tellOf } from './behaviors.js';
+import { shieldCut } from './allies.js';
 
 const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const num = (k, d) => {
@@ -99,13 +100,15 @@ export const PLAYER_HP = num('php', 100);
  * here rather than in core/rooms.js because a Fort Golem's summoned Slayers must
  * be scaled too, and rooms.js imports this file, not the other way round.
  */
-export const LEVEL_SCALE = { hpPerLevel: 0.15, dmgPerLevel: 0.10 };
+export const LEVEL_SCALE = { hpPerLevel: 0.17, dmgPerLevel: 0.13 };
 
 /** { hp, dmg } multipliers for level `level`. Level 1 is exactly 1. */
 export function levelMul(level) {
   return {
-    hp: 1 + LEVEL_SCALE.hpPerLevel * (level - 1),
-    dmg: 1 + LEVEL_SCALE.dmgPerLevel * (level - 1),
+    // COMPOUNDING, not linear: the player's build tops out (every ability is capped), so
+    // the enemies must keep growing past that point or a finished build never loses again.
+    hp: Math.pow(1 + LEVEL_SCALE.hpPerLevel, level - 1),
+    dmg: Math.pow(1 + LEVEL_SCALE.dmgPerLevel, level - 1),
   };
 }
 
@@ -146,6 +149,7 @@ export function makeFoe(x, y, timeS = 0, breedKey = DEFAULT_BREED) {
     windupS: b.windupS ?? FOE.windupS,
     recoverS: b.recoverS ?? FOE.recoverS,
     cost: b.cost ?? 1,
+    mass: b.mass ?? 1,               // how hard gravity grenades pull it (core/allies.js)
     hp: b.hp ?? FOE.hp,
     maxHp: b.hp ?? FOE.hp,
     hitT: 0,
@@ -181,10 +185,11 @@ export function makeFoe(x, y, timeS = 0, breedKey = DEFAULT_BREED) {
  * than clamped, because clamping a corner spawn is exactly what puts one in
  * your face.
  */
-export function spawnPoint(px, py, rand = Math.random, obstacles = null) {
+export function spawnPoint(px, py, rand = Math.random, obstacles = null, ahead = null) {
   const m = FOE.radius + 10;
   for (let tries = 0; tries < 8; tries++) {
-    const a = rand() * Math.PI * 2;
+    // `ahead` (radians): a cone about the player's heading, for the waves that come at a kiter
+    const a = ahead === null || tries >= 5 ? rand() * Math.PI * 2 : ahead + (rand() - 0.5) * 1.7;
     const x = Math.max(m, Math.min(ARENA.width - m, px + Math.cos(a) * FOE.spawnDist));
     const y = Math.max(m, Math.min(ARENA.height - m, py + Math.sin(a) * FOE.spawnDist));
     // 130 clears the biggest body in the roster, so a giant is never born
@@ -387,6 +392,13 @@ export function hurtPlayer(w, amount, push = 0, fromX = 0, fromY = 0) {
     const dx = w.player.x - fromX, dy = w.player.y - fromY, d = Math.hypot(dx, dy) || 1;
     const v = (2 * push) / KNOCK_S;
     w.knock = { vx: (dx / d) * v, vy: (dy / d) * v, t: KNOCK_S };
+  }
+  // THE SHELL SHIELD, while it is ON in its on-off loop (core/allies.js), cuts every hit by a percentage.
+  const sh = w.shield;
+  if (sh && sh.up && sh.hp > 0) {
+    amount = Math.round(amount * (1 - shieldCut(w.build.shield || 1)));
+    sh.hitT = 0.3;
+    if (amount <= 0) return;
   }
   w.hp = Math.max(0, w.hp - amount);
   w.hurtT = 0.35;

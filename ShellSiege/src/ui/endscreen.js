@@ -3,8 +3,8 @@
 // Elad, 22 Nov, after the concept frame (art-candidates/ui-concepts/overrun-progression.png):
 // the screen has to explain the roguelike in one look --
 //
-//   USED   the TEMPORARY abilities you had this run (the turtle allies), greyed out:
-//          they are spent. Short copy, on purpose.
+//   TEMPORARY  the turtle allies you hold. In colour while the run is alive (a won level keeps them);
+//          grey only once you have died, because only then are they lost.
 //   KEPT   the PERMANENT abilities, with how many of each. These stay.
 //   ROLL   a closed box: you get a free new ability when you press GO AGAIN. The roll
 //          itself happens after the press, over black (main.js), not here.
@@ -44,8 +44,8 @@ export function renderEnd(kind, { build, level, rooms }) {
   const panels = document.getElementById('over-panels');
   if (panels) {
     panels.innerHTML =
-      `<section><h3>${kind === 'dead' ? 'USED' : 'DONE'}</h3><div class="slots">` +
-        (used.length ? used.map((k) => slot(k, build[k], true)).join('') : '<em>none</em>') +
+      `<section><h3>TEMPORARY</h3><div class="slots">` +
+        (used.length ? used.map((k) => slot(k, build[k], kind === 'dead')).join('') : '<em>none</em>') +
       '</div></section>' +
       `<section class="kept"><h3>KEPT</h3><div class="slots">` +
         (kept.length ? kept.map((k) => slot(k, build[k], false)).join('') : '<em>nothing yet</em>') +

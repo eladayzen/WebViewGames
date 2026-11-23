@@ -62,13 +62,13 @@ const num = (k, d) => {
 export const BREEDS = {
   slayer: {
     label: 'Slayer', glb: 'models/rivals/Character_Slayer_01.glb', tex: 'tex/rivals.webp',
-    hp: 50, speed: 165, damage: 13, push: 70, radius: 39, reach: 107,
+    mass: 1, hp: 65, speed: 165, damage: 13, push: 70, radius: 39, reach: 107,
     height: 1.87, windupS: 0.40, recoverS: 0.52, cost: 1,
     behavior: 'melee',
   },
   evilgod: {
     label: 'Evil God', glb: 'models/rivals/Character_EvilGod_01.glb', tex: 'tex/rivals.webp',
-    hp: 30, speed: 230, damage: 9, push: 60, radius: 44, reach: 133,
+    mass: 0.8, hp: 30, speed: 230, damage: 9, push: 60, radius: 44, reach: 133,
     height: 2.36, windupS: 0.32, recoverS: 0.45, cost: 1,
     behavior: 'thrower',
     job: { keepMin: 380, keepMax: 520, throwEvery: 2.0, windupS: 0.50, shotSpeed: 360, shotRadius: 24, shotDamage: 9, shotLifeS: 2.8, push: 45,
@@ -81,14 +81,14 @@ export const BREEDS = {
   },
   mechgolem: {
     label: 'Mechanical Golem', glb: 'models/rivals/Character_MechanicalGolem_01.glb', tex: 'tex/rivals.webp',
-    hp: 90, speed: 145, damage: 17, push: 140, radius: 65, reach: 168,
+    mass: 3, hp: 117, speed: 145, damage: 17, push: 140, radius: 65, reach: 168,
     height: 3.06, windupS: 0.50, recoverS: 0.62, cost: 2,
     behavior: 'charger',
     job: { chargeMin: 260, chargeMax: 650, dist: 780, speed: 1150, every: 3.0, windupS: 0.30, stunS: 1.6, hitDamage: 17, push: 340 },
   },
   elemgolem: {
     label: 'Elemental Golem', glb: 'models/rivals/Character_ElementalGolem_01.glb', tex: 'tex/rivals.webp',
-    hp: 130, speed: 95, damage: 22, push: 160, radius: 87, reach: 219,
+    mass: 5, hp: 169, speed: 95, damage: 22, push: 160, radius: 87, reach: 219,
     height: 4.05, windupS: 0.55, recoverS: 0.66, cost: 3,
     seeThrough: true,
     behavior: 'slammer',
@@ -96,7 +96,7 @@ export const BREEDS = {
   },
   fortgolem: {
     label: 'Fort Golem', glb: 'models/rivals/Character_FortGolem_01.glb', tex: 'tex/rivals.webp',
-    hp: 180, speed: 80, damage: 28, push: 210, radius: 96, reach: 233,
+    mass: 8, hp: 234, speed: 80, damage: 28, push: 210, radius: 96, reach: 233,
     height: 4.43, windupS: 0.62, recoverS: 0.72, cost: 4,
     seeThrough: true,
     behavior: 'summoner',
@@ -136,12 +136,20 @@ export const LEVELS = [
   {
     name: 'The Plaza',
     floor: 'plaza',
+    // THE ROSTER LADDER. A level is `rooms` long but walks only part of this: level 1
+    // takes rungs 0-4, level 2 rungs 1-5 and so on (POOL_SHIFT_PER_LEVEL), so the roster
+    // keeps growing for as long as the player keeps winning.
+    rooms: 5,
     pools: [
       ['slayer'],
       ['slayer', 'evilgod'],
+      ['slayer', 'evilgod'],
+      ['slayer', 'evilgod', 'mechgolem'],
       ['slayer', 'evilgod', 'mechgolem'],
       ['evilgod', 'mechgolem', 'elemgolem'],
-      ['mechgolem', 'elemgolem', 'fortgolem'],
+      ['slayer', 'evilgod', 'mechgolem', 'elemgolem'],
+      ['evilgod', 'mechgolem', 'elemgolem', 'fortgolem'],
+      ['slayer', 'mechgolem', 'elemgolem', 'fortgolem'],
     ],
     boss: 'fortgolem',
   },
@@ -157,17 +165,23 @@ export const LEVELS = [
  * order is the real game and this is the stage in which it gets judged. Flip
  * the default here when the curve is wanted back.
  */
-export const SHOW_EVERYTHING = QS.get('pool') !== 'curve';
+/** How many rooms along the roster each new level starts. */
+export const POOL_SHIFT_PER_LEVEL = 1;
+
+export const SHOW_EVERYTHING = QS.get('pool') === 'all';
 
 /** Who may spawn in a room. `everything` is a parameter so a test can ask for the designed one. */
 export function poolFor(levelIdx, roomIdx, everything = SHOW_EVERYTHING) {
   if (everything) return Object.keys(BREEDS);
   const def = LEVELS[levelIdx % LEVELS.length];
-  return def.pools[Math.min(roomIdx, def.pools.length - 1)];
+  // EACH LEVEL STARTS FURTHER ALONG THE INTRODUCTION: level 2's first room already holds
+  // what level 1's third did, so the roster keeps growing instead of resetting to Slayers.
+  const at = roomIdx + levelIdx * POOL_SHIFT_PER_LEVEL;
+  return def.pools[Math.min(at, def.pools.length - 1)];
 }
 
 /** Rooms in a level -- one per entry in the pool list. */
-export const roomsIn = (levelIdx) => LEVELS[levelIdx % LEVELS.length].pools.length;
+export const roomsIn = (levelIdx) => { const d = LEVELS[levelIdx % LEVELS.length]; return d.rooms ?? d.pools.length; };
 
 /** Every breed the build has to load -- the union of every level and room. */
 export function usedBreeds() {

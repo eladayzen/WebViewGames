@@ -530,3 +530,10 @@ img.pip.boss { width: 46px; }
 /* the free start roll plays over BLACK */
 #roll-overlay.over-black { background: #000; }
 #gameover-overlay { background: rgba(5, 9, 11, 0.8); }
+
+/* --- the room-start banner: two plain lines, "LEVEL 2" over "ROOM 3", up by the top edge -------
+   No burst, no box: the old comic burst sat on top of the turtle. */
+#banner.plain { top: 14%; padding: 0; }
+#banner.plain::before, #banner.plain::after { display: none; }
+#banner.plain { font-size: clamp(18px, 3vw, 30px); color: #fff8e1; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; letter-spacing: .12em; line-height: 1.05; }
+#banner.plain small { margin-top: 2px; font-size: 1.4em; color: var(--orange); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; letter-spacing: .08em; }

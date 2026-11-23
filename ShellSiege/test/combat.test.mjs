@@ -185,3 +185,29 @@ test('IN PLAY: two blades at one enemy at long range hit it, every time', () => 
     assert.ok(t.hp < 1000, `missed at ${dist}px`);
   }
 });
+
+// ---- THE QUIVER AND THE STARS ---------------------------------------------------------
+test('A DAGGER IS NOT THROWN WHILE THE QUIVER IS EMPTY, and the second one needs the unlock', () => {
+  const w = createWorld(); crate(w, 300, 0);
+  updateFiring(w, gun({ quiver: 1 }), 1);
+  updateFiring(w, gun({ quiver: 1 }), 1);
+  assert.equal(w.bullets.filter((b) => b.alive).length, 1, 'a second dagger left with one in the air');
+  const w2 = createWorld(); crate(w2, 300, 0);
+  updateFiring(w2, gun({ quiver: 2 }), 1);
+  updateFiring(w2, gun({ quiver: 2 }), 1);
+  assert.equal(w2.bullets.filter((b) => b.alive).length, 2);
+  updateFiring(w2, gun({ quiver: 2 }), 1);
+  assert.equal(w2.bullets.filter((b) => b.alive).length, 2, 'a third dagger left');
+});
+
+test('STARS FIRE ON THEIR OWN CLOCK, FLY WITHOUT RETURNING, AND DO NOT BLOCK THE DAGGER', () => {
+  const w = createWorld(); crate(w, 300, 0);
+  const st = gun({ quiver: 1, stars: { intervalS: 1, count: 3, damage: 5, rangePx: 900 } });
+  updateFiring(w, st, 0.01);
+  const stars = w.bullets.filter((b) => b.kind === 'star'), daggers = w.bullets.filter((b) => b.kind === 'dagger');
+  assert.equal(stars.length, 3);
+  assert.equal(daggers.length, 1, 'stars blocked the dagger');
+  assert.ok(stars.every((b) => !b.returns && b.damage === 5));
+  updateFiring(w, st, 0.5);
+  assert.equal(w.bullets.filter((b) => b.kind === 'star').length, 3, 'stars fired before their interval');
+});

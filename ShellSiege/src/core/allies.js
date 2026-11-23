@@ -41,17 +41,24 @@
 // golem mid-slam is the reward for it, and the reason to want Donatello near.
 import { TELEGRAPH_STATES } from './behaviors.js';
 import { ARENA } from './world.js';
-import { overlapsAny } from './obstacles.js';
+import { overlapsAny, resolveCircle } from './obstacles.js';
 
 export const ALLY = {
   mikey: {
     label: 'Michelangelo',
-    activeS: 8, upgradeS: 4, breakS: 12, firstS: 4,
-    followDist: 190, speed: 560,
-    bakeEvery: 2.6,           // seconds between pizzas while he is out and you are hurt
-    bakeS: 0.9, bakeAtS: 0.55,  // the flourish: the pizza appears this far in
-    needBelow: 0.95,          // only bakes when you are below this share of your health
-    maxOut: 3,                // never more than this many on the floor
+    activeS: 8, upgradeS: 4, breakS: 12, firstS: 12,
+    // HE DOES WHAT DONATELLO USED TO (Elad, 23 Nov: "for now have him do exactly what donnie is
+    // currently doing"), with nunchucks: a wide sweep at anything near him, and every hit
+    // stuns everything in a 30-degree cone.
+    followDist: 270, speed: 600,       // keeps well back from Raphael
+    staffEvery: 1.1, staffWindupS: 0.28,
+    staffReach: 310, staffArc: 3.6,
+    staffDamage: 12, staffKnock: 150,
+    stun: { coneDeg: 30, range: 600, stunS: 1.3 },
+    // DORMANT: the pizza-baking healer. Off, because healing was not good for the game.
+    // `bakes: true` wakes it (the tests do), and the code below is untouched.
+    bakes: false,
+    bakeEvery: 2.6, bakeS: 0.9, bakeAtS: 0.55, needBelow: 0.95, maxOut: 3,
     pizza: { near: 190, far: 330, lifeS: 9, radius: 95, heal: 0.10, healPerLevel: 0.03 },
   },
   leo: {
@@ -59,25 +66,30 @@ export const ALLY = {
     followDist: 170,          // where he stands beside you, px
     speed: 560,               // walking speed to that spot
     seek: 620,                // he goes for foes within this of YOU
-    activeS: 8, upgradeS: 4, breakS: 12, firstS: 8,
+    activeS: 6, upgradeS: 2, breakS: 14, firstS: 8,
     dashSpeed: 1800,          // px/s: fast enough to read as a dash, slow enough to see him go
     dashCooldownS: 0.8,
-    strikeEvery: 0.5, windupS: 0.16, reach: 190, damage: 17, arc: 2.6,   // arc: total radians swept
+    strikeEvery: 0.65, windupS: 0.16, reach: 190, damage: 12, arc: 2.6,   // arc: total radians swept
     stayS: 3.2,               // how long he fights one place before looking for the next
     knock: 70,
   },
   donnie: {
     label: 'Donatello',
-    activeS: 8, upgradeS: 4, breakS: 12, firstS: 12,
-    followDist: 120,          // CLOSE to Raphael
-    speed: 600,
-    staffEvery: 1.1, staffWindupS: 0.28,
-    staffReach: 310, staffArc: 3.6,           // a wide sweep: about 206 degrees
-    staffDamage: 12, staffKnock: 150,
-    // THE STUN CONE: on every hit, all enemies inside this narrow cone go still.
-    stun: { coneDeg: 30, range: 600, stunS: 1.3 },
+    activeS: 8, upgradeS: 4, breakS: 12, firstS: 4,
+    // THE CLOSE GUARD. He never leaves Raphael's side and never chases: he jabs with his stick at
+    // whatever comes within reach, while walking, for little damage. His real job is the SHIELD.
+    followDist: 95, speed: 640,
+    staffEvery: 0.7, staffWindupS: 0.16,
+    staffReach: 175, staffArc: 2.2,
+    staffDamage: 5, staffKnock: 40,
+    // GRAVITY GRENADES: he lobs one at the thickest knot of foes; it lands and pulls them in.
+    // Pull strength is divided by each breed's `mass`, so a Slayer is dragged and a golem barely moves.
+    grenade: { every: 4.2, range: 760, flightS: 0.55, lifeS: 2.6, lifePerLevel: 0.5, radius: 330, pull: 900 },
   },
 };
+
+/** THE SHELL SHIELD: its own ability (core/abilities.js), no turtle needed. It has no hit points: it runs an ON-OFF loop, cutting every hit by a percentage while it is on. */
+export const SHIELD = { cut: 0.5, cutPerLevel: 0.12, maxCut: 0.9, activeS: 5, activePerLevel: 1, cooldownS: 8, cooldownPerLevel: 1, minCooldownS: 3 };
 
 /** How long an ally of this key stays when called, at `level` copies of the ability. */
 export const durationOf = (key, level) => ALLY[key].activeS + Math.max(0, level - 1) * ALLY[key].upgradeS;
@@ -268,8 +280,8 @@ export function inCone(ox, oy, facing, coneDeg, range, f) {
   return Math.abs(da) <= (coneDeg * Math.PI) / 360 + Math.asin(Math.min(1, f.radius / d));
 }
 
-function donnieStep(a, w, dt, hooks) {
-  const C = ALLY.donnie;
+/** The wide staff sweep with a stun cone on every hit. Michelangelo does this now (nunchucks). */
+function sweepStep(a, w, dt, hooks, C) {
   a.cool = Math.max(0, a.cool - dt);
   const foes = living(w);
   a.walking = false;
@@ -311,6 +323,122 @@ function donnieStep(a, w, dt, hooks) {
   }
 }
 
+
+/**
+ * DONATELLO, the close guard. He stays at Raphael's shoulder and never chases anything. The
+ * stick is a short, light jab that fires whenever something is within its reach and does NOT
+ * stop him walking: attack while moving, in range only. His real job is the shield.
+ */
+function donnieStep(a, w, dt, hooks) {
+  const C = ALLY.donnie;
+  a.cool = Math.max(0, a.cool - dt);
+  const h = homeSpot(a, w, C.followDist);
+  a.walking = walkTo(a, h.x, h.y, C.speed, dt, 30);
+
+  a.grenadeT = (a.grenadeT ?? C.grenade.every * 0.5) - dt;
+  if (a.grenadeT <= 0) {
+    const t = crowdCentre(w, a.x, a.y, C.grenade.range, C.grenade.radius * 0.8);
+    if (t) {
+      a.grenadeT = C.grenade.every;
+      const lvl = Math.max(1, w.build.donnie || 1);
+      (w.grenades || (w.grenades = [])).push({
+        x: t.x, y: t.y, from: { x: a.x, y: a.y }, age: 0, flightS: C.grenade.flightS, landed: false, alive: true,
+        lifeS: C.grenade.lifeS + (lvl - 1) * C.grenade.lifePerLevel, radius: C.grenade.radius,
+      });
+      if (hooks?.onThrow) hooks.onThrow(a);
+    } else a.grenadeT = 0.5;
+  }
+  if (a.slashT < 0) {
+    const near = nearest(living(w), a.x, a.y, C.staffReach);
+    if (near && a.cool <= 0) {
+      a.slashT = 0; a.hitDone = false;
+      a.aim = Math.atan2(near.y - a.y, near.x - a.x);        // where THIS jab goes; he does not turn to hunt
+    }
+  }
+  if (a.slashT >= 0) {
+    a.facing = a.aim;
+    a.slashT += dt / C.staffEvery;
+    if (!a.hitDone && a.slashT * C.staffEvery >= C.staffWindupS) {
+      a.hitDone = true;
+      for (const f of living(w)) {
+        if (!inSweep(a.x, a.y, a.aim, C.staffArc, C.staffReach, f)) continue;
+        hurtFoe(w, f, C.staffDamage, hooks);
+        if (f.alive) shove(f, a.x, a.y, C.staffKnock);
+      }
+      if (hooks?.onSwing) hooks.onSwing(a);
+    }
+    if (a.slashT >= 1) { a.slashT = -1; a.cool = 0.05; }
+  }
+}
+
+/** How much of a hit the shield takes off, 0..1, at `level` copies. */
+export const shieldCut = (level) => Math.min(SHIELD.maxCut, SHIELD.cut + Math.max(0, level - 1) * SHIELD.cutPerLevel);
+/** Seconds the shield stays ON each cycle. */
+export const shieldActive = (level) => SHIELD.activeS + Math.max(0, level - 1) * SHIELD.activePerLevel;
+/** Seconds it stays OFF between cycles. */
+export const shieldCooldown = (level) => Math.max(SHIELD.minCooldownS, SHIELD.cooldownS - Math.max(0, level - 1) * SHIELD.cooldownPerLevel);
+
+/**
+ * THE SHIELD is an ability of its own (`shield` in the build), not part of any turtle. It is an
+ * ON-OFF LOOP, like the turtles' timers and nothing to do with hits taken:
+ *  - ON for shieldActive(level) seconds, during which EVERY hit is cut by shieldCut(level) percent
+ *    (core/foes.js hurtPlayer);
+ *  - then OFF for shieldCooldown(level) seconds, then on again, forever.
+ * More copies: a bigger cut, longer on, shorter off. It starts ON.
+ */
+export function stepShield(w, dt, hooks) {
+  const sh = w.shield || (w.shield = { hp: 0, max: 0, cd: 0, up: false, hitT: 0, t: 0 });
+  sh.hitT = Math.max(0, (sh.hitT || 0) - dt);
+  if (!(w.build.shield > 0)) { sh.up = false; sh.hp = 0; sh.t = 0; sh.started = false; return sh; }
+  const lvl = w.build.shield;
+  const on = () => { sh.up = true; sh.hp = sh.max = 1; sh.t = shieldActive(lvl); sh.cd = 0; if (hooks?.onShield) hooks.onShield(null); };
+  if (!sh.started) { sh.started = true; on(); return sh; }
+  sh.t -= dt;
+  if (sh.t > 0) return sh;
+  if (sh.up) { sh.up = false; sh.hp = 0; sh.t = sh.cd = shieldCooldown(lvl); if (hooks?.onShieldBreak) hooks.onShieldBreak(); }
+  else if (!w.dead) on();
+  return sh;
+}
+
+// ---- GRAVITY GRENADES (Donatello) ------------------------------------------------
+
+/** The foe whose neighbourhood holds the most other foes, within `range` of (x, y). */
+function crowdCentre(w, x, y, range, radius) {
+  const foes = living(w).filter((f) => Math.hypot(f.x - x, f.y - y) <= range);
+  let best = null, bestN = -1;
+  for (const f of foes) {
+    let n = 0;
+    for (const g of foes) if (Math.hypot(g.x - f.x, g.y - f.y) <= radius) n++;
+    if (n > bestN) { bestN = n; best = f; }
+  }
+  return best;
+}
+
+/** Tick every grenade: fly, land, pull. Foes move toward the centre at pull / mass. */
+export function updateGrenades(w, dt, hooks) {
+  if (!w.grenades || !w.grenades.length) return;
+  const C = ALLY.donnie.grenade;
+  for (const g of w.grenades) {
+    g.age += dt;
+    if (!g.landed) {
+      if (g.age >= g.flightS) { g.landed = true; g.age = 0; if (hooks?.onGrenade) hooks.onGrenade(g); }
+      continue;
+    }
+    if (g.age >= g.lifeS) { g.alive = false; continue; }
+    for (const f of living(w)) {
+      const dx = g.x - f.x, dy = g.y - f.y, d = Math.hypot(dx, dy);
+      if (d > g.radius || d < 8) continue;
+      const k = 1 - d / g.radius * 0.6;                       // stronger near the middle
+      const step = Math.min(d, (C.pull * k / (f.mass || 1)) * dt);
+      f.x += dx / d * step; f.y += dy / d * step;
+      f.x = Math.max(f.radius, Math.min(ARENA.width - f.radius, f.x));
+      f.y = Math.max(f.radius, Math.min(ARENA.height - f.radius, f.y));
+      if (w.obstacles && w.obstacles.length) resolveCircle(f, f.radius, w.obstacles);
+    }
+  }
+  if (w.grenades.some((g) => !g.alive)) w.grenades = w.grenades.filter((g) => g.alive);
+}
+
 const POP_S = 0.4;
 /** Seconds he spends rising out of the floor when called, rooted, before he acts. */
 export const RISE_S = 0.7;
@@ -329,7 +457,7 @@ function pizzaSpot(w, rng) {
   return { x: w.player.x, y: w.player.y + P.near };
 }
 
-function mikeyStep(a, w, dt, hooks) {
+function bakeStep(a, w, dt, hooks) {
   const C = ALLY.mikey;
   a.cool = Math.max(0, a.cool - dt);
   a.walking = false;
@@ -359,6 +487,11 @@ function mikeyStep(a, w, dt, hooks) {
   }
 }
 
+/** Michelangelo: the staff-sweep job with nunchucks; the healer is dormant behind `bakes`. */
+function mikeyStep(a, w, dt, hooks) {
+  if (ALLY.mikey.bakes) bakeStep(a, w, dt, hooks); else sweepStep(a, w, dt, hooks, ALLY.mikey);
+}
+
 /** Age the pizzas, and heal the player who walks onto one. */
 export function updatePizzas(w, dt, hooks) {
   if (!w.pizzas || !w.pizzas.length) return;
@@ -380,6 +513,8 @@ export function updatePizzas(w, dt, hooks) {
 /** Step every ally: on the field for `duration`, away for `breakS`, and back. */
 export function updateAllies(w, dt, hooks) {
   syncAllies(w);
+  stepShield(w, dt, hooks);
+  updateGrenades(w, dt, hooks);
   for (const a of w.allies) {
     if (a.fx) { a.fx.t += dt; if (a.fx.t >= POP_S) a.fx = null; }
     a.timer -= dt;

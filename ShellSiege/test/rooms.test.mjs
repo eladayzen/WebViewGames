@@ -178,3 +178,29 @@ test('EVERY ROOM CARRIES ITS LOOK, and it is the one the campaign says it should
     }
   }
 });
+
+// ---- THE CURVE: what makes progression make sense ---------------------------------
+import { levelMul as lm } from '../src/core/foes.js';
+import { poolFor as pf, roomsIn as ri, POOL_SHIFT_PER_LEVEL } from '../src/core/breeds.js';
+
+test('ENEMIES GROW BY COMPOUNDING, so a finished build is still eventually beaten', () => {
+  assert.equal(lm(1).hp, 1); assert.equal(lm(1).dmg, 1);
+  const g = (l) => lm(l + 1).hp / lm(l).hp;
+  assert.ok(Math.abs(g(1) - g(8)) < 1e-9, 'growth is not a constant ratio');
+  assert.ok(lm(11).hp > 4 && lm(11).dmg > 3, 'level 11 enemies are not much tougher than level 1');
+});
+
+test('ROOM BUDGETS RISE ACROSS ROOMS AND ACROSS LEVELS', () => {
+  assert.ok(roomBudget(1, 4) > roomBudget(1, 0));
+  assert.ok(roomBudget(2, 0) > roomBudget(1, 0));
+  assert.ok(roomBudget(6, 0) > roomBudget(5, 0));
+});
+
+test('THE FIRST ROOM IS A GENTLE ONE, and every level walks further along the roster', () => {
+  assert.deepEqual(pf(0, 0, false), ['slayer'], 'the first room is not just Slayers');
+  assert.equal(ri(0), 5);
+  const rungs = (l) => new Set(Array.from({ length: 5 }, (_, r) => pf(l, r, false)).flat()).size;
+  assert.ok(rungs(3) >= rungs(0), 'a later level shows fewer kinds than the first');
+  assert.ok(POOL_SHIFT_PER_LEVEL >= 1);
+  assert.ok(pf(1, 0, false).length >= pf(0, 0, false).length, 'level 2 opens on a smaller roster than level 1');
+});

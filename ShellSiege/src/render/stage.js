@@ -148,6 +148,26 @@ export function createStage(scene, tex) {
   mesh.instanceMatrix.needsUpdate = true;
   group.add(mesh);
 
+  // --- THE BACK WALLS: a solid wall along the two far edges (north-west and north-east on screen),
+  // behind the columns, with a lighter cap and a dark plinth, so the room reads as closed in
+  // rather than as a floor with a row of posts. Recoloured per theme.
+  const WALL_T = 1.3, WALL_H = 2.7, WALL_OFF = OUT + 0.95;
+  const wallMat = new THREE.MeshLambertMaterial({ color: 0xb4a68c });
+  const capMat = new THREE.MeshLambertMaterial({ color: 0xd2c6ac });
+  const plinthMat = new THREE.MeshLambertMaterial({ color: 0x8c7f68 });
+  for (const [px, pz, sx, sz] of [
+    [-WALL_OFF, CZ - WALL_OFF / 2, WALL_T, H + WALL_OFF],       // along the west edge
+    [CX - WALL_OFF / 2, -WALL_OFF, W + WALL_OFF, WALL_T],       // along the north edge
+  ]) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(sx, WALL_H, sz), wallMat);
+    wall.position.set(px, WALL_H / 2, pz);
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(sx + 0.3, 0.28, sz + 0.3), capMat);
+    cap.position.set(px, WALL_H + 0.14, pz);
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(sx + 0.3, 0.5, sz + 0.3), plinthMat);
+    plinth.position.set(px, 0.25, pz);
+    group.add(wall, cap, plinth);
+  }
+
   // --- a low kerb on the two near edges: closes the room without standing in
   // front of it.
   const kerbMat = new THREE.MeshLambertMaterial({ color: 0xb0a287 });
@@ -233,6 +253,9 @@ export function createStage(scene, tex) {
     scene.fog.color.setHex(theme.fog);
     scene.background.setHex(theme.fog);
     colMat.color.setHex(theme.props);
+    wallMat.color.setHex(theme.props).multiplyScalar(0.92);
+    capMat.color.setHex(theme.props).multiplyScalar(1.1);
+    plinthMat.color.setHex(theme.props).multiplyScalar(0.72);
     kerbMat.color.setHex(theme.props).multiplyScalar(0.88);
     if (theme.ring) {
       const r = runeRadius(theme.floor);

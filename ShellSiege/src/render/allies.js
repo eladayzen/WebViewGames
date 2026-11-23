@@ -15,6 +15,7 @@
 // is drawn on the floor, a narrow fan down the line he faced, fading as it goes.
 import * as THREE from 'three';
 import { RISE_S } from '../core/allies.js';
+import { makeNunchuck } from './weapons3d.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { u } from './units.js';
 import { glowTexture } from './stage.js';
@@ -95,6 +96,11 @@ export async function createAllies(scene, rig) {
 
   function build(a) {
     const scaler = cloneSkinned(template);
+    // RAPHAEL'S SAI ARE HIS ALONE. The template is his rig, with his blades parented to his
+    // hand bones; strip anything hanging off a bone so no other turtle carries them.
+    const stray = [];
+    scaler.traverse((o) => { if (o.parent && o.parent.isBone && !o.isBone) stray.push(o); });
+    for (const o of stray) o.parent.remove(o);
     const holder = new THREE.Group();
     holder.add(scaler);
     const mats = [];
@@ -169,20 +175,16 @@ export async function createAllies(scene, rig) {
         p.weapons.push({ obj: w, side, bone: side < 0 ? 'lh' : 'rh' });
       }
     } else if (a.key === 'mikey') {
-      // a pizza box held out in the right hand: his one prop, and the thing he is cooking
-      const w = new THREE.Group();
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.07, 0.62), lam(0xe8a248, 0x3a1c00));
-      const slice = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.03, 10, 1, false, 0, Math.PI * 1.7), lam(0xffd24a, 0x553300));
-      slice.position.y = 0.05;
-      w.add(box, slice);
+      // NUNCHUCKS: one stick in the right hand, the other on a chain, flailed by the sweep
+      const { group: w, free } = makeNunchuck({ wood: 0xa8692e, tape: 0xff7a1a });
+      w.scale.setScalar(0.6);                 // smaller in the hand than the first cut
       group.add(w);
-      p.weapons.push({ obj: w, side: 1, bone: 'rh', box: true });
-      p.bake = sprite(glow);
+      p.weapons.push({ obj: w, side: 1, bone: 'rh', nun: free });
     } else {
       const w = new THREE.Group();
-      const bo = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 2.1, 10), lam(0xc89a58));
+      const bo = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.25, 10), lam(0xc89a58));
       bo.rotation.x = Math.PI / 2;
-      for (const z of [-0.9, 0.9, 0.0]) {
+      for (const z of [-0.5, 0.5, 0.0]) {
         const band = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.12, 10), lam(0x6b2fa8));
         band.rotation.x = Math.PI / 2; band.position.z = z;
         w.add(band);
@@ -195,6 +197,11 @@ export async function createAllies(scene, rig) {
     return p;
   }
 
+  const shieldMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16),
+    new THREE.MeshBasicMaterial({ color: 0x4aa8ff, transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+  shieldMesh.visible = false; shieldMesh.renderOrder = 5;
+  group.add(shieldMesh);
+  let shieldK = 0;
   const V = new THREE.Vector3(), Q = new THREE.Quaternion(), FWD = new THREE.Vector3(0, 0, 1), DIR = new THREE.Vector3();
 
   /** Point a weapon volume: yaw about Y, then up `pitch`. */
@@ -204,7 +211,62 @@ export async function createAllies(scene, rig) {
   }
 
   /** Per-frame: draw `allies`. */
-  function sync(allies, timeS, dt, pizzas = []) {
+  // GRAVITY GRENADES: a dark core that arcs out of Donatello's hand, lands, and breathes a violet
+  // field on the floor whose rings shrink inward -- the direction things are being pulled.
+  const gPool = [];
+  function makeGrenade() {
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 10), new THREE.MeshBasicMaterial({ color: 0x2a1250 }));
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 10), new THREE.MeshBasicMaterial({ color: 0xb06bff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    const mkRing = () => { const r = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 48), new THREE.MeshBasicMaterial({ color: 0xb06bff, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })); r.rotation.x = -Math.PI / 2; r.position.y = 0.06; return r; };
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x6a2fd0, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    disc.rotation.x = -Math.PI / 2; disc.position.y = 0.04;
+    const rings = [mkRing(), mkRing(), mkRing()];
+    g.add(core, halo, disc, ...rings);
+    group.add(g);
+    return { g, core, halo, disc, rings };
+  }
+  function syncGrenades(list, timeS) {
+    let gi = 0;
+    for (const z of list || []) {
+      if (!z.alive) continue;
+      const v = gPool[gi] || (gPool[gi] = makeGrenade());
+      gi++;
+      v.g.visible = true;
+      const R = u(z.radius);
+      if (!z.landed) {
+        const t = Math.min(1, z.age / z.flightS);
+        v.g.position.set(u(z.from.x + (z.x - z.from.x) * t), 0.9 + Math.sin(t * Math.PI) * 2.2, u(z.from.y + (z.y - z.from.y) * t));
+        v.disc.visible = false; v.rings.forEach((r) => { r.visible = false; });
+        v.core.position.set(0, 0, 0); v.halo.position.set(0, 0, 0);
+      } else {
+        v.g.position.set(u(z.x), 0, u(z.y));
+        const left = z.lifeS - z.age, fade = Math.min(1, left / 0.5) * Math.min(1, z.age / 0.15);
+        v.core.position.set(0, 0.55 + Math.sin(timeS * 6) * 0.08, 0); v.halo.position.copy(v.core.position);
+        v.halo.scale.setScalar(1 + 0.2 * Math.sin(timeS * 9));
+        v.disc.visible = true; v.disc.scale.setScalar(R); v.disc.material.opacity = 0.16 * fade;
+        v.rings.forEach((r, k) => {
+          const ph = (timeS * 0.9 + k / 3) % 1;                 // 1 -> 0: rings run inward
+          r.visible = true; r.scale.setScalar(R * (1 - ph) + 0.1); r.material.opacity = 0.55 * ph * fade;
+        });
+      }
+    }
+    for (; gi < gPool.length; gi++) gPool[gi].g.visible = false;
+  }
+
+  function sync(allies, timeS, dt, pizzas = [], shield = null, player = null, grenades = null) {
+    syncGrenades(grenades, timeS);
+    // DONATELLO'S SHIELD: a bubble round Raphael, brightening when it soaks a hit
+    if (shield && player && shield.up && shield.hp > 0) {
+      shieldMesh.visible = true;
+      const frac = Math.max(0, Math.min(1, shield.hp / (shield.max || 1)));
+      shieldK = Math.min(1, shieldK + dt * 5);
+      shieldMesh.position.set(u(player.x), 0.85, u(player.y));
+      shieldMesh.scale.setScalar(1.15 * (0.4 + 0.6 * shieldK) * (1 + 0.025 * Math.sin(timeS * 6)));
+      shieldMesh.material.opacity = (0.10 + 0.08 * frac) + (shield.hitT > 0 ? 0.25 * (shield.hitT / 0.3) : 0);
+      shieldMesh.material.color.setHex(shield.hitT > 0 ? 0xbfe6ff : 0x4aa8ff);
+    } else { shieldMesh.visible = false; shieldK = 0; }
+
     // remove rigs of allies that are gone
     for (const [a, p] of rigs) {
       if (!allies.includes(a)) {
@@ -322,10 +384,14 @@ export async function createAllies(scene, rig) {
         } else {
           // the bo rests angled up; its sweep whips flat across the arc
           const wind = clamp01(s / 0.25), cut = clamp01((s - 0.25) / 0.35), back = clamp01((s - 0.7) / 0.3);
-          if (w.box) { w.obj.quaternion.identity(); w.obj.rotation.set(0.25 + s * 0.2, yaw, 0); w.obj.position.y += 0.15; continue; }
           const sweep = slashing ? lerp(-C.staffArc / 2, C.staffArc / 2, cut) * (1 - back) : 0;
           const pitch = slashing ? lerp(1.1, 0.15, Math.min(1, wind + cut) * (1 - back)) : 1.1;
           aim(w.obj, yaw + sweep + (slashing ? 0 : 0.5), pitch);
+          if (w.nun) {
+            // the free stick: dangling at rest, thrown back on the wind-up, whipped through the cut
+            const rest = 1.25 + 0.12 * Math.sin(timeS * 5);
+            w.nun.rotation.x = slashing ? lerp(lerp(rest, -1.6, wind), 0.15, cut) * (1 - back) + rest * back : rest;
+          }
           // grip in the hand, so push the volume forward by half its overhang
           w.obj.position.addScaledVector(DIR, 0.15);
         }

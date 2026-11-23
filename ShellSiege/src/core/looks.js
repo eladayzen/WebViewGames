@@ -46,7 +46,6 @@ export const THEMES = {
 // Offsets from the arena centre, in sim pixels. Player radius is 42 and the
 // biggest enemy 115, so every gap is at least 300 wide.
 const PILLAR = (x, y, r = 70) => ({ kind: 'circle', x, y, r, tall: true });
-const RUBBLE = (x, y, r) => ({ kind: 'circle', x, y, r, tall: false });
 const WALL = (x, y, hw, hh) => ({ kind: 'rect', x, y, hw, hh, tall: true });
 
 export const LAYOUTS = {
@@ -62,12 +61,13 @@ export const LAYOUTS = {
     label: 'Barricades',
     shapes: [WALL(0, -560, 760, 46), WALL(0, 560, 760, 46)],
   },
+  // BROKEN WALLS, not rubble (Elad: the loose stones "dont look good"): short wall stubs scattered
+  // about, leaving every gap wide enough for the biggest enemy.
   ruins: {
     label: 'Ruins',
     shapes: [
-      RUBBLE(-900, -300, 70), RUBBLE(-560, 720, 85), RUBBLE(420, -880, 60), RUBBLE(980, 260, 78),
-      RUBBLE(300, 640, 55), RUBBLE(-1180, 640, 66), RUBBLE(740, -420, 50), RUBBLE(-300, -1000, 72),
-      RUBBLE(1180, -1000, 64),
+      WALL(-900, -300, 40, 150), WALL(980, 260, 40, 150), WALL(-560, 760, 150, 40),
+      WALL(420, -880, 150, 40), WALL(740, 760, 120, 40), WALL(-1000, -980, 120, 40),
     ],
   },
   cross: {

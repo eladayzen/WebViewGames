@@ -35,7 +35,9 @@ test('EVERY ABILITY CAN COME UP -- no entry is dead weight', () => {
   const seen = new Set();
   const rng = seeded(11);
   for (let i = 0; i < 3000; i++) seen.add(rollAbility(createBuild(), rng));
-  for (const k of Object.keys(ABILITIES)) assert.ok(seen.has(k), `${k} never rolled`);
+  const b0 = createBuild(); b0.stars = 1;
+  for (let i = 0; i < 3000; i++) seen.add(rollAbility(b0, rng));
+  for (const k of Object.keys(ABILITIES).filter((k) => !ABILITIES[k].locked)) assert.ok(seen.has(k), `${k} never rolled`);
 });
 
 test('OWNING COPIES MAKES AN ABILITY LESS LIKELY, but never impossible', () => {

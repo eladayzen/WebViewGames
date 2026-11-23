@@ -1,11 +1,11 @@
 // THE OTHER TURTLES. These are about what each one is FOR -- Leonardo blinks to a
 // foe and cuts it, Donatello stuns -- and that stun really stops a foe.
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorld } from '../src/core/world.js';
 import { makeFoe, updateFoes } from '../src/core/foes.js';
 import { take } from '../src/core/abilities.js';
-import { syncAllies as realSync, updateAllies, stunFoe, inCone, durationOf, ALLY, RISE_S } from '../src/core/allies.js';
+import { shieldCut, shieldActive, shieldCooldown, updateGrenades, syncAllies as realSync, updateAllies, stunFoe, inCone, durationOf, ALLY, RISE_S } from '../src/core/allies.js';
 
 // A new ally STARTS ON COOLDOWN (tested at the bottom). Everything else here is about
 // what a turtle does once he is on the field, so this puts him there, fully risen.
@@ -54,7 +54,7 @@ test('an ally FOLLOWS the player when there is nothing to fight', () => {
 test('LEONARDO DASHES AT A FOE AND KILLS IT, without the player doing anything', () => {
   const w = room('leo');
   const f = addFoe(w, 450, 0);
-  f.speed = 0;
+  f.speed = 0; f.hp = f.maxHp = 30;      // mechanics, not balance: a short fight inside his shorter stay
   let dashed = false, topSpeed = 0, teleported = false;
   syncAllies(w);
   const leo = w.allies[0];
@@ -75,9 +75,9 @@ test('LEONARDO DASHES AT A FOE AND KILLS IT, without the player doing anything',
 
 test('LEONARDO GOES HOME when the room is empty', () => {
   const w = room('leo');
-  const f = addFoe(w, 500, 0); f.speed = 0;
+  const f = addFoe(w, 500, 0); f.speed = 0; f.hp = f.maxHp = 30;
   syncAllies(w);
-  run(w, 8);
+  run(w, 5);
   assert.equal(f.alive, false);
   run(w, 4);
   const a = w.allies[0];
@@ -108,8 +108,8 @@ test('DONATELLO STAYS CLOSE TO RAPHAEL', () => {
   assert.ok(Math.hypot(d.x - w.player.x, d.y - w.player.y) < ALLY.donnie.followDist + 120);
 });
 
-test('THE STAFF IS A WIDE SWEEP: it hits foes on both sides of him, not just the one in front', () => {
-  const w = room('donnie');
+test('THE NUNCHUCKS ARE A WIDE SWEEP: they hit foes on both sides of him, not just the one in front', () => {
+  const w = room('mikey');
   syncAllies(w);
   const d = w.allies[0];
   d.cool = 0;                                       // ready to swing at once, so he is not walking while we measure
@@ -121,8 +121,8 @@ test('THE STAFF IS A WIDE SWEEP: it hits foes on both sides of him, not just the
   assert.ok(a.hp < 1e6 && b.hp < 1e6, 'the sweep missed one side');
 });
 
-test('EVERY STAFF HIT STUNS EVERYTHING IN A 30-DEGREE CONE, and nothing outside it', () => {
-  const w = room('donnie');
+test('EVERY NUNCHUCK HIT STUNS EVERYTHING IN A 30-DEGREE CONE, and nothing outside it', () => {
+  const w = room('mikey');
   syncAllies(w);
   const d = w.allies[0];
   d.cool = 0;
@@ -142,7 +142,7 @@ test('EVERY STAFF HIT STUNS EVERYTHING IN A 30-DEGREE CONE, and nothing outside 
 });
 
 test('A SWING THAT HITS NOTHING FIRES NO CONE', () => {
-  const w = room('donnie');
+  const w = room('mikey');
   syncAllies(w);
   let fired = 0;
   run(w, 3, 1 / 60, { onStun: () => fired++ });
@@ -165,7 +165,7 @@ test('ALLIES CANNOT BE HURT: they carry no health at all', () => {
 
 test('kills by an ally are REPORTED, so the counter and the death burst still work', () => {
   const w = room('leo');
-  const f = addFoe(w, 450, 0); f.speed = 0;
+  const f = addFoe(w, 450, 0); f.speed = 0; f.hp = f.maxHp = 30;
   let killed = 0;
   syncAllies(w);
   run(w, 8, 1 / 60, { onKill: () => killed++ });
@@ -236,7 +236,8 @@ test('he comes back at the PLAYER, not where he left', () => {
 // ---- MICHELANGELO ------------------------------------------------------------------
 import { updatePizzas } from '../src/core/allies.js';
 
-function hurtRoom() { const w = room('mikey'); w.maxHp = 100; w.hp = 40; return w; }
+afterEach(() => { ALLY.mikey.bakes = false; });
+function hurtRoom() { ALLY.mikey.bakes = true; const w = room('mikey'); w.maxHp = 100; w.hp = 40; return w; }
 
 test('MICHELANGELO BAKES A PIZZA WHEN YOU ARE HURT, and only then', () => {
   const w = hurtRoom();
@@ -294,7 +295,7 @@ test('MORE COPIES OF THE ABILITY HEAL MORE PER PIZZA', () => {
   assert.ok(heal(3) > heal(1));
 });
 
-test('MICHELANGELO NEVER HURTS ANYTHING', () => {
+test('THE DORMANT HEALING MICHELANGELO NEVER HURTS ANYTHING', () => {
   const w = hurtRoom();
   const f = addFoe(w, 120, 0); f.speed = 0; f.hp = f.maxHp = 1e6;
   syncAllies(w);
@@ -337,4 +338,96 @@ test('WHEN CALLED HE RISES FIRST: rooted, doing nothing, with a light pop, then 
 test('THE TURTLES ARE STAGGERED: by default no two arrive together', () => {
   const t = ['leo', 'donnie', 'mikey'].map((k) => ALLY[k].firstS).sort((a, b) => a - b);
   for (let i = 1; i < t.length; i++) assert.ok(t[i] - t[i - 1] >= 2, 'two turtles arrive within 2s of each other');
+});
+
+// ---- DONATELLO, THE CLOSE GUARD ---------------------------------------------------
+import { stepShield } from '../src/core/allies.js';
+import { hurtPlayer } from '../src/core/foes.js';
+
+test('DONATELLO NEVER CHASES: a foe out of reach is left alone and he stays at the shoulder', () => {
+  const w = room('donnie');
+  syncAllies(w);
+  const d = w.allies[0];
+  const f = addFoe(w, 700, 0); f.speed = 0; f.hp = f.maxHp = 1e6;
+  run(w, 3);
+  assert.equal(f.hp, 1e6, 'he went after it');
+  assert.ok(Math.hypot(d.x - w.player.x, d.y - w.player.y) < ALLY.donnie.followDist + 80);
+});
+
+test('HE JABS WHAT COMES WITHIN REACH, WHILE MOVING, for very little', () => {
+  const w = room('donnie');
+  syncAllies(w);
+  const d = w.allies[0];
+  const f = addFoe(w, 0, 0); f.speed = 0; f.hp = f.maxHp = 1e6; f.x = d.x + 120; f.y = d.y;
+  let walkedWhileSwinging = false;
+  for (let t = 0; t < 2; t += 1 / 60) {
+    w.player.x += 8;                              // the player keeps running
+    f.x = d.x + 120; f.y = d.y;                   // and something stays within his reach
+    w.timeS += 1 / 60; updateAllies(w, 1 / 60, {});
+    if (d.slashT >= 0 && d.walking) walkedWhileSwinging = true;
+  }
+  assert.ok(f.hp < 1e6, 'no jab landed');
+  assert.ok(walkedWhileSwinging, 'he stopped to attack');
+  assert.ok(ALLY.donnie.staffDamage <= 6 && ALLY.donnie.staffDamage < ALLY.leo.damage / 2, 'the jab is not minimal');
+  assert.equal(f.stunT || 0, 0, 'Donatello no longer stuns');
+});
+
+test('THE SHIELD IS ITS OWN ABILITY: up with no turtle, and it CUTS every hit while it is on', () => {
+  const w = room('shield');
+  w.maxHp = w.hp = 1000;
+  stepShield(w, 1 / 60, {});
+  assert.equal(w.allies.length, 0);
+  assert.equal(w.shield.up, true);
+  for (let i = 0; i < 5; i++) hurtPlayer(w, 20);                   // many hits: it is not spent by them
+  assert.equal(w.shield.up, true, 'hits turned the shield off');
+  assert.equal(w.hp, 1000 - 5 * Math.round(20 * (1 - shieldCut(1))));
+});
+
+test('THE SHIELD RUNS AN ON-OFF LOOP, whatever is hitting it', () => {
+  const w = room('shield');
+  w.maxHp = w.hp = 1e6;
+  const states = [];
+  for (let t = 0; t < 40; t += 1 / 60) { stepShield(w, 1 / 60, {}); states.push(w.shield.up); }
+  const on = states.filter(Boolean).length / 60, off = states.length / 60 - on;
+  assert.ok(on > shieldActive(1) * 2 && off > shieldCooldown(1) * 2, `on ${on}s off ${off}s: no loop`);
+  const flips = states.filter((v, i) => i && v !== states[i - 1]).length;
+  assert.ok(flips >= 5, 'it should cycle several times in 40 s');
+  const w2 = room('shield'); w2.maxHp = w2.hp = 1e6;
+  for (let t = 0; t < shieldActive(1) + 0.5; t += 1 / 60) stepShield(w2, 1 / 60, {});
+  assert.equal(w2.shield.up, false, 'it did not switch off after its time');
+  const before = w2.hp; hurtPlayer(w2, 20);
+  assert.equal(w2.hp, before - 20, 'an OFF shield cut a hit');
+});
+
+test('MORE COPIES CUT MORE, STAY ON LONGER AND STAY OFF LESS, never to 100%', () => {
+  assert.ok(shieldCut(3) > shieldCut(1));
+  assert.ok(shieldActive(3) > shieldActive(1));
+  assert.ok(shieldCooldown(3) < shieldCooldown(1));
+  assert.ok(shieldCut(99) < 1);
+});
+
+test('DONATELLO DOES NOT RAISE A SHIELD', () => {
+  const w = room('donnie');
+  syncAllies(w); stepShield(w, 1 / 60, {});
+  assert.equal(w.shield.up, false);
+});
+
+test('GRAVITY GRENADES PULL LIGHT FOES FAR AND HEAVY FOES LITTLE', () => {
+  const w = room('donnie');
+  const light = addFoe(w, 200, 0, 'slayer'), heavy = addFoe(w, -200, 0, 'fortgolem');
+  w.grenades = [{ x: w.player.x, y: w.player.y, from: { x: 0, y: 0 }, age: 0, flightS: 0.1, landed: true, alive: true, lifeS: 2, radius: 330 }];
+  const l0 = Math.hypot(light.x - w.player.x, light.y - w.player.y), h0 = Math.hypot(heavy.x - w.player.x, heavy.y - w.player.y);
+  for (let t = 0; t < 0.12; t += 1 / 60) updateGrenades(w, 1 / 60, {});
+  const dl = l0 - Math.hypot(light.x - w.player.x, light.y - w.player.y);
+  const dh = h0 - Math.hypot(heavy.x - w.player.x, heavy.y - w.player.y);
+  assert.ok(dl > 40, 'the slayer was not dragged');
+  assert.ok(dl > dh * 4, `mass made no difference: ${dl} vs ${dh}`);
+});
+
+test('DONATELLO THROWS A GRENADE AT A CROWD', () => {
+  const w = room('donnie');
+  syncAllies(w);
+  for (let i = 0; i < 4; i++) addFoe(w, 400 + i * 20, i * 10);
+  run(w, 4);
+  assert.ok((w.grenades || []).length >= 1, 'no grenade thrown');
 });

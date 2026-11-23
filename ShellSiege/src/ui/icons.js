@@ -12,6 +12,12 @@ const svg = (body) =>
   `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="currentColor">${body}</svg>`;
 
 export const ICONS = {
+  // A four-point ninja star: stars.
+  stars: svg('<path d="M24 2l5 15 15 5-15 5-5 15-5-15L4 22l15-5z"/><circle cx="24" cy="22" r="4" fill="#000" opacity=".4"/>'),
+  // The star with speed lines: star flurry.
+  starrate: svg('<path d="M30 6l4 11 11 4-11 4-4 11-4-11-11-4 11-4z"/><rect x="2" y="14" width="14" height="4" rx="2" opacity=".7"/><rect x="2" y="24" width="18" height="4" rx="2" opacity=".7"/><rect x="2" y="34" width="14" height="4" rx="2" opacity=".7"/>'),
+  // Three small stars fanned: star spread.
+  starsplit: svg('<path d="M24 4l3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/><path d="M10 28l2.5 6.5L19 37l-6.5 2.5L10 46l-2.5-6.5L1 37l6.5-2.5z" opacity=".8"/><path d="M38 28l2.5 6.5L47 37l-6.5 2.5L38 46l-2.5-6.5L29 37l6.5-2.5z" opacity=".8"/>'),
   // A lightning bolt: faster.
   rapid: svg('<path d="M28 3 10 27h12l-4 18 20-26H26z"/>'),
   // Three separate blades fanned from one point: more of them. Each is its own
@@ -41,14 +47,17 @@ export const ICONS = {
   leo: svg(
     '<path d="M6 40 34 8l5 4L12 44z"/><path d="M42 40 14 8 9 12l27 32z" opacity=".8"/>' +
     '<rect x="3" y="36" width="12" height="6" rx="2" transform="rotate(-50 9 39)"/><rect x="33" y="36" width="12" height="6" rx="2" transform="rotate(50 39 39)"/>'),
-  // A bo staff with a cone of light fanning from its tip: Donatello's stun.
+  // A plain shield: the shell shield ability.
+  shield: svg('<path d="M24 4 41 10v12c0 11-7 18-17 22C14 40 7 33 7 22V10z"/>'),
+  // A round grenade with arrows pulling in: Donatello's gravity grenades.
   donnie: svg(
-    '<rect x="4" y="35" width="26" height="6" rx="3" transform="rotate(-35 17 38)"/>' +
-    '<path d="M24 24 46 8v16z" opacity=".8"/><path d="M24 24 46 24v16z" opacity=".5"/>'),
-  // A pizza slice with a plus: Michelangelo heals.
+    '<circle cx="24" cy="26" r="11"/><rect x="20" y="8" width="8" height="7" rx="2"/>' +
+    '<path d="M3 24h9l-4-5zM45 24h-9l4-5zM24 45v-7l-5 3z" opacity=".7"/>'),
+  // Two sticks on a chain with a cone of light: Michelangelo's nunchucks stun a lane.
   mikey: svg(
-    '<path d="M6 8c10-4 26-4 36 0L24 44z"/>' +
-    '<circle cx="19" cy="17" r="3" fill="#000" opacity=".35"/><circle cx="29" cy="19" r="3" fill="#000" opacity=".35"/><circle cx="24" cy="29" r="3" fill="#000" opacity=".35"/>'),
+    '<rect x="3" y="30" width="18" height="6" rx="3" transform="rotate(-50 12 33)"/>' +
+    '<rect x="20" y="9" width="6" height="16" rx="3" transform="rotate(35 23 17)"/>' +
+    '<path d="M26 26 46 14v12z" opacity=".8"/><path d="M26 26 46 26v12z" opacity=".5"/>'),
   // A heart: more health.
   hearts: svg('<path d="M24 43C8 31 3 22 3 14 3 8 8 4 13 4c5 0 8 3 11 7 3-4 6-7 11-7 5 0 10 4 10 10 0 8-5 17-21 29z"/>'),
 };

@@ -50,6 +50,7 @@
 //   ?heldbill=0|1   axis billboarding   ?heldgrip=0.13  where the fist closes
 //   ?heldrx/ry/rz   degrees, in bone space
 //   ?heldx/y/z      offset, in bone-local units
+import { makeSai, SAI_LEN } from './weapons3d.js';
 import * as THREE from 'three';
 import { WEAPON } from '../core/weapon.js';
 import { THROW, THROW_SPAN } from '../core/throwing.js';
@@ -126,8 +127,21 @@ export function createHeld(rig, tex, camera) {
     if (!bone) continue;
     bone.getWorldScale(world);
     const s = (u(WEAPON.sizePx) * HELD.size) / (world.x || 1);
-    const m = new THREE.Mesh(geo, mat);
-    m.scale.setScalar(s);
+    let m;
+    if (WEAPON.name === 'sai') {
+      // the 3D sai: built along +Y, turned to run along the hand's +X (through the fist),
+      // grip at the origin so it turns about the point the hand is holding
+      m = new THREE.Group();
+      const inner = makeSai();
+      inner.rotation.z = -Math.PI / 2;
+      inner.position.x = 0.1;
+      m.add(inner);
+      m.userData.solid = true;
+      m.scale.setScalar(s * WEAPON.aspect / SAI_LEN);
+    } else {
+      m = new THREE.Mesh(geo, mat);
+      m.scale.setScalar(s);
+    }
     m.rotation.set(HELD.rot[0], HELD.rot[1], HELD.rot[2]);
     m.position.set(HELD.off[0] / (world.x || 1), HELD.off[1] / (world.x || 1), HELD.off[2] / (world.x || 1));
     m.frustumCulled = false;
@@ -158,7 +172,7 @@ export function createHeld(rig, tex, camera) {
 
     if (!HELD.billboard || !camera) return;
     for (const m of held) {
-      if (!m.visible) continue;
+      if (!m.visible || m.userData.solid) continue;
       // The camera, in the BONE's own space. The blade sits at the bone, so
       // this doubles as the direction from the blade to the eye.
       m.parent.worldToLocal(_cam.copy(camera.position));

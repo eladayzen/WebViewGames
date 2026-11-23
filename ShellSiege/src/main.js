@@ -177,8 +177,8 @@ async function boot() {
 
   function announceRoom() {
     const n = run.roomIdx + 1;
-    if (run.room.isLast) hud.say('FINAL ROOM', `LEVEL ${run.level}  \u00b7  BOSS`);
-    else hud.say(`ROOM ${n}`, `LEVEL ${run.level}  \u00b7  ${n} / ${run.rooms}`);
+    // Level on the first line, room on the second: small and plain, so it does not hide the turtle.
+    hud.say(`LEVEL ${run.level}`, run.room.isLast ? 'FINAL ROOM' : `ROOM ${n}`, true);
   }
 
   /** ONE CARD FOR BOTH ENDINGS: the SDK's restart contract is this overlay and button. */
@@ -372,7 +372,7 @@ async function boot() {
       stage.update(w.timeS);
       fx.syncCrates(crates, w.timeS);
       foesFx.syncFoes(w.foes, w.timeS, dt, seeThrough.update(w.foes, w.player, w.foeShots));
-      alliesFx.sync(w.allies, w.timeS, dt, w.pizzas);
+      alliesFx.sync(w.allies, w.timeS, dt, w.pizzas, w.shield, w.player, w.grenades);
       telegraphs.sync(w.foes, w.foeShots, w.timeS);
       fx.syncShots(w.bullets, w.timeS, muzzleY);
       // After the rig has been posed and after updateFiring, so the hand is

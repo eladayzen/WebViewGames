@@ -36,10 +36,10 @@ export const BASE_GUN = {
   // URL down in the loop, so a test can ask for one explicitly and so a
   // future ability can swap it mid-run without this module caring.
   weapon: WEAPON,
-  fireIntervalS: num('sfire', 0.55),
+  fireIntervalS: num('sfire', 0.30),
   projectiles: num('sproj', 1),
   pierce: 0,
-  damage: 10,
+  damage: 13,
   rangePx: num('srange', 620),
 };
 
@@ -76,6 +76,36 @@ export function nearestTarget(w, rangePx) {
  *      extra blades are visibly extra and the first is never off the line.
  * With one enemy that is a straight shot plus a narrow fan; with many it is a volley.
  */
+/**
+ * NINJA STARS: a second weapon beside the daggers, with its own clock. They are thrown and NOT
+ * caught: each flies to the end of its range or the first enemy it hits. Light damage, slow at
+ * first; the upgrades are fire rate and how many leave at once (a fan, nearest enemies first).
+ * `st.stars` is { intervalS, count, damage, rangePx } or absent when the ability is not held.
+ */
+export const STAR = { speedPxS: paced(900), radius: 9, fan: 0.2 };
+function fireStars(w, st, dt) {
+  const sg = st.stars;
+  if (!sg) return;
+  w.starT = (w.starT ?? 0) - dt;
+  if (w.starT > 0) return;
+  const target = nearestTarget(w, sg.rangePx);
+  if (!target) return;
+  w.starT = sg.intervalS;
+  const from = w.muzzle ?? w.player;
+  const aimed = targetsFor(w, sg.rangePx, sg.count);
+  const base = Math.atan2(target.y - from.y, target.x - from.x);
+  for (let i = 0; i < sg.count; i++) {
+    let a;
+    if (i < aimed.length) a = Math.atan2(aimed[i].y - from.y, aimed[i].x - from.x);
+    else { const k = i - aimed.length + 1; a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * STAR.fan; }
+    w.bullets.push({
+      x: from.x, y: from.y, vx: Math.cos(a) * STAR.speedPxS, vy: Math.sin(a) * STAR.speedPxS,
+      alive: true, pierce: 0, damage: sg.damage, lifeS: sg.rangePx / STAR.speedPxS, hit: new Set(),
+      kind: 'star', returns: false, returnSpeedPxS: 0, bow: 0, side: 1, mode: 'out', t: 0,
+    });
+  }
+}
+
 /** The nearest `n` living targets in range, nearest first. */
 export function targetsFor(w, rangePx, n) {
   const near = [];
@@ -92,6 +122,14 @@ export function targetsFor(w, rangePx, n) {
 const FAN = 0.11;
 
 export function updateFiring(w, st, dt) {
+  // ONE DAGGER AT A TIME: nothing is thrown while one is still out. The shoot-again delay
+  // (fireIntervalS) starts only when the blade is back in hand.
+  fireStars(w, st, dt);
+  // THE QUIVER: `quiver` daggers exist (1, or 2 once unlocked). A throw needs one in hand; the
+  // shoot-again delay starts when the quiver is no longer full-out, i.e. a blade is back.
+  const cap = st.quiver ?? st.projectiles;
+  const out = w.bullets.reduce((n, b) => n + (b.alive && b.kind !== 'star' ? 1 : 0), 0);
+  if (out >= cap) { w.fireT = st.fireIntervalS; return; }
   w.fireT -= dt;
   if (w.fireT > 0) return;
   const target = nearestTarget(w, st.rangePx);
@@ -108,7 +146,7 @@ export function updateFiring(w, st, dt) {
   // weapon while aiming along the centre-to-target line makes a shot visibly
   // miss what it was pointed at, and the error is worst at close range, which
   // is exactly when the player is watching.
-  const n = st.projectiles;
+  const n = Math.min(st.projectiles, cap - out);
   const aimed = targetsFor(w, st.rangePx, n);          // nearest first; at least `target`
   const base = Math.atan2(target.y - from.y, target.x - from.x);
   const spread = FAN;
@@ -135,6 +173,7 @@ export function updateFiring(w, st, dt) {
       // --- the returning weapon. Copied onto the bullet at spawn so
       // updateBullets never has to look up a global, which is what keeps it
       // testable and what lets two weapons be in the air at once.
+      kind: 'dagger',
       returns: !!wp.returns,
       returnSpeedPxS: wp.returnSpeedPxS || 0,
       bow: wp.bow || 0,

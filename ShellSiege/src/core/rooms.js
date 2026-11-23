@@ -13,7 +13,7 @@
 // ones, and either is roughly the same length of room. `costOf` is the one
 // place that number lives.
 //
-//   budget = base x (1 + perLevel x (level - 1)) x (1 + perRoom x room)
+//   budget = base x (1 + perLevel) ^ (level - 1) x (1 + perRoom x room)
 //
 // That is the whole difficulty curve: later rooms and later levels are bigger,
 // and nothing else needs a tuning table. Harder levels also make each enemy a
@@ -36,16 +36,19 @@ import { lookFor } from './looks.js';
 export const ROOM = {
   baseBudget: 10,
   perRoom: 0.20,
-  perLevel: 0.35,
-  batches: 3,
+  perLevel: 0.22,
+  // MORE, SMALLER, SOONER WAVES (Elad: walk in circles and the whole room trails you in one group).
+  // A wave arrives while the last is still alive, and from AHEAD of where you are heading.
+  batches: 4,
+  aheadSpawn: true,          // later waves appear in front of the player's heading
   // Before the first one, so the player has a moment to see an empty room.
   firstDelayS: 0.4,
   // Between bodies in one batch: they stream in rather than pop in together.
   staggerS: 0.22,
   // The next batch comes when the living are down to this share of the last.
-  refillAt: 0.30,
+  refillAt: 0.55,
   // ...or when this long has passed, whichever is first.
-  maxGapS: 7,
+  maxGapS: 5,
 };
 
 /** How much trouble room `roomIdx` (0-based) of `level` (1-based) holds. */
@@ -54,7 +57,7 @@ export function roomBudget(level, roomIdx) {
   const forced = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('budget')) : 0;
   if (forced > 0) return forced;
   return Math.round(
-    ROOM.baseBudget * (1 + ROOM.perLevel * (level - 1)) * (1 + ROOM.perRoom * roomIdx));
+    ROOM.baseBudget * Math.pow(1 + ROOM.perLevel, level - 1) * (1 + ROOM.perRoom * roomIdx));
 }
 
 /**
@@ -146,7 +149,9 @@ export function roomCleared(w, room) {
 }
 
 function bring(w, room, key, rng) {
-  const p = spawnPoint(w.player.x, w.player.y, rng, w.obstacles);
+  // Every wave after the first appears in a cone AHEAD of the player's travel, so a trailing pack is
+  // met from the front instead of being topped up from behind.
+  const p = spawnPoint(w.player.x, w.player.y, rng, w.obstacles, ROOM.aheadSpawn && room.batchIdx > 1 ? w.player.facing : null);
   const f = makeFoe(p.x, p.y, w.timeS, key);
   applyLevel(f, room.level);
   w.foes.push(f);

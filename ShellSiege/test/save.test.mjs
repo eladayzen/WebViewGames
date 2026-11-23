@@ -14,9 +14,9 @@ test('ONLY PERMANENT ABILITIES ARE SAVED; the turtles are not', () => {
 });
 
 test('A SAVE ROUND-TRIPS', () => {
-  const b = createBuild(); b.rapid = 2; b.multi = 1; b.swift = 4;
-  assert.deepEqual(decodeProgress(encodeProgress(b)), { rapid: 2, multi: 1, swift: 4 });
-  assert.deepEqual(decodeProgress(JSON.stringify(encodeProgress(b))), { rapid: 2, multi: 1, swift: 4 }, 'a string blob too');
+  const b = createBuild(); b.rapid = 2; b.damage = 1; b.reach = 4;
+  assert.deepEqual(decodeProgress(encodeProgress(b)), { rapid: 2, damage: 1, reach: 4 });
+  assert.deepEqual(decodeProgress(JSON.stringify(encodeProgress(b))), { rapid: 2, damage: 1, reach: 4 }, 'a string blob too');
 });
 
 test('A CORRUPT OR HOSTILE SAVE COSTS NOTHING BUT THE SAVE', () => {

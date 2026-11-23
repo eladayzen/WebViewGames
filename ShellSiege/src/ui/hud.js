@@ -42,8 +42,9 @@ export function createHud() {
   }
 
   /** Show a banner. Re-triggering restarts the animation, which is the point. */
-  function say(big, small = '') {
+  function say(big, small = '', plain = false) {
     if (!banner) return;
+    banner.classList.toggle('plain', plain);
     // Titles with painted lettering use their art; the rest are set in CSS until they get some.
     const art = TITLE_ART[big];
     banner.classList.toggle('art', !!art);

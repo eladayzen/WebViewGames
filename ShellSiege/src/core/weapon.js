@@ -52,7 +52,7 @@ export const WEAPONS = {
     // turtle -- the weapon read as bigger than the character holding it, which
     // is funny once and wrong every time after.
     sizePx: num('saipx', 38),
-    spinRadS: 34,
+    spinRadS: 11,
   },
 };
 

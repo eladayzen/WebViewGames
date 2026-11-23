@@ -46,18 +46,27 @@ export const KINDS = ['perm', 'temp'];
 
 export const ABILITIES = {
   rapid:  { kind: 'perm', weight: 1.0, label: 'RAPID THROW', blurb: 'Throw more often',     step: 0.22, max: 6 },
-  multi:  { kind: 'perm', weight: 0.7, label: 'SPLIT THROW', blurb: 'One more blade',       step: 1,    max: 4 },
+  // LOCKED FOR NOW (max 0 = never offered): the blade is a single dagger that must come home before
+  // the next throw. A second one unlocks later, then freeze / shock / chain-shock / explosion.
+  // DAGGERS: one to start; this adds the second (the cap). Nothing is thrown while the quiver is empty.
+  multi:  { kind: 'perm', weight: 0.7, label: 'TWIN DAGGERS', blurb: 'A second dagger',     step: 1,    max: 1 },
+  // NINJA STARS: a second weapon beside the daggers (see systems/combat.js). Thrown, not caught.
+  stars:    { kind: 'perm', weight: 1.0, label: 'NINJA STARS',  blurb: 'Throw stars too',      step: 1,    max: 1 },
+  starrate: { kind: 'perm', weight: 0.9, label: 'STAR FLURRY',  blurb: 'Throw stars faster',   step: 0.30, max: 5, requires: 'stars' },
+  starsplit:{ kind: 'perm', weight: 0.8, label: 'STAR SPREAD',  blurb: 'More stars per throw', step: 1,    max: 3, requires: 'stars' },
   damage: { kind: 'perm', weight: 1.0, label: 'HARD SHELL',  blurb: 'Hit harder',           step: 0.30, max: 6 },
   pierce: { kind: 'perm', weight: 0.7, label: 'PIERCE',      blurb: 'Blades pass through',  step: 1,    max: 3 },
   reach:  { kind: 'perm', weight: 0.8, label: 'LONG REACH',  blurb: 'Throw further',        step: 0.25, max: 4 },
-  swift:  { kind: 'perm', weight: 0.8, label: 'SWIFT',       blurb: 'Move faster',          step: 0.14, max: 4 },
+  // LOCKED (Elad, 23 Nov: never upgrade the player's speed): never rolled, kept so the stat plumbing stays.
+  swift:  { kind: 'perm', weight: 0.8, label: 'SWIFT',       blurb: 'Move faster',          step: 0.14, max: 0, locked: true },
   // ADDED FOR THIS DESIGN: Elad's own example of a permanent upgrade was
   // health, and there was no way to get any.
   hearts: { kind: 'perm', weight: 1.0, label: 'THICK HIDE',  blurb: 'More health',          step: 0.25, max: 5 },
+  shield: { kind: 'perm', weight: 0.9, label: 'SHELL SHIELD', blurb: 'Shield that cuts hits, on and off', step: 1, max: 4 },
   // THE TURTLE ALLIES (core/allies.js). Temporary: they last for the level.
   leo:    { kind: 'temp', weight: 0.9, label: 'LEONARDO',    blurb: 'Dashes in with twin blades', step: 1,   max: 4 },
-  mikey:  { kind: 'temp', weight: 0.9, label: 'MICHELANGELO', blurb: 'Bakes pizza that heals', step: 1, max: 4 },
-  donnie: { kind: 'temp', weight: 0.9, label: 'DONATELLO',   blurb: 'Wide staff, stuns a lane', step: 1,  max: 4 },
+  mikey:  { kind: 'temp', weight: 0.9, label: 'MICHELANGELO', blurb: 'Nunchucks that stun a lane', step: 1, max: 4 },
+  donnie: { kind: 'temp', weight: 0.9, label: 'DONATELLO',   blurb: 'Gravity grenades pull foes in', step: 1,  max: 4 },
 };
 
 /** A level is over: temporary abilities go, permanent ones stay. */
@@ -86,21 +95,30 @@ export function createBuild() {
 export function stats(build) {
   const a = ABILITIES;
   return {
-    fireIntervalS: 0.55 / (1 + build.rapid * a.rapid.step),
-    projectiles: 1 + build.multi * a.multi.step,
-    damage: 10 * (1 + build.damage * a.damage.step),
+    fireIntervalS: 0.30 / (1 + build.rapid * a.rapid.step),
+    projectiles: 1,                          // daggers per throw
+    quiver: 1 + build.multi * a.multi.step,  // daggers that can exist at once
+    // The star weapon, or null when not held. Half the dagger's damage, slow, no return.
+    stars: build.stars > 0 ? {
+      intervalS: 1.4 / (1 + build.starrate * a.starrate.step),
+      count: 1 + build.starsplit * a.starsplit.step,
+      damage: 6.5 * (1 + build.damage * a.damage.step),
+      rangePx: 420 * (1 + build.reach * a.reach.step),
+    } : null,
+    damage: 13 * (1 + build.damage * a.damage.step),
     pierce: build.pierce * a.pierce.step,
     rangePx: 620 * (1 + build.reach * a.reach.step),
     speedMul: 1 + build.swift * a.swift.step,
     // A MULTIPLIER on the player's base health, not a number of hearts: the
     // base itself is `?php=` overridable, and a multiplier survives that.
     maxHpMul: 1 + build.hearts * a.hearts.step,
+    shield: build.shield,            // copies held; core/allies.js turns it into hit points
   };
 }
 
 /** Everything not yet maxed out. */
 export function offerable(build) {
-  return Object.keys(ABILITIES).filter((k) => build[k] < ABILITIES[k].max);
+  return Object.keys(ABILITIES).filter((k) => build[k] < ABILITIES[k].max && (!ABILITIES[k].requires || build[ABILITIES[k].requires] > 0));
 }
 
 /** Take one. Capped, so a maxed ability can never exceed its own limit. */

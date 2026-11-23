@@ -14,20 +14,18 @@ test('a maxed ability stops being offered', () => {
 
 test('taking one past its cap does nothing', () => {
   const b = createBuild();
-  for (let i = 0; i < ABILITIES.multi.max + 5; i++) take(b, 'multi');
-  assert.equal(b.multi, ABILITIES.multi.max);
+  for (let i = 0; i < ABILITIES.damage.max + 5; i++) take(b, 'damage');
+  assert.equal(b.damage, ABILITIES.damage.max);
 });
 
 test('stacking moves the numbers the game actually reads', () => {
   const b = createBuild();
   const base = stats(b);
-  take(b, 'rapid'); take(b, 'multi'); take(b, 'swift');
+  take(b, 'rapid');
   const after = stats(b);
   assert.ok(after.fireIntervalS < base.fireIntervalS, 'rapid shortens the gap between shots');
-  assert.equal(after.projectiles, base.projectiles + 1);
-  // speedMul, not Survivor's speedPxS: here SWIFT is a multiplier the world
-  // already applies to walk speed, so the ability needed no new plumbing.
-  assert.ok(after.speedMul > base.speedMul);
+  assert.equal(after.projectiles, 1, 'one dagger only, for now');
+  assert.equal(after.speedMul, 1, 'player speed is never upgraded');
   // And nothing it did not touch moved.
   assert.equal(after.rangePx, base.rangePx);
   assert.equal(after.maxHpMul, base.maxHpMul);
@@ -36,11 +34,13 @@ test('stacking moves the numbers the game actually reads', () => {
 test('EVERY ABILITY CHANGES SOMETHING -- no dead rolls in the pool', () => {
   // A roll that does nothing is worse than a missing one: the player waits
   // for the box, sees it open, and learns the box does not matter.
-  const base = JSON.stringify(stats(createBuild()));
   // Permanent abilities are stat modifiers. A TEMP one is a behaviour (the turtle allies,
   // core/allies.js), which changes no stat -- its test is that it summons someone.
-  for (const key of Object.keys(ABILITIES).filter((k) => ABILITIES[k].kind === 'perm')) {
-    const b = take(createBuild(), key);
+  for (const key of Object.keys(ABILITIES).filter((k) => ABILITIES[k].kind === 'perm' && !ABILITIES[k].locked)) {
+    const b = createBuild();
+    if (ABILITIES[key].requires) take(b, ABILITIES[key].requires);
+    const base = JSON.stringify(stats(b));
+    take(b, key);
     assert.notEqual(JSON.stringify(stats(b)), base, `${key} changed no stat`);
   }
 });
@@ -60,7 +60,7 @@ test('EVERY ABILITY SAYS WHETHER IT IS PERMANENT, and carries a usable weight', 
   for (const [k, a] of Object.entries(ABILITIES)) {
     assert.ok(KINDS.includes(a.kind), `${k} has kind ${a.kind}`);
     assert.ok(Number.isFinite(a.weight) && a.weight > 0, `${k} has weight ${a.weight}`);
-    assert.ok(a.max >= 1 && a.step > 0, `${k} cannot be taken`);
+    assert.ok((a.locked || a.max >= 1) && a.step > 0, `${k} cannot be taken`);
   }
 });
 
@@ -73,4 +73,31 @@ test('THE TEMPORARY ABILITIES ARE EXACTLY THE TURTLE ALLIES (the three of them),
   clearTemp(b);
   assert.equal(b.leo, 0); assert.equal(b.donnie, 0);
   assert.equal(b.rapid, 1, 'a permanent ability survived the level');
+});
+
+test('STAR UPGRADES ARE OFFERED ONLY ONCE YOU HAVE STARS', () => {
+  const b = createBuild();
+  assert.ok(!offerable(b).includes('starrate') && !offerable(b).includes('starsplit'));
+  assert.equal(stats(b).stars, null);
+  take(b, 'stars');
+  assert.ok(offerable(b).includes('starrate') && offerable(b).includes('starsplit'));
+});
+
+test('NINJA STARS: light, slow to start, and the upgrades are rate and count, with a cap', () => {
+  const b = createBuild(); take(b, 'stars');
+  const s0 = stats(b);
+  assert.ok(s0.stars.damage < stats(createBuild()).damage, 'stars should hit lighter than daggers');
+  assert.equal(s0.stars.count, 1);
+  take(b, 'starrate'); take(b, 'starsplit');
+  const s1 = stats(b);
+  assert.ok(s1.stars.intervalS < s0.stars.intervalS && s1.stars.count === 2);
+  for (let i = 0; i < 10; i++) take(b, 'starsplit');
+  assert.equal(stats(b).stars.count, 1 + ABILITIES.starsplit.max);
+});
+
+test('TWIN DAGGERS RAISES THE QUIVER TO TWO AND NO FURTHER', () => {
+  const b = createBuild();
+  assert.equal(stats(b).quiver, 1);
+  for (let i = 0; i < 5; i++) take(b, 'multi');
+  assert.equal(stats(b).quiver, 2);
 });
