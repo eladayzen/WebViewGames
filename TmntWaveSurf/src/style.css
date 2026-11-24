@@ -578,3 +578,39 @@ html, body {
 #ooze-meter.hidden { display: none; }
 #ooze-meter i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #00c41a, #00ff1e); box-shadow: 0 0 12px #00ff1e; }
 #ooze-meter span { position: relative; display: block; text-align: center; font: italic 900 14px/18px system-ui, sans-serif; letter-spacing: 1px; color: #fff; text-shadow: 1px 1px 0 var(--ink), -1px -1px 0 var(--ink); }
+
+/* ---- board card: pick the lean axis (ui/axisCard.js) ---- */
+.axis-row { display: flex; gap: 4vmin; }
+.axis-opt { position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 1vmin; width: min(34vmin, 30vw); padding: 2vmin 1vmin 1.6vmin;
+  border-radius: 2.4vmin; border: 0.5vmin solid rgba(234, 252, 255, 0.25); background: rgba(18, 10, 30, 0.6); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.axis-opt.on { border-color: var(--yellow); box-shadow: 0 0 2.4vmin rgba(255, 220, 40, 0.55); }
+.axis-opt .fill { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--hold, 0) * 100%); background: rgba(0, 255, 30, 0.35); }
+.axis-demo { position: relative; width: 100%; height: min(26vmin, 22vw); }
+.ad-mikey { position: absolute; left: 50%; top: 0; height: 52%; transform: translateX(-50%); filter: drop-shadow(0.4vmin 0.4vmin 0 rgba(18, 10, 30, 0.8));
+  animation: adRise 2.4s ease-in-out infinite; }
+.ad-stage { position: absolute; left: 0; right: 0; bottom: 4%; height: 50%; perspective: 60vmin; }
+.ad-board { position: absolute; left: 14%; right: 14%; top: 10%; height: 62%; border-radius: 40% / 50%; transform-origin: 50% 50%;
+  background: linear-gradient(#3a3550, #1b1828); border: 0.5vmin solid var(--ink); box-shadow: inset 0 0 0 0.6vmin #5c5478;
+  display: flex; align-items: center; justify-content: center; gap: 14%; }
+.ad-board b { width: 13%; height: 46%; border-radius: 40%; background: #8d86a8; }
+.ad-board .ad-up { position: absolute; width: 0; height: 0; border-left: 1.6vmin solid transparent; border-right: 1.6vmin solid transparent; border-bottom: 2.4vmin solid #00ff1e;
+  filter: drop-shadow(0 0 0.8vmin #00ff1e); }
+.lr .ad-board .ad-up { left: -2.6vmin; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+.fb .ad-board .ad-up { top: -2.8vmin; left: 50%; transform: translateX(-50%); }
+.ad-pivot { position: absolute; left: 42%; right: 42%; bottom: 0; height: 26%; border-radius: 50% 50% 0 0; background: #2a2540; border: 0.4vmin solid var(--ink); }
+.lr .ad-board { animation: adTiltLR 2.4s ease-in-out infinite; }
+.fb .ad-board { animation: adTiltFB 2.4s ease-in-out infinite; }
+/* tip toward the green edge = Mikey up; tip away = Mikey down */
+@keyframes adTiltLR { 0%, 100% { transform: rotateX(55deg) rotateY(-28deg); } 50% { transform: rotateX(55deg) rotateY(28deg); } }
+@keyframes adTiltFB { 0%, 100% { transform: rotateX(76deg); } 50% { transform: rotateX(30deg); } }   /* far (green) edge down = more foreshortened */
+@keyframes adRise { 0%, 100% { top: -6%; } 50% { top: 22%; } }
+.ad-arrows { position: relative; width: 7vmin; height: 7vmin; fill: #eafcff; }
+.axis-opt.on .ad-arrows { fill: var(--yellow); }
+
+/* settings: the axis choice */
+.settings-choice { display: flex; gap: 8px; margin-top: 6px; }
+.settings-choice button { flex: 1; display: grid; place-items: center; padding: 6px 0; border-radius: 10px; border: 2px solid rgba(234, 252, 255, 0.3);
+  background: rgba(18, 10, 30, 0.6); cursor: pointer; }
+.settings-choice button svg { width: 30px; height: 30px; fill: #eafcff; }
+.settings-choice button.on { border-color: var(--yellow); background: rgba(255, 220, 40, 0.2); }
+.settings-choice button.on svg { fill: var(--yellow); }

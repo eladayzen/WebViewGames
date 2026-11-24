@@ -19,7 +19,10 @@ export const PHYS = {
   AIR_VX: 420,         // px/s (at 1080p) of 'forward speed' used to turn the jump's vertical speed into a board angle
   AIR_LAND_TILT: 0.40, // rad nose-down the board reaches at touchdown
   AIR_TILT_MAX: 0.42,  // rad, max nose up / down in the air
-  AIR_SPIN: 1,         // full backflips per jump (0 = none); spun through the middle of the air time
+  AIR_SPIN: 0,         // full backflips per jump (0 = none) -- removed 2026-11-24
+  REL_VMAX: 1.25,      // relative input: climb / drop speed at full lean (rail/s)
+  REL_RESP: 9,         // relative input: how fast the speed follows the lean (1/s) -- higher = lighter
+  BURST_V: 3.2,        // burst input: upward kick per burst (rail/s)
   RAMP: 0,             // extra thrust gained while holding: thrust x (1 + RAMP * min(1, holdTime / RAMP_T))
   RAMP_T: 1.6,         // s of holding to reach the full ramp
 };
@@ -34,8 +37,8 @@ export const PHYS_PRESETS = {
   'D · C + fast ramp': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 0.55, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40, AIR_SPIN: 0 },
   'E · C + more thrust': { GRAVITY: 4.704, THRUST: 6.5, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40, AIR_SPIN: 0 },
   'F · C + less drag': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 3.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40, AIR_SPIN: 0 },
-  // 2026-11-24: bigger jump -- the sea sits lower (SEA_DROP), the peak is higher and the hang time longer, with a backflip
-  'G · C, full push at once': { GRAVITY: 4.704, THRUST: 7.5, DAMP: 4.2, RAMP: 0, RAMP_T: 1.6, AIR_PEAK_Y: 0.18, AIR_TIME: 1.7, AIR_LAND_TILT: 0.40, AIR_SPIN: 1 },
+  // 2026-11-24: bigger jump -- the sea sits lower (SEA_DROP), the peak is higher and the hang time longer, (backflip removed the same day)
+  'G · C, full push at once': { GRAVITY: 4.704, THRUST: 7.5, DAMP: 4.2, RAMP: 0, RAMP_T: 1.6, AIR_PEAK_Y: 0.18, AIR_TIME: 1.7, AIR_LAND_TILT: 0.40, AIR_SPIN: 0 },
 };
 export const DEFAULT_PRESET = 'G · C, full push at once';   // picked 2026-11-18: full push from the first frame, no build-up
 export const DIRECT_RATE = 1.68;   // Direct (dev) controller: face-heights per second
@@ -138,11 +141,11 @@ export const RUN = {
   BOSS_KO_PTS: 500,         // per boss knocked out
 };
 
-// ===================== board input: ONE direction =====================
-// Only one lean direction pushes the board up (HOLD_SIDE); every other lean,
-// including the opposite side, is "no input" (2026-11-22: leaning either way
-// for up was not intuitive). The hold is the lean along HOLD_SIDE past PRESS,
-// released below RELEASE (hysteresis).
+// ===================== board input =====================
+// One axis (player setting: left/right or forward/back). Main mode is RELATIVE:
+// the lean is a scale -- lean further, move faster; centre holds the line.
+// The dev panel can switch to BURST: only a hard lean (either way) counts, and
+// each one kicks the rider up. See input/input.js.
 // Thresholds follow the player's sensitivity with the SAME mapping the host
 // uses for its own synthetic keys (WebGameController.ApplySensitivity):
 // press = lerp(0.60, 0.15, pct/100), release = press * 0.6. The host does NOT
@@ -152,11 +155,10 @@ export const INPUT = {
   PRESS_AT_MIN: 0.60,       // press threshold at sensitivity 0
   PRESS_AT_MAX: 0.15,       // press threshold at sensitivity 100
   RELEASE_RATIO: 0.6,       // release = press x this
-  HOLD_CODES: ['Space', 'ArrowUp', 'KeyW'],   // keyboard holds (plus the arrow key of HOLD_SIDE)
-  MODE: 'classic',          // 2026-11-24 default: lean LEFT = up, RIGHT = down, centre = hold the line. 'one' = HOLD_SIDE only (dev toggle)
-  HOLD_SIDE: 'left',
-  CLASSIC_DOWN: 1.6,        // classic mode, lean right: gravity x this (a firmer drop than letting go)
-  CLASSIC_HOLD_DAMP: 9,     // classic mode, centre: no gravity, speed bleeds off at this rate (holds the line)        // 'left' | 'right' | 'front' | 'back' -- a player setting later
+  MODE: 'relative',         // 2026-11-24: 'relative' = the lean is a scale (main); 'burst' = a hard lean either way bursts up (dev toggle)
+  REL_DEAD: 0.25,           // relative: dead zone around centre, x press
+  REL_FULL: 2.0,            // relative: lean that gives full speed, x press (capped 0.95)
+  BURST_HARD: 1.5,          // burst: a "hard" lean, x press (capped 0.95)
 };
 
 // the jump peak's rider-body height, used by the boss hover

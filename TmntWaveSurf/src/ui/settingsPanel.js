@@ -127,6 +127,30 @@ export function createSettingsPanel(doc, opts = {}) {
   });
   doc.addEventListener('click', () => setOpen(false));
 
+  // ---- CONTROLS, when the game offers a choice (e.g. which lean axis) -------
+  // opts.controls = { title, options: [{ id, label, icon (svg path) }], get(), set(id) }
+  if (opts.controls) {
+    const c = opts.controls;
+    const ct = doc.createElement('div');
+    ct.className = 'settings-section settings-section-later';
+    ct.textContent = c.title || 'CONTROLS';
+    panel.appendChild(ct);
+    const box = doc.createElement('div');
+    box.className = 'settings-choice';
+    const btns = c.options.map((o) => {
+      const b = doc.createElement('button');
+      b.type = 'button'; b.setAttribute('aria-label', o.label); b.title = o.label;
+      b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${o.icon}"/></svg>`;
+      b.addEventListener('click', (e) => { e.stopPropagation(); c.set(o.id); paintC(); });
+      box.appendChild(b);
+      return [o.id, b];
+    });
+    const paintC = () => btns.forEach(([id, b]) => b.classList.toggle('on', c.get() === id));
+    paintC();
+    panel.appendChild(box);
+    repaintHooks.push(paintC);
+  }
+
   // ---- SOUND, when the game passes its audio layer in ---------------------
   //
   // MOVED HERE FROM ITS OWN BUTTON (Amit: "we have the audio button which opens

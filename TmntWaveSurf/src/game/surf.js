@@ -13,7 +13,7 @@
 //   * the score accumulates here (distance, airtime, pickups, boss KOs);
 //   * the test hooks on window (__spawnObstacle, __summonBoss, __hold, ...)
 //     are now methods on the returned object, reached only through the dev tools.
-import { PHYS, GAME, WAKE, RUN, DIRECT_RATE, INPUT } from './constants.js';
+import { PHYS, GAME, WAKE, RUN, DIRECT_RATE } from './constants.js';
 import mikeyUrl from '../assets/mikey_surf.webp';
 import obstAUrl from '../assets/obstacle_a.webp';
 import obstBUrl from '../assets/obstacle_b.webp';
@@ -69,11 +69,13 @@ const bossPH = () => canvasOf(300, 380, g => {
  * @param {object} o
  * @param {HTMLCanvasElement} o.canvas   the 2D gameplay canvas (on top of the wave)
  * @param {object} o.wave               from createWave()
- * @param {() => boolean} o.holding     the single input
+ * @param {() => number} o.control     relative input: -1 (down) .. 0 (hold) .. 1 (up)
+ * @param {() => boolean} o.takeBurst  burst input: true once per burst
+ * @param {() => string} o.inputMode   'relative' | 'burst'
  * @param {() => object} o.directKeys   {up, dn, lastKey} for the Direct dev controller
  * @param {object} o.hooks              { onDamage() }
  */
-export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKeys, hooks }) {
+export function createSurf({ canvas, wave, control, takeBurst, inputMode, directKeys, hooks }) {
   const ctx = canvas.getContext('2d');
   const SPR = {
     a: slot(obstAUrl, () => blobPH('#b5643c', '#f0a640', null)), b: slot(obstBUrl, () => blobPH('#c9c24a', '#9fd9b0', '#c8323c')),
@@ -552,13 +554,12 @@ export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKe
     }
     const P = PHYS;
     if (!air) {
-      holdT = holding() ? holdT + dt : 0;
-      const ramp = 1 + (P.RAMP || 0) * Math.min(1, holdT / (P.RAMP_T || 1));
-      let a = -P.GRAVITY + (holding() ? P.THRUST * ramp : 0) - P.DAMP * sVel;
-      if (inputMode && inputMode() === 'classic') {   // left = up (as above), right = firmer drop, centre = hold the line
-        const d = leanDir();
-        if (d < 0) a = -P.GRAVITY * INPUT.CLASSIC_DOWN - P.DAMP * sVel;
-        else if (d === 0) a = -INPUT.CLASSIC_HOLD_DAMP * sVel;
+      let a;
+      if (inputMode() === 'burst') {     // one input: each burst kicks the rider up; otherwise he slides down
+        if (takeBurst()) sVel = Math.max(sVel, 0) + P.BURST_V;
+        a = -P.GRAVITY - P.DAMP * sVel;
+      } else {                           // relative: the lean sets the speed, centre holds the line
+        a = P.REL_RESP * (control() * P.REL_VMAX - sVel);
       }
       sVel += a * dt; sPos += sVel * dt;
       if (sPos <= 0) { sPos = 0; sVel = sVel < -0.3 ? -sVel * P.BOUNCE : 0; }
@@ -578,6 +579,7 @@ export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKe
         sVel = 0;
       }
     } else {
+      if (inputMode() === 'burst') takeBurst();   // a burst in the air is dropped, not saved for the landing
       airT += dt; airV -= airG * dt; airH += airV * dt;
       if (airH <= 0) {                     // landing back on the face just below the lip
         air = false; airH = 0; sPos = 0.97; const rl = railNow; sVel = (airV / Math.max(40, rl ? rl.yTrough - rl.yCrest : H * 0.6)) * P.LAND_KEEP;

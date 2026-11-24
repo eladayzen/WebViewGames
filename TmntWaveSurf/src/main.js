@@ -18,7 +18,8 @@ import happyUrl from './assets/mikey_happy.webp';
 import surfUrl from './assets/mikey_surf.webp';
 import bossUrl from './assets/boss.webp';
 import yachtUrl from './assets/yacht_boss.webp';
-import { installInput, pollBoard, holding, directKeys, setSensitivity, thresholds, holdSide, setHoldSide, leanDir, inputMode, setInputMode } from './input/input.js';
+import { installInput, pollBoard, holding, directKeys, setSensitivity, thresholds, control, takeBurst, clearBurst, inputMode, setInputMode, getAxis, setAxis } from './input/input.js';
+import { createAxisCard } from './ui/axisCard.js';
 import { createHud } from './ui/hud.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
 import { installDevUnlock } from './ui/devUnlock.js';
@@ -26,7 +27,7 @@ import { createComic, preloadComic } from './ui/comic.js';
 import { mountDevPanel, applyDefaultPreset } from './ui/devPanel.js';
 import { submitRun, fetchBoard, resultSections } from './systems/scoreboard.js';
 
-const State = { BRIEF: 'brief', COUNTDOWN: 'countdown', RUNNING: 'running', WON: 'won', DEAD: 'dead', QUIT: 'quit' };
+const State = { SETUP: 'setup', BRIEF: 'brief', COUNTDOWN: 'countdown', RUNNING: 'running', WON: 'won', DEAD: 'dead', QUIT: 'quit' };
 
 function boot() {
   applyDefaultPreset();   // physics preset C, every boot
@@ -69,7 +70,7 @@ function boot() {
   let pendingDeath = false;
 
   const surf = createSurf({
-    canvas: fx, wave, holding, leanDir, inputMode, directKeys,
+    canvas: fx, wave, control, takeBurst, inputMode, directKeys,
     hooks: {
       onBossKO() { if (state === State.RUNNING && koT < 0) koT = MISSION.KO_HOLD_S; },
       onOoze(on) {   // ooze power: the world goes ooze green; +3 lives on pickup
@@ -266,7 +267,12 @@ function boot() {
   // Sensitivity only (the game has no audio). The panel pushes the value to
   // the host and re-applies the stored value on boot; onSensitivity moves this
   // game's own board thresholds, because the host never scales __gbSensor.
-  const settings = createSettingsPanel(document, { onSensitivity: setSensitivity });
+  const AXIS_ICON = { lr: 'M2 12 7 7v3h10V7l5 5-5 5v-3H7v3z', fb: 'M12 2 17 7h-3v10h3l-5 5-5-5h3V7H7z' };
+  const settings = createSettingsPanel(document, {
+    onSensitivity: setSensitivity,
+    controls: { title: 'BOARD', get: getAxis, set: setAxis,
+      options: [{ id: 'lr', label: 'Left / right', icon: AXIS_ICON.lr }, { id: 'fb', label: 'Forward / back', icon: AXIS_ICON.fb }] },
+  });
   stage.appendChild(settings.button);
   stage.appendChild(settings.panel);
 
@@ -282,7 +288,7 @@ function boot() {
     getMode: () => surf.mode,
     summonBoss: () => surf.dev.summonBoss(),
     getInput: inputMode,
-    toggleInput: () => setInputMode(inputMode() === 'classic' ? 'one' : 'classic'),
+    toggleInput: () => setInputMode(inputMode() === 'burst' ? 'relative' : 'burst'),
   };
   function mountDev() {
     if (devPanel) return;
@@ -307,7 +313,7 @@ function boot() {
     });
     // Scripted access for headless checks -- exists only once unlocked.
     window.__tws = {
-      state: () => state, setHoldSide, holding, lives: () => lives, score: runScore, paused: () => paused,
+      state: () => state, setAxis, getAxis, setInputMode, control, holding, lives: () => lives, score: runScore, paused: () => paused,
       rider: surf.dev.rider, spawnObstacle: surf.dev.spawnObstacle, spawnPicks: surf.dev.spawnPicks,
       summonBoss: surf.dev.summonBoss, koBoss: surf.dev.koBoss, game: () => surf.game, setNoSpawn: surf.dev.setNoSpawn, setTheme: devApi.setTheme, thresholds,
     };
@@ -320,7 +326,11 @@ function boot() {
 
   // ---------------------------------------------------------------- the loop
   hud.setLives(lives);
-  showBrief(0);                  // every run opens on the first mission's card
+  // every start opens on the board card (which lean drives the rider), then the first mission
+  const axisCard = createAxisCard(document, surfUrl);
+  let waitRelease = false;       // the lean that picked the axis must let go before it can skip the comic
+  state = State.SETUP; hud.setCountdown(null);
+  axisCard.show(() => { waitRelease = true; clearBurst(); showBrief(0); });
   const pauseBtn = document.getElementById('pause-button');
   let prev = performance.now();
   function tick(now) {
@@ -343,11 +353,16 @@ function boot() {
       }
       if (pendingDeath) die();
       else if (koT >= 0 && state === State.RUNNING) { koT -= dt; if (koT <= 0) missionWon(); }
+    } else if (state === State.SETUP) {
+      waveT += dt;
+      surf.frame(dt, W, H, waveT, false);
+      axisCard.tick(dt);
     } else if (!paused && (state === State.BRIEF || state === State.WON)) {
       // the card is up: the wave keeps rolling behind it (nothing spawns, nothing scores)
       waveT += dt;
       surf.frame(dt, W, H, waveT, false);
-      holdT = holding() ? holdT + dt : 0;
+      if (waitRelease && !holding()) waitRelease = false;
+      holdT = holding() && !waitRelease ? holdT + dt : 0;
       if (comic.isOn()) { if (holdT >= 1.0) { holdT = 0; comic.skip(); } }   // the story: lines advance by themselves; a 1 s lean skips it
       else {
       cardT -= dt;                       // lean (or hold Space / press) for 1 s = the button
@@ -363,7 +378,7 @@ function boot() {
     }
     hud.setScore(runScore());
     hud.setOoze(surf.game.ooze / GAME.OOZE_DURATION);
-    if (devPanel) dbg.textContent = surf.debugText + `\nstate ${state}${paused ? ' (paused)' : ''}   lives ${lives}   theme ${wave.getTheme()}   ctl ${surf.mode}   board ${window.__gbSensor ? (+window.__gbSensor.x).toFixed(2) : 'none'} (press ${thresholds().press.toFixed(2)}, up = ${inputMode() === 'classic' ? 'classic L up / R down' : 'lean ' + holdSide()})`;
+    if (devPanel) dbg.textContent = surf.debugText + `\nstate ${state}${paused ? ' (paused)' : ''}   lives ${lives}   theme ${wave.getTheme()}   ctl ${surf.mode}   board ${window.__gbSensor ? (+window.__gbSensor.x).toFixed(2) : 'none'} (press ${thresholds().press.toFixed(2)}, axis ${getAxis()}, input ${inputMode()}${inputMode() === 'relative' ? ' ' + control().toFixed(2) : ''})`;
   }
   requestAnimationFrame(tick);
 }

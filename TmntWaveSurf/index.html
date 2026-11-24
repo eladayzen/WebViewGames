@@ -120,6 +120,33 @@
         <button id="comic-skip" type="button" aria-label="Skip">&#9656;&#9656;</button>
       </div>
 
+      <!-- BOARD CARD: every start -- pick the lean axis. Icons only: each tile rocks the board on
+           its axis and Mikey rises as it tips toward the green edge. Lean 1 s on an axis, tap,
+           or GO / the clock keeps the current one (ui/axisCard.js). -->
+      <div id="axis-overlay" class="modal-overlay mission-screen hidden">
+        <div class="board-card mission-card axis-card">
+          <div class="axis-row">
+            <button class="axis-opt" data-axis="lr" type="button" aria-label="Left / right">
+              <span class="fill"></span>
+              <div class="axis-demo lr">
+                <img class="ad-mikey" alt="" />
+                <div class="ad-stage"><div class="ad-board"><i class="ad-up"></i><b></b><b></b></div><div class="ad-pivot"></div></div>
+              </div>
+              <svg class="ad-arrows" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12 7 7v3h10V7l5 5-5 5v-3H7v3z"/></svg>
+            </button>
+            <button class="axis-opt" data-axis="fb" type="button" aria-label="Forward / back">
+              <span class="fill"></span>
+              <div class="axis-demo fb">
+                <img class="ad-mikey" alt="" />
+                <div class="ad-stage"><div class="ad-board"><i class="ad-up"></i><b></b><b></b></div><div class="ad-pivot"></div></div>
+              </div>
+              <svg class="ad-arrows" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 17 7h-3v10h3l-5 5-5-5h3V7H7z"/></svg>
+            </button>
+          </div>
+          <div class="go-ring"><button id="axis-go" class="mission-btn" type="button" aria-label="Go"><span class="fill"></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button></div>
+        </div>
+      </div>
+
       <!-- MISSION CARD: icons only -- mission pips, Mikey vs this mission's boss, a round GO.
            The ring around GO is the auto-start clock; a 1 s hold (lean / Space / press) fills it
            green. Translucent, so the wave keeps rolling behind. NOT #gameover-overlay. -->

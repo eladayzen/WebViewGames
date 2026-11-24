@@ -13,16 +13,19 @@
 import { PHYS, PHYS_PRESETS, DEFAULT_PRESET } from '../game/constants.js';
 
 const CUSTOM_KEY = 'tmntwavesurf:phys.custom';
-const DEV_KEYS = [['GRAVITY', 1, 12, 0.01], ['THRUST', 1, 16, 0.01], ['DAMP', 0.5, 10, 0.05], ['RAMP', 0, 1.5, 0.05], ['RAMP_T', 0.2, 4, 0.1], ['AIR_PEAK_Y', 0.05, 0.4, 0.005], ['AIR_TIME', 0.6, 2.5, 0.05], ['AIR_LAND_TILT', 0, 0.8, 0.01], ['AIR_SPIN', 0, 2, 1]];
+const DEV_KEYS = [['REL_VMAX', 0.4, 3, 0.05], ['REL_RESP', 2, 20, 0.5], ['BURST_V', 0.8, 5, 0.05], ['GRAVITY', 1, 12, 0.01], ['DAMP', 0.5, 10, 0.05], ['AIR_PEAK_Y', 0.05, 0.4, 0.005], ['AIR_TIME', 0.6, 2.5, 0.05], ['AIR_LAND_TILT', 0, 0.8, 0.01]];
 
 function loadCustom() { try { return JSON.parse(localStorage.getItem(CUSTOM_KEY) || 'null'); } catch { return null; } }
 
-function simFace(P, hold) {   // same integrator as the rider: hold from trough / release at lip, both from rest
-  let s0 = hold ? 0 : 1, v = 0, t = 0, th = 0; const dt = 1 / 240;
-  while (t < 8) { th = hold ? th + dt : 0; const rp = 1 + (P.RAMP || 0) * Math.min(1, th / (P.RAMP_T || 1));
-    v += (-P.GRAVITY + (hold ? P.THRUST * rp : 0) - P.DAMP * v) * dt; s0 += v * dt; t += dt;
-    if (hold ? s0 >= 1 : s0 <= 0) return t.toFixed(2) + ' s'; }
+function simRel(P) {   // relative input, full lean from rest at the trough: time to the lip
+  let s0 = 0, v = 0, t = 0; const dt = 1 / 240;
+  while (t < 8) { v += P.REL_RESP * (P.REL_VMAX - v) * dt; s0 += v * dt; t += dt; if (s0 >= 1) return t.toFixed(2) + ' s'; }
   return 'never';
+}
+function simBurst(P) {   // burst input: rise of one burst from rest
+  let s0 = 0, v = P.BURST_V, t = 0; const dt = 1 / 240;
+  while (v > 0 && t < 4) { v += (-P.GRAVITY - P.DAMP * v) * dt; s0 += v * dt; t += dt; }
+  return s0.toFixed(2) + ' rail';
 }
 
 /** Apply the default preset to PHYS. Called at boot, before any dev UI exists. */
@@ -50,7 +53,7 @@ export function mountDevPanel(parent, api) {
     sw.innerHTML = `<button data-t="toon" class="${th === 'toon' ? 'on' : ''}">1 · 3D Toon</button>` +
       `<button data-t="ooze" class="${th === 'ooze' ? 'on' : ''}">2 · Ooze Street</button>` +
       `<button id="devctl" class="mode">C · ${md}</button><button id="devboss">B · Boss</button>` +
-      `<br><button id="devinput" class="mode">Input: ${api.getInput() === 'classic' ? 'Classic L up / R down' : 'Left only'}</button>`;
+      `<br><button id="devinput" class="mode">Input: ${api.getInput() === 'burst' ? 'Burst (hard lean = up)' : 'Relative (lean = speed)'}</button>`;
     sw.querySelectorAll('button[data-t]').forEach(b => b.onclick = () => { api.setTheme(b.dataset.t); buildSwitches(); });
     sw.querySelector('#devctl').onclick = () => { api.toggleMode(); buildSwitches(); };
     sw.querySelector('#devboss').onclick = () => api.summonBoss();
@@ -74,7 +77,7 @@ export function mountDevPanel(parent, api) {
   }
   function measure() {
     const P = PHYS; body.querySelector('#devmeas').innerHTML =
-      `climb trough→lip: ${simFace(P, true)}<br>drop lip→trough: ${simFace(P, false)}<br>fall speed max: ${(P.GRAVITY / P.DAMP).toFixed(2)} rail/s`;
+      `relative, full lean trough→lip: ${simRel(P)}<br>burst: one kick rises ${simBurst(P)}<br>burst fall speed max: ${(P.GRAVITY / P.DAMP).toFixed(2)} rail/s`;
   }
   const self = {};
   dev.querySelector('#devx').onclick = () => (self.onClose ? self.onClose() : (dev.style.display = 'none'));
