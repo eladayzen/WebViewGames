@@ -58,6 +58,20 @@ export const ICONS = {
     '<rect x="3" y="30" width="18" height="6" rx="3" transform="rotate(-50 12 33)"/>' +
     '<rect x="20" y="9" width="6" height="16" rx="3" transform="rotate(35 23 17)"/>' +
     '<path d="M26 26 46 14v12z" opacity=".8"/><path d="M26 26 46 26v12z" opacity=".5"/>'),
+  // Three blades on a ring: spinning blades.
+  orbit: svg('<circle cx="24" cy="24" r="14" fill="none" stroke="currentColor" stroke-width="3" opacity=".5"/><circle cx="24" cy="24" r="5"/>' +
+    '<path d="M24 1l5 9H19z"/><path d="M45 36l-10 1 4-9z" transform="rotate(0)"/><path d="M3 36l10 1-4-9z"/>'),
+  // A blast ring around a core: shell shock.
+  burst: svg('<circle cx="24" cy="24" r="8"/><circle cx="24" cy="24" r="15" fill="none" stroke="currentColor" stroke-width="4"/>' +
+    '<path d="M24 1v6M24 41v6M1 24h6M41 24h6M8 8l4 4M36 36l4 4M40 8l-4 4M12 36l-4 4" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>'),
+  dash: svg('<path d="M4 24h22M8 14h18M8 34h18" stroke="currentColor" stroke-width="4" stroke-linecap="round" opacity=".6"/><path d="M26 8l18 16-18 16V28H18V20h8z"/>'),
+  caltrop: svg('<path d="M24 4l5 14-5 4-5-4zM6 34l14-5 2 6-6 5zM42 34l-14-5-2 6 6 5z"/><circle cx="24" cy="26" r="5"/>'),
+  shellboom: svg('<ellipse cx="24" cy="24" rx="16" ry="13"/><path d="M24 11v26M10 18l28 12M38 18 10 30" stroke="#000" stroke-width="2.5" opacity=".35"/><path d="M4 12c6-8 14-9 20-8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".6"/>'),
+  decoy: svg('<path d="M6 18l18-8 18 8v18l-18 8-18-8z"/><path d="M24 10v34M6 18l18 8 18-8" stroke="#000" stroke-width="2.5" opacity=".35" fill="none"/><circle cx="24" cy="26" r="4" fill="#d6242c"/>'),
+  arc: svg('<path d="M20 2 8 26h10l-4 20 22-28H24l6-16z"/><path d="M36 8l8 4-6 6M10 40l-6-3 5-6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".7"/>'),
+  vortex: svg('<path d="M24 6a18 18 0 1 1-16 10" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M24 14a10 10 0 1 1-9 5" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" opacity=".75"/><circle cx="24" cy="24" r="3.5"/>'),
+  frost: svg('<path d="M24 3v42M5 14l38 20M5 34l38-20" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/><circle cx="24" cy="24" r="5"/>'),
+  rush: svg('<path d="M24 3C32 14 38 20 38 30a14 14 0 0 1-28 0c0-6 3-9 6-13 1 5 3 7 5 8 0-8-1-14 3-22z"/><path d="M24 42a6 6 0 0 1-6-6c0-3 3-5 6-9 3 4 6 6 6 9a6 6 0 0 1-6 6z" fill="#000" opacity=".25"/>'),
   // A heart: more health.
   hearts: svg('<path d="M24 43C8 31 3 22 3 14 3 8 8 4 13 4c5 0 8 3 11 7 3-4 6-7 11-7 5 0 10 4 10 10 0 8-5 17-21 29z"/>'),
 };

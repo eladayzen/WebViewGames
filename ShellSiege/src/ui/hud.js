@@ -6,6 +6,7 @@
 // reason and make the pulsing dot restart its animation each time.
 import { ABILITIES } from '../core/abilities.js';
 import { iconFor } from './icons.js';
+import { doorIcon } from './doors.js';
 
 /** Banner words that have painted lettering (tools/cut-ui.py). */
 const TITLE_ART = { 'ROOM CLEAR': 'ui_title_room_clear.png' };
@@ -27,10 +28,9 @@ export function createHud() {
     let html = '';
     for (let i = 0; i < rooms; i++) {
       const done = i < room || (i === room && cleared);
-      const cls = ['pip', i === rooms - 1 ? 'boss' : '', done ? 'done' : i === room ? 'now' : '']
-        .filter(Boolean).join(' ');
-      // painted pizza slices (cut from the concept frame): eaten rooms are whole, the rest are dimmed
-      html += `<img class="${cls}" alt="" src="tex/ui_pizza_${done || i === room ? 'full' : 'dim'}.png">`;
+      const boss = i === rooms - 1;
+      const cls = ['pip', 'door-pip', boss ? 'boss' : '', done ? 'done' : i === room ? 'now' : ''].filter(Boolean).join(' ');
+      html += `<span class="${cls}">${doorIcon(boss && !done ? 'boss' : done ? 'done' : i === room ? 'here' : 'todo')}</span>`;
     }
     pips.innerHTML = html;
   }

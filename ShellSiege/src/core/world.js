@@ -96,6 +96,7 @@ export function createWorld() {
     maxHp: PLAYER_HP_DEFAULT,
     hurtT: 0,
     allies: [], pizzas: [], grenades: [],
+    powers: { orbit: { up: false, t: 0, ang: 0 }, burst: { charge: 0, armed: false, armT: 0, flashT: 0 } },   // core/powers.js
     shield: { hp: 0, max: 0, cd: 0, up: false, hitT: 0 },       // Donatello's (core/allies.js)
     knock: { vx: 0, vy: 0, t: 0 },     // a shove in progress, see KNOCK_S and core/foes.js hurtPlayer
     dead: false,

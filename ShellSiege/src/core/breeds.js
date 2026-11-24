@@ -62,7 +62,7 @@ const num = (k, d) => {
 export const BREEDS = {
   slayer: {
     label: 'Slayer', glb: 'models/rivals/Character_Slayer_01.glb', tex: 'tex/rivals.webp',
-    mass: 1, hp: 65, speed: 165, damage: 13, push: 70, radius: 39, reach: 107,
+    mass: 1, hp: 75, speed: 165, damage: 13, push: 70, radius: 39, reach: 107,
     height: 1.87, windupS: 0.26, recoverS: 0.52, cost: 1,   // quick to start: the swing begins fast
     behavior: 'melee',
   },

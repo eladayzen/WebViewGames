@@ -13,21 +13,18 @@
 // Only the DOM; the facts come in as arguments so this stays dumb.
 import { ABILITIES } from '../core/abilities.js';
 import { iconFor } from './icons.js';
+import { doorIcon } from './doors.js';
 
 const slot = (k, count, spent, cls = '', style = '') =>
   `<div class="slot ${ABILITIES[k].kind}${spent ? ' spent' : ''}${cls ? ' ' + cls : ''}" title="${ABILITIES[k].label}"${style ? ` style="${style}"` : ''}>${iconFor(k)}` +
   (count > 1 ? `<b>${count}</b>` : '') + '</div>';
 
 /** THE BANK, drawn as a pizza-box safe. Lid open -> shuts -> padlock snaps on. No words. */
-const BOX = '<svg class="box" viewBox="0 0 160 120" aria-hidden="true">' +
-  '<rect x="14" y="62" width="132" height="22" rx="4" fill="#4a3216" stroke="#14210f" stroke-width="3"/>' +          // the dark hollow inside
-  '<rect x="14" y="76" width="132" height="34" rx="6" fill="#d9a35b" stroke="#14210f" stroke-width="3"/>' +          // the front face
-  '<rect x="20" y="98" width="120" height="6" rx="3" fill="#b9843c" opacity=".6"/>' +
-  '<g class="lid"><path d="M18 64 142 64 152 8 8 8z" fill="#ecc27a" stroke="#14210f" stroke-width="3" stroke-linejoin="round"/>' +
-  '<path d="M80 18 60 54h40z" fill="#ffd84a" stroke="#14210f" stroke-width="3" stroke-linejoin="round"/><circle cx="80" cy="40" r="4" fill="#d6242c"/><circle cx="72" cy="48" r="3" fill="#d6242c"/><circle cx="88" cy="48" r="3" fill="#d6242c"/></g>' +
-  '<g class="lock"><path d="M68 82v-8a12 12 0 0 1 24 0v8" fill="none" stroke="#14210f" stroke-width="9" stroke-linecap="round"/><path d="M68 82v-8a12 12 0 0 1 24 0v8" fill="none" stroke="#c9d3dc" stroke-width="4.5" stroke-linecap="round"/>' +
-  '<rect x="58" y="80" width="44" height="30" rx="7" fill="#ffd84a" stroke="#14210f" stroke-width="3.5"/><circle cx="80" cy="93" r="4.5" fill="#14210f"/><rect x="78" y="95" width="4" height="9" rx="2" fill="#14210f"/></g>' +
-  '</svg>';
+const LOCK = '<svg class="padlock" viewBox="0 0 60 64" aria-hidden="true">' +
+  '<path d="M16 28v-8a14 14 0 0 1 28 0v8" fill="none" stroke="#14210f" stroke-width="10" stroke-linecap="round"/>' +
+  '<path d="M16 28v-8a14 14 0 0 1 28 0v8" fill="none" stroke="#c9d3dc" stroke-width="5" stroke-linecap="round"/>' +
+  '<rect x="6" y="26" width="48" height="34" rx="8" fill="#ffd84a" stroke="#14210f" stroke-width="4"/>' +
+  '<circle cx="30" cy="40" r="5" fill="#14210f"/><rect x="28" y="42" width="4" height="10" rx="2" fill="#14210f"/></svg>';
 
 const MEDAL = '<svg class="medal" viewBox="0 0 64 80" aria-hidden="true"><path d="M14 0h14l6 30H20zM50 0H36l-6 30h14z" fill="#d6242c" stroke="#14210f" stroke-width="3"/>' +
   '<circle cx="32" cy="50" r="24" fill="#ffd84a" stroke="#14210f" stroke-width="4"/><circle cx="32" cy="50" r="17" fill="#ffe98a" stroke="#14210f" stroke-width="2.5"/>' +
@@ -78,8 +75,7 @@ export function renderEnd(kind, { build, bank = {}, oldBank = {}, loose = {}, ke
       `<section class="temp"><h3>TEMPORARY</h3><div class="slots">` +
         (temp.length ? temp.map((k) => slot(k, build[k], !won)).join('') : '<em>none</em>') +
       '</div></section>' +
-      `<section class="vault ${kind}" style="--shut:${shutAt}s"><div class="vault-loose">${looseHtml}</div>${BOX}<div class="vault-bank">${bankHtml}</div></section>` +
-      '<section class="roll"><h3>ROLL</h3><div class="mystery"><img src="tex/loot_closed.webp" alt=""><b>?</b></div><p>FREE START POWER</p></section>';
+      `<section class="vault ${kind}" style="--shut:${shutAt}s"><div class="vault-loose">${looseHtml}</div><div class="vault-box">${LOCK}<div class="vault-bank">${bankHtml}</div></div></section>`;
   }
 
   // the map: the first room of the level you start next, a trail of pizzas, the boss at the end
@@ -91,7 +87,7 @@ export function renderEnd(kind, { build, bank = {}, oldBank = {}, loose = {}, ke
       const boss = i === rooms - 1;
       nodes += `<div class="node${i === 0 ? ' start' : ''}${boss ? ' boss' : ''}">` +
         (i === 0 ? `${MASK}<span class="flag">START</span>` : '') +
-        `<img src="tex/ui_pizza_${i === 0 ? 'full' : 'dim'}.png" alt="">` +
+        doorIcon(boss ? 'boss' : i === 0 ? 'here' : 'todo') +
         (boss ? '<span class="crown">&#9813;</span>' : '') + '</div>';
     }
     map.innerHTML = `<div class="trail">${nodes}</div><div class="lvl">LEVEL ${next}</div>`;

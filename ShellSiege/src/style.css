@@ -596,3 +596,251 @@ img.pip.boss { width: 46px; }
 #over-panels .vault-bank .slot.fresh { opacity: 0; animation: bankFresh .5s cubic-bezier(.3, 1.6, .5, 1) calc(var(--d) + .5s) forwards; }
 @keyframes bankFresh { 0% { opacity: 0; transform: scale(.2); } 100% { opacity: 1; transform: scale(1); } }
 #over-panels .slot.banked::after { width: 14px; height: 14px; right: -5px; top: -6px; }
+
+
+/* ================= SIZE PASS (Elad, 24 Nov): gameplay UI 10% smaller, and everything fits a phone ================= */
+#vitals, #abilities, #chrome { zoom: 0.9; }
+#banner.plain { font-size: clamp(16px, 2.7vw, 27px); }
+#enemies-left b { font-size: 24px; }
+
+/* the new-power box: bounded by the HEIGHT as well as the width, so it never fills a phone */
+.roll-stage { width: min(62vw, 310px, 44vh); }
+.roll-title { font-size: 22px; margin-bottom: 18px; }
+.roll-card { width: min(60vw, 220px); }
+.roll-icon svg { width: 52px; height: 52px; }
+.roll-label { font-size: 18px; }
+.roll-blurb { font-size: 12px; }
+
+/* the end card can never be taller than the screen: it scrolls, and GO AGAIN stays pinned in view */
+#gameover-overlay { align-items: start; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.over-card { margin: auto; max-width: 100%; }
+.over-card #restart-button { position: sticky; bottom: max(10px, env(safe-area-inset-bottom)); z-index: 5; }
+#over-panels .vault .box { width: 138px; }
+#over-title.big { font-size: 44px; }
+#over-title.big .medal { width: 48px; }
+@media (max-height: 760px) { .over-card { zoom: 0.82; } }
+@media (max-height: 560px) { .over-card { zoom: 0.62; } }
+@media (max-width: 620px) {
+  #over-title.big { font-size: 32px; }
+  #over-panels.won, #over-panels.dead { grid-template-columns: 1fr 1fr; }
+  #over-panels .vault { grid-column: 1 / -1; order: -1; }
+  #over-panels h3 { font-size: 17px; }
+  #over-panels .slot { width: 42px; height: 42px; padding: 6px; }
+  #over-panels .roll .mystery { width: 84px; }
+  #over-map .node { width: 40px; } #over-map .node.boss img { width: 50px; }
+  #over-map .map-turtle { width: 30px; height: 30px; top: -28px; }
+  .over-card .card-score { margin: 14px 0 8px; }
+  .over-card #restart-button { padding: 10px 26px; font-size: 17px; }
+}
+
+/* phones: the readout keeps clear of the three corner buttons */
+@media (max-width: 620px) {
+  #vitals { left: max(8px, env(safe-area-inset-left)); transform: none; justify-content: flex-start; max-width: calc(100vw - 150px); }
+  #hp-bar { width: 32vw; min-width: 110px; }
+  #room-info { justify-content: flex-start; }
+  #chrome { gap: 5px; }
+}
+
+/* NOTHING UNDER THE HEALTH BAR: the room pizzas run down the left edge and the "N left" badge sits
+   on the right, under the corner buttons, so the middle of the screen stays clear around the turtle. */
+#vitals { left: 0; right: 0; transform: none; margin: 0 auto; width: max-content; max-width: 92vw; }
+#room-info { display: contents; }
+#room-pips {
+  position: fixed; left: max(8px, env(safe-area-inset-left)); top: 84px; z-index: 20;
+  flex-direction: column; align-items: center; gap: 2px; pointer-events: none; zoom: 0.8;
+}
+#enemies-left, #enemies-left:empty { position: fixed; right: max(10px, env(safe-area-inset-right)); top: 76px; z-index: 20; zoom: 0.9; }
+#enemies-left:empty { display: none; }
+@media (max-width: 620px) {
+  #vitals { left: max(8px, env(safe-area-inset-left)); right: auto; margin: 0; width: auto; max-width: calc(100vw - 150px); }
+  #room-pips { top: 70px; }
+  #enemies-left, #enemies-left:empty { top: 66px; }
+  #enemies-left:empty { display: none; }
+}
+
+
+/* ================= THE LOBBY ================= */
+#lobby {
+  position: fixed; inset: 0; z-index: 45; display: grid; place-items: center; overflow-y: auto;
+  background: radial-gradient(ellipse at 50% 40%, rgba(20, 40, 30, .72), rgba(4, 8, 8, .92));
+}
+.lobby-card { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 18px; width: min(92vw, 640px); }
+.lobby-title {
+  font: 900 clamp(30px, 8vh, 56px) 'Arial Black', Impact, sans-serif; letter-spacing: .05em; color: var(--orange);
+  -webkit-text-stroke: 7px var(--ink); paint-order: stroke fill; text-align: center;
+}
+.lobby-level {
+  font: 900 clamp(18px, 5vh, 28px) 'Arial Black', Impact, sans-serif; color: var(--cream);
+  -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; letter-spacing: .08em;
+}
+.lobby-map { width: 100%; margin: 18px 0 0; }
+.lobby-map .node { width: clamp(34px, 9vh, 52px); }
+.lobby-map .node.boss img { width: clamp(42px, 11vh, 62px); }
+.lobby-map .map-turtle { position: absolute; left: 50%; top: -34px; transform: translateX(-50%); width: 36px; height: 36px; }
+.lobby-held { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; min-height: 10px; }
+.lobby-held .slot { width: 46px; height: 46px; padding: 6px; }
+.lobby-buttons { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.lobby-buttons button {
+  padding: 12px 30px; border: 5px solid var(--ink); border-radius: 16px; background: var(--orange); color: #fff;
+  font: 900 clamp(16px, 4.5vh, 22px) 'Arial Black', Impact, sans-serif; letter-spacing: .05em;
+  -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; box-shadow: 0 6px 0 rgba(0,0,0,.4); cursor: pointer;
+}
+.lobby-buttons button.alt { background: var(--cream); color: var(--green-d); }
+.lobby-buttons button:active { transform: translateY(3px); box-shadow: 0 3px 0 rgba(0,0,0,.4); }
+@media (max-height: 460px) { .lobby-card { gap: 6px; padding: 8px; } .lobby-map { margin-top: 10px; } }
+
+
+/* the end screen has two cells now (TEMPORARY and the vault): the ROLL cell is gone */
+#over-panels.won, #over-panels.dead { grid-template-columns: 1fr 1.9fr; }
+@media (max-width: 620px) {
+  #over-panels.won, #over-panels.dead { grid-template-columns: 1fr; }
+  #over-panels .vault { order: 0; }
+}
+
+/* the player getting hit: a red vignette that snaps in and fades */
+#hurt {
+  position: fixed; inset: 0; z-index: 26; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at 50% 50%, rgba(255, 30, 20, 0) 38%, rgba(255, 30, 20, .55) 100%);
+}
+
+/* the quit X is the far-right button */
+#chrome #gb-back { order: 3; }
+
+
+/* ================= THE VAULT, REDESIGNED (Elad, 24 Nov) =================
+   One big LOCKED box. Whatever is inside it is banked and safe. Beside it, on the left, are the items
+   that are not banked yet: on a win they fly into the box and the lock snaps shut; on a death they
+   crumble (all but the one kept pick, which flies in). */
+#over-panels .vault { flex-direction: row; align-items: stretch; justify-content: center; gap: 12px; padding: 10px; overflow: visible; }
+#over-panels .vault-loose {
+  flex: 0 0 auto; display: flex; flex-direction: column; flex-wrap: wrap; gap: 8px; align-content: center; justify-content: center;
+  min-width: 62px; max-height: 190px; padding: 8px; border: 4px dashed #b9a06a; border-radius: 14px; background: rgba(255, 255, 255, .35);
+}
+#over-panels .vault-loose:empty { display: none; }
+#over-panels .vault-loose .slot { width: 46px; height: 46px; padding: 6px; border-style: dashed; }
+#over-panels .vault-box {
+  position: relative; flex: 1 1 auto; min-width: 150px; min-height: 150px; margin-top: 18px;
+  display: flex; align-items: center; justify-content: center; padding: 34px 12px 14px;
+  background: #d9a35b; border: 5px solid var(--ink); border-radius: 16px; box-shadow: 0 6px 0 rgba(0, 0, 0, .35), inset 0 0 0 5px #ecc27a;
+}
+#over-panels .vault-box .vault-bank {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-content: center; margin: 0; width: 100%; min-height: 70px;
+  padding: 8px; border-radius: 10px; background: #4a3216;
+}
+#over-panels .vault-box .vault-bank .slot { width: 44px; height: 44px; padding: 6px; }
+#over-panels .vault-box .padlock {
+  position: absolute; left: 50%; top: -30px; width: 54px; height: 58px; transform: translateX(-50%) scale(0); z-index: 3;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .35)); animation: lockSnap .4s cubic-bezier(.3, 1.8, .5, 1) calc(var(--shut) + .1s) forwards;
+}
+@keyframes lockSnap { 0% { transform: translateX(-50%) scale(0) rotate(-20deg); } 100% { transform: translateX(-50%) scale(1) rotate(0); } }
+/* flying in goes RIGHT, into the box */
+#over-panels .slot.fly { animation: flyRight .75s cubic-bezier(.5, 0, .7, .4) var(--d) forwards; }
+@keyframes flyRight {
+  0% { transform: none; opacity: 1; }
+  70% { transform: translateX(80px) scale(.6); opacity: 1; }
+  100% { transform: translateX(104px) scale(.25); opacity: 0; }
+}
+@media (max-width: 620px) { #over-panels .vault { flex-wrap: wrap; } #over-panels .vault-loose { flex-direction: row; max-height: none; } }
+
+
+/* X during play: "are you sure?"; in the lobby the corner X sits above it and leaves the game */
+#quit-confirm { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(5, 9, 11, .7); }
+.quit-card { text-align: center; }
+.quit-card .card-title { font-size: 30px; margin-bottom: 16px; }
+.quit-buttons { display: flex; gap: 16px; justify-content: center; }
+.quit-buttons .alt { background: var(--cream); color: var(--green-d); -webkit-text-stroke: 0; }
+body.in-lobby #chrome { z-index: 60; }
+body.in-lobby #pause-button, body.in-lobby #dev-button { display: none; }
+
+
+/* DONNIE'S MACHINES: the speech bubble and the arrow */
+#donnie-pop {
+  position: fixed; left: max(10px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom)); z-index: 24;
+  display: flex; align-items: center; gap: 8px; max-width: min(260px, 46vw); padding: 6px 12px 6px 6px; pointer-events: none;
+  background: var(--cream); border: 4px solid var(--ink); border-radius: 18px; box-shadow: 0 4px 0 rgba(0, 0, 0, .35);
+}
+#donnie-pop.show { animation: popIn .35s cubic-bezier(.2, 1.6, .4, 1) both; }
+@keyframes popIn { 0% { transform: translateY(30px) scale(.7); opacity: 0; } 100% { transform: none; opacity: 1; } }
+#donnie-pop .face { flex: 0 0 auto; width: 40px; height: 40px; padding: 6px; border-radius: 50%; background: #6b2fa8; border: 3px solid var(--ink); color: #fff; }
+#donnie-pop .face svg { width: 100%; height: 100%; }
+#donnie-pop .say { display: flex; flex-direction: column; line-height: 1.15; }
+#donnie-pop b { font: 900 12px 'Arial Black', Impact, sans-serif; color: #6b2fa8; letter-spacing: .05em; }
+#donnie-pop span { font: 800 13px 'Trebuchet MS', sans-serif; color: var(--ink); }
+
+#donnie-pop .face { padding: 0; overflow: hidden; background: #cfa8ff; }
+#donnie-pop .face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+
+/* ================= THE LOBBY, REDESIGNED: story on the left, the road on the right ================= */
+#lobby {
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(10, 18, 14, .35), rgba(3, 6, 5, .92) 85%),
+    linear-gradient(rgba(6, 14, 10, .62), rgba(6, 14, 10, .62)),
+    url("/tex/floor_plaza.webp") center / cover no-repeat;
+}
+#lobby .lobby-card { flex-direction: row; align-items: center; gap: 22px; width: min(96vw, 980px); padding: 14px; }
+.lobby-story { flex: 1 1 44%; display: flex; flex-direction: column; gap: 10px; }
+.story-panel {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 8px; background: var(--cream);
+  border: 4px solid var(--ink); border-radius: 12px; box-shadow: 0 5px 0 rgba(0, 0, 0, .4);
+}
+.story-panel.p1 { transform: rotate(-1.4deg); } .story-panel.p2 { transform: rotate(1deg) translateX(10px); } .story-panel.p3 { transform: rotate(-.8deg); }
+.pn-art { flex: 0 0 38%; display: grid; place-items: center; background: #2b4a63; border: 3px solid var(--ink); border-radius: 8px; padding: 4px; min-height: 58px; }
+.pn-art svg { width: 100%; height: auto; display: block; }
+.pn-duo { display: flex; gap: 6px; align-items: center; } .pn-duo svg, .pn-duo img { width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--ink); background: #cfa8ff; object-fit: cover; }
+.pn-duo svg { background: none; border: 0; }
+.pn-trail { display: flex; gap: 3px; } .pn-trail img { width: 24px; height: auto; }
+.pn-cap { font: 900 clamp(11px, 2.4vh, 15px) 'Arial Black', Impact, sans-serif; letter-spacing: .03em; color: var(--ink); line-height: 1.15; }
+
+.lobby-progress { flex: 1 1 56%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.lobby-road { display: flex; align-items: flex-end; justify-content: center; gap: 0; position: relative; }
+.lv { position: relative; display: flex; flex-direction: column; align-items: center; width: clamp(40px, 11vh, 62px); }
+.lv + .lv::before { content: ''; position: absolute; left: -50%; right: 50%; top: 38%; border-top: 5px dotted rgba(251, 230, 176, .7); }
+.lv-ico { width: 74%; aspect-ratio: 1; position: relative; z-index: 1; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .4)); }
+.lv-ico svg { width: 100%; height: 100%; display: block; }
+.lv b { font: 900 14px 'Arial Black', Impact, sans-serif; color: var(--cream); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; margin-top: 2px; }
+.lv.here .lv-ico { transform: scale(1.35); filter: drop-shadow(0 0 10px rgba(255, 225, 120, .95)); } .lv.here b { color: var(--orange); }
+.lv.locked { opacity: .75; } .lv.locked b { color: #9aa6b2; }
+.lobby-rooms { display: flex; justify-content: center; gap: clamp(6px, 2vh, 16px); align-items: flex-end; margin-top: 8px; padding: 14px 12px 6px; background: rgba(8, 16, 12, .5); border: 3px solid rgba(251, 230, 176, .35); border-radius: 14px; }
+.rm { position: relative; width: clamp(34px, 9vh, 50px); text-align: center; }
+.rm img { width: 100%; display: block; } .rm.boss { width: clamp(42px, 11vh, 60px); }
+.rm.here img { filter: drop-shadow(0 0 10px rgba(255, 225, 120, .95)); }
+.rm .map-turtle { position: absolute; left: 50%; top: -30px; transform: translateX(-50%); width: 30px; height: 30px; }
+.rm .crown { position: absolute; left: 50%; top: -22px; transform: translateX(-50%); font-size: 22px; color: #ffd84a; text-shadow: 2px 2px 0 var(--ink), -2px -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink); }
+.lobby-held { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; min-height: 6px; }
+.lobby-held .slot { width: 40px; height: 40px; padding: 5px; }
+@media (max-width: 700px), (max-height: 520px) {
+  #lobby .lobby-card { gap: 12px; padding: 6px; }
+  .story-panel { padding: 5px 8px 5px 5px; } .pn-art { min-height: 44px; } .pn-duo svg, .pn-duo img { width: 28px; height: 28px; }
+  .lobby-held .slot { width: 32px; height: 32px; padding: 4px; }
+}
+@media (max-width: 620px) and (min-height: 521px) { #lobby .lobby-card { flex-direction: column; } .lobby-story { width: 100%; } }
+
+/* the game's own HUD is not shown behind the lobby */
+body.in-lobby #vitals, body.in-lobby #room-pips, body.in-lobby #enemies-left, body.in-lobby #abilities, body.in-lobby #donnie-pop, body.in-lobby #banner { display: none !important; }
+.lobby-tag { font: 900 11px 'Arial Black', Impact, sans-serif; letter-spacing: .18em; color: var(--cream); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; margin: 0 0 -2px; text-align: center; }
+
+
+/* ROOMS ARE DOORS (ui/doors.js): the pizza styling no longer applies to these */
+.pip.door-pip, .pip.door-pip.done, .pip.door-pip.now, .pip.door-pip.boss { background: none; filter: none; width: 26px; height: auto; border: 0; border-radius: 0; box-shadow: none; transform: none; display: block; animation: none; }
+.pip.door-pip.boss { width: 32px; }
+.pip.door-pip svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .4)); }
+.pip.door-pip.now svg { filter: drop-shadow(0 0 6px rgba(255, 225, 120, .95)); animation: pipBob 900ms ease-in-out infinite; }
+#over-map .node .door, .rm .door { width: 100%; height: auto; display: block; position: relative; }
+.pn-trail { align-items: flex-end; } .pn-trail .door { width: 20px; height: auto; } .pn-trail .door-boss { width: 25px; }
+.rm.here .door, #over-map .node.start .door { filter: drop-shadow(0 0 10px rgba(255, 225, 120, .95)); }
+
+
+/* the level picker (ui/lobby.js): every level reached is a button, a few more are shown locked */
+.lobby-card.pick { justify-content: center; }
+.lobby-tag.big { font-size: clamp(15px, 4vh, 24px); margin-bottom: 10px; }
+.lobby-levels { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 10px; max-width: 700px; }
+.lv-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; width: clamp(54px, 15vh, 84px); padding: 8px 4px 6px;
+  background: var(--cream); border: 4px solid var(--ink); border-radius: 14px; box-shadow: 0 5px 0 rgba(0, 0, 0, .4); cursor: pointer;
+}
+.lv-btn .lv-ico { width: 70%; aspect-ratio: 1; } .lv-btn .lv-ico svg { width: 100%; height: 100%; display: block; }
+.lv-btn b { font: 900 16px 'Arial Black', Impact, sans-serif; color: var(--ink); }
+.lv-btn.newest { background: #ffe9a8; box-shadow: 0 0 16px rgba(255, 225, 120, .9), 0 5px 0 rgba(0, 0, 0, .4); }
+.lv-btn.locked { background: #5a6068; opacity: .7; cursor: default; box-shadow: none; } .lv-btn.locked b { color: #c9d0d8; }
+.lv-btn.open:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0, 0, 0, .4); }

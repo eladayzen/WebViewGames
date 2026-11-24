@@ -31,16 +31,42 @@ export const ROLL = {
   holdS: 0.8,
   // Each copy already owned multiplies the weight by this.
   repeatFalloff: 0.65,
+  // How many different game-changing powers a run is guaranteed before the stat upgrades start.
+  earlyBig: 2,
 };
 
 /** How long the whole thing takes. Elad's ceiling is two seconds. */
 export const rollDurationS = () => ROLL.spinS + ROLL.holdS;
 
 /** The weight of every ability that could still be rolled, for this build. */
-export function rollWeights(build) {
+export const ALLY_KEYS = ['leo', 'mikey', 'donnie'];
+/** A run goes at most this many cleared rooms before a turtle joins (Elad, 24 Nov). */
+export const ALLY_BY_ROOM = 1;      // 0-based: the roll after the SECOND room is guaranteed to be a turtle
+
+export function rollWeights(build, ctx = {}) {
   const out = {};
+  // THE FIRST TURTLE ARRIVES WITHIN TWO ROOMS. Until one is held, turtles are far more likely, and the roll
+  // after the second room can only be a turtle.
+  const hasAlly = ALLY_KEYS.some((k) => build[k] > 0);
+  const lackAlly = !hasAlly && offerable(build).some((k) => ALLY_KEYS.includes(k));
+  if (lackAlly && (ctx.room ?? 0) >= ALLY_BY_ROOM) {
+    for (const k of offerable(build).filter((k) => ALLY_KEYS.includes(k))) out[k] = ABILITIES[k].weight ?? 1;
+    return out;
+  }
+  const allyBoost = lackAlly ? 4 : 1;
+  // THE FIRST POWERS ARE GAME-CHANGERS (Elad: "too boring too quick"). Until the build holds EARLY_BIG
+  // different ones (allies, shield, stars, twin daggers, pierce), only those are rolled -- the free start
+  // roll and the first room's roll both change how the run plays, and the stat upgrades come after.
+  const bigHeld = Object.keys(ABILITIES).filter((k) => ABILITIES[k].big && build[k] > 0).length;
+  if (bigHeld < ROLL.earlyBig) {
+    const bigs = offerable(build).filter((k) => ABILITIES[k].big);
+    if (bigs.length) {
+      for (const k of bigs) out[k] = (ABILITIES[k].weight ?? 1) * Math.pow(ROLL.repeatFalloff, build[k]) * (ALLY_KEYS.includes(k) ? allyBoost : 1);
+      return out;
+    }
+  }
   for (const k of offerable(build)) {
-    out[k] = (ABILITIES[k].weight ?? 1) * Math.pow(ROLL.repeatFalloff, build[k]);
+    out[k] = (ABILITIES[k].weight ?? 1) * Math.pow(ROLL.repeatFalloff, build[k]) * (ALLY_KEYS.includes(k) ? allyBoost : 1);
   }
   // HALF THE ROLLS ARE PERMANENT, HALF TEMPORARY (Elad: a run held 8 permanent and 1 temporary). The
   // weights are rescaled so each kind carries 50% of the total, however many of each there are.
@@ -51,8 +77,8 @@ export function rollWeights(build) {
 }
 
 /** One ability key, or null when every ability is maxed out. */
-export function rollAbility(build, rng = Math.random) {
-  const w = rollWeights(build);
+export function rollAbility(build, rng = Math.random, ctx = {}) {
+  const w = rollWeights(build, ctx);
   const keys = Object.keys(w);
   if (!keys.length) return null;
   let r = rng() * keys.reduce((a, k) => a + w[k], 0);
@@ -64,8 +90,8 @@ export function rollAbility(build, rng = Math.random) {
  * A roll in progress. With nothing left to give it is born `done`, so the run
  * skips straight past it instead of showing an empty box.
  */
-export function createRoll(build, rng = Math.random) {
-  const key = rollAbility(build, rng);
+export function createRoll(build, rng = Math.random, ctx = {}) {
+  const key = rollAbility(build, rng, ctx);
   return { key, t: 0, phase: key ? 'spin' : 'done', done: !key };
 }
 

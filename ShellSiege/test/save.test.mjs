@@ -34,3 +34,25 @@ test('IT CANNOT SMUGGLE IN ANYTHING THE GAME DOES NOT ALLOW', () => {
   assert.equal(got.pierce, undefined);
   assert.equal(got.reach, 2, 'a fraction was not floored');
 });
+
+test('THE RUN IN PROGRESS ROUND-TRIPS, temporary abilities included, and never smuggles anything in', async () => {
+  const { decodeRun } = await import('../src/systems/save.js');
+  const b = createBuild(); b.rapid = 2; b.leo = 1; b.stars = 1;
+  const blob = encodeProgress(b, { level: 2, room: 3, build: b });
+  assert.deepEqual(blob.perm, { rapid: 2 }, 'the run leaked into the bank');
+  assert.deepEqual(decodeRun(blob), { level: 2, room: 3, build: { rapid: 2, leo: 1, stars: 1 } });
+  assert.equal(decodeRun(encodeProgress(b)), null, 'no run was saved');
+  for (const bad of [null, '', 'x', { v: 1, run: 5 }, { v: 1, run: { level: 0, room: 0 } }, { v: 1, run: { level: 1, room: -2 } }, { v: 9, run: { level: 1, room: 0 } }]) {
+    assert.equal(decodeRun(bad), null, `accepted ${JSON.stringify(bad)}`);
+  }
+  const got = decodeRun({ v: 1, run: { level: 2, room: 1, build: { leo: 99, nonsense: 3, swift: 2 } } });
+  assert.deepEqual(got.build, { leo: ABILITIES.leo.max }, 'clamp, unknown and locked must be dropped');
+});
+
+test('THE FURTHEST LEVEL REACHED IS SAVED, never trusted, and defaults to 1', async () => {
+  const { decodeUnlocked } = await import('../src/systems/save.js');
+  const b = createBuild();
+  assert.equal(decodeUnlocked(encodeProgress(b, null, 4)), 4);
+  assert.equal(decodeUnlocked(encodeProgress(b)), 1, 'a new player has only level 1');
+  for (const bad of [null, '', 'x', { v: 1, unlocked: 0 }, { v: 1, unlocked: -3 }, { v: 1, unlocked: 'a' }, { v: 1, unlocked: 99999 }, { v: 9, unlocked: 5 }]) assert.equal(decodeUnlocked(bad), 1, `accepted ${JSON.stringify(bad)}`);
+});

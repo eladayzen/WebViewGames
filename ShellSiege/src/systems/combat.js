@@ -42,7 +42,7 @@ export const BASE_GUN = {
   projectiles: num('sproj', 1),
   pierce: 0,
   damage: 13,
-  rangePx: num('srange', 620),
+  rangePx: num('srange', 760),
 };
 
 /**
@@ -241,7 +241,7 @@ export function updateBullets(w, dt, onHit) {
       if (!e.alive || b.hit.has(e)) continue;
       if (Math.hypot(e.x - b.x, e.y - b.y) > e.radius + BULLET.radius) continue;
       e.hp -= b.damage;
-      e.hitT = 0.09;
+      e.hitT = 0.14;
       // Remembered PER BULLET so a piercing shot cannot hit the same thing
       // twice on the way through, which at high fire rates reads as random
       // extra damage nobody can account for.

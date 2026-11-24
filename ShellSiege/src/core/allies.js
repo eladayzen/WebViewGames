@@ -43,6 +43,9 @@ import { TELEGRAPH_STATES } from './behaviors.js';
 import { ARENA } from './world.js';
 import { overlapsAny, resolveCircle } from './obstacles.js';
 
+/** Seconds a foe cannot be stunned again after a stun wears off. */
+export const STUN_IMMUNE_S = 0.8;
+
 export const ALLY = {
   mikey: {
     label: 'Michelangelo',
@@ -126,8 +129,13 @@ export function syncAllies(w) {
 /** Stop a foe in its tracks for `s` seconds and cancel whatever it was winding up. */
 export function stunFoe(f, s) {
   if (!f.alive) return;
+  // NO STUN-LOCK: a foe that has just woken is immune for a moment. Mikey sweeps every 1.1s and stuns for
+  // 1.3s, so without this a whole crowd stood frozen for as long as he lived and the game looked stuck.
+  if ((f.stunImmT || 0) > 0) return;
   f.stunT = Math.max(f.stunT || 0, s);
-  if (TELEGRAPH_STATES.has(f.state) || f.state === 'dash') { f.state = 'walk'; f.stateT = 0; }
+  // 'recover' too: the swing pose is scrubbed from the state clock, which a stun freezes, so a foe stunned
+  // mid-recovery stood frozen in the middle of its swing (the animation bug).
+  if (TELEGRAPH_STATES.has(f.state) || f.state === 'dash' || f.state === 'recover') { f.state = 'walk'; f.stateT = 0; }
   f.tell = null;
 }
 
@@ -139,7 +147,7 @@ export function stunFoe(f, s) {
 export function hurtFoe(w, f, dmg, hooks) {
   if (!f.alive) return;
   f.hp -= dmg;
-  f.hitT = 0.09;
+  f.hitT = 0.14;
   if (f.hp <= 0) {
     f.alive = false;
     f.deadAtS = w.timeS;

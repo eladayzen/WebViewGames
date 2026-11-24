@@ -20,12 +20,48 @@ export const VERSION = 1;
 const LOAD_TIMEOUT_MS = 3000;
 
 /** The blob to store for a build: permanent abilities only, counts only. */
-export function encodeProgress(build) {
+export function encodeProgress(build, run = null, unlocked = 1) {
   const perm = {};
   for (const [k, a] of Object.entries(ABILITIES)) {
     if (a.kind === 'perm' && build[k] > 0) perm[k] = Math.min(a.max, Math.floor(build[k]));
   }
-  return { v: VERSION, perm };
+  const blob = { v: VERSION, perm };
+  // THE FURTHEST LEVEL REACHED (the level picker offers 1..this): a level opens when the one before it is cleared
+  if (Number.isFinite(unlocked) && unlocked > 1) blob.unlocked = Math.min(999, Math.floor(unlocked));
+  // THE RUN IN PROGRESS (for the lobby's CONTINUE): where you are, and EVERYTHING you hold, temporary
+  // abilities included. Unlike `perm` this is only meant to be picked up again, never banked.
+  if (run && Number.isFinite(run.level)) {
+    const held = {};
+    for (const [k, a] of Object.entries(ABILITIES)) if (run.build && run.build[k] > 0) held[k] = Math.min(a.max, Math.floor(run.build[k]));
+    blob.run = { level: Math.floor(run.level), room: Math.max(0, Math.floor(run.room || 0)), build: held };
+  }
+  return blob;
+}
+
+/** The furthest level unlocked, from a blob (1 when none). */
+export function decodeUnlocked(blob) {
+  let data = blob;
+  if (typeof data === 'string') { try { data = JSON.parse(data); } catch { return 1; } }
+  const n = data && typeof data === 'object' && data.v === VERSION ? Math.floor(Number(data.unlocked)) : 1;
+  return Number.isFinite(n) && n >= 1 && n <= 999 ? n : 1;
+}
+
+/** The run stored in a blob, or null. Never trusted: unknown abilities are dropped, counts clamped. */
+export function decodeRun(blob) {
+  let data = blob;
+  if (typeof data === 'string') { try { data = JSON.parse(data); } catch { return null; } }
+  const r = data && typeof data === 'object' && data.v === VERSION ? data.run : null;
+  if (!r || typeof r !== 'object') return null;
+  const level = Math.floor(Number(r.level)), room = Math.floor(Number(r.room));
+  if (!Number.isFinite(level) || level < 1 || level > 999 || !Number.isFinite(room) || room < 0 || room > 99) return null;
+  const build = {};
+  if (r.build && typeof r.build === 'object') {
+    for (const [k, n] of Object.entries(r.build)) {
+      const a = ABILITIES[k], c = Math.floor(Number(n));
+      if (a && !a.locked && Number.isFinite(c) && c > 0) build[k] = Math.min(a.max, c);
+    }
+  }
+  return { level, room, build };
 }
 
 /**
@@ -51,7 +87,10 @@ const host = () => (typeof window !== 'undefined' && window.GoBalance && typeof 
 const ls = () => { try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch { return null; } };
 
 /** Saved permanent abilities as counts ({} for a new player or on any failure). */
-export async function loadProgress() {
+export async function loadProgress() { return (await loadSave()).perm; }
+
+/** Everything saved: { perm, run } -- `run` is the run in progress or null. */
+export async function loadSave() {
   try {
     const h = host();
     if (h) {
@@ -59,16 +98,17 @@ export async function loadProgress() {
         h.load(),
         new Promise((_, rej) => setTimeout(() => rej(new Error('load timed out')), LOAD_TIMEOUT_MS)),
       ]);
-      return decodeProgress(blob);
+      return { perm: decodeProgress(blob), run: decodeRun(blob), unlocked: decodeUnlocked(blob) };
     }
     const s = ls();
-    return decodeProgress(s ? s.getItem(KEY) : null);
-  } catch { return {}; }
+    const raw = s ? s.getItem(KEY) : null;
+    return { perm: decodeProgress(raw), run: decodeRun(raw), unlocked: decodeUnlocked(raw) };
+  } catch { return { perm: {}, run: null, unlocked: 1 }; }
 }
 
 /** Store the build's permanent abilities. Fire and forget: a failed save never blocks a run. */
-export function saveProgress(build) {
-  const blob = encodeProgress(build);
+export function saveProgress(build, run = null, unlocked = 1) {
+  const blob = encodeProgress(build, run, unlocked);
   try {
     const h = host();
     if (h && typeof h.save === 'function') { Promise.resolve(h.save(blob)).catch(() => {}); return; }

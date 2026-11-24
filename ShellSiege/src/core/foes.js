@@ -32,6 +32,7 @@ import { BREEDS, DEFAULT_BREED } from './breeds.js';
 import { resolveCircle, overlapsAny, blocksShot } from './obstacles.js';
 import { BEHAVIORS, meleeStep, tellOf } from './behaviors.js';
 import { shieldCut } from './allies.js';
+import { hitDecoy } from './powers.js';
 
 const QS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const num = (k, d) => {
@@ -219,12 +220,13 @@ export function updateFoes(w, dt, onStrike) {
   // being stepped, so the closures below act on the right one without a new
   // object per foe per frame.
   let cur = null;
+  let decoyTarget = null;     // set per foe: the pizza decoy, while one stands (core/powers.js)
   const c = {
     w, p, dt, onStrike,
     slack: FOE.strikeSlack,
     pr: w.playerRadius,
     dx: 0, dy: 0, d: 1,
-    hurt: (n, push, from) => hurtPlayer(w, n, push, (from || cur).x, (from || cur).y),
+    hurt: (n, push, from) => (decoyTarget ? hitDecoy(w, n) : hurtPlayer(w, n, push, (from || cur).x, (from || cur).y)),
     move: (mx, my, slide) => moveFoe(w, cur, mx, my, slide),
     shoot: (spec) => spawnFoeShot(w, cur, spec),
     spawn: (breed, x, y) => spawnFoe(w, cur, breed, x, y),
@@ -237,20 +239,27 @@ export function updateFoes(w, dt, onStrike) {
     if (f.hitT > 0) f.hitT = Math.max(0, f.hitT - dt);
     if (f.shock) { f.shock.t -= dt; if (f.shock.t <= 0) f.shock = null; }
     // STUNNED (core/allies.js): it does nothing at all until this runs out.
+    if (f.stunImmT > 0) f.stunImmT = Math.max(0, f.stunImmT - dt);
     if (f.stunT > 0) {
       f.stunT = Math.max(0, f.stunT - dt);
+      if (f.stunT === 0) f.stunImmT = 0.8;        // STUN_IMMUNE_S (core/allies.js): no stun-lock
       f.tell = null; f.ustep = 0; f.ux = 0; f.uy = 0;
       continue;
     }
 
-    const dx = p.x - f.x;
-    const dy = p.y - f.y;
+    // FREEZE NOVA slows it; the PIZZA DECOY steals its attention (throwers still shoot the player).
+    const fdt = f.slowT > 0 ? dt * 0.4 : dt;
+    decoyTarget = w.decoy && w.decoy.alive && f.behavior !== 'thrower' ? w.decoy : null;
+    const tp = decoyTarget || p;
+    c.p = tp; c.dt = fdt; c.pr = decoyTarget ? decoyTarget.radius : w.playerRadius;
+    const dx = tp.x - f.x;
+    const dy = tp.y - f.y;
     const d = Math.hypot(dx, dy) || 1;
     // He always turns to face the player, even mid-swing: a swing that lands
     // behind the enemy is unreadable, and turning is not the same as moving.
     // (A charger overrides this: its line is locked, and so is its facing.)
     f.facing = Math.atan2(dy, dx);
-    f.stateT += dt;
+    f.stateT += fdt;
     f.tell = null;
 
     cur = f;

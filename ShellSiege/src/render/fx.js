@@ -76,7 +76,7 @@ export function createFx(scene, tex) {
 
       // Hit flash, and a lean away from the shot. Damage you cannot see is
       // damage the player assumes did not land.
-      const f = t.hitT / 0.09;
+      const f = Math.min(1, t.hitT / 0.14);
       c.mesh.material.emissive.setRGB(f * 0.55, f * 0.42, f * 0.18);
       c.mesh.rotation.z = f * 0.07;
       // Darken as it takes damage, so a nearly-broken crate reads as nearly

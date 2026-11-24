@@ -75,7 +75,7 @@ export const frozen = (run) => run.phase === 'roll';
  */
 export function beginStartRoll(run, w, rng = Math.random) {
   const ev = [];
-  run.roll = createRoll(w.build, rng);
+  run.roll = createRoll(w.build, rng, { room: -1 });
   if (run.roll.done) { run.roll = null; return ev; }       // nothing left to give: no empty box
   run.phase = 'roll'; run.t = 0; run.startRoll = true;
   ev.push({ type: 'rollStart', roll: run.roll, start: true });
@@ -120,7 +120,7 @@ export function stepRun(run, w, dt, rng = Math.random) {
         run.t = 0;
         ev.push({ type: 'won', level: run.level });
       } else {
-        run.roll = createRoll(w.build, rng);
+        run.roll = createRoll(w.build, rng, { room: run.roomIdx });
         run.phase = 'roll';
         run.t = 0;
         ev.push({ type: 'rollStart', roll: run.roll });

@@ -28,6 +28,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { patchStatus, setStatus } from './status.js';
 import { u } from './units.js';
 import { FOE } from '../core/foes.js';
 import { BREEDS, DEFAULT_BREED, usedBreeds } from '../core/breeds.js';
@@ -200,6 +201,12 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     map: shadowTexture(), transparent: true, depthWrite: false, fog: false,
   });
   const pools = {};
+  // HP BARS over every head: a dark back plate and a fill, both camera-facing sprites. The fill is
+  // anchored to the plate's left edge through `center` (the sprite pivots on its position), so it
+  // shrinks toward the left and no yaw maths is needed.
+  const barBack = new THREE.SpriteMaterial({ color: 0x0c1410, depthTest: false, transparent: true, opacity: 0.35, fog: false });
+  const barFill = new THREE.SpriteMaterial({ color: 0x7fd07a, depthTest: false, transparent: true, opacity: 0.6, fog: false });
+  const BAR_H = 0.07;          // thin and quiet: it is information, not decoration
 
   for (const [key, enemy] of Object.entries(enemies)) {
     const breed = enemy.breed || BREEDS[key] || {};
@@ -226,6 +233,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
         if (!o.isMesh) return;
         o.frustumCulled = false;
         mat = new THREE.MeshLambertMaterial({ map: enemy.atlas, color: 0xffffff });
+        patchStatus(mat);
         o.material = mat;
         mats.push(mat);
       });
@@ -249,9 +257,16 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       holder.add(shadow, body);
       holder.visible = false;
       group.add(holder);
+      const bw = 0.42 + height * 0.12;                    // wider bar over a bigger foe
+      const back = new THREE.Sprite(barBack), fill = new THREE.Sprite(barFill.clone());
+      back.scale.set(bw + 0.03, BAR_H + 0.03, 1); fill.scale.set(bw, BAR_H, 1);
+      back.renderOrder = 50; fill.renderOrder = 51;
+      back.visible = fill.visible = false;
+      group.add(back, fill);
+      const bar = { back, fill, bw, y: height + 0.5 };
       let hand = null;                                   // the throwing hand, for synced orbs
       body.traverse((o) => { if (o.isBone && /^Hand_R/.test(o.name)) hand = o; });
-      slots.push({ holder, body, mat, mats, hand, shadow, mixer, act, baseY, walked: 0, alpha: 1, owner: null });
+      slots.push({ bar, holder, body, mat, mats, hand, shadow, mixer, act, baseY, walked: 0, alpha: 1, owner: null });
     }
     pools[key] = slots;
   }
@@ -273,7 +288,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
   }
 
   function poseOne(s, f, dt, target = 1) {
-    const { holder, body, mat, act } = s;
+    const { holder, body, mat, mats, act } = s;
     setAlpha(s, f, target, dt);
     holder.position.set(u(f.x), 0, u(f.y));
     // The sim's (dx, dy) maps to the scene's (x, z); a yaw of atan2(x, z)
@@ -345,7 +360,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     }
     if (act.idle) act.idle.setEffectiveWeight(!swinging && !moving ? 1 : 0);
 
-    s.mixer.update(dt);
+    s.mixer.update(f.stunT > 0 ? 0 : f.slowT > 0 ? dt * 0.4 : dt);
     // Publish where the throwing hand is, so the gathering orb can sit IN it.
     if (s.hand && f.state === 'throw') {
       holder.updateMatrixWorld(true);
@@ -365,9 +380,34 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       const k = Math.min(1, f.stateT / (recoverS * 0.3));
       mat.color.copy(BASE).lerp(TELL, 0.5 * (1 - k));
     }
-    if (f.stunT > 0) mat.color.copy(BASE).lerp(STUN_ALLY, 0.55 + 0.2 * Math.sin(f.stunT * 30));
-    if (f.hitT > 0) mat.color.lerp(new THREE.Color(0xff3020), 0.8);
+    // frozen / slowed: the status shaders (render/status.js), set below
+    // GETTING HIT: a white-hot flash that fades through red, a quick swell of the body, and a flinch
+    // back along the hit. Strong on purpose: damage you cannot see is damage the player assumes missed.
+    const hk = f.hitT > 0 ? Math.min(1, f.hitT / 0.14) : 0;
+    if (hk > 0) mat.color.lerp(new THREE.Color(0xff2a18), 0.55);
+    for (const m of mats) m.emissive.setRGB(hk > 0.45 ? 1 : hk * 1.8, hk > 0.45 ? 0.95 : hk * 0.5, hk > 0.45 ? 0.9 : hk * 0.4);
+    holder.scale.setScalar(1 + 0.16 * hk);
+    const mode = f.stunT > 0 ? 1 : f.slowT > 0 ? 2 : 0;
+    const clock = performance.now() / 1000;
+    for (const m of mats) setStatus(m, mode, clock);
 
+    // the bar: green to red as it drains; hidden once dead
+    {
+      const { back, fill, bw, y } = s.bar;
+      const k = Math.max(0, Math.min(1, f.hp / (f.maxHp || 1)));
+      const show = f.alive && s.alpha > 0.05;
+      back.visible = fill.visible = show;
+      if (show) {
+        const px = u(f.x), pz = u(f.y);
+        back.position.set(px, y, pz); fill.position.set(px, y, pz);
+        back.center.set(0.5, 0.5);
+        fill.scale.x = Math.max(0.001, bw * k);
+        fill.center.set(0.5 / Math.max(0.001, k), 0.5);
+        fill.material.color.setHSL(0.03 + 0.28 * k, 0.5, 0.58);
+        // faint while untouched, clearer once it has taken damage
+        const o = k < 0.999 ? 0.85 : 0.5; fill.material.opacity = o; back.material.opacity = k < 0.999 ? 0.5 : 0.28;
+      }
+    }
     if (!f.alive) {
       // GONE ON THE FRAME IT DIES -- the body is replaced by what it was made
       // of, see render/debris.js.
@@ -394,7 +434,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       poseOne(slots[i], f, dt, targets?.get(f) ?? 1);
     }
     for (const [key, slots] of Object.entries(pools)) {
-      for (let i = used[key] || 0; i < slots.length; i++) slots[i].holder.visible = false;
+      for (let i = used[key] || 0; i < slots.length; i++) { slots[i].holder.visible = false; slots[i].bar.back.visible = slots[i].bar.fill.visible = false; }
     }
   }
 

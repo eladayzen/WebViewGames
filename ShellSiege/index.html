@@ -43,7 +43,7 @@
         (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
       })();
     </script>
-    <title>Shell Siege</title>
+    <title>Loading</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -85,7 +85,18 @@
     </div>
 
     <!-- "ROOM 2 / 5", "ROOM CLEAR". Re-triggered from main.js. -->
+    <div id="hurt"></div>
+    <div id="donnie-pop" class="hidden"></div>
+    <!-- X during play asks first, then goes to the lobby (main.js) -->
+    <div id="quit-confirm" class="hidden">
+      <div class="card quit-card">
+        <div class="card-title">ARE YOU SURE?</div>
+        <div class="quit-buttons"><button id="quit-stay" type="button">STAY</button><button id="quit-leave" type="button" class="alt">LEAVE</button></div>
+      </div>
+    </div>
     <div id="banner"></div>
+    <!-- THE LOBBY: continue the run in progress, or start a new one (ui/lobby.js) -->
+    <div id="lobby" class="hidden"></div>
     <div id="confetti" aria-hidden="true"></div>
 
     <!-- THE ABILITIES YOU HOLD: one slot per ability taken, with how many times.

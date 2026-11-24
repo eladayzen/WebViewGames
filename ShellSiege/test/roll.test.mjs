@@ -34,15 +34,16 @@ test('WITH EVERYTHING MAXED THE ROLL IS NULL, and a roll made then is born done'
 test('EVERY ABILITY CAN COME UP -- no entry is dead weight', () => {
   const seen = new Set();
   const rng = seeded(11);
-  for (let i = 0; i < 3000; i++) seen.add(rollAbility(createBuild(), rng));
-  const b0 = createBuild(); b0.stars = 1;
+  const veteran = () => { const v = createBuild(); v.leo = 1; v.shield = 1; return v; };   // past the game-changer phase
+  for (let i = 0; i < 3000; i++) seen.add(rollAbility(veteran(), rng));
+  const b0 = veteran(); b0.stars = 1;
   for (let i = 0; i < 3000; i++) seen.add(rollAbility(b0, rng));
   for (const k of Object.keys(ABILITIES).filter((k) => !ABILITIES[k].locked)) assert.ok(seen.has(k), `${k} never rolled`);
 });
 
 test('OWNING COPIES MAKES AN ABILITY LESS LIKELY, but never impossible', () => {
-  const fresh = rollWeights(createBuild());
-  const b = createBuild();
+  const fresh = rollWeights(Object.assign(createBuild(), { leo: 1, shield: 1 }));
+  const b = Object.assign(createBuild(), { leo: 1, shield: 1 });
   take(b, 'rapid'); take(b, 'rapid'); take(b, 'rapid');
   const owned = rollWeights(b);
   assert.ok(owned.rapid < fresh.rapid, 'a third copy is no more likely than the first');
@@ -52,7 +53,7 @@ test('OWNING COPIES MAKES AN ABILITY LESS LIKELY, but never impossible', () => {
 
 test('THE ROLL LEANS TOWARD WHAT YOU DO NOT HAVE', () => {
   // rapid and damage share a base weight, so any gap is the falloff alone.
-  const b = createBuild();
+  const b = Object.assign(createBuild(), { leo: 1, shield: 1 });
   for (let i = 0; i < 4; i++) take(b, 'rapid');
   assert.equal(ABILITIES.rapid.weight, ABILITIES.damage.weight);
   const rng = seeded(21);
@@ -95,12 +96,37 @@ test('a roll goes spin -> reveal -> done, and reports finishing exactly once', (
 });
 
 test('HALF THE ROLLS ARE PERMANENT AND HALF TEMPORARY', () => {
-  const b = createBuild(); b.stars = 1;
+  const b = createBuild(); b.stars = 1; b.leo = 1;
   const w = rollWeights(b);
   const sum = { perm: 0, temp: 0 };
   for (const [k, v] of Object.entries(w)) sum[ABILITIES[k].kind] += v;
   assert.ok(Math.abs(sum.perm - sum.temp) < 1e-9, `perm ${sum.perm} vs temp ${sum.temp}`);
   const rng = seeded(5); let perm = 0;
-  for (let i = 0; i < 4000; i++) if (ABILITIES[rollAbility(createBuild(), rng)].kind === 'perm') perm++;
+  for (let i = 0; i < 4000; i++) if (ABILITIES[rollAbility(Object.assign(createBuild(), { leo: 1, shield: 1 }), rng)].kind === 'perm') perm++;
   assert.ok(perm > 1800 && perm < 2200, `${perm}/4000 permanent`);
+});
+
+test('THE FIRST TWO POWERS ARE GAME-CHANGERS, then the stat upgrades join in', () => {
+  const rng = seeded(8);
+  for (let i = 0; i < 500; i++) assert.ok(ABILITIES[rollAbility(createBuild(), rng)].big, 'a stat upgrade came first');
+  const one = Object.assign(createBuild(), { stars: 1 });
+  for (let i = 0; i < 500; i++) assert.ok(ABILITIES[rollAbility(one, rng)].big, 'the second power was a stat upgrade');
+  const two = Object.assign(createBuild(), { stars: 1, shield: 1 });
+  let stat = 0;
+  for (let i = 0; i < 500; i++) if (!ABILITIES[rollAbility(two, rng)].big) stat++;
+  assert.ok(stat > 100, 'after two game-changers the stat upgrades never came');
+});
+
+import { ALLY_KEYS, ALLY_BY_ROOM } from '../src/core/roll.js';
+test('A RUN IS NEVER MORE THAN TWO ROOMS WITHOUT A TURTLE', () => {
+  const rng = seeded(31);
+  const none = createBuild();
+  for (let i = 0; i < 400; i++) assert.ok(ALLY_KEYS.includes(rollAbility(none, rng, { room: ALLY_BY_ROOM })), 'a non-turtle came after room 2 with none held');
+  let allies = 0;
+  for (let i = 0; i < 1000; i++) if (ALLY_KEYS.includes(rollAbility(none, rng, { room: 0 }))) allies++;
+  assert.ok(allies > 450, `turtles were not favoured early: ${allies}/1000`);
+  const held = Object.assign(createBuild(), { leo: 1, stars: 1 });
+  let non = 0;
+  for (let i = 0; i < 400; i++) if (!ALLY_KEYS.includes(rollAbility(held, rng, { room: 5 }))) non++;
+  assert.ok(non > 100, 'holding a turtle should end the guarantee');
 });

@@ -49,24 +49,36 @@ export const ABILITIES = {
   // LOCKED FOR NOW (max 0 = never offered): the blade is a single dagger that must come home before
   // the next throw. A second one unlocks later, then freeze / shock / chain-shock / explosion.
   // DAGGERS: one to start; this adds the second (the cap). Nothing is thrown while the quiver is empty.
-  multi:  { kind: 'temp', weight: 0.7, label: 'TWIN DAGGERS', blurb: 'A second dagger',     step: 1,    max: 1 },
+  multi:  { kind: 'temp', big: true, weight: 0.7, label: 'TWIN DAGGERS', blurb: 'A second dagger',     step: 1,    max: 1 },
   // NINJA STARS: a second weapon beside the daggers (see systems/combat.js). Thrown, not caught.
-  stars:    { kind: 'temp', weight: 1.0, label: 'NINJA STARS',  blurb: 'Throw stars too',      step: 1,    max: 1 },
+  stars:    { kind: 'temp', big: true, weight: 1.0, label: 'NINJA STARS',  blurb: 'Throw stars too',      step: 1,    max: 1 },
   starrate: { kind: 'temp', weight: 0.9, label: 'STAR FLURRY',  blurb: 'Throw stars faster',   step: 0.30, max: 5, requires: 'stars' },
   starsplit:{ kind: 'temp', weight: 0.8, label: 'STAR SPREAD',  blurb: 'More stars per throw', step: 1,    max: 3, requires: 'stars' },
   damage: { kind: 'perm', weight: 1.0, label: 'HARD SHELL',  blurb: 'Hit harder',           step: 0.30, max: 6 },
-  pierce: { kind: 'temp', weight: 0.7, label: 'PIERCE',      blurb: 'Blades pass through',  step: 1,    max: 3 },
+  pierce: { kind: 'temp', big: true, weight: 0.7, label: 'PIERCE',      blurb: 'Blades pass through',  step: 1,    max: 3 },
   reach:  { kind: 'perm', weight: 0.8, label: 'LONG REACH',  blurb: 'Throw further',        step: 0.25, max: 4 },
   // LOCKED (Elad, 23 Nov: never upgrade the player's speed): never rolled, kept so the stat plumbing stays.
   swift:  { kind: 'perm', weight: 0.8, label: 'SWIFT',       blurb: 'Move faster',          step: 0.14, max: 0, locked: true },
   // ADDED FOR THIS DESIGN: Elad's own example of a permanent upgrade was
   // health, and there was no way to get any.
   hearts: { kind: 'perm', weight: 1.0, label: 'THICK HIDE',  blurb: 'More health',          step: 0.25, max: 5 },
-  shield: { kind: 'temp', weight: 0.9, label: 'SHELL SHIELD', blurb: 'Shield that cuts hits, on and off', step: 1, max: 4 },
+  shield: { kind: 'temp', big: true, weight: 0.9, label: 'SHELL SHIELD', blurb: 'Shield that cuts hits, on and off', step: 1, max: 4 },
   // THE TURTLE ALLIES (core/allies.js). Temporary: they last for the level.
-  leo:    { kind: 'temp', weight: 0.9, label: 'LEONARDO',    blurb: 'Dashes in with twin blades', step: 1,   max: 4 },
-  mikey:  { kind: 'temp', weight: 0.9, label: 'MICHELANGELO', blurb: 'Nunchucks that stun a lane', step: 1, max: 4 },
-  donnie: { kind: 'temp', weight: 0.9, label: 'DONATELLO',   blurb: 'Gravity grenades pull foes in', step: 1,  max: 4 },
+  // POWERS THAT CHANGE HOW YOU PLAY (core/powers.js)
+  orbit:  { kind: 'temp', big: true, weight: 0.9, label: 'SPINNING BLADES', blurb: 'Blades circle you, then rest', step: 1, max: 4 },
+  burst:  { kind: 'temp', big: true, weight: 0.9, label: 'SHELL SHOCK',   blurb: 'Charge a blast, time it',      step: 1, max: 4 },
+  // LOCKED (Elad, 24 Nov: "the Raphael dash ability is not good"): never rolled. The sim (core/powers.js) is kept.
+  dash:      { kind: 'temp', big: true, locked: true, weight: 0.8, label: 'DASH STRIKE',    blurb: 'Blink through a foe, cutting it', step: 1, max: 0 },
+  caltrop:   { kind: 'temp', big: true, weight: 0.8, label: 'CALTROPS',       blurb: 'Spikes drop where you run',      step: 1, max: 4 },
+  shellboom: { kind: 'temp', big: true, weight: 0.8, label: 'BOOMERANG SHELL', blurb: 'A shell flies out and back',    step: 1, max: 3 },
+  decoy:     { kind: 'temp', big: true, weight: 0.7, label: 'PIZZA DECOY',    blurb: 'Foes chase a pizza box',         step: 1, max: 4 },
+  arc:       { kind: 'temp', big: true, weight: 0.8, label: 'CHAIN LIGHTNING', blurb: 'Hits arc to nearby foes',       step: 1, max: 4 },
+  vortex:    { kind: 'temp', big: true, weight: 0.7, label: 'VORTEX',         blurb: 'Drags the crowd in',             step: 1, max: 4 },
+  frost:     { kind: 'temp', big: true, weight: 0.7, label: 'FREEZE NOVA',    blurb: 'Slows everything near you',      step: 1, max: 4 },
+  rush:      { kind: 'temp', big: true, weight: 0.8, label: 'ADRENALINE',     blurb: 'Kills make you throw faster',    step: 1, max: 4 },
+  leo:    { kind: 'temp', big: true, weight: 0.9, label: 'LEONARDO',    blurb: 'Dashes in with twin blades', step: 1,   max: 4 },
+  mikey:  { kind: 'temp', big: true, weight: 0.9, label: 'MICHELANGELO', blurb: 'Nunchucks that stun a lane', step: 1, max: 4 },
+  donnie: { kind: 'temp', big: true, weight: 0.9, label: 'DONATELLO',   blurb: 'Gravity grenades pull foes in', step: 1,  max: 4 },
 };
 
 /** A level is over: temporary abilities go, permanent ones stay. */
@@ -103,11 +115,11 @@ export function stats(build) {
       intervalS: 1.4 / (1 + build.starrate * a.starrate.step),
       count: 1 + build.starsplit * a.starsplit.step,
       damage: 6.5 * (1 + build.damage * a.damage.step),
-      rangePx: 420 * (1 + build.reach * a.reach.step),
+      rangePx: 520 * (1 + build.reach * a.reach.step),
     } : null,
     damage: 13 * (1 + build.damage * a.damage.step),
     pierce: build.pierce * a.pierce.step,
-    rangePx: 620 * (1 + build.reach * a.reach.step),
+    rangePx: 760 * (1 + build.reach * a.reach.step),
     speedMul: 1 + build.swift * a.swift.step,
     // A MULTIPLIER on the player's base health, not a number of hearts: the
     // base itself is `?php=` overridable, and a multiplier survives that.

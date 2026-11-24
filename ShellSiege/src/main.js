@@ -34,19 +34,28 @@ import { FLOORS } from './render/floors.js';
 import { THEMES, layoutObstacles, usedFloors } from './core/looks.js';
 import { createFoes, loadEnemies } from './render/foes.js';
 import { createDebris, loadDebris } from './render/debris.js';
+import { createArrival } from './render/arrival.js';
+import { showLobby } from './ui/lobby.js';
+import { GAME_TITLE } from './core/brand.js';
+import { createPowers } from './render/powers.js';
+import { createGhost } from './render/ghost.js';
+import { createMachines } from './render/machines.js';
+import { createMachineUi } from './ui/machineUi.js';
+import { updateMachines } from './core/machines.js';
+import { updatePowers, noteKill, chainArc, rushMul } from './core/powers.js';
 import { createTelegraphs } from './render/telegraph.js';
 import { createSeeThrough } from './render/seethrough.js';
 import { createAllies } from './render/allies.js';
 import { updateAllies, updatePizzas } from './core/allies.js';
 import { stats } from './core/abilities.js';
-import { START } from './core/breeds.js';
+import { START, roomsIn } from './core/breeds.js';
 import { clearTemp, createBuild } from './core/abilities.js';
 import { createRun, stepRun, restartLevel, nextLevel, beginStartRoll, frozen } from './core/run.js';
 import { enemiesLeft } from './core/rooms.js';
 import { createRollUi } from './ui/roll.js';
 import { createHud } from './ui/hud.js';
 import { renderEnd } from './ui/endscreen.js';
-import { loadProgress, saveProgress } from './systems/save.js';
+import { loadSave, saveProgress } from './systems/save.js';
 import { looseOf, bankOnWin, bankOnDeath, pickToKeep, buildFromBank } from './core/bank.js';
 import { createIris } from './ui/iris.js';
 import { TRANS, irisOpen } from './core/transition.js';
@@ -66,13 +75,14 @@ async function boot() {
   // EVERY FLOOR PAINTING A ROOM CAN USE, up front: swapping rooms is then a
   // pointer change under the black, not a decode the player could feel.
   const floorKeys = usedFloors();
-  const [floorList, crate, shuriken, sai, enemies, debrisGeos] = await Promise.all([
+  const [floorList, crate, shuriken, sai, enemies, debrisGeos, donnieHead] = await Promise.all([
     Promise.all(floorKeys.map((k) => loadTex(FLOORS[k].tex))),
     loadTex('tex/crate.webp'),
     loadTex('tex/shuriken.webp'),
     loadTex('tex/sai.webp'),
     loadEnemies(),
     loadDebris(),
+    loadTex('tex/donnie_head.png'),
   ]);
   const floors = Object.fromEntries(floorKeys.map((k, i) => [k, floorList[i]]));
   const stage = createStage(view.scene, { floors });
@@ -81,6 +91,11 @@ async function boot() {
   const telegraphs = createTelegraphs(view.scene);
   const fx = createFx(view.scene, { crate, shuriken, sai });
   const rig = await loadRig(view.scene);
+  const arrival = createArrival(view.scene, rig);
+  const powersFx = createPowers(view.scene);
+  const ghostFx = await createGhost(view.scene, rig);
+  const machinesFx = createMachines(view.scene, { crate, head: donnieHead });
+  const machineUi = createMachineUi(view.camera);
   // After the rig, because the blades are parented to its hand bones.
   const seeThrough = createSeeThrough(view.camera);
   const alliesFx = await createAllies(view.scene, rig);
@@ -96,11 +111,16 @@ async function boot() {
   // only banked when a level is cleared (all of them) or you die (one pick).
   let bank = {};
   let persist = true;
+  let unlocked = 1;           // the furthest level reached: the level picker offers 1..this
+  let savedRun = null;        // the run left in progress, for the lobby's CONTINUE
   {
     const q = new URLSearchParams(location.search);
     persist = !q.get('kit') && !q.get('fresh');
     if (persist) {
-      const kept = await loadProgress();
+      const saved = await loadSave();
+      savedRun = saved.run;
+      unlocked = Math.max(saved.unlocked || 1, saved.run ? saved.run.level : 1);
+      const kept = saved.perm;
       bank = { ...kept };
       for (const [k, c] of Object.entries(kept)) w.build[k] = Math.max(w.build[k] || 0, c);
     }
@@ -113,6 +133,8 @@ async function boot() {
 
   document.getElementById('boot')?.remove();
 
+  document.title = GAME_TITLE;
+  const hurtEl = document.getElementById('hurt');
   const hudTime = document.getElementById('hud-time');
   const hudSrc = document.getElementById('hud-src');
   const hudHits = document.getElementById('hud-hits');
@@ -183,6 +205,10 @@ async function boot() {
   }
 
   function announceRoom() {
+    // remember where this run is, so the lobby can offer CONTINUE next time (death or a cleared level end it)
+    unlocked = Math.max(unlocked, run.level);
+    if (persist) saveProgress(bank, { level: run.level, room: run.roomIdx, build: w.build }, unlocked);
+    arrival?.start();                       // every room opens with the turtle teleporting in
     const n = run.roomIdx + 1;
     // Level on the first line, room on the second: small and plain, so it does not hide the turtle.
     hud.say(`LEVEL ${run.level}`, run.room.isLast ? 'FINAL ROOM' : `ROOM ${n}`, true);
@@ -199,7 +225,8 @@ async function boot() {
     const newBank = kind === 'won' ? bankOnWin(bank, w.build) : bankOnDeath(bank, w.build);
     renderEnd(kind, { build: w.build, bank: newBank, oldBank: bank, loose, keptPick, level: run.level, rooms: run.rooms });
     bank = newBank;
-    if (persist) saveProgress(bank);
+    if (kind === 'won') unlocked = Math.max(unlocked, run.level + 1);      // clearing a level opens the next
+    if (persist) saveProgress(bank, null, unlocked);
     if (kind === 'won') hud.celebrate();
     if (finalScore) finalScore.textContent = String(kills);
     hud.hideBanner();
@@ -230,9 +257,9 @@ async function boot() {
    * abilities banked by earlier clears plus one pick -- and loses every temporary ability. A WON
    * level goes on to the next one with everything it holds.
    */
-  function restart() {
+  function restart(forceNew = false, startLevel = 1) {
     const keepBuild = w.build;
-    const won = run.phase === 'won';
+    const won = !forceNew && run.phase === 'won';
     Object.assign(w, createWorld());
     // A won level keeps EVERYTHING (the permanent ones are banked now, the temporary ones carry on).
     // A death restarts from the BANK alone: the temporary ones are gone and the loose ones with them.
@@ -242,7 +269,7 @@ async function boot() {
     crates = w.targets.slice();
     hits = 0;
     kills = 0;
-    run = won ? nextLevel(run) : restartLevel(run);
+    run = forceNew ? createRun({ level: startLevel }) : won ? nextLevel(run) : restartLevel(run);
     applyLook(run.room.look);
     rollUi.close();
     slowT = 0;
@@ -259,12 +286,68 @@ async function boot() {
     if (startEv.length) for (const e of startEv) onRunEvent(e);
     else announceRoom();
   }
-  document.getElementById('restart-button')?.addEventListener('click', restart);
-  announceRoom();
+  document.getElementById('restart-button')?.addEventListener('click', () => restart());
+
+  // --- LEAVING: X during play asks first, then goes to the LOBBY; the X in the lobby leaves for the
+  // GoBalance lobby (that one is the page's own handler, so here it is simply let through).
+  const quitEl = document.getElementById('quit-confirm');
+  let confirmOpen = false, pausedBeforeConfirm = false;
+  async function goLobby() {
+    const endShown = !!overlay && !overlay.classList.contains('hidden');
+    paused = true;
+    let snap;
+    if (endShown) {      // the run just ended: the lobby offers the next one (same level after a death, the next after a win)
+      const wonRun = run.phase === 'won';
+      snap = { level: wonRun ? run.level + 1 : run.level, room: 0, build: wonRun ? w.build : (persist ? buildFromBank(bank, createBuild) : w.build) };
+    } else {
+      snap = { level: run.level, room: run.roomIdx, build: w.build };
+      if (persist) saveProgress(bank, snap, unlocked);
+    }
+    const pick = await showLobby({ run: { ...snap, rooms: roomsIn(snap.level - 1) }, bank, unlocked });
+    paused = false;
+    if (pick.choice === 'new') restart(true, pick.level);
+    else if (endShown) restart();
+  }
+  document.addEventListener('click', (e) => {
+    if (!(e.target.closest && e.target.closest('#gb-back'))) return;
+    if (document.body.classList.contains('in-lobby')) return;            // the lobby's X: let the host take it
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (confirmOpen) return;
+    confirmOpen = true; pausedBeforeConfirm = paused; paused = true;
+    quitEl?.classList.remove('hidden');
+  }, true);
+  document.getElementById('quit-stay')?.addEventListener('click', () => { quitEl?.classList.add('hidden'); confirmOpen = false; paused = pausedBeforeConfirm; });
+  document.getElementById('quit-leave')?.addEventListener('click', () => { quitEl?.classList.add('hidden'); confirmOpen = false; goLobby(); });
+  // THE VERY FIRST RUN OPENS WITH THE FREE POWER TOO (Elad: "too boring too quick"): a game-changer
+  // before the first fight. Not in test rooms (?kit=) or ?fresh=1, which start from a chosen state.
+  {
+    const q = new URLSearchParams(location.search);
+    const normal = !q.get('kit') && !q.get('fresh') && !q.get('room');
+    let choice = 'new', pick = { choice: 'new', level: 1 };
+    if (normal) {
+      paused = true;                                     // the world waits behind the lobby
+      pick = await showLobby({ run: savedRun && { ...savedRun, rooms: roomsIn(savedRun.level - 1) }, bank, unlocked });
+      choice = pick.choice;
+      paused = false;
+    }
+    if (normal && choice === 'continue' && savedRun) {
+      for (const [k, n] of Object.entries(savedRun.build)) w.build[k] = Math.max(w.build[k] || 0, n);
+      syncMaxHp(stats(w.build), true);
+      run = createRun({ level: savedRun.level, room: savedRun.room });
+      applyLook(run.room.look);
+      announceRoom();
+    } else {
+      if (normal && pick.level > 1) { run = createRun({ level: pick.level }); applyLook(run.room.look); }
+      const startEv = normal ? beginStartRoll(run, w) : [];
+      if (startEv.length) for (const e of startEv) onRunEvent(e);
+      else announceRoom();
+    }
+  }
 
   let last = performance.now();
   let muzzleY = 1.1;
   let kills = 0;
+  let allyHooksRef = {};       // the ally hooks of the latest frame, for the dagger-hit arcs
 
   function frame(now) {
     requestAnimationFrame(frame);
@@ -311,6 +394,10 @@ async function boot() {
       // than no aiming at all. Fourteen crates, one linear scan; when the
       // horde lands this is the place to hand both a single result.
       const st = { ...stats(w.build), weapon: BASE_GUN.weapon };
+      {   // ADRENALINE: kills stack a faster throw (core/powers.js)
+        const rm = rushMul(w);
+        if (rm !== 1) { st.fireIntervalS /= rm; if (st.stars) st.stars = { ...st.stars, intervalS: st.stars.intervalS / rm }; }
+      }
       w.speedMul = st.speedMul;
       syncMaxHp(st);
       const aimAt = nearestTarget(w, st.rangePx * AIM_RANGE_MUL);
@@ -323,7 +410,11 @@ async function boot() {
       // see tools/extract-clips.mjs -- on the same frame the star appears.
       // Triggering on the shot instead would play the entire wind-up after the
       // star had already gone, which is the thing that reads as broken.
-      if (aimAt && w.fireT <= THROW.preS) {
+      // ONLY WHEN A DAGGER IS ACTUALLY IN THE QUIVER: with every dagger out the gun holds fireT at the full
+      // interval, and once that interval is shorter than the window (Rapid Throw, Adrenaline) the
+      // throw animation would otherwise re-open every frame with nothing to throw.
+      const daggersOut = w.bullets.reduce((n, b) => n + (b.alive && b.kind !== 'star' ? 1 : 0), 0);
+      if (aimAt && daggersOut < (st.quiver ?? st.projectiles) && w.fireT <= THROW.preS) {
         const d = Math.hypot(aimAt.x - w.player.x, aimAt.y - w.player.y);
         // The aim radius is wider than the gun's, so being aimed at something
         // is not the same as being able to hit it. Only a shot that is really
@@ -347,6 +438,7 @@ async function boot() {
         dt,
       );
       rig.update(dt);
+      arrival.update(dt);
       const m = rig.muzzle();
       if (m) {
         w.muzzle = { x: m.x * PX, y: m.z * PX };
@@ -356,8 +448,9 @@ async function boot() {
       updateFiring(w, st, dt);
       updateBullets(w, dt, (t) => {
         hits++;
+        if (t.kind === 'foe') chainArc(w, t, st.damage, allyHooksRef);      // CHAIN LIGHTNING
         if (t.kind === 'foe' && !t.alive) {
-          kills++;
+          kills++; noteKill(w);
           // The burst goes here rather than in the renderer because this is
           // the one place that knows a kill JUST happened, as opposed to
           // "is dead", which is true on every frame afterwards.
@@ -371,11 +464,12 @@ async function boot() {
       // so what they kill this frame is dead before the room is asked if it is cleared.
       // A kill by an ally counts exactly like one of the player's: the counter and the burst.
       const allyHooks = {
-        onKill: (f) => { kills++; debrisFx.burst(f.x, f.y, Math.min(2, (f.radius || 44) / 44)); },
+        onKill: (f) => { kills++; noteKill(w); debrisFx.burst(f.x, f.y, Math.min(2, (f.radius || 44) / 44)); },
         onHit: (f) => fx.spark(f.x, f.y, 0.5),
         onPizza: (z) => { fx.spark(z.x, z.y, 1.2); hud.flash(); },
       };
-      if (!frozen(run)) { updateAllies(w, dt, allyHooks); updatePizzas(w, dt, allyHooks); }
+      allyHooksRef = allyHooks;
+      if (!frozen(run)) { updateAllies(w, dt, allyHooks); updatePizzas(w, dt, allyHooks); if (run.phase === 'fight') updatePowers(w, dt, allyHooks); updateMachines(w, dt, run.phase === 'fight', allyHooks); }
 
       // THE ROOM RUNS FIRST, so a new arrival gets a frame of walking before
       // anything looks at it, and so a room whose last enemy fell to this
@@ -394,6 +488,10 @@ async function boot() {
       foesFx.syncFoes(w.foes, w.timeS, dt, seeThrough.update(w.foes, w.player, w.foeShots));
       alliesFx.sync(w.allies, w.timeS, dt, w.pizzas, w.shield, w.player, w.grenades);
       telegraphs.sync(w.foes, w.foeShots, w.timeS);
+      powersFx.sync(w, w.timeS);
+      ghostFx.sync(w.decoy, w.timeS, dt);
+      machinesFx.sync(w, w.timeS);
+      machineUi.sync(w);
       fx.syncShots(w.bullets, w.timeS, muzzleY);
       // After the rig has been posed and after updateFiring, so the hand is
       // emptied on the same frame the blade it threw first appears.
@@ -402,6 +500,15 @@ async function boot() {
       fx.updateSparks(dt);
       debrisFx.update(dt);
 
+      {   // GETTING HIT: a red vignette, and the turtle flashes (core/foes.js sets w.hurtT on each hit)
+        const k = Math.min(1, (w.hurtT || 0) / 0.35);
+        if (hurtEl) hurtEl.style.opacity = String(k * 0.95);
+        rig.model.traverse((o) => {
+          if (!o.isMesh || !o.material.emissive) return;
+          const b = o.material.userData.baseEm || (o.material.userData.baseEm = o.material.emissive.clone());
+          o.material.emissive.setRGB(b.r + k * 0.9, b.g + k * 0.15, b.b + k * 0.12);
+        });
+      }
       hud.setAbilities(w.build, bank);
       hud.setAllyTimers(w.allies);
       if (hpFill) hpFill.style.width = Math.max(0, (w.hp / w.maxHp) * 100) + '%';
@@ -420,7 +527,7 @@ async function boot() {
   requestAnimationFrame(frame);
 
   // Handy while tuning from a desk.
-  window.__ss = {
+  window.__ss = { arrival,
     w, view, stage, rig, fx, heldFx, showEnd, get bank() { return bank; }, foesFx, debrisFx, telegraphs, restart, floors: FLOORS, ARENA,
     hud, rollUi, get run() { return run; }, get stats() { return stats(w.build); },
   };

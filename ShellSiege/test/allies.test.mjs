@@ -431,3 +431,24 @@ test('DONATELLO THROWS A GRENADE AT A CROWD', () => {
   run(w, 4);
   assert.ok((w.grenades || []).length >= 1, 'no grenade thrown');
 });
+
+test('A STUN CANNOT BE CHAINED: a foe that just woke is immune for a moment, so a crowd is never frozen for good', () => {
+  const w = room();
+  const f = addFoe(w, 600, 0);
+  stunFoe(f, 0.5);
+  for (let t = 0; t < 0.6; t += 1 / 60) updateFoes(w, 1 / 60);
+  assert.equal(f.stunT, 0);
+  stunFoe(f, 1.3);
+  assert.equal(f.stunT, 0, 'it was stunned again the instant it woke');
+  for (let t = 0; t < 0.9; t += 1 / 60) updateFoes(w, 1 / 60);
+  stunFoe(f, 1.3);
+  assert.ok(f.stunT > 0, 'it stayed immune for good');
+});
+
+test('A FOE STUNNED MID-RECOVERY IS NOT LEFT FROZEN IN ITS SWING', () => {
+  const w = room();
+  const f = addFoe(w, 600, 0);
+  f.state = 'recover'; f.stateT = 0.2;
+  stunFoe(f, 1.0);
+  assert.equal(f.state, 'walk');
+});
