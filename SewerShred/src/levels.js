@@ -41,7 +41,7 @@ export const LEVELS = [
     pickups: ['shield', 'sai', 'glider'], say: 'New gear in your backpack! Glide right over them!' },
   { key: 'portal', n: 6, title: 'THE PORTAL', world: 'portal', open: false, deck: 'nofoes', speed: 1.45, goal: { type: 'pts', n: 12000 }, gear: true, gearGap: 220,
     pickups: ['glider', 'shield'], routes: { kinds: ['drop', 'rise'], every: 230 }, say: 'Whoa, a portal! Hold on tight, Mikey!' },
-  { key: 'dimx', n: 7, title: 'DIMENSION X', world: 'dimx', open: true, theme: 'dimx', deck: 'alien', goal: { type: 'pts', n: 16000 }, gear: true, unlock: 'saws', scene: 'saws',
+  { key: 'dimx', n: 7, title: 'DIMENSION X', world: 'dimx', open: true, theme: 'dimx', deck: 'alien', goal: { type: 'pts', n: 16000 }, gear: true, unlock: 'saws',
     pickups: ['shield', 'sai', 'glider', 'saws'], routes: { kinds: ['y', 'rise', 'drop'], every: 300 }, say: 'Dimension X! I upgraded your pack: SAW ARMS!' },
 ];
 

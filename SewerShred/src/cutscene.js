@@ -11,24 +11,15 @@
 const $ = (id) => document.getElementById(id);
 
 export const SCENES = {
-  // before GET HOME (the very first ride)
+  // before GET HOME (Elad 2026-11-24: two beats, minimum text)
   intro: [
-    { who: 'donnie', text: 'Mikey! Come in, Mikey! Do you read me?', radio: true },
-    { who: 'mikey', text: 'Mikey here! What’s up, D?' },
-    { who: 'donnie', text: 'The Foot are coming! Get back to the dojo — NOW!', radio: true },
+    { who: 'donnie', text: 'Mikey! The Foot are coming — get home!', radio: true },
     { who: 'mikey', text: 'On my way! Cowabunga!' },
   ],
-  // before NIGHT CITY (the backpack)
+  // before NIGHT CITY: Donnie just holds out the backpack — no ability explained (Elad 2026-11-24)
   gear: [
-    { who: 'donnie', text: 'Mikey, I packed you a backpack. Check it out!' },
-    { who: 'donnie', text: 'HANG GLIDER \u2014 fly right over everything!', item: '/tex/glider_icon.png' },
-    { who: 'mikey', text: 'Whoa! Booyakasha! Let\u2019s go!' },
-  ],
-  // before DIMENSION X (the saw arms unlock here, Elad 2026-11-24)
-  saws: [
-    { who: 'donnie', text: 'Dimension X is dangerous, Mikey. I upgraded your pack!', radio: true },
-    { who: 'donnie', text: 'SAW ARMS \u2014 slice through anything in your way!', item: '/tex/saws_icon.png', radio: true },
-    { who: 'mikey', text: 'Saws?! Totally radical!' },
+    { who: 'donnie', text: 'Mikey — gear up!', pose: 'bag' },
+    { who: 'mikey', text: 'Booyakasha!', pose: 'bag' },
   ],
 };
 const NAME = { mikey: 'MIKEY', donnie: 'DONNIE' };
@@ -44,6 +35,7 @@ function paint() {
   bub.className = 'cs-bubble ' + b.who;
   bub.querySelector('b').textContent = NAME[b.who];
   bub.querySelector('p').textContent = b.text;
+  $('cs-bag').classList.toggle('hidden', b.pose !== 'bag');
   const it = $('cs-item');
   it.classList.toggle('hidden', !b.item);
   if (b.item) it.src = b.item;

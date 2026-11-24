@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { R, frameAt, wallDir } from './track.js';
 
-const N = 2400;
+const N = 60;    // Elad 2026-11-24: 2400 was a wall — "less particles, I can't see"
 const AHEAD = 105, BEHIND = 12;   // not so far that they pile into a white blob at the vanishing point
 const COLS = [[0.3, 0.95, 1.0], [1.0, 0.3, 0.9], [0.6, 0.4, 1.0], [1.0, 0.85, 0.35], [0.4, 1.0, 0.6]];
 
@@ -25,7 +25,7 @@ export class WarpFX {
         void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0);
           gl_PointSize = size * uScale / -mv.z; gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform sampler2D map; varying vec3 vC;
-        void main(){ vec4 t = texture2D(map, gl_PointCoord); gl_FragColor = vec4(vC * t.rgb * 1.05, t.a); }`,
+        void main(){ vec4 t = texture2D(map, gl_PointCoord); gl_FragColor = vec4(vC * t.rgb * 0.7, t.a); }`,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
     this.pts = new THREE.Points(this.geo, this.mat);
@@ -40,13 +40,13 @@ export class WarpFX {
   _spawn(q, s0, playerS) {
     q.s = s0 ?? playerS + BEHIND + Math.random() * (AHEAD - BEHIND);
     q.th = Math.random() * Math.PI * 2;
-    q.r = R * (0.15 + Math.random() * 0.78);          // anywhere in the pipe, not just the wall
+    q.r = R * (0.72 + Math.random() * 0.22);          // hug the wall: keep the line of sight down the middle clear
     q.w = (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 2.2);   // spin rad/s
-    q.v = -(2 + Math.random() * 14);                   // drifts back toward you (adds to your speed)
+    q.v = -(16 + Math.random() * 26);                  // rushes back past you: reads as speed
     q.c = COLS[Math.floor(Math.random() * COLS.length)];
-    q.base = 0.45 + Math.random() * Math.random() * 2.2;
+    q.base = 0.25 + Math.random() * Math.random() * 0.7;
     q.ph = Math.random() * 10;
-    q.pulse = Math.random() < 0.12;
+    q.pulse = Math.random() < 0.06;
   }
 
   set on(v) {

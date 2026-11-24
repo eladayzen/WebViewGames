@@ -469,6 +469,16 @@ body.in-lobby #pause-btn { display: none; }
 /* the gadget, shown big while Donnie explains it */
 #cs-item { position: absolute; z-index: 4; left: 50%; top: 50%; width: min(26vh, 220px); margin: calc(min(26vh, 220px) / -2) 0 0 calc(min(26vh, 220px) / -2); filter: drop-shadow(0 0 24px rgba(255,226,90,0.8)) drop-shadow(6px 6px 0 rgba(0,0,0,.5)); animation: csitem 0.5s cubic-bezier(.2,1.6,.35,1), newbob 0.9s 0.5s ease-in-out infinite alternate; }
 #cs-item.hidden { display: none; }
+/* GEAR UP: Donnie holds the backpack out in his reaching hand (hand at 12% across, 48% down the art) */
+#cutscene { --ch: min(78vh, 640px); }
+#cs-bag { position: absolute; z-index: 3; width: calc(var(--ch) * 0.42); height: auto;
+  right: calc(3vw + var(--ch) * 0.603 - var(--ch) * 0.21); bottom: calc(-2vh + var(--ch) * 0.52 - var(--ch) * 0.39);
+  transform: rotate(-8deg); transform-origin: 50% 5%;
+  filter: drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink)) drop-shadow(8px 8px 0 rgba(0,0,0,.45)) drop-shadow(0 0 22px rgba(255,226,90,.55));
+  animation: bagout 0.5s cubic-bezier(.2,1.6,.35,1) both, bagsway 1.1s 0.5s ease-in-out infinite alternate; }
+#cs-bag.hidden { display: none; }
+@keyframes bagout { from { opacity: 0; transform: translateX(40%) scale(0.4) rotate(20deg); } }
+@keyframes bagsway { to { transform: rotate(4deg); } }
 @keyframes csitem { from { transform: scale(0.2) rotate(-30deg); } to { transform: none; } }
 #cs-dots { position: absolute; z-index: 4; bottom: max(14px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
 #cs-dots i { width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,0.3); border: 2px solid var(--ink); }
@@ -478,6 +488,7 @@ body.in-lobby #pause-btn { display: none; }
 @media (max-aspect-ratio: 1/1) {
   .cs-mikey { clip-path: polygon(0 0, 100% 0, 100% 41%, 0 57%); }
   .cs-donnie { clip-path: polygon(0 59%, 100% 43%, 100% 100%, 0 100%); }
+  #cutscene { --ch: 36vh; }
   .cs-char { height: 36vh; }
   .cs-mikey .cs-char { bottom: auto; top: 14vh; left: 2vw; }
   .cs-bubble { max-width: 88vw; }
