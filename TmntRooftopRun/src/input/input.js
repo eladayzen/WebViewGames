@@ -16,7 +16,6 @@ const JUMP = new Set(INPUT.JUMP_CODES);
 let press = 0.35, release = 0.21;
 let pending = null;                // 'jump' | 'roll' | null -- the latest tap wins
 let armed = true, lastTap = -1e9;
-let boardHeld = false, pointerHeld = false;   // the lean / press is still down
 const keysDown = new Set();
 
 export function setSensitivity(pct) {
@@ -41,13 +40,11 @@ export function installInput(surface) {
   });
   addEventListener('keyup', (e) => keysDown.delete(e.code));
   addEventListener('blur', () => keysDown.clear());
-  // pointer: a press anywhere jumps; keep it down and he jumps again on every landing
+  // pointer: a press anywhere jumps (no hold)
   surface.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    pointerHeld = true; tap('jump');
+    tap('jump');
   });
-  const up = () => { pointerHeld = false; };
-  addEventListener('pointerup', up); addEventListener('pointercancel', up);
 }
 
 /** Once per frame. The board is absent outside the app. */
@@ -57,12 +54,8 @@ export function pollBoard() {
     const ax = Math.abs(s.x);
     if (armed && ax > press) { armed = false; tap('jump'); }
     else if (!armed && ax < release) armed = true;
-    boardHeld = !armed;
-  } else { armed = true; boardHeld = false; }
+  } else armed = true;
 }
-
-/** True while a key, a press or a board lean is held down (to either side): he re-jumps on landing. */
-export function inputHeld() { return keysDown.size > 0 || pointerHeld || boardHeld; }
 
 /** 'jump' once per tap, else null. */
 export function consumeTap() { const k = pending; pending = null; return k; }

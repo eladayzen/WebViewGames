@@ -13,7 +13,7 @@ import { createWorld } from './game/world.js';
 import { createRunner, botWantsTap } from './game/runner.js';
 import { createScene } from './render/scene.js';
 import { RUN } from './game/constants.js';
-import { installInput, pollBoard, consumeTap, clearTaps, setSensitivity, thresholds, inputHeld } from './input/input.js';
+import { installInput, pollBoard, consumeTap, clearTaps, setSensitivity, thresholds } from './input/input.js';
 import { createHud } from './ui/hud.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
 import { installDevUnlock } from './ui/devUnlock.js';
@@ -218,7 +218,7 @@ function boot() {
     if (live && autopilot) tapped = botWantsTap(runner, track, highRoad) || tapped;
     if (invincible) runner.p.invuln = Math.max(runner.p.invuln, 0.05);
     if (!paused && (state === State.COUNTDOWN || state === State.RUNNING)) {
-      runner.frame(dt, tapped, live, live && !autopilot && inputHeld());
+      runner.frame(dt, tapped, live);
       if (state === State.COUNTDOWN) {
         countdownT -= dt;
         if (countdownT <= 0) { state = State.RUNNING; goT = 0.7; clearTaps(); }

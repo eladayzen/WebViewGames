@@ -57,8 +57,8 @@ export function createRunner(world, hooks = {}) {
     hooks.onRespawn && hooks.onRespawn();
   }
 
-  /** action: a tap (any truthy value = jump). held: the input is still down. */
-  function frame(dt, action, live, held = false) {
+  /** action: a tap (any truthy value = jump). Edge-triggered only: holding does nothing. */
+  function frame(dt, action, live) {
     if (action) action = 'jump';                    // any tap, left or right, is a jump
     p.still = !live || p.freeze > 0;      // standing in place: countdown, respawn freeze, game over
     p.invuln = Math.max(0, p.invuln - dt);
@@ -86,8 +86,6 @@ export function createRunner(world, hooks = {}) {
       else if (p.airJumps < PLAYER.AIR_JUMPS && p.airT > 0.12 && !nearFloor) airJump();
       else p.buffer = PLAYER.BUFFER_S;
     } else if (p.buffer > 0) p.buffer -= dt;
-    // holding the input = another jump on every landing
-    if (held && p.grounded && !p.still) jump();
 
     if (p.grounded) p.airJumps = 0;
     if (p.grounded) {
@@ -110,7 +108,7 @@ export function createRunner(world, hooks = {}) {
       if (f && !p.wall && p.y <= f.y) {                     // landed on top
         p.y = f.y; p.roofY = f.y; p.vy = 0; p.grounded = true; p.landT = 0; p.onPad = !!f.pad;
         hooks.onLand && hooks.onLand();
-        if (p.buffer > 0 || held) jump();
+        if (p.buffer > 0) jump();
       } else if (r && !p.wall) {
         if (p.y < r.y - 0.45) {                              // into the wall
           p.wall = true; p.x = r.x0 - PLAYER.W / 2; p.vy = Math.min(p.vy, 0);
