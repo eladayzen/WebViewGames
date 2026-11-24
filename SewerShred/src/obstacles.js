@@ -44,8 +44,8 @@ export class Obstacles {
     tex.pipe.colorSpace = THREE.SRGBColorSpace;
     tex.pipe.wrapS = tex.pipe.wrapT = THREE.RepeatWrapping;
     this.glowTex = makeGlowTexture();
-    this.shieldIcon = tex.shieldIcon; this.saiIcon = tex.saiIcon; this.gliderIcon = tex.gliderIcon; this.sawsIcon = tex.sawsIcon;
-    for (const t of [tex.shieldIcon, tex.saiIcon, tex.gliderIcon, tex.sawsIcon]) if (t) t.colorSpace = THREE.SRGBColorSpace;
+    this.shieldIcon = tex.shieldIcon; this.saiIcon = tex.saiIcon; this.gliderIcon = tex.gliderIcon; this.sawsIcon = tex.sawsIcon; this.heartIcon = tex.heartIcon;
+    for (const t of [tex.shieldIcon, tex.saiIcon, tex.gliderIcon, tex.sawsIcon, tex.heartIcon]) if (t) t.colorSpace = THREE.SRGBColorSpace;
     this.footGeo = tex.footGeo;
     this.footMat = makeFootMaterial();
     this.footOutlineMat = makeOutlineMaterial(0xff3fd0, 0.028);
@@ -59,7 +59,8 @@ export class Obstacles {
     this.footSpriteMats = [tex.footA, tex.footB].map((t) => {
       t.colorSpace = THREE.SRGBColorSpace;
       // self-lit (Elad 2026-11-16): skip the scene's exposure-0.85 tone mapping, lift a touch above the art
-      return new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1.55, 1.55, 1.55), toneMapped: false, alphaTest: 0.5, side: THREE.DoubleSide, visible: false });
+      // brighter still and out of the fog (Elad 2026-11-24: "real enemies should be brighter — hard to see")
+      return new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(2.1, 2.0, 2.15), toneMapped: false, fog: false, alphaTest: 0.5, side: THREE.DoubleSide, visible: false });
     });
     this.footSpriteGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
     // DOJO dummies (Elad 2026-11-22): flat cardboard Foot Soldier cut-outs (Kolbo, one sheet of
@@ -270,6 +271,8 @@ export class Obstacles {
       // Donnie's gear (gear.js): the glider and the saw arms
       glider: () => this._powerUp(this.gliderIcon, 0xb07aff, 0xc59aff, 0xd2b2ff, 0xf2e8ff),
       saws: () => this._powerUp(this.sawsIcon, 0xffb02e, 0xffc35a, 0xffd27a, 0xfff2d0),
+      // HEALTH (Elad 2026-11-24): +1 life, dealt only while you're missing one
+      heart: () => this._powerUp(this.heartIcon, 0xff4a5a, 0xff7080, 0xff9aa6, 0xffe0e4),
     };
     this._initStreet(tex);
   }
@@ -377,6 +380,7 @@ export class Obstacles {
     this.lastSaiS = 0;
     this.lastGearS = 0;
     this.lastPowerS = -1e9;
+    this.lastHeartS = -1e9;
     this.patternCount = 0;
   }
 
@@ -491,6 +495,12 @@ export class Obstacles {
       if (this.reach) this._fitReach(first, s);
       return;
     }
+    // HEALTH: while a life is missing, a heart now and then (its own spacing — not an ability)
+    if (this.needHealth && this.needHealth() && s - (this.lastHeartS ?? -1e9) > 240 && s > 120 && Math.random() < 0.45) {
+      this.lastHeartS = s;
+      this.add('heart', s, sl + (Math.random() - 0.5) * 1.0);
+      return;
+    }
     // SAI STORM: roughly every 520 m from 180 m on (the first one early, so it's met)
     // the level's powers — and only one ability at a time (Elad 2026-11-23): none dealt
     // while one is running, and never two within POWER_GAP of each other
@@ -518,6 +528,7 @@ export class Obstacles {
     // the subway is its own game (Elad): no sewer obstacles, only pizza to chase
     // between the trains (trains.js)
     const open = OPEN_TOP.value > 0;
+    const street = open && this.deckMode !== 'alien';   // DIMENSION X is open too, but it's no street
     const deck = worldAt(s).trains ? [['pizzaRise', 1], ['pizzaLine', 0.4]] : [
       ['crates', 0.35],
       // GET HOME (level 1, Elad 2026-11-23: "add a lot of pizzas"): pizza ~3x as often
@@ -538,12 +549,12 @@ export class Obstacles {
       ['foot', this.deckMode === 'nofoes' ? 0 : 2.6 + diff * 0.6],
       ['footLine', this.deckMode !== 'nofoes' && diff > 0.05 ? 1.0 : 0],
       // the street set — OPEN TOP only
-      ['cones', open ? 0.8 : 0],
-      ['barricade', open ? 0.55 + diff * 0.3 : 0],
+      ['cones', street ? 0.8 : 0],
+      ['barricade', street ? 0.55 + diff * 0.3 : 0],
       ['kicker', open ? (this.deckMode === 'city' ? 1.5 : 0.55) : 0],   // the CITY level's goal is air pizza
       ['rail', 0],   // grind rail off for now (Elad 2026-11-22) — code kept; was open ? 0.6 : 0
-      ['tires', open && diff > 0.1 ? 0.45 + diff * 0.3 : 0],
-      ['props', open ? 0.8 : 0],
+      ['tires', street && diff > 0.1 ? 0.45 + diff * 0.3 : 0],
+      ['props', street ? 0.8 : 0],
     ];
     const tot = deck.reduce((a, d) => a + d[1], 0);
     let pick = r * tot, name = 'crates';
@@ -769,6 +780,21 @@ export class Obstacles {
     this.add('fan', s, 0, { phase: Math.random() * TAU, spin: (Math.random() < 0.5 ? -1 : 1) * (0.5 + diff * 0.7) });
   }
 
+  /** Picked up an ATTACK (the stars): make sure there's something to throw at — Foot
+   *  squads just ahead, wherever the lane is clear (Elad 2026-11-24). */
+  injectFoes(ps) {
+    let n = 0;
+    for (const d of [40, 70, 100, 130, 160]) {
+      const s = ps + d;
+      if (this.list.some((o) => Math.abs(o.s - s) < 7 && (HAZARDS.has(o.type) || o.type === 'foot'))) continue;
+      const first = this.list.length;
+      this._p_foot(s, 0.6, slimeAngle(s));
+      if (this.reach) this._fitReach(first, s);
+      n++;
+    }
+    return n;
+  }
+
   _p_foot(s, diff, sl) {
     const n = 1 + Math.floor(Math.random() * (1.5 + diff * 2));
     for (let i = 0; i < n; i++) {
@@ -818,7 +844,7 @@ export class Obstacles {
     for (const o of this.list) {
       const ds = o.s - ps;
       // ── per-type animation ──
-      if (o.type === 'pizza' || o.type === 'shield' || o.type === 'sai' || o.type === 'glider' || o.type === 'saws') {
+      if (o.type === 'pizza' || o.type === 'shield' || o.type === 'sai' || o.type === 'glider' || o.type === 'saws' || o.type === 'heart') {
         const w = o.mesh.userData.wedge;
         w.rotation.y = time * 3 + o.s;
         const bob = o.mesh.userData.bob;
@@ -1013,6 +1039,7 @@ export class Obstacles {
       case 'sai':
       case 'glider':
       case 'saws':
+      case 'heart':
         if (Math.abs(ds) < 1.5 && Math.abs(angleDiff(pt, o.theta)) < 0.32) return 'pickup';
         return null;
     }

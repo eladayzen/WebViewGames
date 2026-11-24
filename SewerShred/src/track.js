@@ -404,10 +404,10 @@ export const WORLDS = [
   { key: 'portal', name: 'THE PORTAL', river: 0, falls: 0, rails: 0, trains: 0, areaLen: 300, perVisit: 3, areas: [
     // Elad 2026-11-23: the sewers' grey floor where you ride, the art above the seams
     // as a backdrop (upper), boosted + streaming TOWARD you so the speed reads
-    { key: 'concrete_grey', upper: 'portal_wall', upperAround: 3, upperBoost: 2.6, upperScroll: [0.02, 1.4], name: 'THE PORTAL', around: 8, tint: 0xdcd8f0, fog: 0x1c1250, hemi: [0xe0d4ff, 0x6a5ab0] },
+    { key: 'concrete_grey', upper: 'portal_wall', upperAround: 3, upperBoost: 2.6, upperScroll: [0.02, 1.4], name: 'THE PORTAL', around: 8, tint: 0xdcd8f0, bright: 1.75, fog: 0x2a1c70, hemi: [0xf0e8ff, 0x9a8ad0] },
   ] },
   { key: 'dimx', name: 'DIMENSION X', river: 0, falls: 0, rails: 0, trains: 0, areaLen: 300, perVisit: 3, areas: [
-    { key: 'concrete_grey', upper: 'dimx_rock', upperAround: 4, upperBoost: 1.9, name: 'DIMENSION X', around: 8, tint: 0xe4dcec, fog: 0x2e1446, hemi: [0xf4dcff, 0x7a5a90] },
+    { key: 'concrete_grey', upper: 'dimx_rock', upperAround: 4, upperBoost: 1.9, name: 'DIMENSION X', around: 8, tint: 0xe4dcec, bright: 1.7, fog: 0x2e1446, hemi: [0xf4dcff, 0x9a7ab0] },
   ] },
   // (the subway / trains world is saved for a later "underground mines" level — Elad
   //  2026-11-17; trains.js is kept, no world turns it on)
@@ -611,6 +611,7 @@ export class Track {
         pa = { map: pm, chance: 0.26, all: !!z.patchAll };
       }
       const mat = new THREE.MeshLambertMaterial({ map: m, color: z.tint, side: THREE.BackSide });
+      if (z.bright) mat.color.multiplyScalar(z.bright);   // lift a road that sits under dark light (portal, Dimension X)
       // self-lit walls (the portal glows; Dimension X's crystals a little)
       if (z.glow) { mat.emissive.set(0xffffff); mat.emissiveMap = m; mat.emissiveIntensity = z.glow; }
       if (z.scroll) (this.scrolling ||= []).push({ t: m, v: z.scroll });

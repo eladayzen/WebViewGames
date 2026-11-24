@@ -106,6 +106,27 @@ export class City {
 
   setOn(on) { this.group.visible = !!on; }
 
+  /** A different world over the rims (Elad 2026-11-24: Dimension X — "a matte painting with
+   *  the Technodrome in the far distance"): its own sky painting, no towers, no streetlights,
+   *  its own fog and light. theme = { sky: texture, fog, hemi } or null for the city. */
+  setTheme(theme) {
+    this.theme = theme || null;
+    if (!this.daySky) this.daySky = this.sky.material.map;
+    if (theme) {
+      if (!theme.sky.userData.prepped) {
+        theme.sky.colorSpace = THREE.SRGBColorSpace; theme.sky.wrapS = THREE.RepeatWrapping;
+        theme.sky.repeat.x = -1; theme.sky.offset.x = 1; theme.sky.userData.prepped = true;
+      }
+      this.sky.material.map = theme.sky; this.sky.material.color.setHex(0xffffff);
+      Object.assign(CITY_FOG, theme.fog); CITY_HEMI[0] = theme.hemi[0]; CITY_HEMI[1] = theme.hemi[1];
+    } else {
+      this.sky.material.map = this.daySky;
+    }
+    this.sky.material.needsUpdate = true;
+    for (const b of this.bldgs) b.visible = !theme;
+    for (const l of this.lights) l.visible = !theme;
+  }
+
   /** NIGHT CITY (Elad 2026-11-23: "a different hour of day — twilight or night"): the
    *  same painting and towers tinted to dusk, a darker fog/light, the streetlights lit.
    *  Mutates CITY_FOG / CITY_HEMI, which main reads when it switches the city on. */
@@ -147,7 +168,7 @@ export class City {
       b.position.copy(f.C).addScaledVector(f.Rt, side * out);
       b.position.y = f.C.y - 18;                          // feet hidden down behind the trench wall
       b.userData.s = s;
-      b.visible = true;
+      b.visible = !this.theme;
       this.nextB += 8 + rand(s + 7.7) * 10;
     }
     // face the camera (yaw only), so they never go edge-on as they pass
@@ -165,7 +186,7 @@ export class City {
       this._z.crossVectors(this._x, f.U).normalize();
       this._m.makeBasis(this._x, f.U, this._z);
       l.quaternion.setFromRotationMatrix(this._m);
-      l.userData.s = s; l.visible = true;
+      l.userData.s = s; l.visible = !this.theme;
       this.nextL += LIGHT_SPACING;
     }
   }

@@ -1,6 +1,9 @@
 // Sound. The music is a Suno track (public/audio/music.mp3); every SFX is
 // synthesized in WebAudio, so it reacts continuously (wheel roar follows speed,
 // slime turns the roar to a squelch, pizza blips climb the scale with combo).
+// per-track trim so the three sit at the same loudness (measured in the browser, RMS)
+const MUSIC_GAIN = [1, 1.30, 1.155];   // music −16.5 dB, music2 −18.8, music3 −17.7 (RMS, 2026-11-24)
+
 export class Audio {
   constructor() {
     this.ctx = null;
@@ -48,21 +51,39 @@ export class Audio {
     if (this.pendingMusic) this.loadMusic(this.pendingMusic);
   }
 
-  async loadMusic(url) {
-    if (!this.ctx) { this.pendingMusic = url; return; }
-    try {
-      const buf = await (await fetch(url)).arrayBuffer();
-      this.musicBuf = await this.ctx.decodeAudioData(buf);
-      if (this.wantMusic) this.startMusic();
-    } catch (e) { /* music is optional */ }
+  // Three tracks in rotation (Elad 2026-11-24: "so there will be a rotation 1,2,3 and it
+  // won't be annoying"): each plays through once, then the next; the first is ready
+  // first, the others decode behind it. MUSIC_GAIN levels them (measured RMS).
+  async loadMusic(urls) {
+    urls = [].concat(urls);
+    if (!this.ctx) { this.pendingMusic = urls; return; }
+    this.musicBufs = this.musicBufs || [];
+    this.musicI = this.musicI || 0;
+    for (let i = 0; i < urls.length; i++) {
+      try {
+        const buf = await (await fetch(urls[i])).arrayBuffer();
+        this.musicBufs[i] = await this.ctx.decodeAudioData(buf);
+        if (i === 0 && this.wantMusic) this.startMusic();
+      } catch (e) { /* music is optional */ }
+    }
   }
 
   startMusic() {
     this.wantMusic = true;
-    if (!this.ctx || !this.musicBuf || this.musicSrc) return;
+    const bufs = (this.musicBufs || []).filter(Boolean);
+    if (!this.ctx || !bufs.length || this.musicSrc) return;
+    const i = this.musicI % this.musicBufs.length;
+    const buf = this.musicBufs[i] || bufs[0];
     const s = this.ctx.createBufferSource();
-    s.buffer = this.musicBuf; s.loop = true;
-    s.connect(this.musicLP);
+    s.buffer = buf;
+    const g = this.ctx.createGain(); g.gain.value = MUSIC_GAIN[i] ?? 1;   // level the tracks
+    s.connect(g).connect(this.musicLP);
+    s.onended = () => {
+      if (this.musicSrc !== s) return;          // stopped on purpose
+      this.musicSrc = null;
+      this.musicI = (i + 1) % this.musicBufs.length;
+      this.startMusic();
+    };
     s.start();
     this.musicSrc = s;
     this.musicGain.gain.setTargetAtTime(0.42, this.ctx.currentTime, 0.4);
@@ -154,12 +175,21 @@ export class Audio {
     this.tone(1800, { type: 'sawtooth', dur: 0.3, vol: 0.12, slide: 0.6 });
     this.noiseHit({ dur: 0.3, vol: 0.4, freq: 4200, q: 4, sweep: 0.5 });
   }
-  kick() {
-    // whoosh of the spin, then the smack
-    this.noiseHit({ dur: 0.18, vol: 0.3, freq: 500, sweep: 5, q: 2 });
-    this.noiseHit({ dur: 0.12, vol: 0.7, freq: 2600, q: 1.0, delay: 0.07 });
-    this.tone(220, { type: 'square', dur: 0.12, vol: 0.25, slide: 0.4, delay: 0.07 });
-    this.tone(880, { type: 'triangle', dur: 0.18, vol: 0.1, slide: 1.5, delay: 0.1 });
+  // Hitting an enemy (Elad 2026-11-24: "much stronger positive SFX feedback"): the spin
+  // whoosh, a fat SMACK (body thump + crack), then a bright rising reward chime — a
+  // "you did it!" arpeggio that climbs with the combo, and a sparkle on top.
+  kick(combo = 1) {
+    this.noiseHit({ dur: 0.18, vol: 0.35, freq: 500, sweep: 5, q: 2 });
+    // the smack: a low body thump, a crack, a square punch
+    this.tone(150, { type: 'sine', dur: 0.22, vol: 0.9, slide: 0.3, delay: 0.06 });
+    this.noiseHit({ dur: 0.14, vol: 1.0, freq: 2400, q: 0.9, delay: 0.06 });
+    this.noiseHit({ dur: 0.06, vol: 0.6, freq: 6000, q: 0.7, delay: 0.06 });
+    this.tone(220, { type: 'square', dur: 0.14, vol: 0.35, slide: 0.45, delay: 0.06 });
+    // the reward: a major arpeggio, up a step with each combo level
+    const base = 523.25 * Math.pow(2, Math.min(7, Math.max(0, combo - 1)) * 2 / 12);
+    [1, 1.26, 1.5, 2].forEach((m, k) => this.tone(base * m, { type: 'triangle', dur: 0.16, vol: 0.22, delay: 0.12 + k * 0.055 }));
+    this.tone(base * 4, { type: 'sine', dur: 0.35, vol: 0.12, slide: 1.02, delay: 0.34 });
+    this.noiseHit({ dur: 0.25, vol: 0.18, freq: 9000, q: 3, delay: 0.32 });   // sparkle
   }
   shieldPop() {
     this.tone(1200, { type: 'sine', dur: 0.3, vol: 0.2, slide: 0.25 });

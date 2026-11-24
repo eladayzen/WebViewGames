@@ -134,6 +134,17 @@
 
   <!-- level card (Elad 2026-11-22: one step, minimum words): level, title, goal icon + number,
        the NEW power (it's this level's first pickup), a round GO whose ring is the auto-start clock -->
+  <!-- comic cut-scene (cutscene.js): Mikey's panel | Donnie's panel, split on a diagonal -->
+  <div id="cutscene" class="hidden" data-who="donnie">
+    <div class="cs-panel cs-mikey"><div class="cs-bg"></div><span class="cs-burst"></span><img class="cs-char" src="/tex/mikey_full.png" alt=""></div>
+    <div class="cs-panel cs-donnie"><div class="cs-bg"></div><span class="cs-burst"></span><img class="cs-char" src="/tex/donnie_full.png" alt="">
+      <svg class="cs-radio" viewBox="0 0 24 24"><rect x="7" y="6" width="10" height="16" rx="2" fill="#3a3f4a" stroke="#14181a" stroke-width="1.5"/><path d="M14 6V1.5" stroke="#14181a" stroke-width="2"/><rect x="9" y="9" width="6" height="4" rx="1" fill="#9fe04a"/><circle cx="10" cy="17" r="1" fill="#14181a"/><circle cx="14" cy="17" r="1" fill="#14181a"/><path d="M18 4.5q2 2 0 4M20 3q3.4 3.5 0 7" fill="none" stroke="#ffe25a" stroke-width="1.4" stroke-linecap="round"/></svg>
+    </div>
+    <div id="cs-bubble" class="cs-bubble"><b></b><p></p></div>
+    <img id="cs-item" class="hidden" alt="">
+    <div id="cs-dots"></div>
+    <div class="cs-tap">TAP / LEAN &#9654;</div>
+  </div>
   <!-- the LOBBY: level map (unlocked left to right), Donnie's line, the goal, GO -->
   <div id="lobby" class="hidden">
     <!-- Donnie, full body (Wagon Rampage's cut-out), talking from the left -->

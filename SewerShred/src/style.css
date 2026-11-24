@@ -293,9 +293,9 @@ body.dev-open #dev-btn { opacity: 1; }
 #lc-new img { width: 100%; display: block; filter: drop-shadow(0 4px 0 rgba(0,0,0,0.6)); }
 #lc-new em { position: absolute; top: -8px; right: -22px; font-style: normal; font-size: clamp(14px, 3vmin, 20px); color: #fff; background: #ff3b2e; border: 2px solid var(--ink); border-radius: 8px; padding: 1px 6px; transform: rotate(12deg); }
 @keyframes newbob { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-6px) rotate(4deg); } }
-.ring-btn { position: relative; width: clamp(84px, 17vmin, 128px); height: clamp(84px, 17vmin, 128px); border-radius: 50%; border: none; background: #2fd05a; box-shadow: 0 6px 0 var(--ink), inset 0 -6px 0 rgba(0,0,0,0.2); cursor: pointer; padding: 0; -webkit-tap-highlight-color: transparent; }
+.ring-btn { font-family: var(--font); position: relative; width: clamp(84px, 17vmin, 128px); height: clamp(84px, 17vmin, 128px); border-radius: 50%; border: none; background: #2fd05a; box-shadow: 0 6px 0 var(--ink), inset 0 -6px 0 rgba(0,0,0,0.2); cursor: pointer; padding: 0; -webkit-tap-highlight-color: transparent; }
 .ring-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 var(--ink); }
-.ring-btn span { position: relative; font-size: clamp(28px, 6vmin, 44px); color: #fff; -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; }
+.ring-btn span { position: relative; font-family: var(--font); font-weight: 400; letter-spacing: 1px; font-size: clamp(32px, 7vmin, 52px); color: #fff; -webkit-text-stroke: 2.5px var(--ink); paint-order: stroke fill; text-shadow: 0 4px 0 var(--ink); }
 .ring-btn .arrow { position: relative; width: 50%; height: 50%; fill: #fff; stroke: var(--ink); stroke-width: 1.5; }
 .ring-btn .ring { position: absolute; inset: -8px; width: calc(100% + 16px); height: calc(100% + 16px); transform: rotate(-90deg); }
 .ring-btn .ring circle { fill: none; stroke-width: 3.5; }
@@ -420,3 +420,70 @@ body.dev-open #dev-btn { opacity: 1; }
    lobby; pause means nothing there */
 #corner-btns, #dev-col { z-index: 60; }
 body.in-lobby #pause-btn { display: none; }
+
+/* ── COMIC CUT-SCENE ── diagonal split, Mikey's panel (sewer) | Donnie's (dojo) */
+#cutscene { position: fixed; inset: 0; z-index: 55; background: #fff; overflow: hidden; font-family: var(--font); cursor: pointer; }
+#cutscene.hidden { display: none; }
+.cs-panel { position: absolute; inset: 0; overflow: hidden; }
+.cs-mikey { clip-path: polygon(0 0, 57% 0, 41% 100%, 0 100%); }
+.cs-donnie { clip-path: polygon(59.2% 0, 100% 0, 100% 100%, 43.2% 100%); }
+.cs-bg { position: absolute; inset: -4%; animation: kenburns 18s ease-out both; }
+.cs-mikey .cs-bg { background: url('/tex/concrete_grey.jpg') center / 38% auto, #2a3a40; filter: brightness(0.55) saturate(0.9) hue-rotate(-10deg); }
+.cs-donnie .cs-bg { background: url('/tex/wood_planks.jpg') center / 34% auto; filter: brightness(0.6) saturate(1.1); }
+.cs-panel::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(rgba(0,0,0,.22) 1.1px, transparent 1.7px) 0 0 / 7px 7px, radial-gradient(ellipse at 50% 55%, transparent 40%, rgba(0,0,0,0.6) 100%); }
+@keyframes kenburns { from { transform: scale(1); } to { transform: scale(1.06); } }
+/* the gutter is the white #cutscene behind the two clipped panels */
+.cs-char { position: absolute; bottom: -2vh; height: min(78vh, 640px); width: auto; transition: filter 0.25s, transform 0.25s;
+  filter: drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink)) drop-shadow(0 3px 0 var(--ink)) drop-shadow(0 -3px 0 var(--ink)) drop-shadow(10px 10px 0 rgba(0,0,0,.45)); }
+.cs-mikey .cs-char { left: 4vw; }
+.cs-donnie .cs-char { right: 3vw; }
+#cutscene.on .cs-mikey .cs-char { animation: csin-l 0.5s cubic-bezier(.2,1.5,.35,1) both; }
+#cutscene.on .cs-donnie .cs-char { animation: csin-r 0.5s 0.1s cubic-bezier(.2,1.5,.35,1) both; }
+@keyframes csin-l { from { transform: translateX(-60%) rotate(-10deg); } to { transform: none; } }
+@keyframes csin-r { from { transform: translateX(60%) rotate(10deg); } to { transform: none; } }
+/* who's talking: lit on a starburst in his colour; the other dims */
+.cs-burst { position: absolute; bottom: 8vh; width: min(70vh, 560px); height: min(70vh, 560px); opacity: 0; transition: opacity 0.2s, transform 0.3s; transform: scale(0.7);
+  clip-path: polygon(50% 0, 58% 32%, 88% 10%, 68% 40%, 100% 50%, 68% 60%, 88% 90%, 58% 68%, 50% 100%, 42% 68%, 12% 90%, 32% 60%, 0 50%, 32% 40%, 12% 10%, 42% 32%); }
+.cs-mikey .cs-burst { left: 0; background: radial-gradient(#ffd27a, #ff8a2a 70%); }
+.cs-donnie .cs-burst { right: 0; background: radial-gradient(#d6b8ff, #8a4fe0 70%); }
+#cutscene[data-who="mikey"] .cs-mikey .cs-burst, #cutscene[data-who="donnie"] .cs-donnie .cs-burst { opacity: 0.85; transform: scale(1) rotate(8deg); }
+#cutscene[data-who="mikey"] .cs-donnie .cs-char, #cutscene[data-who="donnie"] .cs-mikey .cs-char { filter: brightness(0.5) saturate(0.6) drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink)); }
+/* Donnie on the radio */
+.cs-radio { position: absolute; right: calc(3vw + min(20vh, 170px)); bottom: min(46vh, 380px); width: min(13vh, 100px); opacity: 0; transform: rotate(-14deg) scale(0.6); transition: opacity 0.2s, transform 0.3s cubic-bezier(.2,1.6,.35,1); filter: drop-shadow(4px 4px 0 rgba(0,0,0,.5)); }
+#cutscene.radio .cs-radio { opacity: 1; transform: rotate(-14deg) scale(1); animation: csbuzz 0.18s linear infinite alternate; }
+@keyframes csbuzz { from { margin-left: -1px; } to { margin-left: 2px; } }
+/* the bubble */
+.cs-bubble { position: absolute; z-index: 4; top: max(13vh, calc(env(safe-area-inset-top) + 64px)); max-width: min(46vw, 560px); background: #fff; color: var(--ink); border: 5px solid var(--ink); border-radius: 46px / 38px; padding: 18px 26px 16px; box-shadow: 8px 8px 0 rgba(0,0,0,0.55); }
+.cs-bubble.mikey { left: 4vw; }
+.cs-bubble.donnie { right: 4vw; }
+.cs-bubble.in { animation: bubbleIn 0.3s cubic-bezier(.2,1.6,.35,1); }
+@keyframes bubbleIn { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+.cs-bubble b { position: absolute; top: -20px; left: 22px; font-weight: 400; font-size: clamp(16px, 3.2vmin, 24px); color: #fff; padding: 2px 12px; border: 3px solid var(--ink); transform: rotate(-4deg) skewX(-8deg); -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; }
+.cs-bubble.mikey b { background: #ff8a2a; }
+.cs-bubble.donnie b { background: #8a4fe0; left: auto; right: 22px; }
+.cs-bubble p { margin: 0; font-size: clamp(18px, 4.2vmin, 34px); line-height: 1.12; font-style: italic; text-transform: uppercase; }
+.cs-bubble::after { content: ''; position: absolute; bottom: -26px; width: 0; height: 0; border: 16px solid transparent; border-top: 26px solid var(--ink); }
+.cs-bubble.mikey::after { left: 26%; transform: skewX(-20deg); }
+.cs-bubble.donnie::after { right: 26%; transform: skewX(20deg); }
+/* the gadget, shown big while Donnie explains it */
+#cs-item { position: absolute; z-index: 4; left: 50%; top: 50%; width: min(26vh, 220px); margin: calc(min(26vh, 220px) / -2) 0 0 calc(min(26vh, 220px) / -2); filter: drop-shadow(0 0 24px rgba(255,226,90,0.8)) drop-shadow(6px 6px 0 rgba(0,0,0,.5)); animation: csitem 0.5s cubic-bezier(.2,1.6,.35,1), newbob 0.9s 0.5s ease-in-out infinite alternate; }
+#cs-item.hidden { display: none; }
+@keyframes csitem { from { transform: scale(0.2) rotate(-30deg); } to { transform: none; } }
+#cs-dots { position: absolute; z-index: 4; bottom: max(14px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+#cs-dots i { width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,0.3); border: 2px solid var(--ink); }
+#cs-dots i.was { background: rgba(255,255,255,0.7); }
+#cs-dots i.on { background: #ffe25a; transform: scale(1.3); }
+.cs-tap { position: absolute; z-index: 4; right: 16px; bottom: max(12px, env(safe-area-inset-bottom)); font-size: clamp(12px, 2.4vmin, 18px); color: #fff; -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; opacity: 0.8; animation: newbob 0.8s ease-in-out infinite alternate; }
+@media (max-aspect-ratio: 1/1) {
+  .cs-mikey { clip-path: polygon(0 0, 100% 0, 100% 41%, 0 57%); }
+  .cs-donnie { clip-path: polygon(0 59%, 100% 43%, 100% 100%, 0 100%); }
+  .cs-char { height: 36vh; }
+  .cs-mikey .cs-char { bottom: auto; top: 14vh; left: 2vw; }
+  .cs-bubble { max-width: 88vw; }
+  .cs-bubble.mikey { top: 4vh; left: 4vw; }
+  .cs-bubble.donnie { top: auto; bottom: 40vh; right: 4vw; }
+  .cs-burst { width: 44vh; height: 44vh; }
+  .cs-mikey .cs-burst { bottom: auto; top: 10vh; }
+  .cs-radio { bottom: 26vh; right: 40vw; }
+}

@@ -14,6 +14,8 @@ import { R, Track, ZONES, WORLDS, zoneIndex, setStartWorld, getStartWorld, ROUTE
 import { Junctions } from './junctions.js';
 import { Gear, GLIDE_H, GLIDE_T, SAW_T } from './gear.js';
 import { Portal } from './portal.js';
+import { WarpFX } from './warpfx.js';
+import { playScene, sceneUp, sceneNext } from './cutscene.js';
 import { steerPreset, steerKey, nextSteer, STEER_PRESETS } from './steering.js';
 import { initCalibrationWizard, setCalibrationLifecycleHooks } from './calibrationWizard.js';
 import { Player, PHYS } from './player.js';
@@ -23,7 +25,7 @@ import { Audio } from './audio.js';
 import { Input } from './input.js';
 
 const TAU = Math.PI * 2;
-const LIVES = 3;
+const LIVES = 5;   // Elad 2026-11-24: five, refilled at the start of every level / run
 // slowed twice on Elad's play (2026-11-11): 21→17→13.5, 44→35→28
 const BASE_SPEED = 13.5, TOP_SPEED = 28, RAMP_DIST = 2800;
 const FOG = { color: 0x4a5860, near: 30, far: 200 };   // look test: blue-grey, not black
@@ -64,10 +66,10 @@ resize();
 const texLoader = new THREE.TextureLoader();
 const loadTex = (u) => new Promise((res, rej) => texLoader.load(u, res, undefined, rej));
 const audio = new Audio();
-audio.loadMusic('/audio/music.mp3');
+audio.loadMusic(['/audio/music.mp3', '/audio/music2.mp3', '/audio/music3.mp3']);
 const input = new Input(canvas);
 
-let portal, cards, gear, city, track, junctions, trains, daggers, player, obstacles, particles, debris, streaks, boardTrail, sludge;
+let warp, portal, cards, gear, city, track, junctions, trains, daggers, player, obstacles, particles, debris, streaks, boardTrail, sludge;
 const tex = {};
 
 // ── HUD ──────────────────────────────────────────────────────────────────────
@@ -181,6 +183,8 @@ async function startLevel(i, card = true, fresh = -1) {
   G.state = 'card'; G.cardHold = 0;
   const pick = await showLobby(i, Math.max(getMaxUnlocked(), i), fresh, (k) => { G.level = k; startRun(); G.state = 'card'; });
   if (pick !== G.level) { G.level = pick; startRun(); }
+  // a level with a comic cut-scene (cutscene.js) plays it between the lobby and the ride
+  if (LEVELS[G.level].scene && G.state === 'card') { G.cardHold = 0; await playScene(LEVELS[G.level].scene); }
   if (G.state === 'card') { G.state = 'countdown'; G.countdown = 3.2; G.lastBeep = -1; }
 }
 async function levelClear() {
@@ -205,8 +209,10 @@ function startRun() {
   {
     const L = LEVELS[G.level];
     city.setNight(!!L.night);
+    city.setTheme(L.theme === 'dimx' ? DIMX_THEME() : null);
     setOpenTop(G.topOverride ?? L.open);
     portal?.place(null); G.portalUp = false;
+    if (warp) warp.on = L.world === 'portal';   // the portal tunnel is full of strange lights
     { const w = document.getElementById('warp'); if (w) { w.classList.remove('on'); w.classList.add('hidden'); } }
     { const b = document.getElementById('dev-lv'); if (b) b.textContent = `LV ${L.n} ${L.title}`; }
     obstacles.deckMode = L.deck;
@@ -531,6 +537,10 @@ const nextWorld = () => setWorld(getStartWorld() + 1);
 // TOP (dev, Elad 2026-11-22): CLOSED pipe, or OPEN — roof cut off at the 180
 // seams, city matte painting over the rims (city.js). ?top=open
 G.openTop = false;
+// DIMENSION X over the rims: the alien matte painting (the Technodrome far off), purple haze
+let dimxSkyTex = null;
+const DIMX_THEME = () => ({ sky: dimxSkyTex || (dimxSkyTex = new THREE.TextureLoader().load('/tex/dimx_sky.jpg')),
+  fog: { color: 0x5a2a86, near: 80, far: 300 }, hemi: [0xffffff, 0xc0a8e0] });
 const GEAR_TEST = (() => { try { return new URLSearchParams(location.search).get('gear') === '1'; } catch { return false; } })();
 function setOpenTop(on) {
   if (!track) return;
@@ -658,6 +668,14 @@ function onEvent(e) {
       G.fovKick = 10;
       break;
     }
+    case 'heart': {
+      if (G.lives < LIVES) { G.lives++; renderLives(G.lives, G.lives - 1); }
+      popup('+1 LIFE', 'kick-word', wp, -70);
+      audio.shield();
+      particles.burst(wp, up, 40, new THREE.Color(1, 0.35, 0.45), { speed: 9, spread: 1.5, size: 0.4, life: 0.7, drag: 2 });
+      flash('rgba(255,90,110,0.7)', 0.3);
+      break;
+    }
     case 'glider': {
       endAbilities();
       gear.startGlide();
@@ -682,6 +700,7 @@ function onEvent(e) {
     case 'sai': {
       endAbilities();
       daggers.start();
+      if (obstacles.deckMode !== 'nofoes' && obstacles.deckMode !== 'training') obstacles.injectFoes(player.s);   // something to throw at
       audio.shield();
       bigText(HERO.word, 'shield');
       particles.burst(wp, up, 50, C_KICK, { speed: 10, spread: 1.6, size: 0.4, life: 0.8, drag: 2 });
@@ -743,7 +762,7 @@ function onSaiHit(o, wp) {
   G.kicks = (G.kicks || 0) + 1;
   award(150, wp, 'pts');
   addCombo(0.6);
-  audio.kick();
+  audio.kick(G.combo);
   G.shake = Math.max(G.shake, 0.25);
   particles.burst(wp.clone().addScaledVector(up, 1.0), up, 22, C_KICK, { speed: 11, spread: 1.6, size: 0.42, life: 0.4, drag: 3 });
 }
@@ -784,7 +803,7 @@ function onKick(o, up, wp) {
   award(150, wp, 'pts');
   addCombo(0.6);
   popup(KICK_WORDS[Math.floor(Math.random() * KICK_WORDS.length)], 'kick-word', wp, -70);
-  audio.kick();
+  audio.kick(G.combo);
   // no hit-stop and no speed change: a kick never costs you momentum
   G.shake = Math.max(G.shake, 0.4); G.fovKick = Math.max(G.fovKick, 6);
   flash('rgba(255,210,120,0.9)', 0.3);
@@ -959,9 +978,15 @@ function frame(now) {
   if (G.state === 'card') {
     // the LOBBY is up: board parked; GO on a tap / Space / a FORWARD lean held 2 s
     player.speed = 0;
-    if (input.forward()) G.cardHold += dt; else G.cardHold = Math.max(0, G.cardHold - dt * 2);
-    lobbyHold(G.cardHold / 2);
-    if (pressed || G.cardHold >= 2) lobbyGo();
+    if (sceneUp()) {
+      // the cut-scene: a tap / Space / a forward lean held 1 s moves to the next line
+      if (input.forward()) G.cardHold += dt; else G.cardHold = 0;
+      if (pressed || G.cardHold >= 1) { G.cardHold = 0; sceneNext(); }
+    } else {
+      if (input.forward()) G.cardHold += dt; else G.cardHold = Math.max(0, G.cardHold - dt * 2);
+      lobbyHold(G.cardHold / 2);
+      if (pressed || G.cardHold >= 2) lobbyGo();
+    }
   } else if (G.state === 'clear') {
     // level done: keep cruising (nothing new spawns, nothing hits) while the clear screen is up
     player.speed += (BASE_SPEED * 0.7 - player.speed) * Math.min(1, dt);
@@ -1073,7 +1098,8 @@ function frame(now) {
   if (G.state === 'play') gear.update(simDt, time, obstacles, onSawCut);
   // NIGHT CITY's portal: stood at the finish once the road to it is settled
   { const L = LEVELS[G.level];
-    portal.update(time); }
+    portal.update(time);
+    warp.update(simDt, time, player.s); }
   player.place();
   player.animate(simDt, time);
 
@@ -1280,7 +1306,7 @@ async function loadFootGeo(url) {
   names.forEach((n, i) => (tex[n.replace('wall_', '')] = loaded[i]));
   tex.sewage = tex.sewage_toon;                 // look test: flat cartoon water (Kolbo, ref '55')
   tex.valve = await loadTex('/tex/valve.png');
-  [tex.shieldIcon, tex.saiIcon, tex.gliderIcon, tex.sawsIcon] = await Promise.all([loadTex('/tex/shield_icon.png'), loadTex(HERO.icon), loadTex('/tex/glider_icon.png'), loadTex('/tex/saws_icon.png')]);
+  [tex.shieldIcon, tex.saiIcon, tex.gliderIcon, tex.sawsIcon, tex.heartIcon] = await Promise.all([loadTex('/tex/shield_icon.png'), loadTex(HERO.icon), loadTex('/tex/glider_icon.png'), loadTex('/tex/saws_icon.png'), loadTex('/tex/heart_icon.png')]);
   tex.dummies = await Promise.all(['a', 'b', 'c'].map((k) => loadTex(`/tex/dummy_${k}.png`)));
   [tex.footA, tex.footB] = await Promise.all([loadTex('/tex/foot_sprite_a.png'), loadTex('/tex/foot_sprite_b.png')]);  // look test: illustrated valve hatch
   tex.footGeo = await loadFootGeo('/models/foot.bin');
@@ -1296,6 +1322,7 @@ async function loadFootGeo(url) {
   daggers.upFn = (o) => wallDir(frameAt(o.s), o.theta, new THREE.Vector3()).negate();
   obstacles.camera = camera;
   obstacles.busy = () => player.shieldOn || daggers.active || gear.sawing || gear.gliding;
+  obstacles.needHealth = () => G.lives < LIVES;
   { let f = 'sprite'; try { f = new URLSearchParams(location.search).get('foe') || 'sprite'; } catch { /* private */ } setFootStyle(f); }
   particles = new Particles(scene);
   sludge = new Particles(scene, { additive: false });
@@ -1306,6 +1333,7 @@ async function loadFootGeo(url) {
   player = new Player(scene);
   gear = new Gear(player, tex.sawsIcon);
   portal = new Portal(scene);
+  warp = new WarpFX(scene, makeGlowTexture());
   if (HERO.skin) player.skin = await loadTex(HERO.skin);
   await player.load('/models/raphael.glb', '/models/clips.json');
   gear.attach();

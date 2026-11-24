@@ -366,6 +366,37 @@ if (script === 'default') {
   console.log('after yes', JSON.stringify(await page.evaluate(() => ({ st: window.__game.G.state, lobby: !document.getElementById('lobby').classList.contains('hidden'), navs: window.__navs }))));
   await page.click('#gb-back'); await wait(300);
   console.log('lobby X', JSON.stringify(await page.evaluate(() => ({ navs: window.__navs }))));
+} else if (script === 'musicrms') {
+  // loudness of each music track, decoded in the page (RMS over the whole track)
+  console.log('rms', JSON.stringify(await page.evaluate(async () => {
+    const ctx = new OfflineAudioContext(2, 44100, 44100), out = {};
+    for (const n of ['music', 'music2', 'music3']) {
+      const b = await ctx.decodeAudioData(await (await fetch(`/audio/${n}.mp3`)).arrayBuffer());
+      let sum = 0, cnt = 0; for (let c = 0; c < b.numberOfChannels; c++) { const d = b.getChannelData(c); for (let i = 0; i < d.length; i += 4) { sum += d[i] * d[i]; cnt++; } }
+      out[n] = { dur: +b.duration.toFixed(1), rmsDb: +(10 * Math.log10(sum / cnt)).toFixed(2) };
+    }
+    return out;
+  })));
+} else if (script === 'scene') {
+  // lobby → GO → the level's comic cut-scene, line by line → the ride
+  await wait(1500); await page.keyboard.press('Space'); await wait(900);
+  for (let i = 0; i < 4; i++) { await snap('scene-' + i); console.log('beat', i, await page.evaluate(() => document.getElementById('cs-bubble').textContent)); await wait(450); await page.keyboard.press('Space'); await wait(500); }
+  await wait(600);
+  console.log('after', JSON.stringify(await page.evaluate(() => ({ st: window.__game.G.state, scene: !document.getElementById('cutscene').classList.contains('hidden') }))));
+} else if (script === 'health') {
+  // 5 lives; a missing one brings hearts; picking up stars drops Foot just ahead
+  await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 }); await wait(500);
+  const foes = () => page.evaluate(() => { const g = window.__game; return g.obstacles.list.filter((o) => o.type === 'foot' && !o.dummy && o.s > g.player.s && o.s < g.player.s + 170).length; });
+  console.log('start lives', await page.evaluate(() => [window.__game.G.lives, document.querySelectorAll('#lives .life').length]));
+  await page.evaluate(() => { const g = window.__game; g.G.lives = 3; });
+  const f0 = await foes();
+  await page.click('#dev-btn'); await page.click('#dev-more'); await wait(200);
+  await page.click('#dev-sai'); await wait(300);
+  console.log('foes ahead before/after stars', f0, await foes());
+  await snap('after-stars');
+  let hearts = 0;
+  for (let t = 0; t < 12; t++) { await wait(2000); hearts = Math.max(hearts, await page.evaluate(() => window.__game.obstacles.list.filter((o) => o.type === 'heart').length)); await page.evaluate(() => { window.__game.G.lives = Math.min(window.__game.G.lives, 3); }); }
+  console.log('hearts seen', hearts, 'lives', await page.evaluate(() => window.__game.G.lives));
 } else if (script === 'dojo') {
   // the dojo level: ride, sway across the wall, count dummies down, see the stars
   await wait(4500);
