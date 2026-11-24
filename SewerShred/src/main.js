@@ -8,12 +8,14 @@ import * as THREE from 'three';
 import { Trains } from './trains.js';
 import { Daggers } from './daggers.js';
 import { City, CITY_FOG, CITY_HEMI } from './city.js';
-import { LEVELS, setWeaponIcon, showCard, cardUp, cardPress, showClear, clearUp, clearPress, renderGoal, loadProgress, saveProgress } from './levels.js';
+import { LEVELS, setWeaponIcon, showClear, clearUp, clearPress, renderGoal, loadProgress, saveProgress, showLobby, lobbyHold, lobbyGo, getMaxUnlocked } from './levels.js';
 import { installDevUnlock } from './devUnlock.js';
 import { R, Track, ZONES, WORLDS, zoneIndex, setStartWorld, getStartWorld, ROUTES, featureAt, pendingFork, forkNear, forkSpread, FORK_LEN, FORKS, CLIMB_LEN, makeGlowTexture, frameAt, pointAt, wallDir, slimeAngle, slimeHalfWidth, waterAngle, waterHalfWidth, angleDiff } from './track.js';
 import { Junctions } from './junctions.js';
 import { Gear, GLIDE_H, GLIDE_T, SAW_T } from './gear.js';
 import { Portal } from './portal.js';
+import { steerPreset, steerKey, nextSteer, STEER_PRESETS } from './steering.js';
+import { initCalibrationWizard, setCalibrationLifecycleHooks } from './calibrationWizard.js';
 import { Player, PHYS } from './player.js';
 import { Obstacles, FOOT_STYLES, FOOT_STYLE_ORDER, KICK_POP } from './obstacles.js';
 import { Particles, Debris, CardDebris, Streaks, BoardTrail } from './fx.js';
@@ -167,15 +169,18 @@ G.level = 0;
 G.topOverride = null;   // dev: TOP button / ?top=open beat the level's own setting
 function levelGoalHave() {
   const g = LEVELS[G.level].goal;
-  return g.type === 'pizza' ? G.pizza : g.type === 'air' ? G.airPizza : g.type === 'ko' ? (G.kicks || 0) : player.s;
+  return g.type === 'pizza' ? G.pizza : g.type === 'air' ? G.airPizza : g.type === 'ko' ? (G.kicks || 0) : g.type === 'pts' ? G.score : player.s;
 }
 /** Start level i; with `card`, its one-step card first (a retry after a wipeout skips it). */
-async function startLevel(i, card = true) {
+async function startLevel(i, card = true, fresh = -1) {
   G.level = i;
   startRun();
   if (!card) return;
+  // the LOBBY (levels.js): the map, Donnie's line, GO — picking another unlocked level
+  // re-dresses the parked run behind it
   G.state = 'card'; G.cardHold = 0;
-  await showCard(LEVELS[i]);
+  const pick = await showLobby(i, Math.max(getMaxUnlocked(), i), fresh, (k) => { G.level = k; startRun(); G.state = 'card'; });
+  if (pick !== G.level) { G.level = pick; startRun(); }
   if (G.state === 'card') { G.state = 'countdown'; G.countdown = 3.2; G.lastBeep = -1; }
 }
 async function levelClear() {
@@ -187,10 +192,11 @@ async function levelClear() {
   if (Math.floor(G.score) > readBest()) writeBest(Math.floor(G.score));
   gb()?.submitScore?.(Math.floor(G.score))?.catch?.(() => {});
   const nextLv = last ? Math.max(0, LEVELS.findIndex((L) => L.key === 'sewers')) : G.level + 1;   // after the last: back to the sewers (the two trainings are once)
+  const fresh = nextLv > getMaxUnlocked() ? nextLv : -1;   // newly unlocked: it pops in on the map
   saveProgress(nextLv);
   await new Promise((r) => setTimeout(r, 900));
   await showClear(last);
-  startLevel(nextLv, true);
+  startLevel(nextLv, true, fresh);
 }
 
 function startRun() {
@@ -289,9 +295,13 @@ const leaveToLobby = () => { if (window.GoBalance?.back) window.GoBalance.back()
 // ── the X: the only way out on the board ─────────────────────────────────────
 // Mid-run it asks first (a mis-tap must not end a run); anywhere else it leaves.
 let pausedBeforeConfirm = false;
+// Elad 2026-11-24: the lobby's X leaves the game (back to the app); everywhere else the X
+// comes back to OUR lobby — mid-run only after "are you sure?".
 window.__gbBack = () => {
   if (G.confirm) return quitRun();                       // X again on the confirm = yes
-  if (G.state !== 'play') return leaveToLobby();          // countdown, death, quit screen: nothing to lose
+  if (G.state === 'card') return leaveToLobby();          // on the lobby: out to the app
+  if (G.state === 'clear') return;                        // the lobby is on its way
+  if (G.state !== 'play') return backToMenu();            // countdown, death, clear: nothing to lose
   pausedBeforeConfirm = G.paused;
   setPaused(true);
   $('pause-overlay').classList.add('hidden');
@@ -302,7 +312,18 @@ function closeConfirm() {
   G.confirm = false;
   $('quit-confirm').classList.add('hidden');
 }
-function quitRun() {
+/** Out of the run, into the level lobby (the score still counts toward the best). */
+function backToMenu() {
+  closeConfirm();
+  G.paused = false; audio.setPaused(false); $('pause-overlay').classList.add('hidden');
+  $('quit-overlay').classList.add('hidden'); audio.muffle(false);
+  const score = Math.floor(G.score);
+  if (score > readBest()) writeBest(score);
+  gb()?.submitScore?.(score)?.catch?.(() => {});
+  startLevel(G.level, true);
+}
+function quitRun() { backToMenu(); }
+function quitRunOld() {
   closeConfirm();
   G.paused = false; audio.setPaused(false); $('pause-overlay').classList.add('hidden');
   G.state = 'quit';
@@ -402,11 +423,11 @@ G.dirOff = 0;
 function steer(dt, lean) {
   if (G.moveMode === 'swing') { player.step(dt, lean); return; }
   const half = MODE_HALF[G.moveMode], base = slimeAngle(player.s);
-  if (window.__gbSensor && typeof window.__leanOverride !== 'number') {
-    G.dirOff = lean * half;
-  } else {
-    G.dirOff += lean * DIRECT_RATE * dt;
-  }
+  // the board PUSHES like an arrow key (steering.js) — except the OLD preset, which
+  // keeps the original tilt = a spot on the ring
+  const board = window.__gbSensor && typeof window.__leanOverride !== 'number';
+  if (board && steerPreset().abs) G.dirOff = lean * half;
+  else G.dirOff += lean * (board ? steerPreset().rate : DIRECT_RATE) * dt;
   // the limit is ABSOLUTE (±half from the floor, where the 180 seams are
   // painted) — not ±half from the swaying slime line, which let him ride up to
   // 13° over the seam holding a side (measured, tools/drive.mjs --script=edges)
@@ -480,6 +501,20 @@ $('dev-floor').addEventListener('click', (e) => {
   $('dev-floor').textContent = G.worldOverride === 'dojo' ? 'FLOOR: WOOD' : 'FLOOR: LEVEL';
   startLevel(G.level, false);
 });
+// the front of the dev panel: CALIBRATE (RoboRun's wizard, board app only), STEER, MORE
+const calib = initCalibrationWizard();
+setCalibrationLifecycleHooks(
+  () => { G.calPrevPause = G.paused; setPaused(true); },
+  () => { setPaused(!!G.calPrevPause); });
+$('dev-cal').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const ok = await calib.open();
+  if (!ok) bigText('BOARD APP ONLY', 'zone');   // the host's max-angle API isn't here (plain browser)
+});
+const steerLabel = () => { $('dev-steer').textContent = 'STEER: ' + STEER_PRESETS[steerKey()].label; };
+steerLabel();
+$('dev-steer').addEventListener('click', (e) => { e.stopPropagation(); nextSteer(); steerLabel(); G.dirOff = angleDiff(player.theta, slimeAngle(player.s)); });
+$('dev-more').addEventListener('click', (e) => { e.stopPropagation(); document.body.classList.toggle('dev-more'); $('dev-more').innerHTML = document.body.classList.contains('dev-more') ? 'LESS &#9666;' : 'MORE &#9656;'; });
 $('dev-gear').addEventListener('click', (e) => { e.stopPropagation(); gear.on = !gear.pack.visible; $('dev-gear').textContent = gear.pack.visible ? 'BACKPACK ON' : 'BACKPACK OFF'; });
 // The gear itself is locked (GOBALANCE_APP_INTEGRATION.md): hold the lives row
 // for 7 s, then the code. Not persisted — a reload locks it again.
@@ -922,10 +957,11 @@ function frame(now) {
   const diff = difficulty();
 
   if (G.state === 'card') {
-    // the level card is up: board parked, GO on a tap / Space / a held lean
+    // the LOBBY is up: board parked; GO on a tap / Space / a FORWARD lean held 2 s
     player.speed = 0;
-    if (Math.abs(lean) > 0.7) G.cardHold += dt; else G.cardHold = 0;
-    if (pressed || G.cardHold > 0.8) cardPress();
+    if (input.forward()) G.cardHold += dt; else G.cardHold = Math.max(0, G.cardHold - dt * 2);
+    lobbyHold(G.cardHold / 2);
+    if (pressed || G.cardHold >= 2) lobbyGo();
   } else if (G.state === 'clear') {
     // level done: keep cruising (nothing new spawns, nothing hits) while the clear screen is up
     player.speed += (BASE_SPEED * 0.7 - player.speed) * Math.min(1, dt);
@@ -1006,7 +1042,14 @@ function frame(now) {
     obstacles.reach = (G.moveMode.startsWith('d360') || G.moveMode === 'swing') ? null : MODE_HALF[G.moveMode];
     obstacles.spawn(player.s, diff, player.theta);
     forkChoice();
-    if (levelGoalHave() >= LEVELS[G.level].goal.n) levelClear();
+    // a level with a PORTAL (Elad 2026-11-24): reaching the goal brings the portal up
+    // ahead; the level only ends when you ride through it — that's its ending
+    const LG = LEVELS[G.level];
+    if (LG.portal) {
+      if (!G.portalUp && levelGoalHave() >= LG.goal.n) { G.portalUp = true; G.portalS = player.s + 95; portal.place(G.portalS); bigText('PORTAL AHEAD!', 'zone'); }
+      if (G.portalUp && player.s < G.portalS) portal.place(G.portalS);   // follows the road if a fork settles under it
+      if (G.portalUp && player.s >= G.portalS) levelClear();
+    } else if (levelGoalHave() >= LG.goal.n) levelClear();
   } else if (G.state === 'dying') {
     G.overT += dt;
     player.speed *= Math.pow(0.25, dt);
@@ -1030,7 +1073,6 @@ function frame(now) {
   if (G.state === 'play') gear.update(simDt, time, obstacles, onSawCut);
   // NIGHT CITY's portal: stood at the finish once the road to it is settled
   { const L = LEVELS[G.level];
-    if (L.portal && !G.portalUp && player.s > L.goal.n - 260) { G.portalUp = true; portal.place(L.goal.n - 2); }
     portal.update(time); }
   player.place();
   player.animate(simDt, time);

@@ -1,3 +1,4 @@
+import { shapeTilt } from './steering.js';
 // Lean input, one number in [-1, 1] (positive = right).
 //
 // Sources, summed and clamped:
@@ -18,10 +19,12 @@ export class Input {
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') this.keyL = true;
       if (e.code === 'ArrowRight' || e.code === 'KeyD') this.keyR = true;
       if (e.code === 'Space' || e.code === 'Enter') this.anyPress = true;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') this.keyUp = true;
     });
     window.addEventListener('keyup', (e) => {
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') this.keyL = false;
       if (e.code === 'ArrowRight' || e.code === 'KeyD') this.keyR = false;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') this.keyUp = false;
     });
     el.addEventListener('pointerdown', (e) => { this.drag = { x: e.clientX }; this.anyPress = true; });
     window.addEventListener('pointermove', (e) => {
@@ -44,16 +47,18 @@ export class Input {
     // GOBALANCE_SDK.md). Purely additive, so it composes cleanly with keyboard/pointer, and is a
     // no-op in a normal browser where window.__gbSensor is simply undefined.
     const sensor = window.__gbSensor;
-    if (sensor) {
-      // a small dead-zone so standing still is truly neutral, then a gentle curve
-      const raw = sensor.x;
-      const dz = 0.06;
-      const m = Math.max(0, Math.abs(raw) - dz) / (1 - dz);
-      x += Math.sign(raw) * Math.min(1, m * 1.25);
-    }
+    // the current steering preset's dead zone + curve (steering.js)
+    if (sensor) x += shapeTilt(sensor.x);
     // also allow a test hook (headless drive script)
     if (typeof window.__leanOverride === 'number') x = window.__leanOverride;
     return Math.max(-1, Math.min(1, x));
+  }
+
+  /** Leaning FORWARD (the lobby's GO hold): the board's y (Unity convention: positive =
+   *  forward — reference_board_sensor_y_sign), or ArrowUp / W. */
+  forward() {
+    const sn = window.__gbSensor;
+    return !!this.keyUp || !!(sn && typeof sn.y === 'number' && sn.y > 0.35) || window.__fwdOverride === true;
   }
 
   consumePress() {

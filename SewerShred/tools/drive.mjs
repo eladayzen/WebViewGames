@@ -198,15 +198,17 @@ if (script === 'default') {
     ko: (n) => `window.__game.G.kicks = ${n}`,
     air: (n) => `window.__game.G.airPizza = ${n}`,
     pizza: (n) => `window.__game.G.pizza = ${n}`,
+    pts: (n) => `window.__game.G.score = ${n}`,
   };
   const levels = await page.evaluate(() => window.__game.LEVELS.map((L) => ({ key: L.key, goal: L.goal })));
   for (let i = 0; i < levels.length; i++) {
     const L = levels[i];
-    await snap(`L${i}-card`); console.log('card', i, JSON.stringify(await st()));
+    await wait(700); await snap(`L${i}-card`); console.log('card', i, JSON.stringify(await st()));
     await space(); await wait(9000); await snap(`L${i}-play`);
     console.log('play', i, L.key, JSON.stringify(await st()), 'world', await page.evaluate(() => window.__game.worldName()));
     await page.evaluate(force[L.goal.type](L.goal.n)); await wait(2200); await snap(`L${i}-clear`); console.log('clear', i, JSON.stringify(await st()));
-    await space(); await wait(900);
+    // the lobby comes back after the clear screen (and NIGHT CITY's portal has to be ridden through first)
+    await page.waitForFunction(() => !document.getElementById('lobby').classList.contains('hidden'), { timeout: 30000 }).catch(() => {});
   }
   console.log('after-last', JSON.stringify(await st()));
 } else if (script === 'nofoes') {
@@ -283,7 +285,7 @@ if (script === 'default') {
 } else if (script === 'portalend') {
   // NIGHT CITY's finish: jump near the end and snap the portal, then the dev panel
   await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 });
-  await page.evaluate(() => { const g = window.__game; g.G.lives = 99; g.player.s = g.LEVELS[g.G.level].goal.n - 150; });
+  await page.evaluate(() => { const g = window.__game; g.G.lives = 99; g.G.score = g.LEVELS[g.G.level].goal.n; });
   await wait(4500); await snap('portal-near');
   await wait(2500); await snap('portal-close');
   await page.click('#dev-btn'); await wait(400); await snap('devpanel');
@@ -310,7 +312,7 @@ if (script === 'default') {
   await snap('saws-bar');
   await page.click('#dev-sai'); await wait(300); console.log('then stars', JSON.stringify(await st()));
   await page.click('#dev-shield'); await wait(10600); console.log('shield +10.6s', JSON.stringify(await st()));
-  await page.evaluate(() => { const g = window.__game; g.G.lives = 99; g.player.s = g.LEVELS[g.G.level].goal.n - 60; });
+  await page.evaluate(() => { const g = window.__game; g.G.lives = 99; g.G.score = g.LEVELS[g.G.level].goal.n; });
   await page.waitForFunction(() => window.__game.G.state === 'clear', { timeout: 30000 }); await wait(700);
   await snap('portal-through');
   await wait(1800); await snap('portal-clear');
@@ -321,6 +323,49 @@ if (script === 'default') {
   await page.waitForFunction((l) => window.__game.G.lives < l, { timeout: 20000 }, l0);
   await wait(250); await snap('after-hit');
   console.log('hit', JSON.stringify(await page.evaluate(() => ({ lives: window.__game.G.lives, invuln: +window.__game.player.invuln.toFixed(2), bubble: window.__game.player.shield.visible }))));
+} else if (script === 'devpanel') {
+  await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 });
+  await page.keyboard.press('Backquote'); await wait(300); await snap('dev-front');
+  await page.click('#dev-steer'); await wait(200); await page.click('#dev-cal'); await wait(300); await snap('dev-steer-cal');
+  await page.click('#dev-more'); await wait(300); await snap('dev-more');
+  console.log('steer', await page.evaluate(() => document.getElementById('dev-steer').textContent), 'btn hidden', await page.evaluate(() => document.getElementById('dev-btn').style.display));
+} else if (script === 'lobby') {
+  // first screen = the lobby; a 2 s forward hold starts; a clear brings it back with the next unlocked
+  await page.evaluate(() => localStorage.setItem('sewerShred.progress', JSON.stringify({ level: 3, max: 3, v: 4 })));
+  await page.reload(); await wait(2500);
+  await snap('lobby-first');
+  console.log('state', await page.evaluate(() => window.__game.G.state));
+  await page.keyboard.down('ArrowUp'); await wait(1000); await snap('lobby-hold'); await wait(1200); await page.keyboard.up('ArrowUp');
+  console.log('after hold', await page.evaluate(() => [window.__game.G.state, window.__game.G.level]));
+  await wait(4000);
+  await page.evaluate(() => { const g = window.__game; g.player.s = g.LEVELS[g.G.level].goal.n + 5; });
+  await page.waitForFunction(() => document.getElementById('lobby').classList.contains('pop') && !document.getElementById('lobby').classList.contains('hidden'), { timeout: 20000 });
+  await wait(1100); await snap('lobby-after-clear');
+  console.log('after clear', await page.evaluate(() => [window.__game.G.state, window.__game.G.level, localStorage.getItem('sewerShred.progress')]));
+} else if (script === 'scorerate') {
+  // what a (blind, swaying) ride scores: points per metre, to set the levels' points goals
+  await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 });
+  await page.evaluate(() => { const g = window.__game; g.G.lives = 99; g.LEVELS[g.G.level].goal.n = 1e9; });
+  for (let t = 0; t < 10; t++) { await lean(Math.sin(t * 1.3) * 0.8); await wait(4000); }
+  console.log('rate', JSON.stringify(await page.evaluate(() => { const g = window.__game; return { key: g.LEVELS[g.G.level].key, s: Math.round(g.player.s), score: Math.round(g.G.score), perM: +(g.G.score / g.player.s).toFixed(2) }; })));
+} else if (script === 'lbdebug') {
+  await page.evaluate(() => localStorage.removeItem('sewerShred.progress'));
+  await wait(1500); await page.keyboard.press('Space'); await wait(5000);
+  await page.evaluate(() => { window.__game.player.s = 700; });
+  for (let t = 0; t < 8; t++) { await wait(800); console.log(t, JSON.stringify(await page.evaluate(() => ({ st: window.__game.G.state, lobby: document.getElementById('lobby').className, clear: document.getElementById('level-clear').className, active: document.activeElement && document.activeElement.id })))); }
+  await page.keyboard.press('Space'); await wait(600);
+  console.log('after space', JSON.stringify(await page.evaluate(() => ({ st: window.__game.G.state, lobby: document.getElementById('lobby').className }))));
+} else if (script === 'xflow') {
+  // in a run: X → "are you sure?" → yes → OUR lobby; the lobby's X → out to the app (nav:back)
+  await page.evaluate(() => { window.__navs = 0; window.Unity = { call: (m) => { if (m === 'nav:back') window.__navs++; } }; });
+  await page.waitForFunction(() => window.__game.G.state === 'play', { timeout: 20000 }); await wait(1500);
+  await snap('play-buttons');
+  await page.click('#gb-back'); await wait(300); await snap('confirm');
+  console.log('confirm up', await page.evaluate(() => !document.getElementById('quit-confirm').classList.contains('hidden')));
+  await page.click('#qc-yes'); await wait(800); await snap('lobby-after-x');
+  console.log('after yes', JSON.stringify(await page.evaluate(() => ({ st: window.__game.G.state, lobby: !document.getElementById('lobby').classList.contains('hidden'), navs: window.__navs }))));
+  await page.click('#gb-back'); await wait(300);
+  console.log('lobby X', JSON.stringify(await page.evaluate(() => ({ navs: window.__navs }))));
 } else if (script === 'dojo') {
   // the dojo level: ride, sway across the wall, count dummies down, see the stars
   await wait(4500);

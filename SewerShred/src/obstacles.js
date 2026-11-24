@@ -457,8 +457,8 @@ export class Obstacles {
       const fk = forkNear(this.nextS, 30, FORK_QUIET);
       // GET HOME: a forced climb / drop is no reason to go quiet — string pizza up it
       if (fk && fk.side && this.deckMode === 'nofoes' && (fk.kind === 'rise' || fk.kind === 'drop')) {
-        this._p_pizzaLine(this.nextS, 0, slimeAngle(this.nextS));
-        this.nextS += 16; continue;
+        this._p_pizzaWave(this.nextS, 0, slimeAngle(this.nextS));
+        this.nextS += 22; continue;
       }
       if (fk) { if (!fk.side) break; this.nextS = fk.s + FORK_QUIET; continue; }
       const s = this.nextS;
@@ -521,7 +521,8 @@ export class Obstacles {
     const deck = worldAt(s).trains ? [['pizzaRise', 1], ['pizzaLine', 0.4]] : [
       ['crates', 0.35],
       // GET HOME (level 1, Elad 2026-11-23: "add a lot of pizzas"): pizza ~3x as often
-      ['pizzaLine', this.deckMode === 'nofoes' ? 2.6 : 0.8],
+      ['pizzaLine', this.deckMode === 'nofoes' ? 0.3 : 0.8],
+      ['pizzaWave', this.deckMode === 'nofoes' ? 2.4 : 0.3],
       ['pizzaArc', this.deckMode === 'nofoes' ? 1.6 : 0.45],
       // OPEN TOP (Elad 2026-11-22): bars through the axis reach into the sky
       // with no roof to end on — off there, the saw discs carry the load
@@ -635,6 +636,12 @@ export class Obstacles {
       const ss = s - 8 + i * 3.2;
       this.add('pizza', ss, slimeAngle(ss));
     }
+  }
+
+  // a weave that swings across the pipe — not a straight line down the middle (Elad 2026-11-24)
+  _p_pizzaWave(s, diff, sl) {
+    const c = (Math.random() - 0.5) * 0.8, amp = 0.55 + Math.random() * 0.45, ph = Math.random() * TAU, dir = Math.random() < 0.5 ? -1 : 1;
+    for (let i = 0; i < 11; i++) this.add('pizza', s - 12 + i * 2.8, c + dir * amp * Math.sin(ph + i * 0.5));
   }
 
   _p_pizzaArc(s, diff, sl) {
