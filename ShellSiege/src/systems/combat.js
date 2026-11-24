@@ -266,5 +266,10 @@ export function updateBullets(w, dt, onHit) {
       else if (!b.returns) { b.alive = false; break; }
     }
   }
-  if (w.bullets.length > 400) w.bullets = w.bullets.filter((b) => b.alive);
+  // DROP THE DEAD EVERY FRAME, in place. This used to wait until there were 400, so a long run carried a
+  // few hundred corpses that three per-frame loops (this one, the quiver count, the renderer) all scanned.
+  const bl = w.bullets;
+  let keep = 0;
+  for (let i = 0; i < bl.length; i++) if (bl[i].alive) bl[keep++] = bl[i];
+  bl.length = keep;
 }

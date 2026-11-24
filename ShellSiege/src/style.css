@@ -599,7 +599,7 @@ img.pip.boss { width: 46px; }
 
 
 /* ================= SIZE PASS (Elad, 24 Nov): gameplay UI 10% smaller, and everything fits a phone ================= */
-#vitals, #abilities, #chrome { zoom: 0.9; }
+#vitals, #abilities, #upgrades, #chrome { zoom: 0.9; }
 #banner.plain { font-size: clamp(16px, 2.7vw, 27px); }
 #enemies-left b { font-size: 24px; }
 
@@ -817,7 +817,7 @@ body.in-lobby #pause-button, body.in-lobby #dev-button { display: none; }
 @media (max-width: 620px) and (min-height: 521px) { #lobby .lobby-card { flex-direction: column; } .lobby-story { width: 100%; } }
 
 /* the game's own HUD is not shown behind the lobby */
-body.in-lobby #vitals, body.in-lobby #room-pips, body.in-lobby #enemies-left, body.in-lobby #abilities, body.in-lobby #donnie-pop, body.in-lobby #banner { display: none !important; }
+body.in-lobby #vitals, body.in-lobby #room-pips, body.in-lobby #enemies-left, body.in-lobby #abilities, body.in-lobby #upgrades, body.in-lobby #donnie-pop, body.in-lobby #banner { display: none !important; }
 .lobby-tag { font: 900 11px 'Arial Black', Impact, sans-serif; letter-spacing: .18em; color: var(--cream); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; margin: 0 0 -2px; text-align: center; }
 
 
@@ -844,3 +844,230 @@ body.in-lobby #vitals, body.in-lobby #room-pips, body.in-lobby #enemies-left, bo
 .lv-btn.newest { background: #ffe9a8; box-shadow: 0 0 16px rgba(255, 225, 120, .9), 0 5px 0 rgba(0, 0, 0, .4); }
 .lv-btn.locked { background: #5a6068; opacity: .7; cursor: default; box-shadow: none; } .lv-btn.locked b { color: #c9d0d8; }
 .lv-btn.open:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0, 0, 0, .4); }
+
+
+/* ================= HUD SPLIT (Elad, 24 Nov): abilities (allies, weapons, effects) vs Raphael's upgrades =================
+   ?hud=2 (default): upgrades on the RIGHT, abilities on the LEFT, both always shown, as columns.
+   ?hud=1: abilities along the bottom as before; upgrades appear at the start of each room, then fade. */
+#upgrades { position: fixed; z-index: 20; pointer-events: none; display: flex; gap: 10px; }
+#upgrades.empty { display: none; }
+.slot.perm { border-color: var(--green); }
+.slot[data-key="leo"] svg, .slot[data-key="mikey"] svg, .slot[data-key="donnie"] svg { filter: drop-shadow(0 1px 0 rgba(0,0,0,.25)); }
+/* an ally's face fills the slot: the cover timer draws over it */
+.slot[data-key="leo"], .slot[data-key="mikey"], .slot[data-key="donnie"] { padding: 4px; }
+.slot[data-key="mikey"]::after {
+  content: ''; position: absolute; inset: 0; border-radius: 11px; pointer-events: none;
+  background: conic-gradient(rgba(10, 20, 8, .62) calc(var(--cover, 0) * 360deg), transparent 0);
+}
+
+body.hud-2 #abilities {
+  left: 52px; bottom: auto; top: 50%; transform: translateY(-50%);
+  flex-direction: column; flex-wrap: wrap; justify-content: flex-start; align-content: flex-start;
+  max-height: 74vh; max-width: none; gap: 8px;
+}
+body.hud-2 #upgrades {
+  right: 14px; top: 118px; transform: none;
+  flex-direction: column; flex-wrap: wrap-reverse; align-content: flex-end; max-height: calc(100vh - 140px); gap: 8px;
+}
+body.hud-2 #abilities .slot, body.hud-2 #upgrades .slot { width: 46px; height: 46px; padding: 7px; border-width: 3px; border-radius: 12px; }
+body.hud-2 #abilities .slot[data-key="leo"], body.hud-2 #abilities .slot[data-key="mikey"], body.hud-2 #abilities .slot[data-key="donnie"] { padding: 3px; }
+body.hud-2 .slot b { right: -8px; bottom: -8px; min-width: 20px; height: 20px; line-height: 16px; font-size: 11px; }
+
+body.hud-1 #upgrades {
+  left: 50%; bottom: calc(max(14px, env(safe-area-inset-bottom)) + 74px); transform: translateX(-50%);
+  max-width: 94vw; flex-wrap: wrap; justify-content: center;
+  opacity: 0; transition: opacity .5s ease;
+}
+body.hud-1 #upgrades.peek { opacity: 1; }
+
+/* ================= RAPHAEL'S CHARACTER SHEET (ui/sheet.js) =================
+   The level-complete screen and the end of every room: permanent upgrades fly in and are BURNED in. */
+.sheet { background: var(--cream); border: 5px solid var(--ink); border-radius: 18px; padding: 8px 12px 10px; box-shadow: 0 6px 0 rgba(0,0,0,.4); color: var(--ink); }
+.sheet-title {
+  text-align: center; font: 900 26px 'Arial Black', Impact, sans-serif; letter-spacing: .05em; color: var(--orange);
+  -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; margin: -22px auto 6px; width: max-content; max-width: 100%;
+  background: transparent; text-transform: uppercase;
+}
+.sheet-body { display: flex; align-items: center; gap: 14px; }
+.sheet-portrait { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: none; }
+.sheet-face { width: 64px; height: 64px; filter: drop-shadow(0 3px 0 rgba(0,0,0,.3)); }
+.sheet-portrait span { font: 900 11px 'Arial Black', Impact, sans-serif; letter-spacing: .14em; color: #a3201f; }
+.sheet-main { flex: 1; min-width: 0; text-align: center; }
+.sheet-slots { display: flex; flex-wrap: wrap; gap: 12px 10px; justify-content: center; }
+.sheet-slots .slot { width: 52px; height: 52px; padding: 8px; pointer-events: auto; }
+.sheet-slots .slot.none { opacity: .28; border-style: dotted; border-color: #8a8a72; box-shadow: none; }
+.sheet-cap { margin-top: 12px; font: 900 13px 'Arial Black', Impact, sans-serif; letter-spacing: .12em; color: var(--green-d); }
+.sheet-stats { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 3px dashed rgba(20,33,15,.3); flex: none; display: grid; gap: 3px; }
+.sheet-stats li { display: flex; justify-content: space-between; gap: 12px; font: 900 12px 'Arial Black', Impact, sans-serif; min-width: 104px; }
+.sheet-stats i { font-style: normal; color: #6b6a55; letter-spacing: .08em; }
+.sheet-stats b { color: var(--ink); }
+
+/* a slot waiting for its flight: an empty socket. Then BURN: flames rise, the slot glows white-hot, and it cools into a locked one. */
+.slot.incoming { opacity: .35; border-style: dashed; animation: none; }
+.slot.incoming svg, .slot.incoming b { opacity: 0; }
+.slot.burn { animation: slotBurn 1.5s ease-out both; z-index: 5; }
+.slot.burn svg { animation: iconBurn 1.5s ease-out both; }
+@keyframes slotBurn {
+  0%   { opacity: 1; transform: scale(1.5); box-shadow: 0 0 0 3px var(--ink), 0 0 30px 14px #fff3b0; background: #fff3b0; }
+  25%  { transform: scale(1.18); box-shadow: 0 0 0 3px var(--ink), 0 0 26px 10px #ff9a1a; background: #ffc86a; }
+  100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 3px var(--ink), 0 5px 0 3px rgba(0,0,0,.3); background: var(--cream); }
+}
+@keyframes iconBurn { 0% { filter: brightness(0) saturate(0); } 30% { filter: sepia(1) saturate(6) hue-rotate(-12deg) brightness(1.1); } 100% { filter: none; } }
+.slot .flame {
+  position: absolute; left: var(--x); bottom: 30%; width: 14px; height: 22px; margin-left: -7px; pointer-events: none; z-index: 6;
+  background: radial-gradient(ellipse at 50% 75%, #fff6c0 0 22%, #ffb52a 45%, #ff5a1a 72%, transparent 76%);
+  border-radius: 50% 50% 46% 46% / 66% 66% 34% 34%; opacity: 0; animation: flameUp 1.1s ease-out var(--d) both;
+}
+@keyframes flameUp { 0% { opacity: 0; transform: translateY(8px) scale(.4); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-34px) scale(1.25, 1.7); } }
+
+/* LEVEL COMPLETE layout: the NEW tray on the left, the sheet beside it, what is only for this level underneath */
+#over-panels.sheeted { display: block; margin-top: 18px; }
+.won-stage { display: flex; align-items: center; gap: 14px; }
+.won-stage .sheet { flex: 1; min-width: 0; }
+.tray { flex: none; width: 112px; background: rgba(0,0,0,.35); border: 4px dashed rgba(251,230,176,.7); border-radius: 16px; padding: 4px 6px 8px; text-align: center; }
+.tray-cap { font: 900 13px 'Arial Black', Impact, sans-serif; letter-spacing: .14em; color: #ffe9a8; margin-bottom: 4px; }
+.tray-items { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.tray .slot { width: 46px; height: 46px; padding: 6px; }
+.temp-strip { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; }
+.temp-strip > span { font: 900 11px 'Arial Black', Impact, sans-serif; letter-spacing: .12em; color: var(--cream); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+.temp-strip .slots { display: flex; gap: 8px; }
+.temp-strip .slot { width: 34px; height: 34px; padding: 4px; border-width: 3px; }
+@media (max-height: 460px) {
+  .sheet-face { width: 46px; height: 46px; }
+  .sheet-slots .slot { width: 42px; height: 42px; padding: 6px; }
+  .sheet-title { font-size: 20px; margin-top: -18px; }
+  .sheet-cap { margin-top: 8px; font-size: 11px; }
+  .tray { width: 76px; } .tray .slot { width: 38px; height: 38px; }
+  #over-panels.sheeted { margin-top: 14px; }
+}
+
+/* END OF EVERY ROOM: the same sheet, compact, under the new-power box */
+#roll-sheet { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(92vw, 560px); z-index: 3; }
+#roll-sheet[hidden] { display: none; }
+#roll-sheet .sheet { padding: 4px 10px 6px; border-width: 4px; background: rgba(255, 248, 225, .94); }
+#roll-sheet .sheet-title { display: none; }
+#roll-sheet .sheet-face { width: 38px; height: 38px; }
+#roll-sheet .sheet-slots .slot { width: 36px; height: 36px; padding: 5px; border-width: 3px; }
+#roll-sheet .sheet-cap { margin-top: 5px; font-size: 10px; }
+#roll-sheet .sheet-stats li { font-size: 10px; min-width: 88px; }
+@media (max-height: 460px) { .roll-stage { width: min(62vw, 270px, 38vh); } .roll-title { margin-bottom: 6px; } }
+
+/* THE THREE AREAS OF THE GAME SCREEN: COMBAT (top: health, count), ABILITIES (left), RAPHAEL (right) */
+body.hud-2 #abilities::before, body.hud-2 #upgrades::before {
+  display: block; font: 900 9px 'Arial Black', Impact, sans-serif; letter-spacing: .14em; color: #fff8e1;
+  -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; margin-bottom: 2px;
+}
+body.hud-2 #abilities::before { content: 'ABILITIES'; }
+body.hud-2 #upgrades::before { content: 'RAPHAEL'; text-align: right; }
+body.hud-2 #upgrades.empty::before { display: none; }
+body.hud-2 #abilities:empty::before { display: none; }
+
+@media (max-height: 460px) {
+  .over-card { padding: 4px 14px 8px; }
+  #over-title.big { font-size: 30px; margin-bottom: 0; }
+  #over-title.big .medal { width: 40px; }
+  #over-map { margin: 22px 4px 0; }
+  #over-map .node { width: 40px; } #over-map .node.boss img { width: 46px; }
+  .over-card .card-score { margin: 14px 0 6px; font-size: 13px; }
+  #restart-button { padding-top: 8px; padding-bottom: 8px; }
+  .tray { width: 94px; }
+}
+
+.tray { width: 100px; } .tray .slot { width: 38px; height: 38px; padding: 5px; } .tray-items { gap: 8px 8px; }
+.tray-items { display: grid; grid-template-columns: repeat(2, auto); justify-content: center; align-content: start; }
+.tray { align-self: center; }
+
+/* ================= RPG-STYLE CHARACTER SHEET (casual / mid): parchment, gold trim, studs, bars ================= */
+.sheet {
+  position: relative; background: linear-gradient(180deg, #fff3d0 0%, #f6dfa6 100%); border: 5px solid var(--ink); border-radius: 20px;
+  padding: 14px 16px 12px; box-shadow: 0 0 0 3px #d9a93a inset, 0 0 0 6px var(--ink) inset, 0 8px 0 rgba(0,0,0,.45), 0 0 40px rgba(255,170,60,.25);
+}
+.sheet::before, .sheet::after { content: ''; position: absolute; top: 9px; width: 9px; height: 9px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff2a8, #c8902a 70%); border: 2px solid var(--ink); z-index: 1; }
+.sheet::before { left: 10px; } .sheet::after { right: 10px; }
+.sheet-title { position: absolute; left: 50%; top: -17px; transform: translateX(-50%); margin: 0; width: max-content; z-index: 3; -webkit-text-stroke: 0; }
+.sheet-title span {
+  display: block; padding: 3px 26px 4px; font: 900 22px 'Arial Black', Impact, sans-serif; letter-spacing: .08em; color: #fff3d0; text-transform: uppercase;
+  background: linear-gradient(180deg, #e0452f, #a3201f); border: 4px solid var(--ink); border-radius: 8px; box-shadow: 0 4px 0 rgba(0,0,0,.4), 0 0 0 2px #e8b34a inset;
+  text-shadow: 0 2px 0 rgba(0,0,0,.45); clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 50%, 100% 100%, 0 100%, 10px 50%);
+}
+.sheet-body { gap: 16px; padding-top: 6px; }
+.sheet-portrait .ring { position: relative; width: 78px; height: 78px; border-radius: 50%; background: radial-gradient(circle, #8ad06b, #3f8a3a); border: 4px solid var(--ink); box-shadow: 0 0 0 4px #e8b34a, 0 0 0 7px var(--ink), 0 6px 0 7px rgba(0,0,0,.3); display: grid; place-items: center; }
+.sheet-face { width: 66px; height: 66px; }
+.sheet-portrait .lv { position: absolute; right: -30px; bottom: -10px; padding: 1px 7px; font: 900 12px 'Arial Black', Impact, sans-serif; font-style: normal; color: var(--ink); background: #ffd84a; border: 3px solid var(--ink); border-radius: 10px; }
+.sheet-portrait .lv.up { animation: lvPop .6s cubic-bezier(.3,1.8,.5,1); }
+@keyframes lvPop { 0% { transform: scale(1); } 40% { transform: scale(1.7) rotate(-8deg); background: #fff6a0; } 100% { transform: scale(1); } }
+.sheet-portrait span { margin-top: 10px; font-size: 12px; }
+.sheet-slots .slot { background: radial-gradient(circle at 50% 35%, #fff9e4, #f1d58f); box-shadow: 0 0 0 3px var(--ink), 0 4px 0 3px rgba(0,0,0,.3), inset 0 -4px 0 rgba(0,0,0,.1); }
+.sheet-slots .slot.banked { border-color: #d9a93a; }
+.sheet-cap { position: relative; margin-top: 12px; }
+.sheet-cap::before, .sheet-cap::after { content: ''; position: absolute; top: 50%; width: 18%; border-top: 3px solid rgba(20,33,15,.45); }
+.sheet-cap::before { left: 0; } .sheet-cap::after { right: 0; }
+.sheet-stats { border-left: 0; padding-left: 0; gap: 6px; min-width: 190px; }
+.sheet-stats li { display: grid; grid-template-columns: 56px 1fr 44px; align-items: center; gap: 6px; min-width: 0; }
+.sheet-stats i { font-size: 11px; }
+.sheet-stats b { text-align: right; font-size: 13px; }
+.sheet-stats .bar { height: 11px; border: 2.5px solid var(--ink); border-radius: 8px; background: rgba(20,33,15,.18); overflow: hidden; display: block; }
+.sheet-stats .bar u { display: block; height: 100%; text-decoration: none; background: linear-gradient(180deg, #ffd84a, #ff8a1a); transition: width .9s cubic-bezier(.2,.9,.3,1); }
+.sheet-stats li.up .bar u { box-shadow: 0 0 10px 2px #fff3a0; }
+.sheet-stats li.up b { animation: statPop .7s ease-out; color: #c8501a; }
+@keyframes statPop { 0% { transform: scale(1); } 35% { transform: scale(1.5); } 100% { transform: scale(1); } }
+
+/* the impact: the sheet thumps, a shockwave, sparks and a BANKED tag */
+.sheet.thump { animation: sheetThump .45s ease-out; }
+@keyframes sheetThump { 0% { transform: translate(0,0); } 15% { transform: translate(-5px,3px) scale(1.01); } 30% { transform: translate(5px,-3px); } 50% { transform: translate(-3px,2px); } 100% { transform: translate(0,0); } }
+.slot .shock { position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; border: 4px solid #fff3a0; pointer-events: none; z-index: 6; animation: shockOut .7s ease-out both; }
+@keyframes shockOut { 0% { transform: scale(.5); opacity: 1; } 100% { transform: scale(7); opacity: 0; } }
+.slot .ember { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3px; border-radius: 50%; background: #ffd84a; box-shadow: 0 0 8px 2px #ff8a1a; pointer-events: none; z-index: 7; animation: emberOut .9s ease-out both; }
+@keyframes emberOut { 0% { transform: translate(0,0) scale(1.2); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(.2); opacity: 0; } }
+.slot .plus { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); pointer-events: none; z-index: 8; font: 900 12px 'Arial Black', Impact, sans-serif; font-style: normal; letter-spacing: .08em; white-space: nowrap; color: #fff3a0; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; animation: plusUp 1.3s ease-out .15s both; }
+@keyframes plusUp { 0% { opacity: 0; transform: translate(-50%, 6px) scale(.6); } 20% { opacity: 1; transform: translate(-50%, -8px) scale(1.2); } 100% { opacity: 0; transform: translate(-50%, -40px) scale(1); } }
+
+/* FULL SCREEN: the level-complete and OVERRUN moments are the sheet, on a dark vignette with drifting embers */
+#gameover-overlay.sheetmode { background: radial-gradient(ellipse at 50% 45%, rgba(70, 30, 10, .88), rgba(4, 6, 8, .97) 72%); }
+.over-card.sheetmode { width: min(96vw, 900px); }
+.over-card.sheetmode .sheet { padding: 20px 20px 14px; }
+.over-card.sheetmode .sheet-slots .slot { width: 58px; height: 58px; padding: 9px; }
+.over-card.sheetmode .sheet-face { width: 74px; height: 74px; }
+.over-card.sheetmode .sheet-portrait .ring { width: 92px; height: 92px; }
+.over-card.sheetmode .sheet-stats { min-width: 230px; }
+.over-card.dead #over-title { filter: drop-shadow(0 0 16px rgba(220, 40, 30, .6)); }
+.over-card.dead .sheet { box-shadow: 0 0 0 3px #b9852c inset, 0 0 0 6px var(--ink) inset, 0 8px 0 rgba(0,0,0,.45), 0 0 46px rgba(220, 50, 30, .3); }
+#over-panels .embers { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: -1; }
+#over-panels .embers i { position: absolute; bottom: -10px; width: 6px; height: 6px; border-radius: 50%; background: #ffb347; box-shadow: 0 0 8px 2px #ff7a1a; opacity: 0; animation: emberRise var(--t) linear var(--d) infinite; }
+@keyframes emberRise { 0% { transform: translateY(0) translateX(0); opacity: 0; } 10% { opacity: .9; } 100% { transform: translateY(-110vh) translateX(40px); opacity: 0; } }
+#over-panels.sheeted { position: relative; }
+#gameover-overlay.sheetmode #over-title { animation: titleDrop .7s cubic-bezier(.3,1.6,.5,1) both; }
+@keyframes titleDrop { 0% { transform: translateY(-40px) scale(1.4); opacity: 0; } 100% { transform: none; opacity: 1; } }
+
+@media (max-height: 460px) {
+  .sheet { padding: 12px 12px 8px; }
+  .sheet-title span { font-size: 16px; padding: 2px 18px 3px; }
+  .sheet-title { top: -14px; }
+  .sheet-portrait .ring, .over-card.sheetmode .sheet-portrait .ring { width: 60px; height: 60px; }
+  .sheet-face, .over-card.sheetmode .sheet-face { width: 50px; height: 50px; }
+  .over-card.sheetmode .sheet-slots .slot, .sheet-slots .slot { width: 44px; height: 44px; padding: 6px; }
+  .sheet-stats, .over-card.sheetmode .sheet-stats { min-width: 150px; gap: 4px; }
+  .sheet-stats li { grid-template-columns: 46px 1fr 36px; }
+  .sheet-stats i { font-size: 9px; } .sheet-stats b { font-size: 11px; }
+  .sheet-cap { margin-top: 8px; }
+}
+/* the compact sheet at the end of a room has no room for the bars: portrait and sockets only */
+#roll-sheet .sheet { padding: 8px 10px 6px; }
+#roll-sheet .sheet-stats { display: none; }
+#roll-sheet .sheet-portrait .ring { width: 46px; height: 46px; } #roll-sheet .sheet-face { width: 38px; height: 38px; }
+#roll-sheet .sheet-portrait span { display: none; } #roll-sheet .sheet-portrait .lv { font-size: 10px; right: -12px; }
+
+.tray.spent { opacity: .25; transition: opacity .6s ease 0s; }
+#over-panels.sheeted { overflow: visible; }
+body:has(#gameover-overlay.sheetmode:not(.hidden)) { overflow: hidden; }
+#gameover-overlay { overflow-x: hidden; }
+
+/* OVERRUN: what was kept and what was lost */
+.lost-strip { margin-top: 10px; display: grid; gap: 4px; justify-items: center; }
+.lost-line { display: flex; align-items: center; gap: 10px; font: 800 12px 'Trebuchet MS', sans-serif; color: var(--cream); }
+.lost-line b { font: 900 13px 'Arial Black', Impact, sans-serif; letter-spacing: .08em; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+.lost-line b.keep { color: #8be07a; } .lost-line b.gone { color: #ff6a5a; }
+.lost-line .slots { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.lost-line .slot { width: 32px; height: 32px; padding: 4px; border-width: 3px; filter: grayscale(1) brightness(.8); opacity: .75; border-style: dashed; border-color: #8a8a7a; }
+.lost-line .slot::before { content: ''; position: absolute; left: -3px; right: -3px; top: 50%; border-top: 3px solid #e0452f; transform: rotate(-35deg); z-index: 3; }
+@media (max-height: 460px) { .lost-strip { margin-top: 6px; } .lost-line { font-size: 10px; } .lost-line .slot { width: 26px; height: 26px; padding: 3px; } #over-map { margin-top: 14px; } .over-card.dead .card-score { margin-top: 8px; } }

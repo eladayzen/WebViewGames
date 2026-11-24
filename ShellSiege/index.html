@@ -102,6 +102,8 @@
     <!-- THE ABILITIES YOU HOLD: one slot per ability taken, with how many times.
          Filled by ui/hud.js from the build, only when it changes. -->
     <div id="abilities"></div>
+    <!-- RAPHAEL'S UPGRADES (the permanent ones), apart from the temporary abilities above -->
+    <div id="upgrades"></div>
 
     <canvas id="game"></canvas>
 
@@ -146,6 +148,8 @@
          open, rise (concept C). It plays on the black the iris leaves behind. -->
     <div id="roll-overlay" class="hidden" data-phase="">
       <div class="roll-title">NEW POWER</div>
+      <!-- Raphael's sheet at the end of EVERY room: a permanent find flies in and burns (ui/sheet.js) -->
+      <div id="roll-sheet"></div>
       <div class="roll-stage">
         <div class="roll-pool"></div>
         <div class="roll-rays"></div>

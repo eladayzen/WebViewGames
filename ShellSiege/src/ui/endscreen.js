@@ -14,6 +14,7 @@
 import { ABILITIES } from '../core/abilities.js';
 import { iconFor } from './icons.js';
 import { doorIcon } from './doors.js';
+import { sheetHtml, flyAndBurn } from './sheet.js';
 
 const slot = (k, count, spent, cls = '', style = '') =>
   `<div class="slot ${ABILITIES[k].kind}${spent ? ' spent' : ''}${cls ? ' ' + cls : ''}" title="${ABILITIES[k].label}"${style ? ` style="${style}"` : ''}>${iconFor(k)}` +
@@ -69,13 +70,54 @@ export function renderEnd(kind, { build, bank = {}, oldBank = {}, loose = {}, ke
   const bankHtml = bankKeys.map((k) => slot(k, bank[k], false, 'banked' + ((bank[k] || 0) > (oldBank[k] || 0) ? ' fresh' : ''), `--d:${shutAt}s`)).join('');
 
   const panels = document.getElementById('over-panels');
+  let play = null;
   if (panels) {
-    panels.className = won ? 'won' : 'dead';
+    // BOTH ENDINGS USE RAPHAEL'S SHEET (Elad, 24 Nov): full screen, the new permanent finds in a tray, flying
+    // into the sheet and being burned in. On a LEVEL CLEAR every one of them goes in. On OVERRUN only the one
+    // kept pick does; the rest shatter in the tray.
+    const card = document.querySelector('.over-card');
+    card?.classList.add('sheetmode');
+    card?.classList.toggle('dead', !won);
+    document.getElementById('gameover-overlay')?.classList.add('sheetmode');
+    const permLoose = looseKeys.filter((k) => ABILITIES[k].kind === 'perm');
+    const flyKeys = won ? permLoose : permLoose.filter((k) => k === keptPick);
+    const lostKeys = won ? [] : permLoose.filter((k) => k !== keptPick);
+    const after = { ...build };                               // what the sheet will show: the BANK for perms
+    for (const k of keys) if (ABILITIES[k].kind === 'perm') after[k] = bank[k] || 0;
+    const incoming = {};
+    for (const k of flyKeys) incoming[k] = Math.max(1, (after[k] || 0) - (oldBank[k] || 0));
+    const trayItem = (k, cls) => slot(k, loose[k], false, `tray-item ${cls}`).replace('class="slot', `data-key="${k}" class="slot`);
+    const tray = flyKeys.map((k) => trayItem(k, 'to-fly')).concat(lostKeys.map((k) => trayItem(k, 'to-lose'))).join('');
+    const embers = Array.from({ length: 16 }, (_, i) => `<i style="left:${(i * 37) % 100}%;--t:${(3 + (i % 5)).toFixed(1)}s;--d:${((i * 0.37) % 3).toFixed(2)}s"></i>`).join('');
+    // OVERRUN EXPLAINS WHAT YOU HAD AND WHAT YOU LOST: the temporary abilities (they end with the run) and the
+    // permanent finds that were not the one kept, greyed and struck through, beside what you keep.
+    const lostSlots = [...temp.map((k) => slot(k, build[k], true)), ...lostKeys.map((k) => slot(k, loose[k], true))].join('');
+    const keptN = flyKeys.reduce((n, k) => n + (incoming[k] || 1), 0);
+    const lostN = temp.length + lostKeys.length;
+    const lostHtml = won ? '' : `<div class="lost-strip"><div class="lost-line"><b class="keep">KEPT ${keptN}</b><span>permanent upgrade${keptN === 1 ? '' : 's'} (only the best find is kept)</span></div>` +
+      (lostN ? `<div class="lost-line"><b class="gone">LOST ${lostN}</b><div class="slots">${lostSlots}</div></div>` : '') + '</div>';
+    panels.className = (won ? 'won' : 'dead') + ' sheeted';
     panels.innerHTML =
-      `<section class="temp"><h3>TEMPORARY</h3><div class="slots">` +
-        (temp.length ? temp.map((k) => slot(k, build[k], !won)).join('') : '<em>none</em>') +
-      '</div></section>' +
-      `<section class="vault ${kind}" style="--shut:${shutAt}s"><div class="vault-loose">${looseHtml}</div><div class="vault-box">${LOCK}<div class="vault-bank">${bankHtml}</div></div></section>`;
+      `<div class="embers" aria-hidden="true">${embers}</div>` +
+      `<div class="won-stage">${permLoose.length ? `<div class="tray"><div class="tray-cap">${won ? 'NEW' : 'FOUND'}</div><div class="tray-items">${tray}</div></div>` : ''}` +
+      sheetHtml({ build: after, bank: oldBank, incoming, showEmpty: true }) + '</div>' +
+      lostHtml;
+    play = () => {
+      const root = panels;
+      let t = 0;
+      flyKeys.forEach((k, i) => {
+        const el = root.querySelector(`.tray-item[data-key="${k}"]`);
+        flyAndBurn(el, root, k, { delay: 900 + i * 800 });
+        t = 900 + (i + 1) * 800;
+      });
+      if (permLoose.length) setTimeout(() => root.querySelector('.tray')?.classList.add('spent'), Math.max(t, 900 + 800) + 900);
+      // the ones that are NOT kept: shake, go grey and fall apart
+      lostKeys.forEach((k, i) => {
+        const el = root.querySelector(`.tray-item[data-key="${k}"]`);
+        el?.animate([{ transform: 'none', filter: 'none', opacity: 1 }, { transform: 'translateX(4px) rotate(5deg)', filter: 'grayscale(1)', opacity: 1, offset: 0.4 },
+          { transform: 'translateY(46px) rotate(28deg) scale(.5)', filter: 'grayscale(1)', opacity: 0 }], { duration: 1000, delay: 700 + i * 250, easing: 'ease-in', fill: 'forwards' });
+      });
+    };
   }
 
   // the map: the first room of the level you start next, a trail of pizzas, the boss at the end
@@ -92,4 +134,5 @@ export function renderEnd(kind, { build, bank = {}, oldBank = {}, loose = {}, ke
     }
     map.innerHTML = `<div class="trail">${nodes}</div><div class="lvl">LEVEL ${next}</div>`;
   }
+  return play;
 }

@@ -209,6 +209,7 @@ async function boot() {
     unlocked = Math.max(unlocked, run.level);
     if (persist) saveProgress(bank, { level: run.level, room: run.roomIdx, build: w.build }, unlocked);
     arrival?.start();                       // every room opens with the turtle teleporting in
+    hud.peekUpgrades();                     // HUD option 1: Raphael's upgrades show for a moment, then go
     const n = run.roomIdx + 1;
     // Level on the first line, room on the second: small and plain, so it does not hide the turtle.
     hud.say(`LEVEL ${run.level}`, run.room.isLast ? 'FINAL ROOM' : `ROOM ${n}`, true);
@@ -223,7 +224,7 @@ async function boot() {
     const loose = looseOf(w.build, bank);
     const keptPick = kind === 'won' ? null : pickToKeep(w.build, bank);
     const newBank = kind === 'won' ? bankOnWin(bank, w.build) : bankOnDeath(bank, w.build);
-    renderEnd(kind, { build: w.build, bank: newBank, oldBank: bank, loose, keptPick, level: run.level, rooms: run.rooms });
+    const playEnd = renderEnd(kind, { build: w.build, bank: newBank, oldBank: bank, loose, keptPick, level: run.level, rooms: run.rooms });
     bank = newBank;
     if (kind === 'won') unlocked = Math.max(unlocked, run.level + 1);      // clearing a level opens the next
     if (persist) saveProgress(bank, null, unlocked);
@@ -231,6 +232,7 @@ async function boot() {
     if (finalScore) finalScore.textContent = String(kills);
     hud.hideBanner();
     overlay.classList.remove('hidden');
+    if (playEnd) requestAnimationFrame(() => playEnd());      // the flight needs the card on screen to measure it
   }
 
   /** What a run event looks like on screen. The run itself never touches the DOM. */
@@ -244,7 +246,7 @@ async function boot() {
       hud.say(e.last ? 'LEVEL CLEAR' : 'ROOM CLEAR', `${kills} down`);
       if (e.last) hud.celebrate();            // confetti over the field: a level is a bigger moment than a room
     }
-    else if (e.type === 'rollStart') { if (!e.roll.done) rollUi.open(e.roll, { black: !!e.start }); }
+    else if (e.type === 'rollStart') { if (!e.roll.done) rollUi.open(e.roll, { black: !!e.start, build: w.build, bank }); }
     else if (e.type === 'rollDone') { rollUi.close(); }
     else if (e.type === 'roomStart') { applyLook(run.room.look); announceRoom(); }
     else if (e.type === 'won') showEnd('won');
@@ -347,7 +349,18 @@ async function boot() {
   let last = performance.now();
   let muzzleY = 1.1;
   let kills = 0;
-  let allyHooksRef = {};       // the ally hooks of the latest frame, for the dagger-hit arcs
+  let allyHooksRef = {};
+  // HUD LAYOUT (Elad, 24 Nov): ?hud=2 (default) upgrades on the RIGHT and abilities on the LEFT, always shown;
+  // ?hud=1 abilities along the bottom, upgrades only at the start of each room.
+  document.body.classList.add(new URLSearchParams(location.search).get('hud') === '1' ? 'hud-1' : 'hud-2');
+  let hurtFlashOn = false;
+  // DOM writes only when the value CHANGED: assigning textContent or a style every frame restyles the page
+  // whether or not anything differs, and on a phone that is a real share of the frame.
+  const seen = {};
+  const setStyle = (id, el, prop, v) => { if (seen[id] !== v) { seen[id] = v; el.style[prop] = v; } };
+  const setText = (id, el, v) => { if (seen[id] !== v) { seen[id] = v; el.textContent = v; } };
+  const hudPanel = document.getElementById('hud');
+  const hudHidden = () => !hudPanel || hudPanel.classList.contains('hidden');       // the ally hooks of the latest frame, for the dagger-hit arcs
 
   function frame(now) {
     requestAnimationFrame(frame);
@@ -502,23 +515,27 @@ async function boot() {
 
       {   // GETTING HIT: a red vignette, and the turtle flashes (core/foes.js sets w.hurtT on each hit)
         const k = Math.min(1, (w.hurtT || 0) / 0.35);
-        if (hurtEl) hurtEl.style.opacity = String(k * 0.95);
-        rig.model.traverse((o) => {
-          if (!o.isMesh || !o.material.emissive) return;
-          const b = o.material.userData.baseEm || (o.material.userData.baseEm = o.material.emissive.clone());
-          o.material.emissive.setRGB(b.r + k * 0.9, b.g + k * 0.15, b.b + k * 0.12);
-        });
+        if (hurtEl) setStyle('hurt', hurtEl, 'opacity', String(Math.round(k * 0.95 * 50) / 50));
+        // walk the rig's meshes only while the flash is live (and once more to clear it), not every frame
+        if (k > 0 || hurtFlashOn) {
+          hurtFlashOn = k > 0;
+          rig.model.traverse((o) => {
+            if (!o.isMesh || !o.material.emissive) return;
+            const b = o.material.userData.baseEm || (o.material.userData.baseEm = o.material.emissive.clone());
+            o.material.emissive.setRGB(b.r + k * 0.9, b.g + k * 0.15, b.b + k * 0.12);
+          });
+        }
       }
       hud.setAbilities(w.build, bank);
       hud.setAllyTimers(w.allies);
-      if (hpFill) hpFill.style.width = Math.max(0, (w.hp / w.maxHp) * 100) + '%';
+      if (hpFill) setStyle('hp', hpFill, 'width', Math.max(0, Math.round((w.hp / w.maxHp) * 1000) / 10) + '%');
       hud.setRooms(run.roomIdx, run.rooms,
         run.phase === 'cleared' || run.phase === 'roll' || run.phase === 'won');
       hud.setLeft(enemiesLeft(w, run.room), run.phase === 'fight');
-      if (hudKills) hudKills.textContent = String(kills);
-      if (hudTime) hudTime.textContent = w.timeS.toFixed(1) + 's';
-      if (hudSrc) hudSrc.textContent = lean.source;
-      if (hudHits) hudHits.textContent = String(hits);
+      if (hudKills) setText('kills', hudKills, String(kills));
+      if (hudTime && !hudHidden()) setText('time', hudTime, w.timeS.toFixed(1) + 's');
+      if (hudSrc && !hudHidden()) setText('src', hudSrc, lean.source);
+      if (hudHits && !hudHidden()) setText('hits', hudHits, String(hits));
     }
 
     updateIris();

@@ -44,20 +44,13 @@ export const ICONS = {
     '<path d="M3 8l16 16L3 40h10l16-16L13 8z"/>' +
     '<path d="M19 8l16 16-16 16h10l16-16L29 8z" opacity=".65"/>'),
   // Two crossed blades: Leonardo.
-  leo: svg(
-    '<path d="M6 40 34 8l5 4L12 44z"/><path d="M42 40 14 8 9 12l27 32z" opacity=".8"/>' +
-    '<rect x="3" y="36" width="12" height="6" rx="2" transform="rotate(-50 9 39)"/><rect x="33" y="36" width="12" height="6" rx="2" transform="rotate(50 39 39)"/>'),
+  leo: svg('<circle cx="24" cy="25" r="20" fill="#5fb24a" stroke="#14210f" stroke-width="3"/><path d="M4 18c6-4 34-4 40 0l-1 11c-6 4-32 4-38 0z" fill="#2f7be0" stroke="#14210f" stroke-width="2.5"/><ellipse cx="16" cy="23.5" rx="5" ry="4" fill="#fff" stroke="#14210f" stroke-width="2"/><ellipse cx="32" cy="23.5" rx="5" ry="4" fill="#fff" stroke="#14210f" stroke-width="2"/><circle cx="17" cy="24" r="1.9" fill="#14210f"/><circle cx="31" cy="24" r="1.9" fill="#14210f"/>'),
   // A plain shield: the shell shield ability.
   shield: svg('<path d="M24 4 41 10v12c0 11-7 18-17 22C14 40 7 33 7 22V10z"/>'),
   // A round grenade with arrows pulling in: Donatello's gravity grenades.
-  donnie: svg(
-    '<circle cx="24" cy="26" r="11"/><rect x="20" y="8" width="8" height="7" rx="2"/>' +
-    '<path d="M3 24h9l-4-5zM45 24h-9l4-5zM24 45v-7l-5 3z" opacity=".7"/>'),
+  donnie: svg('<circle cx="24" cy="25" r="20" fill="#5fb24a" stroke="#14210f" stroke-width="3"/><path d="M4 18c6-4 34-4 40 0l-1 11c-6 4-32 4-38 0z" fill="#8a4fd6" stroke="#14210f" stroke-width="2.5"/><ellipse cx="16" cy="23.5" rx="5" ry="4" fill="#fff" stroke="#14210f" stroke-width="2"/><ellipse cx="32" cy="23.5" rx="5" ry="4" fill="#fff" stroke="#14210f" stroke-width="2"/><circle cx="17" cy="24" r="1.9" fill="#14210f"/><circle cx="31" cy="24" r="1.9" fill="#14210f"/><path d="M30 40q6-2 9 1" fill="none" stroke="#14210f" stroke-width="2.4" stroke-linecap="round"/>'),
   // Two sticks on a chain with a cone of light: Michelangelo's nunchucks stun a lane.
-  mikey: svg(
-    '<rect x="3" y="30" width="18" height="6" rx="3" transform="rotate(-50 12 33)"/>' +
-    '<rect x="20" y="9" width="6" height="16" rx="3" transform="rotate(35 23 17)"/>' +
-    '<path d="M26 26 46 14v12z" opacity=".8"/><path d="M26 26 46 26v12z" opacity=".5"/>'),
+  mikey: svg('<circle cx="24" cy="25" r="20" fill="#5fb24a" stroke="#14210f" stroke-width="3"/><path d="M4 18c6-4 34-4 40 0l-1 11c-6 4-32 4-38 0z" fill="#ff7a1a" stroke="#14210f" stroke-width="2.5"/><ellipse cx="16" cy="23.5" rx="5" ry="4" fill="#fff" stroke="#14210f" stroke-width="2"/><ellipse cx="32" cy="23.5" rx="5" ry="4" fill="#fff" stroke="#14210f" stroke-width="2"/><circle cx="17" cy="24" r="1.9" fill="#14210f"/><circle cx="31" cy="24" r="1.9" fill="#14210f"/>'),
   // Three blades on a ring: spinning blades.
   orbit: svg('<circle cx="24" cy="24" r="14" fill="none" stroke="currentColor" stroke-width="3" opacity=".5"/><circle cx="24" cy="24" r="5"/>' +
     '<path d="M24 1l5 9H19z"/><path d="M45 36l-10 1 4-9z" transform="rotate(0)"/><path d="M3 36l10 1-4-9z"/>'),

@@ -154,7 +154,7 @@ export function createMachines(scene, { crate: crateTex, head: headTex } = {}) {
       beam.position.set(u(box.x), 4.5, u(box.y)); beam.visible = bf > 0; beam.scale.set(bf * 0.9 + 0.1, 1, bf * 0.9 + 0.1); beamMat.opacity = 0.55 * bf;
       ring.visible = age < 0.8; ring.position.set(u(box.x), 0.06, u(box.y)); ring.scale.setScalar(0.4 + 2.6 * Math.min(1, age / 0.8)); ringMat.opacity = Math.max(0, 1 - age / 0.8);
       const frac = Math.max(0.001, box.hp / box.maxHp);
-      const bx = u(box.x), by = (CRATE_S + 0.55) * crate.scale.y, bz = u(box.y);          // ALWAYS above the crate
+      const bx = u(box.x), by = (CRATE_S + 1.35) * crate.scale.y, bz = u(box.y);          // ALWAYS above the crate
       hpBack.position.set(bx, by, bz); hpFill.position.set(bx, by, bz);
       hpFill.scale.set(HP_W * frac, HP_H, 1); hpFill.center.set(0.5 / frac, 0.5);
     }

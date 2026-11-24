@@ -28,7 +28,7 @@ export const ROLL = {
   // The box shakes. This is the "what will it be" -- the anticipation.
   spinS: 1.0,
   // ...and the answer stays on screen long enough to read.
-  holdS: 0.8,
+  holdS: 1.0,        // 0.8 -> 1.0: a permanent find flies into Raphael's sheet and burns in during it (total stays at the 2 s ceiling)
   // Each copy already owned multiplies the weight by this.
   repeatFalloff: 0.65,
   // How many different game-changing powers a run is guaranteed before the stat upgrades start.

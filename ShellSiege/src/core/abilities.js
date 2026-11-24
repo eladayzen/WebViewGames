@@ -44,6 +44,9 @@
 
 export const KINDS = ['perm', 'temp'];
 
+// THE DIVISION (Elad, 24 Nov): the turtle ALLIES and every WEAPON or EFFECT are temporary (kind 'temp', gone
+// when the level ends). Everything else is a RAPHAEL UPGRADE (kind 'perm'): it is what becomes constant.
+
 export const ABILITIES = {
   rapid:  { kind: 'perm', weight: 1.0, label: 'RAPID THROW', blurb: 'Throw more often',     step: 0.22, max: 6 },
   // LOCKED FOR NOW (max 0 = never offered): the blade is a single dagger that must come home before
@@ -55,7 +58,7 @@ export const ABILITIES = {
   starrate: { kind: 'temp', weight: 0.9, label: 'STAR FLURRY',  blurb: 'Throw stars faster',   step: 0.30, max: 5, requires: 'stars' },
   starsplit:{ kind: 'temp', weight: 0.8, label: 'STAR SPREAD',  blurb: 'More stars per throw', step: 1,    max: 3, requires: 'stars' },
   damage: { kind: 'perm', weight: 1.0, label: 'HARD SHELL',  blurb: 'Hit harder',           step: 0.30, max: 6 },
-  pierce: { kind: 'temp', big: true, weight: 0.7, label: 'PIERCE',      blurb: 'Blades pass through',  step: 1,    max: 3 },
+  pierce: { kind: 'perm', big: true, weight: 0.7, label: 'PIERCE',      blurb: 'Blades pass through',  step: 1,    max: 3 },
   reach:  { kind: 'perm', weight: 0.8, label: 'LONG REACH',  blurb: 'Throw further',        step: 0.25, max: 4 },
   // LOCKED (Elad, 23 Nov: never upgrade the player's speed): never rolled, kept so the stat plumbing stays.
   swift:  { kind: 'perm', weight: 0.8, label: 'SWIFT',       blurb: 'Move faster',          step: 0.14, max: 0, locked: true },
@@ -69,8 +72,10 @@ export const ABILITIES = {
   burst:  { kind: 'temp', big: true, weight: 0.9, label: 'SHELL SHOCK',   blurb: 'Charge a blast, time it',      step: 1, max: 4 },
   // LOCKED (Elad, 24 Nov: "the Raphael dash ability is not good"): never rolled. The sim (core/powers.js) is kept.
   dash:      { kind: 'temp', big: true, locked: true, weight: 0.8, label: 'DASH STRIKE',    blurb: 'Blink through a foe, cutting it', step: 1, max: 0 },
-  caltrop:   { kind: 'temp', big: true, weight: 0.8, label: 'CALTROPS',       blurb: 'Spikes drop where you run',      step: 1, max: 4 },
-  shellboom: { kind: 'temp', big: true, weight: 0.8, label: 'BOOMERANG SHELL', blurb: 'A shell flies out and back',    step: 1, max: 3 },
+  // LOCKED (Elad, 24 Nov: "kill it for now"): the mines left behind. Never rolled; the sim (core/powers.js) is kept.
+  caltrop:   { kind: 'temp', big: true, locked: true, weight: 0.8, label: 'CALTROPS',       blurb: 'Spikes drop where you run',      step: 1, max: 0 },
+  // LOCKED (Elad, 24 Nov: it looked bad and its value was unclear). Never rolled; the sim is kept.
+  shellboom: { kind: 'temp', big: true, locked: true, weight: 0.8, label: 'BOOMERANG SHELL', blurb: 'A shell flies out and back',    step: 1, max: 0 },
   decoy:     { kind: 'temp', big: true, weight: 0.7, label: 'PIZZA DECOY',    blurb: 'Foes chase a pizza box',         step: 1, max: 4 },
   arc:       { kind: 'temp', big: true, weight: 0.8, label: 'CHAIN LIGHTNING', blurb: 'Hits arc to nearby foes',       step: 1, max: 4 },
   vortex:    { kind: 'temp', big: true, weight: 0.7, label: 'VORTEX',         blurb: 'Drags the crowd in',             step: 1, max: 4 },

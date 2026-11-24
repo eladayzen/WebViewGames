@@ -73,6 +73,7 @@ export async function createAllies(scene, rig) {
   const texFor = (key) => (textures[key] ||= (srcMap ? recolor(srcMap, key) : null));
 
   const glow = glowTexture('rgba(190,240,255,1)', 'rgba(120,200,255,0)');
+  const glowV = glowTexture('rgba(220,190,255,1)', 'rgba(150,90,255,0)');
   const shadowTex = glowTexture('rgba(0,0,0,0.7)', 'rgba(0,0,0,0)');
   const sprite = (tex, blending = THREE.AdditiveBlending) => {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending, fog: false }));
@@ -92,6 +93,44 @@ export async function createAllies(scene, rig) {
     pool.rotation.x = -Math.PI / 2;
     group.add(slice, pool);
     return { slice, pool };
+  }
+
+  // ---- MICHELANGELO'S SPINJITZU: he spins all the time, in a blur of orange; the nunchucks whirl over his head ----
+  // A tail is a flat ring segment whose alpha fades along its length (RGBA vertex colours), so a short arc
+  // turning fast reads as a smear of motion rather than a shape.
+  function tailGeo(inner, outer, arc, rgb) {
+    const g = new THREE.RingGeometry(inner, outer, 28, 1, 0, arc);
+    const pos = g.attributes.position, col = new Float32Array(pos.count * 4);
+    for (let i = 0; i < pos.count; i++) {
+      const th = Math.atan2(pos.getY(i), pos.getX(i)), k = Math.max(0, Math.min(1, (th < 0 ? th + Math.PI * 2 : th) / arc));
+      col.set([rgb[0], rgb[1], rgb[2], Math.pow(k, 1.6) * 0.85], i * 4);
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+    return g;
+  }
+  const spinMat = () => new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  function makeSpin() {
+    const g = new THREE.Group();
+    g.visible = false;
+    const tails = [];
+    // three smears at head, chest and knee height, turning at different speeds, so the whole body is a blur
+    for (const [y, r0, r1, arc, rgb] of [[1.55, 0.55, 1.2, 2.4, [1, 0.62, 0.2]], [1.05, 0.5, 1.0, 2.0, [1, 0.8, 0.4]], [0.45, 0.4, 0.8, 1.8, [1, 0.5, 0.15]]]) {
+      for (const off of [0, Math.PI]) {
+        const m = new THREE.Mesh(tailGeo(r0, r1, arc, rgb), spinMat());
+        m.rotation.x = -Math.PI / 2; m.position.y = y; m.userData.off = off; m.userData.y = y;
+        g.add(m); tails.push(m);
+      }
+    }
+    // a faint tornado round him
+    const tor = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 0.45, 2.1, 20, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffa43a, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+    tor.position.y = 1.05;
+    g.add(tor);
+    // the cleave: a wide crescent thrown out in the swing's direction, brightest at the instant of the hit
+    const cleave = new THREE.Mesh(tailGeo(2.6, 3.4, Math.PI * 1.96, [1, 0.8, 0.45]),
+      new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+    cleave.rotation.x = -Math.PI / 2; cleave.visible = false;
+    return { g, tails, tor, cleave };
   }
 
   function build(a) {
@@ -158,6 +197,7 @@ export async function createAllies(scene, rig) {
     beam.visible = false;
     group.add(ring, beam);
     const p = { holder, mixer, act, mats, lh, rh, shadow, ring, beam, weapons: [], trail, hist, cone, fanMesh, pop: sprite(glow) };
+    if (a.key === 'mikey') { p.spin = makeSpin(); group.add(p.spin.g, p.spin.cleave); }
 
     // ---- weapons, as plain volumes ------------------------------------------------
     const lam = (color, emissive = 0x000000) => new THREE.MeshLambertMaterial({ color, emissive });
@@ -211,20 +251,80 @@ export async function createAllies(scene, rig) {
   }
 
   /** Per-frame: draw `allies`. */
-  // GRAVITY GRENADES: a dark core that arcs out of Donatello's hand, lands, and breathes a violet
-  // field on the floor whose rings shrink inward -- the direction things are being pulled.
+  // GRAVITY GRENADES (Donatello). A real gadget, not a glow: a chunky steel grenade with a lit band that
+  // tumbles out of his hand on a glowing trail; where it lands it slams down a shockwave, unfolds a pylon
+  // base, and runs a gravity well -- a spinning rune circle, a funnel of light, rings and motes streaming
+  // INWARD, and a bar that drains as the well runs out. It collapses with a flash when the time is up.
+  const VIO = 0xb06bff, VIO_D = 0x4a1fa0, WHITE_V = 0xe9d6ff;
+  const runeTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d');
+    g.translate(128, 128); g.lineCap = 'round';
+    g.strokeStyle = 'rgba(210,170,255,.95)';
+    g.lineWidth = 7;
+    for (let i = 0; i < 12; i++) { g.beginPath(); g.arc(0, 0, 118, i * Math.PI / 6 + 0.06, i * Math.PI / 6 + 0.38); g.stroke(); }
+    g.lineWidth = 3;
+    g.beginPath(); g.arc(0, 0, 98, 0, Math.PI * 2); g.stroke();
+    for (let i = 0; i < 6; i++) {          // six inward chevrons: the direction things are pulled
+      g.save(); g.rotate(i * Math.PI / 3); g.beginPath(); g.moveTo(88, -9); g.lineTo(70, 0); g.lineTo(88, 9); g.stroke(); g.restore();
+    }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
   const gPool = [];
+  const addMat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
   function makeGrenade() {
     const g = new THREE.Group();
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 10), new THREE.MeshBasicMaterial({ color: 0x2a1250 }));
-    const halo = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 10), new THREE.MeshBasicMaterial({ color: 0xb06bff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-    const mkRing = () => { const r = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 48), new THREE.MeshBasicMaterial({ color: 0xb06bff, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false })); r.rotation.x = -Math.PI / 2; r.position.y = 0.06; return r; };
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x6a2fd0, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, fog: false }));
-    disc.rotation.x = -Math.PI / 2; disc.position.y = 0.04;
-    const rings = [mkRing(), mkRing(), mkRing()];
-    g.add(core, halo, disc, ...rings);
+    // --- the grenade body: steel ball, a lit violet band, a cap and a blinking lamp
+    const body = new THREE.Group();
+    const steel = new THREE.MeshLambertMaterial({ color: 0x3a3f4c, emissive: 0x14121e });
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.34, 18, 14), steel);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.345, 0.07, 8, 24), new THREE.MeshBasicMaterial({ color: VIO, fog: false }));
+    band.rotation.x = Math.PI / 2;
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 0.16, 10), new THREE.MeshLambertMaterial({ color: 0xc9d0dc }));
+    cap.position.y = 0.38;
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff5a8a, fog: false }));
+    lamp.position.set(0.0, 0.5, 0);
+    body.add(ball, band, cap, lamp);
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 10), addMat(VIO, 0.28));
+    // --- the trail it leaves in the air
+    const trail = []; for (let i = 0; i < 7; i++) { const t = sprite(glowV); trail.push(t); }
+    // --- the landing: a shockwave and a flash
+    const shock = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 40), addMat(WHITE_V, 0.9)); shock.rotation.x = -Math.PI / 2; shock.position.y = 0.08;
+    const flash = sprite(glowV);
+    // --- the deployed well: base plate, pylons, rune circle, funnel, rings, motes, core
+    const base = new THREE.Group();
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.95, 0.14, 24), new THREE.MeshLambertMaterial({ color: 0x2b2f3b, emissive: 0x120d22 }));
+    plate.position.y = 0.07;
+    const plateRing = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.045, 6, 32), new THREE.MeshBasicMaterial({ color: VIO, fog: false })); plateRing.rotation.x = Math.PI / 2; plateRing.position.y = 0.15;
+    base.add(plate, plateRing);
+    const pylons = [];
+    for (let i = 0; i < 4; i++) {
+      const py = new THREE.Group();
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.7, 0.14), new THREE.MeshLambertMaterial({ color: 0x4a5062, emissive: 0x1a1430 }));
+      post.position.y = 0.45;
+      const tip = new THREE.Mesh(new THREE.OctahedronGeometry(0.13), new THREE.MeshBasicMaterial({ color: WHITE_V, fog: false }));
+      tip.position.y = 0.92;
+      py.add(post, tip); py.position.set(Math.cos(i * Math.PI / 2) * 0.72, 0, Math.sin(i * Math.PI / 2) * 0.72);
+      base.add(py); pylons.push({ py, tip });
+    }
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 1), new THREE.MeshBasicMaterial({ color: WHITE_V, fog: false }));
+    const coreHalo = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 10), addMat(VIO, 0.4));
+    const funnel = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 1, 2.6, 22, 1, true), addMat(VIO, 0.22));
+    funnel.position.y = 1.3;
+    const rune = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: runeTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: 0.9 }));
+    rune.rotation.x = -Math.PI / 2; rune.position.y = 0.05;
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 48), addMat(VIO_D, 0.34)); disc.rotation.x = -Math.PI / 2; disc.position.y = 0.03;
+    const mkRing = () => { const r = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 56), addMat(VIO, 0.6)); r.rotation.x = -Math.PI / 2; r.position.y = 0.07; return r; };
+    const rings = [mkRing(), mkRing(), mkRing(), mkRing()];
+    const motes = []; for (let i = 0; i < 18; i++) motes.push(sprite(glowV));
+    const collapse = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 40), addMat(WHITE_V, 0.9)); collapse.rotation.x = -Math.PI / 2; collapse.position.y = 0.1;
+    // --- the timer: a bar over the device that drains
+    const barBack = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x0c0818, depthTest: false, transparent: true, opacity: 0.75, fog: false }));
+    const barFill = new THREE.Sprite(new THREE.SpriteMaterial({ color: VIO, depthTest: false, transparent: true, opacity: 0.95, fog: false }));
+    barBack.scale.set(1.5, 0.15, 1); barBack.renderOrder = 60; barFill.renderOrder = 61;
+    g.add(body, halo, shock, base, core, coreHalo, funnel, rune, disc, ...rings, collapse, barBack, barFill);
     group.add(g);
-    return { g, core, halo, disc, rings };
+    return { g, body, band, lamp, halo, trail, shock, flash, base, pylons, core, coreHalo, funnel, rune, disc, rings, motes, collapse, barBack, barFill };
   }
   function syncGrenades(list, timeS) {
     let gi = 0;
@@ -234,24 +334,62 @@ export async function createAllies(scene, rig) {
       gi++;
       v.g.visible = true;
       const R = u(z.radius);
-      if (!z.landed) {
+      const flying = !z.landed;
+      v.body.visible = flying; v.halo.visible = flying;
+      for (const t of v.trail) t.visible = false;
+      v.flash.visible = false;
+      const deployed = !flying;
+      for (const o of [v.base, v.core, v.coreHalo, v.funnel, v.rune, v.disc, v.collapse, v.barBack, v.barFill, ...v.rings]) o.visible = deployed;
+      for (const m of v.motes) m.visible = deployed;
+      v.shock.visible = false;
+      if (flying) {
         const t = Math.min(1, z.age / z.flightS);
-        v.g.position.set(u(z.from.x + (z.x - z.from.x) * t), 0.9 + Math.sin(t * Math.PI) * 2.2, u(z.from.y + (z.y - z.from.y) * t));
-        v.disc.visible = false; v.rings.forEach((r) => { r.visible = false; });
-        v.core.position.set(0, 0, 0); v.halo.position.set(0, 0, 0);
+        const at = (k) => [u(z.from.x + (z.x - z.from.x) * k), 0.9 + Math.sin(k * Math.PI) * 2.6, u(z.from.y + (z.y - z.from.y) * k)];
+        const [bx, by, bz] = at(t);
+        v.g.position.set(0, 0, 0);
+        v.body.position.set(bx, by, bz); v.halo.position.set(bx, by, bz);
+        v.body.rotation.set(timeS * 9, timeS * 6, 0);
+        v.lamp.material.color.setHex(Math.sin(timeS * 30) > 0 ? 0xff5a8a : 0x551a2a);
+        v.halo.scale.setScalar(1 + 0.15 * Math.sin(timeS * 20));
+        v.trail.forEach((s, i) => {
+          const k = Math.max(0, t - (i + 1) * 0.055); const [x, y, zz] = at(k);
+          s.visible = t > 0.02; s.position.set(x, y, zz); s.scale.setScalar(1.1 - i * 0.12); s.material.opacity = 0.7 * (1 - i / v.trail.length);
+        });
       } else {
         v.g.position.set(u(z.x), 0, u(z.y));
-        const left = z.lifeS - z.age, fade = Math.min(1, left / 0.5) * Math.min(1, z.age / 0.15);
-        v.core.position.set(0, 0.55 + Math.sin(timeS * 6) * 0.08, 0); v.halo.position.copy(v.core.position);
-        v.halo.scale.setScalar(1 + 0.2 * Math.sin(timeS * 9));
-        v.disc.visible = true; v.disc.scale.setScalar(R); v.disc.material.opacity = 0.16 * fade;
-        v.rings.forEach((r, k) => {
-          const ph = (timeS * 0.9 + k / 3) % 1;                 // 1 -> 0: rings run inward
-          r.visible = true; r.scale.setScalar(R * (1 - ph) + 0.1); r.material.opacity = 0.55 * ph * fade;
+        const left = z.lifeS - z.age, k = clamp01(z.age / z.lifeS);
+        const deploy = clamp01(z.age / 0.35), dying = clamp01((0.45 - left) / 0.45);
+        const spin = timeS;
+        // landing: a shockwave out to the field's edge and a flash, in the first moments
+        const hit = clamp01(z.age / 0.3);
+        v.shock.visible = z.age < 0.3; v.shock.scale.setScalar(R * (0.15 + 0.85 * hit)); v.shock.material.opacity = 0.9 * (1 - hit);
+        v.flash.visible = z.age < 0.2; v.flash.position.set(u(z.x), 0.5, u(z.y)); v.flash.scale.setScalar(4.2 * (1 - z.age / 0.2) + 0.5); v.flash.material.opacity = 1 - z.age / 0.2;
+        // the base unfolds, the pylons spin and their tips flash in turn
+        v.base.scale.set(deploy, deploy, deploy); v.base.rotation.y = spin * 0.8;
+        v.pylons.forEach((p, i) => { p.tip.scale.setScalar(0.8 + 0.5 * Math.max(0, Math.sin(spin * 7 - i * 1.6))); });
+        v.core.position.set(0, 1.15 + Math.sin(spin * 4) * 0.1, 0); v.core.scale.setScalar((1 - dying) * deploy * (1 + 0.12 * Math.sin(spin * 12)));
+        v.core.rotation.set(spin * 2, spin * 3, 0);
+        v.coreHalo.position.copy(v.core.position); v.coreHalo.scale.setScalar((1 - dying) * deploy * (1.1 + 0.25 * Math.sin(spin * 9)));
+        v.funnel.scale.set(R * 0.5 * deploy, 1, R * 0.5 * deploy); v.funnel.rotation.y = -spin * 2.2; v.funnel.material.opacity = 0.22 * (1 - dying);
+        v.rune.scale.setScalar(R * deploy); v.rune.rotation.z = spin * 1.4; v.rune.material.opacity = 0.9 * (1 - dying);
+        v.disc.scale.setScalar(R * deploy); v.disc.material.opacity = 0.3 * (1 - dying);
+        v.rings.forEach((r, i) => { const ph = (spin * 0.9 + i / 4) % 1; r.scale.setScalar(R * (1 - ph) * deploy + 0.1); r.material.opacity = 0.6 * ph * (1 - dying); });
+        // motes spiral inward
+        v.motes.forEach((m, i) => {
+          const ph = (spin * 0.7 + i / v.motes.length) % 1, ang = i * 2.4 + ph * 5, rr = R * 0.95 * (1 - ph);
+          m.position.set(Math.cos(ang) * rr, 0.2 + ph * 0.9, Math.sin(ang) * rr).add(v.g.position);
+          m.scale.setScalar(0.35 + 0.25 * (1 - ph)); m.material.opacity = (0.9 * Math.sin(Math.PI * ph)) * (1 - dying) * deploy;
         });
+        // the collapse: a bright ring snaps shut when it is about to end
+        v.collapse.visible = dying > 0; v.collapse.scale.setScalar(R * (1 - dying) + 0.3); v.collapse.material.opacity = 0.9 * dying;
+        // the timer bar: drains, turning hot as it runs out
+        const f = clamp01(left / z.lifeS), bw = 1.5;
+        v.barBack.position.set(0, 2.35, 0); v.barFill.position.set(0, 2.35, 0);
+        v.barFill.scale.set(Math.max(0.001, (bw - 0.1) * f), 0.09, 1); v.barFill.center.set(0.5 / Math.max(0.001, f), 0.5);
+        v.barFill.material.color.setHex(f < 0.25 ? 0xff5a8a : VIO);
       }
     }
-    for (; gi < gPool.length; gi++) gPool[gi].g.visible = false;
+    for (; gi < gPool.length; gi++) { gPool[gi].g.visible = false; gPool[gi].body.visible = false; gPool[gi].halo.visible = false; for (const t of gPool[gi].trail) t.visible = false; for (const m of gPool[gi].motes) m.visible = false; gPool[gi].flash.visible = false; }
   }
 
   function sync(allies, timeS, dt, pizzas = [], shield = null, player = null, grenades = null) {
@@ -271,6 +409,7 @@ export async function createAllies(scene, rig) {
     for (const [a, p] of rigs) {
       if (!allies.includes(a)) {
         group.remove(p.holder, p.shadow, p.cone, p.pop, p.ring, p.beam, ...p.trail);
+        if (p.spin) group.remove(p.spin.g, p.spin.cleave);
         if (p.bake) group.remove(p.bake);
         for (const w of p.weapons) group.remove(w.obj);
         rigs.delete(a);
@@ -318,14 +457,18 @@ export async function createAllies(scene, rig) {
         p.beam.material.opacity = 0.5 * Math.sin(Math.PI * Math.min(1, rk * 1.15));
       }
       for (const w of p.weapons) w.obj.visible = a.present;
-      if (!a.present) { p.cone.visible = false; for (const t of p.trail) t.visible = false; continue; }
-      const yaw = Math.atan2(Math.cos(a.facing), Math.sin(a.facing));
+      if (!a.present) { p.cone.visible = false; if (p.spin) { p.spin.g.visible = false; p.spin.cleave.visible = false; } for (const t of p.trail) t.visible = false; continue; }
+      // MICHELANGELO NEVER STOPS SPINNING: his body turns about its own axis, fast, all the time
+      const faceYaw = Math.atan2(Math.cos(a.facing), Math.sin(a.facing));
+      const spinning = a.key === 'mikey' && !!p.spin && a.slashT >= 0;        // a short spin (0.5 s), then he walks again
+      const sk = clamp01(a.slashT);
+      const yaw = spinning ? faceYaw + Math.PI * 6 * sk : faceYaw;      // three full turns in the second, landing back on his facing
       p.holder.position.set(u(a.x), 0, u(a.y));
       p.holder.rotation.y = yaw;
       p.shadow.position.set(u(a.x), 0.02, u(a.y));
 
       // pose: a swing is scrubbed by the sim's progress; otherwise walk or stand
-      const slashing = a.slashT >= 0 && p.act.slash;
+      const slashing = a.slashT >= 0 && p.act.slash && a.key !== 'mikey';
       if (p.act.slash) {
         p.act.slash.time = clamp01(a.slashT < 0 ? 0 : a.slashT) * p.act.slash.getClip().duration;
         p.act.slash.setEffectiveWeight(slashing ? 1 : 0);
@@ -368,9 +511,38 @@ export async function createAllies(scene, rig) {
         p.fanMesh.material.opacity = 0.55 * (1 - k);
       } else if (p.cone) p.cone.visible = false;
 
+      if (p.spin) {
+        const sp = p.spin;
+        sp.g.visible = spinning;
+        const fade = spinning ? Math.sin(Math.PI * sk) : 0;
+        for (const m of sp.tails) m.material.opacity = Math.min(1, fade * 1.6);
+        sp.g.position.set(u(a.x), 0, u(a.y));
+        for (const m of sp.tails) { m.rotation.z = timeS * (m.userData.y > 1.2 ? 15 : m.userData.y > 0.8 ? -11 : 9) + m.userData.off; }
+        sp.tor.rotation.y = timeS * 6;
+        sp.tor.material.opacity = 0.10 + 0.05 * Math.sin(timeS * 9);
+        // the cleave: out along the swing, widening and fading over 0.4 s
+        const cl = a.cleave;
+        sp.cleave.visible = !!cl;
+        if (cl) {
+          const k = cl.t / 0.4;
+          sp.cleave.position.set(u(cl.x), 0.95, u(cl.y));
+          sp.cleave.rotation.z = k * 1.2;
+          sp.cleave.scale.setScalar(0.35 + 0.65 * Math.min(1, k * 3.5));      // the ring expands out to his reach
+          sp.cleave.material.opacity = 1 - k;
+        }
+      }
+
       // weapons ride the hands
       const s = clamp01(a.slashT);
       for (const w of p.weapons) {
+        if (w.nun && spinning) {
+          // WHIRLED OVER HIS HEAD, flat, going round with the spin: the free stick streams out behind
+          const an = timeS * 17;
+          w.obj.position.set(u(a.x) + Math.cos(an) * 0.85, 1.62 + 0.05 * Math.sin(timeS * 9), u(a.y) + Math.sin(an) * 0.85);
+          aim(w.obj, Math.PI / 2 - an + Math.PI / 2, 0);
+          w.nun.rotation.x = 0.35 + (a.slashT >= 0 ? 0.5 : 0);
+          continue;
+        }
         const bone = w.bone === 'lh' ? p.lh : p.rh;
         if (bone) { bone.getWorldPosition(V); w.obj.position.copy(V); }
         else w.obj.position.set(u(a.x), 1.0, u(a.y));

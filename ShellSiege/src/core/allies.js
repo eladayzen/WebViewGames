@@ -54,10 +54,12 @@ export const ALLY = {
     // currently doing"), with nunchucks: a wide sweep at anything near him, and every hit
     // stuns everything in a 30-degree cone.
     followDist: 270, speed: 600,       // keeps well back from Raphael
-    staffEvery: 1.1, staffWindupS: 0.28,
-    staffReach: 310, staffArc: 3.6,
-    staffDamage: 12, staffKnock: 150,
-    stun: { coneDeg: 30, range: 600, stunS: 1.3 },
+    // SPINJITZU (Elad, 24 Nov): a short 0.5 s spin, then he WALKS again. The cleave lands mid-spin and is a full
+    // circle round him: little damage, a BIG push, and a stun on everything it reaches.
+    staffEvery: 1.0, staffWindupS: 0.4, cooldownS: 2.0, cooldownJitterS: 1.0,      // a 1 s spin every 2-3 s
+    staffReach: 340, staffArc: Math.PI * 2,
+    staffDamage: 5, staffKnock: 340,
+    stun: { coneDeg: 30, range: 600, stunS: 1.3 },     // the cone numbers are kept for inCone(); the cleave stuns by its own reach
     // DORMANT: the pizza-baking healer. Off, because healing was not good for the game.
     // `bakes: true` wakes it (the tests do), and the code below is untouched.
     bakes: false,
@@ -195,6 +197,12 @@ function inSweep(ox, oy, facing, arc, reach, f) {
   return Math.abs(da) <= arc / 2;
 }
 
+/** A BIG PUSH, spread over 0.18 s (core/foes.js moves it) so a foe is seen to fly, not to teleport. */
+function knock(f, fromX, fromY, px) {
+  const dx = f.x - fromX, dy = f.y - fromY, d = Math.hypot(dx, dy) || 1;
+  f.kb = { vx: (dx / d) * px / 0.18, vy: (dy / d) * px / 0.18, t: 0.18 };
+}
+
 function shove(f, fromX, fromY, px) {
   const dx = f.x - fromX, dy = f.y - fromY, d = Math.hypot(dx, dy) || 1;
   f.x += (dx / d) * px; f.y += (dy / d) * px;
@@ -294,40 +302,41 @@ function sweepStep(a, w, dt, hooks, C) {
   const foes = living(w);
   a.walking = false;
   if (a.pulse) { a.pulse.t += dt; if (a.pulse.t > 0.5) a.pulse = null; }
+  if (a.cleave) { a.cleave.t += dt; if (a.cleave.t > 0.4) a.cleave = null; }      // the cleave the renderer draws on every swing
 
   // the staff: a wide sweep at anything near him
   const near = nearest(foes, a.x, a.y, C.staffReach + 40);
-  if (a.slashT < 0) {
-    if (near && a.cool <= 0) {
-      a.slashT = 0; a.hitDone = false;
-      a.facing = Math.atan2(near.y - a.y, near.x - a.x);
-    } else {
-      const h = homeSpot(a, w, C.followDist);
-      a.walking = walkTo(a, h.x, h.y, C.speed, dt, 36);
-    }
+  // HE SPINS EVERY NOW AND THEN, whether or not anyone is close, and keeps WALKING while he does (Elad, 24 Nov)
+  if (a.slashT < 0 && a.cool <= 0) {
+    a.slashT = 0; a.hitDone = false;
+    if (near) a.facing = Math.atan2(near.y - a.y, near.x - a.x);
+  }
+  {
+    const h = homeSpot(a, w, C.followDist);
+    a.walking = walkTo(a, h.x, h.y, C.speed, dt, 36);
   }
   if (a.slashT >= 0) {
     a.slashT += dt / C.staffEvery;
     if (!a.hitDone && a.slashT * C.staffEvery >= C.staffWindupS) {
       a.hitDone = true;
+      a.cleave = { x: a.x, y: a.y, facing: a.facing, t: 0 };
       let hit = 0;
       for (const f of foes) {
         if (!f.alive || !inSweep(a.x, a.y, a.facing, C.staffArc, C.staffReach, f)) continue;
         hit++;
         hurtFoe(w, f, C.staffDamage, hooks);
-        if (f.alive) shove(f, a.x, a.y, C.staffKnock);
+        if (f.alive) knock(f, a.x, a.y, C.staffKnock);
       }
-      // THE HIT FIRES THE CONE. Only a staff that actually connected does.
+      // THE CLEAVE STUNS EVERYTHING IT REACHES. Only a swing that actually connected does.
       if (hit > 0) {
         for (const f of living(w)) {
-          if (inCone(a.x, a.y, a.facing, C.stun.coneDeg, C.stun.range, f)) stunFoe(f, C.stun.stunS);
+          if (inSweep(a.x, a.y, a.facing, C.staffArc, C.staffReach, f)) stunFoe(f, C.stun.stunS);
         }
-        a.pulse = { x: a.x, y: a.y, facing: a.facing, t: 0 };
         if (hooks?.onStun) hooks.onStun(a);
       }
       if (hooks?.onSwing) hooks.onSwing(a);
     }
-    if (a.slashT >= 1) { a.slashT = -1; a.cool = 0.1; }
+    if (a.slashT >= 1) { a.slashT = -1; a.cool = (C.cooldownS ?? 0.1) + (C.cooldownJitterS ? (hooks?.rng || Math.random)() * C.cooldownJitterS : 0); }
   }
 }
 
@@ -532,7 +541,7 @@ export function updateAllies(w, dt, hooks) {
         a.fx = { x: a.x, y: a.y, t: 0 };
         a.phase = 'away'; a.present = false;
         a.timer = ALLY[a.key].breakS; a.duration = a.timer;
-        a.state = 'follow'; a.target = null; a.slashT = -1; a.pulse = null; a.walking = false; a.dashing = false;
+        a.state = 'follow'; a.target = null; a.slashT = -1; a.pulse = null; a.cleave = null; a.walking = false; a.dashing = false;
         continue;
       }
     } else if (a.timer <= 0) {

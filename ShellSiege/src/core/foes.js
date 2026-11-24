@@ -238,6 +238,13 @@ export function updateFoes(w, dt, onStrike) {
     if (!f.alive) continue;
     if (f.hitT > 0) f.hitT = Math.max(0, f.hitT - dt);
     if (f.shock) { f.shock.t -= dt; if (f.shock.t <= 0) f.shock = null; }
+    // BEING KNOCKED BACK (core/allies.js): flies for a moment, even while stunned.
+    if (f.kb) {
+      const k = Math.min(dt, f.kb.t);
+      f.x = Math.max(f.radius, Math.min(ARENA.width - f.radius, f.x + f.kb.vx * k));
+      f.y = Math.max(f.radius, Math.min(ARENA.height - f.radius, f.y + f.kb.vy * k));
+      f.kb.t -= dt; if (f.kb.t <= 0) f.kb = null;
+    }
     // STUNNED (core/allies.js): it does nothing at all until this runs out.
     if (f.stunImmT > 0) f.stunImmT = Math.max(0, f.stunImmT - dt);
     if (f.stunT > 0) {

@@ -51,7 +51,7 @@ export const WEAPONS = {
     // 38, not 64. At 64 the blade came out 1.9 units long against a 1.55-unit
     // turtle -- the weapon read as bigger than the character holding it, which
     // is funny once and wrong every time after.
-    sizePx: num('saipx', 38),
+    sizePx: num('saipx', 30.4),      // 38 -> 30.4: 20% smaller (Elad, 24 Nov); the held dagger follows it
     spinRadS: 11,
   },
 };

@@ -10,6 +10,7 @@
 // only thing that changes is whether it is visible.
 import { ABILITIES } from '../core/abilities.js';
 import { iconFor } from './icons.js';
+import { sheetHtml, flyAndBurn } from './sheet.js';
 
 export function createRollUi() {
   const root = document.getElementById('roll-overlay');
@@ -26,7 +27,10 @@ export function createRollUi() {
   if (closed) closed.src = 'tex/loot_closed.webp';
   if (open_) open_.src = 'tex/loot_open.webp';
 
-  function open(roll, { black = false } = {}) {
+  const sheetEl = document.getElementById('roll-sheet');
+  let pending = null;       // the permanent key waiting to fly into the sheet at the reveal
+
+  function open(roll, { black = false, build = null, bank = {} } = {}) {
     const a = ABILITIES[roll.key];
     if (!root || !a) return;
     if (icon) icon.innerHTML = iconFor(roll.key);
@@ -34,6 +38,16 @@ export function createRollUi() {
     if (blurb) blurb.textContent = a.blurb;
     const rib = root.querySelector('.roll-ribbon');
     if (rib) rib.textContent = a.kind === 'perm' ? 'PERMANENT' : 'THIS LEVEL';
+    // RAPHAEL'S SHEET, shown at the end of every room. A permanent find is already counted on it, but empty,
+    // until the card flies in at the reveal.
+    pending = null;
+    if (sheetEl && build) {
+      const perm = a.kind === 'perm';
+      const shown = perm ? { ...build, [roll.key]: (build[roll.key] || 0) + 1 } : build;
+      sheetEl.innerHTML = sheetHtml({ build: shown, bank, incoming: perm ? [roll.key] : [], compact: true, title: true, showEmpty: false });
+      sheetEl.hidden = false;
+      if (perm) pending = roll.key;
+    } else if (sheetEl) sheetEl.hidden = true;
     root.dataset.phase = roll.phase;
     root.classList.toggle('over-black', black);
     root.classList.remove('hidden');
@@ -41,13 +55,20 @@ export function createRollUi() {
 
   /** Called every frame; cheap -- a dataset write only when the phase changed. */
   function update(roll) {
-    if (root && root.dataset.phase !== roll.phase) root.dataset.phase = roll.phase;
+    if (root && root.dataset.phase !== roll.phase) {
+      root.dataset.phase = roll.phase;
+      if (roll.phase === 'reveal' && pending) {
+        const k = pending; pending = null;
+        flyAndBurn(root.querySelector('.roll-icon svg'), sheetEl, k, { delay: 250, duration: 600 });
+      }
+    }
   }
 
   function close() {
     if (!root) return;
     root.classList.add('hidden');
     root.dataset.phase = '';
+    pending = null;
   }
 
   return { open, update, close };

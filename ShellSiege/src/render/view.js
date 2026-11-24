@@ -70,12 +70,12 @@ export const FOG = {
 
 export function createView(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  // 1.5, DOWN FROM 1.75. A retina phone renders roughly a quarter fewer
+  // 1.25, DOWN FROM 1.5 (and 1.75 before that). A retina phone renders roughly a quarter fewer
   // fragments at 1.5, and on a floor shaded per-pixel with several lights that
   // is the single cheapest frame-rate win available. Nothing in this scene is
   // thin enough to alias badly at 1.5 -- the art is big painted shapes and the
   // one hairline, the rune ring, is additive and soft by construction.
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, num('dpr', 1.5)));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, num('dpr', 1.25)));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = num('exp', 1.2);
 

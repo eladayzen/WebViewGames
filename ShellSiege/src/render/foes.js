@@ -255,14 +255,12 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       shadow.scale.setScalar(height * 0.55);
 
       holder.add(shadow, body);
-      holder.visible = false;
-      group.add(holder);
+      holder.visible = false;          // NOT added to the scene until a foe uses it: see `show` below
       const bw = 0.42 + height * 0.12;                    // wider bar over a bigger foe
       const back = new THREE.Sprite(barBack), fill = new THREE.Sprite(barFill.clone());
       back.scale.set(bw + 0.03, BAR_H + 0.03, 1); fill.scale.set(bw, BAR_H, 1);
       back.renderOrder = 50; fill.renderOrder = 51;
       back.visible = fill.visible = false;
-      group.add(back, fill);
       const bar = { back, fill, bw, y: height + 0.5 };
       let hand = null;                                   // the throwing hand, for synced orbs
       body.traverse((o) => { if (o.isBone && /^Hand_R/.test(o.name)) hand = o; });
@@ -272,6 +270,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
   }
 
   const BASE = new THREE.Color(0xffffff);
+  const HIT_RED = new THREE.Color(0xff2a18);
   const STUN_ALLY = new THREE.Color(0x7fd8ff);      // frozen blue: Donatello's stun, distinct from the charger's own dazed tint
 
   /** Apply a foe's opacity to its slot. Transparent only while actually faded, so the
@@ -360,7 +359,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     }
     if (act.idle) act.idle.setEffectiveWeight(!swinging && !moving ? 1 : 0);
 
-    s.mixer.update(f.stunT > 0 ? 0 : f.slowT > 0 ? dt * 0.4 : dt);
+    if (!(f.stunT > 0)) s.mixer.update(f.slowT > 0 ? dt * 0.4 : dt);      // a frozen foe holds its pose: no evaluation at all
     // Publish where the throwing hand is, so the gathering orb can sit IN it.
     if (s.hand && f.state === 'throw') {
       holder.updateMatrixWorld(true);
@@ -384,7 +383,7 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     // GETTING HIT: a white-hot flash that fades through red, a quick swell of the body, and a flinch
     // back along the hit. Strong on purpose: damage you cannot see is damage the player assumes missed.
     const hk = f.hitT > 0 ? Math.min(1, f.hitT / 0.14) : 0;
-    if (hk > 0) mat.color.lerp(new THREE.Color(0xff2a18), 0.55);
+    if (hk > 0) mat.color.lerp(HIT_RED, 0.55);
     for (const m of mats) m.emissive.setRGB(hk > 0.45 ? 1 : hk * 1.8, hk > 0.45 ? 0.95 : hk * 0.5, hk > 0.45 ? 0.9 : hk * 0.4);
     holder.scale.setScalar(1 + 0.16 * hk);
     const mode = f.stunT > 0 ? 1 : f.slowT > 0 ? 2 : 0;
@@ -420,6 +419,21 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     }
   }
 
+  /**
+   * A pooled slot is only IN THE SCENE while it shows a foe. Hidden is not free: three.js walks every
+   * child to update matrices whether or not it is visible, and 60 idle skinned foes are ~3000 bones
+   * touched every frame for nothing -- the cost grows with the pool, not with the crowd.
+   */
+  const show = (slot, on) => {
+    const h = slot.holder, b = slot.bar;
+    if (on) {
+      if (!h.parent) group.add(h, b.back, b.fill);
+      h.visible = true;
+    } else if (h.parent) {
+      group.remove(h, b.back, b.fill);
+      h.visible = false; b.back.visible = b.fill.visible = false;
+    }
+  };
   /** Put each breed's pool onto that breed's live foes. */
   function syncFoes(foes, timeS, dt = 0, targets = null) {
     const used = {};
@@ -430,11 +444,11 @@ export function createFoes(scene, enemies, _unusedAtlas) {
       const i = used[key] || 0;
       if (i >= slots.length) continue;     // more of this breed than pool slots
       used[key] = i + 1;
-      slots[i].holder.visible = true;
+      show(slots[i], true);
       poseOne(slots[i], f, dt, targets?.get(f) ?? 1);
     }
     for (const [key, slots] of Object.entries(pools)) {
-      for (let i = used[key] || 0; i < slots.length; i++) { slots[i].holder.visible = false; slots[i].bar.back.visible = slots[i].bar.fill.visible = false; }
+      for (let i = used[key] || 0; i < slots.length; i++) show(slots[i], false);
     }
   }
 

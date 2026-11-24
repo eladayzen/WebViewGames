@@ -67,7 +67,7 @@ test('EVERY ABILITY SAYS WHETHER IT IS PERMANENT, and carries a usable weight', 
 test('THE TEMPORARY ABILITIES ARE THE TURTLES AND THE WEAPON/SHIELD UNLOCKS, and `clearTemp` (a death) clears them', async () => {
   const { clearTemp } = await import('../src/core/abilities.js');
   const temp = Object.keys(ABILITIES).filter((k) => ABILITIES[k].kind === 'temp').sort();
-  assert.deepEqual(temp, ['arc', 'burst', 'caltrop', 'dash', 'decoy', 'donnie', 'frost', 'leo', 'mikey', 'multi', 'orbit', 'pierce', 'rush', 'shellboom', 'shield', 'starrate', 'stars', 'starsplit', 'vortex']);
+  assert.deepEqual(temp, ['arc', 'burst', 'caltrop', 'dash', 'decoy', 'donnie', 'frost', 'leo', 'mikey', 'multi', 'orbit', 'rush', 'shellboom', 'shield', 'starrate', 'stars', 'starsplit', 'vortex']);
   const b = createBuild();
   take(b, 'leo'); take(b, 'donnie'); take(b, 'rapid');
   clearTemp(b);

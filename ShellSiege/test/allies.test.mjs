@@ -108,11 +108,17 @@ test('DONATELLO STAYS CLOSE TO RAPHAEL', () => {
   assert.ok(Math.hypot(d.x - w.player.x, d.y - w.player.y) < ALLY.donnie.followDist + 120);
 });
 
+// He walks to his spot while he spins now, so a test that measures the cleave puts the player where his spot IS.
+function standAtHome(w, d) {
+  const ang = w.player.facing + Math.PI;
+  w.player.x = d.x - Math.cos(ang) * ALLY.mikey.followDist; w.player.y = d.y - Math.sin(ang) * ALLY.mikey.followDist;
+}
+
 test('THE NUNCHUCKS ARE A WIDE SWEEP: they hit foes on both sides of him, not just the one in front', () => {
   const w = room('mikey');
   syncAllies(w);
   const d = w.allies[0];
-  d.cool = 0;                                       // ready to swing at once, so he is not walking while we measure
+  d.cool = 0; standAtHome(w, d);                    // ready to swing at once, standing where he wants to be
   const a = addFoe(w, 0, 0), b = addFoe(w, 0, 0);
   for (const f of [a, b]) { f.speed = 0; f.hp = f.maxHp = 1e6; }
   a.x = d.x + 200; a.y = d.y;                      // dead ahead
@@ -121,27 +127,30 @@ test('THE NUNCHUCKS ARE A WIDE SWEEP: they hit foes on both sides of him, not ju
   assert.ok(a.hp < 1e6 && b.hp < 1e6, 'the sweep missed one side');
 });
 
-test('EVERY NUNCHUCK HIT STUNS EVERYTHING IN A 30-DEGREE CONE, and nothing outside it', () => {
+test('THE CLEAVE STUNS AND PUSHES EVERYTHING IT REACHES, in a full circle, and nothing beyond', () => {
   const w = room('mikey');
   syncAllies(w);
   const d = w.allies[0];
-  d.cool = 0;
+  d.cool = 0; standAtHome(w, d);
   const mk = (x, y) => { const f = addFoe(w, 0, 0); f.speed = 0; f.hp = f.maxHp = 1e6; f.x = x; f.y = y; return f; };
-  // the first one gives the staff something to hit, and fixes the facing (+x)
   const target = mk(d.x + 180, d.y);
-  const farInCone = mk(d.x + 520, d.y + 40);       // ~4 degrees off the line, far away: stunned though never touched
-  const outside = mk(d.x + 300, d.y + 300);        // 45 degrees off: not
-  const behind = mk(d.x - 300, d.y);
+  const behind = mk(d.x - 250, d.y);                   // behind him: still in the circle
+  const far = mk(d.x + 900, d.y);                      // out of reach
   let stunned = 0;
   run(w, 1.0, 1 / 60, { onStun: () => stunned++ });
-  assert.ok(stunned >= 1, 'the hit never fired the cone');
-  assert.ok(target.stunT > 0 || target.hp < 1e6);
-  assert.ok(farInCone.stunT > 0, 'an enemy down the line was not stunned');
-  assert.equal(outside.stunT || 0, 0, 'an enemy 45 degrees off was stunned');
-  assert.equal(behind.stunT || 0, 0, 'an enemy behind him was stunned');
+  assert.ok(stunned >= 1, 'the cleave never fired');
+  assert.ok(target.stunT > 0 && behind.stunT > 0, 'something inside the circle was not stunned');
+  assert.ok(target.kb && Math.hypot(target.kb.vx, target.kb.vy) * target.kb.t > 250, 'the push was not big');   // applied over 0.18 s by updateFoes
+  assert.equal(far.stunT || 0, 0, 'an enemy out of reach was stunned');
+  assert.ok(target.hp > 1e6 - 30, 'the cleave should do little damage');
 });
 
-test('A SWING THAT HITS NOTHING FIRES NO CONE', () => {
+test('MICHELANGELO SPINS FOR A SECOND EVERY 2-3 SECONDS', () => {
+  assert.equal(ALLY.mikey.staffEvery, 1.0);
+  assert.ok(ALLY.mikey.cooldownS >= 2 && ALLY.mikey.cooldownS + ALLY.mikey.cooldownJitterS <= 3);
+});
+
+test('A SWING THAT HITS NOTHING FIRES NO STUN', () => {
   const w = room('mikey');
   syncAllies(w);
   let fired = 0;

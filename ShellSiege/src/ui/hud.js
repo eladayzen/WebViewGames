@@ -66,21 +66,38 @@ export function createHud() {
     el.classList.add('go');
   }
 
-  /** The ability strip: one slot per ability held. `build` is core/abilities.js's. */
+  /** Two strips: the TEMPORARY abilities (allies, weapons, effects) and RAPHAEL'S UPGRADES (the permanent ones). */
+  const timerSeen = {};
+  const ups = document.getElementById('upgrades');
+  let upKey = '';
+  const slotHtml = (build, bank, k) => {
+    const perm = ABILITIES[k].kind === 'perm';
+    // a permanent upgrade is LOOSE (dashed, wobbling) until the level is cleared, then BANKED (padlocked)
+    const state = !perm ? '' : build[k] > (bank[k] || 0) ? ' loose' : ' banked';
+    return `<div class="slot ${ABILITIES[k].kind}${state}" data-key="${k}" title="${ABILITIES[k].label}">${iconFor(k)}` +
+      (build[k] > 1 ? `<b>${build[k]}</b>` : '') + '</div>';
+  };
   function setAbilities(build, bank = {}) {
     if (!strip) return;
     const held = Object.keys(ABILITIES).filter((k) => build[k] > 0);
     const key = held.map((k) => `${k}${build[k]}/${bank[k] || 0}`).join(',');
     if (key === stripKey) return;
     stripKey = key;
-    // A permanent ability is LOOSE (dashed, wobbling) until the level is cleared, then BANKED (solid,
-    // padlocked). Temporary ones are neither: they keep the orange border.
-    strip.innerHTML = held.map((k) => {
-      const perm = ABILITIES[k].kind === 'perm';
-      const state = !perm ? '' : build[k] > (bank[k] || 0) ? ' loose' : ' banked';
-      return `<div class="slot ${ABILITIES[k].kind}${state}" data-key="${k}" title="${ABILITIES[k].label}">${iconFor(k)}` +
-        (build[k] > 1 ? `<b>${build[k]}</b>` : '') + '</div>';
-    }).join('');
+    for (const k in timerSeen) delete timerSeen[k];      // the slots were rebuilt: write the timers again
+    strip.innerHTML = held.filter((k) => ABILITIES[k].kind === 'temp').map((k) => slotHtml(build, bank, k)).join('');
+    if (ups) {
+      ups.innerHTML = held.filter((k) => ABILITIES[k].kind === 'perm').map((k) => slotHtml(build, bank, k)).join('');
+      ups.classList.toggle('empty', !ups.children.length);
+    }
+  }
+
+  /** HUD option 1: the upgrades show for a few seconds at the start of a room, then go. */
+  let peekTimer = 0;
+  function peekUpgrades(ms = 3500) {
+    if (!ups) return;
+    ups.classList.add('peek');
+    clearTimeout(peekTimer);
+    peekTimer = setTimeout(() => ups.classList.remove('peek'), ms);
   }
 
   /** Confetti over the whole screen, for a cleared level. DOM bits with CSS animation; removed after. */
@@ -102,17 +119,22 @@ export function createHud() {
    * The turtle allies' timers, on their slots: a dark wedge grows as an active ally's time
    * runs out, and shrinks over his break. Cheap: only a CSS variable and a class change.
    */
+  // Called every frame, so it writes only what CHANGED: a custom property rewritten each frame restyles
+  // and repaints the slot (a conic gradient) sixty times a second for a change nobody can see.
   function setAllyTimers(allies) {
     if (!strip) return;
     for (const a of allies) {
+      const left = Math.max(0, Math.min(1, a.timer / (a.duration || 1)));
+      const cover = Math.round((a.present ? 1 - left : left) * 100) / 100;      // 1% steps
+      const tag = cover + (a.present ? 'p' : 'a');
+      if (timerSeen[a.key] === tag) continue;
       const el = strip.querySelector(`.slot[data-key="${a.key}"]`);
       if (!el) continue;
-      const left = Math.max(0, Math.min(1, a.timer / (a.duration || 1)));
-      const cover = a.present ? 1 - left : left;
-      el.style.setProperty('--cover', cover.toFixed(3));
+      timerSeen[a.key] = tag;
+      el.style.setProperty('--cover', cover.toFixed(2));
       el.classList.toggle('away', !a.present);
     }
   }
 
-  return { setRooms, setLeft, say, hideBanner, flash, celebrate, setAbilities, setAllyTimers };
+  return { setRooms, setLeft, say, hideBanner, flash, celebrate, setAbilities, setAllyTimers, peekUpgrades };
 }

@@ -65,12 +65,16 @@ export function createPowers(scene) {
     const mid = new THREE.Mesh(spikeGeo, spikeMat); mid.position.y = 0.34; mid.scale.set(1.2, 1.2, 1.2); g.add(mid);
     g.visible = false; scene.add(g); return g;
   });
-  const shellMat = new THREE.MeshBasicMaterial({ color: 0x5fb24a, fog: false });
+  // THE BOOMERANG (disabled for now, core/abilities.js): small, and a real boomerang shape -- a flat chevron
+  const boomShape = new THREE.Shape();
+  boomShape.moveTo(-0.34, 0.16); boomShape.lineTo(0, -0.04); boomShape.lineTo(0.34, 0.16); boomShape.lineTo(0.3, 0.26); boomShape.lineTo(0, 0.12); boomShape.lineTo(-0.3, 0.26); boomShape.closePath();
+  const boomGeo = new THREE.ExtrudeGeometry(boomShape, { depth: 0.05, bevelEnabled: false });
+  const shellMat = new THREE.MeshBasicMaterial({ color: 0xffa43a, fog: false });
   const shells = Array.from({ length: 3 }, () => {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.14, 8), shellMat);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.05, 6, 16), new THREE.MeshBasicMaterial({ color: 0x14210f, fog: false }));
-    rim.rotation.x = Math.PI / 2; g.add(body, rim); g.visible = false; scene.add(g); return g;
+    const body = new THREE.Mesh(boomGeo, shellMat);
+    body.rotation.x = Math.PI / 2;
+    g.add(body); g.visible = false; scene.add(g); return g;
   });
   const arcMat = new THREE.LineBasicMaterial({ color: 0xbfe8ff, transparent: true, depthTest: false, fog: false });
   const arcs = Array.from({ length: 10 }, () => {
