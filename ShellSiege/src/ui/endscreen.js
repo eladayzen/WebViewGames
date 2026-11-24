@@ -107,15 +107,15 @@ export function renderEnd(kind, { build, bank = {}, oldBank = {}, loose = {}, ke
       let t = 0;
       flyKeys.forEach((k, i) => {
         const el = root.querySelector(`.tray-item[data-key="${k}"]`);
-        flyAndBurn(el, root, k, { delay: 900 + i * 800 });
-        t = 900 + (i + 1) * 800;
+        flyAndBurn(el, root, k, { delay: 1600 + i * 1700, duration: 1300 });
+        t = 1600 + (i + 1) * 1700;
       });
-      if (permLoose.length) setTimeout(() => root.querySelector('.tray')?.classList.add('spent'), Math.max(t, 900 + 800) + 900);
+      if (permLoose.length) setTimeout(() => root.querySelector('.tray')?.classList.add('spent'), Math.max(t, 1600 + 1700) + 1200);
       // the ones that are NOT kept: shake, go grey and fall apart
       lostKeys.forEach((k, i) => {
         const el = root.querySelector(`.tray-item[data-key="${k}"]`);
         el?.animate([{ transform: 'none', filter: 'none', opacity: 1 }, { transform: 'translateX(4px) rotate(5deg)', filter: 'grayscale(1)', opacity: 1, offset: 0.4 },
-          { transform: 'translateY(46px) rotate(28deg) scale(.5)', filter: 'grayscale(1)', opacity: 0 }], { duration: 1000, delay: 700 + i * 250, easing: 'ease-in', fill: 'forwards' });
+          { transform: 'translateY(46px) rotate(28deg) scale(.5)', filter: 'grayscale(1)', opacity: 0 }], { duration: 1000, delay: 1200 + i * 350, easing: 'ease-in', fill: 'forwards' });
       });
     };
   }

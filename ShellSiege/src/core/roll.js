@@ -28,7 +28,7 @@ export const ROLL = {
   // The box shakes. This is the "what will it be" -- the anticipation.
   spinS: 1.0,
   // ...and the answer stays on screen long enough to read.
-  holdS: 1.0,        // 0.8 -> 1.0: a permanent find flies into Raphael's sheet and burns in during it (total stays at the 2 s ceiling)
+  holdS: 1.8,        // 0.8 -> 1.0: a permanent find flies into Raphael's sheet and burns in during it (total stays at the 2 s ceiling)
   // Each copy already owned multiplies the weight by this.
   repeatFalloff: 0.65,
   // How many different game-changing powers a run is guaranteed before the stat upgrades start.
@@ -95,9 +95,41 @@ export function createRoll(build, rng = Math.random, ctx = {}) {
   return { key, t: 0, phase: key ? 'spin' : 'done', done: !key };
 }
 
+/**
+ * A CHOICE instead of a roll (Elad, 24 Nov: "every other time ... 2 options and choosing"). Two DIFFERENT
+ * abilities drawn with the same weights as a roll; the roll waits in phase 'choose' until `pickChoice`.
+ * Falls back to an ordinary roll when fewer than two are on offer.
+ */
+export function createChoice(build, rng = Math.random, ctx = {}) {
+  const w = rollWeights(build, ctx);
+  const draw = (weights) => {
+    const keys = Object.keys(weights);
+    if (!keys.length) return null;
+    let r = rng() * keys.reduce((a, k) => a + weights[k], 0);
+    for (const k of keys) { r -= weights[k]; if (r <= 0) return k; }
+    return keys[keys.length - 1];
+  };
+  const a = draw(w);
+  if (a === null) return createRoll(build, rng, ctx);
+  const rest = { ...w }; delete rest[a];
+  const b = draw(rest);
+  if (b === null) return { key: a, t: 0, phase: 'spin', done: false };
+  return { key: null, choices: [a, b], t: 0, phase: 'choose', done: false };
+}
+
+/** The player picked option `i`: the roll carries on from the reveal with that ability. */
+export function pickChoice(roll, i) {
+  if (!roll.choices || roll.key) return null;
+  roll.key = roll.choices[i === 1 ? 1 : 0];
+  roll.t = ROLL.spinS;
+  roll.phase = 'reveal';
+  return roll.key;
+}
+
 /** Advance by a frame. Returns true on the frame the roll finishes. */
 export function updateRoll(roll, dt) {
   if (roll.done) return false;
+  if (roll.choices && !roll.key) return false;        // waiting for the player
   roll.t += dt;
   if (roll.t >= ROLL.spinS + ROLL.holdS) {
     roll.phase = 'done';

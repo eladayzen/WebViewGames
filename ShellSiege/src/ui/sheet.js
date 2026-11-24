@@ -95,11 +95,11 @@ export function burnInto(slot, { rise = true } = {}) {
   const plus = document.createElement('i'); plus.className = 'plus'; plus.textContent = 'BANKED'; slot.appendChild(plus);
   const sheet = slot.closest('.sheet');
   if (sheet) { sheet.classList.remove('thump'); void sheet.offsetWidth; sheet.classList.add('thump'); }
-  if (rise && sheet) setTimeout(() => riseStats(sheet), 350);
+  if (rise && sheet) setTimeout(() => riseStats(sheet), 700);
   setTimeout(() => {
     slot.classList.remove('burn'); slot.classList.add('banked');
     slot.querySelectorAll('.flame,.ember,.shock,.plus').forEach((f) => f.remove());
-  }, 1700);
+  }, 2500);
 }
 
 /**

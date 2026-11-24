@@ -22,7 +22,7 @@
 // whole shape of a level can be played in a test, and main.js is only the
 // part that turns an event into a banner or a sound.
 import { take } from './abilities.js';
-import { createRoll, updateRoll } from './roll.js';
+import { createRoll, createChoice, updateRoll } from './roll.js';
 import { createRoom, updateRoom, roomCleared } from './rooms.js';
 import { roomsIn } from './breeds.js';
 
@@ -47,8 +47,10 @@ function enter(run, rng) {
 }
 
 /** A fresh run at a level and room. `room` is 0-based. */
-export function createRun({ level = 1, room = 0, rng = Math.random } = {}) {
-  const run = { level, roomIdx: 0, rooms: roomsIn(level - 1), phase: 'intro', t: 0, room: null, roll: null };
+// `choice`: 'off' (every roll is random, the default here so unattended tests never wait for a player),
+// 'alt' (every OTHER room-end roll is a pick between two), or 'always'. main.js passes ?choice= (default 'alt').
+export function createRun({ level = 1, room = 0, rng = Math.random, choice = 'off' } = {}) {
+  const run = { level, roomIdx: 0, rooms: roomsIn(level - 1), phase: 'intro', t: 0, room: null, roll: null, choice, rolls: 0 };
   run.roomIdx = Math.max(0, Math.min(run.rooms - 1, room));
   enter(run, rng);
   return run;
@@ -56,12 +58,12 @@ export function createRun({ level = 1, room = 0, rng = Math.random } = {}) {
 
 /** Dying. Back to the first room of THIS level; the build is the world's and is left alone. */
 export function restartLevel(run, rng = Math.random) {
-  return createRun({ level: run.level, room: 0, rng });
+  return createRun({ level: run.level, room: 0, rng, choice: run.choice });
 }
 
 /** Level won. The next one is the same plaza for now, with more of everything. */
 export function nextLevel(run, rng = Math.random) {
-  return createRun({ level: run.level + 1, room: 0, rng });
+  return createRun({ level: run.level + 1, room: 0, rng, choice: run.choice });
 }
 
 /** True while the world should stand still: the box is open. */
@@ -120,7 +122,9 @@ export function stepRun(run, w, dt, rng = Math.random) {
         run.t = 0;
         ev.push({ type: 'won', level: run.level });
       } else {
-        run.roll = createRoll(w.build, rng, { room: run.roomIdx });
+        run.rolls = (run.rolls || 0) + 1;
+        const pick = run.choice === 'always' || (run.choice === 'alt' && run.rolls % 2 === 0);
+        run.roll = (pick ? createChoice : createRoll)(w.build, rng, { room: run.roomIdx });
         run.phase = 'roll';
         run.t = 0;
         ev.push({ type: 'rollStart', roll: run.roll });

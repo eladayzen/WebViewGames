@@ -53,6 +53,7 @@ import { clearTemp, createBuild } from './core/abilities.js';
 import { createRun, stepRun, restartLevel, nextLevel, beginStartRoll, frozen } from './core/run.js';
 import { enemiesLeft } from './core/rooms.js';
 import { createRollUi } from './ui/roll.js';
+import { pickChoice } from './core/roll.js';
 import { createHud } from './ui/hud.js';
 import { renderEnd } from './ui/endscreen.js';
 import { loadSave, saveProgress } from './systems/save.js';
@@ -157,6 +158,7 @@ async function boot() {
   const finalScore = document.getElementById('final-kills');
 
   const rollUi = createRollUi();
+  rollUi.onPick = (i) => pickChoice(run.roll, i);
   const hud = createHud();
   const iris = createIris();
   const irisAt = new THREE.Vector3();
@@ -168,7 +170,9 @@ async function boot() {
    * file only reacts to what it reports. `?level=` and `?room=` start partway
    * in, so one room can be looked at without clearing the ones before it.
    */
-  let run = createRun({ level: START.level, room: START.room });
+  // THE A/B (Elad, 24 Nov): every OTHER room-end box is a pick between two. ?choice=off = always random, ?choice=always = always a pick.
+  const CHOICE = ['off', 'always'].includes(new URLSearchParams(location.search).get('choice')) ? new URLSearchParams(location.search).get('choice') : 'alt';
+  let run = createRun({ level: START.level, room: START.room, choice: CHOICE });
 
   /**
    * PUT A ROOM'S LOOK ON THE SCREEN AND ITS OBSTACLES IN THE WORLD, from the one
@@ -271,7 +275,7 @@ async function boot() {
     crates = w.targets.slice();
     hits = 0;
     kills = 0;
-    run = forceNew ? createRun({ level: startLevel }) : won ? nextLevel(run) : restartLevel(run);
+    run = forceNew ? createRun({ level: startLevel, choice: CHOICE }) : won ? nextLevel(run) : restartLevel(run);
     applyLook(run.room.look);
     rollUi.close();
     slowT = 0;
@@ -335,11 +339,11 @@ async function boot() {
     if (normal && choice === 'continue' && savedRun) {
       for (const [k, n] of Object.entries(savedRun.build)) w.build[k] = Math.max(w.build[k] || 0, n);
       syncMaxHp(stats(w.build), true);
-      run = createRun({ level: savedRun.level, room: savedRun.room });
+      run = createRun({ level: savedRun.level, room: savedRun.room, choice: CHOICE });
       applyLook(run.room.look);
       announceRoom();
     } else {
-      if (normal && pick.level > 1) { run = createRun({ level: pick.level }); applyLook(run.room.look); }
+      if (normal && pick.level > 1) { run = createRun({ level: pick.level, choice: CHOICE }); applyLook(run.room.look); }
       const startEv = normal ? beginStartRoll(run, w) : [];
       if (startEv.length) for (const e of startEv) onRunEvent(e);
       else announceRoom();
@@ -379,9 +383,9 @@ async function boot() {
     // screen, and also why a whole level can now be played unattended. Input
     // is still sampled so the smoothing does not go stale across the pause.
     if (frozen(run)) {
-      readInput(dt);
+      const ln = readInput(dt);
       if (!paused) for (const e of stepRun(run, w, dt)) onRunEvent(e);
-      if (frozen(run)) rollUi.update(run.roll);
+      if (frozen(run)) rollUi.update(run.roll, ln, dt);
       updateIris();
       view.renderer.render(view.scene, view.camera);
       return;

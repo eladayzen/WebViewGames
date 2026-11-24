@@ -905,8 +905,8 @@ body.hud-1 #upgrades.peek { opacity: 1; }
 /* a slot waiting for its flight: an empty socket. Then BURN: flames rise, the slot glows white-hot, and it cools into a locked one. */
 .slot.incoming { opacity: .35; border-style: dashed; animation: none; }
 .slot.incoming svg, .slot.incoming b { opacity: 0; }
-.slot.burn { animation: slotBurn 1.5s ease-out both; z-index: 5; }
-.slot.burn svg { animation: iconBurn 1.5s ease-out both; }
+.slot.burn { animation: slotBurn 2.4s ease-out both; z-index: 5; }
+.slot.burn svg { animation: iconBurn 2.4s ease-out both; }
 @keyframes slotBurn {
   0%   { opacity: 1; transform: scale(1.5); box-shadow: 0 0 0 3px var(--ink), 0 0 30px 14px #fff3b0; background: #fff3b0; }
   25%  { transform: scale(1.18); box-shadow: 0 0 0 3px var(--ink), 0 0 26px 10px #ff9a1a; background: #ffc86a; }
@@ -916,7 +916,7 @@ body.hud-1 #upgrades.peek { opacity: 1; }
 .slot .flame {
   position: absolute; left: var(--x); bottom: 30%; width: 14px; height: 22px; margin-left: -7px; pointer-events: none; z-index: 6;
   background: radial-gradient(ellipse at 50% 75%, #fff6c0 0 22%, #ffb52a 45%, #ff5a1a 72%, transparent 76%);
-  border-radius: 50% 50% 46% 46% / 66% 66% 34% 34%; opacity: 0; animation: flameUp 1.1s ease-out var(--d) both;
+  border-radius: 50% 50% 46% 46% / 66% 66% 34% 34%; opacity: 0; animation: flameUp 1.6s ease-out var(--d) both;
 }
 @keyframes flameUp { 0% { opacity: 0; transform: translateY(8px) scale(.4); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-34px) scale(1.25, 1.7); } }
 
@@ -1071,3 +1071,38 @@ body:has(#gameover-overlay.sheetmode:not(.hidden)) { overflow: hidden; }
 .lost-line .slot { width: 32px; height: 32px; padding: 4px; border-width: 3px; filter: grayscale(1) brightness(.8); opacity: .75; border-style: dashed; border-color: #8a8a7a; }
 .lost-line .slot::before { content: ''; position: absolute; left: -3px; right: -3px; top: 50%; border-top: 3px solid #e0452f; transform: rotate(-35deg); z-index: 3; }
 @media (max-height: 460px) { .lost-strip { margin-top: 6px; } .lost-line { font-size: 10px; } .lost-line .slot { width: 26px; height: 26px; padding: 3px; } #over-map { margin-top: 14px; } .over-card.dead .card-score { margin-top: 8px; } }
+
+
+/* ================= THE PICK (every other box): two cards, tap one or lean and hold ================= */
+#roll-overlay[data-phase="choose"] .roll-stage { display: none; }
+#roll-choice { display: flex; gap: 18px; justify-content: center; align-items: stretch; width: min(94vw, 640px); margin: 6px 0 10px; z-index: 4; }
+#roll-choice[hidden] { display: none; }
+.choice-card {
+  position: relative; flex: 1; max-width: 300px; padding: 14px 12px 18px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; pointer-events: auto;
+  font-family: 'Arial Black', Impact, sans-serif; color: var(--ink); text-align: center;
+  background: linear-gradient(180deg, #fff3d0, #f6dfa6); border: 5px solid var(--ink); border-radius: 18px;
+  box-shadow: 0 0 0 3px #d9a93a inset, 0 7px 0 rgba(0,0,0,.45), 0 0 30px rgba(255,170,60,.25); animation: choiceIn .45s cubic-bezier(.3,1.5,.5,1) both;
+}
+.choice-card:nth-child(2) { animation-delay: .1s; }
+.choice-card.perm { border-color: var(--green-d); }
+.choice-icon svg { width: 58px; height: 58px; }
+.choice-card b { font-size: 19px; letter-spacing: .03em; line-height: 1.05; }
+.choice-card em { font: 800 13px 'Trebuchet MS', sans-serif; font-style: normal; color: #5b5a45; }
+.choice-rib { font-style: normal; font-size: 11px; letter-spacing: .12em; padding: 2px 10px; border-radius: 8px; color: #fff; background: var(--orange); border: 3px solid var(--ink); }
+.choice-card.perm .choice-rib { background: var(--green-d); }
+.choice-dwell { position: absolute; left: 12%; right: 12%; bottom: 7px; height: 6px; border-radius: 4px; background: rgba(20,33,15,.15); overflow: hidden; text-decoration: none; }
+.choice-dwell::after { content: ''; display: block; height: 100%; width: calc(var(--dwell, 0) * 100%); background: linear-gradient(90deg, #ffd84a, #ff8a1a); }
+.choice-card.hover { transform: translateY(-6px) scale(1.05); box-shadow: 0 0 0 3px #ffd84a inset, 0 12px 0 rgba(0,0,0,.4), 0 0 40px rgba(255,200,60,.6); }
+.choice-card.picked { animation: choicePick .4s ease-out forwards; }
+.choice-card.dropped { animation: choiceDrop .35s ease-in forwards; }
+@keyframes choiceIn { 0% { transform: translateY(40px) scale(.8); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes choicePick { 0% { transform: scale(1.05); } 100% { transform: scale(1.3); opacity: 0; } }
+@keyframes choiceDrop { 100% { transform: translateY(40px) scale(.7); opacity: 0; } }
+@media (max-height: 460px) {
+  #roll-choice { gap: 12px; margin: 0 0 8px; }
+  .choice-card { padding: 8px 8px 14px; gap: 3px; } .choice-icon svg { width: 40px; height: 40px; } .choice-card b { font-size: 15px; } .choice-card em { font-size: 11px; }
+}
+#roll-sheet .sheet { padding: 12px 12px 8px; }
+#roll-sheet .sheet-body { min-height: 60px; }
+#roll-sheet .sheet-slots:empty::before { content: 'none yet'; font: 800 12px 'Trebuchet MS', sans-serif; color: #8a8a72; }
+.choice-card { align-self: center; }
