@@ -13,7 +13,7 @@
 import { PHYS, PHYS_PRESETS, DEFAULT_PRESET } from '../game/constants.js';
 
 const CUSTOM_KEY = 'tmntwavesurf:phys.custom';
-const DEV_KEYS = [['GRAVITY', 1, 12, 0.01], ['THRUST', 1, 16, 0.01], ['DAMP', 0.5, 10, 0.05], ['RAMP', 0, 1.5, 0.05], ['RAMP_T', 0.2, 4, 0.1], ['AIR_PEAK_Y', 0.05, 0.4, 0.005], ['AIR_TIME', 0.6, 2.5, 0.05], ['AIR_LAND_TILT', 0, 0.8, 0.01]];
+const DEV_KEYS = [['GRAVITY', 1, 12, 0.01], ['THRUST', 1, 16, 0.01], ['DAMP', 0.5, 10, 0.05], ['RAMP', 0, 1.5, 0.05], ['RAMP_T', 0.2, 4, 0.1], ['AIR_PEAK_Y', 0.05, 0.4, 0.005], ['AIR_TIME', 0.6, 2.5, 0.05], ['AIR_LAND_TILT', 0, 0.8, 0.01], ['AIR_SPIN', 0, 2, 1]];
 
 function loadCustom() { try { return JSON.parse(localStorage.getItem(CUSTOM_KEY) || 'null'); } catch { return null; } }
 

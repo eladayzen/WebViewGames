@@ -260,7 +260,7 @@ export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKe
     if (game.nextPick <= 0 && !noSpawn && live) { spawnPicks(); game.nextPick = rand(GAME.PICK_GAP); }
     if (live) game.nextLife -= dt;
     const Bq = game.boss;
-    if (live && !noSpawn && Bq.state === 'away' && Bq.next < GAME.OOZE_LEAD && !game.oozeSpawned && game.ooze <= 0 && game.oozeCd <= 0) {
+    if (GAME.OOZE_ENABLED && live && !noSpawn && Bq.state === 'away' && Bq.next < GAME.OOZE_LEAD && !game.oozeSpawned && game.ooze <= 0 && game.oozeCd <= 0) {
       game.picks.push({ air: false, h: 0.30 + Math.random() * 0.35, x: 1.08 * W, type: 'ooze', ph: Math.random() * 6 });
       game.oozeSpawned = true;
     }
@@ -321,6 +321,10 @@ export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKe
       if (flat) game.shots.push({ type, x: sx0, y: sy0, vx: Math.sign(tx - body.x || 1) * sp, vy: 0, rot: 0, flat: true, ooze: oz });
       else game.shots.push({ type, x: sx0, y: sy0, vx: (tx - body.x) / d * sp, vy: (ty - body.y) / d * sp, rot: 0, ooze: oz });
       game.fireCd = 1 / GAME.FIRE_RATE;
+    } else if (game.canFire && !game.clip.length && game.fireCd === 0) {   // empty clip: the endless, weak basic pellet
+      const sp = GAME.BASIC_SPEED * W, sx0 = body.x + 0.2 * sprH, sy0 = body.y - 0.1 * sprH, d = Math.hypot(tgt.x - sx0, tgt.y - sy0) || 1;
+      game.shots.push({ type: 'basic', x: sx0, y: sy0, vx: (tgt.x - sx0) / d * sp, vy: (tgt.y - sy0) / d * sp, rot: 0, flat: true });
+      game.fireCd = 1 / GAME.BASIC_RATE;
     }
     const shotR = GAME.PICK_SIZE * sprH / 2 * GAME.SHOT_SIZE;
     for (let i = game.shots.length - 1; i >= 0; i--) {
@@ -330,9 +334,13 @@ export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKe
         sh.vx += (dx / d * sp - sh.vx) * Math.min(1, dt * 4); sh.vy += (dy / d * sp - sh.vy) * Math.min(1, dt * 4);
       }
       sh.x += sh.vx * dt; sh.y += sh.vy * dt; sh.rot += dt * (sh.type === 'special' ? 12 : 18);
+      if (sh.type === 'basic') {   // a basic pellet that meets an ooze ball is destroyed; the ball flies on
+        const pr = GAME.PROJ_R * H + GAME.BASIC_R * H;
+        if (game.proj.some((p) => Math.hypot(p.x - sh.x, p.y - sh.y) < pr)) { burst(sh.x, sh.y, 6, 300, W, H); game.shots.splice(i, 1); continue; }
+      }
       if (tgt && Math.hypot(sh.x - tgt.x, sh.y - tgt.y) < tgt.r + 0.5 * shotR) {
-        tgt.hit((sh.type === 'special' ? GAME.SPECIAL_DMG : 1) * (sh.ooze ? GAME.OOZE_DMG : 1)); game.bossHits++;
-        burst(sh.x, sh.y, sh.type === 'special' ? 22 : 10, 500, W, H);
+        tgt.hit((sh.type === 'special' ? GAME.SPECIAL_DMG : sh.type === 'basic' ? GAME.BASIC_DMG : 1) * (sh.ooze ? GAME.OOZE_DMG : 1)); game.bossHits++;
+        burst(sh.x, sh.y, sh.type === 'special' ? 22 : sh.type === 'basic' ? 4 : 10, 500, W, H);
         game.shots.splice(i, 1); continue;
       }
       if (sh.x > W + 80 || sh.x < -80 || sh.y < -80 || sh.y > H + 80) game.shots.splice(i, 1);
@@ -418,6 +426,16 @@ export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKe
   function drawObstacles() {
     for (const o of game.obst) {
       const sp = SPR[o.type], im = sprImg(sp), hgt = o.size, wdt = hgt * im.width / im.height;
+      if (!o.hit) {   // read as ENEMY: a pulsing red danger glow behind, and a red warning badge over the head
+        const pu = 0.5 + 0.5 * Math.sin(game.clock * 7 + o.ph), cy = o.y - 0.45 * hgt;
+        const g = ctx.createRadialGradient(o.x, cy, hgt * 0.15, o.x, cy, hgt * (0.75 + 0.08 * pu));
+        g.addColorStop(0, 'rgba(255,30,40,0.55)'); g.addColorStop(1, 'rgba(255,30,40,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(o.x, cy, hgt * (0.75 + 0.08 * pu), 0, 7); ctx.fill();
+        const by = o.y - hgt * 1.12 - pu * hgt * 0.05, bs = hgt * 0.17;
+        ctx.save(); ctx.lineJoin = 'round'; ctx.fillStyle = '#ff2030'; ctx.strokeStyle = '#1a0f2e'; ctx.lineWidth = Math.max(2, bs * 0.22);
+        ctx.beginPath(); ctx.moveTo(o.x, by - bs); ctx.lineTo(o.x + bs * 1.05, by + bs * 0.75); ctx.lineTo(o.x - bs * 1.05, by + bs * 0.75); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.fillRect(o.x - bs * 0.11, by - bs * 0.45, bs * 0.22, bs * 0.65); ctx.beginPath(); ctx.arc(o.x, by + bs * 0.45, bs * 0.12, 0, 7); ctx.fill(); ctx.restore();
+      }
       // waterline inside the image: obstacle_a has its foam ring baked in (~88% down), obstacle_b is cut flat at the bottom
       const wl = sp.img ? (o.type === 'a' ? 0.88 : 1.0) : 0.92;
       if (sp.img && o.type === 'a') { ctx.drawImage(im, o.x - wdt / 2, o.y - hgt * wl, wdt, hgt); continue; }
@@ -480,6 +498,13 @@ export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKe
         ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.arc(sh.x, sh.y, gr * 0.62, 0, 7); ctx.fill();
         ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.arc(sh.x - sh.vx * 0.05, sh.y - sh.vy * 0.05, gr * 0.7, 0, 7); ctx.fill(); ctx.restore();
       }
+      if (sh.type === 'basic') {   // small hot pellet with a short streak
+        const pr = GAME.BASIC_R * H, sp = Math.hypot(sh.vx, sh.vy) || 1;
+        ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,212,0,0.45)'; ctx.lineWidth = pr * 1.4;
+        ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(sh.x - sh.vx / sp * pr * 4, sh.y - sh.vy / sp * pr * 4); ctx.stroke();
+        ctx.fillStyle = '#fff6c0'; ctx.strokeStyle = '#1a0f2e'; ctx.lineWidth = Math.max(1.5, pr * 0.3);
+        ctx.beginPath(); ctx.arc(sh.x, sh.y, pr, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore(); continue;
+      }
       drawAmmo(sh.type, sh.x, sh.y, r * GAME.SHOT_SIZE, sh.rot);
     }
     for (const p of game.pops) {   // collect pop: ring
@@ -530,7 +555,7 @@ export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKe
       holdT = holding() ? holdT + dt : 0;
       const ramp = 1 + (P.RAMP || 0) * Math.min(1, holdT / (P.RAMP_T || 1));
       let a = -P.GRAVITY + (holding() ? P.THRUST * ramp : 0) - P.DAMP * sVel;
-      if (inputMode && inputMode() === 'classic') {   // dev: left = up (as above), right = firmer drop, centre = hold the line
+      if (inputMode && inputMode() === 'classic') {   // left = up (as above), right = firmer drop, centre = hold the line
         const d = leanDir();
         if (d < 0) a = -P.GRAVITY * INPUT.CLASSIC_DOWN - P.DAMP * sVel;
         else if (d === 0) a = -INPUT.CLASSIC_HOLD_DAMP * sVel;
@@ -621,7 +646,10 @@ export function createSurf({ canvas, wave, holding, leanDir, inputMode, directKe
       // then accelerate through the mirrored angle (nose down) into the landing
       const u = airT / Math.max(0.05, airTp);
       tilt = u < 1 ? airTilt0 * (1 - u) * (1 - u) : PHYS.AIR_LAND_TILT * Math.min(1, (u - 1) * (u - 1));
-    } else tilt += (target - tilt) * Math.min(1, dt * 8);
+      // the trick: AIR_SPIN backflips through the middle of the air time, eased in and out
+      const f = Math.min(1, Math.max(0, (airT / PHYS.AIR_TIME - 0.15) / 0.62)), e = f * f * (3 - 2 * f);
+      tilt -= (PHYS.AIR_SPIN || 0) * 2 * Math.PI * e;
+    } else { tilt = Math.atan2(Math.sin(tilt), Math.cos(tilt)); tilt += (target - tilt) * Math.min(1, dt * 8); }   // unwrap a finished backflip so it does not spin back
     // rider body hit circle + game update (obstacles, boss, projectiles)
     const body = { x: bx - 0.05 * img.width * s, y: by - 0.45 * img.height * s, r: 0.27 * img.height * s };
     updateGame(dt, W, H, rail, crestLine, body, live);

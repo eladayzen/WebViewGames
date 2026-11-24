@@ -23,10 +23,10 @@ export function setHoldSide(v) {
   HOLD.delete(SIDE_KEY[side]); side = v; HOLD.add(SIDE_KEY[side]); state.board = false;
 }
 export const holdSide = () => side;
-// MODE: 'one' = one lean pushes up, everything else is nothing (default).
-// 'classic' = the classic GoBalance controller, dev only: lean LEFT = up, lean RIGHT = down,
+// MODE (INPUT.MODE): 'one' = one lean pushes up, everything else is nothing.
+// 'classic' = the classic GoBalance controller (default): lean LEFT = up, lean RIGHT = down,
 // centre = hold the line. holding() is "up" in both modes (cards, comics, ramp).
-let mode = 'one';
+let mode = INPUT.MODE === 'classic' ? 'classic' : 'one';
 export function setInputMode(m) { mode = m === 'classic' ? 'classic' : 'one'; state.board = state.boardDn = false; }
 export const inputMode = () => mode;
 const state = { holdKey: false, holdPtr: false, board: false, boardDn: false, dnKey: false, up: false, dn: false, lastKey: -1e9 };

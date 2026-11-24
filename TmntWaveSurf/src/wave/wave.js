@@ -19,7 +19,7 @@ import * as THREE from 'three';
 const NX = 200, NT = 96, XW = 64, X0 = -30;
 const PEEL_X = -6;             // where the lip is fully pitching
 const RIDER_X = PEEL_X + 2.0;
-const SEA_DROP = 0.12;         // whole sea line sits this much lower than the ref11 profile
+const SEA_DROP = 0.19;   // 2026-11-24: was 0.12 -- the whole sea sits lower, more sky for a bigger jump         // whole sea line sits this much lower than the ref11 profile
 const PROFILE_S = 0.3;
 const ARCH_X = 0.205, ARCH_LIFT = 0.035;   // barrel break: apex x, and how far the lip rises above the shoulder
 

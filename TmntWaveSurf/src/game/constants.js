@@ -19,21 +19,23 @@ export const PHYS = {
   AIR_VX: 420,         // px/s (at 1080p) of 'forward speed' used to turn the jump's vertical speed into a board angle
   AIR_LAND_TILT: 0.40, // rad nose-down the board reaches at touchdown
   AIR_TILT_MAX: 0.42,  // rad, max nose up / down in the air
+  AIR_SPIN: 1,         // full backflips per jump (0 = none); spun through the middle of the air time
   RAMP: 0,             // extra thrust gained while holding: thrust x (1 + RAMP * min(1, holdTime / RAMP_T))
   RAMP_T: 1.6,         // s of holding to reach the full ramp
 };
 // ---- saved physics presets (dev panel) ----
 export const PHYS_PRESETS = {
-  'A · Current': { GRAVITY: 5.88, THRUST: 8.23, DAMP: 4.2, RAMP: 0, RAMP_T: 1.6, AIR_PEAK_Y: 0.165, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
+  'A · Current': { GRAVITY: 5.88, THRUST: 8.23, DAMP: 4.2, RAMP: 0, RAMP_T: 1.6, AIR_PEAK_Y: 0.165, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40, AIR_SPIN: 0 },
   // drop 20% slower (terminal fall 1.12 vs 1.40 rail/s); climb takes the same 2.03 s trough->lip but accelerates the longer you hold
-  'B · Soft drop + ramp': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.165, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
+  'B · Soft drop + ramp': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.165, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40, AIR_SPIN: 0 },
   // the user's saved Custom (B physics) with every jump locked to peak at 0.27 of screen height
-  'C · Saved, locked jump': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
+  'C · Saved, locked jump': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40, AIR_SPIN: 0 },
   // C with a quicker start off the bottom -- one knob changed each (2026-11-18 "the pull-up start feels hard")
-  'D · C + fast ramp': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 0.55, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
-  'E · C + more thrust': { GRAVITY: 4.704, THRUST: 6.5, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
-  'F · C + less drag': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 3.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
-  'G · C, full push at once': { GRAVITY: 4.704, THRUST: 7.5, DAMP: 4.2, RAMP: 0, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40 },
+  'D · C + fast ramp': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 4.2, RAMP: 0.5, RAMP_T: 0.55, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40, AIR_SPIN: 0 },
+  'E · C + more thrust': { GRAVITY: 4.704, THRUST: 6.5, DAMP: 4.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40, AIR_SPIN: 0 },
+  'F · C + less drag': { GRAVITY: 4.704, THRUST: 5.512, DAMP: 3.2, RAMP: 0.5, RAMP_T: 1.6, AIR_PEAK_Y: 0.27, AIR_TIME: 1.35, AIR_LAND_TILT: 0.40, AIR_SPIN: 0 },
+  // 2026-11-24: bigger jump -- the sea sits lower (SEA_DROP), the peak is higher and the hang time longer, with a backflip
+  'G · C, full push at once': { GRAVITY: 4.704, THRUST: 7.5, DAMP: 4.2, RAMP: 0, RAMP_T: 1.6, AIR_PEAK_Y: 0.18, AIR_TIME: 1.7, AIR_LAND_TILT: 0.40, AIR_SPIN: 1 },
 };
 export const DEFAULT_PRESET = 'G · C, full push at once';   // picked 2026-11-18: full push from the first frame, no build-up
 export const DIRECT_RATE = 1.68;   // Direct (dev) controller: face-heights per second
@@ -69,6 +71,7 @@ export const GAME = {
   // OOZE POWER: a mutagen pickup timed to the boss. While it lasts: ooze-green world, +3 lives,
   // glowing stars that hit harder. It shows up shortly before the boss, and picking it up calls
   // the boss in, so the boss is always on screen before the power runs out.
+  OOZE_ENABLED: false,      // 2026-11-24: ooze power-up switched off (maybe level 2, needs more work)
   OOZE_DURATION: 14,        // s
   OOZE_LIVES: 3,            // extra lives on pickup (may go past RUN.LIVES)
   OOZE_DMG: 3,              // damage multiplier for thrown stars / nunchaku
@@ -86,6 +89,10 @@ export const GAME = {
   YACHT_X: [0.66, 0.80],    // where the yacht holds station (screen width fraction)
   YACHT_H: 0.06,            // its waterline on the face (0 = trough, 1 = crest)
   SPECIAL_DMG: 3,
+  BASIC_DMG: 0.25,          // endless basic pellet when the clip is empty: a quarter of a star
+  BASIC_RATE: 2.5,          // basic pellets per second
+  BASIC_SPEED: 0.45,        // screen widths / s
+  BASIC_R: 0.011,           // pellet radius, fraction of screen height. An ooze ball it touches destroys it and flies on
   JET_ENABLED: false,       // water (jetski) boss switched off for now
   JET_SIZE: 1.05,           // water boss (jetski) height vs Mikey's
   JET_X: [0.66, 0.80],      // water boss rides here (screen fraction)
@@ -146,6 +153,7 @@ export const INPUT = {
   PRESS_AT_MAX: 0.15,       // press threshold at sensitivity 100
   RELEASE_RATIO: 0.6,       // release = press x this
   HOLD_CODES: ['Space', 'ArrowUp', 'KeyW'],   // keyboard holds (plus the arrow key of HOLD_SIDE)
+  MODE: 'classic',          // 2026-11-24 default: lean LEFT = up, RIGHT = down, centre = hold the line. 'one' = HOLD_SIDE only (dev toggle)
   HOLD_SIDE: 'left',
   CLASSIC_DOWN: 1.6,        // classic mode, lean right: gravity x this (a firmer drop than letting go)
   CLASSIC_HOLD_DAMP: 9,     // classic mode, centre: no gravity, speed bleeds off at this rate (holds the line)        // 'left' | 'right' | 'front' | 'back' -- a player setting later
