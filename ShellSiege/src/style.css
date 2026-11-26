@@ -1376,3 +1376,55 @@ body:not(.hud-2) #abilities.two .abt { grid-column: 1 / 3; grid-row: 1; justify-
 body:not(.hud-2) #abilities.two .abl { grid-row: 2; grid-column: 1; }
 body:not(.hud-2) #abilities.two .abr { grid-row: 2; grid-column: 2; }
 body.hud-2 #abilities .abl, body.hud-2 #abilities .abt, body.hud-2 #abilities .abr { display: contents; }
+
+
+/* --- level-clear stats, during the celebration (PRD_v2) --- */
+#clear-stats { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.85); z-index: 30; display: none; gap: 2.4vh 2.6vw;
+  grid-template-columns: repeat(4, auto); padding: 2.4vh 3vw; background: var(--cream); color: var(--ink); border: 4px solid var(--ink); border-radius: 18px;
+  box-shadow: 0 0 0 4px var(--orange), 0 8px 0 4px rgba(0,0,0,.35); pointer-events: none; opacity: 0; }
+#clear-stats.on { display: grid; animation: statsIn .45s ease-out forwards; }
+#clear-stats div { display: grid; justify-items: center; gap: .4vh; }
+#clear-stats b { font: 900 clamp(22px, 7vh, 46px)/1 'Arial Black', Impact, sans-serif; }
+#clear-stats span { font: 800 clamp(10px, 2.6vh, 15px)/1 sans-serif; letter-spacing: .08em; opacity: .7; }
+@keyframes statsIn { to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+.loss-title { font-size: clamp(20px, 6.4vh, 40px); letter-spacing: .02em; color: #fff3cf; text-shadow: 0 3px 0 #14210f, 0 0 18px rgba(255,200,80,.5); }
+
+/* ======================= SLOTS and LEVEL FLYTHROUGH (PRD_v2) ======================= */
+.lb.sl { grid-template-rows: auto minmax(0, 1fr) auto; }
+.sl-row { min-height: 0; display: flex; justify-content: center; align-items: stretch; gap: 2vw; padding: 1vh 0; }
+.sl-card { position: relative; flex: 0 1 clamp(120px, 21vw, 200px); min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; gap: .9vh; align-items: center; justify-items: center;
+  padding: 1.4vh 1vw; cursor: pointer; font-family: 'Arial Black', Impact, sans-serif; color: var(--cream); text-align: center;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--hue) 22%, #10181c), #0b1114); border: 5px solid var(--hue); border-radius: 18px;
+  box-shadow: 0 0 0 3px var(--ink), 0 .8vh 0 rgba(0,0,0,.5), 0 0 3vh color-mix(in srgb, var(--hue) 40%, transparent); }
+.sl-card:hover, .sl-card:focus-visible { box-shadow: 0 0 0 3px var(--ink), 0 1.2vh 0 rgba(0,0,0,.5), 0 0 5vh var(--hue); }
+.sl-art { width: 100%; height: 100%; min-height: 0; border-radius: 12px; border: 3px solid var(--ink); background: center / cover no-repeat; display: grid; place-items: center; }
+.sl-lvl { display: grid; justify-items: center; line-height: 1; padding: .6vh 1.2vw; border-radius: 12px; background: rgba(0,0,0,.55); }
+.sl-lvl small { font-size: clamp(8px, 2.6vh, 11px); letter-spacing: .2em; color: color-mix(in srgb, var(--hue) 70%, #fff); }
+.sl-lvl b { font-size: clamp(26px, 10vh, 48px); color: var(--hue); -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; }
+.sl-name { font-size: clamp(11px, 3.6vh, 16px); letter-spacing: .1em; color: var(--hue); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+.sl-where { display: flex; align-items: center; gap: .6vw; font-size: clamp(9px, 3vh, 13px); letter-spacing: .08em; opacity: .9; }
+.sl-where .map-turtle { width: clamp(14px, 5vh, 22px); height: clamp(14px, 5vh, 22px); }
+.sl-skills { display: flex; gap: 3px; justify-content: center; flex-wrap: nowrap; }
+.sl-skills .slot { width: clamp(16px, 5.6vw, 28px); height: clamp(16px, 5.6vw, 28px); padding: 3px; border-width: 2px; border-radius: 7px; box-shadow: 0 0 0 2px var(--ink); }
+.sl-skills .slot b { min-width: 14px; height: 14px; line-height: 11px; right: -5px; bottom: -5px; font-size: 8px; border-width: 2px; }
+.sl-skills .slot.empty { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); border-style: dashed; box-shadow: none; }
+.sl-del { position: absolute; top: -1.4vh; right: -1vw; min-width: clamp(24px, 8vh, 34px); height: clamp(24px, 8vh, 34px); padding: 0 8px; border: 3px solid var(--ink); border-radius: 17px; background: var(--cream); color: var(--ink);
+  font: 900 clamp(14px, 4.6vh, 20px)/1 'Arial Black', Impact, sans-serif; cursor: pointer; z-index: 2; }
+.sl-del.sure { background: #d6242c; color: #fff; font-size: clamp(9px, 3vh, 12px); }
+.lb-buttons button.off { opacity: .45; filter: grayscale(.6); cursor: not-allowed; }
+
+.lb.lt { grid-template-rows: auto minmax(0, 1fr) auto; }
+.lt-view { min-height: 0; overflow: hidden; display: flex; align-items: center; -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+.lt-strip { display: flex; gap: 6vw; align-items: center; padding: 2vh 0; will-change: transform; }
+.lt-isle { flex: none; width: clamp(150px, 30vw, 260px); display: grid; justify-items: center; gap: .8vh; font-family: 'Arial Black', Impact, sans-serif; color: var(--cream); text-align: center; transform: scale(.78); opacity: .7; transition: transform .6s, opacity .6s; }
+.lt-isle.on { transform: scale(1.05); opacity: 1; }
+.lt-art { position: relative; width: 100%; aspect-ratio: 1.3; border-radius: 22px; border: 5px solid var(--hue); background: center / cover no-repeat; box-shadow: 0 0 0 3px var(--ink), 0 1vh 0 rgba(0,0,0,.5), 0 0 4vh color-mix(in srgb, var(--hue) 50%, transparent); display: grid; place-items: center; overflow: hidden; }
+.lt-isle.locked .lt-art { filter: grayscale(.9) brightness(.45) blur(1px); }
+.lt-art em { font: 900 clamp(40px, 16vh, 80px)/1 'Arial Black', Impact, sans-serif; color: var(--cream); font-style: normal; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; }
+.lt-star { position: absolute; right: 6%; top: 6%; width: clamp(34px, 14vh, 64px); height: clamp(34px, 14vh, 64px); animation: starPop .7s .4s both cubic-bezier(.3,1.8,.5,1); }
+@keyframes starPop { from { transform: scale(0) rotate(-90deg); } to { transform: scale(1) rotate(0); } }
+.lt-lbl { display: flex; align-items: baseline; gap: .6vw; line-height: 1; } .lt-lbl small { font-size: clamp(9px, 3vh, 12px); letter-spacing: .2em; color: color-mix(in srgb, var(--hue) 70%, #fff); }
+.lt-lbl b { font-size: clamp(24px, 9vh, 44px); color: var(--hue); -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; }
+.lt-name { font-size: clamp(10px, 3.4vh, 15px); letter-spacing: .12em; }
+.sl-skills { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; width: 100%; }
+.sl-skills .slot { width: 100%; height: auto; aspect-ratio: 1; }

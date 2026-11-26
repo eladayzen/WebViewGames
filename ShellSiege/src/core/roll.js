@@ -46,7 +46,21 @@ export const ALLY_KEYS = ['leo', 'mikey', 'donnie'];
 /** A run goes at most this many cleared rooms before a turtle joins (Elad, 24 Nov). */
 export const ALLY_BY_ROOM = 1;      // 0-based: the roll after the SECOND room is guaranteed to be a turtle
 
+// v2 (PRD_v2.md): between rooms only WEAPONS (temp, turtles included) are offered; the permanent skill is offered once,
+// after the last room of a level. `ctx.kind` says which pool: 'temp' | 'perm'. Without it the old mixed pool is used.
 export function rollWeights(build, ctx = {}) {
+  if (ctx.kind === 'perm') {
+    const out = {};
+    for (const k of offerable(build)) if (ABILITIES[k].kind === 'perm') out[k] = (ABILITIES[k].weight ?? 1) * Math.pow(ROLL.repeatFalloff, build[k]);
+    return out;
+  }
+  const out = rollWeightsAll(build, ctx);
+  if (!ctx.kind) return out;
+  for (const k of Object.keys(out)) if (ABILITIES[k].kind !== ctx.kind) delete out[k];
+  return out;
+}
+
+function rollWeightsAll(build, ctx = {}) {
   const out = {};
   // THE FIRST TURTLE ARRIVES WITHIN TWO ROOMS. Until one is held, turtles are far more likely, and the roll
   // after the second room can only be a turtle.

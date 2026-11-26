@@ -35,7 +35,7 @@ import { THEMES, layoutObstacles, usedFloors } from './core/looks.js';
 import { createFoes, loadEnemies } from './render/foes.js';
 import { createDebris, loadDebris } from './render/debris.js';
 import { createArrival } from './render/arrival.js';
-import { showLobby } from './ui/lobby.js';
+import { showSlots, levelTravel } from './ui/lobby.js';
 import { GAME_TITLE } from './core/brand.js';
 import { createPowers } from './render/powers.js';
 import { createGhost } from './render/ghost.js';
@@ -57,7 +57,7 @@ import { pickChoice } from './core/roll.js';
 import { createHud } from './ui/hud.js';
 import { renderEnd, playRewind } from './ui/endscreen.js';
 import { createTravel } from './ui/travel.js';
-import { loadSave, saveProgress } from './systems/save.js';
+import { loadSlots, slotsNow, saveProgress, setActiveSlot, newSlot, deleteSlot } from './systems/save.js';
 import { looseOf, bankOnWin, bankOnDeath, pickToKeep, buildFromBank } from './core/bank.js';
 import { createIris } from './ui/iris.js';
 import { TRANS, irisOpen } from './core/transition.js';
@@ -118,14 +118,7 @@ async function boot() {
   {
     const q = new URLSearchParams(location.search);
     persist = !q.get('kit') && !q.get('fresh');
-    if (persist) {
-      const saved = await loadSave();
-      savedRun = saved.run;
-      unlocked = Math.max(saved.unlocked || 1, saved.run ? saved.run.level : 1);
-      const kept = saved.perm;
-      bank = { ...kept };
-      for (const [k, c] of Object.entries(kept)) w.build[k] = Math.max(w.build[k] || 0, c);
-    }
+    if (persist) await loadSlots();         // the four slots; which one is played is chosen below
   }
   w.targets = createTargets();
   // The crates never leave the array once laid out, so hold them here rather
@@ -141,6 +134,7 @@ async function boot() {
   const hudSrc = document.getElementById('hud-src');
   const hudHits = document.getElementById('hud-hits');
   let hits = 0;
+  const tot = { rooms: 0, kills: 0 };      // over the whole run (since the last death): the run summary
   let paused = false;
 
   document.getElementById('pause-button')?.addEventListener('click', () => {
@@ -173,8 +167,8 @@ async function boot() {
    * in, so one room can be looked at without clearing the ones before it.
    */
   // THE A/B (Elad, 24 Nov): every OTHER room-end box is a pick between two. ?choice=off = always random, ?choice=always = always a pick.
-  const CHOICE = ['off', 'always'].includes(new URLSearchParams(location.search).get('choice')) ? new URLSearchParams(location.search).get('choice') : 'alt';
-  let run = createRun({ level: START.level, room: START.room, choice: CHOICE });
+  const CHOICE = ['off', 'always'].includes(new URLSearchParams(location.search).get('choice')) ? new URLSearchParams(location.search).get('choice') : 'off';
+  let run = createRun({ level: START.level, room: START.room, choice: CHOICE, skillPick: true });
 
   /**
    * PUT A ROOM'S LOOK ON THE SCREEN AND ITS OBSTACLES IN THE WORLD, from the one
@@ -232,7 +226,7 @@ async function boot() {
     const newBank = kind === 'won' ? bankOnWin(bank, w.build) : bankOnDeath(bank, w.build);
     // WHERE THE RUN ENDED, for the map: the room reached plus the share of its enemies already down
     const frac = Math.max(0, Math.min(1, 1 - enemiesLeft(w, run.room) / Math.max(1, run.room.total)));
-    const playEnd = renderEnd(kind, { progress: kind === 'won' ? null : { t: run.roomIdx + frac }, build: w.build, bank: newBank, oldBank: bank, loose, keptPick, level: run.level, rooms: run.rooms });
+    const playEnd = renderEnd(kind, { progress: kind === 'won' ? null : { t: run.roomIdx + frac }, build: w.build, bank: newBank, oldBank: bank, loose, keptPick, level: run.level, rooms: run.rooms, stats: { rooms: tot.rooms, kills: tot.kills } });
     bank = newBank;
     if (kind === 'won') unlocked = Math.max(unlocked, run.level + 1);      // clearing a level opens the next
     if (persist) saveProgress(bank, null, unlocked);
@@ -242,9 +236,22 @@ async function boot() {
     if (playEnd) requestAnimationFrame(() => playEnd({ celebrate: () => hud.celebrate() }));      // the flight needs the card on screen to measure it
   }
 
+  // THE LEVEL-CLEAR STATS (PRD_v2): rooms, mobs, time and hits taken, shown during the celebration before the skill pick.
+  const statsEl = document.getElementById('clear-stats');
+  function showClearStats() {
+    if (!statsEl) return;
+    const t = Math.round(w.timeS), mm = String(Math.floor(t / 60)), ss = String(t % 60).padStart(2, '0');
+    const row = (n, l) => `<div><b>${n}</b><span>${l}</span></div>`;
+    statsEl.innerHTML = row(run.rooms, 'ROOMS') + row(kills, 'MOBS') + row(`${mm}:${ss}`, 'TIME') + row(hits, 'HITS TAKEN');
+    statsEl.classList.add('on');
+  }
+  function hideClearStats() { statsEl?.classList.remove('on'); }
+
   /** What a run event looks like on screen. The run itself never touches the DOM. */
   function onRunEvent(e) {
     if (e.type === 'cleared') {
+      tot.rooms += 1;
+      if (e.last) showClearStats();
       // THE MOMENT. A beat of slow motion and a white pop on the last kill, the
       // banner with the count, and then (from core/transition.js, driven by the
       // run's own clock) the iris closes on the turtle.
@@ -253,11 +260,11 @@ async function boot() {
       hud.say(e.last ? 'LEVEL CLEAR' : 'ROOM CLEAR', `${kills} down`);
       if (e.last) hud.celebrate();            // confetti over the field: a level is a bigger moment than a room
     }
-    else if (e.type === 'rollStart') { travelUi.hide(); if (!e.roll.done) rollUi.open(e.roll, { black: !!e.start, build: w.build, bank }); }
+    else if (e.type === 'rollStart') { travelUi.hide(); hideClearStats(); if (!e.roll.done) rollUi.open(e.roll, { black: !!e.start, build: w.build, bank }); }
     else if (e.type === 'rollDone') { rollUi.close(); }
     else if (e.type === 'travelStart') { travelUi.show(e); }
     else if (e.type === 'roomStart') { travelUi.hide(); applyLook(run.room.look); announceRoom(); }
-    else if (e.type === 'won') showEnd('won');
+    else if (e.type === 'won') { hideClearStats(); showEnd('won'); }
   }
 
   /**
@@ -279,9 +286,10 @@ async function boot() {
     crates = w.targets.slice();
     hits = 0;
     kills = 0;
-    run = forceNew ? createRun({ level: startLevel, choice: CHOICE }) : won ? nextLevel(run) : restartLevel(run);
+    if (!won) { tot.rooms = 0; tot.kills = 0; }
+    run = forceNew ? createRun({ level: startLevel, choice: CHOICE, skillPick: true }) : won ? nextLevel(run) : restartLevel(run);
     applyLook(run.room.look);
-    rollUi.close(); travelUi.hide();
+    rollUi.close(); travelUi.hide(); hideClearStats();
     slowT = 0;
     hud.hideBanner();
     // Hide the pool immediately, or the last frame's bodies are still standing
@@ -296,6 +304,35 @@ async function boot() {
     if (startEv.length) for (const e of startEv) onRunEvent(e);
     else announceRoom();
   }
+  /**
+   * START PLAYING A SLOT (PRD_v2). A new slot is a new character: level 1, the level flythrough, then the starting shuffle.
+   * An existing one resumes at the room it LAST STARTED, from the beginning of that room, with the weapons it held; with no run
+   * in progress it starts the level reached from its first room with the starting shuffle (all weapons are gone after a death).
+   */
+  async function enterSlot({ slot, isNew }) {
+    if (isNew) newSlot(slot); else setActiveSlot(slot);
+    const s = slotsNow()[slot] || { perm: {}, run: null, unlocked: 1 };
+    bank = { ...s.perm }; unlocked = s.unlocked || 1; savedRun = s.run;
+    Object.assign(w, createWorld());
+    w.build = buildFromBank(bank, createBuild);
+    if (savedRun) for (const [k, n] of Object.entries(savedRun.build)) w.build[k] = Math.max(w.build[k] || 0, n);
+    syncMaxHp(stats(w.build), true);
+    w.targets = createTargets();
+    crates = w.targets.slice();
+    hits = 0; kills = 0; tot.rooms = 0; tot.kills = 0;
+    const level = savedRun ? savedRun.level : unlocked;
+    run = createRun({ level, room: savedRun ? savedRun.room : 0, choice: CHOICE, skillPick: true });
+    applyLook(run.room.look);
+    rollUi.close(); travelUi.hide(); hideClearStats();
+    slowT = 0; hud.hideBanner();
+    foesFx.syncFoes([], 0, 0); alliesFx.sync([], 0, 0, []); telegraphs.sync([], [], 0);
+    overlay?.classList.add('hidden');
+    if (isNew) { paused = true; await levelTravel({ from: 4, to: 1 }); paused = false; }      // the potential, then back to level 1
+    if (savedRun) { announceRoom(); return; }
+    const startEv = beginStartRoll(run, w);
+    if (startEv.length) for (const e of startEv) onRunEvent(e);
+    else announceRoom();
+  }
   let rewinding = false;
   document.getElementById('restart-button')?.addEventListener('click', async () => {
     if (rewinding) return;
@@ -306,6 +343,7 @@ async function boot() {
       rewinding = false;
       overlay.querySelector('.over-card')?.classList.remove('rewinding');
     }
+    if (run.phase === 'won' && persist) { rewinding = true; await levelTravel({ from: run.level, to: run.level + 1, star: true }); rewinding = false; }
     restart();
   });
 
@@ -314,20 +352,11 @@ async function boot() {
   const quitEl = document.getElementById('quit-confirm');
   let confirmOpen = false, pausedBeforeConfirm = false;
   async function goLobby() {
-    const endShown = !!overlay && !overlay.classList.contains('hidden');
     paused = true;
-    let snap;
-    if (endShown) {      // the run just ended: the lobby offers the next one (same level after a death, the next after a win)
-      const wonRun = run.phase === 'won';
-      snap = { level: wonRun ? run.level + 1 : run.level, room: 0, build: wonRun ? w.build : (persist ? buildFromBank(bank, createBuild) : w.build) };
-    } else {
-      snap = { level: run.level, room: run.roomIdx, build: w.build };
-      if (persist) saveProgress(bank, snap, unlocked);
-    }
-    const pick = await showLobby({ run: { ...snap, rooms: roomsIn(snap.level - 1) }, bank, unlocked, midGame: true });
+    // the run in progress is saved at every room start; a run that just ended was saved when it ended
+    const pick = await showSlots({ slots: slotsNow(), onDelete: deleteSlot, midGame: true });
     paused = false;
-    if (pick.choice === 'new') restart(true, pick.level);
-    else if (endShown) restart();
+    enterSlot(pick);
   }
   document.addEventListener('click', (e) => {
     if (!(e.target.closest && e.target.closest('#gb-back'))) return;
@@ -344,24 +373,14 @@ async function boot() {
   {
     const q = new URLSearchParams(location.search);
     const normal = !q.get('kit') && !q.get('fresh') && !q.get('room');
-    let choice = 'new', pick = { choice: 'new', level: 1 };
     if (normal) {
       paused = true;                                     // the world waits behind the lobby
-      pick = await showLobby({ run: savedRun && { ...savedRun, rooms: roomsIn(savedRun.level - 1) }, bank, unlocked });
-      choice = pick.choice;
+      const have = slotsNow().some(Boolean);
+      const pick = have ? await showSlots({ slots: slotsNow(), onDelete: deleteSlot }) : { slot: 0, isNew: true };
       paused = false;
-    }
-    if (normal && choice === 'continue' && savedRun) {
-      for (const [k, n] of Object.entries(savedRun.build)) w.build[k] = Math.max(w.build[k] || 0, n);
-      syncMaxHp(stats(w.build), true);
-      run = createRun({ level: pick.level, room: pick.room ?? savedRun.room, choice: CHOICE });      // LOAD GAME may restart from any door it reached
-      applyLook(run.room.look);
-      announceRoom();
+      enterSlot(pick);
     } else {
-      if (normal && pick.level > 1) { run = createRun({ level: pick.level, choice: CHOICE }); applyLook(run.room.look); }
-      const startEv = normal ? beginStartRoll(run, w) : [];
-      if (startEv.length) for (const e of startEv) onRunEvent(e);
-      else announceRoom();
+      announceRoom();
     }
   }
 
@@ -426,7 +445,7 @@ async function boot() {
     if (frozen(run)) {
       const ln = readInput(dt);
       if (!paused) for (const e of stepRun(run, w, dt)) onRunEvent(e);
-      if (frozen(run) && run.roll && run.phase === 'roll') rollUi.update(run.roll, ln, dt);
+      if (frozen(run) && run.roll && (run.phase === 'roll' || run.phase === 'skill')) rollUi.update(run.roll, ln, dt);
       updateIris();
       view.renderer.render(view.scene, view.camera);
       return;
@@ -509,7 +528,7 @@ async function boot() {
         hits++;
         if (t.kind === 'foe') chainArc(w, t, st.damage, allyHooksRef);      // CHAIN LIGHTNING
         if (t.kind === 'foe' && !t.alive) {
-          kills++; noteKill(w);
+          kills++; tot.kills++; noteKill(w);
           // The burst goes here rather than in the renderer because this is
           // the one place that knows a kill JUST happened, as opposed to
           // "is dead", which is true on every frame afterwards.
@@ -523,7 +542,7 @@ async function boot() {
       // so what they kill this frame is dead before the room is asked if it is cleared.
       // A kill by an ally counts exactly like one of the player's: the counter and the burst.
       const allyHooks = {
-        onKill: (f) => { kills++; noteKill(w); debrisFx.burst(f.x, f.y, Math.min(2, (f.radius || 44) / 44)); },
+        onKill: (f) => { kills++; tot.kills++; noteKill(w); debrisFx.burst(f.x, f.y, Math.min(2, (f.radius || 44) / 44)); },
         onHit: (f) => fx.spark(f.x, f.y, 0.5),
         onPizza: (z) => { fx.spark(z.x, z.y, 1.2); hud.flash(); },
       };
@@ -577,7 +596,7 @@ async function boot() {
       hud.setCooldowns(cooldownsOf(w, st));
       if (hpFill) setStyle('hp', hpFill, 'width', Math.max(0, Math.round((w.hp / w.maxHp) * 1000) / 10) + '%');
       hud.setRooms(run.roomIdx, run.rooms,
-        run.phase === 'cleared' || run.phase === 'roll' || run.phase === 'won');
+        run.phase === 'cleared' || run.phase === 'roll' || run.phase === 'skill' || run.phase === 'won');
       hud.setLeft(enemiesLeft(w, run.room), run.phase === 'fight');
       if (hudKills) setText('kills', hudKills, String(kills));
       if (hudTime && !hudHidden()) setText('time', hudTime, w.timeS.toFixed(1) + 's');

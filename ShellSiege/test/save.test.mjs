@@ -56,3 +56,32 @@ test('THE FURTHEST LEVEL REACHED IS SAVED, never trusted, and defaults to 1', as
   assert.equal(decodeUnlocked(encodeProgress(b)), 1, 'a new player has only level 1');
   for (const bad of [null, '', 'x', { v: 1, unlocked: 0 }, { v: 1, unlocked: -3 }, { v: 1, unlocked: 'a' }, { v: 1, unlocked: 99999 }, { v: 9, unlocked: 5 }]) assert.equal(decodeUnlocked(bad), 1, `accepted ${JSON.stringify(bad)}`);
 });
+
+test('FOUR SLOTS: they round-trip, are ordered by last played, and an old single-save blob is ignored', async () => {
+  const { decodeSlots, orderedSlots, SLOT_COUNT, newSlot, saveProgress, slotsNow, deleteSlot, setActiveSlot } = await import('../src/systems/save.js');
+  assert.equal(SLOT_COUNT, 4);
+  assert.deepEqual(decodeSlots({ v: 1, perm: { rapid: 2 } }), [null, null, null, null], 'the old save format is dropped');
+  const blob = { v: 2, slots: [
+    { v: 1, perm: { rapid: 2 }, unlocked: 3, saved: 100, run: { level: 3, room: 2, build: { rapid: 2, leo: 1 } } },
+    null,
+    { v: 1, perm: {}, unlocked: 1, saved: 500 },
+    { perm: { nonsense: 9, leo: 1 }, unlocked: 99999, saved: 'x' },
+  ] };
+  const got = decodeSlots(JSON.stringify(blob));
+  assert.equal(got.length, 4);
+  assert.deepEqual(got[0].perm, { rapid: 2 });
+  assert.deepEqual(got[0].run.build, { rapid: 2, leo: 1 }, 'the run keeps its temporary weapons');
+  assert.deepEqual(got[3].perm, {}, 'an unknown or temporary ability got into a slot');
+  assert.equal(got[3].unlocked, 1, 'a hostile level reached was kept');
+  assert.deepEqual(orderedSlots(got).map((x) => x.i), [2, 0, 3], 'most recently played first');
+  // the live API
+  newSlot(1);
+  const b = { rapid: 1 };
+  saveProgress(b, { level: 2, room: 1, build: { rapid: 1, stars: 1 } }, 2);
+  assert.equal(slotsNow()[1].unlocked, 2);
+  assert.equal(slotsNow()[1].run.room, 1);
+  assert.ok(slotsNow()[1].saved > 0, 'no timestamp');
+  deleteSlot(1);
+  assert.equal(slotsNow()[1], null);
+  setActiveSlot(0);
+});

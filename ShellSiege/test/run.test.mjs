@@ -95,14 +95,16 @@ test('THE WORLD IS ONLY FROZEN WHILE THE BOX IS OPEN', () => {
   assert.equal(frozen(run), false, 'a won level must not freeze the screen');
 });
 
-test('THE LAST ROOM IS NOT FOLLOWED BY A ROLL -- the level is won', () => {
+test('THE LAST ROOM IS FOLLOWED BY THE LEVEL\'S ONE PERMANENT SKILL, then the level is won', () => {
   const w = createWorld();
   const run = createRun({ room: 99, rng: seeded(1) });   // clamps to the last room
   assert.equal(run.roomIdx, run.rooms - 1);
   const log = play(run, w, { until: (r) => r.phase === 'won' });
   assert.ok(log.includes('won'));
-  assert.ok(!log.includes('rollStart'), 'a roll after the last room has nowhere to go');
-  assert.equal(picks(w.build), 0);
+  assert.equal(log.filter((e) => e === 'rollStart').length, 1, 'the level-end skill is offered exactly once');
+  assert.equal(picks(w.build), 1, 'one skill, and it is permanent');
+  const only = Object.keys(w.build).find((k) => w.build[k] > 0);
+  assert.equal(ABILITIES[only].kind, 'perm');
 });
 
 test('A WHOLE LEVEL PLAYS OUT UNATTENDED, with one roll between each pair of rooms', () => {
@@ -110,8 +112,10 @@ test('A WHOLE LEVEL PLAYS OUT UNATTENDED, with one roll between each pair of roo
   const run = createRun({ rng: seeded(3) });
   const log = play(run, w, { until: (r) => r.phase === 'won', rng: seeded(3) });
   assert.equal(log.filter((e) => e === 'cleared').length, run.rooms, 'a room was skipped');
-  assert.equal(log.filter((e) => e === 'rollDone').length, run.rooms - 1);
-  assert.equal(picks(w.build), run.rooms - 1);
+  assert.equal(log.filter((e) => e === 'rollDone').length, run.rooms, 'a weapon between each pair of rooms plus the level-end skill');
+  assert.equal(picks(w.build), run.rooms);
+  const kinds = Object.entries(w.build).filter(([, n]) => n > 0).map(([k]) => ABILITIES[k].kind);
+  assert.equal(kinds.filter((k) => k === 'perm').length, 1, 'exactly one permanent skill per level');
   assert.equal(log.at(-1), 'won');
 });
 
@@ -197,4 +201,21 @@ test('THE MAP COMES FIRST: the moment a room is clear, over black, BEFORE the bo
   for (let t = 0; t < RUN.travelS + 0.2; t += 1 / 30) for (const e of stepRun(run, w, 1 / 30, seeded(1))) log.push(e.type);
   assert.equal(run.phase, 'roll', 'then the roll');
   assert.equal(run.roomIdx, t0, 'the room number advances only when the roll is done');
+});
+
+test('BETWEEN ROOMS ONLY WEAPONS ARE OFFERED; the level-end skill is a pick of two permanent ones', () => {
+  for (let seed = 1; seed < 15; seed++) {
+    const w = createWorld();
+    const run = createRun({ rng: seeded(seed), skillPick: true });
+    const seen = [];
+    for (let i = 0; i < 60 * 60 * 2 && run.phase !== 'skill'; i++) {
+      for (const e of stepRun(run, w, 1 / 30, seeded(seed))) if (e.type === 'rollStart' && !e.skill) seen.push(e.roll.key);
+      if (run.phase === 'fight') for (const f of w.foes) f.alive = false;
+    }
+    assert.equal(run.phase, 'skill', 'the level never reached its skill pick');
+    for (const k of seen) assert.equal(ABILITIES[k].kind, 'temp', `${k} is not a weapon but was rolled between rooms`);
+    assert.equal(run.roll.phase, 'choose', 'the skill pick should wait for the player');
+    assert.equal(run.roll.choices.length, 2);
+    for (const k of run.roll.choices) assert.equal(ABILITIES[k].kind, 'perm', `${k} is not a skill`);
+  }
 });

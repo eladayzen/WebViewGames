@@ -51,8 +51,9 @@ function enter(run, rng) {
 /** A fresh run at a level and room. `room` is 0-based. */
 // `choice`: 'off' (every roll is random, the default here so unattended tests never wait for a player),
 // 'alt' (every OTHER room-end roll is a pick between two), or 'always'. main.js passes ?choice= (default 'alt').
-export function createRun({ level = 1, room = 0, rng = Math.random, choice = 'off' } = {}) {
-  const run = { level, roomIdx: 0, rooms: roomsIn(level - 1), phase: 'intro', t: 0, room: null, roll: null, choice, rolls: 0 };
+// `skillPick`: the level-end skill is a pick of two (the game) rather than a roll (unattended tests).
+export function createRun({ level = 1, room = 0, rng = Math.random, choice = 'off', skillPick = false } = {}) {
+  const run = { level, roomIdx: 0, rooms: roomsIn(level - 1), phase: 'intro', t: 0, room: null, roll: null, choice, skillPick, rolls: 0 };
   run.roomIdx = Math.max(0, Math.min(run.rooms - 1, room));
   enter(run, rng);
   return run;
@@ -60,16 +61,16 @@ export function createRun({ level = 1, room = 0, rng = Math.random, choice = 'of
 
 /** Dying. Back to the first room of THIS level; the build is the world's and is left alone. */
 export function restartLevel(run, rng = Math.random) {
-  return createRun({ level: run.level, room: 0, rng, choice: run.choice });
+  return createRun({ level: run.level, room: 0, rng, choice: run.choice, skillPick: run.skillPick });
 }
 
 /** Level won. The next one is the same plaza for now, with more of everything. */
 export function nextLevel(run, rng = Math.random) {
-  return createRun({ level: run.level + 1, room: 0, rng, choice: run.choice });
+  return createRun({ level: run.level + 1, room: 0, rng, choice: run.choice, skillPick: run.skillPick });
 }
 
 /** True while the world should stand still: the box is open. */
-export const frozen = (run) => run.phase === 'roll' || run.phase === 'travel';
+export const frozen = (run) => run.phase === 'roll' || run.phase === 'travel' || run.phase === 'skill';
 
 /**
  * THE FREE START POWER. Elad, 22 Nov: after GO AGAIN, over black, one quick roll of a new
@@ -79,7 +80,7 @@ export const frozen = (run) => run.phase === 'roll' || run.phase === 'travel';
  */
 export function beginStartRoll(run, w, rng = Math.random) {
   const ev = [];
-  run.roll = createRoll(w.build, rng, { room: -1 });
+  run.roll = createRoll(w.build, rng, { room: -1, kind: 'temp' });
   if (run.roll.done) { run.roll = null; return ev; }       // nothing left to give: no empty box
   run.phase = 'roll'; run.t = 0; run.startRoll = true;
   ev.push({ type: 'rollStart', roll: run.roll, start: true });
@@ -100,7 +101,7 @@ function finishRoll(run, w, rng, ev) {
 function startRoll(run, w, rng, ev) {
   run.rolls = (run.rolls || 0) + 1;
   const pick = run.choice === 'always' || (run.choice === 'alt' && run.rolls % 2 === 0);
-  run.roll = (pick ? createChoice : createRoll)(w.build, rng, { room: run.roomIdx });
+  run.roll = (pick ? createChoice : createRoll)(w.build, rng, { room: run.roomIdx, kind: 'temp' });
   run.phase = 'roll';
   run.t = 0;
   ev.push({ type: 'rollStart', roll: run.roll });
@@ -132,9 +133,10 @@ export function stepRun(run, w, dt, rng = Math.random) {
   } else if (run.phase === 'cleared') {
     if (run.t >= holdOf(run)) {
       if (run.room.isLast) {
-        run.phase = 'won';
-        run.t = 0;
-        ev.push({ type: 'won', level: run.level });
+        // v2: the level's one PERMANENT SKILL, a pick of two, before the level-clear sheet (nothing to pick = straight to it)
+        run.roll = (run.skillPick ? createChoice : createRoll)(w.build, rng, { room: run.roomIdx, kind: 'perm' });
+        if (run.roll.done) { run.roll = null; run.phase = 'won'; run.t = 0; ev.push({ type: 'won', level: run.level }); }
+        else { run.phase = 'skill'; run.t = 0; ev.push({ type: 'rollStart', roll: run.roll, skill: true }); }
       } else {
         // THE MAP COMES FIRST (Elad, 25 Nov): the moment the room is clear the screen goes black on the level map and the turtle
         // walks to the next door; only THEN does the wheel (or the pick) come, and then the next room starts.
@@ -145,6 +147,14 @@ export function stepRun(run, w, dt, rng = Math.random) {
     }
   } else if (run.phase === 'roll') {
     if (updateRoll(run.roll, dt)) finishRoll(run, w, rng, ev);
+  } else if (run.phase === 'skill') {
+    if (updateRoll(run.roll, dt)) {
+      const key = run.roll.key;
+      if (key) take(w.build, key);
+      ev.push({ type: 'rollDone', key, skill: true });
+      run.roll = null; run.phase = 'won'; run.t = 0;
+      ev.push({ type: 'won', level: run.level });
+    }
   } else if (run.phase === 'travel') {
     if (run.t >= RUN.travelS) startRoll(run, w, rng, ev);
   }

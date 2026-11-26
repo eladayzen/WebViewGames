@@ -44,7 +44,10 @@ export const MASK = '<svg class="map-turtle" viewBox="0 0 48 48" aria-hidden="tr
  * @param kind   'dead' | 'won'
  * @param o      { build, level, rooms }   `level` is the one you are ON; a win starts the next
  */
-export function renderEnd(kind, { build, bank = {}, oldBank = {}, loose = {}, keptPick = null, level, rooms, progress = null }) {
+// THE RUN SUMMARY (PRD_v2): a comforting title, picked at random each time.
+export const LOSS_TITLES = ['EVEN HEROES NEED A NAP', 'THE SHELLS ARE STILL STRONG', 'NEXT TIME, COWABUNGA'];
+
+export function renderEnd(kind, { build, bank = {}, oldBank = {}, loose = {}, keptPick = null, level, rooms, progress = null, stats = {}, rng = Math.random }) {
   const keys = Object.keys(ABILITIES);
   const temp = keys.filter((k) => ABILITIES[k].kind === 'temp' && build[k] > 0);
   const won = kind === 'won';
@@ -52,8 +55,8 @@ export function renderEnd(kind, { build, bank = {}, oldBank = {}, loose = {}, ke
   const title = document.getElementById('over-title');
   if (title) {
     if (!won) {
-      title.classList.add('art');
-      title.innerHTML = '<img src="tex/ui_title_overrun.png" alt="OVERRUN">';
+      title.classList.remove('art');
+      title.innerHTML = `<span class="loss-title">${LOSS_TITLES[Math.floor(rng() * LOSS_TITLES.length) % LOSS_TITLES.length]}</span>`;
     } else {
       title.classList.remove('art');
       title.innerHTML = WINGS(-1) + `<span>LEVEL ${level} CLEAR</span>` + WINGS(1);      // three lines each side of the words, like military wings
@@ -101,7 +104,8 @@ export function renderEnd(kind, { build, bank = {}, oldBank = {}, loose = {}, ke
     const lostSlots = [...temp.map((k) => slot(k, build[k], true)), ...lostKeys.map((k) => slot(k, loose[k], true))].join('');
     const keptN = flyKeys.reduce((n, k) => n + (incoming[k] || 1), 0);
     const lostN = temp.length + lostKeys.length;
-    const lostHtml = won ? '' : `<div class="lost-strip"><div class="lost-line"><b class="keep">KEPT ${keptN}</b><span>permanent upgrade${keptN === 1 ? '' : 's'} (only the best find is kept)</span></div>` +
+    // v2 RUN SUMMARY: rooms cleared and mobs killed over the whole run, and the weapons that are gone (the dagger stays).
+    const lostHtml = won ? '' : `<div class="lost-strip"><div class="lost-line"><b class="keep">CLEARED ${stats.rooms ?? 0}</b><span>room${stats.rooms === 1 ? '' : 's'}</span><b class="keep">KILLED ${stats.kills ?? 0}</b><span>mobs</span></div>` +
       (lostN ? `<div class="lost-line"><b class="gone">LOST ${lostN}</b><div class="slots">${lostSlots}</div></div>` : '') + '</div>';
     panels.className = (won ? 'won' : 'dead') + ' sheeted';
     panels.innerHTML =
