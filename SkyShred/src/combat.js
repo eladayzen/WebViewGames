@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { clamp, mulberry32, damp } from './util.js';
 import { THROW_RELEASE } from './rider.js';
 
+const wrapPi = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Vector3();
 const ink = new THREE.MeshBasicMaterial({ color: 0x101214, side: THREE.BackSide });
 
@@ -164,6 +165,16 @@ export class Combat {
     });
   }
 
+  spawnDroneFree(c) {
+    const g = makeDrone(); this.scene.add(g); const r = c.rnd;
+    const ang = c.hdg + (r() - 0.5) * 0.9, dist = 150 + r() * 50;
+    this.drones.push({
+      g, free: true, x: c.pos.x + Math.sin(ang) * dist, z: c.pos.z - Math.cos(ang) * dist, hdg: c.hdg + (r() - 0.5) * 1.2, by: c.pos.y + (r() - 0.5) * 10,
+      hp: DRONE_HP, alive: true, vd: 24 + r() * 3.5, w: 0.55 + r() * 0.5, ph: r() * 6.28, AY: 8 + r() * 12, wy: 0.45 + r() * 0.5, py: r() * 6.28, pb: r() * 6.28,
+      yo: 0, flash: 0, lat: 0, pos: g.position, sx: 0, sy: 0, on: false, dist: 0, s: 0,
+    });
+  }
+
   glideUpdate(dt, c) {
     // c: { leg, s, lat, pos, camera, W, H, time, rnd, fightOpen, auto }
     const { leg, camera, W, H } = c;
@@ -172,14 +183,23 @@ export class Combat {
     this.spawnCD -= dt;
     const alive = this.drones.filter((d) => d.alive).length;
     if (c.fightOpen && alive < (c.cap || 3) && this.spawnCD <= 0) {
-      this.spawnDrone(leg, c.s + 105 + c.rnd() * 55, c.rnd); this.spawnCD = 1.6 + c.rnd() * 1.2;
+      if (leg.free) this.spawnDroneFree(c); else this.spawnDrone(leg, c.s + 105 + c.rnd() * 55, c.rnd);
+      this.spawnCD = 1.6 + c.rnd() * 1.2;
     }
     // move + project
     let cand = null, candR = 1e9;
     const R = GUN.lockR * H;
     for (const d of this.drones) {
       if (!d.alive) continue;
-      const tt = this.t * d.w + d.ph;
+      if (d.free) {
+        const tt = this.t * d.w + d.ph, sp = d.vd + 11 * Math.max(0, Math.sin(this.t * 0.8 + d.pb));
+        const away = Math.atan2(d.x - c.pos.x, -(d.z - c.pos.z));
+        d.hdg += (wrapPi(away - d.hdg) * 0.35 + 0.7 * Math.sin(tt * 1.1)) * dt;          // flees, and jinks left / right
+        d.x += Math.sin(d.hdg) * sp * dt; d.z -= Math.cos(d.hdg) * sp * dt;
+        const y = d.by + d.AY * Math.sin(this.t * d.wy + d.py) * (0.6 + 0.4 * Math.sin(this.t * 0.37 + d.pb));   // pulls up / pulls down
+        d.g.position.set(d.x, y, d.z);
+        d.g.rotation.y = Math.PI - d.hdg; d.g.rotation.z = -Math.sin(tt * 1.1) * 0.5;
+      } else {
       d.s += (d.vd + (leg.evasive ? 11 * Math.max(0, Math.sin(this.t * 0.8 + d.pb)) : 0)) * dt;   // bursts of speed when it jinks
       d.lat = d.A * Math.sin(tt) + 2.2 * Math.sin(tt * 2.3);
       const sc = clamp(d.s, 0, leg.L - 40);
@@ -187,6 +207,7 @@ export class Combat {
       d.g.position.set((leg.droneX ? leg.droneX(d) : leg.center(sc)) + d.lat, y, leg.zAt(d.s));
       d.g.rotation.z = -Math.cos(tt) * d.A * d.w * 0.05;                 // banks into its weave
       d.g.rotation.y = Math.PI + Math.atan2(-d.A * d.w * Math.cos(tt), d.vd) * 0.5 * 0 + 0;
+      }
       for (const r of d.g.userData.rotors) r.rotation.y += dt * 40;
       d.flash = Math.max(0, d.flash - dt * 6);
       d.g.userData.body.material.emissive.setRGB(0.08 + d.flash * 0.9, 0.09 + d.flash * 0.7, 0.16 + d.flash * 0.4);
@@ -196,7 +217,8 @@ export class Combat {
       d.sx = (_v.x * 0.5 + 0.5) * W; d.sy = (-_v.y * 0.5 + 0.5) * H;
       const r = Math.hypot(d.sx - W / 2, d.sy - H / 2);
       if (d.on && d.dist > GUN.range[0] && d.dist < GUN.range[1] && r < R && r < candR) { cand = d; candR = r; }
-      if (d.s < c.s - 6) { d.alive = false; this.scene.remove(d.g); }                          // flew past
+      if (d.free) { if (d.dist > 400) { d.alive = false; this.scene.remove(d.g); this.escaped++; this.cb.escaped?.(); } }
+      else if (d.s < c.s - 6) { d.alive = false; this.scene.remove(d.g); }                          // flew past
       else if (d.s > c.s + 190) { d.alive = false; this.scene.remove(d.g); this.escaped++; this.cb.escaped?.(); }
     }
     this.drones = this.drones.filter((d) => d.alive);
@@ -252,7 +274,7 @@ export class Combat {
     const gl = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xffa050, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); gl.scale.set(3, 3, 1); gl.position.z = 0.9;
     g.add(body, tip, gl); g.position.set(c.pos.x + (Math.random() < 0.5 ? -1 : 1) * 1.1, c.pos.y - 0.4, c.pos.z - 1);
     this.scene.add(g);
-    this.missiles.push({ g, d, v: new THREE.Vector3(0, -4, -c.speed || -30), age: 0 });
+    this.missiles.push({ g, d, v: new THREE.Vector3((c.fwd ? c.fwd.x : 0) * (c.speed || 30), -4, (c.fwd ? c.fwd.z : -1) * (c.speed || 30)), age: 0 });
     this.cb.missile?.();
   }
 

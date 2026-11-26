@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { Leg, DECK_LEN, LAT_MAX } from './path.js';
 import { LegWorld, Clouds, makeSkyTexture, GLOW } from './world.js';
 import { Rider, HIP } from './rider.js';
-import { OpenWorld, THEMES, PORTAL_R } from './open.js';
+import { OpenWorld, THEMES, PORTAL_R, wrapPi } from './open.js';
 import { Combat, GUN } from './combat.js';
 import { Input } from './input.js';
 import { clamp, lerp, damp, smoothstep, easeInOut, mulberry32 } from './util.js';
@@ -135,11 +135,15 @@ function nextLeg() { touchdown(); }
 function autoLean() {
   if (G.open) {
     const t = combat.lockTarget || combat.drones.find((d) => d.alive && d.on);
-    let ax = null;
-    if (ow.portal && !ow.portal.got && !(combat.lockTarget && combat.lockT > 0.3)) ax = ow.portal.x;
-    else if (t) ax = t.g.position.x;
-    else { const r = ow.rings.filter((q) => !q.got && q.z < G.pos.z - 8 && Math.abs(q.x - G.pos.x) < 70).sort((a, b) => b.z - a.z)[0]; if (r) ax = r.x; else if (G.guide.st) ax = G.guide.x; }
-    return ax === null ? 0 : clamp((ax - G.pos.x) * 0.2 - G.latV * 0.05, -1, 1);
+    const fx = Math.sin(G.hdg), fz = -Math.cos(G.hdg);
+    let ax = null, az = 0;
+    if (ow.portal && !ow.portal.got && !(combat.lockTarget && combat.lockT > 0.3)) { ax = ow.portal.x; az = ow.portal.z; }
+    else if (t) { ax = t.g.position.x; az = t.g.position.z; }
+    else {
+      const r = ow.rings.filter((q) => !q.got && (q.x - G.pos.x) * fx + (q.z - G.pos.z) * fz > 20 && Math.hypot(q.x - G.pos.x, q.z - G.pos.z) < 380).sort((a, b) => Math.hypot(a.x - G.pos.x, a.z - G.pos.z) - Math.hypot(b.x - G.pos.x, b.z - G.pos.z))[0];
+      if (r) { ax = r.x; az = r.z; } else if (G.guide.st) { ax = G.guide.x; az = G.guide.z; }
+    }
+    return ax === null ? 0 : clamp(wrapPi(Math.atan2(ax - G.pos.x, -(az - G.pos.z)) - G.hdg) * 1.6, -1, 1);
   }
   if (G.phase === 'run') {
     let best = null, bz = -1e9;
@@ -236,16 +240,17 @@ function updateGlide(dt, lean) {
 }
 
 
-// ═══ OPEN SKY ═══  free left/right; ships + islands grow a soft skim path when you near them; portals drop you to the next sky
+// ═══ OPEN SKY ═══  a free heading: left/right TURNS him (circle all you like). Ships + islands grow a soft skim path when
+// you near them; portals drop you into the next sky.  See open.js.
 const ow = new OpenWorld(scene);
 const fadeEl = document.createElement('div');
 fadeEl.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:5';
 document.body.appendChild(fadeEl);
-const OPEN_SLOPE = -0.02;
-const adapter = {
-  L: 1e9, pathYAt: (s) => G.y + OPEN_SLOPE * (s - G.s), center: () => G.pos.x, zAt: (s) => -s,
-  spawnX: () => G.pos.x, droneX: (d) => d.cx, evasive: true, slopeY: OPEN_SLOPE, droneBaseY: (s) => G.y + OPEN_SLOPE * (s - G.s),
-};
+const pmark = document.createElement('div');
+pmark.style.cssText = 'position:fixed;left:0;top:0;z-index:4;pointer-events:none;color:#ffd0f4;font:700 14px system-ui,sans-serif;text-shadow:0 1px 4px #000a;transform:translate(-50%,-50%);display:none;text-align:center;white-space:nowrap';
+document.body.appendChild(pmark);
+T.turnRate = 1.05;
+const adapter = { free: true, L: 1e9 };
 function applyTheme(i) {
   const th = THEMES[i % THEMES.length];
   if (scene.background && scene.background.dispose) scene.background.dispose();
@@ -253,54 +258,61 @@ function applyTheme(i) {
   scene.fog.color.setHex(th.fog); hemi.color.setHex(th.hemi[0]); hemi.groundColor.setHex(th.hemi[1]); sun.color.setHex(th.sun);
   return th;
 }
+function prebuild() { for (let i = 0; i < 400 && (ow.queue.length || ow.ci === null); i++) ow.stream(G.pos.x, G.pos.z, Math.sin(G.hdg), -Math.cos(G.hdg)); }
 function startOpen() {
   G.leg = null;
-  G.pos.set(0, 0, 0); G.y = 0; G.s = 0; G.v = 22; G.latV = 0; G.desc = 0.05; G.nudge = 0; G.h = 99; G.level = 0; G.lvStartS = 0; G.lvDist = 0;
+  G.pos.set(0, 0, 0); G.y = 0; G.s = 0; G.v = 22; G.latV = 0; G.turn = 0; G.hdg = 0; G.desc = 0.05; G.nudge = 0; G.h = 99; G.level = 0; G.lvStartS = 0; G.lvDist = 0;
   G.phase = 'title'; G.camInit = false; G.camMix = 1;
-  applyTheme(0); ow.reset(0, 0, 0, 0); ow.fill(0, 0, 0);
-  combat.reset(); clouds.reset(G.pos);
+  applyTheme(0); ow.reset(0); prebuild();
+  combat.reset(); clouds.radial = true; clouds.reset(G.pos);
   rider.setMode('glide'); rider.deploy = 1; rider.prone = 1;
   G.yaw = 0; G.pitch = -0.1; G.roll = 0;
 }
 function startDrop() {
-  G.phase = 'drop'; G.dropT = 0; G.rebased = false;
+  G.phase = 'drop'; G.dropT = 0; G.rebased = false; ow.portal.got = true;
   banner('DROP!', '#ff9be8'); G.fovKick = 16; G.shake = Math.max(G.shake, 0.8);
   for (const d of combat.drones) { d.alive = false; scene.remove(d.g); } combat.drones = [];
 }
 function setFade(a) { fadeEl.style.opacity = String(a); }
 function flightOrient(dt, pitchOverride) {
-  const v = Math.max(G.v, 1), tx = G.latV / v, dyds = -G.desc, hl = Math.hypot(tx, 1);
-  G.tilt.set(tx, dyds, -1).normalize();
-  const yaw = Math.atan2(-tx, 1), pitch = pitchOverride !== undefined ? pitchOverride : clamp(Math.atan2(dyds, hl), -0.7, 0.5);
-  G.yaw = damp(G.yaw, yaw, 8, dt); G.pitch = damp(G.pitch, pitch, 6, dt); G.roll = damp(G.roll, clamp(-G.latV * 0.045, -0.7, 0.7), 7, dt);
+  const fx = Math.sin(G.hdg), fz = -Math.cos(G.hdg), dyds = -G.desc;
+  G.tilt.set(fx, dyds, fz).normalize();
+  const pitch = pitchOverride !== undefined ? pitchOverride : clamp(Math.atan2(dyds, 1), -0.7, 0.5);
+  G.yaw = damp(G.yaw, -G.hdg, 12, dt); G.pitch = damp(G.pitch, pitch, 6, dt); G.roll = damp(G.roll, clamp(-G.turn * 0.65, -0.7, 0.7), 7, dt);
+  G.latV = G.turn * 14;
   rider.root.position.set(G.pos.x, G.pos.y - HIP, G.pos.z);
   rider.update(dt, G.t, { yaw: G.yaw, pitch: G.pitch, roll: G.roll }, 1);
 }
 function updateOpen(dt, lean) {
   const frozen = G.phase === 'title';
-  ow.update(dt, G.t);
+  ow.update(dt, G.t, G.pos);
   const skimF = clamp((T.skimH - G.h) / (T.skimH - 2), 0, 1);
   let vT = T.V0 + (G.desc > 0 ? G.desc * (T.vDive - T.V0) / 0.35 : G.desc * T.vClimb) + skimF * T.skimBoost;
   vT = clamp(vT, T.vMin, T.vMax);
   G.v = damp(G.v, frozen ? 10 : vT, 1.8, dt);
-  const step = frozen ? 0 : G.v * dt, prevZ = G.pos.z;
-  G.pos.z -= step; G.s = -G.pos.z; G.lvDist = G.s - G.lvStartS;
+  const step = frozen ? 0 : G.v * dt;
+  let fx = Math.sin(G.hdg), fz = -Math.cos(G.hdg);
   // the guide that has grown over a nearby ship / island: pulls altitude (and, softly, the line) -- steer and it lets go
-  ow.guide(G.pos.x, G.y, G.pos.z, G.guide);
+  ow.guide(G.pos.x, G.y, G.pos.z, fx, fz, G.guide);
   const gd = G.guide;
-  const assist = gd.st ? clamp((gd.x - G.pos.x) * 0.3, -7, 7) * gd.w * (1 - Math.min(1, Math.abs(lean) * 1.6)) : 0;
-  G.latV = damp(G.latV, lean * T.latRate + assist, T.latResp, dt);
-  if (!frozen) G.pos.x += G.latV * dt;
+  let assist = 0;
+  if (gd.st && gd.d > 2) { const da = wrapPi(Math.atan2(gd.x - G.pos.x, -(gd.z - G.pos.z)) - G.hdg); if (Math.abs(da) < 0.9) assist = clamp(da * 0.8, -0.5, 0.5) * gd.w * (1 - Math.min(1, Math.abs(lean) * 1.6)); }
+  G.turn = damp(G.turn, lean * T.turnRate + assist, 6, dt);
+  if (!frozen) G.hdg += G.turn * dt;
+  fx = Math.sin(G.hdg); fz = -Math.cos(G.hdg);
+  const prevX = G.pos.x, prevZ = G.pos.z;
+  G.pos.x += fx * step; G.pos.z += fz * step; G.s += step; G.lvDist = G.s - G.lvStartS;
   const yPrev = G.y;
+  let ch = null;
   if (!frozen) {
-    G.y += OPEN_SLOPE * step;
     // chasing a drone: ITS path (pull-ups, dives, speed bursts) becomes the invisible path you are aligned to
-    const ch = combat.lockTarget && combat.lockTarget.alive ? combat.lockTarget : combat.drones.filter((d) => d.alive && d.dist < 230 && d.g.position.z < G.pos.z - 8).sort((a, b) => a.dist - b.dist)[0];
-    G.chase = ch || null;
-    if (ch) { const wc = 1 - smoothstep(110, 230, ch.dist); G.y = damp(G.y, ch.g.position.y - 0.6, 3.2 * wc + 0.4, dt); G.v = Math.max(G.v, damp(G.v, ch.vd + 5 + 9 * clamp(ch.g.position.y < G.y - 2 ? 1 : 0, 0, 1), 1.5, dt)); }
+    ch = combat.lockTarget && combat.lockTarget.alive ? combat.lockTarget : combat.drones.filter((d) => d.alive && d.dist < 230 && (d.g.position.x - G.pos.x) * fx + (d.g.position.z - G.pos.z) * fz > 8).sort((a, b) => a.dist - b.dist)[0];
+    if (ch) { const wc = 1 - smoothstep(110, 230, ch.dist); G.y = damp(G.y, ch.g.position.y - 0.6, 3.2 * wc + 0.4, dt); G.v = Math.max(G.v, damp(G.v, ch.vd + 5 + (ch.g.position.y < G.y - 2 ? 9 : 0), 1.5, dt)); }
     else if (gd.st) G.y = damp(G.y, gd.y, 2.6 * gd.w, dt);
+    if (!ch) G.y = damp(G.y, 0, 0.25 * (1 - gd.w), dt);                  // drifts back up to cruise altitude once nothing holds him down
     if (G.mode === 'nudge' && !G.auto) G.y += clamp(-input.readPitch(), -1, 1) * 9 * dt;
   }
+  G.chase = ch;
   ow.surface(G.pos.x, G.y, G.pos.z, G.surf);
   const g = G.surf.top;
   if (G.y < g + T.floor) G.y = g + T.floor;
@@ -310,43 +322,57 @@ function updateOpen(dt, lean) {
   const sk = clamp((T.skimH - G.h) / (T.skimH - 2), 0, 1);
   if (sk > 0.2) { G.skimPts += dt * 140 * sk; G.score += dt * 140 * sk; }
   else if (G.skimPts > 0) { if (G.skimPts > 60) award(0, G.pos.clone().add(new THREE.Vector3(0, 2.5, 0)), 'SKIM +' + Math.round(G.skimPts)); G.skimPts = 0; }
-  if (G.h < 18) combat.particles.emit(_p.set(G.pos.x + (Math.random() - 0.5) * 3, g + 0.4, G.pos.z + 6), new THREE.Vector3((Math.random() - 0.5) * 4, 2 + Math.random() * 3, 4), [0.9, 0.85, 0.75], 0.9, 3.2, 0, 0.5 * (1 - G.h / 18));
-  // boost rings + the portal
+  if (G.h < 18) combat.particles.emit(_p.set(G.pos.x + (Math.random() - 0.5) * 3, g + 0.4, G.pos.z + (Math.random() - 0.5) * 3), new THREE.Vector3(-fx * 4, 2 + Math.random() * 3, -fz * 4), [0.9, 0.85, 0.75], 0.9, 3.2, 0, 0.5 * (1 - G.h / 18));
+  // boost rings (any direction) + the portal
   for (const r of ow.rings) {
-    if (r.got || !(prevZ > r.z && G.pos.z <= r.z)) continue;
-    if (Math.hypot(G.pos.x - r.x, G.pos.y - r.y) < r.r + 0.6) {
-      r.got = true; r.mesh.material = r.mesh.material.clone(); r.mesh.material.color.setHex(0xffd24a); G.rings++;
+    if (r.got) continue;
+    if (Math.hypot(G.pos.x - r.x, G.pos.y - r.y, G.pos.z - r.z) < r.r + 1.0) {
+      r.got = true; r.mesh.visible = false; G.rings++;
       award(250, r.mesh.position.clone(), 'RING +250'); G.v = Math.min(T.vMax, G.v + 3); G.fovKick = Math.max(G.fovKick, 5);
       combat.particles.burst(r.mesh.position, 24, 14, [1, 0.9, 0.4], 0.5, 1.4);
     }
   }
-  for (const r of ow.rings) if (r.mesh.visible && G.pos.z < r.z - 6) r.mesh.visible = false;
+  if (!frozen && !ow.portal && G.lvDist > ow.portalDist()) ow.spawnPortal(G.pos.x, G.y, G.pos.z, fx, fz);
   const pt = ow.portal;
-  if (pt && !pt.got && prevZ > pt.z && G.pos.z <= pt.z && Math.hypot(G.pos.x - pt.x, G.pos.y - pt.y) < PORTAL_R * 0.92) { startDrop(); return; }
+  if (pt && !pt.got && Math.hypot(G.pos.x - pt.x, G.pos.y - pt.y, G.pos.z - pt.z) < PORTAL_R * 0.9) { startDrop(); return; }
   flightOrient(dt);
   // dogfight, once the level has warmed up
   const warm = G.level === 0 ? 650 : 220;
-  const fightOpen = !frozen && G.lvDist > warm && !(pt && G.pos.z - pt.z < 150);
-  combat.glideUpdate(dt, { leg: adapter, s: G.s, lat: 0, pos: G.pos, camera, W, H, time: G.t, rnd, fightOpen, cap: 2, speed: G.v });
-  if (!frozen) ow.fill(G.pos.x, G.pos.y, G.pos.z);
+  const fightOpen = !frozen && G.lvDist > warm && !(pt && Math.hypot(G.pos.x - pt.x, G.pos.z - pt.z) < 150);
+  combat.glideUpdate(dt, { leg: adapter, s: G.s, lat: 0, pos: G.pos, camera, W, H, time: G.t, rnd, fightOpen, cap: 2, speed: G.v, hdg: G.hdg, fwd: { x: fx, z: fz } });
+  ow.stream(G.pos.x, G.pos.z, fx, fz);
 }
 function updateDrop(dt, lean) {
   G.dropT += dt; const k = G.dropT;
-  ow.update(dt, G.t);
+  ow.update(dt, G.t, G.pos);
   G.v = damp(G.v, 54, 2.5, dt);
-  G.latV = damp(G.latV, lean * T.latRate * 0.6, T.latResp, dt);
-  G.pos.x += G.latV * dt; G.pos.z -= G.v * 0.8 * dt; G.y -= 36 * smoothstep(0, 0.6, k) * dt; G.pos.y = G.y; G.s = -G.pos.z;
+  G.turn = damp(G.turn, lean * T.turnRate * 0.5, 6, dt); G.hdg += G.turn * dt;
+  const fx = Math.sin(G.hdg), fz = -Math.cos(G.hdg);
+  G.pos.x += fx * G.v * 0.8 * dt; G.pos.z += fz * G.v * 0.8 * dt; G.y -= 36 * smoothstep(0, 0.6, k) * dt; G.pos.y = G.y; G.s += G.v * 0.8 * dt;
   G.desc = 0.75; G.h = 99;
   flightOrient(dt, -1.0);
-  G.tilt.set(0, -0.9, -1).normalize();
+  G.tilt.set(fx * 0.7, -0.9, fz * 0.7).normalize();
   if (!G.rebased && k >= 1.9) {
     G.rebased = true; G.level++; const th = applyTheme(G.level);
-    ow.reset(G.level, G.pos.x, G.pos.y, G.pos.z); G.lvStartS = G.s; G.lvDist = 0; combat.reset();
+    const dy = G.y; camera.position.y -= dy; lookNow.y -= dy; G.y = 0; G.pos.y = 0;       // new level starts at altitude 0, hidden under the fade
+    ow.reset(G.level); prebuild(); G.lvStartS = G.s; G.lvDist = 0; combat.reset(); clouds.reset(G.pos);
     banner('SKY ' + (G.level + 1) + ' - ' + th.name, '#ffd24a'); G.score += 500;
   }
   setFade(k < 1.9 ? smoothstep(1.1, 1.9, k) : 1 - smoothstep(1.9, 2.8, k));
-  if (G.rebased) ow.fill(G.pos.x, G.pos.y, G.pos.z);
+  if (G.rebased) ow.stream(G.pos.x, G.pos.z, fx, fz);
   if (k >= 2.8) { G.phase = 'open'; setFade(0); G.fovKick = 0; }
+}
+function updatePortalMark() {
+  const pt = ow.portal;
+  if (!G.open || !pt || pt.got || !(G.phase === 'open')) { pmark.style.display = 'none'; return; }
+  const v = _cp.set(pt.x, pt.y, pt.z).project(camera);
+  const da = wrapPi(Math.atan2(pt.x - G.pos.x, -(pt.z - G.pos.z)) - G.hdg);
+  const on = v.z < 1 && Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.85;
+  const dist = Math.round(Math.hypot(pt.x - G.pos.x, pt.z - G.pos.z));
+  let nx = v.x, ny = v.y;
+  if (!on) { nx = Math.abs(da) > 1.6 ? Math.sign(da) * 0.88 : clamp(v.z < 1 ? v.x : Math.sign(da), -0.88, 0.88); ny = v.z < 1 ? clamp(v.y, -0.8, 0.8) : 0.0; }
+  pmark.style.display = 'block'; pmark.style.left = ((nx * 0.5 + 0.5) * W) + 'px'; pmark.style.top = ((-ny * 0.5 + 0.5) * H) + 'px';
+  pmark.textContent = (on ? '' : da > 0 ? '▶ ' : '◀ ') + 'PORTAL ' + dist + 'm' + (on ? '' : da > 0 ? ' ▶' : ' ◀').replace(' ▶', '').replace(' ◀', '');
 }
 
 // ── camera ──
@@ -374,8 +400,14 @@ function updateCamera(dt) {
     const low = 1 - smoothstep(4, 40, G.h);
     const height = lerp(3.0, 1.9, low), back = lerp(6.9, 5.6, low) + sp * 1.0, ahead = 34;
     fovG = 70 + sp * 14 + (1 - smoothstep(2, 14, G.h)) * 6;
+    if (G.open) {       // heading-relative rig: behind him along his heading, swinging to the outside of a turn
+      const fx = Math.sin(G.hdg), fz = -Math.cos(G.hdg), qx = Math.cos(G.hdg), qz = Math.sin(G.hdg);
+      glTgt.set(G.pos.x - fx * back - qx * G.turn * 2.2, G.pos.y + height - G.tilt.y * back * 0.6, G.pos.z - fz * back - qz * G.turn * 2.2);
+      glLook.set(G.pos.x + fx * ahead * 0.95, G.pos.y + G.tilt.y * ahead + 0.5, G.pos.z + fz * ahead * 0.95);
+    } else {
     glTgt.set(G.pos.x - G.tilt.x * back * 0.4 - G.latV * 0.12, G.pos.y + height - G.tilt.y * back * 0.6, G.pos.z + back);
     glLook.set(G.pos.x + G.tilt.x * ahead * 0.35, G.pos.y + G.tilt.y * ahead + 0.5, G.pos.z - ahead);
+    }
   } else { glTgt.copy(runTgt); glLook.copy(runLook); }
   camTgt.lerpVectors(runTgt, glTgt, k); camLook.lerpVectors(runLook, glLook, k);
   const swoop = Math.sin(Math.PI * k);                              // pull out a touch mid-transition, so the move reads
@@ -452,7 +484,7 @@ $('mode-btn').addEventListener('click', () => setMode(G.mode === 'path' ? 'nudge
 $('auto-btn').addEventListener('click', () => setAuto(!G.auto));
 const togglePause = () => { if (G.phase === 'title' || G.phase === 'loading') return; G.paused = !G.paused; $('pause-overlay').hidden = !G.paused; };
 $('pause-btn').addEventListener('click', togglePause);
-window.addEventListener('keydown', (e) => { if (e.code === 'KeyP') togglePause(); if (e.code === 'KeyM') setMode(G.mode === 'path' ? 'nudge' : 'path'); if (e.code === 'KeyO') setAuto(!G.auto); if (e.code === 'KeyN') { if (G.open) { if (ow.portal) { G.pos.set(ow.portal.x, ow.portal.y, ow.portal.z + 4); G.y = ow.portal.y; } } else if (G.leg) nextLeg(); } });
+window.addEventListener('keydown', (e) => { if (e.code === 'KeyP') togglePause(); if (e.code === 'KeyM') setMode(G.mode === 'path' ? 'nudge' : 'path'); if (e.code === 'KeyO') setAuto(!G.auto); if (e.code === 'KeyN') { if (G.open) { if (ow.portal) { G.pos.set(ow.portal.x - Math.sin(G.hdg) * 40, ow.portal.y, ow.portal.z + Math.cos(G.hdg) * 40); G.y = ow.portal.y; } } else if (G.leg) nextLeg(); } });
 setMode(G.mode); setAuto(G.auto);
 
 // ── main loop ──
@@ -474,7 +506,7 @@ function frame(now) {
     updateCamera(dt);
     if (G.world) G.world.update(dt, G.t);
     clouds.update(flying() ? G.pos : _cp.set(G.px, G.deckY, G.pz), camera.position);
-    updateHud(dt);
+    updateHud(dt); updatePortalMark();
   }
   renderer.render(scene, camera);
 }

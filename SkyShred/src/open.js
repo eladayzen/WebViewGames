@@ -1,6 +1,7 @@
-// OPEN SKY mode.  No path, no centreline: the glider is free left/right.  Ships and islands are generated ahead of
-// him as he flies; when he nears one, a guide ("path") grows over it and softly lifts/lowers him to skim its top --
-// steer away and it lets go.  Big portal rings drop him into the next sky level, which is generated on the fly.
+// OPEN SKY mode, fully open: the glider has a free HEADING (left/right turns him, he can circle forever).  The sky is an
+// endless, deterministic grid of cells -- each may hold a flying ship or island and a boost ring -- streamed in around
+// him, so circling back returns to the same islands.  When he nears one, a guide ("path") grows over it and softly lifts /
+// lowers him to skim its top; steer away and it lets go.  Big portal rings drop him into the next sky level.
 import * as THREE from 'three';
 import { makeCarrier, makeIsland, GLOW } from './world.js';
 import { mulberry32, clamp, smoothstep } from './util.js';
@@ -14,112 +15,158 @@ export const THEMES = [
 
 const GUIDE_MAT = () => new THREE.MeshBasicMaterial({ color: 0x7ff6ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
 export const PORTAL_R = 11;
+const CELL = 240, LOAD_R = 840, UNLOAD_R = 1080;
+const wrapPi = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+export { wrapPi };
 
 export class OpenWorld {
   constructor(scene) {
     this.scene = scene; this.group = new THREE.Group(); scene.add(this.group);
-    this.structs = []; this.rings = []; this.portal = null;
-    this.rnd = mulberry32(777); this.level = 0; this.frontZ = 0; this.sinceRing = 0;
+    this.structs = []; this.rings = []; this.portal = null; this.cells = new Map(); this.queue = [];
+    this.level = 0; this.lvStartS = 0;
     this.ringMat = new THREE.MeshBasicMaterial({ color: 0x66ffe6, transparent: true, opacity: 0.9 });
   }
 
-  /** wipe everything and start a fresh sky level around the player (px, py, pz) */
-  reset(level, px, py, pz) {
-    for (const st of this.structs) this._free(st.group);
+  /** wipe everything and start a fresh sky level */
+  reset(level) {
+    for (const st of this.structs) { this._free(st.group); this._free(st.guide); }
     for (const r of this.rings) this._free(r.mesh);
     if (this.portal) this._free(this.portal.group);
-    this.structs = []; this.rings = []; this.portal = null;
-    this.level = level; this.rnd = mulberry32(777 + level * 131);
-    this.frontZ = pz - 230; this.lvStart = pz; this.sinceRing = 0;
+    this.structs = []; this.rings = []; this.portal = null; this.cells.clear(); this.queue = [];
+    this.level = level; this.ci = null; this.cj = null;
   }
   _free(o) { this.group.remove(o); o.traverse((c) => { if (c.geometry) c.geometry.dispose(); }); }
-  dispose() { this.reset(0, 0, 0, 0); this.scene.remove(this.group); }
-
+  dispose() { this.reset(0); this.scene.remove(this.group); }
   portalDist() { return 900 + Math.min(this.level, 4) * 120; }
 
-  /** keep the sky populated ahead of the player; drop what is behind */
-  fill(px, py, pz) {
-    const r = this.rnd;
-    const slope = -0.02;
-    while (this.frontZ > pz - 760) {
-      const gap = 85 + r() * 85;
-      this.frontZ -= gap;
-      const z = this.frontZ, dist = pz - z, yBase = py + slope * dist;
+  _cellRnd(i, j) { return mulberry32(((i * 73856093) ^ (j * 19349663) ^ (this.level * 83492791) ^ 0x5bd1e995) >>> 0); }
+
+  /** which cells should exist around (px, pz): queue the missing ones, drop the far ones */
+  stream(px, pz, fx, fz) {
+    const ci = Math.floor(px / CELL), cj = Math.floor(pz / CELL);
+    if (ci !== this.ci || cj !== this.cj) {
+      this.ci = ci; this.cj = cj;
+      const n = Math.ceil(LOAD_R / CELL) + 1;
+      for (let i = ci - n; i <= ci + n; i++) for (let j = cj - n; j <= cj + n; j++) {
+        const key = i + ',' + j;
+        if (this.cells.has(key)) continue;
+        const cx = (i + 0.5) * CELL, cz = (j + 0.5) * CELL, d = Math.hypot(cx - px, cz - pz);
+        if (d > LOAD_R) continue;
+        this.cells.set(key, { structs: [], rings: [] });
+        this.queue.push({ key, i, j, d });
+      }
+    }
+    // build one cell per frame, nearest-and-ahead first
+    if (this.queue.length) {
+      let bi = 0, bs = 1e9;
+      for (let k = 0; k < this.queue.length; k++) {
+        const q = this.queue[k], cx = (q.i + 0.5) * CELL - px, cz = (q.j + 0.5) * CELL - pz;
+        const sc = Math.hypot(cx, cz) - (cx * fx + cz * fz) * 0.4;
+        if (sc < bs) { bs = sc; bi = k; }
+      }
+      const q = this.queue.splice(bi, 1)[0]; this._build(q);
+    }
+    // unload far cells
+    if (this._unT === undefined || this._unT++ > 40) {
+      this._unT = 0;
+      for (const [key, c] of this.cells) {
+        const [i, j] = key.split(',').map(Number), cx = (i + 0.5) * CELL, cz = (j + 0.5) * CELL;
+        if (Math.hypot(cx - px, cz - pz) > UNLOAD_R) { this._dropCell(c); this.cells.delete(key); }
+      }
+    }
+  }
+  _dropCell(c) {
+    for (const st of c.structs) { this._free(st.group); this._free(st.guide); this.structs.splice(this.structs.indexOf(st), 1); }
+    for (const r of c.rings) { this._free(r.mesh); this.rings.splice(this.rings.indexOf(r), 1); }
+  }
+
+  _build({ key, i, j }) {
+    const cell = this.cells.get(key); if (!cell) return;
+    const r = this._cellRnd(i, j);
+    if (r() < 0.72) {
       const ship = r() < 0.42;
       const ext = ship ? 11 + r() * 12 : 17 + r() * 28;
       const len = ship ? 90 + r() * 90 : ext * 2;
-      const x = px + (r() * 2 - 1) * 250;
-      const top = yBase - (14 + r() * 42);
+      const x = (i + 0.2 + r() * 0.6) * CELL, z = (j + 0.2 + r() * 0.6) * CELL, top = -(14 + r() * 56), yaw = r() * 6.28;
       const st = ship ? { kind: 'ship', hx: ext, hl: len / 2 } : { kind: 'island', r: ext, hl: ext };
-      Object.assign(st, { x, y: top, z, ext, len });
+      Object.assign(st, { x, y: top, z, ext, len, yaw });
       const g = ship ? makeCarrier(st.hx, st.hl, r) : makeIsland(st.r, r);
-      g.position.set(x, top, z); if (!ship) g.rotation.y = r() * 6;
+      g.position.set(x, top, z); g.rotation.y = yaw;
       this.group.add(g); st.group = g;
-      // the guide that grows over it when the player closes in
       const gm = GUIDE_MAT();
       const strip = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.1, len + 40), gm);
-      strip.position.set(x, top + 7, z); this.group.add(strip); st.guide = strip; st.gm = gm;
-      this.structs.push(st);
-      // little boost rings between them
-      if (r() < 0.6) this._ring(px + (r() * 2 - 1) * 110, yBase + (r() - 0.55) * 14, z + gap * 0.5);
+      strip.position.set(x, top + 7, z); strip.rotation.y = yaw; this.group.add(strip); st.guide = strip; st.gm = gm;
+      this.structs.push(st); cell.structs.push(st);
     }
-    if (!this.portal && pz < this.lvStart - this.portalDist()) this._portal(px + (r() * 2 - 1) * 70, py + slope * 650 - 6, pz - 650);
-    // cull behind
-    for (let i = this.structs.length - 1; i >= 0; i--) { const st = this.structs[i]; if (st.z - st.hl > pz + 160) { this._free(st.group); this._free(st.guide); this.structs.splice(i, 1); } }
-    for (let i = this.rings.length - 1; i >= 0; i--) if (this.rings[i].z > pz + 120) { this._free(this.rings[i].mesh); this.rings.splice(i, 1); }
+    if (r() < 0.55) {
+      const x = (i + 0.1 + r() * 0.8) * CELL, z = (j + 0.1 + r() * 0.8) * CELL, y = -26 + r() * 34;
+      const m = new THREE.Mesh(new THREE.TorusGeometry(5.4, 0.34, 6, 30), this.ringMat);
+      m.position.set(x, y, z); this.group.add(m);
+      const rg = { x, y, z, mesh: m, got: false, r: 5.4 };
+      this.rings.push(rg); cell.rings.push(rg);
+    }
   }
 
-  _ring(x, y, z) {
-    const m = new THREE.Mesh(new THREE.TorusGeometry(5.4, 0.34, 6, 30), this.ringMat);
-    m.position.set(x, y, z); this.group.add(m); this.rings.push({ x, y, z, mesh: m, got: false, r: 5.4 });
-  }
-
-  _portal(x, y, z) {
+  /** a portal appears ahead of the player once he has flown far enough in this level */
+  spawnPortal(px, py, pz, fx, fz) {
+    const d = 620, x = px + fx * d, z = pz + fz * d, y = py - 4;
     const g = new THREE.Group(); g.position.set(x, y, z);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(PORTAL_R, 0.9, 10, 40), new THREE.MeshBasicMaterial({ color: 0xffb04a }));
     const ring2 = new THREE.Mesh(new THREE.TorusGeometry(PORTAL_R * 0.82, 0.35, 8, 40), new THREE.MeshBasicMaterial({ color: 0xff4fd8 }));
     const disc = new THREE.Mesh(new THREE.CircleGeometry(PORTAL_R * 0.8, 36), new THREE.MeshBasicMaterial({ color: 0xff8be8, transparent: true, opacity: 0.28, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: GLOW, color: 0xffa8e8, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9 }));
     halo.scale.set(PORTAL_R * 7, PORTAL_R * 7, 1);
-    g.add(ring, ring2, disc, halo);
-    this.group.add(g); this.portal = { x, y, z, group: g, ring, ring2, got: false };
+    const face = new THREE.Group(); face.add(ring, ring2, disc); g.add(face, halo);
+    this.group.add(g); this.portal = { x, y, z, group: g, face, ring, ring2, got: false };
   }
 
   update(dt, t, p) {
-    if (this.portal) { this.portal.ring2.rotation.z += dt * 1.6; this.portal.ring.rotation.z -= dt * 0.5; }
+    if (this.portal) { this.portal.ring2.rotation.z += dt * 1.6; this.portal.ring.rotation.z -= dt * 0.5; this.portal.face.rotation.y = Math.atan2(p.x - this.portal.x, p.z - this.portal.z); }
     for (const st of this.structs) {
       const ud = st.group.userData;
       if (ud.rotors) for (const rt of ud.rotors) rt.rotation.y += dt * 11;
       if (ud.thrusters) for (const th of ud.thrusters) th.material.opacity = 0.85 + Math.sin(t * 17 + th.position.x) * 0.08;
     }
-    for (const rg of this.rings) if (!rg.got) rg.mesh.rotation.z += dt * 0.8;
+    for (const rg of this.rings) { if (!rg.got) rg.mesh.rotation.y = Math.atan2(p.x - rg.x, p.z - rg.z); }
   }
 
-  /** the soft path: how strongly the structure under/near (x, z) pulls the glider, and the height it wants */
-  guide(x, y, z, out) {
-    let best = null, bw = 0;
+  /** distance from (x, z) to a structure's footprint (0 when over it), in its own rotated frame */
+  _dist(st, x, z) {
+    const dx = x - st.x, dz = z - st.z;
+    if (st.kind === 'ship') {
+      const c = Math.cos(st.yaw), s = Math.sin(st.yaw), lx = dx * c - dz * s, lz = dx * s + dz * c;
+      return Math.hypot(Math.max(Math.abs(lx) - st.hx, 0), Math.max(Math.abs(lz) - st.hl, 0));
+    }
+    return Math.max(Math.hypot(dx, dz) - st.r * 0.9, 0);
+  }
+
+  /** the soft path: which nearby ship / island is pulling the glider, how hard, and the height it wants */
+  guide(x, y, z, fx, fz, out) {
+    let best = null, bw = 0, bd = 0;
     for (const st of this.structs) {
-      const ahead = z - (st.z + st.hl);                        // >0: before it, <0: over/after it (z decreases)
-      const behind = (st.z - st.hl) - z;                       // >0: already past its far end
-      if (behind > 40 || ahead > 170) continue;
-      const wa = ahead > 0 ? 1 - smoothstep(25, 170, ahead) : 1 - smoothstep(0, 40, Math.max(0, behind));
-      const dx = Math.abs(x - st.x), wl = 1 - smoothstep(st.ext * 0.9, st.ext + 70, dx);
+      const d = this._dist(st, x, z);
+      if (d > 80) continue;
       const target = st.y + 7;
       if (Math.abs(y - target) > 110) continue;
-      const w = wa * wl;
-      if (w > bw) { bw = w; best = st; }
+      let wf = 1;
+      if (d > 1) { const dx = st.x - x, dz = st.z - z, l = Math.hypot(dx, dz) || 1; wf = smoothstep(-0.2, 0.55, (dx * fx + dz * fz) / l); }
+      const w = (1 - smoothstep(4, 75, d)) * wf;
+      if (w > bw) { bw = w; best = st; bd = d; }
     }
     for (const st of this.structs) { const on = st === best ? bw : 0; st.gm.opacity += (on * 0.55 - st.gm.opacity) * 0.15; st.guide.visible = st.gm.opacity > 0.01; }
-    out.w = bw; out.st = best; out.y = best ? best.y + 7 : 0; out.x = best ? best.x : 0;
+    out.w = bw; out.st = best; out.d = bd; out.y = best ? best.y + 7 : 0; out.x = best ? best.x : 0; out.z = best ? best.z : 0;
     return out;
   }
 
   surface(x, y, z, out) {
     let best = -Infinity, edge = false;
     for (const st of this.structs) {
+      if (Math.abs(x - st.x) > st.ext + st.hl + 2 || Math.abs(z - st.z) > st.ext + st.hl + 2) continue;
       let ed;
-      if (st.kind === 'ship') { const dx = Math.abs(x - st.x), dz = Math.abs(z - st.z); if (dx > st.hx || dz > st.hl) continue; ed = st.hx - dx < 4 || st.hl - dz < 6; }
-      else { const dx = x - st.x, dz = z - st.z, d2 = dx * dx + dz * dz, r = st.r * 0.9; if (d2 > r * r) continue; ed = r - Math.sqrt(d2) < 4; }
+      if (st.kind === 'ship') {
+        const dx = x - st.x, dz = z - st.z, c = Math.cos(st.yaw), s = Math.sin(st.yaw), lx = dx * c - dz * s, lz = dx * s + dz * c;
+        if (Math.abs(lx) > st.hx || Math.abs(lz) > st.hl) continue; ed = st.hx - Math.abs(lx) < 4 || st.hl - Math.abs(lz) < 6;
+      } else { const dx = x - st.x, dz = z - st.z, d2 = dx * dx + dz * dz, r = st.r * 0.9; if (d2 > r * r) continue; ed = r - Math.sqrt(d2) < 4; }
       if (st.y <= y + 1.5 && st.y > best) { best = st.y; edge = ed; }
     }
     out.top = best; out.edge = edge; return out;
