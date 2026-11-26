@@ -461,3 +461,28 @@ test('A FOE STUNNED MID-RECOVERY IS NOT LEFT FROZEN IN ITS SWING', () => {
   stunFoe(f, 1.0);
   assert.equal(f.state, 'walk');
 });
+
+test('MICHELANGELO HUNTS: he runs at a foe he can see, far from Raphael, and does not just follow', () => {
+  const w = room('mikey');
+  syncAllies(w);
+  const d = w.allies[0];
+  d.cool = 5;                                          // not spinning yet: just moving
+  const f = addFoe(w, 0, 0); f.speed = 0; f.hp = f.maxHp = 1e6;
+  f.x = d.x + 600; f.y = d.y;                          // inside his sight, well away from the home spot
+  const d0 = Math.hypot(f.x - d.x, f.y - d.y);
+  run(w, 0.8);
+  assert.ok(Math.hypot(f.x - d.x, f.y - d.y) < d0 - 200, 'he did not go for it');
+});
+
+test('MICHELANGELO STANDS NEAR RAPHAEL WHEN THERE IS NOTHING TO FIGHT, and only comes back when he is far', () => {
+  const w = room('mikey');
+  syncAllies(w);
+  const d = w.allies[0];
+  d.cool = 99; standAtHome(w, d);
+  const x0 = d.x, y0 = d.y;
+  run(w, 2);
+  assert.ok(Math.hypot(d.x - x0, d.y - y0) < 5, 'he wandered with nothing to do');
+  w.player.x += 1500;
+  run(w, 4);
+  assert.ok(Math.hypot(d.x - w.player.x, d.y - w.player.y) < ALLY.mikey.leash + 150, 'he did not come back');
+});

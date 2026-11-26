@@ -192,3 +192,16 @@ test('NONE OF THE NEW POWERS DO ANYTHING WITHOUT THE ABILITY', () => {
   assert.equal(w.player.x, x); assert.equal(f.hp, f.maxHp); assert.equal(w.decoy || null, null);
   assert.equal(rushMul(w), 1);
 });
+
+test('THE SHADOW LASTS LONG AND WALKS ITSELF to the foes, stopping short of them', () => {
+  assert.ok(DECOY.lifeS >= 10, 'the shadow should last much longer than 4 s');
+  const w = room('decoy'); w.hp = w.maxHp = 1000;
+  const f = addFoe(w, 800, 0); f.speed = 0; f.hp = f.maxHp = 1e6;
+  run(w, 3.1);
+  assert.ok(w.decoy, 'no shadow appeared');
+  const x0 = w.decoy.x;
+  run(w, 1);
+  assert.ok(w.decoy.x > x0 + 200, `the shadow stood still (${x0} -> ${w.decoy.x})`);
+  run(w, 3);
+  assert.ok(Math.hypot(f.x - w.decoy.x, f.y - w.decoy.y) >= DECOY.standOff - 5, 'it walked into the foe');
+});

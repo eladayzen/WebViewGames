@@ -1,96 +1,133 @@
-// THE LOBBY: the first screen. No title (the name is not settled -- see core/brand.js).
+// THE LOBBY (Elad, 25 Nov: "a better ux ui flow ... emphasising the difference between the levels, pulling players to reach higher ones").
 //
-//   LEFT   the STORY, as three comic panels: the machines take the plaza; Raph holds the line while
-//          Donnie sends gadgets; clear the rooms and finish the level to keep what you won.
-//   RIGHT  WHERE YOU ARE: the LEVEL road (done levels with medals, this one with the turtle, the next
-//          ones locked), the ROOM trail of this level (a pizza per room, the turtle on the current
-//          one, a crown on the boss), what you hold, and the buttons.
+//   SCREEN 1  THE LEVELS. A row of level cards you swipe or step through. The furthest level you have reached is chosen when you arrive.
+//             Each card is its own place: a strip of that level's rooms (the real floors it uses), a tier name, a threat meter that
+//             grows, and its colour heats up from cool green to hot red-purple. The levels ahead are shown LOCKED but tempting -- greyed
+//             rooms with a "?", and the very next one pulses -- so there is always something to reach for.
+//             Buttons: LOAD GAME (the run you left, if any) and NEW GAME (the chosen level, from its first room).
+//   SCREEN 2  THE ROOM MAP of the chosen level: the dotted line of doors with the turtle on the one you start from. For LOAD GAME the
+//             doors you reached are open to pick (you may restart from a middle room); every other start is the first room.
 //
-// Only DOM; resolves with 'continue' or 'new'.
+// A flow layout (grid rows sized from the height left), so nothing is stacked over anything else on a short phone screen.
+// Only DOM; resolves with { choice: 'continue' | 'new', level, room }.
 import { ABILITIES } from '../core/abilities.js';
 import { iconFor } from './icons.js';
 import { doorIcon } from './doors.js';
+import { lookFor, THEMES } from '../core/looks.js';
+import { roomsIn } from '../core/breeds.js';
 
 const MASK = '<svg class="map-turtle" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="#5fb24a" stroke="#14210f" stroke-width="3.5"/><path d="M4 17c6-4 34-4 40 0l-1 12c-6 4-32 4-38 0z" fill="#d6242c" stroke="#14210f" stroke-width="3"/><ellipse cx="16" cy="23" rx="5.2" ry="4.2" fill="#fff" stroke="#14210f" stroke-width="2"/><ellipse cx="32" cy="23" rx="5.2" ry="4.2" fill="#fff" stroke="#14210f" stroke-width="2"/></svg>';
 const MEDAL = '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="19" fill="#ffd84a" stroke="#14210f" stroke-width="4"/><path d="M24 11l4 9 10 1-7.5 6.8 2.2 9.7L24 32l-8.7 5.5 2.2-9.7L10 21l10-1z" fill="#ff7a1a" stroke="#14210f" stroke-width="2.5" stroke-linejoin="round"/></svg>';
 const LOCK = '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M15 22v-6a9 9 0 0 1 18 0v6" fill="none" stroke="#14210f" stroke-width="7" stroke-linecap="round"/><path d="M15 22v-6a9 9 0 0 1 18 0v6" fill="none" stroke="#9aa6b2" stroke-width="3.5" stroke-linecap="round"/><rect x="9" y="21" width="30" height="21" rx="6" fill="#8d96a0" stroke="#14210f" stroke-width="3.5"/><circle cx="24" cy="31" r="3.5" fill="#14210f"/></svg>';
+const FLAME = '<svg viewBox="0 0 24 28" aria-hidden="true"><path d="M12 1c1 6 8 9 8 17a8 8 0 0 1-16 0c0-4 2-6 3-9 1 2 2 3 3 3 0-4-1-7 2-11z" fill="currentColor" stroke="#14210f" stroke-width="2" stroke-linejoin="round"/></svg>';
 
-// A foot-machine: a dark helmet with two red eyes. Three of them make the first panel.
-const BOT = '<g><path d="M8 40V22a14 14 0 0 1 28 0v18z" fill="#2c313a" stroke="#14210f" stroke-width="3"/><rect x="12" y="20" width="20" height="7" rx="3" fill="#14210f"/><circle cx="18" cy="23.5" r="2.4" fill="#ff3b30"/><circle cx="26" cy="23.5" r="2.4" fill="#ff3b30"/><path d="M14 8l4 7M30 8l-4 7" stroke="#14210f" stroke-width="3" stroke-linecap="round"/></g>';
-
-const PANELS = [
-  { art: `<svg viewBox="0 0 150 70" aria-hidden="true"><g transform="translate(4 8) scale(.9)">${BOT}</g><g transform="translate(52 2) scale(1.05)">${BOT}</g><g transform="translate(104 8) scale(.9)">${BOT}</g></svg>`, cap: 'THE FOOT MACHINES TAKE THE PLAZA' },
-  { art: `<div class="pn-duo">${MASK}<img src="tex/donnie_head.png" alt=""></div>`, cap: 'RAPH HOLDS THE LINE. DONNIE SENDS GADGETS' },
-  { art: `<div class="pn-trail">${doorIcon('done')}${doorIcon('done')}${doorIcon('here')}${doorIcon('boss')}</div>`, cap: 'CLEAR THE ROOMS. FINISH THE LEVEL. KEEP WHAT YOU WON' },
+// THE TIERS: a name and a colour per level, hotter as you go. Past the list the last tier repeats with a numeral.
+const TIERS = [
+  { name: 'ROOKIE', hue: '#5fd06a' }, { name: 'SCRAPPER', hue: '#8fd13a' }, { name: 'BRAWLER', hue: '#ffc83a' }, { name: 'VETERAN', hue: '#ff9a2a' },
+  { name: 'NINJA', hue: '#ff5a3a' }, { name: 'MASTER', hue: '#ff3a7a' }, { name: 'LEGEND', hue: '#c04aff' },
 ];
+const tier = (l) => TIERS[Math.min(l, TIERS.length) - 1];
+const tierName = (l) => (l > TIERS.length ? `${TIERS[TIERS.length - 1].name} ${['', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][Math.min(9, l - TIERS.length)]}` : tier(l).name);
+const floorOf = (level, i) => `tex/floor_${THEMES[lookFor(level, i).theme].floor}.webp`;
 
 const slot = (k, n, extra = '') =>
   `<div class="slot ${ABILITIES[k].kind}${extra}" title="${ABILITIES[k].label}">${iconFor(k)}${n > 1 ? `<b>${n}</b>` : ''}</div>`;
 
 /**
- * @param run   null, or { level, room, build, rooms }  (room is 0-based)
- * @param bank  the permanent abilities already banked, as counts
- * @param unlocked  the furthest level reached: a NEW RUN asks which of 1..unlocked to start at
- * @returns Promise<{ choice: 'continue' | 'new', level }>
+ * @param run       null, or { level, room, build, rooms } (room is 0-based): the run you left
+ * @param bank      the permanent abilities already banked, as counts
+ * @param unlocked  the furthest level reached
+ * @param midGame   true when opened from the X during play: LOAD GAME just resumes (no map)
  */
-export function showLobby({ run, bank = {}, unlocked = 1 }) {
+export function showLobby({ run, bank = {}, unlocked = 1, midGame = false }) {
   const root = document.getElementById('lobby');
-  if (!root) return Promise.resolve({ choice: run ? 'continue' : 'new', level: 1 });
-  const keys = Object.keys(ABILITIES);
+  if (!root) return Promise.resolve({ choice: run ? 'continue' : 'new', level: 1, room: 0 });
+  const shown = unlocked + 3;                                   // always some locked levels ahead
+  let selected = unlocked;                                      // the last unlocked level is chosen by default
 
-  const panels = PANELS.map((p, i) => `<div class="story-panel p${i + 1}"><div class="pn-art">${p.art}</div><div class="pn-cap">${p.cap}</div></div>`).join('');
+  const card = (l) => {
+    const open = l <= unlocked, best = l === unlocked, next = l === unlocked + 1;
+    const n = roomsIn(l - 1);
+    const strip = Array.from({ length: n }, (_, i) => `<i style="background-image:url(${floorOf(l, i)})"></i>`).join('');
+    const threat = Array.from({ length: 5 }, (_, i) => `<span class="${i < Math.min(5, Math.ceil(l * 0.8)) ? 'on' : ''}">${FLAME}</span>`).join('');
+    const status = !open ? `<span class="st lock">${LOCK}${next ? 'CLEAR LEVEL ' + (l - 1) + ' TO OPEN' : 'LOCKED'}</span>`
+      : best ? '<span class="st here">' + MASK + 'YOUR FRONTIER</span>' : '<span class="st done">' + MEDAL + 'CLEARED</span>';
+    return `<button type="button" class="lb-card ${open ? 'open' : 'locked'}${best ? ' best' : ''}${next ? ' next' : ''}" data-l="${l}" style="--hue:${tier(l).hue}">` +
+      `<div class="lb-num"><small>LEVEL</small><b>${l}</b></div>` +
+      `<div class="lb-strip">${strip}${open ? '' : '<em>?</em>'}</div>` +
+      `<div class="lb-name">${open ? tierName(l) : '? ? ?'}</div>` +
+      `<div class="lb-threat" title="threat">${threat}</div>${status}</button>`;
+  };
 
-  // the road of levels: the ones behind you, this one, and two more locked ahead
-  const level = run ? run.level : unlocked;          // with no run in progress, the furthest level reached is where you stand
-  const shown = Math.max(4, level + 2);
-  let road = '';
-  for (let l = 1; l <= shown; l++) {
-    const state = l < level ? 'done' : l === level ? 'here' : 'locked';
-    road += `<div class="lv ${state}"><div class="lv-ico">${state === 'done' ? MEDAL : state === 'locked' ? LOCK : MASK}</div><b>${l}</b></div>`;
-  }
+  const main = () => {
+    const cards = Array.from({ length: shown }, (_, i) => card(i + 1)).join('');
+    const cont = run ? `<button id="lb-load" type="button" class="alt">${midGame ? 'CONTINUE' : 'LOAD GAME'}<small>LEVEL ${run.level} · ROOM ${run.room + 1}</small></button>` : '';
+    root.innerHTML =
+      `<div class="lb"><div class="lb-bg"></div>` +
+      `<div class="lb-top"><span class="lb-best">${MEDAL}BEST LEVEL <b>${unlocked}</b></span><span class="lb-hint" id="lb-hint"></span></div>` +
+      `<div class="lb-row"><button type="button" class="lb-arrow l" aria-label="previous level">&#9664;</button><div class="lb-cards" id="lb-cards">${cards}</div><button type="button" class="lb-arrow r" aria-label="next level">&#9654;</button></div>` +
+      `<div class="lb-buttons">${cont}<button id="lb-new" type="button">NEW GAME</button></div></div>`;
+  };
 
-  // the rooms of this level
-  let rooms = '';
-  const nRooms = run ? run.rooms : 5;
-  for (let i = 0; i < nRooms; i++) {
-    const boss = i === nRooms - 1, here = run && i === run.room, done = run && i < run.room;
-    rooms += `<div class="rm${here ? ' here' : ''}${boss ? ' boss' : ''}">${here ? MASK : ''}${doorIcon(boss && !done ? 'boss' : done ? 'done' : here ? 'here' : 'todo')}${boss ? '' : ''}</div>`;
-  }
-
-  const held = run ? keys.filter((k) => run.build[k] > 0).map((k) => slot(k, run.build[k])) : keys.filter((k) => bank[k] > 0).map((k) => slot(k, bank[k], ' banked'));
-  const buttons = run
-    ? '<button id="lobby-continue" type="button">CONTINUE</button><button id="lobby-new" type="button" class="alt">NEW RUN</button>'
-    : '<button id="lobby-continue" type="button">PLAY</button>';
-
-  root.innerHTML =
-    `<div class="lobby-card"><div class="lobby-story">${panels}</div>` +
-    `<div class="lobby-progress"><div class="lobby-tag">LEVELS</div><div class="lobby-road">${road}</div><div class="lobby-tag">ROOMS</div><div class="lobby-rooms">${rooms}</div>` +
-    `<div class="lobby-held">${held.join('')}</div><div class="lobby-buttons">${buttons}</div></div></div>`;
   root.classList.remove('hidden');
   document.body.classList.add('in-lobby');         // lifts the corner X above the lobby: from here it leaves the game
   return new Promise((resolve) => {
     const done = (v) => { root.classList.add('hidden'); root.innerHTML = ''; document.body.classList.remove('in-lobby'); resolve(v); };
-    const main = root.innerHTML;
-    // WHICH LEVEL? Every level you have reached is a button; a few more are shown locked, so there is
-    // always something ahead. Shown when a new run is chosen and there is more than level 1 to choose.
-    const pickLevel = () => {
-      const total = unlocked + 3;
-      let nodes = '';
-      for (let l = 1; l <= total; l++) {
-        const open = l <= unlocked, cur = l === unlocked;
-        nodes += `<button type="button" class="lv-btn ${open ? 'open' : 'locked'}${cur ? ' newest' : ''}" data-level="${l}" ${open ? '' : 'disabled'}>` +
-          `<div class="lv-ico">${open ? (cur ? MASK : MEDAL) : LOCK}</div><b>${l}</b></button>`;
-      }
-      root.innerHTML = `<div class="lobby-card pick"><div class="lobby-progress"><div class="lobby-tag big">START AT LEVEL</div>` +
-        `<div class="lobby-levels">${nodes}</div><div class="lobby-buttons"><button id="lobby-back" type="button" class="alt">BACK</button></div></div></div>`;
-      root.querySelectorAll('.lv-btn.open').forEach((b) => b.addEventListener('click', () => done({ choice: 'new', level: Number(b.dataset.level) })));
-      root.querySelector('#lobby-back').addEventListener('click', () => { root.innerHTML = main; wire(); });
+
+    // ---- SCREEN 2: the room map of a level ----
+    const mapScreen = (level, mode) => {
+      const n = roomsIn(level - 1);
+      const reach = mode === 'load' ? Math.min(n - 1, run.room) : 0;        // the furthest door you may start from
+      let start = reach;
+      const doors = Array.from({ length: n }, (_, i) => {
+        const boss = i === n - 1;
+        return `<button type="button" class="lb-door${i <= reach ? ' pick' : ''}" data-i="${i}" ${i <= reach && reach > 0 ? '' : 'tabindex="-1"'}>` +
+          `${doorIcon(i < reach ? 'done' : boss ? 'boss' : i === reach ? 'here' : 'todo')}${boss ? '<span class="crown">&#9813;</span>' : ''}<i>${i + 1}</i></button>`;
+      }).join('');
+      const held = mode === 'load' ? Object.keys(ABILITIES).filter((k) => run.build[k] > 0).map((k) => slot(k, run.build[k])) : Object.keys(ABILITIES).filter((k) => bank[k] > 0).map((k) => slot(k, bank[k], ' banked'));
+      root.innerHTML =
+        `<div class="lb map" style="--hue:${tier(level).hue}"><div class="lb-bg" style="background-image:url(${floorOf(level, 0)})"></div>` +
+        `<div class="lb-top"><span class="lb-best">LEVEL <b>${level}</b> · ${tierName(level)}</span></div>` +
+        `<div class="lb-mapwrap"><div class="trail">${doors}<div class="runner" style="--p:${n > 1 ? start / (n - 1) : 0}">${MASK}</div></div>` +
+        `<div class="lb-startline" id="lb-startline"></div></div>` +
+        `<div class="lb-held">${held.join('')}</div>` +
+        `<div class="lb-buttons"><button id="lb-back" type="button" class="alt">BACK</button><button id="lb-go" type="button">GO</button></div></div>`;
+      const label = () => { root.querySelector('#lb-startline').textContent = start === 0 ? `START FROM ROOM 1` : `RESUME FROM ROOM ${start + 1}`; };
+      label();
+      root.querySelectorAll('.lb-door.pick').forEach((d) => d.addEventListener('click', () => {
+        if (reach === 0) return;
+        start = Number(d.dataset.i); label();
+        root.querySelector('.runner').style.setProperty('--p', String(n > 1 ? start / (n - 1) : 0));
+      }));
+      root.querySelector('#lb-back').addEventListener('click', () => { main(); wire(); });
+      root.querySelector('#lb-go').addEventListener('click', () => done(mode === 'load' ? { choice: 'continue', level, room: start } : { choice: 'new', level, room: 0 }));
     };
-    const startNew = () => (unlocked > 1 ? pickLevel() : done({ choice: 'new', level: 1 }));
+
+    // ---- SCREEN 1 wiring ----
     function wire() {
-      root.querySelector('#lobby-continue').addEventListener('click', () => (run ? done({ choice: 'continue', level: run.level }) : startNew()));
-      root.querySelector('#lobby-new')?.addEventListener('click', startNew);
+      const rowEl = root.querySelector('#lb-cards');
+      const bg = root.querySelector('.lb-bg');
+      const hint = root.querySelector('#lb-hint');
+      const pick = (l, smooth = true) => {
+        selected = Math.max(1, Math.min(shown, l));
+        root.querySelectorAll('.lb-card').forEach((c) => c.classList.toggle('sel', Number(c.dataset.l) === selected));
+        const c = rowEl.querySelector(`.lb-card[data-l="${selected}"]`);
+        c?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center', block: 'nearest' });
+        bg.style.backgroundImage = `url(${floorOf(selected, 0)})`;
+        root.firstElementChild.style.setProperty('--hue', tier(selected).hue);
+        const open = selected <= unlocked;
+        const ne = root.querySelector('#lb-new'); ne.disabled = !open;
+        hint.textContent = open ? '' : selected === unlocked + 1 ? `CLEAR LEVEL ${unlocked} TO UNLOCK` : 'REACH HIGHER TO UNLOCK';
+        hint.classList.toggle('on', !open);
+      };
+      rowEl.addEventListener('click', (e) => { const c = e.target.closest('.lb-card'); if (c) pick(Number(c.dataset.l)); });
+      root.querySelector('.lb-arrow.l').addEventListener('click', () => pick(selected - 1));
+      root.querySelector('.lb-arrow.r').addEventListener('click', () => pick(selected + 1));
+      root.querySelector('#lb-new').addEventListener('click', () => { if (selected <= unlocked) mapScreen(selected, 'new'); });
+      root.querySelector('#lb-load')?.addEventListener('click', () => (midGame ? done({ choice: 'continue', level: run.level, room: run.room }) : mapScreen(run.level, 'load')));
+      pick(selected, false);
+      requestAnimationFrame(() => pick(selected, false));       // once laid out, so the chosen card is really centred
     }
-    wire();
+    main(); wire();
   });
 }

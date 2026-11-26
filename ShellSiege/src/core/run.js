@@ -37,6 +37,8 @@ export const RUN = {
   // a call of mine, because with permanent hearts and no healing at all a
   // five-room level would be decided entirely by the first bad room.
   healFrac: 0.30,
+  // BETWEEN ROOMS, over black, the level map shows the turtle walking from the room he cleared to the next (Elad, 25 Nov).
+  travelS: 2.1,
 };
 
 function enter(run, rng) {
@@ -67,7 +69,7 @@ export function nextLevel(run, rng = Math.random) {
 }
 
 /** True while the world should stand still: the box is open. */
-export const frozen = (run) => run.phase === 'roll';
+export const frozen = (run) => run.phase === 'roll' || run.phase === 'travel';
 
 /**
  * THE FREE START POWER. Elad, 22 Nov: after GO AGAIN, over black, one quick roll of a new
@@ -92,6 +94,18 @@ function finishRoll(run, w, rng, ev) {
   else run.roomIdx += 1;
   enter(run, rng);
   ev.push({ type: 'roomStart', room: run.roomIdx, rooms: run.rooms, last: run.room.isLast });
+}
+
+/** The box (or the pick) after the map moment. */
+function startRoll(run, w, rng, ev) {
+  run.rolls = (run.rolls || 0) + 1;
+  const pick = run.choice === 'always' || (run.choice === 'alt' && run.rolls % 2 === 0);
+  run.roll = (pick ? createChoice : createRoll)(w.build, rng, { room: run.roomIdx });
+  run.phase = 'roll';
+  run.t = 0;
+  ev.push({ type: 'rollStart', roll: run.roll });
+  // Everything maxed: nothing to reveal, so do not show an empty box.
+  if (run.roll.done) finishRoll(run, w, rng, ev);
 }
 
 /**
@@ -122,18 +136,17 @@ export function stepRun(run, w, dt, rng = Math.random) {
         run.t = 0;
         ev.push({ type: 'won', level: run.level });
       } else {
-        run.rolls = (run.rolls || 0) + 1;
-        const pick = run.choice === 'always' || (run.choice === 'alt' && run.rolls % 2 === 0);
-        run.roll = (pick ? createChoice : createRoll)(w.build, rng, { room: run.roomIdx });
-        run.phase = 'roll';
+        // THE MAP COMES FIRST (Elad, 25 Nov): the moment the room is clear the screen goes black on the level map and the turtle
+        // walks to the next door; only THEN does the wheel (or the pick) come, and then the next room starts.
+        run.phase = 'travel';
         run.t = 0;
-        ev.push({ type: 'rollStart', roll: run.roll });
-        // Everything maxed: nothing to reveal, so do not show an empty box.
-        if (run.roll.done) finishRoll(run, w, rng, ev);
+        ev.push({ type: 'travelStart', level: run.level, from: run.roomIdx, to: run.roomIdx + 1, rooms: run.rooms });
       }
     }
   } else if (run.phase === 'roll') {
     if (updateRoll(run.roll, dt)) finishRoll(run, w, rng, ev);
+  } else if (run.phase === 'travel') {
+    if (run.t >= RUN.travelS) startRoll(run, w, rng, ev);
   }
   return ev;
 }

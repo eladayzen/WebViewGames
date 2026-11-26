@@ -154,6 +154,7 @@ export function makeFoe(x, y, timeS = 0, breedKey = DEFAULT_BREED) {
     hp: b.hp ?? FOE.hp,
     maxHp: b.hp ?? FOE.hp,
     hitT: 0,
+    summonT: 0, summonDur: 0,        // > 0 while it is being summoned in (core/rooms.js): harmless, untouchable, drawn as a teleport
     alive: true,
     deadAtS: -Infinity,
     bornAtS: timeS,
@@ -245,6 +246,8 @@ export function updateFoes(w, dt, onStrike) {
       f.y = Math.max(f.radius, Math.min(ARENA.height - f.radius, f.y + f.kb.vy * k));
       f.kb.t -= dt; if (f.kb.t <= 0) f.kb = null;
     }
+    // BEING SUMMONED: it is only materialising, so it does nothing yet.
+    if (f.summonT > 0) { f.summonT = Math.max(0, f.summonT - dt); f.tell = null; f.ustep = 0; f.ux = 0; f.uy = 0; continue; }
     // STUNNED (core/allies.js): it does nothing at all until this runs out.
     if (f.stunImmT > 0) f.stunImmT = Math.max(0, f.stunImmT - dt);
     if (f.stunT > 0) {
@@ -353,6 +356,7 @@ function clearShot(w, f) {
 function spawnFoe(w, from, breedKey, x, y) {
   const nf = makeFoe(x, y, w.timeS, breedKey);
   applyLevel(nf, from.level || 1);
+  nf.summonT = nf.summonDur = 0.5;
   w.foes.push(nf);
   w.targets.push(nf);          // the SAME object -- see the header
   return nf;

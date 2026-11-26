@@ -111,7 +111,7 @@ function stepBurst(w, dt, hooks) {
 export const DASH = { cooldownS: 5.5, perLevel: 0.7, minS: 2.5, range: 380, rangePerLevel: 30, width: 70, damage: 22, damagePerLevel: 8, trigger: 520 };
 export const CALTROP = { every: 150, maxBase: 8, maxPerLevel: 2, lifeS: 4, lifePerLevel: 1, radius: 60, damage: 9, damagePerLevel: 3, hitEvery: 0.6 };
 export const BOOM = { everyS: 3.2, perLevel: 0.3, minS: 1.6, out: 520, speed: 900, hitR: 62, damage: 14, damagePerLevel: 4, hitEvery: 0.5, maxCount: 3 };
-export const DECOY = { cooldownS: 10, perLevel: 1, minS: 5, lifeS: 4, lifePerLevel: 1, hp: 60, hpPerLevel: 30, radius: 45, near: 900 };
+export const DECOY = { cooldownS: 12, perLevel: 1, minS: 6, lifeS: 11, lifePerLevel: 2, speed: 430, standOff: 150, retargetS: 0.5, knotR: 260, hp: 60, hpPerLevel: 30, radius: 45, near: 900 };
 export const ARC = { baseJumps: 1, maxJumps: 4, range: 280, frac: 0.4, fracPerLevel: 0.15, lifeS: 0.2 };
 export const VORTEX = { activeS: 2, activePerLevel: 0.4, cooldownS: 9, perLevel: 1, minS: 5, radius: 700, pull: 650, hold: 120 };
 export const FROST = { cooldownS: 8, perLevel: 0.8, minS: 4, radius: 420, radiusPerLevel: 30, slowS: 2.5, slowPerLevel: 0.5, slowMul: 0.4 };
@@ -226,10 +226,37 @@ function stepBoom(w, dt, hooks) {
   if (hooks?.onThrow) hooks.onThrow(null);
 }
 
-/** DECOY: a pizza box that foes chase and hit instead of you, until it breaks or its time is up. */
+/** The foe with the most other foes round it: where the shadow should go to be worth chasing. */
+function thickestKnot(w, x, y) {
+  const live = living(w); let best = null, bn = -1;
+  for (const f of live) {
+    let n = 0;
+    for (const g of live) if (Math.hypot(g.x - f.x, g.y - f.y) < DECOY.knotR) n++;
+    const d = Math.hypot(f.x - x, f.y - y);
+    const score = n - d / 900;                 // a bigger knot wins, a nearer one breaks ties
+    if (score > bn) { bn = score; best = f; }
+  }
+  return best;
+}
+
+/**
+ * SHADOW (was "pizza decoy"): a copy of Raphael that foes chase and hit instead of you, until it breaks or its time
+ * is up. It lasts long (Elad, 25 Nov) and WALKS ITSELF to the thickest knot of foes, stopping a little short of it.
+ */
 function stepDecoy(w, dt) {
   const p = ensure(w), L = lv(w, 'decoy');
-  if (w.decoy) { w.decoy.age += dt; if (w.decoy.age >= w.decoy.lifeS || w.decoy.hp <= 0) { w.decoy.alive = false; w.decoy = null; } }
+  if (w.decoy) {
+    const d = w.decoy;
+    d.age += dt; d.retargetT = (d.retargetT ?? 0) - dt;
+    if (d.retargetT <= 0) { d.retargetT = DECOY.retargetS; d.goal = thickestKnot(w, d.x, d.y); }
+    if (d.goal && d.goal.alive) {
+      const dx = d.goal.x - d.x, dy = d.goal.y - d.y, dist = Math.hypot(dx, dy) || 1;
+      d.face = Math.atan2(dy, dx);
+      if (dist > DECOY.standOff) { const st = Math.min(DECOY.speed * dt, dist - DECOY.standOff); d.x += (dx / dist) * st; d.y += (dy / dist) * st; d.moving = true; }
+      else d.moving = false;
+    } else d.moving = false;
+  }
+  if (w.decoy) { if (w.decoy.age >= w.decoy.lifeS || w.decoy.hp <= 0) { w.decoy.alive = false; w.decoy = null; } }
   if (L <= 0 || w.dead) { if (L <= 0 && w.decoy) w.decoy = null; return; }
   p.decoyCd -= dt;
   if (p.decoyCd > 0 || w.decoy || !nearestFoe(w, w.player.x, w.player.y, DECOY.near)) return;
@@ -325,4 +352,27 @@ export function updatePowers(w, dt, hooks) {
   stepFrost(w, dt, hooks);
   stepRush(w, dt);
   return p;
+}
+
+
+/**
+ * COOLDOWNS FOR THE HUD (Elad, 25 Nov: "show the cool down ... to explain and show fire rate"). For each temporary ability that works
+ * on a timer: `cover` is the share of the wait still to go (1 = just used, 0 = ready), `on` is true while it is running or armed, and
+ * `label` is a few words of rate (ninja stars: seconds between throws). `st` is the current stats(build).
+ */
+export function cooldownsOf(w, st) {
+  const out = {};
+  const p = w.powers || {};
+  const c01 = (x) => Math.max(0, Math.min(1, x));
+  const lvl = (k) => w.build[k] || 0;
+  if (st?.stars && lvl('stars') > 0) out.stars = { cover: c01((w.starT ?? 0) / st.stars.intervalS), on: false, label: `${st.stars.intervalS.toFixed(1)}s` };
+  if (lvl('orbit') > 0 && p.orbit) {
+    const o = p.orbit;
+    out.orbit = o.up ? { cover: c01(1 - o.t / (o.dur || 1)), on: true } : { cover: c01(o.t / (o.dur || 1)), on: false };
+  }
+  if (lvl('burst') > 0 && p.burst) out.burst = { cover: p.burst.armed ? 0 : c01(1 - p.burst.charge), on: !!p.burst.armed };
+  if (lvl('frost') > 0 && p.frost) out.frost = { cover: c01(p.frost.cd / Math.max(FROST.minS, FROST.cooldownS - (lvl('frost') - 1) * FROST.perLevel)), on: (p.frost.ringT || 0) > 0 };
+  if (lvl('vortex') > 0 && p.vortex) out.vortex = p.vortex.up ? { cover: 0, on: true } : { cover: c01(p.vortex.t / Math.max(VORTEX.minS, VORTEX.cooldownS - (lvl('vortex') - 1) * VORTEX.perLevel)), on: false };
+  if (lvl('decoy') > 0) out.decoy = w.decoy ? { cover: 0, on: true } : { cover: c01((p.decoyCd ?? 0) / Math.max(DECOY.minS, DECOY.cooldownS - (lvl('decoy') - 1) * DECOY.perLevel)), on: false };
+  return out;
 }

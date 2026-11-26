@@ -71,7 +71,7 @@ export const BREEDS = {
     mass: 0.8, hp: 30, speed: 230, damage: 9, push: 60, radius: 44, reach: 133,
     height: 2.36, windupS: 0.32, recoverS: 0.45, cost: 1,
     behavior: 'thrower',
-    job: { keepMin: 380, keepMax: 520, throwEvery: 2.0, windupS: 0.50, shotSpeed: 360, shotRadius: 24, shotDamage: 9, shotLifeS: 2.8, push: 45,
+    job: { keepMin: 380, keepMax: 520, throwEvery: 2.0, windupS: 0.50, shotSpeed: 360, shotRadius: 17, shotDamage: 9, shotLifeS: 2.8, push: 45,
       // THE THROW IS SYNCED TO THE CLIP. The attack clip's right hand is overhead at 17-20% of
       // its length and passes forward through the release at ~28% (measured by sampling
       // Hand_R, see render/foes.js). `release` is that fraction: the windup ends exactly on it,

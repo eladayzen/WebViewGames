@@ -42,7 +42,7 @@ test('A ROOM GOES INTRO, FIGHT, CLEARED, THEN A ROLL, THEN THE NEXT ROOM', () =>
   assert.equal(run.phase, 'intro');
   assert.equal(run.roomIdx, 0);
   const log = play(run, w, { until: (r, l) => l.includes('roomStart') });
-  assert.deepEqual(log, ['fight', 'cleared', 'rollStart', 'rollDone', 'roomStart']);
+  assert.deepEqual(log, ['fight', 'cleared', 'travelStart', 'rollStart', 'rollDone', 'roomStart']);
   assert.equal(run.roomIdx, 1);
   assert.equal(run.phase, 'intro');
 });
@@ -78,6 +78,7 @@ test('THE ROLL GRANTS EXACTLY ONE ABILITY, and only once the box has finished', 
   assert.ok(frozen(run), 'the world must hold still while the box is open');
   play(run, w, { until: (r, l) => l.includes('rollDone') });
   assert.equal(picks(w.build), 1);
+  assert.equal(run.phase, 'intro');
   assert.ok(!frozen(run));
 });
 
@@ -119,7 +120,7 @@ test('WITH EVERYTHING MAXED THE RUN WALKS PAST THE ROLL instead of waiting on an
   for (const k of Object.keys(ABILITIES)) for (let i = 0; i < ABILITIES[k].max; i++) take(w.build, k);
   const run = createRun({ rng: seeded(1) });
   const log = play(run, w, { until: (r, l) => l.includes('roomStart') });
-  assert.deepEqual(log, ['fight', 'cleared', 'rollStart', 'rollDone', 'roomStart']);
+  assert.deepEqual(log, ['fight', 'cleared', 'travelStart', 'rollStart', 'rollDone', 'roomStart']);
   assert.equal(run.phase, 'intro');
 });
 
@@ -165,7 +166,7 @@ test('THE START ROLL GRANTS AN ABILITY AND THEN STARTS THE SAME ROOM, not the ne
   const key = run.roll.key;
   const before = w.build[key];
   let done = false;
-  for (let t = 0; t < 4 && !done; t += 1 / 60) done = stepRun(run, w, 1 / 60, () => 0.2).some((e) => e.type === 'rollDone');
+  for (let t = 0; t < 10 && !done; t += 1 / 60) done = stepRun(run, w, 1 / 60, () => 0.2).some((e) => e.type === 'rollDone');
   assert.ok(done, 'the roll never finished');
   assert.equal(w.build[key], before + 1, 'the rolled ability was not granted');
   assert.equal(run.roomIdx, 0, 'the start roll advanced the room');
@@ -181,4 +182,19 @@ test('with everything maxed there is NO start roll and no empty box', async () =
   const run = createRun({ level: 1, room: 0 });
   assert.deepEqual(beginStartRoll(run, w), []);
   assert.equal(run.phase, 'intro');
+});
+
+test('THE MAP COMES FIRST: the moment a room is clear, over black, BEFORE the box or the pick', async () => {
+  const { irisOpen } = await import('../src/core/transition.js');
+  const w = createWorld();
+  const run = createRun({ rng: seeded(1) });
+  const log = [];
+  for (let t = 0; t < 1200 && run.phase !== 'travel'; t += 1 / 30) { for (const e of stepRun(run, w, 1 / 30, seeded(1))) log.push(e.type); for (const f of w.foes) f.alive = false; }
+  assert.equal(run.phase, 'travel');
+  assert.equal(log.includes('rollStart'), false, 'the box must not have started yet');
+  assert.equal(irisOpen(run), 0, 'the screen stays black');
+  const t0 = run.roomIdx;
+  for (let t = 0; t < RUN.travelS + 0.2; t += 1 / 30) for (const e of stepRun(run, w, 1 / 30, seeded(1))) log.push(e.type);
+  assert.equal(run.phase, 'roll', 'then the roll');
+  assert.equal(run.roomIdx, t0, 'the room number advances only when the roll is done');
 });

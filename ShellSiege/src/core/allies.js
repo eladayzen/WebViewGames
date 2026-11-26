@@ -53,7 +53,11 @@ export const ALLY = {
     // HE DOES WHAT DONATELLO USED TO (Elad, 23 Nov: "for now have him do exactly what donnie is
     // currently doing"), with nunchucks: a wide sweep at anything near him, and every hit
     // stuns everything in a 30-degree cone.
-    followDist: 270, speed: 600,       // keeps well back from Raphael
+    followDist: 270, speed: 600,       // where he waits near Raphael
+    // HE HUNTS (Elad, 25 Nov: "not very effective ... should not be following the player so much"): he sees foes within
+    // `seek` of HIMSELF (never farther than `roam` from Raphael), runs at the nearest and spins while closing in. He only
+    // comes back to Raphael when he is farther than `leash` with nothing to fight.
+    seek: 760, roam: 1100, leash: 560, chaseMul: 1.5,
     // SPINJITZU (Elad, 24 Nov): a short 0.5 s spin, then he WALKS again. The cleave lands mid-spin and is a full
     // circle round him: little damage, a BIG push, and a stun on everything it reaches.
     staffEvery: 1.0, staffWindupS: 0.4, cooldownS: 2.0, cooldownJitterS: 1.0,      // a 1 s spin every 2-3 s
@@ -83,7 +87,7 @@ export const ALLY = {
     activeS: 8, upgradeS: 4, breakS: 12, firstS: 4,
     // THE CLOSE GUARD. He never leaves Raphael's side and never chases: he jabs with his stick at
     // whatever comes within reach, while walking, for little damage. His real job is the SHIELD.
-    followDist: 95, speed: 640,
+    followDist: 150, speed: 640,
     staffEvery: 0.7, staffWindupS: 0.16,
     staffReach: 175, staffArc: 2.2,
     staffDamage: 5, staffKnock: 40,
@@ -130,7 +134,7 @@ export function syncAllies(w) {
 
 /** Stop a foe in its tracks for `s` seconds and cancel whatever it was winding up. */
 export function stunFoe(f, s) {
-  if (!f.alive) return;
+  if (!f.alive || f.summonT > 0) return;
   // NO STUN-LOCK: a foe that has just woken is immune for a moment. Mikey sweeps every 1.1s and stuns for
   // 1.3s, so without this a whole crowd stood frozen for as long as he lived and the game looked stuck.
   if ((f.stunImmT || 0) > 0) return;
@@ -147,7 +151,7 @@ export function stunFoe(f, s) {
  * "did that kill it?" gets the true answer.
  */
 export function hurtFoe(w, f, dmg, hooks) {
-  if (!f.alive) return;
+  if (!f.alive || f.summonT > 0) return;        // still materialising: untouchable
   f.hp -= dmg;
   f.hitT = 0.14;
   if (f.hp <= 0) {
@@ -306,14 +310,27 @@ function sweepStep(a, w, dt, hooks, C) {
 
   // the staff: a wide sweep at anything near him
   const near = nearest(foes, a.x, a.y, C.staffReach + 40);
-  // HE SPINS EVERY NOW AND THEN, whether or not anyone is close, and keeps WALKING while he does (Elad, 24 Nov)
-  if (a.slashT < 0 && a.cool <= 0) {
-    a.slashT = 0; a.hitDone = false;
-    if (near) a.facing = Math.atan2(near.y - a.y, near.x - a.x);
-  }
+  // THE TARGET: the nearest foe he can see, not too far from Raphael
+  let target = null;
   {
+    let bd = C.seek;
+    for (const f of foes) {
+      const d = Math.hypot(f.x - a.x, f.y - a.y);
+      if (d < bd && Math.hypot(f.x - w.player.x, f.y - w.player.y) < C.roam) { bd = d; target = f; }
+    }
+  }
+  // HE SPINS WHEN A FOE IS WITHIN THE CLEAVE, or every now and then with nobody about (Elad, 24 Nov), and keeps MOVING while he does
+  if (a.slashT < 0 && a.cool <= 0 && (!target || Math.hypot(target.x - a.x, target.y - a.y) <= C.staffReach * 0.8)) {
+    a.slashT = 0; a.hitDone = false;
+    if (target) a.facing = Math.atan2(target.y - a.y, target.x - a.x);
+  }
+  if (target) {
+    // close in on it (faster while spinning), stopping well inside the circle so the cleave reaches it
+    a.walking = walkTo(a, target.x, target.y, C.speed * (a.slashT >= 0 ? C.chaseMul : 1.2), dt, C.staffReach * 0.4 + target.radius);
+  } else {
     const h = homeSpot(a, w, C.followDist);
-    a.walking = walkTo(a, h.x, h.y, C.speed, dt, 36);
+    const far = Math.hypot(a.x - w.player.x, a.y - w.player.y) > C.leash;
+    a.walking = far ? walkTo(a, h.x, h.y, C.speed, dt, 36) : false;      // near Raphael with nothing to fight: stand and wait
   }
   if (a.slashT >= 0) {
     a.slashT += dt / C.staffEvery;

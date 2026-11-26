@@ -147,7 +147,13 @@ export async function createAllies(scene, rig) {
     scaler.traverse((o) => {
       if (o.isMesh) {
         o.frustumCulled = false;
+        const src = o.material;
         o.material = o.material.clone();
+        // THE STUCK ORANGE TINT: Raphael's hit flash writes red into his emissive, and a clone made DURING a flash inherits it as its
+        // normal colour for good. Take the emissive from the unflashed value he keeps (userData.baseEm), or black.
+        const be = src.userData && src.userData.baseEm;
+        if (be && be.isColor) o.material.emissive.copy(be); else o.material.emissive.setRGB(0, 0, 0);
+        delete o.material.userData.baseEm;
         const t = texFor(a.key);
         if (t) o.material.map = t;
         o.material.transparent = true;

@@ -8,6 +8,10 @@ import { ABILITIES } from '../core/abilities.js';
 import { iconFor } from './icons.js';
 import { doorIcon } from './doors.js';
 
+/** THE GENERAL BAD GUY (Elad, 25 Nov): one dark hooded mask with glaring red eyes, for "enemies left". */
+const BADGUY = '<svg class="bad" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 3c-9 0-16 7-16 17v10c0 4 2 7 5 9l4 6h14l4-6c3-2 5-5 5-9V20C40 10 33 3 24 3z" fill="#2b2f3b" stroke="#14210f" stroke-width="3"/>' +
+  '<path d="M10 20c4-4 24-4 28 0l-1 8c-4 3-22 3-26 0z" fill="#12151c"/><path d="M13 22l9 3-1 3-9-2zM35 22l-9 3 1 3 9-2z" fill="#ff3b30"/><path d="M18 36h12M20 40h8" stroke="#8a93a6" stroke-width="2.2" stroke-linecap="round"/></svg>';
+
 /** Banner words that have painted lettering (tools/cut-ui.py). */
 const TITLE_ART = { 'ROOM CLEAR': 'ui_title_room_clear.png' };
 
@@ -38,7 +42,7 @@ export function createHud() {
   function setLeft(n, show = true) {
     if (!left) return;
     const t = show ? String(n) : '';
-    if (t !== leftText) { leftText = t; left.innerHTML = t ? `<b>${t}</b><i>left</i>` : ''; }
+    if (t !== leftText) { leftText = t; left.innerHTML = t ? `${BADGUY}<b>${t}</b>` : ''; }
   }
 
   /** Show a banner. Re-triggering restarts the animation, which is the point. */
@@ -68,6 +72,7 @@ export function createHud() {
 
   /** Two strips: the TEMPORARY abilities (allies, weapons, effects) and RAPHAEL'S UPGRADES (the permanent ones). */
   const timerSeen = {};
+  const cdSeen = {};
   const ups = document.getElementById('upgrades');
   let upKey = '';
   const slotHtml = (build, bank, k) => {
@@ -77,14 +82,30 @@ export function createHud() {
     return `<div class="slot ${ABILITIES[k].kind}${state}" data-key="${k}" title="${ABILITIES[k].label}">${iconFor(k)}` +
       (build[k] > 1 ? `<b>${build[k]}</b>` : '') + '</div>';
   };
+  function fitStrip() {
+    if (!strip) return;
+    strip.classList.remove('two');
+    if (strip.scrollWidth > strip.clientWidth + 1) strip.classList.add('two');
+  }
+  addEventListener('resize', fitStrip);
   function setAbilities(build, bank = {}) {
     if (!strip) return;
     const held = Object.keys(ABILITIES).filter((k) => build[k] > 0);
     const key = held.map((k) => `${k}${build[k]}/${bank[k] || 0}`).join(',');
     if (key === stripKey) return;
     stripKey = key;
-    for (const k in timerSeen) delete timerSeen[k];      // the slots were rebuilt: write the timers again
-    strip.innerHTML = held.filter((k) => ABILITIES[k].kind === 'temp').map((k) => slotHtml(build, bank, k)).join('');
+    for (const k in timerSeen) delete timerSeen[k];
+    for (const k in cdSeen) delete cdSeen[k];      // the slots were rebuilt: write the timers again
+    // THE STRIP (Elad, 25 Nov): the turtles in the middle, the weapon abilities split to either side of them; if that does
+    // not fit on one line, the turtles are the upper line and the weapons the one below.
+    const temp = held.filter((k) => ABILITIES[k].kind === 'temp');
+    const turtles = ['leo', 'mikey', 'donnie'].filter((k) => temp.includes(k));
+    const arms = temp.filter((k) => !turtles.includes(k));
+    const half = Math.ceil(arms.length / 2);
+    const row = (ks) => ks.map((k) => slotHtml(build, bank, k)).join('');
+    strip.innerHTML = `<div class="abl">${row(arms.slice(0, half))}</div><div class="abt">${row(turtles)}</div><div class="abr">${row(arms.slice(half))}</div>`;
+    strip.classList.remove('two');
+    fitStrip();
     if (ups) {
       ups.innerHTML = held.filter((k) => ABILITIES[k].kind === 'perm').map((k) => slotHtml(build, bank, k)).join('');
       ups.classList.toggle('empty', !ups.children.length);
@@ -136,5 +157,27 @@ export function createHud() {
     }
   }
 
-  return { setRooms, setLeft, say, hideBanner, flash, celebrate, setAbilities, setAllyTimers, peekUpgrades };
+  // COOLDOWN WHEELS on the weapon/effect slots: a dark sweep that shrinks to nothing when it is ready, a glow while it runs, and a
+  // few words of rate (ninja stars: seconds between throws). Only writes what changed.
+  function setCooldowns(cds) {
+    if (!strip) return;
+    for (const k of Object.keys(cds)) {
+      const c = cds[k];
+      const cover = Math.round(c.cover * 50) / 50;
+      const tag = `${cover}|${c.on ? 1 : 0}|${c.label || ''}`;
+      if (cdSeen[k] === tag) continue;
+      const el = strip.querySelector(`.slot[data-key="${k}"]`);
+      if (!el) continue;
+      cdSeen[k] = tag;
+      el.classList.add('cd');
+      el.style.setProperty('--cover', cover.toFixed(2));
+      el.classList.toggle('ready', cover === 0 && !c.on);
+      el.classList.toggle('running', !!c.on);
+      let lab = el.querySelector('.rate');
+      if (c.label) { if (!lab) { lab = document.createElement('i'); lab.className = 'rate'; el.appendChild(lab); } lab.textContent = c.label; }
+      else lab?.remove();
+    }
+  }
+
+  return { setCooldowns, setRooms, setLeft, say, hideBanner, flash, celebrate, setAbilities, setAllyTimers, peekUpgrades };
 }

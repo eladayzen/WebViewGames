@@ -56,7 +56,7 @@ export const RIDER_H = num('rh', 1.55);
  * touching -- but "should never" is how the last three facing bugs started,
  * and `?yaw0=180` is a reload rather than a rebuild.
  */
-const YAW0 = (num('yaw0', 0) * Math.PI) / 180;
+export const YAW0 = (num('yaw0', 0) * Math.PI) / 180;
 
 /**
  * HOW HE IS SHADED.

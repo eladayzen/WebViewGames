@@ -29,7 +29,7 @@ function run(w, room, seconds, { kill = false, dt = 1 / 30, rng = seeded(9) } = 
 }
 
 test('ROOMS GET BIGGER AS YOU GO, within a level and across levels', () => {
-  assert.equal(roomBudget(1, 0), ROOM.baseBudget);
+  assert.equal(roomBudget(1, 0), Math.round(ROOM.baseBudget * ROOM.early[1][0]));    // the opening room carries the early boost
   for (let r = 1; r < 5; r++) assert.ok(roomBudget(1, r) > roomBudget(1, r - 1), `room ${r + 1}`);
   for (let l = 2; l < 6; l++) assert.ok(roomBudget(l, 0) > roomBudget(l - 1, 0), `level ${l}`);
 });
@@ -203,4 +203,34 @@ test('THE FIRST ROOM IS A GENTLE ONE, and every level walks further along the ro
   assert.ok(rungs(3) >= rungs(0), 'a later level shows fewer kinds than the first');
   assert.ok(POOL_SHIFT_PER_LEVEL >= 1);
   assert.ok(pf(1, 0, false).length >= pf(0, 0, false).length, 'level 2 opens on a smaller roster than level 1');
+});
+
+// ---- exact compositions and the summon-in (Elad, 25 Nov) ----
+import { COMPOSE } from '../src/core/rooms.js';
+import { updateFoes } from '../src/core/foes.js';
+test('A ROOM WITH AN EXACT COMPOSITION HAS EXACTLY THOSE ENEMIES, still in waves', () => {
+  COMPOSE[1] = { 1: { slayer: 7, evilgod: 2 } };
+  const room = createRoom(1, 1, 5, seeded(3));
+  delete COMPOSE[1];
+  const all = room.batches.flat();
+  assert.equal(all.filter((k) => k === 'slayer').length, 7);
+  assert.equal(all.filter((k) => k === 'evilgod').length, 2);
+  assert.ok(room.batches.length > 1, 'they must still arrive in waves, not all at once');
+  assert.equal(room.total, 9);
+});
+
+test('A FOE IS SUMMONED IN: harmless and untouchable while it materialises, then it acts', () => {
+  const w = createWorld();
+  const room = createRoom(1, 0, 5, seeded(2));
+  for (let t = 0; t < 3 && !w.foes.length; t += 1 / 30) { w.timeS += 1 / 30; updateRoom(w, room, 1 / 30, seeded(5)); }
+  const f = w.foes[0];
+  assert.ok(f.summonT > 0, 'a new arrival is being summoned');
+  const x0 = f.x, y0 = f.y;
+  w.player.x = f.x + 40; w.player.y = f.y;            // right on top of it
+  const hp = w.hp;
+  for (let t = 0; t < ROOM.summonS - 0.1; t += 1 / 60) updateFoes(w, 1 / 60);
+  assert.equal(f.x, x0); assert.equal(f.y, y0);
+  assert.equal(w.hp, hp, 'a foe that is still materialising must not hit');
+  for (let t = 0; t < 0.4; t += 1 / 60) updateFoes(w, 1 / 60);
+  assert.equal(f.summonT, 0);
 });

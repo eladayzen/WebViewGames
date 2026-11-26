@@ -384,8 +384,12 @@ export function createFoes(scene, enemies, _unusedAtlas) {
     // back along the hit. Strong on purpose: damage you cannot see is damage the player assumes missed.
     const hk = f.hitT > 0 ? Math.min(1, f.hitT / 0.14) : 0;
     if (hk > 0) mat.color.lerp(HIT_RED, 0.55);
-    for (const m of mats) m.emissive.setRGB(hk > 0.45 ? 1 : hk * 1.8, hk > 0.45 ? 0.95 : hk * 0.5, hk > 0.45 ? 0.9 : hk * 0.4);
-    holder.scale.setScalar(1 + 0.16 * hk);
+    // BEING SUMMONED (core/rooms.js): it materialises -- grows up out of the floor, glowing, while the beam (render/telegraph.js) plays
+    const sm = f.summonT > 0 ? 1 - f.summonT / (f.summonDur || 1) : 1;
+    const em = 1 - Math.pow(1 - sm, 3), sg = sm < 1 ? (1 - sm) : 0;
+    for (const m of mats) m.emissive.setRGB(Math.max(hk > 0.45 ? 1 : hk * 1.8, sg * 0.95), Math.max(hk > 0.45 ? 0.95 : hk * 0.5, sg * 0.55), Math.max(hk > 0.45 ? 0.9 : hk * 0.4, sg * 0.85));
+    const sc = 1 + 0.16 * hk;
+    holder.scale.set(sc * (0.4 + 0.6 * em), sc * (0.04 + 0.96 * em), sc * (0.4 + 0.6 * em));
     const mode = f.stunT > 0 ? 1 : f.slowT > 0 ? 2 : 0;
     const clock = performance.now() / 1000;
     for (const m of mats) setStatus(m, mode, clock);

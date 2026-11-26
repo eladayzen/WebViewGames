@@ -33,16 +33,33 @@ import { makeFoe, spawnPoint, applyLevel, levelMul } from './foes.js';
 export { levelMul };
 import { lookFor } from './looks.js';
 
+/**
+ * EXACT COMPOSITIONS (Elad, 25 Nov: "you will know how many enemies of every kind you want in a specific room"). When a room has an
+ * entry here its enemies are EXACTLY these, instead of a budget spent on the level's pool:
+ *
+ *   COMPOSE[level][roomIndex] = { slayer: 8, evilgod: 2 }      // roomIndex is 0-based; the last room still gets its boss added
+ *
+ * They are still brought in as waves (ROOM.batches), never all at once. Empty by default: the budget system decides.
+ */
+export const COMPOSE = {};
+
 export const ROOM = {
   baseBudget: 10,
   perRoom: 0.20,
   perLevel: 0.22,
+  // THE FIRST ROOMS WERE OVER TOO FAST (Elad, 25 Nov): a one-off multiplier on the budget of the opening rooms, per level
+  // (the entry is the room index; kept so budgets still RISE room to room and level to level). Later rooms and levels are untouched.
+  early: { 1: [1.25, 1.25, 1.2, 1.15, 1.1], 2: [1.15, 1.12, 1.08, 1.04, 1] },
+  // ...and they ARRIVE more slowly (x the stagger between bodies), so a room lasts longer without being denser.
+  earlyStagger: { 1: 2.6, 2: 1.6 },
   // MORE, SMALLER, SOONER WAVES (Elad: walk in circles and the whole room trails you in one group).
   // A wave arrives while the last is still alive, and from AHEAD of where you are heading.
   batches: 4,
   aheadSpawn: true,          // later waves appear in front of the player's heading
   // Before the first one, so the player has a moment to see an empty room.
   firstDelayS: 0.4,
+  // A foe that arrives is SUMMONED: for this long it is materialising (the teleport effect), harmless and untouchable.
+  summonS: 0.75,
   // Between bodies in one batch: they stream in rather than pop in together.
   staggerS: 0.22,
   // The next batch comes when the living are down to this share of the last.
@@ -56,8 +73,9 @@ export function roomBudget(level, roomIdx) {
   // ?budget=80 forces every room to that size, for stress-testing a build.
   const forced = typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('budget')) : 0;
   if (forced > 0) return forced;
+  const boost = (ROOM.early[level] || [])[roomIdx] ?? 1;
   return Math.round(
-    ROOM.baseBudget * Math.pow(1 + ROOM.perLevel, level - 1) * (1 + ROOM.perRoom * roomIdx));
+    ROOM.baseBudget * Math.pow(1 + ROOM.perLevel, level - 1) * (1 + ROOM.perRoom * roomIdx) * boost);
 }
 
 /**
@@ -112,7 +130,10 @@ export function createRoom(level, roomIdx, rooms, rng = Math.random) {
   const boss = isLast && BREEDS[def.boss] ? def.boss : null;
   if (boss) spend = Math.max(0, budget - costOf(boss));
 
-  const bodies = spendBudget(spend, pool, rng);
+  const fixed = COMPOSE[level] && COMPOSE[level][roomIdx];
+  const bodies = fixed
+    ? Object.entries(fixed).flatMap(([k, n]) => Array(Math.max(0, n | 0)).fill(k)).filter((k) => BREEDS[k])
+    : spendBudget(spend, pool, rng);
   const batches = split(bodies, ROOM.batches);
   if (boss) {
     if (batches.length) batches[batches.length - 1].push(boss);
@@ -154,6 +175,7 @@ function bring(w, room, key, rng) {
   const p = spawnPoint(w.player.x, w.player.y, rng, w.obstacles, ROOM.aheadSpawn && room.batchIdx > 1 ? w.player.facing : null);
   const f = makeFoe(p.x, p.y, w.timeS, key);
   applyLevel(f, room.level);
+  f.summonT = f.summonDur = ROOM.summonS;
   w.foes.push(f);
   w.targets.push(f);   // the SAME object -- see core/foes.js
   return f;
@@ -168,7 +190,7 @@ export function updateRoom(w, room, dt, rng = Math.random) {
     room.spawnT -= dt;
     if (room.spawnT <= 0) {
       bring(w, room, room.pending.shift(), rng);
-      room.spawnT = ROOM.staggerS;
+      room.spawnT = ROOM.staggerS * (room.level <= 2 && room.index <= 2 ? (ROOM.earlyStagger[room.level] || 1) : 1);
     }
     return;
   }

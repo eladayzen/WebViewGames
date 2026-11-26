@@ -23,6 +23,7 @@ const RUNS = arg('runs', 60), LEVELS = arg('levels', 3), SKILL = arg('skill', 0.
 if (process.argv.some((a) => a.startsWith('--hp='))) LEVEL_SCALE.hpPerLevel = arg('hp', 0);
 if (process.argv.some((a) => a.startsWith('--dmg='))) LEVEL_SCALE.dmgPerLevel = arg('dmg', 0);
 if (process.argv.some((a) => a.startsWith('--bud='))) ROOM.perLevel = arg('bud', 0);
+if (process.argv.includes('--early=0')) ROOM.early = {};
 if (process.argv.some((a) => a.startsWith('--room='))) ROOM.perRoom = arg('room', 0);
 
 function rngOf(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }

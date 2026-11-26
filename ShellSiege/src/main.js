@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { createWorld, updateWorld, __setSpeedSource, ARENA } from './core/world.js';
 import { screenToWorld } from './core/axes.js';
 import { initInput, readInput, TUNING } from './systems/input.js';
-import { updateFiring, updateBullets, nearestTarget, BASE_GUN } from './systems/combat.js';
+import { updateFiring, updateBullets, nearestTarget, BASE_GUN, DEV } from './systems/combat.js';
 import { stepAngle, desiredFacing, AIM_RANGE_MUL } from './core/facing.js';
 import { THROW } from './core/throwing.js';
 import { localHeading } from './core/locomotion.js';
@@ -42,7 +42,7 @@ import { createGhost } from './render/ghost.js';
 import { createMachines } from './render/machines.js';
 import { createMachineUi } from './ui/machineUi.js';
 import { updateMachines } from './core/machines.js';
-import { updatePowers, noteKill, chainArc, rushMul } from './core/powers.js';
+import { updatePowers, noteKill, chainArc, rushMul, cooldownsOf } from './core/powers.js';
 import { createTelegraphs } from './render/telegraph.js';
 import { createSeeThrough } from './render/seethrough.js';
 import { createAllies } from './render/allies.js';
@@ -55,7 +55,8 @@ import { enemiesLeft } from './core/rooms.js';
 import { createRollUi } from './ui/roll.js';
 import { pickChoice } from './core/roll.js';
 import { createHud } from './ui/hud.js';
-import { renderEnd } from './ui/endscreen.js';
+import { renderEnd, playRewind } from './ui/endscreen.js';
+import { createTravel } from './ui/travel.js';
 import { loadSave, saveProgress } from './systems/save.js';
 import { looseOf, bankOnWin, bankOnDeath, pickToKeep, buildFromBank } from './core/bank.js';
 import { createIris } from './ui/iris.js';
@@ -158,6 +159,7 @@ async function boot() {
   const finalScore = document.getElementById('final-kills');
 
   const rollUi = createRollUi();
+  const travelUi = createTravel();
   rollUi.onPick = (i) => pickChoice(run.roll, i);
   const hud = createHud();
   const iris = createIris();
@@ -228,15 +230,16 @@ async function boot() {
     const loose = looseOf(w.build, bank);
     const keptPick = kind === 'won' ? null : pickToKeep(w.build, bank);
     const newBank = kind === 'won' ? bankOnWin(bank, w.build) : bankOnDeath(bank, w.build);
-    const playEnd = renderEnd(kind, { build: w.build, bank: newBank, oldBank: bank, loose, keptPick, level: run.level, rooms: run.rooms });
+    // WHERE THE RUN ENDED, for the map: the room reached plus the share of its enemies already down
+    const frac = Math.max(0, Math.min(1, 1 - enemiesLeft(w, run.room) / Math.max(1, run.room.total)));
+    const playEnd = renderEnd(kind, { progress: kind === 'won' ? null : { t: run.roomIdx + frac }, build: w.build, bank: newBank, oldBank: bank, loose, keptPick, level: run.level, rooms: run.rooms });
     bank = newBank;
     if (kind === 'won') unlocked = Math.max(unlocked, run.level + 1);      // clearing a level opens the next
     if (persist) saveProgress(bank, null, unlocked);
-    if (kind === 'won') hud.celebrate();
     if (finalScore) finalScore.textContent = String(kills);
     hud.hideBanner();
     overlay.classList.remove('hidden');
-    if (playEnd) requestAnimationFrame(() => playEnd());      // the flight needs the card on screen to measure it
+    if (playEnd) requestAnimationFrame(() => playEnd({ celebrate: () => hud.celebrate() }));      // the flight needs the card on screen to measure it
   }
 
   /** What a run event looks like on screen. The run itself never touches the DOM. */
@@ -250,9 +253,10 @@ async function boot() {
       hud.say(e.last ? 'LEVEL CLEAR' : 'ROOM CLEAR', `${kills} down`);
       if (e.last) hud.celebrate();            // confetti over the field: a level is a bigger moment than a room
     }
-    else if (e.type === 'rollStart') { if (!e.roll.done) rollUi.open(e.roll, { black: !!e.start, build: w.build, bank }); }
+    else if (e.type === 'rollStart') { travelUi.hide(); if (!e.roll.done) rollUi.open(e.roll, { black: !!e.start, build: w.build, bank }); }
     else if (e.type === 'rollDone') { rollUi.close(); }
-    else if (e.type === 'roomStart') { applyLook(run.room.look); announceRoom(); }
+    else if (e.type === 'travelStart') { travelUi.show(e); }
+    else if (e.type === 'roomStart') { travelUi.hide(); applyLook(run.room.look); announceRoom(); }
     else if (e.type === 'won') showEnd('won');
   }
 
@@ -277,7 +281,7 @@ async function boot() {
     kills = 0;
     run = forceNew ? createRun({ level: startLevel, choice: CHOICE }) : won ? nextLevel(run) : restartLevel(run);
     applyLook(run.room.look);
-    rollUi.close();
+    rollUi.close(); travelUi.hide();
     slowT = 0;
     hud.hideBanner();
     // Hide the pool immediately, or the last frame's bodies are still standing
@@ -292,7 +296,18 @@ async function boot() {
     if (startEv.length) for (const e of startEv) onRunEvent(e);
     else announceRoom();
   }
-  document.getElementById('restart-button')?.addEventListener('click', () => restart());
+  let rewinding = false;
+  document.getElementById('restart-button')?.addEventListener('click', async () => {
+    if (rewinding) return;
+    // after OVERRUN the screen stays: only the progression map is left, and the turtle runs back to room 1
+    if (w.dead && overlay?.querySelector('.over-card.dead')) {
+      rewinding = true;
+      await playRewind(run.level);
+      rewinding = false;
+      overlay.querySelector('.over-card')?.classList.remove('rewinding');
+    }
+    restart();
+  });
 
   // --- LEAVING: X during play asks first, then goes to the LOBBY; the X in the lobby leaves for the
   // GoBalance lobby (that one is the page's own handler, so here it is simply let through).
@@ -309,7 +324,7 @@ async function boot() {
       snap = { level: run.level, room: run.roomIdx, build: w.build };
       if (persist) saveProgress(bank, snap, unlocked);
     }
-    const pick = await showLobby({ run: { ...snap, rooms: roomsIn(snap.level - 1) }, bank, unlocked });
+    const pick = await showLobby({ run: { ...snap, rooms: roomsIn(snap.level - 1) }, bank, unlocked, midGame: true });
     paused = false;
     if (pick.choice === 'new') restart(true, pick.level);
     else if (endShown) restart();
@@ -339,7 +354,7 @@ async function boot() {
     if (normal && choice === 'continue' && savedRun) {
       for (const [k, n] of Object.entries(savedRun.build)) w.build[k] = Math.max(w.build[k] || 0, n);
       syncMaxHp(stats(w.build), true);
-      run = createRun({ level: savedRun.level, room: savedRun.room, choice: CHOICE });
+      run = createRun({ level: pick.level, room: pick.room ?? savedRun.room, choice: CHOICE });      // LOAD GAME may restart from any door it reached
       applyLook(run.room.look);
       announceRoom();
     } else {
@@ -356,7 +371,33 @@ async function boot() {
   let allyHooksRef = {};
   // HUD LAYOUT (Elad, 24 Nov): ?hud=2 (default) upgrades on the RIGHT and abilities on the LEFT, always shown;
   // ?hud=1 abilities along the bottom, upgrades only at the start of each room.
-  document.body.classList.add(new URLSearchParams(location.search).get('hud') === '1' ? 'hud-1' : 'hud-2');
+  document.body.classList.add(new URLSearchParams(location.search).get('hud') === '2' ? 'hud-2' : 'hud-1');
+  // DEV OPTION: aim the daggers at enemy projectiles (off by default). ?aimshots=1 or the button in the dev panel.
+  {
+    DEV.aimShots = new URLSearchParams(location.search).get('aimshots') === '1';      // always OFF at load unless asked: option 1 is the default
+    const btn = document.getElementById('dev-aimshots');
+    const paint = () => { if (btn) btn.textContent = `aim at shots: ${DEV.aimShots ? 'ON' : 'off'}`; };
+    paint();
+    btn?.addEventListener('click', () => { DEV.aimShots = !DEV.aimShots; paint(); });
+  }
+  // "enemies left" is centred under the health BAR itself (which is not at the middle of the screen: the kill count sits beside it)
+  {
+    const hpW = document.getElementById('hp-wrap'), el = document.getElementById('enemies-left');
+    const centre = () => { if (!hpW || !el) return; const r = hpW.getBoundingClientRect(); if (!r.width) return; const z = 0.9; /* the CSS zoom on #enemies-left */ el.style.transform = 'none'; const ew = el.getBoundingClientRect().width; const want = r.left + r.width / 2 - ew / 2; el.style.left = (want / z).toFixed(1) + 'px'; const got = el.getBoundingClientRect().left; if (got > 1 && Math.abs(got - want) > 1) el.style.left = (parseFloat(el.style.left) * want / got).toFixed(1) + 'px'; };      /* zoom makes the px unit unreliable: measure and correct */
+    centre(); setInterval(centre, 400); addEventListener('resize', centre);
+  }
+  // THE RANGE RING (Elad, 25 Nov): a thin white circle round Raphael, all the time, at the reach of the main weapon.
+  const rangeRing = (() => {
+    const pts = []; for (let i = 0; i < 128; i++) { const a = (i / 128) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a), 0, Math.sin(a))); }
+    const m = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, fog: false }));
+    m.position.y = 0.07; m.renderOrder = 5; m.frustumCulled = false; m.material.opacity = 0.95;
+    // a faint dark twin just outside it, so the white line still reads on a light floor
+    const shade = new THREE.LineLoop(m.geometry, new THREE.LineBasicMaterial({ color: 0x14210f, transparent: true, opacity: 0.35, fog: false }));
+    shade.scale.setScalar(1.006); shade.renderOrder = 4; shade.frustumCulled = false;
+    m.add(shade);
+    view.scene.add(m);
+    return m;
+  })();
   let hurtFlashOn = false;
   // DOM writes only when the value CHANGED: assigning textContent or a style every frame restyles the page
   // whether or not anything differs, and on a phone that is a real share of the frame.
@@ -385,7 +426,7 @@ async function boot() {
     if (frozen(run)) {
       const ln = readInput(dt);
       if (!paused) for (const e of stepRun(run, w, dt)) onRunEvent(e);
-      if (frozen(run)) rollUi.update(run.roll, ln, dt);
+      if (frozen(run) && run.roll && run.phase === 'roll') rollUi.update(run.roll, ln, dt);
       updateIris();
       view.renderer.render(view.scene, view.camera);
       return;
@@ -416,6 +457,7 @@ async function boot() {
         if (rm !== 1) { st.fireIntervalS /= rm; if (st.stars) st.stars = { ...st.stars, intervalS: st.stars.intervalS / rm }; }
       }
       w.speedMul = st.speedMul;
+      rangeRing.position.x = w.player.x / PX; rangeRing.position.z = w.player.y / PX; rangeRing.scale.setScalar(st.rangePx / PX);
       syncMaxHp(st);
       const aimAt = nearestTarget(w, st.rangePx * AIM_RANGE_MUL);
       const want = desiredFacing(w.player, aimAt, movingNow, w.bodyFacing);
@@ -474,7 +516,7 @@ async function boot() {
           debrisFx.burst(t.x, t.y, Math.min(2, (t.radius || 44) / 44));
         }
         fx.spark(t.x, t.y, 0.6);
-      });
+      }, (sh) => fx.spark(sh.x, sh.y, 0.9));      // a dagger cut an enemy projectile
       updateTargets(w, dt);
 
       // THE OTHER TURTLES act after the player's own blades and before the foes step,
@@ -532,6 +574,7 @@ async function boot() {
       }
       hud.setAbilities(w.build, bank);
       hud.setAllyTimers(w.allies);
+      hud.setCooldowns(cooldownsOf(w, st));
       if (hpFill) setStyle('hp', hpFill, 'width', Math.max(0, Math.round((w.hp / w.maxHp) * 1000) / 10) + '%');
       hud.setRooms(run.roomIdx, run.rooms,
         run.phase === 'cleared' || run.phase === 'roll' || run.phase === 'won');

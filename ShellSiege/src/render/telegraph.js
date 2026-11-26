@@ -133,7 +133,19 @@ export function createTelegraphs(scene) {
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
   })();
+  // THE ENEMY PROJECTILE LANGUAGE: a hot core with a dark violet rim (readable on any floor), a SPINNING SIGIL ring with
+  // four notches (the same mark as the warning sigils), a short comet tail, and a pulse. One look for everything they throw.
+  const sigilTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d'); g.translate(64, 64);
+    g.strokeStyle = 'rgba(255,120,170,1)'; g.fillStyle = 'rgba(255,150,190,1)'; g.lineWidth = 6; g.lineCap = 'round';
+    g.beginPath(); g.arc(0, 0, 46, 0, Math.PI * 2); g.stroke();
+    g.lineWidth = 3; g.beginPath(); g.arc(0, 0, 33, 0.4, Math.PI * 2 - 0.4); g.stroke();
+    for (let i = 0; i < 4; i++) { g.save(); g.rotate(i * Math.PI / 2); g.beginPath(); g.moveTo(52, 0); g.lineTo(64, -9); g.lineTo(64, 9); g.closePath(); g.fill(); g.restore(); }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
   const shadowTex = glowTexture('rgba(0,0,0,0.7)', 'rgba(0,0,0,0)');
+  const TAIL = 6;
   const shots = [];
   for (let i = 0; i < MAX_SHOTS; i++) {
     const g = new THREE.Group();
@@ -143,10 +155,36 @@ export function createTelegraphs(scene) {
       map: shadowTex, transparent: true, depthWrite: false, opacity: 0.55, fog: false,
     }));
     blob.rotation.x = -Math.PI / 2;
-    g.add(blob, glow, core);
+    const sigil = new THREE.Sprite(new THREE.SpriteMaterial({ map: sigilTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: 0.9 }));
+    const tail = [];
+    for (let k = 0; k < TAIL; k++) { const t = new THREE.Sprite(glowMat('rgba(255,110,150,0.9)', 'rgba(150,40,160,0)').clone()); t.visible = false; group.add(t); tail.push(t); }
+    g.add(blob, glow, sigil, core);
     g.visible = false;
     group.add(g);
-    shots.push({ g, glow, core, blob });
+    shots.push({ g, glow, core, blob, sigil, tail, hist: [] });
+  }
+
+  // ---- THE SUMMON-IN: a ring that closes on the spot and a column of light, for every foe that is materialising ----
+  const SUMMON_MAX = 14;
+  const sring = [], sbeam = [];
+  for (let i = 0; i < SUMMON_MAX; i++) {
+    const r = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 36), new THREE.MeshBasicMaterial({ color: 0xff6aa8, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+    r.rotation.x = -Math.PI / 2; r.position.y = 0.06; r.visible = false;
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 3.6, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xc58cff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+    b.visible = false;
+    group.add(r, b); sring.push(r); sbeam.push(b);
+  }
+  function syncSummons(foes) {
+    let n = 0;
+    for (const f of foes) {
+      if (!f.alive || !(f.summonT > 0) || n >= SUMMON_MAX) continue;
+      const k = 1 - f.summonT / (f.summonDur || 1), R = u(f.radius);
+      const r = sring[n], b = sbeam[n]; n++;
+      r.visible = b.visible = true;
+      r.position.set(u(f.x), 0.06, u(f.y)); r.scale.setScalar(R * (2.6 - 1.7 * k)); r.material.opacity = 0.95 * (1 - 0.5 * k);
+      b.position.set(u(f.x), 1.8, u(f.y)); b.scale.set(R * 1.1 * (1.05 - 0.7 * k), 1, R * 1.1 * (1.05 - 0.7 * k)); b.material.opacity = 0.6 * Math.sin(Math.PI * Math.min(1, k * 1.1));
+    }
+    for (; n < SUMMON_MAX; n++) sring[n].visible = sbeam[n].visible = false;
   }
 
   /**
@@ -154,6 +192,7 @@ export function createTelegraphs(scene) {
    * @param foes  w.foes   @param shots_ w.foeShots   @param timeS  w.timeS
    */
   function sync(foes, shots_, timeS) {
+    syncSummons(foes);
     markI = 0; chargeI = 0;
     for (const m of marks) m.root.visible = false;
     for (const s of charge) s.visible = false;
@@ -210,12 +249,17 @@ export function createTelegraphs(scene) {
       const pulse = 1 + 0.18 * Math.sin(timeS * 22 + i);
       // released at hand height, falling to flight height as it leaves
       v.glow.position.y = v.core.position.y = 0.7 + ((s.h ?? 0.7) - 0.7) * Math.exp(-(s.age || 0) * 9);
-      v.glow.scale.set(R * 6.4 * pulse, R * 6.4 * pulse, 1);
-      v.core.scale.set(R * 3.6, R * 3.6, 1);
-      v.blob.scale.set(R * 3, R * 3, 1);
+      v.glow.scale.set(R * 4.6 * pulse, R * 4.6 * pulse, 1);
+      v.core.scale.set(R * 2.6, R * 2.6, 1);
+      v.blob.scale.set(R * 2.2, R * 2.2, 1);
       v.blob.position.y = 0.03;
+      // the spinning sigil round the core
+      v.sigil.position.y = v.core.position.y; v.sigil.scale.set(R * 3.7, R * 3.7, 1); v.sigil.material.rotation = timeS * 7 + i; v.sigil.material.opacity = 0.7 + 0.25 * Math.sin(timeS * 14 + i);
+      // the comet tail: where it was a few frames ago, shrinking and fading
+      v.hist.unshift({ x: u(s.x), y: v.core.position.y, z: u(s.y) }); if (v.hist.length > TAIL * 2 + 1) v.hist.pop();
+      v.tail.forEach((t, k) => { const h = v.hist[(k + 1) * 2 - 1]; t.visible = !!h; if (h) { t.position.set(h.x, h.y, h.z); t.scale.setScalar(R * (3 - k * 0.45)); t.material.opacity = 0.55 * (1 - k / TAIL); } });
     }
-    for (; i < MAX_SHOTS; i++) shots[i].g.visible = false;
+    for (; i < MAX_SHOTS; i++) { shots[i].g.visible = false; shots[i].hist.length = 0; for (const t of shots[i].tail) t.visible = false; }
   }
 
   return { group, sync };

@@ -227,3 +227,31 @@ test('WALLS STOP PROJECTILES: a star dies on one, a dagger bounces home, and an 
   for (let i = 0; i < 10; i++) updateBullets(w2, 1 / 60);
   assert.equal(edge.alive, false, 'a star left the arena');
 });
+
+// ---- enemy projectiles (Elad, 25 Nov) ----
+import { DEV, nearestTarget as nearestT } from '../src/systems/combat.js';
+test('A DAGGER CUTS AN ENEMY PROJECTILE IT TOUCHES AND FLIES ON THROUGH IT', async () => {
+  const { createWorld } = await import('../src/core/world.js');
+  const { updateBullets } = await import('../src/systems/combat.js');
+  const w = createWorld();
+  w.foeShots.push({ x: 500, y: 500, r: 20, alive: true, vx: 0, vy: 0, lifeS: 9, damage: 1 });
+  w.bullets.push({ x: 440, y: 500, vx: 1500, vy: 0, alive: true, pierce: 0, damage: 10, lifeS: 2, hit: new Set(), kind: 'dagger', returns: true, mode: 'out', t: 0, bow: 0, side: 1, returnSpeedPxS: 1500 });
+  let cut = 0;
+  for (let i = 0; i < 12; i++) updateBullets(w, 1 / 60, () => {}, () => cut++);
+  assert.equal(cut, 1);
+  assert.equal(w.foeShots[0].alive, false);
+  assert.equal(w.bullets[0].mode, 'out', 'the blade must carry on, not bounce');
+  assert.ok(w.bullets[0].x > 540);
+});
+
+test('THE AUTO-AIM IGNORES ENEMY PROJECTILES BY DEFAULT, and picks them when the dev option is on', async () => {
+  const { createWorld } = await import('../src/core/world.js');
+  const w = createWorld();
+  w.targets.length = 0;
+  w.foeShots.push({ x: w.player.x + 200, y: w.player.y, r: 20, alive: true });
+  DEV.aimShots = false;
+  assert.equal(nearestT(w, 900), null);
+  DEV.aimShots = true;
+  assert.ok(nearestT(w, 900));
+  DEV.aimShots = false;
+});

@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { IDLE } from '../core/clipsets.js';
 import { u } from './units.js';
+import { YAW0 } from './rig.js';
 
 export async function createGhost(scene, rig) {
   const root = new THREE.Group();
@@ -53,14 +54,18 @@ export async function createGhost(scene, rig) {
   scene.add(root);
 
   /** `d` is w.decoy (or null). Fades in, bobs, flickers more as it nears its end. */
+  let turn = null;
   function sync(d, timeS, dt) {
+    if (!d) turn = null;
     root.visible = !!d;
     if (!d) return;
     mixer.update(dt);
     const left = Math.max(0, 1 - d.age / d.lifeS);
     const fade = Math.min(1, d.age / 0.3);
     root.position.set(u(d.x), 0.05 + 0.06 * Math.sin(timeS * 3), u(d.y));
-    root.rotation.y = Math.PI * 0.15;
+    // it turns to face the way it walks, and keeps that heading when it stops
+    if (d.face !== undefined) { const yaw = Math.atan2(Math.cos(d.face), Math.sin(d.face)) + YAW0; let dy = yaw - (turn ?? yaw); dy = Math.atan2(Math.sin(dy), Math.cos(dy)); turn = (turn ?? yaw) + dy * Math.min(1, dt * 10); }
+    root.rotation.y = turn ?? Math.PI * 0.15;
     const flick = left < 0.3 ? (Math.sin(timeS * 40) > 0 ? 1 : 0.3) : 1;
     root.scale.setScalar(0.4 + 0.6 * fade);
     body.traverse((o) => { if (o.isMesh) o.material.opacity = 0.62 * fade * flick; });

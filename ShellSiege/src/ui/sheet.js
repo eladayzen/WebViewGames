@@ -95,24 +95,25 @@ export function burnInto(slot, { rise = true } = {}) {
   const plus = document.createElement('i'); plus.className = 'plus'; plus.textContent = 'BANKED'; slot.appendChild(plus);
   const sheet = slot.closest('.sheet');
   if (sheet) { sheet.classList.remove('thump'); void sheet.offsetWidth; sheet.classList.add('thump'); }
-  if (rise && sheet) setTimeout(() => riseStats(sheet), 700);
+  if (rise && sheet) setTimeout(() => riseStats(sheet), 540);
   setTimeout(() => {
     slot.classList.remove('burn'); slot.classList.add('banked');
     slot.querySelectorAll('.flame,.ember,.shock,.plus').forEach((f) => f.remove());
-  }, 2500);
+  }, 1930);
 }
 
 /**
  * Fly `from` (an element) into the sheet's slot for `key`, then burn it in. Returns false when either is
  * missing, so a caller can simply burn in place.
  */
-export function flyAndBurn(from, root, key, { delay = 0, duration = 850, onDone } = {}) {
+export function flyAndBurn(from, root, key, { delay = 0, duration = 650, onDone } = {}) {
   const target = root?.querySelector(`.sheet-slots .slot[data-key="${key}"]`);
   if (!from || !target || !from.animate) { if (target) burnInto(target); onDone?.(); return !!target; }
   const a = from.getBoundingClientRect(), b = target.getBoundingClientRect();
   const dx = b.left + b.width / 2 - (a.left + a.width / 2), dy = b.top + b.height / 2 - (a.top + a.height / 2);
   const k = b.width / Math.max(1, a.width);
-  from.style.position = 'relative'; from.style.zIndex = '30';
+  if (getComputedStyle(from).position === 'static') from.style.position = 'relative';
+  from.style.zIndex = '60';
   const anim = from.animate([
     { transform: 'translate(0,0) scale(1) rotate(0deg)', offset: 0 },
     { transform: `translate(${dx * 0.35}px, ${dy * 0.35 - 34}px) scale(1.25) rotate(-10deg)`, offset: 0.4 },

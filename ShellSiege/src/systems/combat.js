@@ -52,11 +52,25 @@ export const BASE_GUN = {
  * player can predict without being told it, and a targeting rule the player
  * cannot predict reads as the gun misfiring.
  */
+/**
+ * DEV OPTIONS (shown in the dev panel, ui in main.js).
+ * `aimShots`: when OFF (the default) the daggers never TARGET an enemy projectile, but they still cut any that
+ * cross their path and fly on through it. When ON the auto-aim also picks enemy projectiles as targets.
+ */
+export const DEV = { aimShots: false };
+
+/** An enemy projectile as an aim target (only when DEV.aimShots). */
+const shotTargets = (w) => (DEV.aimShots ? w.foeShots.filter((s) => s.alive) : []);
+
 export function nearestTarget(w, rangePx) {
   let best = null;
   let bestD = rangePx;
+  for (const e of shotTargets(w)) {
+    const d = Math.hypot(e.x - w.player.x, e.y - w.player.y);
+    if (d < bestD) { bestD = d; best = e; }
+  }
   for (const e of w.targets) {
-    if (!e.alive) continue;
+    if (!e.alive || e.summonT > 0) continue;
     const d = Math.hypot(e.x - w.player.x, e.y - w.player.y);
     if (d < bestD) { bestD = d; best = e; }
   }
@@ -111,8 +125,8 @@ function fireStars(w, st, dt) {
 /** The nearest `n` living targets in range, nearest first. */
 export function targetsFor(w, rangePx, n) {
   const near = [];
-  for (const e of w.targets) {
-    if (!e.alive) continue;
+  for (const e of [...w.targets, ...shotTargets(w)]) {
+    if (!e.alive || e.summonT > 0) continue;
     const d = Math.hypot(e.x - w.player.x, e.y - w.player.y);
     if (d < rangePx) near.push([d, e]);
   }
@@ -206,7 +220,7 @@ function sendHome(b, w) {
   b.hit = new Set();
 }
 
-export function updateBullets(w, dt, onHit) {
+export function updateBullets(w, dt, onHit, onShot) {
   for (const b of w.bullets) {
     if (!b.alive) continue;
 
@@ -237,8 +251,16 @@ export function updateBullets(w, dt, onHit) {
       if (b.mode === 'out' && b.returns) sendHome(b, w); else b.alive = false;
       continue;
     }
+    // ENEMY PROJECTILES: any the blade touches is cut down, and the blade flies on through it -- no bounce, and it
+    // does not use up pierce.
+    for (const sh of w.foeShots) {
+      if (!sh.alive || b.hit.has(sh)) continue;
+      if (Math.hypot(sh.x - b.x, sh.y - b.y) > sh.r + BULLET.radius) continue;
+      sh.alive = false; b.hit.add(sh);
+      if (onShot) onShot(sh, b);
+    }
     for (const e of w.targets) {
-      if (!e.alive || b.hit.has(e)) continue;
+      if (!e.alive || e.summonT > 0 || b.hit.has(e)) continue;
       if (Math.hypot(e.x - b.x, e.y - b.y) > e.radius + BULLET.radius) continue;
       e.hp -= b.damage;
       e.hitT = 0.14;

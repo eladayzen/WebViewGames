@@ -28,7 +28,10 @@ export const ROLL = {
   // The box shakes. This is the "what will it be" -- the anticipation.
   spinS: 1.0,
   // ...and the answer stays on screen long enough to read.
-  holdS: 1.8,        // 0.8 -> 1.0: a permanent find flies into Raphael's sheet and burns in during it (total stays at the 2 s ceiling)
+  // The card stays 2.5 s, then shrinks into an icon that flies into the list of everything held (ui/roll.js): ~1 s more.
+  holdS: 6.5,            // +3 s (Elad, 25 Nov): after the new ability lands in the build, 3 more seconds to look at it
+  // After a PICK there is no box moment (Elad, 25 Nov): the chosen card stays centred this long, then the room starts.
+  pickHoldS: 6.5,        // 0.8 -> 1.0: a permanent find flies into Raphael's sheet and burns in during it (total stays at the 2 s ceiling)
   // Each copy already owned multiplies the weight by this.
   repeatFalloff: 0.65,
   // How many different game-changing powers a run is guaranteed before the stat upgrades start.
@@ -121,7 +124,7 @@ export function createChoice(build, rng = Math.random, ctx = {}) {
 export function pickChoice(roll, i) {
   if (!roll.choices || roll.key) return null;
   roll.key = roll.choices[i === 1 ? 1 : 0];
-  roll.t = ROLL.spinS;
+  roll.t = ROLL.spinS + ROLL.holdS - ROLL.pickHoldS;
   roll.phase = 'reveal';
   return roll.key;
 }

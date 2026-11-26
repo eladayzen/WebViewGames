@@ -76,9 +76,10 @@ export const ABILITIES = {
   caltrop:   { kind: 'temp', big: true, locked: true, weight: 0.8, label: 'CALTROPS',       blurb: 'Spikes drop where you run',      step: 1, max: 0 },
   // LOCKED (Elad, 24 Nov: it looked bad and its value was unclear). Never rolled; the sim is kept.
   shellboom: { kind: 'temp', big: true, locked: true, weight: 0.8, label: 'BOOMERANG SHELL', blurb: 'A shell flies out and back',    step: 1, max: 0 },
-  decoy:     { kind: 'temp', big: true, weight: 0.7, label: 'PIZZA DECOY',    blurb: 'Foes chase a pizza box',         step: 1, max: 4 },
+  decoy:     { kind: 'temp', big: true, weight: 0.7, label: 'SHADOW',         blurb: 'A shadow of you draws the foes',       step: 1, max: 4 },
   arc:       { kind: 'temp', big: true, weight: 0.8, label: 'CHAIN LIGHTNING', blurb: 'Hits arc to nearby foes',       step: 1, max: 4 },
-  vortex:    { kind: 'temp', big: true, weight: 0.7, label: 'VORTEX',         blurb: 'Drags the crowd in',             step: 1, max: 4 },
+  // LOCKED (Elad, 25 Nov: "stop using that until further notice"): it pulls enemies toward Raphael. Never rolled; the sim is kept.
+  vortex:    { kind: 'temp', big: true, locked: true, weight: 0.7, label: 'VORTEX',         blurb: 'Drags the crowd in',             step: 1, max: 0 },
   frost:     { kind: 'temp', big: true, weight: 0.7, label: 'FREEZE NOVA',    blurb: 'Slows everything near you',      step: 1, max: 4 },
   rush:      { kind: 'temp', big: true, weight: 0.8, label: 'ADRENALINE',     blurb: 'Kills make you throw faster',    step: 1, max: 4 },
   leo:    { kind: 'temp', big: true, weight: 0.9, label: 'LEONARDO',    blurb: 'Dashes in with twin blades', step: 1,   max: 4 },

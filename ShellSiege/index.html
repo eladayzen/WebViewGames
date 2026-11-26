@@ -118,6 +118,8 @@
       <span id="hud-time">0.0s</span>
       <span id="hud-hits">0</span><small>hits</small>
       <span id="hud-src">-</span>
+      <!-- dev option: do the daggers AIM at enemy projectiles? (off = they only cut the ones in their path) -->
+      <button id="dev-aimshots" type="button">aim at shots: off</button>
     </div>
 
     <div id="boot">loading the plaza&hellip;</div>
@@ -146,27 +148,29 @@
          The art follows the reference concepts in art-candidates/loot-box/:
          a spotlight on black (concept A), and the three beats of shake, crack
          open, rise (concept C). It plays on the black the iris leaves behind. -->
+    <!-- THE MAP BETWEEN ROOMS: shown over black while the turtle walks to the next door (ui/travel.js) -->
+    <div id="travel" class="hidden"></div>
+
     <div id="roll-overlay" class="hidden" data-phase="">
-      <div class="roll-title">NEW POWER</div>
-      <!-- Raphael's sheet at the end of EVERY room: a permanent find flies in and burns (ui/sheet.js) -->
-      <div id="roll-sheet"></div>
-      <!-- every OTHER box is a pick between two: tap a card, or lean and hold (ui/roll.js) -->
-      <div id="roll-choice" hidden></div>
-      <div class="roll-stage">
-        <div class="roll-pool"></div>
-        <div class="roll-rays"></div>
-        <img class="roll-box closed" alt="" />
-        <img class="roll-box open" alt="" />
-        <div class="roll-sparks">
-          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      <!-- A FLOW LAYOUT, not stacked layers (Elad, 25 Nov, after phone screenshots showed the sheet drawn over the card): the main
+           area takes whatever height is left above Raphael's sheet and sizes its contents from it, so nothing can overlap. -->
+      <div class="roll-main">
+        <!-- the PIZZA WHEEL: slices of different abilities spin and stop under the pointer (ui/roll.js) -->
+        <div class="roll-wheelbox">
+          <div class="wheel-pointer"></div>
+          <div class="wheel"><div class="wheel-spin"></div><div class="wheel-hub"></div></div>
         </div>
-        <div class="roll-card">
-          <div class="roll-icon"></div>
-          <div class="roll-label"></div>
-          <div class="roll-blurb"></div>
-          <div class="roll-ribbon"></div>
+        <div class="roll-result">
+          <div class="rr-icon"></div>
+          <div class="rr-label"></div>
+          <div class="rr-blurb"></div>
+          <div class="rr-ribbon"></div>
         </div>
+        <!-- every OTHER box is a pick between two: tap a card, or lean and hold (ui/roll.js) -->
+        <div id="roll-choice" hidden></div>
       </div>
+      <!-- everything held in the run: the chosen ability shrinks to an icon and flies in here (ui/roll.js) -->
+      <div id="roll-inv"></div>
     </div>
 
     <!-- The iris and the flash: painted by ui/iris.js and ui/hud.js from
@@ -188,7 +192,8 @@
       // the same reasoning as the inline fallback on the quit button.
       (function () {
         var hud = document.getElementById('hud');
-        if (/[?&]dev=1/.test(location.search)) hud.classList.remove('hidden');
+        // OPEN BY DEFAULT while we are playtesting (Elad, 25 Nov); ?dev=0 closes it, the button toggles it.
+        if (!/[?&]dev=0/.test(location.search)) hud.classList.remove('hidden');
         document.getElementById('dev-button').addEventListener('click', function () {
           hud.classList.toggle('hidden');
         });
