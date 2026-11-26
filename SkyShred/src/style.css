@@ -1,0 +1,49 @@
+:root { --ink: #101214; --cyan: #5ff2ff; --gold: #ffd24a; --red: #ff4b5a; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #1c1a33; font-family: 'Trebuchet MS', 'Arial Black', system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
+#game, #fx { position: fixed; inset: 0; width: 100%; height: 100%; }
+#game canvas { display: block; width: 100%; height: 100%; }
+#fx { pointer-events: none; }
+#hud { position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 2px 0 var(--ink), 0 0 6px rgba(0,0,0,.45); }
+#score { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); font-size: clamp(26px, 5vh, 44px); font-weight: 900; letter-spacing: 1px; -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; }
+#speed { position: absolute; bottom: max(14px, env(safe-area-inset-bottom)); left: 16px; font-size: clamp(14px, 2.6vh, 22px); font-weight: 800; letter-spacing: 1px; opacity: .9; }
+#progress { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + clamp(40px, 7vh, 62px)); left: 50%; transform: translateX(-50%); width: min(46vw, 420px); height: 8px; border-radius: 5px; background: rgba(16,18,20,.55); border: 2px solid var(--ink); }
+#progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan), var(--gold)); border-radius: 3px; }
+#progress b { position: absolute; top: 10px; font-size: 11px; opacity: .85; letter-spacing: 1px; }
+#prog-dive { left: 0; } #prog-land { right: 0; }
+#reticle { position: absolute; left: 50%; top: 50%; width: calc(var(--rr, 130px)); height: var(--rr, 130px); transform: translate(-50%, -50%); border-radius: 50%; border: 3px solid rgba(255,255,255,.75); box-shadow: 0 0 0 2px rgba(16,18,20,.55), inset 0 0 0 2px rgba(16,18,20,.35); transition: border-color .12s, transform .12s; opacity: 0; }
+#reticle.on { opacity: 1; }
+#reticle.lock { border-color: var(--gold); transform: translate(-50%, -50%) scale(.82); }
+#reticle.armed { border-color: var(--red); transform: translate(-50%, -50%) scale(.72); animation: pulse .22s infinite alternate; }
+@keyframes pulse { to { box-shadow: 0 0 22px var(--red), 0 0 0 2px rgba(16,18,20,.55); } }
+#lock-arc { position: absolute; inset: -9px; border-radius: 50%; background: conic-gradient(var(--gold) calc(var(--p, 0) * 360deg), transparent 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px)); }
+#reticle.armed #lock-arc { background: conic-gradient(var(--red) 360deg, transparent 0); }
+#ret-dot { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--ink); }
+#ret-msg { position: absolute; left: 50%; top: calc(100% + 10px); transform: translateX(-50%); font-style: normal; font-weight: 900; font-size: 15px; letter-spacing: 2px; white-space: nowrap; color: var(--red); }
+#brackets div { position: absolute; width: 0; height: 0; }
+#brackets div::before { content: ''; position: absolute; width: var(--bs, 40px); height: var(--bs, 40px); left: calc(var(--bs, 40px) / -2); top: calc(var(--bs, 40px) / -2); border: 3px solid var(--red); border-radius: 6px; clip-path: polygon(0 0, 30% 0, 30% 12%, 12% 12%, 12% 30%, 0 30%, 0 0, 100% 0, 100% 30%, 88% 30%, 88% 12%, 70% 12%, 70% 0, 100% 0, 100% 100%, 70% 100%, 70% 88%, 88% 88%, 88% 70%, 100% 70%, 100% 100%, 0 100%, 0 70%, 12% 70%, 12% 88%, 30% 88%, 30% 100%, 0 100%); }
+#brackets div.lock::before { border-color: var(--gold); }
+#brackets div span { position: absolute; left: 50%; top: calc(var(--bs, 40px) / 2 + 4px); transform: translateX(-50%); font-size: 12px; font-weight: 800; white-space: nowrap; }
+#banner { position: absolute; left: 50%; top: 24%; transform: translate(-50%, -50%) scale(.6); font-size: clamp(36px, 9vh, 84px); font-weight: 900; letter-spacing: 3px; opacity: 0; color: var(--gold); -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; }
+#banner.show { animation: banner 1.3s ease-out forwards; }
+@keyframes banner { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.5); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); } 30% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -60%) scale(1); } }
+#skim { position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%); font-size: clamp(16px, 3.4vh, 28px); font-weight: 900; letter-spacing: 2px; color: #fff3b0; opacity: 0; transition: opacity .15s; -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; }
+#skim.on { opacity: 1; }
+#mode-tag { position: absolute; bottom: max(14px, env(safe-area-inset-bottom)); right: 16px; font-size: 12px; opacity: .7; font-weight: 800; letter-spacing: 1px; }
+.pop { position: absolute; font-weight: 900; font-size: 26px; color: var(--gold); -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; animation: pop .9s ease-out forwards; transform: translate(-50%, -50%); white-space: nowrap; }
+@keyframes pop { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.6); } 15% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -190%) scale(1); } }
+#corner-btns { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 12px; display: flex; gap: 8px; align-items: center; z-index: 5; }
+.round-btn, .pill-btn { border: 3px solid var(--ink); background: rgba(255,255,255,.9); color: var(--ink); font: 800 12px/1 'Trebuchet MS', system-ui, sans-serif; letter-spacing: 1px; cursor: pointer; box-shadow: 0 3px 0 var(--ink); }
+.round-btn { width: 44px; height: 44px; border-radius: 50%; padding: 0; display: grid; place-items: center; }
+.round-btn svg { width: 22px; height: 22px; fill: var(--ink); stroke: var(--ink); }
+.pill-btn { height: 34px; padding: 0 12px; border-radius: 17px; opacity: .9; }
+#flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .45s; z-index: 4; }
+#flash.on { opacity: 1; transition: none; }
+#title, #pause-overlay { position: fixed; inset: 0; z-index: 6; display: grid; place-content: center; justify-items: center; text-align: center; gap: 8px; padding: 24px; color: #fff; background: radial-gradient(ellipse at center, rgba(40,24,80,.35), rgba(16,12,40,.78)); text-shadow: 0 3px 0 var(--ink); }
+#title[hidden], #pause-overlay[hidden] { display: none; }
+#title h1 { margin: 0; font-size: clamp(52px, 16vh, 120px); letter-spacing: 6px; color: var(--gold); -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; }
+#title .sub { margin: 0; font-size: clamp(16px, 3vh, 26px); font-weight: 800; color: #d9c6ff; }
+#title .how { max-width: 640px; font-size: clamp(13px, 2.3vh, 18px); line-height: 1.5; opacity: .95; }
+#go { margin-top: 10px; padding: 14px 28px; font: 900 clamp(16px, 3vh, 24px) 'Trebuchet MS', system-ui, sans-serif; letter-spacing: 2px; border-radius: 30px; border: 4px solid var(--ink); background: var(--gold); color: var(--ink); box-shadow: 0 5px 0 var(--ink); cursor: pointer; animation: bob 1s infinite alternate ease-in-out; }
+@keyframes bob { to { transform: translateY(-5px); } }
+#pause-overlay h2 { font-size: 56px; margin: 0; }

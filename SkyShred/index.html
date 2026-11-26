@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Sky Shred</title>
+  <link rel="icon" href="data:," />
+  <script>
+    // GoBalance SDK integration (GOBALANCE_SDK.md): JS errors go out through the native bridge, and the rAF shim keeps
+    // the game running inside the Unity WebView. Everything is a no-op in a normal browser.
+    window.addEventListener('error', function (e) { if (window.Unity) window.Unity.call('JS ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno); });
+    window.addEventListener('unhandledrejection', function (e) { if (window.Unity) window.Unity.call('JS UNHANDLED REJECTION: ' + e.reason); });
+    (function () {
+      var nativeRAF = window.requestAnimationFrame.bind(window);
+      window.__rafQueue = [];
+      window.requestAnimationFrame = function (cb) { window.__rafQueue.push(cb); return window.__rafQueue.length; };
+      window.cancelAnimationFrame = function () {};
+      window.__pumpFrames = function () {
+        var q = window.__rafQueue; if (!q.length) return;
+        window.__rafQueue = []; var t = performance.now();
+        for (var i = 0; i < q.length; i++) { try { q[i](t); } catch (e) { if (window.Unity) window.Unity.call('RAF CB ERROR: ' + e.message); } }
+      };
+      (function nativeLoop() { nativeRAF(function () { window.__pumpFrames(); nativeLoop(); }); })();
+    })();
+  </script>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="game"></div>
+  <canvas id="fx"></canvas>
+  <div id="hud">
+    <div id="score">0</div>
+    <div id="speed">0 KM/H</div>
+    <div id="progress"><i id="prog-fill"></i><b id="prog-dive">DIVE</b><b id="prog-land">LAND</b></div>
+    <div id="reticle"><i id="lock-arc"></i><span id="ret-dot"></span><em id="ret-msg"></em></div>
+    <div id="brackets"></div>
+    <div id="banner"></div>
+    <div id="skim"></div>
+    <div id="mode-tag"></div>
+  </div>
+  <div id="corner-btns">
+    <button id="pause-btn" class="round-btn" aria-label="Pause"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg></button>
+    <button id="gb-back" class="round-btn" aria-label="Exit" onclick="(window.__gbBack || function(){ if(window.Unity) window.Unity.call('nav:back'); })()"><svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke-width="3" stroke-linecap="round"/></svg></button>
+    <button id="mode-btn" class="pill-btn" aria-label="Altitude test mode">ALT: PATH</button>
+    <button id="auto-btn" class="pill-btn" aria-label="Autopilot">AUTO: OFF</button>
+  </div>
+  <div id="flash"></div>
+  <div id="title">
+    <h1>SKY SHRED</h1>
+    <p class="sub">Donnie's wings are out.</p>
+    <p class="how"><b>LEAN LEFT / RIGHT</b> &nbsp;·&nbsp; arrows or A / D &nbsp;·&nbsp; or drag<br>Everything else is automatic: hold your sights on a drone and the guns open up &mdash; hold longer, a missile launches.</p>
+    <button id="go">TAP · SPACE TO START</button>
+  </div>
+  <div id="pause-overlay" hidden><h2>PAUSED</h2><p>tap the pause button to resume</p></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
