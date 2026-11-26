@@ -31,7 +31,7 @@ scene.fog = new THREE.Fog(0xe9c3d8, 170, 980);
 const camera = new THREE.PerspectiveCamera(66, 1, 0.3, 1600);
 const clouds = new Clouds(scene);
 const hemi = new THREE.HemisphereLight(0xfff0e8, 0x8a6a7a, 1.05); scene.add(hemi);
-const OPEN = Q.get('classic') !== '1';   // open-sky mode is the default; ?classic=1 is the run/glide/land legs
+const OPEN = Q.get('open') === '1';   // path legs (run -> dive -> glide -> land) are the default on this branch; ?open=1 is the open-sky mode
 const sun = new THREE.DirectionalLight(0xffe2c0, 1.25); sun.position.set(-0.45, 0.9, 0.6); scene.add(sun);
 const fx = $('fx'), fxc = fx.getContext('2d');
 let W = 1, H = 1;
