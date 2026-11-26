@@ -270,9 +270,10 @@ export class Clouds {
     const k = below ? 120 + r() * 160 : 40 + r() * 90;
     const sc = below ? k * 1.3 : k;
     c.sp.scale.set(sc * 1.9, sc * 0.78, 1);
-    let x = pos.x + (r() - 0.5) * (below ? 900 : 640), y = pos.y + (below ? -(150 + r() * 200) : (r() - 0.62) * 150);
-    if (!below && Math.abs(x - pos.x) < 34 && Math.abs(y - pos.y) < 16) x += (x < pos.x ? -1 : 1) * 60;   // keep the lane clear
-    c.sp.position.set(x, y, pos.z - 60 - r() * spreadZ);
+    let x = pos.x + (r() - 0.5) * (below ? 900 : 640), y = pos.y + (below ? -(150 + r() * 200) : (r() - 0.62) * 150), z = pos.z - 60 - r() * spreadZ;
+    if (this.radial) { const a = r() * 6.28, d = 150 + r() * 520; x = pos.x + Math.sin(a) * d; z = pos.z + Math.cos(a) * d; }
+    else if (!below && Math.abs(x - pos.x) < 34 && Math.abs(y - pos.y) < 16) x += (x < pos.x ? -1 : 1) * 60;   // keep the lane clear
+    c.sp.position.set(x, y, z);
     c.below = below;
   }
   reset(pos) { for (const c of this.items) this._place(c, pos, 900); }
@@ -280,7 +281,8 @@ export class Clouds {
   update(pos, camPos) {
     for (const c of this.items) {
       const p = c.sp.position;
-      if (p.z > pos.z + 70 || Math.abs(p.y - pos.y) > 420 || Math.abs(p.x - pos.x) > 560) this._place(c, pos, 380 + 520 * this.rnd());
+      const far = this.radial ? Math.hypot(p.x - pos.x, p.z - pos.z) > 760 : p.z > pos.z + 70 || Math.abs(p.x - pos.x) > 560;
+      if (far || Math.abs(p.y - pos.y) > 420) this._place(c, pos, 380 + 520 * this.rnd());
       const d = p.distanceTo(camPos), fade = smoothstep(c.below ? 60 : 38, c.below ? 160 : 100, d);
       c.sp.material.opacity = c.base * fade;
     }
