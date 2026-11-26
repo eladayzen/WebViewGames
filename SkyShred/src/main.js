@@ -1,11 +1,12 @@
 // SKY SHRED — prototype 1.  RUN on a hovership deck -> DIVE -> GLIDE + DOGFIGHT -> LAND -> RUN ...
 // See pipeline/build-docs/SkyShred.md for the spec.  Leg-local coordinates, forward = -Z; each leg is rebuilt at the origin.
 import * as THREE from 'three';
-import { Leg, DECK_LEN, LAT_MAX } from './path.js';
+import { Leg, DECK_LEN, LAT_MAX, CHASE_FEATURE } from './path.js';
 import { LegWorld, Clouds, makeSkyTexture, GLOW } from './world.js';
 import { Rider, HIP } from './rider.js';
 import { OpenWorld, THEMES, PORTAL_R, wrapPi } from './open.js';
 import { Combat, GUN } from './combat.js';
+import { EnemyFire } from './enemy.js';
 import { Input } from './input.js';
 import { clamp, lerp, damp, smoothstep, easeInOut, mulberry32 } from './util.js';
 
@@ -15,8 +16,8 @@ const $ = (id) => document.getElementById(id);
 // ── tuning (all of it the thing to play with) ──
 const T = {
   runSpeed: 12, runLat: 10, runLatMax: 6, camBlendIn: 1.9, camBlendOut: 1.4,
-  V0: 22, vDive: 46, vMin: 17, vMax: 46, vClimb: 24,
-  latRate: 14, latResp: 6,
+  V0: 30, vDive: 58, vMin: 26, vMax: 58, vClimb: 24,
+  latRate: 19, latResp: 6,
   skimH: 14, skimBoost: 8, floor: 1.7, landPull: 3.2,
   nudgeUp: 10, nudgeDown: -7,
 };
@@ -55,10 +56,12 @@ const G = {
   s: 0, lat: 0, latV: 0, v: 18, nudge: 0, h: 99, y: 0, pos: new THREE.Vector3(), yaw: 0, pitch: 0, roll: 0,
   skimPts: 0, rings: 0, tilt: new THREE.Vector3(0, 0, -1),
   open: OPEN, desc: 0, lvStartS: 0, lvDist: 0, level: 0, guide: { w: 0, st: null, y: 0, x: 0 }, dropT: 0, rebased: false,
+  hdg: 0, pturn: 0, turn: 0, hp: 100, invuln: 0, lastHit: -9, hurtT: 0, loopOn: false, loopT: 0, loopTh: 0, base: new THREE.Vector3(), vel: new THREE.Vector3(), pp: new THREE.Vector3(),
   shake: 0, fovKick: 0, lean: 0, camInit: false, landBonus: 0, bannerT: 0,
 };
+const enemy = new EnemyFire(scene, GLOW);
 const combat = new Combat(scene, GLOW, {
-  kill: (p, big) => { award(big ? 600 : 400, p, big ? 'MISSILE!' : '+400'); G.shake = Math.max(G.shake, big ? 0.9 : 0.35); },
+  kill: (p, big) => { award(big ? 900 : 700, p, big ? 'MISSILE KILL +900' : 'SPLASH +700'); G.shake = Math.max(G.shake, big ? 1.0 : 0.5); },
   blast: () => { G.shake = Math.max(G.shake, 1.0); G.fovKick = Math.max(G.fovKick, 6); },
   missile: () => { G.fovKick = Math.max(G.fovKick, 3); },
   foeDown: (kind, p) => { award(kind === 2 ? 150 : 100, p, kind === 2 ? 'KICK!' : '+100'); },
@@ -80,56 +83,75 @@ function award(n, worldPos, label) {
     }
   }
 }
-const brackets = []; for (let i = 0; i < 6; i++) { const d = document.createElement('div'); d.innerHTML = '<span></span>'; d.style.display = 'none'; $('brackets').appendChild(d); brackets.push(d); }
+const brackets = [];
+for (let i = 0; i < 6; i++) {
+  const d = document.createElement('div'); d.innerHTML = '<span></span>'; d.style.display = 'none';
+  const bar = document.createElement('i'); bar.style.cssText = 'position:absolute;left:calc(var(--bs,40px)/-2);top:calc(var(--bs,40px)/2 + 24px);width:var(--bs,40px);height:5px;background:rgba(0,0,0,.55);border-radius:3px;overflow:hidden';
+  const fill = document.createElement('b'); fill.style.cssText = 'display:block;height:100%;width:100%;background:#ff5a4a'; bar.appendChild(fill); d.appendChild(bar); d.hpFill = fill;
+  $('brackets').appendChild(d); brackets.push(d);
+}
+// shield bar, damage flash, rear-view mirror frame
+const hpEl = document.createElement('div');
+hpEl.style.cssText = 'position:fixed;left:16px;bottom:52px;width:150px;height:10px;background:rgba(0,0,0,.45);border-radius:6px;overflow:hidden;z-index:3;pointer-events:none;display:none';
+hpEl.innerHTML = '<b style="display:block;height:100%;width:100%;background:linear-gradient(90deg,#5ff2ff,#7dffb0)"></b>'; document.body.appendChild(hpEl);
+const hurtEl = document.createElement('div');
+hurtEl.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:4;opacity:0;background:radial-gradient(ellipse at center,rgba(255,40,30,0) 45%,rgba(255,40,30,.75) 100%)'; document.body.appendChild(hurtEl);
+const mirrorEl = document.createElement('div');
+mirrorEl.style.cssText = 'position:fixed;z-index:3;pointer-events:none;display:none;border:3px solid #fff;border-radius:10px;box-shadow:0 2px 12px #0007;color:#fff;font:800 11px system-ui,sans-serif;letter-spacing:1px';
+mirrorEl.innerHTML = '<span style="position:absolute;left:8px;top:4px;text-shadow:0 1px 3px #000">REAR</span>'; document.body.appendChild(mirrorEl);
+const rearCam = new THREE.PerspectiveCamera(68, 1.8, 0.3, 900);
+const MIR = { x: 0, y: 0, w: 0, h: 0, on: false };
 function flash() { const f = $('flash'); f.classList.add('on'); requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('on'))); }
 
 // ── leg lifecycle ──
-// rb (re-base) is set when a leg ends: the landing ship BECOMES the next leg's start deck, so nothing is swapped --
-// the old world is just shifted so the deck sits at the origin, and the new world is built around that same ship.
+// Leg 0 starts on the run deck; every later leg hands over in MID-AIR: the old world is shifted so the hand-over point
+// becomes the new origin, the new leg is built around the glider, and the old world is dropped once it is far behind.
 function startLeg(index, rb = null) {
   const prev = G.world;
   if (G.prevWorld) { G.prevWorld.dispose(); G.prevWorld = null; }
   G.legIdx = index; G.leg = new Leg(index);
-  let ship = null;
   if (rb && prev) {
     const O = new THREE.Vector3(rb.x, rb.y, rb.z);
-    ship = prev.releaseLanding();
     prev.group.position.copy(O).negate(); G.prevWorld = prev;
     camera.position.sub(O); lookNow.sub(O); clouds.shift(O);
+    G.pos.sub(O); G.pp.sub(O); G.y = G.pos.y;
   } else if (prev) prev.dispose();
-  G.world = new LegWorld(G.leg, scene, ship);
-  combat.reset();
-  G.phase = 'run'; G.runT = rb ? 0.5 : 0; G.deckY = 0; G.pz = rb ? rb.pz : 2; G.px = rb ? clamp(rb.px, -T.runLatMax, T.runLatMax) : 0; G.lean = 0;
-  G.secKind = ''; G.landOff = 0;
-  rider.setMode('run');
-  if (!rb) { rider.prone = 0; rider.deploy = 0; }
+  G.world = new LegWorld(G.leg, scene, null);
+  combat.reset(); enemy.reset(); registerRaid();
+  G.secKind = ''; G.loopOn = false;
+  if (rb) { G.s = 0; G.lat = G.pos.x; G.phase = 'glide'; banner('LEG ' + (index + 1), '#ffd24a'); return; }
+  G.phase = 'run'; G.runT = 0; G.deckY = 0; G.pz = -30; G.px = 0; G.lean = 0; G.landOff = 0;
+  rider.setMode('run'); rider.prone = 0; rider.deploy = 0;
   rider.root.position.set(G.px, G.deckY, G.pz);
-  combat.spawnFoes(rnd, -44, -DECK_LEN + 10, 7);
-  if (!rb) { G.camInit = false; G.camMix = 0; }
-  if (!rb) clouds.reset(new THREE.Vector3(0, 0, 0));
+  combat.spawnFoes(rnd, -52, -DECK_LEN + 10, 5);
+  G.camInit = false; G.camMix = 0; clouds.reset(new THREE.Vector3(0, 0, 0));
+}
+
+function registerRaid() {
+  for (const c of G.world.smalls) combat.addStatic(c.pos, c.hp, c.s, (d) => {
+    award(250, d.g.position.clone(), 'TARGET +250');
+    combat.particles.burst(d.g.position, 36, 24, [1, 0.75, 0.3], 0.7, 2.2); G.shake = Math.max(G.shake, 0.4);
+  }, true).ship = c.st;
+  for (const c of G.world.cores) combat.addStatic(c.pos, c.st.hp, c.s, (d) => {
+    for (const o of combat.drones) if (o.small && o.ship === c.st && o.alive) { o.alive = false; combat.scene.remove(o.g); combat.particles.burst(o.g.position, 20, 16, [1, 0.6, 0.3], 0.5, 1.6); }
+    G.world.sink(c.st); award(900, d.g.position.clone(), 'CORE DOWN +900');
+    combat.particles.burst(d.g.position, 90, 46, [1, 0.6, 0.25], 1.1, 3.2); combat.particles.burst(d.g.position, 40, 20, [1, 0.95, 0.7], 0.7, 4.5);
+    G.shake = Math.max(G.shake, 1.0); G.fovKick = Math.max(G.fovKick, 8);
+  });
+  enemy.turrets = G.world.turrets;
 }
 
 function startGlide() {
-  G.phase = 'glide'; G.s = 0; G.lat = clamp(G.px, -LAT_MAX, LAT_MAX); G.latV = 0; G.v = 20; G.nudge = 0; G.skimPts = 0; G.h = 99;
+  G.phase = 'glide'; G.s = 0; G.lat = clamp(G.px, -LAT_MAX, LAT_MAX); G.latV = 0; G.v = 26; G.nudge = 0; G.skimPts = 0; G.h = 99;
+  G.pp.copy(G.pos);
   rider.setMode('glide');
   for (const f of combat.foes) f.g.visible = false;
-  if (G.prevWorld) { G.prevWorld.dispose(); G.prevWorld = null; }
   banner('DIVE!', '#ffd24a'); G.fovKick = 8; G.shake = Math.max(G.shake, 0.3);
   G.rings = 0; combat.spawnCD = 0.4;
 }
 
-/** touchdown on the landing ship: bonus, then straight on into the next leg's run, same deck */
-function touchdown() {
-  const off = G.landOff;
-  const bonus = off < 4 ? 1000 : off < 8 ? 500 : 200;
-  award(bonus, G.pos.clone().add(new THREE.Vector3(0, 3, 0)), off < 4 ? 'PERFECT LANDING +1000' : 'LANDED +' + bonus);
-  const O = G.leg.O;
-  const rb = { x: O.x, y: O.y, z: O.z, px: G.pos.x - O.x, pz: G.pos.z - O.z };
-  startLeg(G.legIdx + 1, rb);
-  rider.playRoll();
-  banner('LANDED!', '#9fe8ff'); G.shake = Math.max(G.shake, 0.5);
-}
-function nextLeg() { touchdown(); }
+function handover() { startLeg(G.legIdx + 1, G.leg.O); }
+function nextLeg() { if (G.phase === 'glide' && G.leg) G.s = Math.max(G.s, G.leg.L - 4); }
 
 // ── autopilot (also what the headless test drives with) ──
 function autoLean() {
@@ -151,19 +173,20 @@ function autoLean() {
     return best ? clamp((best.x - G.px) * 0.5, -1, 1) : 0;
   }
   if (G.phase === 'glide') {
-    const L = G.leg;
+    if (G.loopOn) return 0;
     let aim = null;
-    const t = combat.lockTarget || combat.drones.filter((d) => d.alive && d.on).sort((a, b) => a.dist - b.dist)[0];
-    if (t) aim = t.lat;
+    const t = combat.lockTarget || combat.drones.filter((d) => d.alive && d.on && d.dist < 260).sort((a, b) => a.dist - b.dist)[0];
+    const orb = G.world.orbs.find((o) => !o.got && o.s > G.s + 2 && o.s < G.s + 150);
+    if (enemy.pursuers.length) { if (orb) aim = orb.lat; else return Math.sin(G.t * 2.6); }   // pilots on the tail: grab the loop, else swing and dodge
+    else if (t) aim = latOf(t.g.position.x, t.g.position.z);
     else { const r = G.world.rings.find((q) => !q.got && q.s > G.s + 4); if (r) aim = r.lat; }
-    if (G.s > L.L - 90) aim = 0;
     return aim === null ? 0 : clamp((aim - G.lat) * 0.25 - G.latV * 0.05, -1, 1);
   }
   return 0;
 }
 
 // ── per-phase updates ──
-const _p = new THREE.Vector3(), _cp = new THREE.Vector3();
+const _p = new THREE.Vector3(), _cp = new THREE.Vector3(), _w = new THREE.Vector3();
 function updateRun(dt, lean) {
   if (G.phase === 'run') { G.runT += dt; if (G.runT > 0.4) G.pz -= T.runSpeed * dt; }
   G.px = clamp(G.px + lean * T.runLat * dt, -T.runLatMax, T.runLatMax);
@@ -174,6 +197,31 @@ function updateRun(dt, lean) {
   if (G.pz <= -DECK_LEN + 3) startGlide();
 }
 
+function latOf(x, z) { return G.leg.latOf(x, z, G.s); }
+const LOOP_R = 24, LOOP_T = 2.3;
+function hurt(dmg) {
+  if (G.invuln > 0 || G.loopOn) return;
+  G.hp -= dmg; G.invuln = 0.55; G.lastHit = G.t; G.hurtT = 1; G.shake = Math.max(G.shake, 0.7); G.v = Math.max(T.vMin, G.v - 3);
+  combat.particles.burst(G.pos, 14, 16, [1, 0.5, 0.3], 0.4, 1.4);
+  if (G.hp <= 0) { G.hp = 100; G.invuln = 3; G.score = Math.max(0, G.score - 300); banner('SHIELD DOWN - RECOVERED -300', '#ff6a6a'); }
+}
+function startLoop() { G.loopOn = true; G.loopT = 0; G.invuln = 3.5; banner('LOOP!', '#ffd24a'); G.fovKick = 10; G.shake = Math.max(G.shake, 0.4); }
+function endLoop() {
+  G.loopOn = false; G.pitch = 0; G.invuln = 1;
+  const n = enemy.pursuers.length;
+  for (let i = 0; i < n; i++) combat.spawnDrone(G.leg, G.s + 58 + i * 14, rnd, G.v * 0.78);   // the pilots that were on his tail are now in his sights
+  enemy.clearPursuers(); for (const b of enemy.bolts) { b.on = false; b.m.visible = false; }
+  if (n) { banner('ON HIS TAIL!', '#ff9be8'); G.score += 500; G.fovKick = 12; }
+}
+function enterSection(sec) {
+  if (sec.hint) banner(sec.hint, sec.kind === 'chase' ? '#ff9a7a' : sec.kind === 'drop' ? '#ffd24a' : '#9fe8ff');
+  if (sec.kind === 'chase') enemy.spawnPursuers(G.legIdx >= 2 ? 3 : 2, rnd);
+}
+function leaveSection(kind) {
+  if (kind === 'chase' && enemy.pursuers.length) { enemy.clearPursuers(); banner('LOST THEM!', '#9fe8ff'); G.score += 300; }
+}
+const muzzle = (p) => combat.particles.burst(p, 6, 10, [1, 0.5, 0.3], 0.25, 1.2);
+
 function updateGlide(dt, lean) {
   const L = G.leg, s = G.s;
   // speed comes from the path's slope, plus a bonus for flying low
@@ -182,63 +230,91 @@ function updateGlide(dt, lean) {
   const skimF = clamp((T.skimH - G.h) / (T.skimH - 2), 0, 1);
   vT += skimF * T.skimBoost;
   vT = clamp(vT, T.vMin, T.vMax);
+  if (G.loopOn) vT = Math.max(vT, 42);
   G.v = damp(G.v, vT, 1.8, dt);
   // sideways: lean is a steering rate, nothing else
-  const prev = G.s; G.s += G.v * dt;
-  G.latV = damp(G.latV, lean * T.latRate, T.latResp, dt);
+  const prev = G.s; G.s += G.v * dt * (G.loopOn ? 0.55 : 1);
+  // the edge of the path is an invisible tunnel wall: pushing into it fades to nothing (no hard stop, no jolt), and he tilts
+  // a little, like riding the curve of the tunnel
+  let lv = lean * T.latRate;
+  const edge = smoothstep(LAT_MAX * 0.6, LAT_MAX, Math.abs(G.lat));
+  if (lv * G.lat > 0) lv *= Math.pow(1 - edge, 1.7);
+  lv -= Math.sign(G.lat) * edge * 2.5;                           // and the wall eases him back a touch
+  G.latV = damp(G.latV, lv, T.latResp, dt);
   G.lat += G.latV * dt;
-  if (Math.abs(G.lat) > LAT_MAX) { G.lat = Math.sign(G.lat) * LAT_MAX; if (G.latV * G.lat > 0) G.latV *= 0.2; }
+  if (Math.abs(G.lat) > LAT_MAX) { G.lat = Math.sign(G.lat) * LAT_MAX; G.latV = Math.min(Math.abs(G.latV), 1) * Math.sign(G.latV) * 0.5; }
+  G.wall = damp(G.wall || 0, Math.sign(G.lat) * edge, 5, dt);
   // altitude: the path (A), or the path plus a small nudge from forward/back lean (B)
   const up = G.mode === 'nudge' ? -input.readPitch() * (G.auto ? 0 : 1) : 0;
   G.nudge = damp(G.nudge, up > 0 ? up * T.nudgeUp : up * -T.nudgeDown, 2.2, dt);
-  // the last stretch gently pulls him onto the landing deck (no missing it); how well he lined up is the bonus
-  const pull = smoothstep(L.L - 75, L.L - 25, G.s);
-  if (G.s > L.L - 78 && G.landOff === 0) G.landOff = Math.abs(G.lat) + 0.001;
-  if (pull > 0) G.lat += -G.lat * Math.min(1, T.landPull * pull * dt);
+  G.pp.copy(G.pos);
   L.pointAt(G.s, G.lat, _p);
+  G.base.copy(_p);
   let y = _p.y + G.nudge;
-  L.surface(_p.x, y, _p.z, G.surf);
-  const g = G.surf.top;
-  if (y < g + T.floor) y = g + T.floor;            // the floor: skimming is thrilling, never punishing
-  G.y = y; G.h = g === -Infinity ? 99 : y - g;
+  if (G.loopOn) {     // the loop power-up: pull up and over, ending ahead of where he started
+    G.loopT += dt; const k = clamp(G.loopT / LOOP_T, 0, 1), th = Math.PI * 2 * easeInOut(k);
+    const hf = L.hdgAt(G.s); y += LOOP_R * (1 - Math.cos(th)); _p.x += Math.sin(hf) * LOOP_R * Math.sin(th); _p.z -= Math.cos(hf) * LOOP_R * Math.sin(th); G.loopTh = th;
+    G.h = 99;
+  } else {
+    L.surface(_p.x, y, _p.z, G.surf);
+    const g = G.surf.top;
+    if (y < g + T.floor) y = g + T.floor;            // the floor: skimming is thrilling, never punishing
+    G.h = g === -Infinity ? 99 : y - g;
+  }
+  G.y = y;
   G.pos.set(_p.x, y, _p.z);
+  if (dt > 0) { _w.set((G.pos.x - G.pp.x) / dt, (G.pos.y - G.pp.y) / dt, (G.pos.z - G.pp.z) / dt); G.vel.lerp(_w, 1 - Math.exp(-dt * 14)); }
   // skim points
   const sk = clamp((T.skimH - G.h) / (T.skimH - 2), 0, 1);
   if (sk > 0.2) { G.skimPts += dt * 140 * sk; G.score += dt * 140 * sk; }
   else if (G.skimPts > 0) { if (G.skimPts > 60) { award(0, G.pos.clone().add(new THREE.Vector3(0, 2.5, 0)), 'SKIM +' + Math.round(G.skimPts)); } G.skimPts = 0; }
   // dust trail when low
-  if (G.h < 18) { const gp = new THREE.Vector3(G.pos.x + (Math.random() - 0.5) * 3, g + 0.4, G.pos.z + 6); combat.particles.emit(gp, new THREE.Vector3((Math.random() - 0.5) * 4, 2 + Math.random() * 3, 4), [0.9, 0.78, 0.58], 0.9, 3.2, 0, 0.5 * (1 - G.h / 18)); }
+  if (G.h < 18) { const gp = new THREE.Vector3(G.pos.x + (Math.random() - 0.5) * 3, G.surf.top + 0.4, G.pos.z + 6); combat.particles.emit(gp, new THREE.Vector3((Math.random() - 0.5) * 4, 2 + Math.random() * 3, 4), [0.9, 0.78, 0.58], 0.9, 3.2, 0, 0.5 * (1 - G.h / 18)); }
   // rings
   for (const r of G.world.rings) {
     if (r.got || !(prev < r.s && G.s >= r.s)) continue;
-    if (Math.abs(G.lat - r.lat) < 5.4 && Math.abs(G.y - r.mesh.position.y) < 6) {
+    if (Math.abs(G.lat - r.lat) < 5.6 && Math.abs(G.y - r.mesh.position.y) < 6) {
       r.got = true; r.mesh.material = r.mesh.material.clone(); r.mesh.material.color.setHex(0xffd24a); G.rings++;
       award(250, r.mesh.position.clone(), 'RING +250'); G.v = Math.min(T.vMax, G.v + 3); G.fovKick = Math.max(G.fovKick, 5);
       combat.particles.burst(r.mesh.position, 24, 14, [1, 0.9, 0.4], 0.5, 1.4);
     }
   }
   for (const r of G.world.rings) if (r.mesh.visible && G.s > r.s + 5) r.mesh.visible = false;
+  // loop power-ups
+  for (const o of G.world.orbs) if (!o.got && prev < o.s && G.s >= o.s && Math.abs(G.lat - o.lat) < 5.6) {
+    o.got = true; o.g.visible = false; combat.particles.burst(o.g.position, 30, 18, [1, 0.85, 0.4], 0.6, 1.8);
+    if (!G.loopOn) startLoop();
+  }
   // orientation
-  const dyds = -L.descent(G.s) + G.nudge * 0, tx = L.dxds(G.s) + G.latV / Math.max(G.v, 1), tz = -1;
-  const hl = Math.hypot(tx, tz);
-  G.tilt.set(tx, dyds, tz).normalize();
-  const yaw = Math.atan2(-tx, -tz), pitch = clamp(Math.atan2(dyds, hl), -0.7, 0.5);
-  G.yaw = damp(G.yaw, yaw, 8, dt); G.pitch = damp(G.pitch, pitch, 6, dt); G.roll = damp(G.roll, clamp(-G.latV * 0.045, -0.7, 0.7), 7, dt);
+  if (G.loopOn) {
+    G.pitch = G.loopTh; G.hdg = L.hdgAt(G.s); G.yaw = damp(G.yaw, -G.hdg, 8, dt); G.roll = damp(G.roll, 0, 8, dt);
+    if (G.loopT >= LOOP_T) endLoop();
+  } else {
+    const dyds = -L.descent(G.s), tx = L.dxds(G.s) + G.latV / Math.max(G.v, 1), hd = L.hdgAt(G.s);
+    const hl = Math.hypot(tx, 1);
+    G.hdg = hd; G.pturn = (L.hdgAt(G.s + 6) - L.hdgAt(G.s - 6)) / 12 * G.v;          // how fast the path is turning, rad/s
+    G.tilt.set(Math.sin(hd), dyds, -Math.cos(hd)).normalize();
+    const yaw = -(hd + Math.atan(tx)), pitch = clamp(Math.atan2(dyds, hl), -0.7, 0.5);
+    G.yaw = damp(G.yaw, yaw, 8, dt); G.pitch = damp(G.pitch, pitch, 6, dt); G.roll = damp(G.roll, clamp(-G.latV * 0.04 + G.wall * 0.42, -0.7, 0.7), 7, dt);
+  }
   rider.root.position.set(G.pos.x, G.pos.y - HIP, G.pos.z);
   rider.update(dt, G.t, { yaw: G.yaw, pitch: G.pitch, roll: G.roll }, 1);
-  // combat
+  // sections: what is happening on the path right now
   const sec = L.sectionAt(G.s);
-  if (sec.kind !== G.secKind) { G.secKind = sec.kind; if (sec.hint) banner(sec.hint, sec.kind === 'target' ? '#ff9a7a' : '#9fe8ff'); }
-  let fightOpen, cap = 3;
-  if (L.tutorial) {
-    if (sec.kind === 'target') { fightOpen = combat.kills === 0 && combat.drones.length < 1; cap = 1; }   // exactly one target in empty sky, until it is shot down
-    else fightOpen = sec.kind === 'fight';
-  } else fightOpen = (sec.kind === 'fight' || (sec.kind === 'dive' && G.s > 40));
-  fightOpen = fightOpen && G.s < L.L - 130;
-  combat.glideUpdate(dt, { leg: L, s: G.s, lat: G.lat, pos: G.pos, camera, W, H, time: G.t, rnd, fightOpen, cap, speed: G.v });
-  if (G.s >= L.L - 6) touchdown();
+  if (sec.kind !== G.secKind) { leaveSection(G.secKind); G.secKind = sec.kind; enterSection(sec); }
+  // enemy fire: pilots on the tail, deck turrets; the bolts themselves hurt
+  G.invuln = Math.max(0, G.invuln - dt); G.hurtT = Math.max(0, G.hurtT - dt * 2.2);
+  if (G.t - G.lastHit > 3.5) G.hp = Math.min(100, G.hp + 8 * dt);
+  if (CHASE_FEATURE && enemy.pursuers.length && !G.loopOn) enemy.updatePursuers(dt, { leg: L, s: G.s, lat: G.lat, pos: G.pos, vel: G.vel, t: G.t, onFire: muzzle });
+  if (CHASE_FEATURE && sec.kind === 'raid') enemy.updateTurrets(dt, { s: G.s, pos: G.pos, vel: G.vel, onFire: muzzle });
+  enemy.update(dt, G.pos, (b) => hurt(b.dmg));
+  // dogfight
+  const fightOpen = sec.kind === 'fight' && G.s < sec.s1 - 40 && !G.loopOn;
+  if (G.loopOn) combat.updateEffects(dt);
+  else combat.glideUpdate(dt, { leg: L, s: G.s, lat: G.lat, pos: G.pos, camera, W, H, time: G.t, rnd, fightOpen, cap: sec.cap || 3, speed: G.v, spawnAhead: 90, droneV: G.v * 0.8, fwd: { x: Math.sin(G.hdg), z: -Math.cos(G.hdg) } });
+  if (G.prevWorld && G.s > 260) { G.prevWorld.dispose(); G.prevWorld = null; }
+  if (G.s >= L.L) handover();
 }
-
 
 // ═══ OPEN SKY ═══  a free heading: left/right TURNS him (circle all you like). Ships + islands grow a soft skim path when
 // you near them; portals drop you into the next sky.  See open.js.
@@ -398,15 +474,20 @@ function updateCamera(dt) {
   if (gl) {
     const sp = clamp((G.v - T.V0) / (T.vMax - T.V0), 0, 1);
     const low = 1 - smoothstep(4, 40, G.h);
-    const height = lerp(3.0, 1.9, low), back = lerp(6.9, 5.6, low) + sp * 1.0, ahead = 34;
+    const height = lerp(6.4, 4.6, low), back = lerp(8.6, 7.2, low) + sp * 1.2, ahead = 62;      // camera up and back: Donnie rides in the lower third, below the sights
     fovG = 70 + sp * 14 + (1 - smoothstep(2, 14, G.h)) * 6;
     if (G.open) {       // heading-relative rig: behind him along his heading, swinging to the outside of a turn
       const fx = Math.sin(G.hdg), fz = -Math.cos(G.hdg), qx = Math.cos(G.hdg), qz = Math.sin(G.hdg);
       glTgt.set(G.pos.x - fx * back - qx * G.turn * 2.2, G.pos.y + height - G.tilt.y * back * 0.6, G.pos.z - fz * back - qz * G.turn * 2.2);
       glLook.set(G.pos.x + fx * ahead * 0.95, G.pos.y + G.tilt.y * ahead + 0.5, G.pos.z + fz * ahead * 0.95);
-    } else {
-    glTgt.set(G.pos.x - G.tilt.x * back * 0.4 - G.latV * 0.12, G.pos.y + height - G.tilt.y * back * 0.6, G.pos.z + back);
-    glLook.set(G.pos.x + G.tilt.x * ahead * 0.35, G.pos.y + G.tilt.y * ahead + 0.5, G.pos.z - ahead);
+    } else if (G.loopOn) {   // the loop: still third person -- the camera rides behind him along his own flight direction, over the top and down
+      const th = G.loopTh, hx = Math.sin(G.hdg), hz = -Math.cos(G.hdg), fy = Math.sin(th), fc = Math.cos(th), back = 8.5;
+      glTgt.set(G.pos.x - hx * fc * back - hx * -Math.sin(th) * 0.55 * 3.2, G.pos.y - fy * back + (fc * 0.55 + 0.45) * 3.2, G.pos.z - hz * fc * back - hz * -Math.sin(th) * 0.55 * 3.2);
+      glLook.set(G.pos.x + hx * fc * 9, G.pos.y + fy * 9, G.pos.z + hz * fc * 9); fovG = 76;
+    } else {       // the path's own heading: behind him along the curve, swinging to the outside of a turn
+      const fx = Math.sin(G.hdg), fz = -Math.cos(G.hdg), qx = Math.cos(G.hdg), qz = Math.sin(G.hdg), sway = G.latV * 0.12 + (G.pturn || 0) * 2.4;
+      glTgt.set(G.pos.x - fx * back - qx * sway, G.pos.y + height - G.tilt.y * back * 0.6, G.pos.z - fz * back - qz * sway);
+      glLook.set(G.pos.x + fx * ahead * 0.95, G.pos.y + G.tilt.y * ahead + 0.5, G.pos.z + fz * ahead * 0.95);
     }
   } else { glTgt.copy(runTgt); glLook.copy(runLook); }
   camTgt.lerpVectors(runTgt, glTgt, k); camLook.lerpVectors(runLook, glLook, k);
@@ -414,9 +495,9 @@ function updateCamera(dt) {
   camTgt.z += swoop * 2.6; camTgt.y += swoop * 1.3;
   const fov = lerp(64, fovG, k) + swoop * 3;
   if (!G.camInit) { camera.position.copy(camTgt); lookNow.copy(camLook); G.camInit = true; }
-  const rate = gl ? 7 : 6;
+  const rate = gl ? (G.loopOn ? 16 : 7) : 6;
   camera.position.x = damp(camera.position.x, camTgt.x, rate, dt); camera.position.y = damp(camera.position.y, camTgt.y, rate * 0.9, dt); camera.position.z = damp(camera.position.z, camTgt.z, rate + 2, dt);
-  lookNow.x = damp(lookNow.x, camLook.x, 9, dt); lookNow.y = damp(lookNow.y, camLook.y, 9, dt); lookNow.z = damp(lookNow.z, camLook.z, 9, dt);
+  const lr = G.loopOn ? 22 : 9; lookNow.x = damp(lookNow.x, camLook.x, lr, dt); lookNow.y = damp(lookNow.y, camLook.y, lr, dt); lookNow.z = damp(lookNow.z, camLook.z, lr, dt);
   // never inside a deck or island
   if ((G.leg || G.open) && gl) L_surf(camera.position);
   G.shake = Math.max(0, G.shake - dt * 2.2); G.fovKick = Math.max(0, G.fovKick - dt * 22);
@@ -441,6 +522,9 @@ function updateHud(dt) {
   $('speed').textContent = Math.round((gl ? G.v : T.runSpeed) * 3.6) + ' KM/H';
   $('progress').style.visibility = G.leg || G.open ? 'visible' : 'hidden';
   if (G.open) { $('prog-dive').textContent = 'SKY ' + (G.level + 1); $('prog-land').textContent = 'PORTAL'; }
+  else if (G.leg) { $('prog-dive').textContent = 'LEG ' + (G.legIdx + 1); $('prog-land').textContent = 'NEXT'; }
+  hpEl.style.display = gl && !G.open && CHASE_FEATURE ? 'block' : 'none'; hpEl.firstChild.style.width = clamp(G.hp, 0, 100) + '%';
+  hurtEl.style.opacity = String(clamp(G.hurtT, 0, 1) * 0.85);
   const frac = G.open ? clamp(G.lvDist / ow.portalDist(), 0, 1) : G.phase !== 'glide' ? clamp(-G.pz / DECK_LEN, 0, 1) * 0.12 * (G.phase === 'title' ? 0 : 1) : gl ? 0.12 + 0.88 * clamp(G.s / G.leg.L, 0, 1) : 1;
   $('prog-fill').style.width = (frac * 100) + '%';
   const ret = $('reticle');
@@ -451,13 +535,15 @@ function updateHud(dt) {
     $('reticle').style.setProperty('--p', locked ? clamp(combat.lockT / GUN.armAt, 0, 1) : 0);
     $('ret-msg').textContent = armed ? 'MISSILE' : '';
     let n = 0;
-    for (const d of combat.drones) {
-      if (!d.alive || !d.on || n >= brackets.length) continue;
+    const shown = combat.drones.filter((d) => d.alive && d.on && d.dist < 230).sort((a, b) => a.dist - b.dist);
+    for (const d of shown) {
+      if (n >= brackets.length) break;
       const b = brackets[n++]; b.style.display = 'block';
       b.style.left = d.sx + 'px'; b.style.top = d.sy + 'px';
       b.style.setProperty('--bs', clamp(5200 / Math.max(d.dist, 20), 26, 90) + 'px');
       b.className = d === combat.lockTarget && locked ? 'lock' : '';
-      b.firstChild.textContent = Math.round(d.dist) + 'm';
+      b.firstChild.textContent = (d.core ? 'CORE ' : '') + Math.round(d.dist) + 'm';
+      b.hpFill.style.width = clamp(d.hp / d.maxhp, 0, 1) * 100 + '%';
     }
     for (; n < brackets.length; n++) brackets[n].style.display = 'none';
   } else for (const b of brackets) b.style.display = 'none';
@@ -509,12 +595,24 @@ function frame(now) {
     updateHud(dt); updatePortalMark();
   }
   renderer.render(scene, camera);
+  // rear-view mirror while pilots are on the tail
+  const mirror = !G.open && G.phase === 'glide' && enemy.pursuers.length > 0 && !G.loopOn;
+  if (mirror) {
+    const mw = Math.round(Math.min(330, W * 0.3)), mh = Math.round(mw * 0.56), mx = W - mw - 14, myTop = 74;
+    const mfx = Math.sin(G.hdg), mfz = -Math.cos(G.hdg);
+    rearCam.position.set(G.pos.x - mfx * 3, G.pos.y + 2.4, G.pos.z - mfz * 3); rearCam.lookAt(G.pos.x - mfx * 80, G.pos.y + 0.9, G.pos.z - mfz * 80);
+    renderer.setScissorTest(true); renderer.setViewport(mx, H - myTop - mh, mw, mh); renderer.setScissor(mx, H - myTop - mh, mw, mh);
+    renderer.render(scene, rearCam);
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
+    mirrorEl.style.display = 'block'; mirrorEl.style.left = mx + 'px'; mirrorEl.style.top = myTop + 'px'; mirrorEl.style.width = (mw - 6) + 'px'; mirrorEl.style.height = (mh - 6) + 'px';
+    mirrorEl.style.borderColor = enemy.warn > 0.2 ? (Math.floor(G.t * 10) % 2 ? '#ff3b3b' : '#fff') : '#fff';
+  } else mirrorEl.style.display = 'none';
 }
 
 async function boot() {
   await rider.load('/models/raphael.glb', '/models/clips.json', '/models/clips_run.json', '/models/attacks.json');
   if (OPEN) startOpen(); else { startLeg(G.legIdx); G.phase = 'title'; }
-  window.__game = { G, rider, combat, T, input, get leg() { return G.leg; }, camera, scene, renderer, startGlide, touchdown, nextLeg, setAuto, setMode, ow, startDrop };
+  window.__game = { G, rider, combat, T, input, get leg() { return G.leg; }, camera, scene, renderer, startGlide, handover, nextLeg, enemy, startLoop, setAuto, setMode, ow, startDrop };
   const begin = () => { if (G.phase !== 'title') return; $('title').hidden = true; if (G.open) { G.phase = 'open'; banner('LEAN LEFT / RIGHT TO STEER', '#9fe8ff'); return; } G.phase = 'run'; G.runT = 0; banner('RUN!', '#9fe8ff'); };
   window.__begin = begin;
   $('go').addEventListener('click', begin);

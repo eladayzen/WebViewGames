@@ -189,20 +189,17 @@ export function makeIsland(r, rnd) {
   return g;
 }
 
+const _t = {};
 export class LegWorld {
   constructor(leg, scene, adoptShip = null) {
     this.leg = leg; this.scene = scene;
     this.group = new THREE.Group(); scene.add(this.group);
-    this.rings = []; this.rotors = []; this.thrusters = [];
-    // the start deck: the previous leg's landing ship, kept as it was; or a fresh one for the very first leg
-    if (adoptShip) { this.ship = adoptShip; adoptShip.position.set(0, 0, 0); }
-    else this.ship = buildHoverDeck({ pad: false });
-    this.group.add(this.ship); this.thrusters.push(...this.ship.userData.thrusters);
-    this._structs(); this._landing(); this._rings();
+    this.rings = []; this.rotors = []; this.thrusters = []; this.cores = []; this.turrets = []; this.smalls = []; this.orbs = []; this.falling = [];
+    // the start deck exists only for the very first leg; every later leg hands over in mid-air
+    this.ship = null;
+    if (!leg.air) { this.ship = adoptShip || buildHoverDeck({ pad: false }); this.group.add(this.ship); this.thrusters.push(...this.ship.userData.thrusters); }
+    this._structs(); this._rings(); this._orbs();
   }
-
-  /** hand the landing ship to the next leg's world (the old world keeps nothing of it) */
-  releaseLanding() { const s = this.landing; this.group.remove(s); return s; }
 
   dispose() {
     this.scene.remove(this.group);
@@ -212,42 +209,83 @@ export class LegWorld {
   _structs() {
     const leg = this.leg;
     for (const st of leg.structs) {
-      if (st.landing) continue;
       const rnd = mulberry32(st.seed || 7);
       let g;
       if (st.kind === 'ship') {
-        g = makeCarrier(st.hx, st.hl, rnd, !!st.skim);
-        g.position.set(st.x, st.ty0 + st.kz * (st.z - st.tz0) * 0, st.z);
-        if (st.kz) { g.position.y = st.ty0; g.rotation.x = -Math.atan(st.kz); }
+        g = makeCarrier(st.hx, st.hl, rnd, !!st.skim || !!st.raid);
+        g.rotation.order = 'YXZ';
+        g.position.set(st.x, st.ty0, st.z); g.rotation.y = st.yaw;
+        if (st.kz) g.rotation.x = -Math.atan(st.kz);
         this.rotors.push(...g.userData.rotors); this.thrusters.push(...g.userData.thrusters);
+        if (st.raid) this._raidKit(st, g, rnd);
+        if (st.targets) this._deckTargets(st, g);
       } else {
         g = makeIsland(st.r, rnd);
         g.position.set(st.x, st.ty0, st.z); g.rotation.y = rnd() * 6;
       }
+      st.group = g;
       this.group.add(g);
     }
   }
 
-  _landing() {
-    const O = this.leg.O;
-    this.landing = buildHoverDeck({ pad: true });
-    this.landing.position.set(O.x, O.y, O.z);
-    this.group.add(this.landing); this.thrusters.push(...this.landing.userData.thrusters);
+  /** a raided gunship: a reactor core on a pylon (the big target) and a few turrets */
+  _raidKit(st, g, rnd) {
+    box(2.2, 8.6, 2.2, MAT.steel2, 0, 4.3, 0, g); box(4.2, 0.6, 4.2, MAT.hull, 0, 8.7, 0, g);
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 1), B(0xff6a4a)); core.position.set(0, 9.8, 0); g.add(core); st.coreMesh = core;
+    glowAt(g, 0, 9.8, 0, 10, MAT.glowRed);
+    this.cores.push({ pos: new THREE.Vector3(st.x, st.ty0 + 9.8, st.z), s: st.s, st });
+    const c = Math.cos(st.yaw), sn = Math.sin(st.yaw);
+    for (const [lx, lz] of [[-st.hx * 0.55, -st.hl * 0.5], [st.hx * 0.55, -st.hl * 0.1], [-st.hx * 0.5, st.hl * 0.4]]) {
+      box(1.8, 1.0, 1.8, MAT.hull, lx, 0.5, lz, g); box(0.35, 0.35, 2.4, MAT.steel2, lx, 1.3, lz - 1.0, g);
+      this.turrets.push({ pos: new THREE.Vector3(st.x + lx * c + lz * sn, st.ty0 + 1.4, st.z - lx * sn + lz * c), ship: st, s: st.s - lz, cd: 1 + rnd() * 2.5, tele: 0 });
+    }
   }
+
+  /** targets spread across a deck (cargo / AA nests): line up your lane position and shoot them */
+  _deckTargets(st, g) {
+    const c = Math.cos(st.yaw), sn = Math.sin(st.yaw);
+    for (const t of st.targets) {
+      const dx = t.x - st.x, dz = t.z - st.z, lx = dx * c - dz * sn, lz = dx * sn + dz * c;
+      box(3.0, 0.5, 3.0, MAT.red, lx, 0.35, lz, g); box(1.6, 1.3, 1.6, MAT.crate, lx, 1.1, lz, g);
+      this.smalls.push({ pos: new THREE.Vector3(t.x, t.y + 1.0, t.z), s: t.s, hp: t.hp, st });
+    }
+  }
+
+  /** the core went down: the ship breaks away and falls out of the sky */
+  sink(st) { st.dead = true; if (st.coreMesh) st.coreMesh.visible = false; this.falling.push({ st, t: 0 }); }
 
   _rings() {
     const leg = this.leg;
     const mat = new THREE.MeshBasicMaterial({ color: 0x66ffe6, transparent: true, opacity: 0.9 });
     for (const rp of leg.ringPlan) {
       const r = new THREE.Mesh(new THREE.TorusGeometry(rp.r, 0.34, 6, 30), mat);
-      r.position.set(leg.center(rp.s) + rp.lat, leg.pathYAt(rp.s) + 0.2, leg.zAt(rp.s));
+      leg.at(rp.s, rp.lat, _t); r.position.set(_t.x, leg.pathYAt(rp.s) + 0.2, _t.z); r.rotation.y = -leg.hdgAt(rp.s);
       this.group.add(r); this.rings.push({ s: rp.s, lat: rp.lat, mesh: r, got: false });
+    }
+  }
+
+  /** loop power-ups: a gold ring-in-a-ring with a halo, floating on the path in the chase sections */
+  _orbs() {
+    const leg = this.leg;
+    for (const o of leg.orbs) {
+      const g = new THREE.Group();
+      const r1 = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.32, 8, 28), B(0xffd24a)), r2 = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.22, 8, 24), B(0xff8be8)); r2.rotation.y = Math.PI / 2;
+      g.add(r1, r2, new THREE.Mesh(new THREE.SphereGeometry(0.8, 10, 8), B(0xffffff)));
+      glowAt(g, 0, 0, 0, 12, new THREE.SpriteMaterial({ map: GLOW, color: 0xffd06a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.9 }));
+      leg.at(o.s, o.lat, _t); g.position.set(_t.x, leg.pathYAt(o.s) + 0.6, _t.z); g.rotation.y = -leg.hdgAt(o.s);
+      this.group.add(g); this.orbs.push({ s: o.s, lat: o.lat, g, got: false });
     }
   }
 
   update(dt, t) {
     for (const th of this.thrusters) { const k = 1 + Math.sin(t * 17 + th.position.z * 0.7 + th.position.x) * 0.07; th.material.opacity = 0.85 + (k - 1) * 1.5; }
-    for (let i = 0; i < this.rotors.length; i++) this.rotors[i].rotation.y += dt * (i % 2 ? 11 : 11);
+    for (let i = 0; i < this.rotors.length; i++) this.rotors[i].rotation.y += dt * 11;
+    for (const o of this.orbs) if (!o.got) { o.g.rotation.y += dt * 2.4; o.g.rotation.z += dt * 1.1; }
+    for (let i = this.falling.length - 1; i >= 0; i--) {
+      const f = this.falling[i]; f.t += dt; const g = f.st.group;
+      g.position.y -= (4 + f.t * 26) * dt; g.rotation.z += dt * 0.55 * (f.st.x > 0 ? 1 : -1); g.rotation.x += dt * 0.22;
+      if (f.t > 3.2) { g.visible = false; this.falling.splice(i, 1); }
+    }
   }
 }
 

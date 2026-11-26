@@ -74,7 +74,7 @@ export class Particles {
 // ───────────────────────── models ─────────────────────────
 const inked = (mesh, k = 1.08) => { const g = new THREE.Group(); g.add(mesh); const o = new THREE.Mesh(mesh.geometry, ink); o.scale.copy(mesh.scale).multiplyScalar(k); o.position.copy(mesh.position); o.rotation.copy(mesh.rotation); g.add(o); return g; };
 
-function makeDrone() {
+export function makeDrone() {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshLambertMaterial({ color: 0x4a4d63, emissive: 0x14162a, flatShading: true })); body.scale.set(1.5, 0.62, 1.5);
   g.add(inked(body, 1.06));
@@ -126,8 +126,8 @@ function makeStar(glow) {
 }
 
 // ───────────────────────── the manager ─────────────────────────
-export const GUN = { rate: 13, dmg: 1, range: [10, 150], lockR: 0.095, armAt: 1.5, missileCD: 2.4, missileSpeed: 95 };
-export const DRONE_HP = 30;
+export const GUN = { rate: 14, dmg: 1.5, range: [10, 160], lockR: 0.11, armAt: 1.5, missileCD: 2.4, missileSpeed: 110, missileDmg: 70 };
+export const DRONE_HP = 150;       // a fight is a fight now: gun alone takes ~7 s of held lock, the missile takes a bite out of it
 
 export class Combat {
   constructor(scene, glowTex, cb) {
@@ -157,12 +157,22 @@ export class Combat {
   }
 
   // ── dogfight ──
-  spawnDrone(leg, s, rnd) {
+  spawnDrone(leg, s, rnd, vd) {
     const g = makeDrone(); this.scene.add(g);
     this.drones.push({
-      g, s, hp: DRONE_HP, alive: true, vd: 24 + rnd() * 3.5, A: 7 + rnd() * 6, w: 0.55 + rnd() * 0.5, ph: rnd() * 6.28, yo: (rnd() - 0.5) * 5, flash: 0,
+      g, s, hp: DRONE_HP, maxhp: DRONE_HP, alive: true, vd: (vd || 24) + rnd() * 3.5, A: (7 + rnd() * 6) * (leg.wideA || 1), w: 0.4 + rnd() * 0.25, ph: rnd() * 6.28, yo: 0, flash: 0,
       lat: 0, cx: leg.spawnX ? leg.spawnX() : 0, s0: s, by: leg.droneBaseY ? leg.droneBaseY(s) : 0, AY: 8 + rnd() * 12, wy: 0.45 + rnd() * 0.5, py: rnd() * 6.28, pb: rnd() * 6.28, pos: g.position, sx: 0, sy: 0, on: false, dist: 0,
     });
+  }
+
+  /** a fixed target in the world (the reactor core of a raided hover ship) */
+  addStatic(pos, hp, s, onKill, small = false) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.IcosahedronGeometry(small ? 1.25 : 2.3, 1), new THREE.MeshLambertMaterial({ color: small ? 0xffc040 : 0xff5a4a, emissive: small ? 0x553a08 : 0x551010, flatShading: true }));
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: small ? 0xffc050 : 0xff6a4a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.85 })); halo.scale.set(small ? 6 : 11, small ? 6 : 11, 1);
+    g.add(body, halo); g.userData.body = body; g.userData.rotors = []; g.position.copy(pos); this.scene.add(g);
+    this.drones.push({ g, static: true, s, hp, maxhp: hp, alive: true, vd: 0, flash: 0, lat: 0, pos: g.position, sx: 0, sy: 0, on: false, dist: 0, onKill, core: !small, small });
+    return this.drones[this.drones.length - 1];
   }
 
   spawnDroneFree(c) {
@@ -170,7 +180,7 @@ export class Combat {
     const ang = c.hdg + (r() - 0.5) * 0.9, dist = 150 + r() * 50;
     this.drones.push({
       g, free: true, x: c.pos.x + Math.sin(ang) * dist, z: c.pos.z - Math.cos(ang) * dist, hdg: c.hdg + (r() - 0.5) * 1.2, by: c.pos.y + (r() - 0.5) * 10,
-      hp: DRONE_HP, alive: true, vd: 24 + r() * 3.5, w: 0.55 + r() * 0.5, ph: r() * 6.28, AY: 8 + r() * 12, wy: 0.45 + r() * 0.5, py: r() * 6.28, pb: r() * 6.28,
+      hp: DRONE_HP, maxhp: DRONE_HP, alive: true, vd: 24 + r() * 3.5, w: 0.55 + r() * 0.5, ph: r() * 6.28, AY: 8 + r() * 12, wy: 0.45 + r() * 0.5, py: r() * 6.28, pb: r() * 6.28,
       yo: 0, flash: 0, lat: 0, pos: g.position, sx: 0, sy: 0, on: false, dist: 0, s: 0,
     });
   }
@@ -181,9 +191,9 @@ export class Combat {
     this.t += dt;
     // spawning
     this.spawnCD -= dt;
-    const alive = this.drones.filter((d) => d.alive).length;
+    const alive = this.drones.filter((d) => d.alive && !d.static).length;
     if (c.fightOpen && alive < (c.cap || 3) && this.spawnCD <= 0) {
-      if (leg.free) this.spawnDroneFree(c); else this.spawnDrone(leg, c.s + 105 + c.rnd() * 55, c.rnd);
+      if (leg.free) this.spawnDroneFree(c); else this.spawnDrone(leg, c.s + (c.spawnAhead || 105) + c.rnd() * 40, c.rnd, c.droneV);
       this.spawnCD = 1.6 + c.rnd() * 1.2;
     }
     // move + project
@@ -191,8 +201,10 @@ export class Combat {
     const R = GUN.lockR * H;
     for (const d of this.drones) {
       if (!d.alive) continue;
-      if (d.free) {
-        const tt = this.t * d.w + d.ph, sp = d.vd + 11 * Math.max(0, Math.sin(this.t * 0.8 + d.pb));
+      const tt = this.t * d.w + d.ph;
+      if (d.static) { /* a raid core: fixed in the world */ }
+      else if (d.free) {
+        const sp = d.vd + 11 * Math.max(0, Math.sin(this.t * 0.8 + d.pb));
         const away = Math.atan2(d.x - c.pos.x, -(d.z - c.pos.z));
         d.hdg += (wrapPi(away - d.hdg) * 0.35 + 0.7 * Math.sin(tt * 1.1)) * dt;          // flees, and jinks left / right
         d.x += Math.sin(d.hdg) * sp * dt; d.z -= Math.cos(d.hdg) * sp * dt;
@@ -200,15 +212,15 @@ export class Combat {
         d.g.position.set(d.x, y, d.z);
         d.g.rotation.y = Math.PI - d.hdg; d.g.rotation.z = -Math.sin(tt * 1.1) * 0.5;
       } else {
-      d.s += (d.vd + (leg.evasive ? 11 * Math.max(0, Math.sin(this.t * 0.8 + d.pb)) : 0)) * dt;   // bursts of speed when it jinks
+      d.s += (d.vd + (leg.evasive ? 11 : leg.burst || 0) * Math.max(0, Math.sin(this.t * 0.8 + d.pb))) * dt;   // bursts of speed when it jinks
       d.lat = d.A * Math.sin(tt) + 2.2 * Math.sin(tt * 2.3);
-      const sc = clamp(d.s, 0, leg.L - 40);
-      const y = leg.evasive ? d.by + leg.slopeY * (d.s - d.s0) + d.AY * Math.sin(this.t * d.wy + d.py) * (0.6 + 0.4 * Math.sin(this.t * 0.37 + d.pb)) : leg.pathYAt(sc) + d.yo + 2.2 * Math.sin(tt * 1.3);   // evasive: pulls up / pulls down
-      d.g.position.set((leg.droneX ? leg.droneX(d) : leg.center(sc)) + d.lat, y, leg.zAt(d.s));
+      const sc = clamp(d.s, 0, leg.L + 80);
+      const y = leg.evasive ? d.by + leg.slopeY * (d.s - d.s0) + d.AY * Math.sin(this.t * d.wy + d.py) * (0.6 + 0.4 * Math.sin(this.t * 0.37 + d.pb)) : leg.pathYAt(sc) + 0.6;   // path mode: always at the height the reticle sees -- they only move left / right, the one axis you control   // evasive: pulls up / pulls down
+      leg.at(sc, d.lat, _q); d.g.position.set(_q.x, y, _q.z);
       d.g.rotation.z = -Math.cos(tt) * d.A * d.w * 0.05;                 // banks into its weave
-      d.g.rotation.y = Math.PI + Math.atan2(-d.A * d.w * Math.cos(tt), d.vd) * 0.5 * 0 + 0;
+      d.g.rotation.y = Math.PI - leg.hdgAt(sc);
       }
-      for (const r of d.g.userData.rotors) r.rotation.y += dt * 40;
+      for (const r of d.g.userData.rotors || []) r.rotation.y += dt * 40;
       d.flash = Math.max(0, d.flash - dt * 6);
       d.g.userData.body.material.emissive.setRGB(0.08 + d.flash * 0.9, 0.09 + d.flash * 0.7, 0.16 + d.flash * 0.4);
       d.dist = d.g.position.distanceTo(c.pos);
@@ -217,7 +229,8 @@ export class Combat {
       d.sx = (_v.x * 0.5 + 0.5) * W; d.sy = (-_v.y * 0.5 + 0.5) * H;
       const r = Math.hypot(d.sx - W / 2, d.sy - H / 2);
       if (d.on && d.dist > GUN.range[0] && d.dist < GUN.range[1] && r < R && r < candR) { cand = d; candR = r; }
-      if (d.free) { if (d.dist > 400) { d.alive = false; this.scene.remove(d.g); this.escaped++; this.cb.escaped?.(); } }
+      if (d.static) { if (d.s < c.s - 8) { d.alive = false; this.scene.remove(d.g); } }
+      else if (d.free) { if (d.dist > 400) { d.alive = false; this.scene.remove(d.g); this.escaped++; this.cb.escaped?.(); } }
       else if (d.s < c.s - 6) { d.alive = false; this.scene.remove(d.g); }                          // flew past
       else if (d.s > c.s + 190) { d.alive = false; this.scene.remove(d.g); this.escaped++; this.cb.escaped?.(); }
     }
@@ -258,11 +271,11 @@ export class Combat {
     d.hp -= dmg; d.flash = 1;
     this.particles.burst(d.g.position, big ? 22 : 3, big ? 26 : 9, [1, 0.8, 0.35], 0.35, big ? 1.6 : 0.8);
     if (d.hp <= 0) {
-      d.alive = false; this.kills++;
+      d.alive = false; this.kills++; d.onKill?.(d);
       this.scene.remove(d.g);
       this.particles.burst(d.g.position, 60, 34, [1, 0.55, 0.2], 0.9, 2.4);
       this.particles.burst(d.g.position, 26, 16, [1, 0.95, 0.7], 0.6, 3.6);
-      this.cb.kill?.(d.g.position.clone(), big);
+      if (!d.static) this.cb.kill?.(d.g.position.clone(), big);
       if (this.lockTarget === d) { this.lockTarget = null; this.lockT = 0; }
     }
   }
@@ -292,7 +305,7 @@ export class Combat {
         _w.subVectors(tgt, m.g.position); const dist = _w.length(); _w.normalize();
         const turn = clamp(dt * (3 + m.age * 5), 0, 1);
         m.v.lerp(_w.multiplyScalar(GUN.missileSpeed + m.age * 40), turn);
-        if (dist < 3.8 + this.t * 0) { this.hit(m.d, 999, true); this.cb.blast?.(m.g.position.clone()); this.scene.remove(m.g); this.missiles.splice(i, 1); continue; }
+        if (dist < 3.8 + this.t * 0) { this.hit(m.d, GUN.missileDmg, true); this.cb.blast?.(m.g.position.clone()); this.scene.remove(m.g); this.missiles.splice(i, 1); continue; }
       }
       m.g.position.addScaledVector(m.v, dt); _q.copy(m.g.position).add(m.v); m.g.lookAt(_q);
       this.particles.emit(m.g.position, _v.set((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 6), [1, 0.7, 0.35], 0.5, 1.5, 0, 0.8);

@@ -1,6 +1,7 @@
 // Donatello: the shared Raphael rig with every red turned purple, a tech backpack on his spine, and cyber wings
 // that unfold out of it. Two poses: RUN (upright on the deck) and GLIDE (face-down under the wings).
 import * as THREE from 'three';
+import { GLOW } from './world.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { recolorRedToPurple, easeOutBack, clamp, damp } from './util.js';
 
@@ -100,28 +101,50 @@ export class Rider {
     pack.rotation.set(0, Math.PI, 0);        // its +Z points out of his back
     this.pack = pack;
 
-    // ── the wings: a fan of dark blades with a glowing energy membrane, hinged on the pack ──
+    // ── the wings: robotic rocket wings -- two rigid swept panels per side that unfold out of the pack and lock into place,
+    //    a rocket pod on each wing, twin main thrusters on the pack.  The wing plane is the pack's XY plane (chord along +Y = forward when prone) ──
     const wings = new THREE.Group(); wings.position.set(0, 0.2, 0.14); pack.add(wings); this.wings = wings;
-    this.blades = [];
-    const lens = [2.15, 1.95, 1.7, 1.4], spread = [0.05, -0.2, -0.45, -0.72];
-    const bladeMat = new THREE.MeshLambertMaterial({ color: 0x2a3158, emissive: 0x141a38 });
-    const edgeMat = new THREE.MeshBasicMaterial({ color: 0x5ff2ff });
-    const memMat = new THREE.MeshBasicMaterial({ color: 0x35c8ff, transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false });
-    this.sides = [];
+    const steel = new THREE.MeshLambertMaterial({ color: 0x3a4262, emissive: 0x161c38 }), steel2 = new THREE.MeshLambertMaterial({ color: 0x59628a, emissive: 0x1a2040 });
+    const edgeMat = new THREE.MeshBasicMaterial({ color: 0x5ff2ff }), hot = new THREE.MeshBasicMaterial({ color: 0xff7a2a });
+    const panel = (pts, depth = 0.07) => {
+      const sh = new THREE.Shape(); sh.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], pts[i][1]); sh.closePath();
+      const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false }); g.translate(0, 0, -depth / 2);
+      const grp = new THREE.Group(); const m = new THREE.Mesh(g, steel); const o = new THREE.Mesh(g, ink); o.scale.set(1.012, 1.012, 2.2); grp.add(o, m); return grp;
+    };
+    const glowMat = (c) => new THREE.SpriteMaterial({ map: GLOW, color: c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.95 });
+    this.sides = []; this.flames = [];
     for (const sx of [1, -1]) {
-      const side = new THREE.Group(); side.scale.x = sx; wings.add(side); this.sides.push(side);
-      const bl = [];
-      lens.forEach((L, i) => {
-        const sh = new THREE.Shape(); sh.moveTo(0, -0.05); sh.lineTo(L * 0.82, -0.07); sh.lineTo(L, -0.015); sh.lineTo(L * 0.82, 0.075); sh.lineTo(0, 0.1); sh.closePath();
-        const g = new THREE.ExtrudeGeometry(sh, { depth: 0.035, bevelEnabled: false });
-        const grp = new THREE.Group();
-        const mesh = new THREE.Mesh(g, bladeMat); const oi = new THREE.Mesh(g, ink); oi.scale.set(1.01, 1.7, 1.8); oi.position.z = -0.02;
-        const es = new THREE.Mesh(new THREE.BoxGeometry(L * 0.8, 0.018, 0.045), edgeMat); es.position.set(L * 0.41, 0.075, 0.02);
-        grp.add(oi, mesh, es); side.add(grp); bl.push({ grp, spread: spread[i], len: L, delay: i * 0.07 });
-      });
-      // membrane triangle fan between the first and last blade
-      const mem = new THREE.Mesh(new THREE.BufferGeometry(), memMat); side.add(mem); this.sides[this.sides.length - 1].mem = mem;
-      this.blades.push(bl);
+      const side = new THREE.Group(); side.scale.x = sx; wings.add(side);
+      // hinge block at the root
+      const hinge = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.34, 0.16), steel2); hinge.position.set(0.03, -0.05, 0); side.add(hinge);
+      // inner panel
+      const inner = panel([[0, 0.24], [1.28, -0.06], [1.28, -0.52], [0, -0.4]]);
+      const ie = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.03, 0.09), edgeMat); ie.position.set(0.64, 0.09, 0.03); ie.rotation.z = -0.235; inner.add(ie);
+      const sk = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.025, 0.085), steel2); sk.position.set(0.6, -0.2, 0.03); sk.rotation.z = -0.12; inner.add(sk);
+      side.add(inner);
+      // outer panel, hinged at the inner panel's tip, folds back over it
+      const outer = panel([[0, -0.06], [0.98, -0.6], [0.92, -0.8], [0, -0.52]]); outer.position.set(1.28, 0, 0.0);
+      const oe = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.03, 0.09), edgeMat); oe.position.set(0.5, -0.33, 0.03); oe.rotation.z = -0.55; outer.add(oe);
+      inner.add(outer);
+      // rocket pod on the wing: tube, red nose, nozzle, flame
+      const pod = new THREE.Group(); pod.position.set(0.62, -0.18, 0.12); inner.add(pod);
+      const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.72, 10), steel2); const to = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.72, 10), ink); to.scale.set(1.12, 1.01, 1.12); pod.add(to, tube);
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.24, 10), new THREE.MeshLambertMaterial({ color: 0xc23a3a, emissive: 0x401010 })); nose.position.y = 0.48; pod.add(nose);
+      const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.15, 0.14, 10, 1, true), hot); nozzle.position.y = -0.42; pod.add(nozzle);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.018, 6, 14), edgeMat); ring.rotation.x = Math.PI / 2; ring.position.y = 0.12; pod.add(ring);
+      for (const fy of [-1, 1]) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.26, 0.22), steel); fin.position.set(0, -0.28, fy * 0.13); pod.add(fin); }
+      const fl = new THREE.Sprite(glowMat(0xff8a30)); fl.position.set(0, -0.62, 0); pod.add(fl);
+      const fc = new THREE.Sprite(glowMat(0xfff0c0)); fc.position.set(0, -0.5, 0); pod.add(fc);
+      this.flames.push({ fl, fc, k: 0.55 });
+      this.sides.push({ side, inner, outer, pod });
+    }
+    // twin main thrusters on the pack itself
+    for (const sx of [-0.12, 0.12]) {
+      const tb = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.085, 0.5, 10), steel2); tb.position.set(sx, -0.2, 0.17); wings.add(tb);
+      const nz = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.12, 0.1, 10, 1, true), hot); nz.position.set(sx, -0.48, 0.17); wings.add(nz);
+      const fl = new THREE.Sprite(glowMat(0xff8a30)); fl.position.set(sx, -0.7, 0.17); wings.add(fl);
+      const fc = new THREE.Sprite(glowMat(0xfff0c0)); fc.position.set(sx, -0.56, 0.17); wings.add(fc);
+      this.flames.push({ fl, fc, k: 0.8 });
     }
     wings.visible = false;
     this._wingsAt(0, 0);
@@ -144,34 +167,28 @@ export class Rider {
     this.staff = holder; this.staffInner = staff;
   }
 
-  // wings fan out with a little overshoot; d in 0..1
+  // the wings unfold out of the pack and lock; d in 0..1
   _wingsAt(d, time) {
     const w = this.wings;
     if (!w) return;
     w.visible = d > 0.01;
-    const sc = Math.max(0.0001, d);
-    for (let s = 0; s < 2; s++) {
-      const side = this.sides[s];
-      const pts = [];
-      this.blades[s].forEach((b, i) => {
-        const t = clamp((d - b.delay) / (1 - b.delay * 1.6), 0, 1);
-        const e = easeOutBack(t);
-        const fold = -Math.PI / 2 + 0.1;                      // folded: flat down the back
-        const open = b.spread + Math.sin(time * 5.2 + i + s) * 0.018 * this.flutter;
-        b.grp.rotation.z = fold + (open - fold) * e;
-        b.grp.scale.set(0.2 + 0.8 * e, 1, 1);
-        b.grp.position.z = i * 0.012;
-        const a = b.grp.rotation.z, L = b.len * (0.2 + 0.8 * e);
-        pts.push([Math.cos(a) * L, Math.sin(a) * L]);
-      });
-      // membrane: root -> blade tips -> root
-      const verts = [];
-      for (let i = 0; i < pts.length - 1; i++) verts.push(0, 0, 0.02, pts[i][0], pts[i][1], 0.02, pts[i + 1][0], pts[i + 1][1], 0.02);
-      side.mem.geometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-      side.mem.geometry.computeBoundingSphere();
-      side.mem.visible = d > 0.25;
+    for (let i = 0; i < 2; i++) {
+      const sd = this.sides[i];
+      const t1 = clamp(d / 0.7, 0, 1), t2 = clamp((d - 0.3) / 0.7, 0, 1);
+      const e1 = easeOutBack(t1), e2 = easeOutBack(t2);
+      const fold = -Math.PI / 2 + 0.12;                            // folded: flat down the back
+      sd.inner.rotation.z = fold + (0.04 - fold) * e1 + Math.sin(time * 6 + i) * 0.012 * this.flutter;
+      sd.inner.scale.set(0.35 + 0.65 * Math.min(1, e1), 1, 1);
+      sd.outer.rotation.z = -2.7 + 2.7 * e2;                       // the tip panel swings out and locks straight
+      sd.pod.visible = d > 0.55;
     }
-    w.scale.setScalar(0.35 + 0.65 * Math.min(1, sc * 1.4));
+    // rocket flames: bloom as the wings lock, then flicker
+    for (const f of this.flames) {
+      const on = clamp((d - 0.5) / 0.5, 0, 1), fl = 0.85 + Math.sin(time * 38 + f.k * 9) * 0.15 + Math.sin(time * 23 + f.k) * 0.08;
+      f.fl.visible = f.fc.visible = on > 0.01;
+      f.fl.scale.set(0.3 * on * fl * (0.6 + f.k), 0.85 * on * fl * (0.6 + f.k), 1); f.fc.scale.set(0.16 * on * fl * (0.7 + f.k * 0.5), 0.4 * on * fl * (0.7 + f.k * 0.5), 1);
+    }
+    w.scale.setScalar(0.4 + 0.6 * Math.min(1, d * 1.4));
     this.packScreen.material.color.setHex(d > 0.5 ? 0x9fffe8 : 0x5ff2ff);
   }
 

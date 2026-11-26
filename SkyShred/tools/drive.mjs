@@ -18,7 +18,7 @@ page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
 await page.goto(url, { waitUntil: 'load' });
 await page.waitForFunction(() => window.__game && window.__game.G.phase !== 'loading', { timeout: 40000 });
 await page.evaluate(() => { let n = 0, t0 = performance.now(); (function c() { n++; const t = performance.now(); if (t - t0 > 1000) { window.__fps = Math.round(n * 1000 / (t - t0)); n = 0; t0 = t; } requestAnimationFrame(c); })(); });
-const stat = () => page.evaluate(() => { const { G, combat } = window.__game; return { phase: G.phase, s: +G.s.toFixed(0), v: +G.v.toFixed(1), h: +G.h.toFixed(1), score: Math.floor(G.score), kills: combat.kills, drones: combat.drones.length, lock: +combat.lockT.toFixed(2), rings: G.rings, fps: window.__fps, leg: G.open ? G.level : G.legIdx, pz: +G.pz.toFixed(0) }; });
+const stat = () => page.evaluate(() => { const { G, combat } = window.__game; return { phase: G.phase, s: +G.s.toFixed(0), v: +G.v.toFixed(1), h: +G.h.toFixed(1), score: Math.floor(G.score), kills: combat.kills, drones: combat.drones.length, lock: +combat.lockT.toFixed(2), rings: G.rings, hp: Math.round(G.hp), loop: G.loopOn, purs: window.__game.enemy.pursuers.length, fps: window.__fps, leg: G.open ? G.level : G.legIdx, pz: +G.pz.toFixed(0) }; });
 const triggers = (args.t ? JSON.parse(args.t) : [
   { n: 'run-lift', ph: 'run', pz: -2 }, { n: 'run-foes', ph: 'run', pz: -40 }, { n: 'run-edge', ph: 'run', pz: -82 },
   { n: 'dive', ph: 'glide', s: 12 }, { n: 'glide-a', ph: 'glide', s: 60 }, { n: 'fight-1', ph: 'glide', s: 150 }, { n: 'fight-2', ph: 'glide', s: 215 },
@@ -27,7 +27,7 @@ const triggers = (args.t ? JSON.parse(args.t) : [
 let ti = 0; const t0 = Date.now(); const timeout = +(args.timeout || 200) * 1000;
 while (ti < triggers.length && Date.now() - t0 < timeout) {
   const st = await stat(); const tr = triggers[ti];
-  const ok = st.phase === tr.ph && (tr.s === undefined || st.s >= tr.s) && (tr.pz === undefined || st.pz <= tr.pz) && (tr.lock === undefined || st.lock >= tr.lock) && (tr.leg === undefined || st.leg >= tr.leg);
+  const ok = st.phase === tr.ph && (tr.s === undefined || st.s >= tr.s) && (tr.pz === undefined || st.pz <= tr.pz) && (tr.lock === undefined || st.lock >= tr.lock) && (tr.leg === undefined || st.leg >= tr.leg) && (tr.loop === undefined || st.loop === tr.loop);
   if (ok) { const f = path.join(out, `${String(ti + 1).padStart(2, '0')}-${tr.n}.jpg`); await page.screenshot({ path: f, type: 'jpeg', quality: 80 }); console.log(tr.n, JSON.stringify(st)); ti++; }
   else await new Promise((r) => setTimeout(r, 120));
 }
